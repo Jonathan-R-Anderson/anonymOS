@@ -1,0 +1,40 @@
+# basic-shell.recipe
+# Recipe for a basic shell application for WorldComputer.
+
+# --- Metadata ---
+name: "basic-shell"
+version: "0.1.0"
+description: "A simple command-line shell for WorldComputer."
+license: "MIT" # Example license
+
+# --- Source ---
+source: {
+    type: "local",
+    path: "applications/shell" # Assuming it's in worldcomputer/applications/shell
+    # Or:
+    # type: "git",
+    # url: "https://example.com/git/worldcomputer-shell.git",
+    # tag: "v0.1.0"
+}
+
+# --- Dependencies ---
+# These would be other recipes that provide libraries.
+# The build system would ensure these are built first and their outputs
+# are available during this recipe's build process.
+dependencies: [
+    "recipe:libsys-wc"  # System call library
+    # "recipe:lib9p-wc"   # 9P client library, if used by the shell
+]
+
+# --- Build Process ---
+# ${dependency_path:libsys-wc} would be expanded by the build system to the install path of libsys-wc.
+build: [
+    "cd ${source_dir}",
+    "ldc2 -betterC -O2 src/shell_main.d -of=${build_dir}/sh -L-L${dependency_path:libsys-wc}/usr/lib -I${dependency_path:libsys-wc}/usr/include"
+]
+
+# --- Installation ---
+install: [
+    "mkdir -p ${install_root}/bin",
+    "cp ${build_dir}/sh ${install_root}/bin/sh"
+]

@@ -1,42 +1,44 @@
-/* linker.ld - Linker script for the D kernel */
+/* linker.ld */
+ENTRY(_start) /* Define the entry point of the kernel */
+OUTPUT_FORMAT(elf32-i386) /* Specify the output format */
 
-ENTRY(_start) /* The entry point is _start from boot.s */
+SECTIONS {
+    /* Kernel load address - typically 1MB for GRUB */
+    . = 0x00100000;
+    KERNEL_LOAD_ADDRESS = .; /* Store the load address for potential use */
 
-SECTIONS
-{
-    /* Kernel code will be loaded by GRUB at 1MB (0x100000) */
-    . = 1M;
-    KERNEL_LOAD_ADDRESS = .;
-
-    /*
-     * The .multiboot_header section must come first and be 4-byte aligned.
-     * It contains the Multiboot magic numbers for GRUB.
-     */
-    .text ALIGN(4K) : AT(ADDR(.text) - KERNEL_LOAD_ADDRESS + KERNEL_LOAD_ADDRESS)
-    {
+    /* Multiboot header section - MUST BE FIRST */
+    .multiboot_header : ALIGN(4K) {
         *(.multiboot_header)
-        *(.text .text.*)
     }
 
-    .rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_LOAD_ADDRESS + KERNEL_LOAD_ADDRESS)
-    {
-        *(.rodata .rodata.*)
+    /* Kernel code section */
+    .text : ALIGN(4K) {
+        *(.text)          /* All .text sections from input files (boot.o first) */
+        *(.rodata*)       /* Read-only data */
     }
 
-    .data ALIGN(4K) : AT(ADDR(.data) - KERNEL_LOAD_ADDRESS + KERNEL_LOAD_ADDRESS)
-    {
-        *(.data .data.*)
+    /* Kernel initialized data section */
+    .data : ALIGN(4K) {
+        *(.data)          /* All .data sections */
     }
 
-    .bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_LOAD_ADDRESS + KERNEL_LOAD_ADDRESS)
-    {
-        *(.bss .bss.*)
-        *(COMMON)
+    /* Kernel uninitialized data section (BSS) */
+    /* This is where our stack will be */
+    .bss : ALIGN(4K) {
+        *(COMMON)         /* Uninitialized data (COMMON symbols) */
+        *(.bss)           /* All .bss sections */
+        *(.bootstrap_stack) /* If you define a specific stack section name */
     }
 
-    /DISCARD/ :
-    {
+    /* End of kernel symbol, useful for memory management later */
+    _kernel_end = .;
+
+    /* Discard sections not needed in the final kernel image */
+    /DISCARD/ : {
         *(.comment)
-        *(.eh_frame)
+        *(.eh_frame) /* Exception handling frames, not typically used in freestanding */
+        *(.note.gnu.build-id)
+        *(.note.ABI-tag)
     }
 }

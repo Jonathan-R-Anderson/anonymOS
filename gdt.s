@@ -1,6 +1,5 @@
 ; gdt.s
 global gdt_flush
-extern gp      ; Pointer to GdtPtr, defined in D
 
 gdt_flush:
     mov eax, [esp+4] ; Argument: address of GdtPtr

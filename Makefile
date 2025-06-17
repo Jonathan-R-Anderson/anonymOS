@@ -3,7 +3,7 @@
 # Tools
 DC = ldc2
 AS = nasm
-LD = i686-linux-gnu-gcc # Use the installed i686-linux-gnu GCC
+LD = lld # Use LLD, the LLVM linker
 GRUB_MKRESCUE = grub-mkrescue
 
 # D Compiler Flags
@@ -20,7 +20,9 @@ DFLAGS = -betterC -mtriple=i386-unknown-elf -mcpu=pentium4 -O1 -g -boundscheck=o
 ASFLAGS = -f elf32 # Output format: ELF32
 
 # Linker Flags
-LDFLAGS = --verbose -nostdlib -nostartfiles -no-pie
+# For LLD:
+# --verbose can be removed, LLD is usually informative on errors.
+LDFLAGS = -nostdlib -nostartfiles -no-pie
 
 # Update DFLAGS for the new directory structure and D module conventions
 # -I. allows `import kernel.core.module;`
@@ -112,7 +114,8 @@ kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN fi
 # or before linking if it's directly part of ALL_OBJS (which it is via KERNEL_D_OBJS)
 $(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # ANSI_ART_D_TARGET_FILE is a dep of its .o file, which is in ALL_OBJS
 	mkdir -p $(BUILD_DIR)
-	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS) -lgcc
+	# Removed -lgcc as it's specific to GCC. LDC2/LLD should handle necessary runtime bits or emit self-contained code.
+	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS)
 
 # Rule to generate the D file from ANSI art
 $(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)

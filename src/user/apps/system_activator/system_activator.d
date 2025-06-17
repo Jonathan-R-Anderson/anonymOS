@@ -39,7 +39,7 @@ void main(string[] args) {
         }
 
         // 2. Process Recipes (Simulate ensuring they are built)
-        if ("recipes" in jsonData && jsonData["recipes"].type == JSON_TYPE.ARRAY) {
+        if ("recipes" in jsonData && jsonData["recipes"].type == JSONType.array) {
             writeln("Recipe Management:");
             foreach (recipePathValue; jsonData["recipes"].array) {
                 string recipePath = recipePathValue.str;
@@ -51,7 +51,7 @@ void main(string[] args) {
                     try {
                         auto recipeJson = parseJSON(readText(recipePath));
                         writeln("    - Recipe Name: ", recipeJson["name"].str, ", Version: ", recipeJson["version"].str);
-                        if ("dependencies" in recipeJson && recipeJson["dependencies"].type == JSON_TYPE.ARRAY) {
+                        if ("dependencies" in recipeJson && recipeJson["dependencies"].type == JSONType.array) {
                             foreach(dep; recipeJson["dependencies"].array) {
                                 writeln("      - Depends on: ", dep.str);
                             }
@@ -67,7 +67,7 @@ void main(string[] args) {
         }
 
         // 3. Process Services (Simulate enabling/disabling and configuring)
-        if ("services" in jsonData && jsonData["services"].type == JSON_TYPE.ARRAY) {
+        if ("services" in jsonData && jsonData["services"].type == JSONType.array) {
             writeln("Service Configuration:");
             foreach (serviceConfValue; jsonData["services"].array) {
                 auto serviceConf = serviceConfValue.object;
@@ -101,7 +101,10 @@ void main(string[] args) {
 
     } catch (JSONException e) {
         stderr.writeln("JSON Parsing Error: ", e.msg);
-        stderr.writeln("  File: ", configFilePath, ", Line: ", e.line, ", Column: ", e.column);
+        // .column is no longer available in JSONException.
+        // e.msg often includes line and sometimes column information.
+        // e.line is still available.
+        stderr.writeln("  File: ", configFilePath, ", Line: ", e.line);
     } catch (FileException e) {
         stderr.writeln("File Error: ", e.msg);
     }

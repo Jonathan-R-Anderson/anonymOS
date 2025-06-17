@@ -3,7 +3,7 @@
 # Tools
 DC = ldc2
 AS = nasm
-LD = lld # Use LLD, the LLVM linker
+LD = ld.lld # More common invocation for LLD, the LLVM linker
 GRUB_MKRESCUE = grub-mkrescue
 
 # D Compiler Flags
@@ -22,7 +22,7 @@ ASFLAGS = -f elf32 # Output format: ELF32
 # Linker Flags
 # For LLD:
 # --verbose can be removed, LLD is usually informative on errors.
-LDFLAGS = -nostdlib -nostartfiles -no-pie
+LDFLAGS = -nostdlib -no-pie
 
 # Update DFLAGS for the new directory structure and D module conventions
 # -I. allows `import kernel.core.module;`

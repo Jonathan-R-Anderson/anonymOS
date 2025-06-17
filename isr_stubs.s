@@ -6,8 +6,8 @@ extern interrupt_handler_d ; D language interrupt handler
   global isr%1
   isr%1:
     cli             ; Disable interrupts
-    push byte 0     ; Push a dummy error code
-    push byte %1    ; Push the interrupt number
+    push dword 0    ; Push a dummy error code (32-bit)
+    push dword %1   ; Push the interrupt number (32-bit)
     jmp isr_common_stub
 %endmacro
 
@@ -17,7 +17,7 @@ extern interrupt_handler_d ; D language interrupt handler
   isr%1:
     cli             ; Disable interrupts
     ; Error code is already on stack
-    push byte %1    ; Push the interrupt number
+    push dword %1   ; Push the interrupt number (32-bit)
     jmp isr_common_stub
 %endmacro
 

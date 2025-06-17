@@ -3,7 +3,7 @@
 # Tools
 DC = ldc2
 AS = nasm
-LD = ld # Use i686-elf-ld if you have a cross-compiler setup
+LD = i686-linux-gnu-gcc # Use the installed i686-linux-gnu GCC
 GRUB_MKRESCUE = grub-mkrescue
 
 # D Compiler Flags
@@ -21,18 +21,24 @@ DFLAGS = -betterC -mtriple=i386-unknown-elf -mcpu=pentium4 -O1 -g -boundscheck=o
 ASFLAGS = -f elf32 # Output format: ELF32
 
 # Linker Flags
-# -m elf_i386: Specify 32-bit ELF output format for GNU ld
-# If using i686-elf-ld, this flag might not be needed or might be different.
-LDFLAGS = -m elf_i386 --verbose
+# -nostdlib: Do not use the standard system startup files or libraries when linking.
+# -nostartfiles: Do not use the standard system startup files when linking.
+# -no-pie: Do not create a position independent executable.
+LDFLAGS = --verbose -nostdlib -nostartfiles -no-pie
 
 # Files and Directories
-KERNEL_D_SRC = kernel.d
+KERNEL_D_FILES = $(wildcard kernel/*.d) # Find all .d files in kernel/
 KERNEL_ASM_SRC = boot.s
 GDT_ASM_SRC = gdt.s
 IDT_ASM_SRC = idt.s
+PORTS_ASM_SRC = kernel/ports.s # Added ports.s
+DEBUG_STUBS_ASM_SRC = kernel/debug_stubs.s # For assembly stubs
 ISR_STUBS_ASM_SRC = isr_stubs.s
 LINKER_SCRIPT = linker.ld
-GRUB_CFG = grub.cfg
+# GRUB_CFG = grub.cfg # Not used as a variable directly, cfg is generated
+
+# D sources (now in kernel/ subdirectory)
+D_SOURCES = $(wildcard kernel/*.d)
 
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/obj
@@ -43,7 +49,10 @@ ISO_GRUB_DIR = $(ISO_BOOT_DIR)/grub
 GDT_ASM_OBJ = $(OBJ_DIR)/gdt.o
 IDT_ASM_OBJ = $(OBJ_DIR)/idt.o
 ISR_STUBS_ASM_OBJ = $(OBJ_DIR)/isr_stubs.o
-KERNEL_D_OBJ = $(OBJ_DIR)/kernel_d.o
+PORTS_ASM_OBJ = $(OBJ_DIR)/ports.o # Added object for ports.s
+DEBUG_STUBS_ASM_OBJ = $(OBJ_DIR)/debug_stubs.o # Object for debug stubs
+# Generate object file names based on source files in kernel/
+KERNEL_D_OBJS = $(patsubst kernel/%.d,$(OBJ_DIR)/kernel_%.o,$(D_SOURCES))
 KERNEL_ASM_OBJ = $(OBJ_DIR)/boot.o
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 ISO_FILE = $(BUILD_DIR)/minimal_d_os.iso
@@ -68,15 +77,16 @@ $(ISO_FILE): $(KERNEL_BIN) # KERNEL_BIN is the main dependency. grub.cfg content
 	$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR) # Added -v for verbosity, removed @
 	echo "ISO created: $@ (using grub.cfg in $(ISO_GRUB_DIR)/grub.cfg)" # Clarified echo message
 
-ALL_OBJS = $(KERNEL_ASM_OBJ) $(GDT_ASM_OBJ) $(IDT_ASM_OBJ) $(ISR_STUBS_ASM_OBJ) $(KERNEL_D_OBJ)
+ALL_OBJS = $(KERNEL_ASM_OBJ) $(GDT_ASM_OBJ) $(IDT_ASM_OBJ) $(ISR_STUBS_ASM_OBJ) $(PORTS_ASM_OBJ) $(DEBUG_STUBS_ASM_OBJ) $(KERNEL_D_OBJS)
 
 kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN file
 
-$(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT)
+$(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # Ensure BUILD_DIR exists
 	mkdir -p $(BUILD_DIR)
-	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS) # This rule creates kernel.bin
+	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS) -lgcc # Added -lgcc
 
-$(KERNEL_D_OBJ): $(KERNEL_D_SRC)
+# Rule for D files in kernel/ subdirectory
+$(OBJ_DIR)/kernel_%.o: kernel/%.d
 	mkdir -p $(OBJ_DIR)
 	$(DC) $(DFLAGS) -c $< -of=$@
 
@@ -93,6 +103,14 @@ $(IDT_ASM_OBJ): $(IDT_ASM_SRC)
 	$(AS) $(ASFLAGS) $< -o $@
 
 $(ISR_STUBS_ASM_OBJ): $(ISR_STUBS_ASM_SRC)
+	mkdir -p $(OBJ_DIR)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(PORTS_ASM_OBJ): $(PORTS_ASM_SRC)
+	mkdir -p $(OBJ_DIR)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(DEBUG_STUBS_ASM_OBJ): $(DEBUG_STUBS_ASM_SRC) | $(OBJ_DIR) # Ensure OBJ_DIR exists
 	mkdir -p $(OBJ_DIR)
 	$(AS) $(ASFLAGS) $< -o $@
 

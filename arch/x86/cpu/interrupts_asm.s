@@ -115,3 +115,9 @@ global unhandled_interrupt
 unhandled_interrupt:
     ; You could print an "unhandled interrupt" message here if desired
     iret
+
+; Add this section to prevent executable stack warnings.
+section .note.GNU-stack noalloc noexec nowrite progbits
+
+; Add this section to prevent executable stack warnings.
+section .note.GNU-stack noalloc noexec nowrite progbits

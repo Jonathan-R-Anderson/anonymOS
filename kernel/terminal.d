@@ -17,10 +17,10 @@ enum VGA_HEIGHT = 25;
 // This means memory-mapped I/O to VGA_ADDRESS is NOT guaranteed to be safe from compiler optimizations.
 // For true correctness, the compiler issue with 'volatile' needs to be resolved,
 // or all accesses to g_pVGAMemory should be done via inline assembly.
-ushort* g_pVGAMemory = cast(ushort*) VGA_ADDRESS;
-size_t g_TerminalRow;
-size_t g_TerminalColumn;
-ubyte g_TerminalColor;
+__gshared ushort* g_pVGAMemory = cast(ushort*) VGA_ADDRESS;
+__gshared size_t g_TerminalRow;
+__gshared size_t g_TerminalColumn;
+__gshared ubyte g_TerminalColor;
 
 // VGA color byte: foreground on background
 ubyte vga_entry_color(VGAColor fg, VGAColor bg) {

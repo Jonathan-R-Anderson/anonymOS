@@ -1,36 +1,75 @@
-// kernel/keyboard.d
-
 module kernel.keyboard;
 
-public: // Export scancode_to_char
+// Use kernel.terminal for output, which in turn uses kernel.vga
+import kernel.terminal : terminal_putchar, terminal_writestring;
+import core.stdc.stdint; // For ubyte, though often a built-in alias
+import kernel.vga : terminal_putchar; // For direct access if needed, or use kernel.terminal
 
-// Basic scancode map (US QWERTY, lowercase, no modifiers)
-char[256] scancode_to_char = init_scancode_map();
+// If needed for more direct keyboard controller interaction:
+// extern (C) {
+//     ubyte inb(ushort port);
+//     void outb(ushort port, ubyte data);
+// }
 
-// Helper to initialize scancode_to_char
-private char[256] init_scancode_map() {
-    char[256] map;
-    for (size_t i = 0; i < map.length; i++) {
-        map[i] = 0;
+public:
+
+// Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.
+// Returns 0 (null char) if the scancode is not printable or not mapped.
+char scancode_to_char(ubyte scancode) {
+    // Does not handle shift, ctrl, alt, or key releases yet.
+    // Only handles key presses (scancode bit 7 is 0).
+    // The check for key release (scancode & 0x80) is done by the caller in interrupts.d
+
+    switch (scancode) {
+        // Row 1 (Numbers and symbols)
+        case 0x02: return '1'; case 0x03: return '2'; case 0x04: return '3';
+        case 0x05: return '4'; case 0x06: return '5'; case 0x07: return '6';
+        case 0x08: return '7'; case 0x09: return '8'; case 0x0A: return '9';
+        case 0x0B: return '0'; case 0x0C: return '-'; case 0x0D: return '=';
+        // Row 2 (QWERTY)
+        case 0x10: return 'q'; case 0x11: return 'w'; case 0x12: return 'e';
+        case 0x13: return 'r'; case 0x14: return 't'; case 0x15: return 'y';
+        case 0x16: return 'u'; case 0x17: return 'i'; case 0x18: return 'o';
+        case 0x19: return 'p'; case 0x1A: return '['; case 0x1B: return ']';
+        // Row 3 (ASDFGH)
+        case 0x1E: return 'a'; case 0x1F: return 's'; case 0x20: return 'd';
+        case 0x21: return 'f'; case 0x22: return 'g'; case 0x23: return 'h';
+        case 0x24: return 'j'; case 0x25: return 'k'; case 0x26: return 'l';
+        case 0x27: return ';'; case 0x28: return '\''; case 0x29: return '`';
+        // Row 4 (ZXCVBN)
+        case 0x2B: return '\\'; // Note: Original US layout might have this next to Enter or LShift
+        case 0x2C: return 'z'; case 0x2D: return 'x'; case 0x2E: return 'c';
+        case 0x2F: return 'v'; case 0x30: return 'b'; case 0x31: return 'n';
+        case 0x32: return 'm'; case 0x33: return ','; case 0x34: return '.';
+        case 0x35: return '/';
+        // Special characters
+        case 0x0E: return '\b'; // Backspace
+        case 0x0F: return '\t'; // Tab
+        case 0x1C: return '\n'; // Enter
+        case 0x39: return ' ';  // Space
+
+        default:   return 0;  // Null char for unmapped/non-printable scancodes
     }
+}
 
-    map[0x02] = '1'; map[0x03] = '2'; map[0x04] = '3'; map[0x05] = '4';
-    map[0x06] = '5'; map[0x07] = '6'; map[0x08] = '7'; map[0x09] = '8';
-    map[0x0A] = '9'; map[0x0B] = '0'; map[0x0C] = '-'; map[0x0D] = '=';
+void initialize_keyboard() {
+    // For this basic setup, we primarily rely on the BIOS having initialized
+    // the keyboard controller. We just need to ensure our IRQ handler is ready
+    // and the IRQ is unmasked in the PIC.
+    // More advanced setup might involve sending commands (e.g., 0xF4 to enable scanning)
+    // to port 0x60 after checking status on port 0x64.
+    terminal_writestring("Keyboard driver initialized (ISR set, IRQ1 ready to be unmasked).\n");
+}
 
-    map[0x10] = 'q'; map[0x11] = 'w'; map[0x12] = 'e'; map[0x13] = 'r';
-    map[0x14] = 't'; map[0x15] = 'y'; map[0x16] = 'u'; map[0x17] = 'i';
-    map[0x18] = 'o'; map[0x19] = 'p'; map[0x1A] = '['; map[0x1B] = ']';
-    map[0x1E] = 'a'; map[0x1F] = 's'; map[0x20] = 'd'; map[0x21] = 'f';
-    map[0x22] = 'g'; map[0x23] = 'h'; map[0x24] = 'j'; map[0x25] = 'k';
-    map[0x26] = 'l'; map[0x27] = ';'; map[0x28] = '\''; map[0x29] = '`';
-
-    map[0x2C] = 'z'; map[0x2D] = 'x'; map[0x2E] = 'c'; map[0x2F] = 'v';
-    map[0x30] = 'b'; map[0x31] = 'n'; map[0x32] = 'm'; map[0x33] = ',';
-    map[0x34] = '.'; map[0x35] = '/';
-
-    map[0x1C] = '\n'; // Enter Key
-    map[0x39] = ' '; // Spacebar
-
-    return map;
+// This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
+extern (C) void keyboard_interrupt_handler(ubyte scancode) {
+    // Bit 7 (0x80) is set if it's a key release (break code)
+    // We are only interested in key presses (make codes)
+    if (!(scancode & 0x80)) {
+        char c = scancode_to_char(scancode);
+        if (c != 0) { // If it's a printable character
+            terminal_putchar(c);
+        }
+    }
+    // The EOI is sent by the assembly handler after this D function returns.
 }

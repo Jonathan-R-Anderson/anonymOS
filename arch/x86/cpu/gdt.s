@@ -64,3 +64,9 @@ gdt_flush:
     pop edi
     pop eax
     ret          ; Return to caller (init_gdt in D)
+
+; Add this section to prevent executable stack warnings.
+section .note.GNU-stack noalloc noexec nowrite progbits
+
+; Add this section to prevent executable stack warnings.
+section .note.GNU-stack noalloc noexec nowrite progbits

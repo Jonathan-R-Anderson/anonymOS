@@ -52,3 +52,6 @@ inb:
     mov esp, ebp
     pop ebp
     ret
+
+; Add this section to prevent executable stack warnings.
+section .note.GNU-stack noalloc noexec nowrite progbits

@@ -4,8 +4,7 @@ module kernel.interrupts;
 
 import kernel.types : Registers, ErrorCode;
 import kernel.io : inb, outb;
-import kernel.terminal : terminal_writestring, terminal_write_hex, terminal_putchar;
-import kernel.keyboard : scancode_to_char;
+import kernel.terminal : terminal_writestring, terminal_write_hex, terminal_putchar; // scancode_to_char is used in kernel.keyboard
 import kernel.panic : kernel_panic;
 
 public: // Export interrupt_handler_d, pic_remap
@@ -38,12 +37,15 @@ void pic_remap(int offset1, int offset2) {
 }
 
 extern (C) void interrupt_handler_d(Registers* regs) {
+    // Send EOI (End Of Interrupt) to PICs
     if (regs.int_no >= 32 && regs.int_no <= 47) {
         if (regs.int_no >= 40) {
-            outb(PIC2_COMMAND, PIC_EOI);
+            outb(PIC2_COMMAND, PIC_EOI); // Slave PIC
         }
-        outb(PIC1_COMMAND, PIC_EOI);
+        outb(PIC1_COMMAND, PIC_EOI); // Master PIC
     }
+
+    // --- Logging the interrupt ---
 
     terminal_writestring("Interrupt: ");
     terminal_write_hex(regs.int_no);
@@ -55,15 +57,10 @@ extern (C) void interrupt_handler_d(Registers* regs) {
     }
     terminal_putchar('\n');
 
-    if (regs.int_no == 33) { // Keyboard
-        ubyte scancode = inb(0x60);
-        if (!(scancode & 0x80)) {
-            char c = scancode_to_char[scancode];
-            if (c != 0) {
-                terminal_putchar(c);
-            }
-        }
-    } else if (regs.int_no < 32 && regs.int_no != 1 && regs.int_no != 3) { // CPU Exception
+    // --- Handling specific CPU exceptions ---
+    // Note: Interrupt 33 (Keyboard) is now handled by keyboard_handler_asm.s
+    // and kernel.keyboard.keyboard_interrupt_handler, so it's not processed here.
+    if (regs.int_no < 32 && regs.int_no != 1 && regs.int_no != 3) { // CPU Exception (excluding debug/breakpoint)
         if (regs.int_no == 13) { // GPF
             terminal_writestring("General Protection Fault! Selector: ");
             terminal_write_hex(regs.err_code);
@@ -77,7 +74,7 @@ extern (C) void interrupt_handler_d(Registers* regs) {
             terminal_write_hex(fault_addr);
             terminal_putchar('\n');
         }
-        if (regs.int_no != 2) {
+        if (regs.int_no != 2) { // Don't panic on NMI for now, just log it.
             kernel_panic("CPU Exception Encountered.", cast(ErrorCode)regs.int_no);
         }
     }

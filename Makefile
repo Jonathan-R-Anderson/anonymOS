@@ -14,7 +14,7 @@ GRUB_MKRESCUE = grub-mkrescue
 # -g: Debug symbols (optional, but helpful)
 # -output-o: Ensures .o file is output (LDC specific)
 # -I.: Include current directory for imports (if any local modules were used) -disable-asserts: Disable runtime asserts
-DFLAGS = -betterC -mtriple=i386-unknown-elf -mcpu=pentium4 -O1 -g -boundscheck=off -output-o
+DFLAGS = -betterC -mtriple=i386-unknown-elf -mcpu=pentium4 -O1 -g -boundscheck=off -output-o -Ikernel
 
 
 # Assembler Flags
@@ -29,11 +29,16 @@ LDFLAGS = --verbose -nostdlib -nostartfiles -no-pie
 # Files and Directories
 KERNEL_D_FILES = $(wildcard kernel/*.d) # Find all .d files in kernel/
 KERNEL_ASM_SRC = boot.s
-GDT_ASM_SRC = gdt.s
-IDT_ASM_SRC = idt.s
+GDT_ASM_SRC = gdt.s 
+# IDT_ASM_SRC = idt.s # This is replaced by idt_loader.s
+IDT_LOADER_ASM_SRC = idt_loader.s # New: For lidt instruction
 PORTS_ASM_SRC = kernel/ports.s # Added ports.s
 DEBUG_STUBS_ASM_SRC = kernel/debug_stubs.s # For assembly stubs
 ISR_STUBS_ASM_SRC = isr_stubs.s
+KEYBOARD_HANDLER_ASM_SRC = keyboard_handler_asm.s # New: Keyboard ISR assembly
+ANSI_ART_SRC = artwork.ans # Source ANSI art file
+ANSI_ART_D_TARGET = kernel/ansi_art.d # Generated D file for ANSI art (target)
+PYTHON_INTERPRETER = python3 # Adjust if your python3 is just 'python'
 LINKER_SCRIPT = linker.ld
 # GRUB_CFG = grub.cfg # Not used as a variable directly, cfg is generated
 
@@ -47,9 +52,11 @@ ISO_BOOT_DIR = $(ISO_DIR)/boot
 ISO_GRUB_DIR = $(ISO_BOOT_DIR)/grub
 
 GDT_ASM_OBJ = $(OBJ_DIR)/gdt.o
-IDT_ASM_OBJ = $(OBJ_DIR)/idt.o
+# IDT_ASM_OBJ = $(OBJ_DIR)/idt.o # For idt.s - REMOVED
+IDT_LOADER_ASM_OBJ = $(OBJ_DIR)/idt_loader.o # New: For idt_loader.s
 ISR_STUBS_ASM_OBJ = $(OBJ_DIR)/isr_stubs.o
 PORTS_ASM_OBJ = $(OBJ_DIR)/ports.o # Added object for ports.s
+KEYBOARD_HANDLER_ASM_OBJ = $(OBJ_DIR)/keyboard_handler_asm.o # New: For keyboard_handler_asm.s
 DEBUG_STUBS_ASM_OBJ = $(OBJ_DIR)/debug_stubs.o # Object for debug stubs
 # Generate object file names based on source files in kernel/
 KERNEL_D_OBJS = $(patsubst kernel/%.d,$(OBJ_DIR)/kernel_%.o,$(D_SOURCES))
@@ -76,14 +83,19 @@ $(ISO_FILE): $(KERNEL_BIN) # KERNEL_BIN is the main dependency. grub.cfg content
 	echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
 	$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR) # Added -v for verbosity, removed @
 	echo "ISO created: $@ (using grub.cfg in $(ISO_GRUB_DIR)/grub.cfg)" # Clarified echo message
-
-ALL_OBJS = $(KERNEL_ASM_OBJ) $(GDT_ASM_OBJ) $(IDT_ASM_OBJ) $(ISR_STUBS_ASM_OBJ) $(PORTS_ASM_OBJ) $(DEBUG_STUBS_ASM_OBJ) $(KERNEL_D_OBJS)
+ALL_OBJS = $(KERNEL_ASM_OBJ) $(GDT_ASM_OBJ) $(IDT_LOADER_ASM_OBJ) $(ISR_STUBS_ASM_OBJ) $(KEYBOARD_HANDLER_ASM_OBJ) $(PORTS_ASM_OBJ) $(DEBUG_STUBS_ASM_OBJ) $(KERNEL_D_OBJS)
 
 kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN file
 
-$(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # Ensure BUILD_DIR exists
+# Ensure ANSI art D file is generated before compiling D sources that might depend on it
+# or before linking if it's directly part of ALL_OBJS (which it is via KERNEL_D_OBJS)
+$(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) $(ANSI_ART_D_TARGET) | $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)
 	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS) -lgcc # Added -lgcc
+
+# Rule to generate the D file from ANSI art
+$(ANSI_ART_D_TARGET): kernel/$(ANSI_ART_SRC) ans_to_d.py
+	$(PYTHON_INTERPRETER) ans_to_d.py kernel/$(ANSI_ART_SRC) $(ANSI_ART_D_TARGET)
 
 # Rule for D files in kernel/ subdirectory
 $(OBJ_DIR)/kernel_%.o: kernel/%.d
@@ -98,7 +110,11 @@ $(GDT_ASM_OBJ): $(GDT_ASM_SRC)
 	mkdir -p $(OBJ_DIR)
 	$(AS) $(ASFLAGS) $< -o $@
 
-$(IDT_ASM_OBJ): $(IDT_ASM_SRC)
+$(IDT_LOADER_ASM_OBJ): $(IDT_LOADER_ASM_SRC) | $(OBJ_DIR)
+	mkdir -p $(OBJ_DIR)
+	$(AS) $(ASFLAGS) $< -o $@
+
+$(KEYBOARD_HANDLER_ASM_OBJ): $(KEYBOARD_HANDLER_ASM_SRC) | $(OBJ_DIR)
 	mkdir -p $(OBJ_DIR)
 	$(AS) $(ASFLAGS) $< -o $@
 

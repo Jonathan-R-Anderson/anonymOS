@@ -32,7 +32,7 @@ stack_bottom:
     resb 16384 ; 16 KiB stack
 stack_top:
 
-section .text._start, "ax", @progbits ; Place _start in its own subsection, "ax" = allocatable, executable
+section .text progbits alloc exec ; Place _start in its own subsection. Attributes: allocatable, executable
 
 global _start      ; Export the _start symbol
 extern kmain       ; kmain is defined in D, ensure it's C-callable

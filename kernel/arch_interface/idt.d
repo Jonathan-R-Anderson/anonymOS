@@ -1,7 +1,5 @@
 module kernel.idt;
 
-import core.stdc.stdint; // For ubyte, ushort, uint
-
 // Assumed to be available from kernel.ports or similar
 extern (C) {
     void idt_load(IDTPtr* idt_p); // Implemented in idt_loader.s

@@ -1,4 +1,4 @@
-module core.stdc.time;
+module kernel.lib.stdc.time;
 
 // This is a stub module for -betterC compilation.
 // It prevents the full core.stdc.time from being pulled in.

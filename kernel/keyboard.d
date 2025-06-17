@@ -1,9 +1,9 @@
 module kernel.keyboard;
 
 // Use kernel.terminal for output, which in turn uses kernel.vga
-import kernel.terminal : terminal_putchar, terminal_writestring;
-import core.stdc.stdint; // For ubyte, though often a built-in alias
-import kernel.vga : terminal_putchar; // For direct access if needed, or use kernel.terminal
+import kernel.terminal : terminal_writestring; // terminal_putchar is already imported via kernel.device.vga
+import kernel.lib.stdc.stdint; // Use local stdint stub
+import kernel.device.vga : terminal_putchar; // Corrected import path for vga module
 
 // If needed for more direct keyboard controller interaction:
 // extern (C) {

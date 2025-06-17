@@ -1,7 +1,5 @@
 module kernel.vga;
 
-import core.stdc.stdint; // For ubyte, ushort, etc.
-
 // If hardware cursor control is desired, inb/outb would be needed.
 // extern (C) {
 //     ubyte inb(ushort port);

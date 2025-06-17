@@ -1,4 +1,4 @@
-module core.stdc.stdio;
+module kernel.lib.stdc.stdio;
 
 // This is a stub module for -betterC compilation.
 // It prevents the full core.stdc.stdio from being pulled in,

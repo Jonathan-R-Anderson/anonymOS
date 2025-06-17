@@ -1,9 +1,9 @@
-module core.stdc.stdint;
+module kernel.lib.stdc.stdint;
 
 // This is a stub module for -betterC compilation.
 // It provides essential fixed-width integer type definitions.
 
-public import core.stdc.config; // For c_long, c_ulong
+public import kernel.lib.stdc.config; // For c_long, c_ulong
 
 // Exact-width integer types
 alias int8_t   = byte;

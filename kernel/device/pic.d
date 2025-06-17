@@ -1,7 +1,5 @@
 module kernel.pic;
 
-import core.stdc.stdint;
-
 // Assume these are provided by kernel.ports or similar and linked
 extern (C) {
     ubyte inb(ushort port);

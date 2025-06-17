@@ -1,4 +1,4 @@
-module core.stdc.config;
+module kernel.lib.stdc.config;
 
 // Stub for core.stdc.config
 // Provide C-compatible type aliases for the target.

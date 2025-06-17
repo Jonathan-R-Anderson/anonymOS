@@ -98,10 +98,9 @@ $(ISO_FILE): $(KERNEL_BIN)
 	echo "Generating $(ISO_GRUB_DIR)/grub.cfg..."
 	echo "set timeout=3" > $(ISO_GRUB_DIR)/grub.cfg
 	echo "set default=0" >> $(ISO_GRUB_DIR)/grub.cfg
-	echo "" >> $(ISO_GRUB_DIR)/grub.cfg
-	echo "menuentry \"Minimal D OS\" {" >> $(ISO_GRUB_DIR)/grub.cfg
-	echo "menuentry \"GremlinOS\" {" >> $(ISO_GRUB_DIR)/grub.cfg # Updated menu entry
-	echo "    multiboot /boot/kernel.bin  # Path to the kernel binary inside the ISO" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "" >> $(ISO_GRUB_DIR)/grub.cfg # Add a blank line for readability
+	echo "menuentry \"GremlinOS\" {" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "    multiboot /boot/kernel.bin" >> $(ISO_GRUB_DIR)/grub.cfg # Removed comment for cleaner cfg
 	echo "    boot" >> $(ISO_GRUB_DIR)/grub.cfg
 	echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
 	$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR)

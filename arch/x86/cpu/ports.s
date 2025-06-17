@@ -1,57 +1,68 @@
-; kernel/ports.s
-; Low-level port I/O functions
+# ports.s (AT&T syntax, 64-bit)
+# Low-level port I/O functions
 
-section .text
+.section .text
+.code64
 
-global outb
-global inb
+.global outb
+.global inb
+.global outw
+.global inw
+.global outl
+.global inl
 
-;-----------------------------------------------------------------------------
-; void outb(ushort port, ubyte value)
-; Writes a byte to an I/O port.
-; Arguments (cdecl calling convention):
-;   [ebp + 8]: ushort port (port number)
-;   [ebp + 12]: ubyte value (byte to write, promoted to 4 bytes on stack)
-;-----------------------------------------------------------------------------
+# void outb(ushort port, ubyte value)
+# port in %di, value in %sil
 outb:
-    push ebp
-    mov ebp, esp
+    movw %di, %dx       # Load port into DX (16-bit)
+    movb %sil, %al      # Load value into AL (8-bit)
+    outb %al, %dx       # Output byte from AL to port DX
+    # nop                 # Optional short delay
+    # nop
+    retq
 
-    mov dx, [ebp + 8]   ; Load port into DX
-    mov al, [ebp + 12]  ; Load value into AL
-
-    out dx, al          ; Output byte from AL to port DX
-    nop                 ; Short delay, common practice after I/O
-    nop
-
-    mov esp, ebp
-    pop ebp
-    ret
-
-;-----------------------------------------------------------------------------
-; ubyte inb(ushort port)
-; Reads a byte from an I/O port.
-; Arguments (cdecl calling convention):
-;   [ebp + 8]: ushort port (port number)
-; Returns:
-;   ubyte value in AL (D will handle this correctly for ubyte return type)
-;-----------------------------------------------------------------------------
+# ubyte inb(ushort port)
+# port in %di, returns ubyte in %al
 inb:
-    push ebp
-    mov ebp, esp
+    movw %di, %dx       # Load port into DX
+    inb %dx, %al        # Input byte from port DX into AL
+    # nop                 # Optional short delay
+    # nop
+    # Result (ubyte) is already in %al, which is correct for x86-64 System V ABI.
+    # movzbl %al, %eax  # Zero-extend if a full 32-bit or 64-bit return was needed,
+                        # but for ubyte, %al is sufficient.
+    retq
 
-    mov dx, [ebp + 8]   ; Load port into DX
-    in al, dx           ; Input byte from port DX into AL
-    nop                 ; Short delay
-    nop
+# void outw(ushort port, ushort value)
+# port in %di, value in %si
+outw:
+    movw %di, %dx       # Load port into DX
+    movw %si, %ax       # Load value into AX
+    outw %ax, %dx       # Output word from AX to port DX
+    retq
 
-    ; Result is in AL. For ubyte return, D expects it here.
-    ; movzx eax, al ; Optional: zero-extend AL to EAX if full register needed by ABI,
-                    ; but D's extern(C) ubyte return should handle AL directly.
+# ushort inw(ushort port)
+# port in %di, returns ushort in %ax
+inw:
+    movw %di, %dx       # Load port into DX
+    inw %dx, %ax        # Input word from port DX into AX
+    # Result (ushort) is already in %ax.
+    retq
 
-    mov esp, ebp
-    pop ebp
-    ret
+# void outl(ushort port, uint value)
+# port in %di, value in %esi
+outl:
+    movw %di, %dx       # Load port into DX
+    movl %esi, %eax     # Load value into EAX
+    outl %eax, %dx      # Output dword from EAX to port DX
+    retq
 
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
+# uint inl(ushort port)
+# port in %di, returns uint in %eax
+inl:
+    movw %di, %dx       # Load port into DX
+    inl %dx, %eax       # Input dword from port DX into EAX
+    # Result (uint) is already in %eax.
+    retq
+
+.section .note.GNU-stack, "", @progbits # Mark stack as non-executable

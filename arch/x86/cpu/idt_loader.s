@@ -1,14 +1,15 @@
-; idt_loader.s
-bits 32
+# idt_loader.s (AT&T syntax, 64-bit)
+# Contains idt_load function to load the IDT.
 
-global idt_load
+.section .text
+.global idt_load
+# idt_ptr is defined in D code; its address will be passed.
+
+.code64
 idt_load:
-    mov eax, [esp+4]  ; Get pointer to IDTPtr struct from stack
-    lidt [eax]        ; Load IDT register
-    ret
+    # x86-64 System V ABI: first argument (pointer to IDTPtr struct) is in %rdi.
+    # The IDTPtr struct in D code must have a 64-bit base address for its 'base' field.
+    lidt (%rdi)         # Load IDT register using the pointer in %rdi.
+    retq                # Return from function.
 
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
-
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
+.section .note.GNU-stack, "", @progbits # Mark stack as non-executable

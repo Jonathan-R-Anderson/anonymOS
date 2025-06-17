@@ -17,21 +17,13 @@ extern (C) void kmain() {
     pVGATest[0] = vga_entry('K', vga_entry_color(VGAColor.WHITE, VGAColor.BLUE));
     pVGATest[1] = vga_entry('0', vga_entry_color(VGAColor.WHITE, VGAColor.BLUE));
 
-    // Initialize terminal first for clean output from subsequent init functions
-    terminal_initialize();
-    terminal_writestring("Terminal Initialized.\n");
-
-    init_gdt();
-    pVGATest[2] = vga_entry('G', vga_entry_color(VGAColor.WHITE, VGAColor.BLUE)); // 'G' for GDT done
-    terminal_writestring("GDT Initialized.\n"); // Confirm via terminal
-
-    init_idt();
-    pVGATest[3] = vga_entry('I', vga_entry_color(VGAColor.WHITE, VGAColor.BLUE)); // 'I' for IDT done
-    asm { "sti"; } // Enable interrupts
-    pVGATest[4] = vga_entry('S', vga_entry_color(VGAColor.WHITE, VGAColor.BLUE)); // 'S' for STI done
-    terminal_writestring("Interrupts Enabled (STI).\n");
-    terminal_writestring("Kernel initialization complete. Halting until interrupt...\n");
-
+    // Comment out ALL subsequent operations to see if "K0" can remain stable.
+    pVGATest[2] = vga_entry('A', vga_entry_color(VGAColor.WHITE, VGAColor.RED)); 
+    terminal_initialize(); 
+    pVGATest[3] = vga_entry('B', vga_entry_color(VGAColor.WHITE, VGAColor.GREEN)); 
+    // terminal_writestring("Terminal Initialized (via func).\n"); 
+    // pVGATest[4] = vga_entry('C', vga_entry_color(VGAColor.WHITE, VGAColor.CYAN)); 
+    // terminal_writestring("Further init skipped. Halting...\n");
     while (true) {
         asm { "hlt"; } // Halt until next interrupt
     }

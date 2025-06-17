@@ -1,72 +1,58 @@
-; gdt.s
-bits 32
+# gdt.s (AT&T syntax, 64-bit)
+# Contains gdt_flush function to load the GDT and refresh segment registers.
 
-section .text
-global gdt_flush
+.section .text
+.global gdt_flush
 
-VGA_BASE equ 0xB8000
-DEBUG_OFFSET_START equ 30 ; Start assembly debug characters at VGA offset 30
-                          ; (e.g., (VGA_BASE + DEBUG_OFFSET_START * 2))
-DEBUG_COLOR equ 0x0F00    ; White text on Black background. Add char code to this.
-
-
+.set VGA_BASE, 0xB8000
+.set DEBUG_OFFSET_START, 30
+.set DEBUG_COLOR, 0x0F00    # White text on Black background. Add char code to this.
 
 gdt_flush:
-    ; Save EAX and EDI as we'll use them for debugging.
-    push eax
-    push edi
+    # x86-64 System V ABI: first argument (pointer to GdtPtr) is in %rdi
+    # Save callee-saved registers if used, but for this simple function,
+    # we only use argument registers and %rax.
 
-    mov edi, VGA_BASE
-    mov word [edi + (DEBUG_OFFSET_START * 2)], DEBUG_COLOR + 'A' ; Mark: Entry
+    # Debug output (optional, ensure VGA_BASE is accessible and mapped if paging is on)
+    # For 64-bit, use 64-bit registers for addresses.
+    # movq $VGA_BASE, %rbx # Use rbx as a temporary base for VGA
+    # movw $(DEBUG_COLOR + 'A'), (%rbx, $DEBUG_OFFSET_START, 2) # Mark: Entry
 
-    ; Argument is at [esp + 12] because:
-    ; esp -> pushed eax
-    ; esp+4 -> pushed edi
-    ; esp+8 -> return address
-    ; esp+12 -> first argument to gdt_flush
-    mov eax, [esp + 12] ; Argument: pointer to GdtPtr structure
+    # movq %rdi, %rax # Move GdtPtr* into rax if needed for debug or other ops
+    # movw $(DEBUG_COLOR + 'B'), (%rbx, $(DEBUG_OFFSET_START + 1), 2) # Mark: Before LGDT
 
-    mov word [edi + ((DEBUG_OFFSET_START + 1) * 2)], DEBUG_COLOR + 'B' ; Mark: Before LGDT
-    lgdt [eax]          ; Load the new GDT
-    mov word [edi + ((DEBUG_OFFSET_START + 2) * 2)], DEBUG_COLOR + 'C' ; Mark: After LGDT
+    lgdt (%rdi)         # Load the GDT pointer. GdtPtr struct in D needs 64-bit base.
 
-    ; Reload CS register with a far jump
-    ; 0x08 is the selector for the kernel code segment (GDT entry 1)
-    jmp 0x08:.flush_cs_label
+    # movw $(DEBUG_COLOR + 'C'), (%rbx, $(DEBUG_OFFSET_START + 2), 2) # Mark: After LGDT
 
-.flush_cs_label:
-    ; This code is now executing with the new CS.
-    ; Reload edi for VGA writes.
-    mov edi, VGA_BASE
-    mov word [edi + ((DEBUG_OFFSET_START + 3) * 2)], DEBUG_COLOR + 'D' ; Mark: After far JMP
+    # Reload segment registers.
+    # In 64-bit long mode, DS, ES, SS are generally implicitly flat or loaded with a null selector.
+    # CS is loaded via a far jump/return. FS and GS can be used for OS-specific purposes (e.g., TLS).
+    # We'll load 0x10 into data segments, assuming the GDT has a valid 64-bit data segment descriptor there.
+    # The GDT itself must define these segments appropriately for long mode.
 
-    mov ax, 0x10
-    mov word [edi + ((DEBUG_OFFSET_START + 4) * 2)], DEBUG_COLOR + 'E' ; Mark: Before DS load
+    movw $0x10, %ax     # Selector for kernel data segment (GDT entry 2)
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %ss
+    # For FS and GS, you might load 0 or a specific selector if used.
+    # xorw %ax, %ax # Example: Load 0 into FS/GS
+    # movw %ax, %fs
+    # movw %ax, %gs
 
-    mov ds, ax
-    mov word [edi + ((DEBUG_OFFSET_START + 5) * 2)], DEBUG_COLOR + 'F' ; Mark: After DS load
+    # movw $(DEBUG_COLOR + 'D'), (%rbx, $(DEBUG_OFFSET_START + 3), 2) # Mark: After DS/ES/SS load
 
-    mov es, ax
-    mov word [edi + ((DEBUG_OFFSET_START + 6) * 2)], DEBUG_COLOR + 'G' ; Mark: After ES load
+    # Far jump to reload CS. 0x08 is the selector for our 64-bit code segment (GDT entry 1).
+    # AT&T syntax for far jump: ljmp $segment, $offset
+    # A common way to reload CS in 64-bit is to push the new CS selector and a return address, then lretq.
+    pushq $0x08         # Push new CS selector (kernel code segment)
+    pushq $.Lflush_cs_label # Push address of the label to "return" to
+    lretq               # Long return; pops RIP, then CS.
 
-    mov fs, ax
-    mov word [edi + ((DEBUG_OFFSET_START + 7) * 2)], DEBUG_COLOR + 'H' ; Mark: After FS load
+.Lflush_cs_label:
+    # This code is now executing with the new CS.
+    # movw $(DEBUG_COLOR + 'E'), (%rbx, $(DEBUG_OFFSET_START + 4), 2) # Mark: After far JMP/lretq
 
-    mov gs, ax
-    mov word [edi + ((DEBUG_OFFSET_START + 8) * 2)], DEBUG_COLOR + 'I' ; Mark: After GS load
+    retq                # Return to caller (init_gdt in D)
 
-    mov ss, ax
-    mov word [edi + ((DEBUG_OFFSET_START + 9) * 2)], DEBUG_COLOR + 'J' ; Mark: After SS load
-
-
-    mov word [edi + ((DEBUG_OFFSET_START + 10) * 2)], DEBUG_COLOR + 'K' ; Mark: Before RET
-
-    pop edi
-    pop eax
-    ret          ; Return to caller (init_gdt in D)
-
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
-
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
+.section .note.GNU-stack, "", @progbits # Mark stack as non-executable

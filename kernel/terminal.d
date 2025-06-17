@@ -37,16 +37,35 @@ ushort vga_entry(char uc, ubyte color) {
 }
 
 void terminal_initialize() {
+    // Debug: Mark entry into terminal_initialize
+    ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; // Assuming VGA_ADDRESS is accessible
+    pVGADebug[5] = vga_entry('S', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // 'S' for Start at pos 5
+
     g_TerminalRow = 0;
     g_TerminalColumn = 0;
     g_TerminalColor = vga_entry_color(VGAColor.LIGHT_GREY, VGAColor.BLACK);
 
-    for (size_t y = 0; y < VGA_HEIGHT; y++) {
-        for (size_t x = 0; x < VGA_WIDTH; x++) {
+    // Debug: Mark before screen clearing loops
+    pVGADebug[6] = vga_entry('L', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // 'L' for Loops at pos 6
+
+    // Attempt screen clear line by line, with a marker for each line
+    // We'll print the marker at column 70 of the line being cleared.
+    char line_marker = '0';
+    for (size_t y = 0; y < VGA_HEIGHT; y++) {  // Iterate through all lines
+        // Print marker for current line *before* clearing it,
+        // so if it crashes during this line's clear, we see the marker.
+        // Ensure line_marker doesn't go past '9' then 'A' etc. or wrap around.
+        // For simplicity, let's use digits 0-9 then A-O for lines 0-24.
+        char current_char_marker = (y < 10) ? cast(char)('0' + y) : cast(char)('A' + y - 10);
+        pVGADebug[y * VGA_WIDTH + 70] = vga_entry(current_char_marker, vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));
+
+        for (size_t x = 0; x < VGA_WIDTH; x++) { 
             const size_t index = y * VGA_WIDTH + x;
-            g_pVGAMemory[index] = vga_entry(' ', g_TerminalColor);
+            pVGADebug[index] = vga_entry(' ', g_TerminalColor); // Clear with space and current terminal color
         }
-    }
+    }    // Debug: Mark after screen clearing loops
+    pVGADebug[VGA_WIDTH - 1] = vga_entry('E', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // Place 'E' at end of first line (column 79 of line 0)
+
     g_TerminalRow = 0;
     g_TerminalColumn = 0;
 }
@@ -83,12 +102,15 @@ void terminal_putchar(char c) {
     }
 }
 
-void terminal_write_hex(uint n) {
+void terminal_write_hex(ulong n) { // Changed parameter from uint to ulong
     const(char)* hex_chars = "0123456789ABCDEF";
     terminal_putchar('0');
     terminal_putchar('x');
     bool leading_zeros = true;
-    for (int i = 28; i >= 0; i -= 4) {
+    // For ulong (64-bit), we have 16 hex digits.
+    // Loop from the most significant nibble (bits 60-63) down to 0-3.
+    // (16 digits - 1) * 4 = 15 * 4 = 60.
+    for (int i = 60; i >= 0; i -= 4) {
         ubyte digit = (n >> i) & 0xF;
         if (digit != 0 || !leading_zeros || i == 0) {
             terminal_putchar(hex_chars[digit]);

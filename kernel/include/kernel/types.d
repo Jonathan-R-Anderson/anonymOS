@@ -16,9 +16,9 @@ enum VGAColor : ubyte {
     LIGHT_BLUE = 9,
     LIGHT_GREEN = 10,
     LIGHT_CYAN = 11,
-    LIGHT_RED = 12,
-    LIGHT_MAGENTA = 13,
-    LIGHT_BROWN = 14, // Often Yellow
+    LIGHT_RED = 12, // Often Pink
+    LIGHT_MAGENTA = 13, // Often Pink/Purple
+    YELLOW = 14,      // Changed from LIGHT_BROWN
     WHITE = 15,
 }
 
@@ -30,15 +30,31 @@ enum ErrorCode : ubyte {
     UNKNOWN_FAILURE = 0xFF,
 }
 
-// Structure to hold register states passed from assembly interrupt stubs
+// Structure to hold general-purpose register states passed from assembly interrupt stubs.
+// This order must match the order of pushes in isr_common_stub in interrupts_asm.s
+// when %rsp is passed to the D handler.
+// The D handler will receive a pointer to the first field (r15_val in this case).
 struct Registers {
-    uint ds; // Data segment selector pushed by isr_common_stub
-    // Pushed by 'pusha' instruction (edi at lowest address, eax at highest for this block)
-    uint edi, esi, ebp, esp_dummy, ebx, edx, ecx, eax; // Pushed by pusha
-    uint int_no;   // Pushed by specific ISR stubs (interrupt number)
-    uint err_code; // Pushed by specific ISR stubs (dummy or real error code)
-    // The following are pushed by the CPU automatically on interrupt/exception
-    uint eip, cs, eflags, useresp, ss; // Pushed by the processor automatically
+    // Order matches pushq %r15 ... pushq %rax in interrupts_asm.s
+    // when %rsp is passed to D.
+    ulong r15_val;
+    ulong r14_val;
+    ulong r13_val;
+    ulong r12_val;
+    ulong r11_val;
+    ulong r10_val;
+    ulong r9_val;
+    ulong r8_val;
+    ulong rbp_val;
+    ulong rdi_val; // Original RDI saved
+    ulong rsi_val; // Original RSI saved
+    ulong rdx_val;
+    ulong rcx_val;
+    ulong rbx_val;
+    ulong rax_val;
+    // Note: int_no, err_code, and CPU-pushed state (rip, cs, rflags etc.)
+    // are handled as separate parameters to interrupt_handler_d or accessed via offsets.
+    // For this iteration, they will be separate parameters.
 }
 
 // Basic C library function implementations needed by the compiler/runtime

@@ -1,6 +1,6 @@
 /* linker.ld */
 ENTRY(_start) /* Define the entry point of the kernel */
-OUTPUT_FORMAT(elf32-i386) /* Specify the output format */
+OUTPUT_FORMAT(elf64-x86-64) /* Specify the output format for 64-bit */
 
 SECTIONS {
     /* Kernel load address - typically 1MB for GRUB */

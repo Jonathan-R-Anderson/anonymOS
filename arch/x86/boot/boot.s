@@ -1,61 +1,70 @@
-; boot.s
-; Sets up the Multiboot header, stack, and calls kmain.
-bits 32 ; Ensure the entire file is assembled in 32-bit mode
+# boot.s (AT&T syntax, 64-bit)
+# Sets up the Multiboot header, stack, and calls kmain.
 
+# Multiboot2 Header Constants
+.set MULTIBOOT2_HEADER_MAGIC,         0xe85250d6 # GRUB magic number
+.set MULTIBOOT_ARCHITECTURE_I386,     0          # Architecture i386 (also used for x86_64 by GRUB for MB2)
+.set MULTIBOOT_HEADER_TAG_END,        0          # End tag type
+.set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS, 5      # Optional entry address tag type
 
-; Multiboot header constants
-MBALIGN  equ  1<<0            ; Align loaded modules on page boundaries
-MEMINFO  equ  1<<1            ; Provide memory map
-FLAGS    equ  MBALIGN | MEMINFO ; Our Multiboot header flags
-MAGIC    equ  0x1BADB002      ; Multiboot magic number
-CHECKSUM equ -(MAGIC + FLAGS) ; Checksum
+# Define the Multiboot header.
+# For Multiboot2, GRUB will set up 64-bit long mode if the kernel is a 64-bit ELF.
+.section .multiboot_header
+.align 8  # Multiboot2 header must be 8-byte aligned
+multiboot2_header_start:
+    .long MULTIBOOT2_HEADER_MAGIC     # Magic number
+    .long MULTIBOOT_ARCHITECTURE_I386 # Architecture
+    .long multiboot2_header_end - multiboot2_header_start # Header length
+    # Checksum: -(magic + architecture + header_length)
+    .long -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT_ARCHITECTURE_I386 + (multiboot2_header_end - multiboot2_header_start))
 
-; Define the Multiboot header in its own section.
-; The linker script will place this section correctly.
-section .multiboot_header
-align 4
-    dd MAGIC
-    dd FLAGS
-    dd CHECKSUM
-    ; The following address fields are optional if bit 16 of flags is not set.
-    ; We are not setting bit 16, so they are not strictly needed by GRUB
-    ; but some people include them for clarity or other bootloaders.
-    ; dd 0 ; header_addr (physical address of this header)
-    ; dd 0 ; load_addr (physical address of the start of .text)
-    ; dd 0 ; load_end_addr (physical address of the end of all kernel sections)
-    ; dd 0 ; bss_end_addr (physical address of the end of .bss)
-    ; dd _start ; entry_addr (physical address of the _start symbol)
+# Optional Entry Address Tag (for non-ELF kernels, but good practice)
+# GRUB uses ELF entry point for ELF files, but this tag can be present.
+# .align 8
+# .word MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS # type
+# .word 0                                  # flags
+# .long 24                                 # size (tag + entry_addr + padding)
+# .quad _start                             # entry_addr (64-bit)
+# .quad 0                                  # padding to make size 24
 
-section .bss
-align 16
+# End Tag
+multiboot2_header_end_tag:
+.align 8
+    .word MULTIBOOT_HEADER_TAG_END # type
+    .word 0                        # flags
+    .long 8                        # size
+multiboot2_header_end:
+
+.section .bss
+.align 16
 stack_bottom:
-    resb 16384 ; 16 KiB stack
+    .space 16384 # 16 KiB stack
 stack_top:
 
-section .text progbits alloc exec ; Place _start in its own subsection. Attributes: allocatable, executable
+# Assumes execution starts in 64-bit long mode.
+.section .text
+.global _start      # Export the _start symbol
+.extern kmain       # kmain is defined in D
 
-global _start      ; Export the _start symbol
-extern kmain       ; kmain is defined in D, ensure it's C-callable
-
+.code64             # Assemble for 64-bit mode
 _start:
-    ; CPU is in 32-bit protected mode.
-    ; GRUB has already set up a GDT. We'll set up our own later in kmain.
+    # Set up the 64-bit stack
+    movq $stack_top, %rsp # Point RSP to the top of our stack
+    
+    # Multiboot info:
+    # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.
+    # The magic value is in %rax (should be 0x36d76289 for Multiboot2).
+    # If kmain expects the Multiboot2 info pointer and magic:
+    # movq %rbx, %rdi # Pass info pointer as first arg to kmain
+    # movl %eax, %esi # Pass magic as second arg to kmain (zero-extended to 64-bit)
+    # For now, kmain doesn't expect these, so we don't explicitly pass them.
 
-    ; Set up the stack
-    mov esp, stack_top ; Point ESP to the top of our stack
+    call kmain         # Call the D kernel's main function
 
-    ; Push Multiboot magic (EAX) and info structure pointer (EBX) for kmain, if needed.
-    ; For now, kmain doesn't expect them, so we can skip.
-    ; push eax
-    ; push ebx
+    # If kmain returns (it shouldn't for a kernel), halt the system.
+.Lhalt_loop:
+    cli                # Disable interrupts
+    hlt                # Halt the CPU
+    jmp .Lhalt_loop  # Loop indefinitely
 
-    call kmain         ; Call the D kernel's main function
-
-    ; If kmain returns (it shouldn't for a kernel), halt the system.
-cli_halt_loop:
-    cli                ; Disable interrupts
-    hlt                ; Halt the CPU
-    jmp cli_halt_loop  ; Loop indefinitely
-
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
+.section .note.GNU-stack, "", @progbits # Mark stack as non-executable

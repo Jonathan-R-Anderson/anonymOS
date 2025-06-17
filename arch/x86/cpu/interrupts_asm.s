@@ -1,50 +1,56 @@
-; isr_stubs.s
-extern interrupt_handler_d ; D language interrupt handler
+# interrupts_asm.s (AT&T syntax, 64-bit)
+.extern interrupt_handler_d # D language interrupt handler
 
-; Macro to generate ISR stubs that don't push an error code
-%macro ISR_NOERRCODE 1
-  global isr%1
-  isr%1:
-    cli             ; Disable interrupts
-    push dword 0    ; Push a dummy error code (32-bit)
-    push dword %1   ; Push the interrupt number (32-bit)
+# Macro to generate ISR stubs that don't push an error code
+.macro ISR_NOERRCODE num
+  .global isr\num
+  isr\num:
+    cli             # Disable interrupts
+    pushq $0        # Push a dummy error code (64-bit)
+    pushq $\num     # Push the interrupt number (64-bit)
+
     jmp isr_common_stub
-%endmacro
+.endm
 
-; Macro to generate ISR stubs that do push an error code
-%macro ISR_ERRCODE 1
-  global isr%1
-  isr%1:
-    cli             ; Disable interrupts
-    ; Error code is already on stack
-    push dword %1   ; Push the interrupt number (32-bit)
+# Macro to generate ISR stubs that do push an error code (CPU pushes it)
+.macro ISR_ERRCODE num
+  .global isr\num
+  isr\num:
+    cli             # Disable interrupts
+    # Error code is already on stack (pushed by CPU as 64-bit value in long mode)
+    pushq $\num     # Push the interrupt number (64-bit)
+ 
     jmp isr_common_stub
-%endmacro
 
-; CPU Exceptions (ISRs 0-31)
-ISR_NOERRCODE 0   ; Divide by zero
-ISR_NOERRCODE 1   ; Debug
-ISR_NOERRCODE 2   ; Non-maskable interrupt
-ISR_NOERRCODE 3   ; Breakpoint
-ISR_NOERRCODE 4   ; Overflow
-ISR_NOERRCODE 5   ; Bound range exceeded
-ISR_NOERRCODE 6   ; Invalid opcode
-ISR_NOERRCODE 7   ; Device not available
-ISR_ERRCODE   8   ; Double fault
-ISR_NOERRCODE 9   ; Coprocessor segment overrun (unused)
-ISR_ERRCODE   10  ; Invalid TSS
-ISR_ERRCODE   11  ; Segment not present
-ISR_ERRCODE   12  ; Stack-segment fault
-ISR_ERRCODE   13  ; General protection fault
-ISR_ERRCODE   14  ; Page fault
-ISR_NOERRCODE 15  ; Reserved
-ISR_NOERRCODE 16  ; x87 FPU floating-point error
-ISR_ERRCODE   17  ; Alignment check
-ISR_NOERRCODE 18  ; Machine check
-ISR_NOERRCODE 19  ; SIMD floating-point exception
-ISR_NOERRCODE 20  ; Virtualization exception
-ISR_NOERRCODE 21  ; Control protection exception
-; ISRs 22-31 are reserved
+.endm
+
+.section .text
+.code64             # Assemble for 64-bit mode
+
+# CPU Exceptions (ISRs 0-31)
+ISR_NOERRCODE 0   # Divide by zero
+ISR_NOERRCODE 1   # Debug
+ISR_NOERRCODE 2   # Non-maskable interrupt
+ISR_NOERRCODE 3   # Breakpoint
+ISR_NOERRCODE 4   # Overflow
+ISR_NOERRCODE 5   # Bound range exceeded (BOUND instruction invalid in 64-bit, but exception can occur)
+ISR_NOERRCODE 6   # Invalid opcode
+ISR_NOERRCODE 7   # Device not available
+ISR_ERRCODE   8   # Double fault
+ISR_NOERRCODE 9   # Coprocessor segment overrun (legacy)
+ISR_ERRCODE   10  # Invalid TSS
+ISR_ERRCODE   11  # Segment not present
+ISR_ERRCODE   12  # Stack-segment fault
+ISR_ERRCODE   13  # General protection fault
+ISR_ERRCODE   14  # Page fault
+ISR_NOERRCODE 15  # Reserved
+ISR_NOERRCODE 16  # x87 FPU floating-point error
+ISR_ERRCODE   17  # Alignment check
+ISR_NOERRCODE 18  # Machine check
+ISR_NOERRCODE 19  # SIMD floating-point exception
+ISR_NOERRCODE 20  # Virtualization exception
+ISR_NOERRCODE 21  # Control protection exception
+# ISRs 22-31 are reserved
 ISR_NOERRCODE 22
 ISR_NOERRCODE 23
 ISR_NOERRCODE 24
@@ -56,68 +62,121 @@ ISR_NOERRCODE 29
 ISR_NOERRCODE 30
 ISR_NOERRCODE 31
 
-; Hardware IRQs (ISRs 32-47 after remapping)
-ISR_NOERRCODE 32  ; IRQ0: Programmable Interval Timer
-ISR_NOERRCODE 33  ; IRQ1: Keyboard
-ISR_NOERRCODE 34  ; IRQ2: Cascade for 8259A Slave controller
-ISR_NOERRCODE 35  ; IRQ3: COM2
-ISR_NOERRCODE 36  ; IRQ4: COM1
-ISR_NOERRCODE 37  ; IRQ5: LPT2
-ISR_NOERRCODE 38  ; IRQ6: Floppy disk
-ISR_NOERRCODE 39  ; IRQ7: LPT1 / Spurious
-ISR_NOERRCODE 40  ; IRQ8: CMOS real-time clock
-ISR_NOERRCODE 41  ; IRQ9: Free for peripherals / SCSI / NIC
-ISR_NOERRCODE 42  ; IRQ10: Free for peripherals / SCSI / NIC
-ISR_NOERRCODE 43  ; IRQ11: Free for peripherals / SCSI / NIC
-ISR_NOERRCODE 44  ; IRQ12: PS/2 mouse
-ISR_NOERRCODE 45  ; IRQ13: FPU / Coprocessor / Inter-processor
-ISR_NOERRCODE 46  ; IRQ14: Primary ATA hard disk
-ISR_NOERRCODE 47  ; IRQ15: Secondary ATA hard disk
+# Hardware IRQs (ISRs 32-47 after remapping)
+ISR_NOERRCODE 32  # IRQ0: Programmable Interval Timer
+ISR_NOERRCODE 33  # IRQ1: Keyboard
+ISR_NOERRCODE 34  # IRQ2: Cascade for 8259A Slave controller
+ISR_NOERRCODE 35  # IRQ3: COM2
+ISR_NOERRCODE 36  # IRQ4: COM1
+ISR_NOERRCODE 37  # IRQ5: LPT2
+ISR_NOERRCODE 38  # IRQ6: Floppy disk
+ISR_NOERRCODE 39  # IRQ7: LPT1 / Spurious
+ISR_NOERRCODE 40  # IRQ8: CMOS real-time clock
+ISR_NOERRCODE 41  # IRQ9: Free for peripherals / SCSI / NIC
+ISR_NOERRCODE 42  # IRQ10: Free for peripherals / SCSI / NIC
+ISR_NOERRCODE 43  # IRQ11: Free for peripherals / SCSI / NIC
+ISR_NOERRCODE 44  # IRQ12: PS/2 mouse
+ISR_NOERRCODE 45  # IRQ13: FPU / Coprocessor / Inter-processor
+ISR_NOERRCODE 46  # IRQ14: Primary ATA hard disk
+ISR_NOERRCODE 47  # IRQ15: Secondary ATA hard disk
 
-; Common ISR stub
+# Common ISR stub
+# The stack frame passed to the D handler (via %rdi pointing to it) will look like:
+# [lowest address on stack for this structure]
+#   %rax
+#   %rbx
+#   %rcx
+#   %rdx
+#   %rbp
+#   %rsi
+#   %rdi
+#   %r8
+#   %r9
+#   %r10
+#   %r11
+#   %r12
+#   %r13
+#   %r14
+#   %r15
+#   (interrupt number and error code are *above* this structure on the stack,
+#    and the CPU-pushed state is even further above that.
+#    The D `Registers` struct should reflect the GPRs, int_no, err_code, and CPU state)
+# For simplicity, we'll pass %rsp to the D handler, which will point to the
+# last pushed GPR (%r15). The D struct will then need to be defined carefully.
+# A more robust way is to allocate space on stack and fill it, then pass pointer.
+# For now, let's push GPRs, then set up segments, then call.
+
+
 isr_common_stub:
-    pusha       ; Push all general purpose registers (eax, ecx, edx, ebx, original esp, ebp, esi, edi)
+    # Save general purpose registers.
+    # The D 'Registers' struct must match this order.
+    pushq %rax
+    pushq %rbx
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %rbp
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
 
-    mov ax, ds  ; Get current data segment selector
-    push eax    ; Save it on the stack (ds is 16 bits, but push eax pushes 32 bits)
+    # In 64-bit mode, segment registers DS, ES, SS are less critical.
+    # FS and GS might be used (e.g., for TLS or CPU-specific data).
+    # We'll set DS, ES to kernel data segment.
+    movw $0x10, %ax     # Kernel Data Segment Selector (from GDT)
+    movw %ax, %ds
+    movw %ax, %es
+    # movw $0x00, %ax   # Example if FS/GS should be NULL
+    # movw %ax, %fs
+    # movw %ax, %gs
 
-    mov ax, 0x10 ; Load kernel data segment selector (0x10, see GDT setup)
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
-    ; ss is already kernel stack segment
+    cld                 # Clear direction flag
 
-    cld          ; Clear direction flag (good practice for C/D calls)
+    # Arguments for interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err_code_val)
+    # %rdi: pointer to saved GPRs
+    # %rsp now points to the saved %r15. This is what the D handler will receive.
+    movq %rsp, %rdi     # First argument to D function is in %rdi
 
-    ; Pass a pointer to the register structure to the D handler.
-    ; ESP currently points to the saved original 'ds'.
-    ; The D handler's `Registers* regs` argument will point to this location.
-    mov eax, esp
-    push eax    ; Push pointer to stack frame (argument for interrupt_handler_d)
-    call interrupt_handler_d ; Call the D handler
-    add esp, 4  ; Clean up the pushed pointer argument (cdecl convention)
+    # Pop int_no and err_code (which were pushed by the macros) into %rsi and %rdx
+    popq %rsi           # Second argument: int_no (was pushed after err_code by macro)
+    popq %rdx           # Third argument: err_code (was pushed first by macro)
+    call interrupt_handler_d
+    # Note: The stack is now cleaned of int_no and err_code due to the pops.
 
-    pop eax     ; Restore original data segment selector (eax gets the value from stack)
-    mov ds, ax
-    mov es, ax
-    mov fs, ax
-    mov gs, ax
+    # Restore general purpose registers (in reverse order of push)
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rbp
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %rbx
+    popq %rax
 
-    popa        ; Pop all general purpose registers
-    add esp, 8  ; Clean up the error code and interrupt number pushed by specific ISR
-    ; sti       ; Re-enable interrupts. Note: iret will restore EFLAGS, including IF.
-                ; It's generally safer to let iret handle this.
-    iret        ; Return from interrupt (pops CS, EIP, EFLAGS, and SS, ESP if privilege change)
+    # addq $16, %rsp      # This was for cleaning up err_code and int_no if they were still on stack.
+                          # Now they are popped into registers before the call.
+    iretq               # Return from interrupt
 
-; A simple way to make other ISRs point to a generic handler if not specifically handled
-global unhandled_interrupt
+.global unhandled_interrupt
+
 unhandled_interrupt:
-    ; You could print an "unhandled interrupt" message here if desired
-    iret
+    # TODO: Implement a proper unhandled interrupt message or panic.
+    # For now, just halt.
+    cli
+1:  hlt
+    jmp 1b
 
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
-
-; Add this section to prevent executable stack warnings.
-section .note.GNU-stack noalloc noexec nowrite progbits
+.section .note.GNU-stack, "", @progbits # Mark stack as non-executable

@@ -15,11 +15,14 @@ SECTIONS {
      */
     .text : {
         /* These MUST come from boot.o, which MUST be linked first by your Makefile. */
-        KEEP(*(.multiboot_header)) /* Multiboot header section from boot.s */
-        *(.text._start)            /* _start code section from boot.s (if you name it .text._start) */
-                                   /* If _start is just in .text in boot.s, *(.text*) below will catch it first. */
+        KEEP(*boot.o(.multiboot_header)) /* Multiboot header from boot.o. KEEP ensures it's included and placed here. */
+        KEEP(*boot.o(.text._start))      /* _start code from boot.o's .text._start section. */
+        /* If _start is in the main .text of boot.o, you might use KEEP(*boot.o(.text)) instead for the line above, */
+        /* or ensure boot.o is the very first input to the linker. */
+        *boot.o(.text*)                  /* Other .text sections from boot.o, if any, ensuring they follow _start. */
+
         /* All other code and read-only data sections */
-        *(.text*)                  /* Includes .text from boot.s if not in .text._start, and all other .text sections */
+        *(.text*)                        /* All .text sections from other object files. */
         *(.rodata*)       /* Read-only data */
     }
 
@@ -50,7 +53,29 @@ SECTIONS {
         *(.tdata*)
         *(.tbss*)
 
-        /* Debugging information sections */
-        *(.debug*)              /* Catches .debug_info, .debug_str, .debug_line, etc. */
+        /* Debugging information sections - REMOVED from DISCARD */
+        /* *(.debug*) */              /* Catches .debug_info, .debug_str, .debug_line, etc. */
     }
+
+    /* DWARF debug sections. These are not loaded into memory. */
+    /* LLD typically handles their placement correctly without explicit addresses */
+    /* as long as they are not discarded. */
+    .debug_info     0 : { *(.debug_info .gnu.linkonce.wi.*) }
+    .debug_abbrev   0 : { *(.debug_abbrev) }
+    .debug_line     0 : { *(.debug_line .debug_line.* .debug_line_str) }
+    .debug_aranges  0 : { *(.debug_aranges) }
+    .debug_str      0 : { *(.debug_str .debug_strtabs .debug_string_offsets) }
+    .debug_loc      0 : { *(.debug_loc .debug_loclists) }
+    .debug_ranges   0 : { *(.debug_ranges .debug_rnglists) }
+    .debug_pubnames 0 : { *(.debug_pubnames) }
+    .debug_pubtypes 0 : { *(.debug_pubtypes) }
+    .debug_frame    0 : { *(.debug_frame) }
+
+    /* Include .rela.debug_* sections if present and not automatically handled */
+    .rela.debug_info   0 : { *(.rela.debug_info) }
+    .rela.debug_abbrev 0 : { *(.rela.debug_abbrev) }
+    .rela.debug_line  0 : { *(.rela.debug_line) }
+    .rela.debug_aranges 0 : { *(.rela.debug_aranges) }
+    .rela.debug_loc   0 : { *(.rela.debug_loc) }
+    .rela.debug_ranges 0 : { *(.rela.debug_ranges) }
 }

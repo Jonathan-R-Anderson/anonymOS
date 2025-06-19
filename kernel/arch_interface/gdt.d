@@ -116,17 +116,14 @@ void init_gdt() {
     // Entry 5-6: Task State Segment descriptor
     ulong tss_base = cast(ulong)&tss;
     set_gdt_entry(&gdt_entries[5], cast(uint)tss_base, Tss64.sizeof - 1, 0x89, 0);
-    gdt_entries[6].limit_0_15 = cast(ushort)((tss_base >> 32) & 0xFFFF);
-    gdt_entries[6].base_0_15  = cast(ushort)((tss_base >> 48) & 0xFFFF);
-    gdt_entries[6].base_16_23 = 0;
-    gdt_entries[6].access_byte = 0;
-    gdt_entries[6].limit_16_19_flags = 0;
-    gdt_entries[6].base_24_31 = 0;
 
-    // Fill in the upper 32 bits of the TSS base in the next descriptor
+    // The second 8-byte slot of the TSS descriptor stores only the high 32 bits
+    // of the TSS base and a reserved field.  Using a specialised structure here
+    // avoids treating it like a normal GDT entry, which previously led to
+    // corrupted descriptor contents.
     TssDescriptorHigh* tss_high = cast(TssDescriptorHigh*)&gdt_entries[6];
     tss_high.base_32_63 = cast(uint)(tss_base >> 32);
-    tss_high.reserved = 0;
+    tss_high.reserved   = 0;
 
     gdt_ptr.limit = calculated_limit;
     gdt_ptr.base  = cast(ulong)&gdt_entries[0]; // Address of the first element of the global array

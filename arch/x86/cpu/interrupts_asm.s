@@ -148,7 +148,9 @@ isr_common_stub:
     # on the stack. Do not pop them here, simply load their values.
     movq 120(%rsp), %rsi    # Second argument: int_no
     movq 128(%rsp), %rdx    # Third argument: err_code
+    subq $8, %rsp           # Align stack before C call
     call interrupt_handler_d
+    addq $8, %rsp           # Remove alignment padding
     # Restore general purpose registers (in reverse order of push)
     popq %r15
     popq %r14

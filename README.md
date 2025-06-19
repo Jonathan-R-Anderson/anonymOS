@@ -462,13 +462,19 @@ Dynamic namespaces	Each process sees a tailored virtual filesystem
 
 This repository includes a toy 64-bit kernel written in D and a minimal
 Haskell shell. Install the LDC D compiler as well as `ghc` and `cabal`.
-Once these prerequisites are available, build and run the OS using:
+Once these prerequisites are available, you can build the bootable ISO with:
+
+```bash
+make build
+```
+
+To build the image and immediately boot it with QEMU use:
 
 ```bash
 make run
 ```
 
-The command compiles the kernel, builds the Gremlin shell, creates an ISO and
+The `make run` command compiles the kernel, builds the Gremlin shell, creates an ISO and
 boots it via QEMU. After the boot messages you should see the
 `basic_tty_shell` prompt where you can type `help` or `exit`.
 

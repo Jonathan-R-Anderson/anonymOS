@@ -35,8 +35,9 @@ enum ErrorCode : ubyte {
 // when %rsp is passed to the D handler.
 // The D handler will receive a pointer to the first field (r15_val in this case).
 struct Registers {
-    // Order matches pushq %r15 ... pushq %rax in interrupts_asm.s
-    // when %rsp is passed to D.
+    // Registers are pushed starting with %rax and ending with %r15 in
+    // interrupts_asm.s, so this struct is ordered accordingly when %rsp is
+    // passed to D.
     ulong r15_val;
     ulong r14_val;
     ulong r13_val;

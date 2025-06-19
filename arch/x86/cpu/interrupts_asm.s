@@ -143,12 +143,14 @@ isr_common_stub:
     # %rsp now points to the saved %r15. This is what the D handler will receive.
     movq %rsp, %rdi     # First argument to D function is in %rdi
 
-    # Pop int_no and err_code (which were pushed by the macros) into %rsi and %rdx
-    popq %rsi           # Second argument: int_no (was pushed after err_code by macro)
-    popq %rdx           # Third argument: err_code (was pushed first by macro)
+    # The interrupt number and error code were pushed by the ISR stubs *before*
+    # the general purpose registers. They sit just below the register save area
+    # on the stack. Do not pop them here, simply load their values.
+    movq 120(%rsp), %rsi    # Second argument: int_no
+    movq 128(%rsp), %rdx    # Third argument: err_code
     call interrupt_handler_d
-    # Note: The stack is now cleaned of int_no and err_code due to the pops.
-
+    # Clean the int_no and err_code off the stack before restoring registers.
+    addq $16, %rsp
     # Restore general purpose registers (in reverse order of push)
     popq %r15
     popq %r14

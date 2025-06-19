@@ -486,3 +486,5 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 
 
 updates for the system will be saved to dht. the hash of the update files will be saved to blockchain
+
+make the system validate the system hash from blockchain before boot. if it fails to validate then it needs to boot to a decoy system. only allowed to update hash if previously validates

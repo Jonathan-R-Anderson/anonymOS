@@ -38,7 +38,7 @@ align(8) __gshared GdtEntry[7] gdt_entries;
 align(8) __gshared GdtPtr gdt_ptr;
 
 // 64-bit Task State Segment used by the TSS descriptor
-align(16) __gshared struct Tss64 {
+align(16) struct Tss64 {
     uint   reserved0;
     ulong  rsp0;
     ulong  rsp1;
@@ -54,7 +54,9 @@ align(16) __gshared struct Tss64 {
     ulong  reserved2;
     ushort reserved3;
     ushort io_map_base;
-} tss;
+}
+
+align(16) __gshared Tss64 tss;
 
 extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
 

@@ -200,12 +200,12 @@ iso: $(ISO_FILE)
 	# In another terminal: i686-elf-gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.bin" -ex "layout asm" -ex "break _start"
 	# In another terminal: gdb -ex "target remote localhost:1234" -ex "symbol-file $(KERNEL_BIN)" -ex "layout asm" -ex "break _start"
 	# (Adjust gdb command if you use a cross-compiler gdb like i686-elf-gdb)
-	run-debug: $(ISO_FILE)
+run-debug: $(ISO_FILE)
 	        qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -S -s -display curses -vga std
 	
-	# Optional: Run with interrupt logging to qemu.log (can show triple faults)
-	run-log-int: $(ISO_FILE)
-	        qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -d int -D qemu.log -display curses -vga std
-	
-	clean:
+run-log-int: $(ISO_FILE)
+		@echo ">>> Running QEMU with interrupt logging..."
+		qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -d int -D qemu.log -display curses -vga std
+
+clean:
 		rm -rf $(BUILD_DIR)

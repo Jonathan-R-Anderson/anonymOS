@@ -83,45 +83,45 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Phase 2: "preInit" - CPU features, early hardware
     terminal_writestring("Initializing CPU features & early hardware...\n");
-    // init_cpu_features(); // For LAPIC, TSC etc. Important for SMP and precise timing.
+    init_cpu_features(); // For LAPIC, TSC etc. Important for SMP and precise timing.
                          // The Haskell RTS might benefit from a timer source.
-    // init_cmos_rtc();     // To get current time, if needed.
+    init_cmos_rtc();     // To get current time, if needed.
 
     // Phase 3: Memory Management - CRITICAL for Haskell
     // Also foundational for all subsequent managers and processes.
     terminal_writestring("Initializing Memory Management (Frames, Paging, Heap)...\n");
-    // init_frame_allocator(multiboot_info_ptr); // Needs memory map from bootloader
-    // init_paging();                            // Enable virtual memory
-    // init_kernel_heap();                     // For dynamic allocations by kernel & RTS
+    init_frame_allocator(multiboot_info_ptr); // Needs memory map from bootloader
+    init_paging();                            // Enable virtual memory
+    init_kernel_heap();                       // For dynamic allocations by kernel & RTS
 
     // Phase 4: Core OS Managers (as per blueprint)
     // These managers are crucial for realizing the dynamic, secure architecture.
     terminal_writestring("Initializing Core OS Managers...\n");
-    // init_device_manager(multiboot_info_ptr);      // Sets up /dev and prepares for user-space drivers.
+    init_device_manager(multiboot_info_ptr);      // Sets up /dev and prepares for user-space drivers.
                                                  // Aligns with "Everything is a file" for devices.
-    // init_namespace_manager(multiboot_info_ptr);   // Prepares for per-process virtual filesystems and overlays.
+    init_namespace_manager(multiboot_info_ptr);   // Prepares for per-process virtual filesystems and overlays.
                                                  // Key for modular inheritance and isolation.
-    // init_capability_supervisor(); // Initializes the framework for capability-based security.
+    init_capability_supervisor(); // Initializes the framework for capability-based security.
 
     // Phase 5: Other Drivers and Kernel Services (can be managed/loaded via Device Manager later)
     terminal_writestring("Initializing remaining Drivers & Kernel Services...\n");
-    // init_keyboard_driver();   // Essential for interactive shell input!
-    // init_pci_bus();           // For discovering other devices (e.g., network, storage)
-    // init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
-    // init_syscall_interface(); // If the shell or Haskell programs need kernel services
+    init_keyboard_driver();   // Essential for interactive shell input!
+    init_pci_bus();           // For discovering other devices (e.g., network, storage)
+    init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
+    init_syscall_interface(); // If the shell or Haskell programs need kernel services
 
     // Phase 6: Filesystem Initialization (Root FS, Initrd)
     // The Namespace Manager will heavily interact with this.
     terminal_writestring("Initializing Filesystem (e.g., initrd)...\n");
-    // init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
+    init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
 
     terminal_writestring("All subsystems (stubs) initialized.\n");
 
     // Phase 7: Launch the first user-space process (PID 1 - /system/init)
     // This process will then use the initialized managers to set up the user environment,
     // load applications (snaps/recipes), etc., according to the declarative configuration.
-    // terminal_writestring("Attempting to launch Init Process...\n");
-    // launch_init_process(); // This would not return if successful.
+    terminal_writestring("Attempting to launch Init Process...\n");
+    launch_init_process(); // This would not return if successful.
 
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.

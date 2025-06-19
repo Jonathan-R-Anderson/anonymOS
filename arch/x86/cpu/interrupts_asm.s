@@ -172,13 +172,23 @@ isr_common_stub:
                           # Now they are popped into registers before the call.
     iretq               # Return from interrupt
 
+
+.extern kernel_panic
+
+.section .rodata
+unhandled_msg:
+    .string "Unhandled Interrupt"
+
+.section .text
 .global unhandled_interrupt
 
 unhandled_interrupt:
-    # TODO: Implement a proper unhandled interrupt message or panic.
-    # For now, just halt.
     cli
-1:  hlt
+    leaq unhandled_msg(%rip), %rdi   # message pointer
+    movl $0, %esi                    # error code
+    call kernel_panic
+1:
+    hlt
     jmp 1b
 
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

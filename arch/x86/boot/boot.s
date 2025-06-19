@@ -8,7 +8,8 @@
 .set MULTIBOOT_HEADER_TAG_ENTRY_ADDRESS, 5      # Optional entry address tag type
 
 # Define the Multiboot header.
-# For Multiboot2, GRUB will set up 64-bit long mode if the kernel is a 64-bit ELF.
+# GRUB loads the kernel in 32-bit protected mode. The boot code
+# below builds page tables and switches to 64-bit long mode itself.
 .section .multiboot_header
 .align 8  # Multiboot2 header must be 8-byte aligned
 multiboot2_header_start:

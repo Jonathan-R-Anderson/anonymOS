@@ -58,6 +58,12 @@ align(16) struct Tss64 {
 
 align(16) __gshared Tss64 tss;
 
+// Second half of a 64-bit TSS descriptor (base high and reserved fields)
+align(1) struct TssDescriptorHigh {
+    uint base_32_63;
+    uint reserved;
+}
+
 extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
 
 // Helper to set GDT entries in a provided GdtEntry.
@@ -98,6 +104,9 @@ void init_gdt() {
     // Flags: G=1 (4KB Granularity), L=0 (not code), D/B=1 (32-bit stack/ops, but L=0 means this is for data) -> 0xC0 (for G=1, D/B=1)
     set_gdt_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0);
 
+
+
+
     // Entry 3: User Code Segment (64-bit, DPL=3)
     set_gdt_entry(&gdt_entries[3], 0, 0xFFFFF, 0xFA, 0xA0);
 
@@ -113,6 +122,11 @@ void init_gdt() {
     gdt_entries[6].access_byte = 0;
     gdt_entries[6].limit_16_19_flags = 0;
     gdt_entries[6].base_24_31 = 0;
+
+    // Fill in the upper 32 bits of the TSS base in the next descriptor
+    TssDescriptorHigh* tss_high = cast(TssDescriptorHigh*)&gdt_entries[6];
+    tss_high.base_32_63 = cast(uint)(tss_base >> 32);
+    tss_high.reserved = 0;
 
     gdt_ptr.limit = calculated_limit;
     gdt_ptr.base  = cast(ulong)&gdt_entries[0]; // Address of the first element of the global array

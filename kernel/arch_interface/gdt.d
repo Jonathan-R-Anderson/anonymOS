@@ -26,8 +26,35 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
     ulong base; // Address of GDT (64-bit)
 }
 
-align(8) __gshared GdtEntry[3] gdt_entries;
+// Global Descriptor Table entries.
+// Layout:
+//   0: Null
+//   1: Kernel Code
+//   2: Kernel Data
+//   3: User Code
+//   4: User Data
+//   5-6: 64-bit TSS descriptor
+align(8) __gshared GdtEntry[7] gdt_entries;
 align(8) __gshared GdtPtr gdt_ptr;
+
+// 64-bit Task State Segment used by the TSS descriptor
+align(16) __gshared struct Tss64 {
+    uint   reserved0;
+    ulong  rsp0;
+    ulong  rsp1;
+    ulong  rsp2;
+    ulong  reserved1;
+    ulong  ist1;
+    ulong  ist2;
+    ulong  ist3;
+    ulong  ist4;
+    ulong  ist5;
+    ulong  ist6;
+    ulong  ist7;
+    ulong  reserved2;
+    ushort reserved3;
+    ushort io_map_base;
+} tss;
 
 extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
 
@@ -68,6 +95,22 @@ void init_gdt() {
     // Access: P=1, DPL=0, S=1 (Code/Data), Type=0x2 (Read/Write, Expand Up) -> 0x92
     // Flags: G=1 (4KB Granularity), L=0 (not code), D/B=1 (32-bit stack/ops, but L=0 means this is for data) -> 0xC0 (for G=1, D/B=1)
     set_gdt_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0);
+
+    // Entry 3: User Code Segment (64-bit, DPL=3)
+    set_gdt_entry(&gdt_entries[3], 0, 0xFFFFF, 0xFA, 0xA0);
+
+    // Entry 4: User Data Segment (64-bit, DPL=3)
+    set_gdt_entry(&gdt_entries[4], 0, 0xFFFFF, 0xF2, 0xC0);
+
+    // Entry 5-6: Task State Segment descriptor
+    ulong tss_base = cast(ulong)&tss;
+    set_gdt_entry(&gdt_entries[5], cast(uint)tss_base, Tss64.sizeof - 1, 0x89, 0);
+    gdt_entries[6].limit_0_15 = cast(ushort)((tss_base >> 32) & 0xFFFF);
+    gdt_entries[6].base_0_15  = cast(ushort)((tss_base >> 48) & 0xFFFF);
+    gdt_entries[6].base_16_23 = 0;
+    gdt_entries[6].access_byte = 0;
+    gdt_entries[6].limit_16_19_flags = 0;
+    gdt_entries[6].base_24_31 = 0;
 
     gdt_ptr.limit = calculated_limit;
     gdt_ptr.base  = cast(ulong)&gdt_entries[0]; // Address of the first element of the global array

@@ -1,5 +1,10 @@
 module kernel.core.init_stubs;
 
+// Prevent generation of ModuleInfo when using LDC. Without this pragma the
+// linker may fail if druntime is not linked in. These stub implementations are
+// only placeholders so we explicitly disable ModuleInfo emission.
+pragma(LDC_no_moduleinfo);
+
 public:
 extern(C) void init_cpu_features() {}
 extern(C) void init_cmos_rtc() {}

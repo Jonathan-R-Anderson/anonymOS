@@ -1,514 +1,326 @@
-Here's a comprehensive roadmap for your operating system project based on your objectives and the technologies you’ve mentioned: blockchain, Tor, Ubuntu Core design, NixOS-style declarative configuration, and Plan 9 principles. This roadmap is structured into stages from foundational system design to full feature integration.
-
-🧱 Tier 1: Core OS Infrastructure
-✅ Boot and Kernel Foundation
- Bootloader support (GRUB, Syslinux, or custom)
-
- Kernel written in D with:
-
-Paging
-
-Context switching
-
-Ring 3 support (for user-mode multitasking)
-
- GDT/TSS correctly configured
-
- Interrupt and syscall interface
-
- Scheduler and multitasking
-
-✅ Memory and Process Management
- Slab/stack-based memory allocator
-
- Virtual memory with user/kernel space separation
-
- System calls with safe argument passing (no unsafe casts)
-
- Per-process address spaces and file descriptors
-
-📦 Tier 2: Plan 9 + NixOS + Ubuntu Core-inspired Design
- Namespaces and FS Unification (Plan 9-style)
- Everything is a file/device (keyboard, net, windows, etc.)
-
- Private namespaces per process
-
- Mount and bind system like Plan 9 (including overlay/union mount support for /writable)
-
- Declarative System Configuration (NixOS-style)
- Config file parser and loader (/writable/system/config.toml)
-
- Declarative fields for:
-
-Hostname, timezone, boot apps, services
-
-Network interfaces
-
- Blockchain node config (provider, wallet key, zkSync options)
- Trusted compute settings (FHE device, trusted nodes)
-
- Immutable root with mutable overlay (/writable)
-
- Snap-like Modular App Design (Ubuntu Core-style)
- Each service (shell, tor.d, eth.d, etc.) is a "snap"
-
- Isolated sandboxed environments
-
- Snaps defined in config and mounted dynamically at boot
-
- Optional AppArmor/seccomp integration
- Capability-based device/file access for snaps via SnapManifest
-
-🔐 Tier 3: Security and Privacy Layer
-✅ Tor Integration
- Built-in tor.d service as a snap
-
- Network routing via .onion as default
-
- Hidden service configuration exposed in config file
-
-✅ Cryptographic Identity
- User authentication via Ethereum address
-
- Signing actions using private keys (GPG or Ethereum-based)
-
- Zero-trust design for inter-process messaging
-
-⛓️ Tier 4: Blockchain and Distributed Tech Integration
-✅ Blockchain Data Layer
- eth.d snap to manage Ethereum/zkSync/Rootstock node (wallet loading, sync, balance)
-
- Immutable data store for logs or config diffs (IPFS, Swarm, or Magnet)
-
- Smart contract interaction for:
-
-Thread/Post creation
-
-Token-based voting (DAO)
-
-Profile and access rights
-
-✅ Distributed P2P Services
- BitTorrent seeding via torrent.d snap
-
- Trackerless DHT node baked into the OS
-
- WebSeed or Flask-based temp-seed bootstrap for swarm
- Trusted and Homomorphic Encryption (FHE)
- FHE Device Stub (/dev/fhe0 for logging/passthrough, future SDK integration)
- Trust-Aware Compute Decisions (conditional FHE routing via /dev/fhe0)
-
-🧠 Tier 5: System Interaction and Admin Tools
-✅ Init and Shell
- init as a userspace snap that loads other services
-
- shell snap for user interaction
-
- Debug shell exposed only to sysadmin
-
-✅ SysAdmin Control Panel
- Snap or interface for:
-
-Snap lifecycle management
-
-Blockchain-based ban/whitelist
-
-Thread moderation
-
- Ability to cancel votes via token authority
- snapctl command for snap/job lifecycle management (upload, verify)
-
-🌐 Tier 6: Network, DNS, and Federation
-✅ Decentralized DNS
- dns.d snap using CoreDNS
-
- Mask .onion addresses with .gremlin TLD
-
- CLI tool to add/remove new names
-
-✅ VPN Access Layer
- VPN access via OpenVPN snap
-
- User-specific .ovpn generated via their Ethereum profile
-
- Network isolation within container networks
-
-✅ Federation
- Optional federation with other nodes (Spaz or Gremlin OS instances)
-
- Gossip protocol for metadata sync
-
-🧪 Tier 7: Testing, Simulation, and Sandboxing
-✅ Dev Containers and App Sandboxes
- QEMU or v86 virtual containers
-
- User apps run in sandboxed namespaces
-
- Resource-limited snap profiles
- Guest OS Support (QEMU/emu86, TTY passthrough, 9P mounts)
-
-✅ Snapshotting and Rollbacks
- Declarative snapshots of filesystem/config
-
- Optional Rollback Rx for external storage
-
-🌌 Tier 8: UX, Web, and Tooling
-✅ Front-End and Dashboard
- Web UI hosted via internal snap
-
- Status of snaps, logs, and blockchain interactions
-
-✅ Smart Contract Interface
- Auto-injection of ABI + contract address to web frontend
-
- Local dApp explorer (similar to Remix or Metamask)
-
-✅ CLI Utilities
- gremlinctl to manage snaps, config, user identity, and system health
-
-Summary Table
-Layer	Tech/Goal	Status
-Kernel & Boot	Custom kernel, paging, GDT, task switching, memory/process mgmt	🛠️ In Progress
-Plan 9/NixOS Model	Namespace FS (🧱), declarative config (✅), overlay FS (🧱)	🛠️ In Progress
-Snap System	Modular app loading (🛠️), isolation (namespaces (🧱), syscalls (🧱))	🛠️ In Progress
-Tor & Privacy	Tor snap, hidden service routing	⏳ Planned
-Blockchain & Dist. Tech	Ethereum/zkSync node (🧱), DHT (⏳), Smart Contracts (⏳), zkProof handling (⏳)	🧱 Base Defined
-Trusted Compute	FHE device stub (✅), trust-based routing (⏳)	🛠️ In Progress
-Admin Tools	Sysadmin snap, voting moderation, CLI (gremlinctl, snapctl (🧱))	🧱 Base Defined
-Federation & DNS	CoreDNS for .gremlin, decentralized name system	⏳ Prototype Needed
-Testing & Sandboxing	Dev containers, Guest OS support, Snapshots	⏳ Planned
-Web Interface	Status dashboard, dApp integration	⏳ Pending
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-That's excellent progress with the GDT initialization and getting the terminal up and running! Those are fundamental steps.
-
-Moving towards a system architecture with a NixOS-style configuration, an immutable core like Ubuntu Core, and recipe-based programs is a very ambitious and modern approach for "WorldComputer." This design philosophy offers significant advantages in terms of reproducibility, reliability, and manageability. Let's break down these concepts:
-
-1. System-Wide Configuration (NixOS-like)
-The core idea here is to define the entire state of your operating system declaratively in one (or a set of) configuration file(s).
-
-Concept: Instead of imperatively changing settings (e.g., installing a package, then editing a config file, then enabling a service), you describe the desired end state of your system. This includes:
-Kernel parameters
-System services to be enabled
-User accounts and groups
-Installed software packages (your "recipes")
-Network configuration
-Firewall rules, etc.
-How it works (simplified):
-Configuration File(s): You'd write your system configuration in a specific language or format. NixOS uses its own functional language (Nix). For "WorldComputer," you could potentially leverage D's compile-time features or create a custom DSL.
-Builder/Activator Tool: A special program reads this configuration. It then figures out what changes are needed to make the current system match the declared configuration. This might involve:
-Building and installing packages from recipes.
-Generating configuration files for individual services (e.g., /etc/some_service.conf).
-Setting up symlinks.
-Updating the bootloader configuration to allow booting into this new "generation" of the system.
-Benefits:
-Reproducibility: You can recreate the exact same system environment on another machine or after a reinstall just by using the same configuration file.
-Atomic Upgrades/Rollbacks: When you change the configuration and "rebuild" the system, the builder tool typically creates a new, self-contained version of the system. If something goes wrong, you can easily roll back to a previous, working generation.
-Version Control: Your entire system configuration can be stored in Git, allowing you to track changes, experiment with new setups in branches, and collaborate.
-Clarity: A single source of truth for how the system is configured.
-2. Immutable Core (Ubuntu Core-like)
-This complements the declarative configuration by making the base operating system read-only.
-
-Concept: The core parts of your OS (kernel, essential libraries, system utilities) are mounted as read-only. Applications and user data are kept separate.
-How it works (simplified):
-Read-Only Root: The root filesystem, or at least the parts containing the core OS, is immutable during normal operation.
-Atomic Updates: Updates to the core OS are applied by replacing the entire read-only image or by redirecting the system to boot from a new version. Ubuntu Core uses snaps for this, where the core OS itself is a snap.
-Writable Areas: User data (/home), application data, and certain system logs or state might reside on separate writable partitions or use mechanisms like OverlayFS to appear writable while keeping the underlying base immutable.
-Benefits:
-Reliability & Stability: Prevents accidental or malicious modification of core system files. The system is always in a known good state (or can be rolled back to one).
-Security: Reduces the attack surface, as malware cannot easily persist by modifying core system components.
-Predictability: System behavior is more consistent since the base doesn't change unexpectedly.
-Transactional Updates: Updates are safer. If an update fails, the system can easily revert to the previous working state.
-3. Programs as "Recipes"
-This is your package management approach, focusing on how software is built and integrated.
-
-Concept: Each piece of software is defined by a "recipe" (similar to Nix derivations, Gentoo ebuilds, or Dockerfiles at a high level). This recipe specifies:
-Source code location (URL, local path, version control revision).
-Dependencies (other recipes).
-Build instructions (compilation flags, build steps).
-Installation instructions (where files should go, what services to set up).
-Metadata (version, license, description).
-How it works (simplified):
-Recipe Files: You'd have a collection of these recipe files.
-Build System: A dedicated build system reads these recipes. For each recipe:
-It resolves and ensures dependencies are built first (often in isolated environments).
-It fetches the source code.
-It executes the build steps in a clean, controlled environment.
-It packages the output (e.g., into a specific directory structure, a compressed archive, or directly into an immutable store).
-Package Store: Built packages could be stored in a central, immutable location (like the /nix/store in NixOS). Applications then use symlinks or path manipulations to access their dependencies from this store. This allows multiple versions of libraries to coexist without conflict.
-Benefits:
-Reproducible Builds: Given the same recipe and dependencies, you should always get the exact same binary output.
-Fine-grained Dependency Management: Avoids "DLL hell" or library version conflicts.
-Customization: Easy to modify recipes to change build options or patch software.
-Sandboxing Potential: Recipes can define the exact environment a program needs, which can be a step towards sandboxing.
-How They Fit Together in "WorldComputer"
-Your system-wide configuration file would declare which "recipes" (applications and system components) should be part of the system.
-The build system would take these recipes, build them, and place them into a managed, possibly immutable, part of the filesystem.
-The immutable core provides a stable, secure foundation.
-When you update your system configuration (e.g., add a new recipe or change a setting), the "builder/activator" tool would:
-Trigger the build system for any new or changed recipes.
-Construct a new "generation" of your system, linking to the necessary components from the immutable core and the recipe outputs.
-Update the bootloader to allow booting into this new generation.
-Initial Thoughts & Next Steps for "WorldComputer"
-This is a massive undertaking, but incredibly rewarding. Given you're working from the kernel level up:
-
-Configuration Language/Format: Think about how you want to define your system. Will it be a D-based DSL? A simpler data format like TOML or JSON parsed by a D program?
-Basic "Activator": Start with a very simple tool that can read a configuration and, for now, maybe just print what it would do.
-Immutable Root (Proof of Concept): Experiment with initramfs or early userspace setups that mount the main root filesystem as read-only.
-Recipe Structure: Define a simple structure for your recipes. What's the minimum information a recipe needs?
-Simple Build System: Even a collection of scripts that can build a "hello world" recipe and place its output in a designated spot would be a start.
-This architectural direction sets a strong foundation for a robust and modern operating system. It's a long road, but each piece builds upon the last. Keep up the great work!
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Here’s a conceptual guide for designing a secure, dynamic file system architecture combined with a microkernel-based OS architecture, emphasizing modular inheritance, capability-based security, and user/process isolation.
-
-🧠 Conceptual Blueprint: Secure, Dynamic OS & Filesystem Architecture
-1. 🔧 Core Design Philosophy
-Your OS should:
-
-Use a microkernel for hardware abstraction and message passing.
-
-Treat everything as a file (Plan 9 philosophy).
-
-Support per-process virtual namespaces.
-
-Enforce capability-based access instead of Unix-style superuser permissions.
-
-Allow modular inheritance and overrides of files and services.
-
-Be immutable by default, with overlay layers for updates/customization.
-
-2. 📁 Filesystem Structure
-Global Layout
+WorldComputer OS
+Introduction
+WorldComputer is a next-generation operating system that fuses together cutting-edge concepts from systems research and modern software practices. It brings the Plan 9 philosophy of treating everything as a file with per-process namespaces, the NixOS approach to declarative configuration and reproducible builds, and the immutable, snap-based modularity of Ubuntu Core, all built on a secure microkernel foundation. On top of this core, WorldComputer integrates decentralized technologies – including Ethereum (with layer-2 zkSync) and IPFS – to provide blockchain-backed integrity, distributed storage, and cryptographic identity. The result is an OS designed for advanced developers and researchers, with a focus on security (capability-based access control, zero-trust messaging), consistency, and global distributed operation. In this README, we detail the design and architecture of WorldComputer. Each section covers a different aspect of the system, from kernel to user space, and from filesystem to networking and security. You will find in-depth technical explanations of how WorldComputer’s components work together, along with diagrams illustrating key concepts like the layered architecture, filesystem namespace, capability enforcement, and update flow. A Quick Start guide is also provided to help you build and run WorldComputer in an emulator or on hardware. This document is written in a professional, technical tone intended for experienced systems developers and researchers who are interested in the internals of a novel OS platform.
+Philosophy & Design Goals
+WorldComputer’s design is guided by a set of core philosophies and goals derived from its influential predecessors:
+Everything is a File (Plan 9 inspiration): The system presents resources uniformly as files or streams, accessible via a common interface. Like Plan 9, WorldComputer uses a per-process namespace model, meaning each process has its own view of the filesystem and services
+en.wikipedia.org
+. This leads to a consistent, orthogonal interface for interacting with devices, network, GUIs, and more – all appear as files that can be read or written. By making “filesystem” the lingua franca, the OS achieves a high degree of simplicity and composability in how programs interact with resources
+en.wikipedia.org
+.
+Distributed by Default: In Plan 9, a network of machines can function as one system, and resources from remote systems can be transparently integrated by mounting them into a process’s namespace
+pdos.csail.mit.edu
+. WorldComputer embraces this idea – it’s designed for a world of distributed computing. Out of the box, it can mount remote filesystems or services, use content from IPFS, and verify state via blockchain as if they were local resources. The philosophy is that the entire world (or network) can be your computer, securely harnessed.
+Minimal Trusted Computing Base (Microkernel): Following microkernel principles, WorldComputer keeps only fundamental services in the kernel (CPU scheduling, memory management, IPC)
+tutorialspoint.com
+. All other drivers and OS services run in user space as isolated components. This design adheres to the principle of least privilege, minimizing the code running with full privileges and thus reducing the risk of catastrophic failures or security breaches
+tutorialspoint.com
+tutorialspoint.com
+. It aligns with a “zero trust” philosophy internally – even OS components don’t inherently trust each other’s code, because each is sandboxed.
+Declarative and Reproducible (NixOS inspiration): WorldComputer is configured declaratively. The entire system – from kernel to applications – is described in a single configuration manifest, rather than through ad-hoc imperative changes. Much like NixOS, building a new configuration doesn’t overwrite the old; configurations are immutable and atomic. If something goes wrong, you can roll back to a previous build reliably
+nixos.org
+nixos.org
+. This ensures that systems are reproducible – given the same config, you will get the same system state every time
+nixos.org
+. This functional approach eliminates configuration drift and makes upgrades robust.
+Immutability and Modular Updates (Ubuntu Core inspiration): The base system and applications are delivered as self-contained snaps (read-only images), enabling transactional updates and strong integrity guarantees. WorldComputer’s design keeps the base OS, kernel, and apps in separate immutable modules that can be updated independently, with clear separation between them
+ubuntu.com
+. This not only improves stability (an update can’t partially overwrite critical system files) but also enhances security – the read-only nature of system snaps means critical parts of the system are protected from tampering or corruption
+ubuntu.com
+.
+Cryptography & Zero-Trust Security: WorldComputer is built for a hostile world. It assumes no implicit trust between components or network nodes. Security is achieved through cryptographic means (signatures, hashes, capabilities) rather than just network perimeter defenses. Every component or message is validated. The OS uses capability-based security internally (no process can access a resource without an unforgeable capability reference to it), and it applies zero-trust principles to networking – all inter-node messages are authenticated and encrypted. The goal is fine-grained access control and end-to-end verification of actions, eliminating entire classes of attacks (e.g. confused deputy problems are prevented by design
+medium.com
+).
+Global Integrity via Blockchain: Borrowing from the blockchain world, WorldComputer treats the blockchain as a source of truth for certain system state and updates. For instance, software updates can be cataloged in a public ledger (Ethereum) so that clients can verify they are installing a legitimate update whose hash matches the blockchain record. User identities and credentials can be tied to cryptographic keys (Ethereum addresses), enabling decentralized, tamper-proof authentication across machines. In essence, trust in the system’s most critical operations is anchored in publicly verifiable cryptographic sources rather than any single company or server.
+These philosophies drive WorldComputer’s architecture. In the following sections, we delve into how these principles are realized in each layer of the system.
+Architecture Overview
+Figure 1: Microkernel-based architecture of WorldComputer. Only the microkernel (scheduling, memory, IPC) runs in privileged mode, while device drivers, filesystems, and services run as isolated processes in user space
+tutorialspoint.com
+. This separation enhances security and stability by containing faults to user space components
+tutorialspoint.com
+. At the heart of WorldComputer lies a microkernel that provides the minimal core of the OS. The microkernel handles low-level tasks such as thread scheduling, address space management (memory protection), and inter-process communication (IPC) – and little else
+tutorialspoint.com
+. All other functionality resides in user-space servers or daemons. This is a departure from monolithic kernels (like traditional Linux) and is more in line with designs like L4/seL4 or Minix. By pushing virtually all drivers (disk, network, GPU, etc.), protocol stacks, and even filesystems to user mode, the system minimizes what runs with high privilege. The benefit is twofold: better security (less code can compromise the kernel) and modularity (each component can be updated or restarted independently)
+tutorialspoint.com
+. On top of the microkernel, WorldComputer implements a set of core system servers that provide essential OS services in user space:
+A File Server that implements the primary filesystem interface. This server exposes a hierarchy of files and directories following the Plan 9 model, and it can delegate portions of the namespace to other specialized servers (for example, a separate server might handle /dev devices, another might handle network files under /net, etc.).
+A Network Server that manages network interfaces and protocols. Rather than the kernel implementing TCP/IP or UDP, a user-space network daemon does so. Applications interact with networking through file descriptors (for example, reading/writing to something like /net/tcp/clone to create a socket, similar to Plan 9’s approach).
+Various Device Drivers each running as their own process (or lightweight process). For example, there might be a disk driver process that interacts with hardware via IPC calls with the kernel (the kernel mediates access to I/O ports or memory-mapped I/O in a controlled fashion). If a driver crashes, it won’t crash the kernel – it can be restarted in isolation.
+A Name Resolver and Auth Service possibly bridging to blockchain: since the OS supports blockchain-based identity, a user-space service might run an Ethereum light client (or connect to one) and handle name resolution (e.g. resolving an Ethereum ENS name to an address) or verifying user signatures for login. (We discuss this more in Blockchain Integration section.)
+These components communicate strictly through the microkernel’s IPC mechanism. For instance, when an application wants to perform a file operation, it will issue IPC to the file server (the file server exposes a well-defined interface, likely similar to Plan 9’s 9P protocol, though internally it could be optimized). IPC in WorldComputer is designed to be fast and secure – using capabilities to ensure that a process can only send messages to servers it’s authorized to talk to. The tiered feature stack of WorldComputer can be visualized as layers building on each other:
+Hardware (at the base) – CPU, memory, devices. WorldComputer is hardware-agnostic (designed for x86-64 and ARM initially), requiring minimal firmware beyond a standard boot loader.
+Microkernel – running in supervisor mode, providing core primitives (threads, address spaces, IPC, capabilities).
+Core OS Servers – running in user mode. This includes the file server (namespace manager), device drivers, network stack, etc. Collectively, these emulate the traditional OS services but in a distributed fashion. For example, there is no single “monolithic kernel”; instead, if a process wants to open a file, it talks to the file server, which might in turn talk to a disk driver process. Thanks to the “everything is a file” model, even these interactions feel like file reads/writes from the perspective of the client process.
+Higher-level Services and Runtimes – these are not quite applications, but system-level services that provide enhanced functionality. For instance, a blockchain agent service runs here (responsible for communicating with Ethereum or IPFS networks), a security manager service (enforcing policies, auditing), and possibly language runtimes or container managers. They operate with less privilege and through the standard interfaces. This is the layer where declarative configuration management happens: e.g., a “system builder” service that reads the declarative config and ensures the right snaps or packages are mounted/active (similar to Nix’s nixos-rebuild or snapd in Ubuntu Core).
+Applications – user applications, which themselves might be packaged as snaps or similar isolated units. Applications run in user space with minimum privileges by default. They access resources by opening files (which under the hood triggers IPC to the relevant service). For example, a GUI app might open /dev/fb (framebuffer) which behind the scenes is provided by a GUI driver service, or a web server app might open /net/tcp to establish network connections via the network service.
+The architecture is component-based and modular. Each piece (be it a driver, a server, or an app) is a replaceable module – often delivered as a snap package – with well-defined interfaces. The microkernel ensures that the only way modules interact is via secure IPC calls or by sharing memory explicitly (and such shared memory is granted via capabilities). This plug-and-play design makes it feasible to update parts of the system independently (e.g. upgrade the TCP/IP stack without rebooting the whole machine, akin to replacing one user-space daemon). Finally, a note on performance: microkernels have historically been perceived as slower due to overhead of IPC. WorldComputer leverages modern optimizations and the fact that hardware is vastly faster today. It employs techniques (like IPC fast paths, and possibly in-process optimizations for certain services) similar to L4 microkernels which demonstrated that IPC can be extremely fast (on the order of a function call in optimized cases)
+pdxscholar.library.pdx.edu
+. We take care that the security isolation doesn’t unduly sacrifice performance for common operations. Additionally, caching and batched operations mitigate overhead – for example, the file server might batch read-ahead or write-back to minimize round-trips. Overall, the architecture prioritizes correctness and security, but is designed with performance in mind by learning from decades of microkernel research.
+Tiered Feature Stack
+Building on the architecture overview, here we detail the tiered feature stack of WorldComputer – essentially, how each major set of features or concepts maps to layers in the system. WorldComputer can be thought of as an onion of capabilities, each layer adding functionality on top of the lower ones:
+Tier 0: Kernel Capabilities and IPC – The foundational layer is the microkernel’s capability system. At boot, the kernel initializes a root partition of resources and distributes initial capabilities to the first process (often called “init” or a system launcher). Capabilities are secure tokens or references that grant a process the authority to access an object (memory page, IPC endpoint, device, etc.)
+medium.com
+. This is the basis for all higher security: if a process has no capability for a resource, it simply cannot even attempt to use it. The kernel’s role is purely to mediate access via these capabilities and to ferry messages (IPC) between processes. It implements scheduling and memory isolation to ensure each process runs in its own address space until explicitly shared.
+Tier 1: Core OS Servers (Namespace and Device Services) – The next layer consists of fundamental OS servers launched at system start. The Namespace Manager / File Server (Tier 1a) constructs the initial filesystem namespace. It starts with a root filesystem (which could be an in-memory stub that then mounts real resources). This server is responsible for honoring mount and bind requests – akin to Plan 9’s ability to overlay namespaces. It may integrate multiple file sources: for example, it can mount the boot snap (immutable image containing core utilities) at /, then overlay a writable memory filesystem at specific points (like /tmp), and mount a configuration filesystem (possibly synthesized from the declarative config) at /etc. Additionally, device servers (Tier 1b) start up to provide /dev entries. Each device server registers itself with the namespace manager (or possibly, the namespace manager simply has a convention to import all active device servers under /dev). For instance, a GPU driver process might provide /dev/fb0, a keyboard driver provides /dev/kbd, etc. The Plan 9 influence is clear here: processes will see devices as files and can interact with them uniformly, while behind the scenes, the device drivers handle the specifics.
+Tier 2: System Services and Overlays – On top of the raw device and file namespace, WorldComputer runs additional system daemons to enhance functionality. This includes:
+Networking Service: A user-space network stack that exposes sockets or network connections as files. For example, similar to Plan 9’s approach, one might open a file like /net/tcp/80/ctl to initiate a TCP connection to port 80, and then read/write data via another file descriptor. Underneath, this service runs a full TCP/IP (or future protocols) implementation, handling packets via the network driver.
+Cryptographic Services: A service might provide encryption, key management, and possibly Fully Homomorphic Encryption (FHE) stubs. The “FHE stub” indicates that WorldComputer is designed with future cryptographic computing in mind – as FHE technology matures, the OS can offload certain computations on encrypted data to an FHE service without exposing plaintext (currently, FHE is not practical for general use, but the architecture leaves a hook for it).
+Identity and Auth Service: This service ties into Ethereum for identity (more in blockchain section). It can handle “login via Ethereum” where a user proves control of an Ethereum address. It may run an Ethereum light client or communicate with one to verify signatures and perhaps check smart contract-based permissions. It could also coordinate capability distribution on login – e.g., when a user authenticates, the system might grant their session process capabilities based on on-chain roles or tokens they hold.
+Audit and Logging Service: Responsible for recording security events, system logs, and optionally anchoring important logs to an immutable store (like writing hashes to a blockchain or storing logs in IPFS for later audit). By having this as a separate service, logs can be handled robustly (and even if one part of the system is compromised, it’s harder to retroactively alter the audit trail, especially if anchored to blockchain).
+Update Manager: The component that checks for system or application updates. This ties into the DHT/blockchain integration tier to fetch updates from IPFS and verify them. It interacts with the file server to swap out old snaps for new ones (carefully, in a transactional way).
+Tier 3: Declarative Config & Snap Layer – This is the “self-management” layer of the OS. WorldComputer uses a declarative config (inspired by NixOS) which describes what services and apps should be present and their configuration. A System Build service reads this configuration (for instance, a file at /etc/worldcomputer/config.wc or an Ethereum-hosted config) and ensures the system’s state matches it. Concretely, if the config specifies “install application X version 1.2”, the build service will retrieve the snap for X@1.2 (via the DHT/IPFS), verify it, and instruct the file server to mount it in the right place (e.g. under /apps/X). The snap daemon (analogous to snapd on Ubuntu Core) operates here, managing the mounting and sandboxing of snaps. Snaps are mounted as read-only SquashFS images into the global namespace (or per-app namespaces, if needed for isolation). The declarative model means that, much like NixOS, if you change the config, a new generation of system state is realized without disturbing the previous one
+nixos.org
+nixos.org
+. The old snaps remain in storage and can be reverted to if needed. This layer is what brings transactional updates and atomic switches between configurations. It also ensures that on boot, the correct set of snaps and services are activated per the last known good config.
+Tier 4: Distributed Trust & Connectivity – The outermost layer of features involves connectivity beyond the single node. Here is where blockchain and DHT integration live (though physically, the blockchain client and IPFS node run as user services in Tier 2, their impact is system-wide at this top conceptual layer). In Tier 4, the system reaches out to the decentralized network:
+It joins an IPFS swarm for distributed data (to fetch or share content by content hash).
+It connects to Ethereum (and possibly zkSync network) for verifying identities, checking smart contract data (like update manifests or access control policies), and posting audit or telemetry info if configured.
+Zero-trust networking comes into play strongly here: any communication to other nodes or services (even within a local network) is treated as potentially hostile. Thus, everything is encrypted (likely using keys that could be derived from the user’s Ethereum keys or device keys). Moreover, when connecting to a peer service, WorldComputer could use mutual authentication – e.g., using a blockchain registry of device certificates or identities to ensure the node you’re communicating with is legitimate (for example, a cluster of WorldComputer nodes might verify each other via signed tokens issued on-chain).
+These tiers, while conceptually distinct, work in concert. For example, consider how a new application gets installed:
+A developer publishes a new version of an app as a snap, with a content hash. They update a smart contract (or a git repo or similar, but ideally a smart contract) with the hash of this snap version.
+The user’s declarative config is updated (by the user or an admin) to include this new app version. They trigger a “rebuild”.
+The build service (Tier 3) sees the new app is required. It queries the update manager (Tier 2/4) to fetch the snap with that content hash.
+The update manager uses IPFS (Tier 4) to find and download the snap by its content hash (ensuring data integrity, since IPFS addressing means any tampering would change the hash
+pinata.cloud
+pinata.cloud
+). It then verifies the hash against the expected value (which could be in the config or looked up via Ethereum).
+Once downloaded, the snap’s signature is checked (snaps are signed by the publisher’s key, possibly the public key is also registered on Ethereum for additional trust).
+The snap daemon then mounts this snap in a temporary location, the config builder arranges it into the final namespace (say the app expects to be in /apps/MyApp with a certain directory structure).
+The namespace manager is instructed to union mount/overlay as needed so that the app’s files become live. The service manager starts the app if it’s a service, or it becomes available for user to run.
+If any step fails verification, the process aborts and the previous state is retained (no partial upgrade occurs, akin to NixOS atomic upgrade or Ubuntu Core’s all-or-nothing OTA update style
+nixos.org
+).
+Each layer added specific value: the microkernel provided isolation, the namespace provided flexibility, the snaps provided immutability and easy rollback, and the blockchain/DHT provided integrity and authenticity guarantees beyond the local machine.
+Filesystem and Namespace Inheritance
+One of the most distinctive aspects of WorldComputer is its filesystem and namespace model, heavily inspired by Bell Labs’ Plan 9. In WorldComputer, the filesystem is not just a way to organize disk files; it is the unifying interface to nearly all system resources. Processes perceive a variety of resources – hardware devices, network connections, other services, etc. – as part of a single hierarchical namespace. Crucially, each process can have its own customized view of this namespace, a concept inherited directly from Plan 9’s per-process namespaces
+en.wikipedia.org
+. When a process is created (forked or spawned), it inherits a copy of its parent’s namespace by default. This namespace is essentially a set of mounted filesystems or services. The child can then modify its own namespace (without affecting others) by mounting or unmounting resources, or by overlaying new mounts on existing paths (similar to Plan 9’s bind operation). For example, a process could decide to remap its /tmp to point to a private scratch directory or mount a testing version of a service at /service/api instead of the production one the parent was using. This ability to rebind and overlay gives immense flexibility: it allows sandboxing and virtualization-like behavior without needing actual virtual machines. For instance, if you want to “chroot” or isolate an application, you can fork it and in the child’s namespace, mount a minimal set of resources (maybe a read-only view of / plus a private /home). The process will run with that illusion, and other processes remain unaffected. Under the hood, the Namespace Manager (part of the file server) handles these operations. It keeps a table of mount points for each process (or rather, for each namespace group – processes can share a namespace if desired, similar to sharing CLONE_NS in Linux). A mount operation essentially tells the namespace manager to attach a new filesystem server at a certain path. The filesystem server could be:
+A disk filesystem (e.g., a driver that reads an EXT4 or FAT partition). Notably, in Plan 9 such filesystem drivers ran in userland and spoke the 9P protocol; WorldComputer follows suit: there isn’t necessarily VFS code in the kernel as in Unix, but rather the kernel delegates actual file operations to whatever server owns that part of the namespace.
+A synthetic filesystem service – e.g., the /proc filesystem is provided by a process that produces directories and files representing running processes (just as Plan 9 and Unix do). Or the /net directory is provided by the network service.
+A remote mount – a key feature of Plan 9 (and thus WorldComputer) is that a mount target can be remote. Through the network, you can import a filesystem from another machine. If an authentication protocol and network transport (like Plan 9’s 9P over TCP or even 9P over QUIC) is in place, one machine’s file server can serve files to another machine’s process. WorldComputer could mount, say, tcp!example.com!/export/data at /data in the local namespace, making remote data available as local files. Because all communication is authorized and (in WorldComputer’s case) encrypted, this can be done securely over untrusted networks – tying into the zero-trust design. Essentially, the namespace is the fabric unifying local and remote resources.
+The file-everything model means that things like GUI, networking, etc., are also accessed via files:
+The GUI might be managed by a window system process that provides each GUI application a set of files like /dev/display, /dev/mouse, /dev/keyboard that abstract the user’s I/O. When an app wants to draw to the screen, it might open a drawing context file and write graphical commands. This is exactly how Plan 9’s 8½ and rio window systems worked: e.g., each window had a file that you write text into for display, and the keyboard and mouse were files you read from
+en.wikipedia.org
+. WorldComputer can extend this – possibly using a modern protocol like Wayland under the hood, but exposed as files/IPC for consistency.
+Networking: as mentioned, under /net you might have subdirectories for each protocol. The act of opening a network connection is translated into opening a file or writing to a control file. Plan 9’s convention was e.g. /net/tcp/clone (read it to get a new connection id) then write the remote address to /net/tcp/<N>/ctl and then data flows through /net/tcp/<N>/data. We could follow a similar pattern. This uniformity means a program doesn’t need separate APIs for “open local file” vs “open network socket” – it’s all an open on a path.
+Because each process can have a tailored namespace, namespace inheritance becomes a security and organizational tool. For example, suppose we have a service that is available at a well-known name (say, /service/payments for a payments API, exposed via the filesystem interface). In a multi-tenant scenario, each tenant’s processes could mount a different implementation at /service/payments – one that is restricted to their data. This way, the code could be the same (always opening /service/payments/txn file to do a transaction), but depending on which tenant’s environment it runs in, the file operations are handled by a different backend. This pattern provides a very powerful isolation mechanism: instead of hardcoding references to specific resources, programs use logical paths and the environment decides what those paths refer to. Another advantage of the Plan 9-style namespace approach is that the kernel itself stays simple – it doesn’t need to know about every file system type or device. In Plan 9, even things like FAT or CD-ROM filesystems were implemented in userland servers
+pdos.csail.mit.edu
+pdos.csail.mit.edu
+. WorldComputer continues this: the kernel doesn’t have a gigantic VFS or drivers for dozens of filesystems. If you plug in a USB drive with, say, an ext4 partition, a user-space ext4 driver can be spawned (perhaps via a hotplug event) and that driver will present the ext4 content as a 9P server. The namespace manager then mounts it under, say, /mnt/usb. If that driver crashes or misbehaves, the kernel and other parts of the system remain safe – you might lose that mount, but not crash the whole OS. The design also means network transparency is baked in. Because the filesystem protocol is message-oriented and designed to potentially go over a network
+en.wikipedia.org
+, any resource could be remote. In WorldComputer, we leverage this for distributed operation: e.g., IPFS content could be exposed under a mount point like /ipfs – when you access /ipfs/QmXYZ.../file.txt, a special filesystem handler (backed by an IPFS client service) fetches that content via the DHT and presents it as a normal file. Similarly, perhaps /eth could be a filesystem interface to blockchain data (imagine each Ethereum account is a directory and within it files like nonce, balance, etc., that reading triggers a query to the Ethereum client). While these specific mounts are speculative, they illustrate how powerful the namespace concept is: new services can be cleanly integrated by “mounting” them into the file hierarchy. In summary, the filesystem and namespace layer of WorldComputer provides a unifying abstraction and a flexible, safe way to customize resource access:
+It generalizes device and service access to file operations (open, read, write, etc.).
+It allows per-process tailoring (inherit and then mutate namespace), enabling sandboxing, multi-versioning, and testing setups without global impact.
+It makes distribution transparent – local vs remote is mostly just a matter of which server you mount.
+And it simplifies the programming model – developers can use familiar file semantics for a wide array of tasks, with the OS doing the heavy lifting of routing those operations to the correct handlers.
+Security Model: Capability-Based and Zero-Trust
+Security in WorldComputer is designed from the ground up, not as an afterthought. The system employs a capability-based security model at its core, combined with a zero-trust approach to all interactions. This ensures fine-grained access control, strong isolation, and that no component is implicitly trusted simply by virtue of being “inside” the system. Capabilities in WorldComputer: A capability is essentially an unforgeable token or reference that grants a process the right to use an object or service
+medium.com
+. In practical terms, in our microkernel, when a process wants to perform an operation (like accessing memory, opening a file, sending a message), it must present a capability that the kernel or relevant service recognizes as valid. For example:
+To allocate memory, a process might invoke a system call with a capability for the memory manager and a request for new pages.
+To communicate with another service, a process needs a communication endpoint capability that was explicitly given to it.
+File descriptors themselves are capabilities: when a process opens a file, what it gets back is a handle (fd) that it can use for reads/writes. Without that handle, it cannot directly name the file. As noted in capability literature, a Unix file descriptor is a kind of capability – it’s a reference to an object with certain allowed operations
+medium.com
+medium.com
+.
+One key property of capabilities is POLA: Principle of Least Authority. Processes should only get the capabilities they absolutely need, and no more. In WorldComputer, when a process is started (say an application launched by the user), it is by default given a very limited set of capabilities: maybe the capability to communicate with the file server for its own namespace, and nothing else unless requested. If it needs network access, it would need to be granted a capability for the network service (which might be done by a higher-level policy or the user’s action). If it tries to access something without a capability, it simply cannot – the kernel won’t even route the request because the process doesn’t have a handle for that resource. This is starkly different from a traditional OS where any process can attempt to open any file path; in a capability system, if you were not given a capability for a file (or directory), you cannot even attempt to access it
+medium.com
+. Thus many security issues are prevented by default: an exploit in a text editor, for instance, cannot suddenly open /etc/passwd to steal content – that editor process wouldn’t have a capability for that file unless the user explicitly granted it (e.g., via an open dialog that confers the capability). The microkernel enforces capability checks at the lowest level for operations like IPC or memory mapping. User-space services, following the same model, enforce them for higher-level objects (like files, network connections). This means that confused deputy attacks are mitigated: a service cannot be tricked into performing an action on something the caller has no rights to, because the request must carry a valid capability. If a service acts on behalf of a client, it will often use the client’s provided capability to do so, or there is a careful design to avoid ambient authority issues
+medium.com
+. Zero-Trust Messaging: In line with modern security principles, WorldComputer applies a zero-trust philosophy to both internal and external communication. Zero-trust means that no message or request is trusted just because it originates from inside the system. Concretely:
+All IPC messages between processes can be authenticated. The microkernel can tag messages with the sender’s identity (and the sender had to have a capability for the recipient’s IPC endpoint to even send it). For further assurance, sensitive communications can be cryptographically signed or use secure channels. For example, if the filesystem service sends a request to the disk driver, it might do so over an encrypted channel if the infrastructure supports it – though one could argue if it’s all in one machine, encryption might not be necessary, authentication via capabilities might suffice. However, if the “disk driver” is actually remote (think network storage), then higher-level encryption kicks in.
+On the network side, every connection is treated as hostile until proven otherwise. WorldComputer’s network service, when connecting to a remote host or another WorldComputer node, will perform mutual authentication whenever possible. If two WorldComputer nodes communicate, they can use a shared trust anchor (like a blockchain identity or certificate) to verify each other. All data in transit is encrypted with strong algorithms by default – there’s no plaintext internal protocol that isn’t encrypted or signed. Essentially, it operates as if the network is always the public internet, even if it’s actually a local LAN. This eliminates entire categories of vulnerabilities that rely on being in a “trusted network”.
+The OS also institutes fine-grained access controls beyond capabilities in a few areas. For example, we integrate a capability-based userland with higher-level policies. A user might have a policy that “App X cannot access camera”; under the hood, that means App X’s process never gets a capability for the camera device file. But beyond that, suppose App X is compromised and tries to call a higher privileged service to do something sneaky. The services themselves are built to avoid acting beyond the caller’s authority. This again goes back to not using ambient identity-based authority (as in classical OS where if you run as user Alice, any process of Alice can do whatever Alice can). Instead, it’s more object-based: just because process runs as Alice, it doesn’t automatically get all Alice’s access – it only gets what it’s explicitly given. This can be augmented with user-level security policies, but the fundamental mechanism is capabilities. To further enhance security, WorldComputer employs mandatory access checks on potentially dangerous operations. For instance, capability revocation: pure capability systems historically have the challenge that if you give away a capability, how do you revoke it? Some modern designs solve this by making capabilities reference revocable permissions records. WorldComputer’s design allows certain capabilities to be wrapped in a revocable layer – e.g., the system might issue a capability to use the network, but if the user toggles “Airplane mode”, the network service can invalidate those caps or the kernel can block them. Audit and Monitoring: Every security-critical event can be logged to the audit service. Because of the zero-trust mindset, we assume any component could be breached, so having an audit trail is key for detection and forensics. Audit logs include things like: process X gained capability Y to resource Z, process X tried to access resource W and was denied, user U (identified by Ethereum address 0xABC…) requested elevation of privilege, etc. These logs themselves can be sensitive, so the audit service may hash or encrypt them (or even directly write a hash on-chain, achieving tamper-evidence
+conf42.com
+). The presence of an audit log anchored in blockchain means that an attacker who somehow gained root access to a node still cannot cover their tracks easily – they could alter local logs but not the copy whose hash is secured by the blockchain. Secure Boot and Integrity: The security model begins at boot time. WorldComputer supports secure boot mechanisms so that the microkernel and initial userland aren’t tampered with. Because the system packages (snaps) are cryptographically signed and content-hash addressed, the integrity of even optional components is verifiable before use. For instance, when the system loads a snap for a device driver, it verifies the signature and hash; if they don’t match the expected values (like those published on the blockchain for that version), the load is rejected. This chain of trust extends from bootloader to kernel to each user-space module loaded. In summary, WorldComputer’s security model can be characterized by:
+No ambient authority: processes can’t do things unless explicitly authorized via capabilities. This minimizes damage from compromised components and supports least-privilege operation everywhere
+medium.com
+.
+Isolation by default: thanks to microkernel design and user-space separation, a fault or attack in one service doesn’t trivially spread to others. Even if a malicious app tries to exploit a device driver, that driver is user-space and largely constrained by the kernel (and possibly formally verified if using something like seL4 in the future).
+End-to-end cryptographic verification: whether it’s an inter-process message or a software update, everything is verified. Nothing is trusted just because it comes from “within the house” – the attitude is like verifying the ID of every person at the door, even the ones who live there, every single time. It may sound paranoid, but in modern environments with sophisticated threat models (supply chain attacks, insider threats, etc.), this approach dramatically raises the bar for attackers.
+Auditable and Recoverable: detect compromises via audit trails, and when something is amiss, revoke capabilities or roll back to a safe state (with the immutable config, rollback is straightforward).
+Finally, it’s worth noting that capability-based security has been proven in practice by systems like seL4 (which is formally verified and uses capabilities for everything) and research like Miller et al.’s “Capability Myths Demolished”
+medium.com
+. WorldComputer stands on the shoulders of these efforts, adopting what works and integrating it with contemporary tech (blockchain, etc.) to create a robust security posture.
+Blockchain and DHT Integration
+One of the defining features of WorldComputer is its native integration of blockchain technology and Distributed Hash Tables (DHTs) for various aspects of system operation, from authentication to software updates. This integration is designed to enhance trust, integrity, and decentralization beyond what a single-machine OS typically provides. Ethereum Integration (The World Computer meets WorldComputer): WorldComputer uses the Ethereum blockchain as a decentralized trust anchor and identity platform. Each user of the system can be mapped to an Ethereum account (public/private key pair). Instead of (or in addition to) traditional username/password or local accounts, a user may authenticate by proving ownership of an Ethereum address – akin to “Sign-in with Ethereum” standards in web applications. Practically, during login, the OS might present a challenge string that the user signs with their private key (often via a wallet). The OS then verifies the signature against the user’s registered Ethereum address
+auth0.com
+. This means authentication is key-based and decentralized; there is no central password database that could be stolen, and a user can use the same blockchain identity across multiple devices. What are the advantages of this? First, the user’s identity can carry embedded credentials or roles through smart contracts or tokens. For example, owning a particular NFT or token could automatically grant certain privileges on the OS (imagine an NFT that acts as a “software license” or an “admin token”). The Ethereum integration enables such checks: the OS’s auth service can query a smart contract to see if address X holds token Y, and then grant capabilities accordingly. Second, it allows global, single sign-on in a secure way – potentially a user could walk up to any WorldComputer instance, authenticate with their Ethereum key (e.g., using a hardware wallet or even a brainwallet, though that’s not recommended for security), and bootstrap a session without needing a pre-created local account on that machine. To make this practical, WorldComputer includes or interfaces with an Ethereum light client. A light client is a program that connects to the Ethereum network and verifies block headers (often using something like zk-SNARKs or fraud proofs for efficiency) but doesn’t necessarily store the entire chain. The OS can run a light client as a background service, which keeps the OS in sync with the latest state of the Ethereum blockchain (or at least can query it on demand). This way, verifying a signature or retrieving the state (like “does address X have permission Y recorded in contract Z?”) does not require trusting an external server – the OS itself can validate the blockchain data. As an example, the Ethereum-native mobile OS “ethOS” runs an Ethereum light client as a system service to verify blocks itself
+medium.com
+; WorldComputer does similarly for authenticity. (However, running a full node on an OS might be heavy; a light client or zk-sync proof client is more feasible.) zkSync and Layer-2: Ethereum mainnet can be resource-intensive (gas fees, etc.). WorldComputer integrates zkSync, a prominent layer-2 scaling solution for Ethereum, to handle many blockchain interactions in a cost-efficient manner. zkSync is a ZK-rollup technology that batches transactions off-chain and posts succinct proofs to Ethereum, thereby reducing fees and increasing throughput while inheriting Ethereum’s security
+kucoin.com
+. In WorldComputer, zkSync might be used for:
+Micropayments or microtransactions: If certain OS actions involve blockchain (perhaps purchasing a storage quota, or tipping a developer, or paying for an update service), doing those on Ethereum L1 would be slow and costly for small amounts. Instead, the OS can use zkSync to perform these transactions cheaply and then settle to L1.
+Identity proof aggregation: Instead of every device hitting L1 Ethereum to verify a user’s token holdings, there could be a zkSync-based identity registry or attestation service. For example, maybe a user’s roles are attested on zkSync in a contract, and the OS gets a validity proof from zkSync that “User X has Role Y” without going to mainnet every time.
+Fast consensus for clusters: If you have a cluster of WorldComputer nodes, they might use a private chain or a layer-2 to coordinate state (like a shared filesystem state or replicated log). zkSync tech (zero-knowledge proofs) could help ensure consistency with privacy. This is more speculative, but the point is that any place where we need blockchain benefits (trust, immutability) but faster/cheaper, zkSync is an enabler.
+From the user perspective, this integration is mostly invisible – they benefit from the security without having to manage it. Under the hood, the OS has keys and perhaps an on-disk wallet (ideally secured by hardware, like using a TPM or secure enclave to store private keys). The mention of FHE stub in security could even indicate that in the future, a user’s private key operations might be done in a way that the OS never sees the raw key (if FHE could be applied, or at least secure enclaves currently). IPFS and DHT for storage and updates: WorldComputer offloads large data distribution to the InterPlanetary File System (IPFS) or similar DHT-based networks. IPFS provides a content-addressable storage network where each piece of content is identified by a cryptographic hash (CID)
+pinata.cloud
+. WorldComputer leverages this in several ways:
+Software distribution: As described earlier, system and application updates are retrieved via IPFS. The OS knows the content hash of what it wants (say the hash of version 1.2 of AppX). It asks the IPFS network for that hash; IPFS peers then supply the data. Because the addressing is by hash, the user automatically verifies integrity by recomputing the hash of the received data – if it matches, the content is exactly what was intended
+pinata.cloud
+pinata.cloud
+. This is a huge win for security: it’s effectively like every download has a built-in checksum verification. It also means that distribution can be decentralized – no official server needed, any peer with the data can supply it (similar to Bittorrent, but content-addressed and permanent). The blockchain comes into play by storing or advertising the expected hashes: for instance, an official smart contract might list the current version hash of each component. The OS can query that (via the Ethereum integration) to ensure it’s fetching a trusted version.
+Global namespace via IPFS: WorldComputer can incorporate IPFS as part of its filesystem. For example, mounting /ipfs as mentioned, or using IPFS for user data backup. A user’s home directory could be optionally versioned in IPFS (with proper encryption for privacy), enabling global access to one’s files from anywhere (with your keys). When updates to a file are published, they get a new hash, and maybe those hashes can be noted on blockchain (some people use blockchains to timestamp or index IPFS content for this reason). IPFS ensures data integrity and availability (if pinned by some network nodes).
+Content distribution resilience: Using a DHT means the OS is not dependent on a single update server that could be taken down or censored. As long as at least one peer in the world (possibly maintained by the community or the developers) hosts the content, anyone can fetch it by hash. This aligns with the decentralization ethos: control is not centralized.
+To ensure authenticity of content, multiple layers are used: content addressing (hash) ensures integrity
+pinata.cloud
+, and cryptographic signatures (the developer signs the package) ensure the source authenticity. The blockchain can be used to store the signature’s public key or the hash, thus providing an immutable record. In practice, one approach (in a hypothetical scenario) is:
+Developer builds a new OS release or app snap. It produces a file, which IPFS hash is H.
+Developer signs H with their private key. They then send a transaction on Ethereum that includes H (and perhaps the signature or a reference) into a smart contract that is recognized as the “update registry”.
+User’s WorldComputer sees there’s an update (either by watching the blockchain event or by other notification). It retrieves the hash H from the smart contract (so it knows this is the blessed update).
+It then fetches content for H from IPFS. Once downloaded, it hashes it to ensure it indeed is H
+docs.ipfs.tech
+. Then verifies the developer’s signature (the public key might be known or also on-chain).
+If all checks out, it installs the update. If not, it rejects it.
+Blockchain here provides tamper-proof, globally synchronized metadata. No attacker can secretly give you a malicious update without either breaking the crypto or achieving a 51% attack on Ethereum (very impractical). This dramatically reduces the chance of supply chain attacks akin to malicious repository injections, as long as the keys are secure. Another aspect: Audit logs to blockchain. Optionally, WorldComputer could periodically write hashes of its audit logs or important state to a blockchain (Ethereum or perhaps a cheaper chain if volume is high). This could be done directly or via a bridging service. The idea is that if the device is later compromised, those prior log hashes on-chain serve as a reference. An admin can compare the logs on device to the hashes on chain to see if logs were tampered. Given Ethereum transaction costs, this might be done sparingly or via an L2 (zkSync could be very useful here to batch many log attestations into one succinct proof). Decentralized coordination: If WorldComputer devices form a peer-to-peer network (e.g., a swarm of IoT devices all running WorldComputer), they can use DHTs and blockchains to coordinate without a central server. For example, IPFS could be used to broadcast messages or updates among them, and a smart contract could act as a bulletin board for them to discover each other or share status. The zero-trust messaging principle ensures even in this scenario, each node verifies everything about others (like requiring signed messages, etc., possibly using the blockchain identities as the key). Performance considerations: Interfacing with a blockchain can be slow (confirmation times) and IPFS can have variable latency (finding peers). WorldComputer handles this by not making critical operations synchronously depend on external networks unless necessary. For login, Ethereum verification is quick (a signature check is local crypto, no need to wait for a chain event). For updates, you can continue running while an update downloads and verifies. Most blockchain interactions (like posting an audit log) can be done asynchronously by a background service. In essence, blockchain and DHT integration gives WorldComputer:
+Decentralized Identity and Auth: Users and devices have identities not issued by any single OS vendor or authority, but by cryptographic keys recognized globally. This is a step towards self-sovereign computing.
+Tamper-proof Trusted Data: The use of Ethereum for storing hashes or decisions means the OS can trust data (like update manifests, security policies, configuration locks) that cannot be locally altered or spoofed. “Trust through consensus” complements local security.
+Update and Configuration Management at Scale: Imagine thousands of devices needing an update – instead of all hitting a vendor server, they get it via IPFS from each other, verified by blockchain. It scales and is robust against server outages or targeted attacks.
+Integration with Web3 ecosystem: Because WorldComputer “speaks” blockchain natively, it can directly interface with decentralized applications. For example, the OS could natively support storing files on Storj or Filecoin, or using smart contracts for licensing. This opens up new avenues (like apps that have on-chain components can be tightly integrated with OS identity).
+To draw a real-world parallel, the ethOS mobile OS we mentioned demonstrates some of these ideas: it has built-in wallet, light client, IPFS, .eth domain support
+medium.com
+. WorldComputer extends that concept from a single-user phone OS to a general-purpose, possibly server-grade OS with a heavier focus on immutability and formal OS features. In summary, the blockchain and DHT integration in WorldComputer isn’t bolted on as a gimmick; it’s woven into the fabric to enhance security and decentralization:
+Ethereum provides the consensus truth for critical records (identities, update hashes, etc.).
+zkSync ensures those truths can be used efficiently and scalably in day-to-day operations.
+IPFS and DHTs provide efficient content distribution and data integrity, making the system more resilient and globally accessible.
+The combination ensures that even if you don’t fully trust the machine you’re running (think about cloud deployments, or edge devices that might be captured by bad actors), you can still trust certain operations (like software installs, login) because they are verified by the broader decentralized network.
+Declarative Configuration & Snap System
+WorldComputer’s approach to system configuration and software management is both declarative and immutable, combining the strengths of NixOS’s config management with Ubuntu Core’s snap packaging. This means as a developer or admin, you describe what the system should be, and the OS ensures itself is in that state by assembling the needed components (snaps), rather than you manually tweaking the system. Furthermore, the use of snaps (read-only system images) ensures that most of the system is immutable during runtime, enabling robust updates and rollbacks.
+Declarative System Configuration
+At the heart of configuration is a single file (or a small set of files) – for example, /etc/worldcomputer/config.wc. This is analogous to NixOS’s /etc/nixos/configuration.nix
+nixos.org
+. In this config, you declare things like:
+What version of the kernel and core services to use.
+Which system services are enabled (e.g., enable the SSH service, enable an Ethereum client service, set hostname, etc.).
+User accounts or identities (perhaps linking to Ethereum addresses).
+Which applications (snaps) should be installed and their desired versions.
+Resource allocations or device configuration (like “give the VM service 2GB of memory” or “mount a persistent data disk at /data”).
+This config is written in a high-level declarative language. It could be a JSON/YAML, but more likely a specialized language (like Nix’s functional language, or Dhall, or maybe a subset of Python – design choice open). The key is that it’s declarative: you specify the end state, not the steps to get there. When you update this config, you don’t manually apt-get or copy files; instead, you run the WorldComputer rebuild process (similar to nixos-rebuild). This invokes the System Build Service we mentioned. That service reads the new config and calculates what needs to change compared to the current system state (which was itself built from an older config). Since everything is content-addressed and versioned, it can compute a new system “closure” (the set of snaps/packages needed). For example, if you changed one application’s version, it will identify that the new version’s snap is needed. The build service then orchestrates fetching any new snaps from the snap store (or IPFS) and preparing a new system profile. On NixOS, this results in a new generation that can be booted or activated
+nixos.org
+. In WorldComputer, it results in a new set of snaps and configuration that can be atomically activated. Activation means:
+Stopping any services that are being replaced.
+Mounting the new snaps (e.g., the new version of an app).
+Updating symlinks or binding mounts so that /apps/YourApp now points to the new version’s files.
+Starting services from the new snaps as needed.
+Possibly updating the kernel or core snap (which might require a reboot if the kernel changes – though Ubuntu Core can even switch kernels atomically on reboot via dual partitions or similar).
+The previous configuration isn’t lost: it remains available for rollback. In fact, WorldComputer keeps a history of configurations (much like NixOS generations). If the new config has issues, you can reboot or instruct the system to revert to a previous configuration. Because nothing was overwritten (snaps are immutable files, just new ones added), rollback is fast and reliable – you’re just re-pointing what is the active set. NixOS achieves this by generation directories and symlinks; Ubuntu Core does it by having old snaps still present and marking one as active. We incorporate both ideas: purely functional config means builds produce side-by-side installs, and transactional switch means at any point, only one set is live. A concrete scenario: Let’s say the config enables SSH. That means the build will include an OpenSSH snap (or package) and generate an SSH config file (perhaps based on options set declaratively). When you worldcomputer-rebuild switch, it ensures the OpenSSH server is running with that config. If later you disable SSH in the config and rebuild, it will stop the SSH service and possibly remove it (or mark it for GC). You didn’t manually do service start/stop – the system orchestrated it from the desired state. This approach eliminates the class of errors stemming from configuration drift and manual changes. Two machines with the same config file should end up in identical states, which is great for reproducibility
+nixos.org
+ and debugging.
+Snap-Based Modular System
+WorldComputer uses snaps (or very similar containerized package images) as the unit of software deployment. A snap is a self-contained SquashFS image that includes an application or service and all its dependencies. In Ubuntu Core, even the kernel and base OS are snaps
+ubuntu.com
+. We adopt a similar structure:
+Kernel Snap: Contains the kernel image and perhaps related firmware or boot scripts.
+Core System Snap: This is like the “worldcomputer base” – it might include the standard library, basic shell utilities, etc. Alternatively, we might use an existing base snap like Ubuntu Core’s core18 or core20 images
+documentation.ubuntu.com
+ as our userland. This core is mounted at the base of the filesystem (e.g., /usr etc).
+Service Snaps: Each system service (file server, network service, etc.) could be packaged as a snap. They might all be combined in one snap if tightly coupled, but modularity suggests splitting them (for instance, a snap for the file/namespace service, another for the network stack, etc., which allows updating them independently).
+Application Snaps: Applications, which could be third-party, are snaps too. These run on top of the core system.
+Snaps are strictly confined by default – meaning they run with AppArmor or similar sandboxing to limit their access. In WorldComputer’s case, the confinement is doubly enforced by capabilities (the snap won’t have access unless given) and by underlying Linux security modules if applicable. The OS uses snap interfaces to allow certain snaps to access certain resources (e.g., a snap might declare it needs camera access; the user can connect the “camera” interface to that snap, which under the hood grants the needed capability or permission for /dev/camera device). The filesystem of the running system is essentially an aggregation of mounted snaps:
+The kernel snap is used at boot (it might be handled by the bootloader rather than mounted in fs).
+The core snap is mounted at / or appropriate subdirs, providing the root filesystem bulk.
+A gadget snap (Ubuntu Core term for device-specific bits) might provide /boot or hardware configs.
+Service snaps are mounted typically under /snap/<name>/<version>/ and linked to expected locations or launched via symlinks in /bin or systemd units.
+Application snaps similarly are mounted in versioned directories and exposed via wrappers.
+WorldComputer’s namespace mechanism can abstract some of this complexity. For instance, in the namespace, you might see /apps/MyApp as a normal directory with the app’s files, but in reality that is a bind mount into the SquashFS content of the snap located somewhere like /snap/myapp/x1. This is analogous to how Ubuntu Core works (it mounts snaps under /snap and uses symlinks for executables). Transactional Updates with Snaps: When an update occurs, a new snap is downloaded and placed alongside the old one. Then, typically, the system will switch an alias or mount to point to the new one. If something fails, it can revert by pointing back to the old snap. This is often near-instant and can even be done on reboot (Ubuntu Core keeps an A/B system for critical snaps so if new one fails to boot, it reverts to old automatically). WorldComputer leverages this for reliability. For example, if a core system snap (like the network service) is updated, it might restart that service with the new snap. If it crashes immediately or fails health checks, the OS can quickly roll back to the previous snap version with minimal downtime. Integrity and Origins: All snaps are signed by their publisher’s keys and the system verifies signatures upon installation. Snaps also come with hashes, as we discussed, often the store (or IPFS in our case) uses content hash naming which is inherently verified. This means the system knows exactly what version it has and that it hasn’t been corrupted in transit or storage. Custom Build vs Upstream Snaps: If WorldComputer is an independent project, it may maintain its own snap store or repository (possibly a decentralized one using blockchain). It could also leverage existing snaps for common software (for example, use the official snap for Firefox if that fits). But often, for tight integration, we might maintain our own variants. Example – Boot Sequence with Snaps and Config:
+Bootloader loads the kernel (from kernel snap) and an initial RAM disk or initial partition.
+Kernel (microkernel) starts, looks for the core snap.
+An initial process (let’s call it “Snap Init”) starts which mounts the core OS snap (providing basic / filesystem).
+Snap Init then spawns the configured system services as per the current config (which might be baked into an early boot config or retrieved from a signed config file).
+Each service snap is mounted and the service launched. They form the OS runtime.
+Finally, user shells or GUI login is presented (if applicable).
+During this, the system might run a “first-boot config apply” if this is first time booting a new config generation – similar to how NixOS rebuild activation scripts run.
+Volume management: Some parts of the filesystem are writable, usually for data. For instance, in Ubuntu Core, there’s a writable partition mounted at /writable or symlinked to traditional paths for things like /home. WorldComputer also has designated writable areas (for logs, user data, etc.) since snaps themselves can’t be written to. The declarative config might also define how these are set up (e.g. it might declare a ZFS volume for /data or that /home is bound to a persistent disk, etc.). Garbage Collection: Over time, you might accumulate old snaps from previous versions. The system can garbage-collect those not in use (similar to how Nix GC works
+nixos.org
+ or how snapd keeps at most N previous revisions). Comparison to NixOS: In NixOS, packages are in /nix/store hashed by content, and profiles select the active ones
+nixos.org
+nixos.org
+. In WorldComputer, snaps serve a similar role: each snap content hash is like a Nix store path. We could even integrate Nix for building snaps or packages, but we still use snaps as deployment format for easier distribution. System Immutability: By having an immutable system image, WorldComputer achieves a firm consistency: you can’t have accidental modifications to critical system files, because they reside in read-only mounts. If someone tries to tamper with /usr/bin/ls for instance, they can’t – it’s in a squashfs snap. This thwarts many kinds of persistent malware that rely on modifying system binaries. To alter those, an attacker would have to either break out of confinement and remount stuff RW (which is non-trivial with kernel enforcement) or trick the update system to install a compromised snap (which again requires signature and hash, which ties back to needing the signing key or breaking crypto). Declarative User Environment: Not only system services, but users’ environment can be declarative. For example, the config could specify “user Alice’s environment should have these 5 apps installed and these dotfiles and settings.” The system could ensure those by e.g. pulling snaps and placing config files in her home (with templating). This extends the reproducibility to userland. Continuous Integration with Source: Because the config defines the whole system, you can have a GitOps style workflow – store config in git, do code reviews for OS changes, and have automated builds produce new images or deploy new configs to devices. This is especially useful for fleets of devices (IoT, servers) running WorldComputer – they all take config updates from a repo or blockchain, and autonomously reconfigure in a controlled way. In summary, WorldComputer’s declarative, snap-based system gives you the best of both worlds:
+The predictability and rollback safety of NixOS’s functional approach
+nixos.org
+nixos.org
+.
+The modularity, immutability, and security of Ubuntu Core’s snaps
+ubuntu.com
+.
+Combined through automation that reads a single source of truth (the config) to build the system state.
+For developers, this means less time debugging “it works on my machine” issues – if two devs share the config, they have essentially the same OS setup. For operators, it means confident updates – update the config (or accept one from upstream), and either it works (in which case you’re running the new version) or it fails and you’re automatically back to previous state (no half-upgraded, broken systems). And for security, it means a smaller attack surface (since you’re not leaving random old software lingering, and the system is mostly read-only).
+Developer Quick Start
+This section explains how to build and run WorldComputer from source for development or testing. It assumes you have a Unix-like development environment (e.g., a Linux machine) with necessary build tools installed.
+Prerequisites
+Operating System: Linux (recommended) or macOS as a host. Building on Windows is not currently supported.
+Dependencies: You will need GCC or Clang, GNU Make, and standard Unix build utilities. Also install QEMU (if you plan to run in a VM) and Git. If using Debian/Ubuntu as host, you can install dependencies with: sudo apt-get install build-essential git qemu-system-x86. For Fedora: sudo dnf install @development-tools git qemu-system-x86.
+Rust (optional): If parts of WorldComputer are implemented in Rust (capability system or services), ensure Rust toolchain is installed (via rustup).
+Building from Source
+Fetch the Source Code: Clone the WorldComputer repository from the official source.
 bash
 Copy
 Edit
-/system           # Immutable, versioned core OS components
-  /kernel/        # Microkernel binaries, syscalls, drivers
-  /lib/           # Shared libraries and base class definitions
-  /dev/           # Virtual device files (handled by microkernel)
-  /proc/          # Per-process namespaces and states (virtual FS)
-/apps             # System-level apps, isolated
-/users            # Per-user containers with app/data spaces
-/mounts           # Dynamic overlays and runtime filesystem stacking
-App and Service Layout (Inheritance Model)
+git clone https://github.com/WorldComputer/WorldComputer.git
+cd WorldComputer
+Configure Build Options: WorldComputer may provide a config.mk or use environment variables to configure optional features. For example, you can set ENABLE_ETHEREUM=1 to include Ethereum client support (if you have the libraries), or choose a target architecture. By default, the build targets x86_64. If you need to adjust, open the top-level Makefile or config and set variables as needed.
+Build the System: Use the provided Makefile to build the kernel and base system:
 bash
 Copy
 Edit
-/apps/<app>/
-  /v1/                 # Versioned release
-    /lib/              # App logic, inherits from /system/lib
-    /runtime/          # Writable sandbox for temp data
-    /config/           # App settings (immutable, signed)
-    /capabilities/     # Fine-grained access control definitions
-    /ext/              # Optional override layer (plug-ins, themes)
-Inheritance is resolved via:
-
-Virtual filesystem overlays (like overlayfs or Plan 9's union mounts).
-
-Metadata files (e.g., .inherit, .overlay) define overrides or extensions.
-
-User Layout
-bash
-Copy
-Edit
-/users/<username>/
-  /home/             # Personal files
-  /apps/             # User-installed apps (inherits from /apps)
-  /runtime/          # Session-specific temp space
-  /namespace/        # User’s active mount and device space
-Each user is sandboxed with a custom namespace composed of symbolic links and mount bindings.
-
-3. 🛡️ Capability-Based Access Control
-Each process has an associated capabilities profile:
-
-toml
-Copy
-Edit
-# /apps/editor/capabilities/fs.toml
-[read]
-allow = ["/users/alice/home", "/system/lib"]
-[write]
-allow = ["/apps/editor/runtime"]
-deny = ["/system", "/users/bob/"]
-Capabilities are enforced at:
-
-Filesystem access level.
-
-IPC and device access level.
-
-Network and syscall filtering (via seccomp, eBPF, etc.).
-
-4. ⚙️ Microkernel Peripheral Architecture
-🧩 Components
-Component	Role
-Microkernel	Manages scheduling, IPC, memory, basic syscall dispatch
-Drivers	Run in userspace; communicate via IPC or file I/O
-Device Manager	Maps /dev/* files to driver processes
-Namespace Manager	Handles per-process mount tables and virtual file inheritance
-
-🧬 Device Integration
-All devices follow the file abstraction model:
-
-bash
-Copy
-Edit
-/dev/input/mouse0
-/dev/net/eth0
-/dev/snd/card1
-/dev/gpu/renderD128
-Each device file is a portal to a userland driver. Drivers are message-driven processes registered at boot time.
-
-Example: Keyboard driver
-
-plaintext
-Copy
-Edit
-Driver process: /drivers/input/keyboard
-Exposes: /dev/input/kbd
-Uses: async IPC over microkernel channels
-5. 🔁 Boot Sequence
-Bootloader loads /system/kernel/boot.img
-
-Microkernel launches:
-
-/system/init (PID 1)
-
-/system/devd (device manager)
-
-/system/nsd (namespace/overlay manager)
-
-/system/supervisor (capability enforcer)
-
-init spawns shell/login or user session containers
-
-nsd builds each process’s virtual namespace using /mounts
-
-Apps are launched within their capability-bound sandbox
-
-6. 🧠 Optional Enhancements
-Versioned Modules: Every component (apps, libs, drivers) is versioned. Upgrades are atomic by switching mount overlays.
-
-Signed Configs & Binaries: Enforce cryptographic signatures on /system, /apps, and /config.
-
-Decentralized Filesystems: Mount .onion, IPFS, or magnet URLs into /mounts/remote/ via daemon adapters.
-
-Audit Trails: All file writes and capability breaches logged under /proc/<pid>/audit.
-
-✅ Summary Principles
-Principle	Implementation
-Everything is a file	Devices, processes, sockets, configs
-Immutable core	/system is signed, read-only
-Capability-based security	Fine-grained, declarative permissions
-Modular inheritance	Overlay and shadowing via per-app /lib, /ext
-Microkernel communication	Message-passing, userland drivers
-Dynamic namespaces	Each process sees a tailored virtual filesystem
-
-
-## Quick Start
-
-This repository includes a toy 64-bit kernel written in D and a minimal
-Haskell shell. Install the LDC D compiler as well as `ghc` and `cabal`.
-Once these prerequisites are available, you can build the bootable ISO with:
-
-```bash
 make build
-```
-
-To build the image and immediately boot it with QEMU use:
-
-```bash
+This will compile the microkernel and all core user-space components, and then package them into a bootable image. The build system will output two main artifacts:
+worldcomputer.iso (or .img): a bootable disk image containing the kernel and core snaps.
+worldcomputer.bin: the raw kernel binary (for advanced use or direct boot).
+During compilation, you should see messages as it builds the kernel, then each service (file server, etc.), and finally assembles the image.
+View Build Output: If all goes well, the build finishes with a message indicating where the image is. For example:
+arduino
+Copy
+Edit
+Build complete. Bootable image created at build/worldcomputer.iso
+You can inspect build/ directory for logs or intermediate files. The snaps or packages that were built will be under build/snaps/ with their content hashes.
+Running WorldComputer (Emulated)
+You can test WorldComputer in QEMU (an open-source emulator) without installing on real hardware:
+Basic QEMU Run: Use the provided Make target to run with QEMU:
+bash
+Copy
+Edit
 make run
-```
-
-The `make run` command compiles the kernel, builds the Gremlin shell, creates an ISO and
-boots it via QEMU. After the boot messages you should see the
-`basic_tty_shell` prompt where you can type `help` or `exit`.
-
-### Checking QEMU Logs
-
-If you run the system with interrupt logging using `make run-log-int`, QEMU
-produces a file named `qemu.log`. A small D utility is provided to search this
-log for important boot messages. Compile it with `ldc2` and run it against the
-log file:
-
-```bash
-ldc2 -O2 -of=qemu_log_check scripts/qemu_log_check.d
-./qemu_log_check --file qemu.log
-```
-
-You should see output similar to:
-
-```
-long_mode_start found at line 42: long_mode_start:
-Starting basic TTY shell found at line 215: Starting basic TTY shell...
-```
-
-If the patterns are missing, the system may have failed to switch to 64‑bit mode
-or start the shell.
-
-The tool reports whether `long_mode_start` and `Starting basic TTY shell`
-appear in the log, confirming that the kernel switched to 64‑bit mode and that
-the shell launched.
-
-## License
-
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-
-
-
-The system stores update files in the DHT and records their hashes on the blockchain. At boot, it verifies this hash, and if the check fails the machine boots a decoy environment. The stored hash is updated only after a successful verification, and when spoofing is suspected it validates the full blockchain.
+This typically invokes QEMU with appropriate options, e.g.:
+bash
+Copy
+Edit
+qemu-system-x86_64 -m 1024 -smp 2 -drive format=raw,file=build/worldcomputer.iso,if=virtio -serial stdio
+This command allocates 1024 MB of RAM, 2 CPU cores, sets up the image as a virtio drive, and connects the VM’s serial console to your terminal (so you can see boot logs).
+Boot Process: Once QEMU starts, you should see the bootloader and then the WorldComputer kernel booting. Within a few seconds, you’ll reach either a login prompt or a shell on the serial console. On first boot, WorldComputer might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
+Login: If prompted to log in and you haven’t configured an Ethereum-based login for testing, use the default development login. The default user is usually wcuser with password wcpass (these are set in the default config for development mode). Enter those credentials to get a shell. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.
+Explore the System: Once logged in, you can explore:
+Run ls / to see the top-level filesystem. You’ll find unconventional layout due to namespaces (for instance, /proc might be there provided by our process server, /dev with device files, etc.).
+Try basic commands: echo hello > /dev/cons (this should print “hello” on the console, since /dev/cons is the console output file in Plan9/WorldComputer).
+Check the network: if a userland network stack is running, you can try ping. In this early stage it might not be fully set up. If not, you can start the network service manually or ensure QEMU’s networking is enabled (the make run uses user networking by default).
+View logs: cat /logs/audit or similar to see if audit logs are being recorded (could be empty if nothing has happened).
+List snaps: ls /snap to see mounted snaps and their versions.
+Shut Down: To exit QEMU, you can either type the shutdown command in the VM (e.g., sudo halt or poweroff if those are supported) or simply close QEMU. The OS is still in development, so graceful shutdown may not be fully implemented – in many cases, closing the QEMU window or pressing Ctrl-A X (if using QEMU monitor hotkeys) will suffice.
+Running on Real Hardware (Experimental)
+If you want to try WorldComputer on a real machine:
+Write the image to a USB drive:
+bash
+Copy
+Edit
+sudo dd if=build/worldcomputer.iso of=/dev/sdX bs=4M status=progress
+sync
+(Replace /dev/sdX with your USB drive path, be very careful to choose the correct drive).
+Boot your target PC from this USB. Ensure secure boot is off (or you have enrolled the test keys, since our build might not have a signed bootloader for Secure Boot).
+The system should boot into the same environment as QEMU. Keep in mind hardware support is limited (only basic virtio, some Intel/AMD chipset devices). This is primarily for developers to experiment; it’s not production-ready on diverse hardware yet.
+Rebuilding and Development Cycle
+During development, you might edit parts of the code (say the kernel or a service) and want to rebuild quickly. The build system is incremental; you can run make again and it will recompile changed components. Use make clean if you want to force a full rebuild. If you’re hacking on a specific component:
+Kernel: The kernel code is under kernel/. After changes, make build will produce a new kernel. You can often test it by just running QEMU again (the image includes the kernel, but for speed you could also set QEMU to boot the kernel directly with -kernel option).
+Services: Services are usually user-space programs under services/<name>/. If you change one, it will rebuild and repack the image. Alternatively, inside a running system, you could compile a service and replace it for quick testing (since we have a dev environment in QEMU).
+Configuration: The default config used for the image build is in config/default.wc. Editing this can change what gets included in the image (for instance, to pre-install a test app or to set a default Ethereum account for login in dev).
+For debugging, you can enable verbose logging or use QEMU’s gdb stub to attach a debugger to the kernel. For user-space, since each service is a normal program, you can also run them under gdb inside QEMU if you have the binary and gdb server set up. The project is evolving rapidly, so for the latest developer documentation (like how to run tests, coding style, etc.), please see the CONTRIBUTING.md and docs/ directory in the repository.
+License and Contribution Guidelines
+License: WorldComputer is an open-source project. All original code in this project is licensed under the MIT License (an OSI-approved permissive license) unless otherwise noted. This allows you to use, modify, and distribute the code freely as long as you include the copyright notice. Some components integrated into WorldComputer (for example, the Ethereum client library, or any third-party snaps) may be under different licenses (e.g., GPL or Apache); please check the LICENSES subdirectory for third-party license notices and ensure compliance if you redistribute. By contributing to WorldComputer, you agree that your contributions will be licensed under the MIT License, so that they can be incorporated into the project under the same terms. Contribution Guidelines: We welcome contributions from the community! To ensure a smooth process, please adhere to the following:
+Development Workflow: We use GitHub for our repository and issue tracking. To contribute, fork the repo, create a feature branch (descriptive name please), commit your changes with clear messages, and open a Pull Request (PR) against the main branch. Describe your changes thoroughly in the PR description, including the problem and solution.
+Coding Style: We follow a strict coding style for C (kernel) and Rust (services) code. Generally, use clang-format for C code (style file provided) and rustfmt for Rust. Write clear, maintainable code with comments for any complex logic. All public functions should have doc comments.
+Commit Sign-off: All commits must be signed off (add Signed-off-by: Your Name <email> in the commit message) to certify the contribution under the project’s license (this is a Developer Certificate of Origin (DCO) requirement).
+Testing: If you add a new feature or fix a bug, please add corresponding tests if possible. Our repository includes a test suite (under tests/ directory) that can be run with make check. New contributions should not break existing tests. For kernel changes, include steps to reproduce any issues fixed or logs if applicable.
+Discussion and Design: For significant changes, we encourage discussing in an issue or the Discord/Matrix chat before implementation. This helps ensure the approach aligns with the project’s goals. Design proposals can be added to the docs/proposals directory or shared via issue for feedback.
+Branch Protection: The main branch is protected; all PRs require at least one approval from a core maintainer and a passing CI build (which runs the test suite and linters on QEMU).
+Community Conduct: We have a Code of Conduct (see CODE_OF_CONDUCT.md) to foster a respectful, collaborative environment. Please be kind and professional in all interactions.
+By following these guidelines, you help us maintain project quality and velocity. We value every contributor’s effort and look forward to building WorldComputer together as a community-driven, next-gen OS platform.
+Thank you for exploring WorldComputer. We aimed to create a system that pushes the boundary of what an operating system can do by integrating proven ideas from the past with promising technologies of the present (and future). Whether you’re interested in hacking on the kernel, writing a service, or building decentralized apps that leverage WorldComputer’s features, we welcome you. Together, let’s turn the vision of a secure, decentralized, and elegant “world computer” operating system into reality.

@@ -490,6 +490,16 @@ ldc2 -O2 -of=qemu_log_check scripts/qemu_log_check.d
 ./qemu_log_check --file qemu.log
 ```
 
+You should see output similar to:
+
+```
+long_mode_start found at line 42: long_mode_start:
+Starting basic TTY shell found at line 215: Starting basic TTY shell...
+```
+
+If the patterns are missing, the system may have failed to switch to 64‑bit mode
+or start the shell.
+
 The tool reports whether `long_mode_start` and `Starting basic TTY shell`
 appear in the log, confirming that the kernel switched to 64‑bit mode and that
 the shell launched.

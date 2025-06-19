@@ -125,6 +125,6 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // This part should ideally not be reached if the shell takes over.
     // If it is, it means the shell exited or failed to start.
-    terminal_writestring_color("Haskell Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
+    terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
     loop_forever_hlt();
 }

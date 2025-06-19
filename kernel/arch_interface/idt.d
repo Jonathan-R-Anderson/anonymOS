@@ -1,4 +1,4 @@
-module kernel.idt;
+module kernel.arch_interface.idt;
 
 // Assumed to be available from kernel.ports or similar
 extern (C) {

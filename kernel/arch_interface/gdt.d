@@ -1,6 +1,6 @@
 // kernel/gdt.d
 
-module kernel.gdt;
+module kernel.arch_interface.gdt;
 
 import kernel.types : VGAColor; // For debug printing
 import kernel.terminal : terminal_writestring, terminal_write_hex, vga_entry_color, vga_entry, VGA_ADDRESS; // For debug printing and output

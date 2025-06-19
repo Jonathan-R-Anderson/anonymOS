@@ -119,11 +119,10 @@ void terminal_write_hex(ulong n) { // Changed parameter from uint to ulong
     }
 }
 
-void terminal_writestring_color(const(char)* str, VGAColor fg, VGAColor bg) {
-    ubyte original = g_TerminalColor;
-    g_TerminalColor = vga_entry_color(fg, bg);
-    terminal_writestring(str);
-    g_TerminalColor = original;
+void terminal_writestring(const(char)* str) {
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        terminal_putchar(str[i]);
+    }
 }
 
 void terminal_writestring_color(const(char)* str, VGAColor fg, VGAColor bg) {

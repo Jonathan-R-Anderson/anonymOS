@@ -8,9 +8,39 @@ extern (C) {
 // Extern declaration for our keyboard IRQ handler
 extern (C) void irq1_handler(); // Implemented in keyboard_handler_asm.s
 
-// TODO: Declare other ISRs for exceptions (isr0-isr31) and other IRQs (irq0, irq2-irq15)
-// extern (C) void isr0();
-// extern (C) void irq0_handler(); // Timer
+extern (C) void isr0();
+extern (C) void isr1();
+extern (C) void isr2();
+extern (C) void isr3();
+extern (C) void isr4();
+extern (C) void isr5();
+extern (C) void isr6();
+extern (C) void isr7();
+extern (C) void isr8();
+extern (C) void isr9();
+extern (C) void isr10();
+extern (C) void isr11();
+extern (C) void isr12();
+extern (C) void isr13();
+extern (C) void isr14();
+extern (C) void isr15();
+extern (C) void isr16();
+extern (C) void isr17();
+extern (C) void isr18();
+extern (C) void isr19();
+extern (C) void isr20();
+extern (C) void isr21();
+extern (C) void isr22();
+extern (C) void isr23();
+extern (C) void isr24();
+extern (C) void isr25();
+extern (C) void isr26();
+extern (C) void isr27();
+extern (C) void isr28();
+extern (C) void isr29();
+extern (C) void isr30();
+extern (C) void isr31();
+extern (C) void isr32();
 
 // 64-bit IDT Entry (Interrupt Gate or Trap Gate). Size is 16 bytes.
 align(1)
@@ -61,11 +91,41 @@ void init_idt() {
     // }
 
     // --- Setup ISRs for CPU exceptions (0-31 decimal, 0x00-0x1F hex) ---
-    // Example: idt_set_gate(0, &isr0, 0x08, 0x8E); // Divide by zero
-
+    idt_set_gate(0,  &isr0,  0x08, 0x8E);
+    idt_set_gate(1,  &isr1,  0x08, 0x8E);
+    idt_set_gate(2,  &isr2,  0x08, 0x8E);
+    idt_set_gate(3,  &isr3,  0x08, 0x8E);
+    idt_set_gate(4,  &isr4,  0x08, 0x8E);
+    idt_set_gate(5,  &isr5,  0x08, 0x8E);
+    idt_set_gate(6,  &isr6,  0x08, 0x8E);
+    idt_set_gate(7,  &isr7,  0x08, 0x8E);
+    idt_set_gate(8,  &isr8,  0x08, 0x8E);
+    idt_set_gate(9,  &isr9,  0x08, 0x8E);
+    idt_set_gate(10, &isr10, 0x08, 0x8E);
+    idt_set_gate(11, &isr11, 0x08, 0x8E);
+    idt_set_gate(12, &isr12, 0x08, 0x8E);
+    idt_set_gate(13, &isr13, 0x08, 0x8E);
+    idt_set_gate(14, &isr14, 0x08, 0x8E);
+    idt_set_gate(15, &isr15, 0x08, 0x8E);
+    idt_set_gate(16, &isr16, 0x08, 0x8E);
+    idt_set_gate(17, &isr17, 0x08, 0x8E);
+    idt_set_gate(18, &isr18, 0x08, 0x8E);
+    idt_set_gate(19, &isr19, 0x08, 0x8E);
+    idt_set_gate(20, &isr20, 0x08, 0x8E);
+    idt_set_gate(21, &isr21, 0x08, 0x8E);
+    idt_set_gate(22, &isr22, 0x08, 0x8E);
+    idt_set_gate(23, &isr23, 0x08, 0x8E);
+    idt_set_gate(24, &isr24, 0x08, 0x8E);
+    idt_set_gate(25, &isr25, 0x08, 0x8E);
+    idt_set_gate(26, &isr26, 0x08, 0x8E);
+    idt_set_gate(27, &isr27, 0x08, 0x8E);
+    idt_set_gate(28, &isr28, 0x08, 0x8E);
+    idt_set_gate(29, &isr29, 0x08, 0x8E);
+    idt_set_gate(30, &isr30, 0x08, 0x8E);
+    idt_set_gate(31, &isr31, 0x08, 0x8E);
     // --- Setup ISRs for Hardware IRQs (32-47 decimal, 0x20-0x2F hex after remapping) ---
     // IRQ 0 (Timer) -> Interrupt Vector 32 (0x20)
-    // idt_set_gate(32, &irq0_handler, 0x08, 0x8E);
+    idt_set_gate(32, &isr32, 0x08, 0x8E);
 
     // IRQ 1 (Keyboard) -> Interrupt 33 (0x21)
     // 0x08 is the kernel code segment selector

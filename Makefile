@@ -99,6 +99,7 @@ ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
 .PHONY: all clean run iso kernel_bin fetch-shelly # Removed build-gremlin-shell from .PHONY
 
+
 all: $(ISO_FILE)
 
 iso: $(ISO_FILE)

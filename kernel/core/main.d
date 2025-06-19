@@ -6,7 +6,10 @@ import kernel.types : VGAColor, ErrorCode;
 import kernel.terminal; // Imports VGA_ADDRESS, vga_entry, vga_entry_color, terminal_initialize, etc.
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
+import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization
 import kernel.shell : basic_tty_shell;       // Simple interactive shell
+import kernel.pic : initialize_pic;          // PIC setup for interrupt handling
+
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
 
@@ -65,8 +68,14 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     pVGATest[3] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_GREEN, VGAColor.BLACK)); // D for GDT Done (or I for IDT)
 
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
-    init_idt(); // This will also enable interrupts if designed to do so, be ready!
+    init_idt(); // Set up IDT
+    initialize_pic(); // Remap and configure PIC
+    asm { "sti"; } // Enable interrupts
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
+    // Initialize the Programmable Interrupt Controller and unmask essential IRQs
+    initialize_pic();
+    irq_clear_mask(0); // Timer
+    irq_clear_mask(1); // Keyboard
 
     // Initialize terminal (console output)
     pVGATest[6] = vga_entry('T', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // T for Terminal Init

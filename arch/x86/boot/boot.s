@@ -51,6 +51,7 @@ _start:
     # Set up the 64-bit stack
     movq $stack_top, %rsp # Point RSP to the top of our stack
     movq $stack_top, %rsp          # RSP = top of stack
+    cli                 # Disable interrupts during boot
 
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.

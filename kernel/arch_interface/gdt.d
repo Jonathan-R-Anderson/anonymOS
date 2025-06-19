@@ -26,8 +26,8 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
     ulong base; // Address of GDT (64-bit)
 }
 
-// Comment out or remove __gshared GdtEntry[3] gdt_entries;
-// Comment out or remove __gshared GdtPtr gdt_ptr;
+__gshared GdtEntry[3] gdt_entries;
+__gshared GdtPtr gdt_ptr;
 
 extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
 
@@ -44,12 +44,8 @@ private static void set_gdt_entry(GdtEntry* entry, uint base, uint limit, ubyte 
 void init_gdt() {
     terminal_writestring("Initializing GDT...\n");
 
-    // Use stack-allocated GDT and GdtPtr
-    GdtEntry[3] gdt_entries_local; // Stack allocated
-    GdtPtr gdt_ptr_local;         // Stack allocated
-
     size_t entry_size = GdtEntry.sizeof;
-    size_t num_entries = gdt_entries_local.length;
+    size_t num_entries = gdt_entries.length;
     size_t total_gdt_size = entry_size * num_entries;
     ushort calculated_limit = cast(ushort)(total_gdt_size - 1);
 
@@ -59,28 +55,28 @@ void init_gdt() {
     terminal_writestring("  Calculated GDT Limit: "); terminal_write_hex(calculated_limit); terminal_writestring("\n");
 
     // Entry 0: Null Descriptor
-    set_gdt_entry(&gdt_entries_local[0], 0, 0, 0, 0);
+    set_gdt_entry(&gdt_entries[0], 0, 0, 0, 0);
 
     // Entry 1: Kernel Code Segment (64-bit)
     // Access: P=1, DPL=0, S=1 (Code/Data), Type=0xA (Execute/Read, Non-Conforming) -> 0x9A
     // Flags: G=1 (4KB Granularity), L=1 (64-bit Long Mode), D/B=0 (for L=1) -> 0xA0 (for G=1, L=1, D/B=0, AVL=0)
     // Limit for G=1, L=1 should be 0xFFFFF for full 4GB-like range (scaled by 4KB)
     // Base is 0 for 64-bit code/data segments.
-    set_gdt_entry(&gdt_entries_local[1], 0, 0xFFFFF, 0x9A, 0xA0); // 0xA0 for flags: G=1, L=1
+    set_gdt_entry(&gdt_entries[1], 0, 0xFFFFF, 0x9A, 0xA0); // 0xA0 for flags: G=1, L=1
 
     // Entry 2: Kernel Data Segment (64-bit)
     // Access: P=1, DPL=0, S=1 (Code/Data), Type=0x2 (Read/Write, Expand Up) -> 0x92
     // Flags: G=1 (4KB Granularity), L=0 (not code), D/B=1 (32-bit stack/ops, but L=0 means this is for data) -> 0xC0 (for G=1, D/B=1)
-    set_gdt_entry(&gdt_entries_local[2], 0, 0xFFFFF, 0x92, 0xC0);
+    set_gdt_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0);
 
-    gdt_ptr_local.limit = calculated_limit;
-    gdt_ptr_local.base  = cast(ulong)&gdt_entries_local[0]; // Address of the first element of the local array
+    gdt_ptr.limit = calculated_limit;
+    gdt_ptr.base  = cast(ulong)&gdt_entries[0]; // Address of the first element of the global array
 
-    terminal_writestring("  GDT Ptr Limit: "); terminal_write_hex(gdt_ptr_local.limit); terminal_writestring("\n");
-    terminal_writestring("  GDT Ptr Base: "); terminal_write_hex(gdt_ptr_local.base); terminal_writestring("\n");
+    terminal_writestring("  GDT Ptr Limit: "); terminal_write_hex(gdt_ptr.limit); terminal_writestring("\n");
+    terminal_writestring("  GDT Ptr Base: "); terminal_write_hex(gdt_ptr.base); terminal_writestring("\n");
 
     terminal_writestring("Flushing GDT...\n");
-    gdt_flush(&gdt_ptr_local); // Pass pointer to the local GdtPtr struct
+    gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct
     // Add a direct VGA write *after* gdt_flush to see if it returns.
     // Use a distinct character and position.
     ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; 

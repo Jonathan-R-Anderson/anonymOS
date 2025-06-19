@@ -60,7 +60,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Phase 1: Early Architecture Setup (GDT, IDT) & Terminal
     // These are fundamental and must come first.
-    pVGATest[2] = vga_entry('G', vga_entry_color(VGAColor.LIGHT_GREEN, VGAColor.BLACK)); // G for GDT
+    pVGATest[2] = vga_entry('G', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK)); // G for GDT
     init_gdt();
     pVGATest[3] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_GREEN, VGAColor.BLACK)); // D for GDT Done (or I for IDT)
 

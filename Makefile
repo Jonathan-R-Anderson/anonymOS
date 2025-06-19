@@ -98,12 +98,14 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all clean run iso kernel_bin
+.PHONY: all build clean run iso kernel_bin
 
 
 all: $(ISO_FILE)
 
 iso: $(ISO_FILE)
+
+build: $(ISO_FILE)
 
 
 # Rule to build the Gremlin Shell executable.

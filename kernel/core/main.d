@@ -69,12 +69,10 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
     init_idt(); // Set up IDT
     initialize_pic(); // Remap and configure PIC
-    asm { "sti"; } // Enable interrupts
-    pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
-    // Initialize the Programmable Interrupt Controller and unmask essential IRQs
-    initialize_pic();
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
+    asm { "sti"; } // Enable interrupts
+    pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
 
     // Initialize terminal (console output)
     pVGATest[6] = vga_entry('T', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // T for Terminal Init

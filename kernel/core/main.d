@@ -6,6 +6,7 @@ import kernel.types : VGAColor, ErrorCode;
 import kernel.terminal; // Imports VGA_ADDRESS, vga_entry, vga_entry_color, terminal_initialize, etc.
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
+import kernel.shell : basic_tty_shell;       // Simple interactive shell
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
 
@@ -38,8 +39,7 @@ extern (C) void init_namespace_manager(void* multiboot_info_ptr);   // Manages p
 extern (C) void init_capability_supervisor(); // Enforces capability-based security
 extern (C) void launch_init_process();        // Launches the first user-space process (e.g., /system/init)
 
-// Haskell Shell
-extern (C) void init_haskell_shell();
+
 
 // Utility to halt the system safely
 void loop_forever_hlt() {
@@ -119,9 +119,9 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
-    terminal_writestring("Attempting to start Haskell Shell (SL)...\n");
-    // This is where your "sl" part of "k0a sl" would come in
-    init_haskell_shell();
+    // For now, fall through to a very basic built-in shell for direct testing.
+    terminal_writestring("Starting basic TTY shell...\n");
+    basic_tty_shell();
 
     // This part should ideally not be reached if the shell takes over.
     // If it is, it means the shell exited or failed to start.

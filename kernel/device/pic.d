@@ -1,4 +1,4 @@
-module kernel.pic;
+module kernel.device.pic;
 
 // Assume these are provided by kernel.ports or similar and linked
 extern (C) {

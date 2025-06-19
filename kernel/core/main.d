@@ -6,7 +6,7 @@ import kernel.types : VGAColor, ErrorCode;
 import kernel.terminal; // Imports VGA_ADDRESS, vga_entry, vga_entry_color, terminal_initialize, etc.
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
-import kernel.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
+import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : basic_tty_shell;       // Simple interactive shell
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.

@@ -41,18 +41,103 @@ stack_bottom:
     .space 16384 # 16 KiB stack
 stack_top:
 
-# Assumes execution starts in 64-bit long mode.
+# Page tables for enabling 64-bit long mode
+.align 4096
+pml4_table:
+    .space 4096
+.align 4096
+pdpt_table:
+    .space 4096
+.align 4096
+pd_table:
+    .space 4096
+
+# Minimal GDT used to enter long mode
+.section .data
+.align 8
+gdt_start:
+    .quad 0x0000000000000000        # Null descriptor
+    .quad 0x00af9a000000ffff        # 64-bit code segment
+    .quad 0x00cf92000000ffff        # 64-bit data segment
+gdt_end:
+gdt_desc:
+    .word gdt_end - gdt_start - 1
+    .long gdt_start
+
+# Begin real code
 .section .text
 .global _start      # Export the _start symbol
 .extern kmain       # kmain is defined in D
 .extern _bss_start  # Start of BSS (from linker script)
 .extern _bss_end    # End of BSS (from linker script)
 
-.code64             # Assemble for 64-bit mode
+.code32             # Initial execution is in 32-bit protected mode
 _start:
-    # Set up the 64-bit stack
-    movq $stack_top, %rsp # Point RSP to the top of our stack
+    cli
+    movl $stack_top, %esp
+    lgdt gdt_desc
+
+    # Setup page tables for identity mapping
+    call setup_page_tables
+
+    # Enable PAE
+    movl %cr4, %eax
+    orl $0x20, %eax
+    movl %eax, %cr4
+
+    # Load PML4 address into CR3
+    movl $pml4_table, %eax
+    movl %eax, %cr3
+
+    # Enable Long Mode in EFER
+    movl $0xC0000080, %ecx
+    rdmsr
+    orl $0x00000100, %eax
+    wrmsr
+
+    # Enable paging
+    movl %cr0, %eax
+    orl $0x80000000, %eax
+    movl %eax, %cr0
+
+    # Far jump to flush pipeline and enter 64-bit mode
+    ljmp $0x08, $long_mode_start
+
+.code32
+setup_page_tables:
+    movl $pd_table, %edi
+    xorl %ecx, %ecx
+    movl $0x00000083, %eax
+1:
+    movl %eax, (%edi)
+    movl $0, 4(%edi)
+    addl $0x200000, %eax
+    addl $8, %edi
+    incl %ecx
+    cmpl $512, %ecx
+    jne 1b
+
+    movl $pd_table, %eax
+    orl $0x3, %eax
+    movl %eax, pdpt_table
+    movl $0, pdpt_table+4
+
+    movl $pdpt_table, %eax
+    orl $0x3, %eax
+    movl %eax, pml4_table
+    movl $0, pml4_table+4
+    ret
+
+.code64             # 64-bit code after long mode is enabled
+long_mode_start:
     movq $stack_top, %rsp          # RSP = top of stack
+    movw $0x10, %ax
+    movw %ax, %ds
+    movw %ax, %es
+    movw %ax, %ss
+    movw %ax, %fs
+    movw %ax, %gs
+
     cli                 # Disable interrupts during boot
 
     # Zero BSS so all __gshared/uninitialized globals are predictable

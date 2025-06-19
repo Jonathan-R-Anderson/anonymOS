@@ -2,14 +2,14 @@
 # WorldComputer System Activation Script
 
 # Path to the compiled D activator executable
-# Assumes 'dub build' was run in src/activator/
-ACTIVATOR_EXE="./src/activator/activator"
+# Assumes 'dub build' was run in src/user/apps/system_activator/
+ACTIVATOR_EXE="./src/user/apps/system_activator/system_activator"
 DEFAULT_CONFIG="worldcomputer_config/system.json"
 CONFIG_FILE="$DEFAULT_CONFIG"
 
 if [ ! -f "$ACTIVATOR_EXE" ]; then
     echo "Activator executable not found at $ACTIVATOR_EXE"
-    echo "Please build it first (e.g., cd src/activator && dub build)"
+    echo "Please build it first (e.g., cd src/user/apps/system_activator && dub build)"
     exit 1
 fi
 

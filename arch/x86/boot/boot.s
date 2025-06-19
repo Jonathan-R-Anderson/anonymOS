@@ -53,8 +53,11 @@ _start:
 
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.
-    # kmain (D) expects this as its first argument, so it should be in %rdi.
-    movq %rbx, %rdi # Pass Multiboot2 info pointer to kmain
+    # The magic value is in %rax (should be 0x36d76289 for Multiboot2).
+    # If kmain expects the Multiboot2 info pointer and magic:
+    # movq %rbx, %rdi # Pass info pointer as first arg to kmain
+    # movl %eax, %esi # Pass magic as second arg to kmain (zero-extended to 64-bit)
+    # For now, kmain doesn't expect these, so we don't explicitly pass them.
 
     call kmain         # Call the D kernel's main function
 

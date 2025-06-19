@@ -457,3 +457,8 @@ Modular inheritance	Overlay and shadowing via per-app /lib, /ext
 Microkernel communication	Message-passing, userland drivers
 Dynamic namespaces	Each process sees a tailored virtual filesystem
 
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+

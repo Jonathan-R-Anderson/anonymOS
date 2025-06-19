@@ -181,4 +181,13 @@ unhandled_interrupt:
 1:  hlt
     jmp 1b
 
+.global default_isr
+.extern default_isr_handler
+
+default_isr:
+    call default_isr_handler
+    cli
+1:  hlt
+    jmp 1b
+
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

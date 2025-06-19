@@ -41,6 +41,7 @@ extern (C) void isr29();
 extern (C) void isr30();
 extern (C) void isr31();
 extern (C) void isr32();
+extern (C) void default_isr();
 
 // 64-bit IDT Entry (Interrupt Gate or Trap Gate). Size is 16 bytes.
 align(1)
@@ -85,10 +86,10 @@ void init_idt() {
     idt_ptr.limit = (MAX_INTERRUPTS * IDTEntry.sizeof) - 1;
     idt_ptr.base  = cast(ulong)&idt_entries[0];
 
-    // TODO: Zero out all IDT entries or set to a default handler
-    // for (int i = 0; i < MAX_INTERRUPTS; i++) {
-    //    idt_set_gate(i, &default_isr, 0x08, 0x8E);
-    // }
+    // Initialize all IDT entries with a safe default handler
+    for (int i = 0; i < MAX_INTERRUPTS; i++) {
+        idt_set_gate(cast(ubyte)i, &default_isr, 0x08, 0x8E);
+    }
 
     // --- Setup ISRs for CPU exceptions (0-31 decimal, 0x00-0x1F hex) ---
     idt_set_gate(0,  &isr0,  0x08, 0x8E);

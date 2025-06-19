@@ -511,6 +511,4 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 
 
 
-updates for the system will be saved to dht. the hash of the update files will be saved to blockchain
-
-make the system validate the system hash from blockchain before boot. if it fails to validate then it needs to boot to a decoy system. only allowed to update hash if previously validates. it needs to validate the entire blockchain if it suspects the blockchain endpoints are being spoofed
+The system stores update files in the DHT and records their hashes on the blockchain. At boot, it verifies this hash, and if the check fails the machine boots a decoy environment. The stored hash is updated only after a successful verification, and when spoofing is suspected it validates the full blockchain.

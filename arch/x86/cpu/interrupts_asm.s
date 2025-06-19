@@ -149,8 +149,6 @@ isr_common_stub:
     movq 120(%rsp), %rsi    # Second argument: int_no
     movq 128(%rsp), %rdx    # Third argument: err_code
     call interrupt_handler_d
-    # Clean the int_no and err_code off the stack before restoring registers.
-    addq $16, %rsp
     # Restore general purpose registers (in reverse order of push)
     popq %r15
     popq %r14
@@ -167,9 +165,8 @@ isr_common_stub:
     popq %rcx
     popq %rbx
     popq %rax
-
-    # addq $16, %rsp      # This was for cleaning up err_code and int_no if they were still on stack.
-                          # Now they are popped into registers before the call.
+    # Remove the pushed interrupt number and error code so iretq sees the CPU frame
+    addq $16, %rsp
     iretq               # Return from interrupt
 
 

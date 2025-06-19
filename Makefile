@@ -150,7 +150,9 @@ $(ISO_FILE): $(KERNEL_BIN) $(GREMLIN_SHELL_EXE)
 	# echo "    echo \"Kernel load attempt finished. Multiboot2 info should be set.\"" >> $(ISO_GRUB_DIR)/grub.cfg # Debug echo, can be removed
 	echo "    boot" >> $(ISO_GRUB_DIR)/grub.cfg # The actual boot command
 	echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
-	$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR)
+	# Attempt to ensure common modules are considered by listing them.
+	# The exact behavior of how grub-mkrescue uses these can vary.
+	$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR) pc iso9660 part_msdos multiboot2 normal configfile echo test search biosdisk terminal extcmd boot progress
 	echo "ISO created: $@ (using grub.cfg in $(ISO_GRUB_DIR)/grub.cfg)"
 
 kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN file

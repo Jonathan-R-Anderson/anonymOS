@@ -84,7 +84,6 @@
 	ISO_FILE = $(BUILD_DIR)/gremlinos.iso
 	
 	## Userspace Programs
-	SHELLY_SRC_DIR = $(BUILD_DIR)/shelly_src
 	GREMLIN_SHELL_DIR = userland/shell
 	GREMLIN_SHELL_EXE_NAME = gremlin_shell
 	GREMLIN_SHELL_EXE = $(BUILD_DIR)/$(GREMLIN_SHELL_EXE_NAME)
@@ -99,24 +98,17 @@
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all clean run iso kernel_bin fetch-shelly # Removed build-gremlin-shell from .PHONY
+.PHONY: all clean run iso kernel_bin
 
 
 all: $(ISO_FILE)
 
 iso: $(ISO_FILE)
 
-	fetch-shelly:
-		@if [ ! -d "$(SHELLY_SRC_DIR)" ]; then \
-			echo ">>> Cloning Shelly.hs library..."; \
-			git clone https://github.com/gregwebs/Shelly.hs.git $(SHELLY_SRC_DIR); \
-		else \
-			echo ">>> Shelly.hs already cloned. To update, remove '$(SHELLY_SRC_DIR)' and re-run."; \
-		fi
 	
 	# Rule to build the Gremlin Shell executable.
 	# This will build for your HOST system, not GremlinOS target yet.
-	$(GREMLIN_SHELL_EXE): fetch-shelly $(GREMLIN_SHELL_DIR)/GremlinShell.hs $(GREMLIN_SHELL_DIR)/gremlin-shell.cabal
+       $(GREMLIN_SHELL_EXE): $(GREMLIN_SHELL_DIR)/GremlinShell.hs $(GREMLIN_SHELL_DIR)/gremlin-shell.cabal
 	@echo ">>> Building Gremlin Shell (requires GHC and Cabal)..."
 	@echo ">>> NOTE: This will build for your HOST system, not GremlinOS target yet."
 	@mkdir -p $(dir $@) # Ensure the output directory exists
@@ -126,7 +118,7 @@ iso: $(ISO_FILE)
 	@cp $(GREMLIN_SHELL_DIR)/dist-newstyle/build/*/*/gremlin-shell-*/x/gremlin-shell/build/gremlin-shell/gremlin-shell $@
 	@echo ">>> Gremlin Shell built to $@"
 	
-	$(GREMLIN_TERM_EXE): fetch-shelly $(GREMLIN_SHELL_DIR)/GraphicalTerminal.hs $(GREMLIN_SHELL_DIR)/gremlin-shell.cabal
+       $(GREMLIN_TERM_EXE): $(GREMLIN_SHELL_DIR)/GraphicalTerminal.hs $(GREMLIN_SHELL_DIR)/gremlin-shell.cabal
 	@echo ">>> Building Gremlin Terminal (requires GHC and Cabal)..."
 	@mkdir -p $(dir $@)
 	cd $(GREMLIN_SHELL_DIR) && cabal update && cabal build gremlin-terminal --ghc-options="-static"

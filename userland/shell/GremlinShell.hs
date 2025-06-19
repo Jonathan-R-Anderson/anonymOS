@@ -1,11 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-import Shelly -- From the Shelly.hs library
+import Shelly -- From the local Shelly module
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T -- Import Data.Text qualified as T
 import qualified Data.Text.IO as TIO
 import System.IO (hFlush, stdout)
 import Control.Monad (forever)
+import Control.Monad.IO.Class (liftIO)
 
 -- A very simple REPL (Read-Eval-Print Loop)
 main :: IO ()

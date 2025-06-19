@@ -36,13 +36,16 @@ multiboot2_header_end_tag:
     .long 8                        # size
 multiboot2_header_end:
 
+
 .section .bss
 .align 16
 stack_bottom:
     .space 16384 # 16 KiB stack
 stack_top:
 
-# Page tables for enabling 64-bit long mode
+.section .data
+# Page tables for enabling 64-bit long mode. These must not be zeroed after
+# paging is enabled, so keep them out of the BSS section.
 .align 4096
 pml4_table:
     .space 4096

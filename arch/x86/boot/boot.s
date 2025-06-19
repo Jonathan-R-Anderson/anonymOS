@@ -45,6 +45,8 @@ stack_top:
 .section .text
 .global _start      # Export the _start symbol
 .extern kmain       # kmain is defined in D
+.extern _bss_start  # Start of BSS (from linker script)
+.extern _bss_end    # End of BSS (from linker script)
 
 .code64             # Assemble for 64-bit mode
 _start:
@@ -52,6 +54,18 @@ _start:
     movq $stack_top, %rsp # Point RSP to the top of our stack
     movq $stack_top, %rsp          # RSP = top of stack
     cli                 # Disable interrupts during boot
+
+    # Zero BSS so all __gshared/uninitialized globals are predictable
+    lea _bss_start(%rip), %rdi
+    lea _bss_end(%rip), %rcx
+    xor %rax, %rax
+.Lclear_bss:
+    cmp %rcx, %rdi
+    jge .Lbss_cleared
+    movq %rax, (%rdi)
+    add $8, %rdi
+    jmp .Lclear_bss
+.Lbss_cleared:
 
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.

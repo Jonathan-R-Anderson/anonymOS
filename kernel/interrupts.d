@@ -3,11 +3,11 @@
 module kernel.interrupts;
 
 import kernel.types : Registers, ErrorCode;
-import kernel.io : inb, outb;
+import kernel.io : outb;
 import kernel.terminal : terminal_writestring, terminal_write_hex, terminal_putchar; // scancode_to_char is used in kernel.keyboard
 import kernel.panic : kernel_panic;
 
-public: // Export interrupt_handler_d, pic_remap
+public: // Export interrupt_handler_d
 
 // PIC Constants
 enum PIC1_COMMAND = 0x20;
@@ -15,26 +15,6 @@ enum PIC1_DATA = 0x21;
 enum PIC2_COMMAND = 0xA0;
 enum PIC2_DATA = 0xA1;
 enum PIC_EOI = 0x20; // End Of Interrupt command code
-
-void pic_remap(int offset1, int offset2) {
-    ubyte a1, a2;
-    a1 = inb(PIC1_DATA);
-    a2 = inb(PIC2_DATA);
-
-    outb(PIC1_COMMAND, 0x11);
-    outb(PIC2_COMMAND, 0x11);
-
-    outb(PIC1_DATA, cast(ubyte)offset1);
-    outb(PIC2_DATA, cast(ubyte)offset2);
-
-    outb(PIC1_DATA, 4);
-    outb(PIC2_DATA, 2);
-    outb(PIC1_DATA, 0x01);
-    outb(PIC2_DATA, 0x01);
-
-    outb(PIC1_DATA, a1);
-    outb(PIC2_DATA, a2);
-}
 
 // The assembly stub will pass:
 // %rdi: pointer to saved GPRs (Registers* regs_ptr)

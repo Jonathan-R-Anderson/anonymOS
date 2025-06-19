@@ -3,6 +3,7 @@
 
 .section .text
 .global gdt_flush
+.type gdt_flush, @function
 
 gdt_flush:
     # x86-64 System V ABI: first argument (pointer to GdtPtr) is in %rdi
@@ -38,5 +39,6 @@ gdt_flush:
 
     popq %rbx           # Restore %rbx
     retq                # Return to caller (init_gdt in D)
+    .size gdt_flush, .-gdt_flush
 
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

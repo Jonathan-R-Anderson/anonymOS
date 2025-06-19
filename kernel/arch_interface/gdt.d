@@ -26,8 +26,8 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
     ulong base; // Address of GDT (64-bit)
 }
 
-__gshared GdtEntry[3] gdt_entries;
-__gshared GdtPtr gdt_ptr;
+align(8) __gshared GdtEntry[3] gdt_entries;
+align(8) __gshared GdtPtr gdt_ptr;
 
 extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
 

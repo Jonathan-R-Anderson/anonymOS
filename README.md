@@ -462,3 +462,7 @@ Dynamic namespaces	Each process sees a tailored virtual filesystem
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
+
+
+
+updates for the system will be saved to dht. the hash of the update files will be saved to blockchain

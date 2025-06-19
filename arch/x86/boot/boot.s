@@ -50,14 +50,11 @@ stack_top:
 _start:
     # Set up the 64-bit stack
     movq $stack_top, %rsp # Point RSP to the top of our stack
-    
+
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.
-    # The magic value is in %rax (should be 0x36d76289 for Multiboot2).
-    # If kmain expects the Multiboot2 info pointer and magic:
-    # movq %rbx, %rdi # Pass info pointer as first arg to kmain
-    # movl %eax, %esi # Pass magic as second arg to kmain (zero-extended to 64-bit)
-    # For now, kmain doesn't expect these, so we don't explicitly pass them.
+    # kmain (D) expects this as its first argument, so it should be in %rdi.
+    movq %rbx, %rdi # Pass Multiboot2 info pointer to kmain
 
     call kmain         # Call the D kernel's main function
 

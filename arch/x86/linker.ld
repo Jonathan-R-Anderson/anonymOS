@@ -34,9 +34,11 @@ SECTIONS {
     /* Kernel uninitialized data section (BSS) */
     /* This is where our stack will be */
     .bss : ALIGN(4K) {
-        *(COMMON)         /* Uninitialized data (COMMON symbols) */
+        _bss_start = .;    /* Symbol for start of BSS */
+        *(COMMON)          /* Uninitialized data (COMMON symbols) */
         *(.bss*)           /* All .bss sections, including stack from boot.s */
         /* .bootstrap_stack removed as stack in boot.s's .bss is covered by .bss* */
+        _bss_end = .;      /* Symbol for end of BSS */
     }
 
     /* End of kernel symbol, useful for memory management later */

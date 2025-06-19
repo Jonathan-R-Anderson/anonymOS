@@ -478,6 +478,22 @@ The `make run` command compiles the kernel, builds the Gremlin shell, creates an
 boots it via QEMU. After the boot messages you should see the
 `basic_tty_shell` prompt where you can type `help` or `exit`.
 
+### Checking QEMU Logs
+
+If you run the system with interrupt logging using `make run-log-int`, QEMU
+produces a file named `qemu.log`. A small D utility is provided to search this
+log for important boot messages. Compile it with `ldc2` and run it against the
+log file:
+
+```bash
+ldc2 -O2 -of=qemu_log_check scripts/qemu_log_check.d
+./qemu_log_check --file qemu.log
+```
+
+The tool reports whether `long_mode_start` and `Starting basic TTY shell`
+appear in the log, confirming that the kernel switched to 64‑bit mode and that
+the shell launched.
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

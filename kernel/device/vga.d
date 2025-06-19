@@ -1,4 +1,4 @@
-module kernel.vga;
+module kernel.device.vga;
 
 // If hardware cursor control is desired, inb/outb would be needed.
 // extern (C) {

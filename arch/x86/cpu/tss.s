@@ -1,14 +1,16 @@
-# tss.s - load Task State Segment selector
-.section .text
-.global tss_flush
-.type tss_flush, @function
+# tss.s (AT&T syntax, 64-bit)
+# Provides a routine to load the Task Register with the
+# selector for our TSS descriptor in the GDT.
 
-# Loads the task register with the selector for our TSS descriptor
-# Assumes the GDT has the TSS descriptor at index 5 (selector 0x28)
-tss_flush:
-    movw $0x28, %ax
-    ltr %ax
+.section .text
+.code64
+.global load_tss
+.type load_tss, @function
+
+load_tss:
+    # x86-64 System V ABI: first argument is in %di
+    movw %di, %ax
+    ltr %ax            # Load the Task Register with the selector
     retq
-.size tss_flush, .-tss_flush
 
 .section .note.GNU-stack, "", @progbits

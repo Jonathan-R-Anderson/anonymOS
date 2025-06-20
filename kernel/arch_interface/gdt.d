@@ -64,8 +64,10 @@ align(1) struct TssDescriptorHigh {
     uint reserved;
 }
 
-extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
-extern (C) void tss_flush(); // Defined in tss.s, loads TR with our TSS selector
+extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s
+extern (C) void tss_flush();                   // Defined in tss.s – loads TR
+extern (C) void load_tss(ushort selector);     // Defined in tss.s
+
 
 // Helper to set GDT entries in a provided GdtEntry.
 private static void set_gdt_entry(GdtEntry* entry, uint base, uint limit, ubyte access, ubyte gran) {
@@ -140,6 +142,9 @@ void init_gdt() {
     // Use a distinct character and position.
     ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; 
     pVGADebug[10] = vga_entry('F', vga_entry_color(VGAColor.WHITE, VGAColor.RED)); // 'F' for Flushed, at column 10
+
+    // Load the Task Register with the selector for our TSS descriptor
+    load_tss(0x28); // GDT entry 5
 
     terminal_writestring("GDT flushed.\n");
 }

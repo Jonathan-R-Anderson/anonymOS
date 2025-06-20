@@ -4,6 +4,7 @@
 .code64
 
 ## tss_flush()
+
 ## Loads the task register with our TSS selector (assumes selector 0x28).
 .global tss_flush
 .type tss_flush, @function

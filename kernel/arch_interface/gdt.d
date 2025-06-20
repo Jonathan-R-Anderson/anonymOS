@@ -136,15 +136,13 @@ void init_gdt() {
 
     terminal_writestring("Flushing GDT...\n");
     gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct
-    // Load the task register so interrupts using IST work correctly
+    // Load the Task Register so interrupts using IST work correctly
+    // tss_flush uses the TSS descriptor at GDT entry 5 (selector 0x28).
     tss_flush();
     // Add a direct VGA write *after* gdt_flush to see if it returns.
     // Use a distinct character and position.
     ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; 
     pVGADebug[10] = vga_entry('F', vga_entry_color(VGAColor.WHITE, VGAColor.RED)); // 'F' for Flushed, at column 10
-
-    // Load the Task Register with the selector for our TSS descriptor
-    load_tss(0x28); // GDT entry 5
 
     terminal_writestring("GDT flushed.\n");
 }

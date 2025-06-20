@@ -57,6 +57,7 @@ PORTS_ASM_SRC               = arch/x86/cpu/ports.s
 DEBUG_ASM_SRC               = kernel/utils/debug_asm.s
 INTERRUPTS_ASM_SRC          = arch/x86/cpu/interrupts_asm.s
 KEYBOARD_HANDLER_ASM_SRC    = arch/x86/cpu/keyboard_handler_asm_to_merge.s # Adjusted name from tree
+TSS_ASM_SRC                 = arch/x86/cpu/tss.s
 
 ALL_ASM_SOURCES = \
     $(BOOT_ASM_SRC) \
@@ -65,7 +66,8 @@ ALL_ASM_SOURCES = \
     $(PORTS_ASM_SRC) \
     $(DEBUG_ASM_SRC) \
     $(INTERRUPTS_ASM_SRC) \
-    $(KEYBOARD_HANDLER_ASM_SRC)
+    $(KEYBOARD_HANDLER_ASM_SRC) \
+    $(TSS_ASM_SRC)
 
 ## Other Files and Tools
 LINKER_SCRIPT               = arch/x86/linker.ld

@@ -24,7 +24,7 @@ gdt_flush:
     # Far jump to reload CS. 0x08 is the selector for our 64-bit code segment (GDT entry 1).
     # AT&T syntax for far jump: ljmp $segment, $offset
     # A common way to reload CS in 64-bit is to push the new CS selector and a return address, then lretq.
-    pushq $0x08         # Push new CS selector (kernel code segment)
+    pushw $0x08         # Push new CS selector (kernel code segment) as 16-bit value
     pushq $.Lflush_cs_label # Push address of the label to "return" to
     lretq               # Long return; pops RIP, then CS.
 

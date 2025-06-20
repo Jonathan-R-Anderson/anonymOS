@@ -64,8 +64,10 @@ align(1) struct TssDescriptorHigh {
     uint reserved;
 }
 
-extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s, argument is a pointer
-extern (C) void load_tss(ushort selector);    // Defined in tss.s
+extern (C) void gdt_flush(GdtPtr* gdtPtrAddr); // Defined in gdt.s
+extern (C) void tss_flush();                   // Defined in tss.s – loads TR
+extern (C) void load_tss(ushort selector);     // Defined in tss.s
+
 
 // Helper to set GDT entries in a provided GdtEntry.
 private static void set_gdt_entry(GdtEntry* entry, uint base, uint limit, ubyte access, ubyte gran) {
@@ -134,6 +136,8 @@ void init_gdt() {
 
     terminal_writestring("Flushing GDT...\n");
     gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct
+    // Load the task register so interrupts using IST work correctly
+    tss_flush();
     // Add a direct VGA write *after* gdt_flush to see if it returns.
     // Use a distinct character and position.
     ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; 

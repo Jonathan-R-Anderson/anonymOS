@@ -1,10 +1,10 @@
 #!/bin/bash
-# WorldComputer System Activation Script
+# anonymOS System Activation Script
 
 # Path to the compiled D activator executable
 # Assumes 'dub build' was run in src/user/apps/system_activator/
 ACTIVATOR_EXE="./src/user/apps/system_activator/system_activator"
-DEFAULT_CONFIG="worldcomputer_config/system.json"
+DEFAULT_CONFIG="anonymos_config/system.json"
 CONFIG_FILE="$DEFAULT_CONFIG"
 
 if [ ! -f "$ACTIVATOR_EXE" ]; then
@@ -22,7 +22,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 1
 fi
 
-echo "Running WorldComputer Activator with configuration: $CONFIG_FILE"
+echo "Running anonymOS Activator with configuration: $CONFIG_FILE"
 "$ACTIVATOR_EXE" "$CONFIG_FILE"
 
 echo "Activation script finished."

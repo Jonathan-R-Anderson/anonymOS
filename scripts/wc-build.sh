@@ -1,5 +1,5 @@
 #!/bin/bash
-# WorldComputer Recipe Build Script (Conceptual Placeholder)
+# anonymOS Recipe Build Script (Conceptual Placeholder)
 
 set -e # Exit on any error
 

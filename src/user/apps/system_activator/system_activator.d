@@ -5,10 +5,10 @@ import std.path;
 import std.process; // For future use if we call external build scripts
 
 void main(string[] args) {
-    writeln("WorldComputer System Activator (Simulation Mode)");
+    writeln("anonymOS System Activator (Simulation Mode)");
     writeln("================================================");
 
-    string configFilePath = "worldcomputer_config/system.json";
+    string configFilePath = "anonymos_config/system.json";
     if (args.length > 1) {
         configFilePath = args[1];
     }

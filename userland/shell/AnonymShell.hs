@@ -11,7 +11,7 @@ import Control.Monad.IO.Class (liftIO)
 -- A very simple REPL (Read-Eval-Print Loop)
 main :: IO ()
 main = forever $ do
-    putStr "gremlin> "
+    putStr "anonym> "
     hFlush stdout
     cmdLine <- TIO.getLine
     case cmdLine of

@@ -22,13 +22,20 @@ gdt_flush:
     movw %ax, %ss
 
     # Far jump to reload CS. 0x08 is the selector for our 64-bit code segment (GDT entry 1).
-    # Using ljmp avoids any stack manipulation quirks that could corrupt the return
-    # address when using a lretq based sequence.
-    ljmp $0x08, $.Lflush_cs_label
+    # AT&T syntax for far jump: ljmp $segment, $offset
+    # A common way to reload CS in 64-bit is to push the new CS selector and a return address, then lretq.
+    pushq $0x08         # Push new CS selector (kernel code segment)
+    pushq $.Lflush_cs_label # Push address of the label to "return" to
+    lretq               # Long return; pops RIP, then CS.
 
 .Lflush_cs_label:
-    # Execution continues here with CS reloaded. Other registers are unaffected,
-    # so %rbx should still contain the value saved at the start of gdt_flush.
+    # This code is now executing with the new CS.
+    # %rbx was set after entry to gdt_flush. After lretq, we are in a new context for CS,
+    # but other GPRs like %rbx *should* be intact unless lretq itself somehow corrupted them
+    # (highly unlikely if GDT is valid).
+    # Re-establish rbx for safety if needed, but it should be fine.
+    # If 'L' doesn't print, it might indicate %rbx was clobbered or stack issue during lretq.
+    # For now, assume %rbx is still valid.
 
     popq %rbx           # Restore %rbx
     retq                # Return to caller (init_gdt in D)

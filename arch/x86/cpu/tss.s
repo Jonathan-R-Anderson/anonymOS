@@ -4,14 +4,13 @@
 .code64
 
 ## tss_flush()
-## Convenience wrapper that loads the Task Register using the
-## TSS descriptor at selector 0x28.  Reuses load_tss so the
-## actual register manipulation stays in one place.
+
+## Loads the task register with our TSS selector (assumes selector 0x28).
 .global tss_flush
 .type tss_flush, @function
 tss_flush:
-    movw $0x28, %di
-    call load_tss
+    movw $0x28, %ax
+    ltr %ax
     retq
 .size tss_flush, .-tss_flush
 

@@ -94,6 +94,7 @@ void init_gdt() {
 
     // Entry 0: Null Descriptor
     set_gdt_entry(&gdt_entries[0], 0, 0, 0, 0);
+    terminal_writestring("set gdt entry"); terminal_writestring("\n");
 
     // Entry 1: Kernel Code Segment (64-bit)
     // Access: P=1, DPL=0, S=1 (Code/Data), Type=0xA (Execute/Read, Non-Conforming) -> 0x9A
@@ -101,24 +102,29 @@ void init_gdt() {
     // Limit for G=1, L=1 should be 0xFFFFF for full 4GB-like range (scaled by 4KB)
     // Base is 0 for 64-bit code/data segments.
     set_gdt_entry(&gdt_entries[1], 0, 0xFFFFF, 0x9A, 0xA0); // 0xA0 for flags: G=1, L=1
+    terminal_writestring("kernel code segment"); terminal_writestring("\n");
 
     // Entry 2: Kernel Data Segment (64-bit)
     // Access: P=1, DPL=0, S=1 (Code/Data), Type=0x2 (Read/Write, Expand Up) -> 0x92
     // Flags: G=1 (4KB Granularity), L=0 (not code), D/B=1 (32-bit stack/ops, but L=0 means this is for data) -> 0xC0 (for G=1, D/B=1)
     set_gdt_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0);
+    terminal_writestring("kernel data segment"); terminal_writestring("\n");
 
 
 
 
     // Entry 3: User Code Segment (64-bit, DPL=3)
     set_gdt_entry(&gdt_entries[3], 0, 0xFFFFF, 0xFA, 0xA0);
+    terminal_writestring("user code segment"); terminal_writestring("\n");
 
     // Entry 4: User Data Segment (64-bit, DPL=3)
     set_gdt_entry(&gdt_entries[4], 0, 0xFFFFF, 0xF2, 0xC0);
+    terminal_writestring("user data segment"); terminal_writestring("\n");
 
     // Entry 5-6: Task State Segment descriptor
     ulong tss_base = cast(ulong)&tss;
     set_gdt_entry(&gdt_entries[5], cast(uint)tss_base, Tss64.sizeof - 1, 0x89, 0);
+    terminal_writestring("task segment descriptor"); terminal_writestring("\n");
 
     // The second 8-byte slot of the TSS descriptor stores only the high 32 bits
     // of the TSS base and a reserved field.  Using a specialised structure here

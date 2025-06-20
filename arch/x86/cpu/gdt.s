@@ -21,24 +21,21 @@ gdt_flush:
     movw %ax, %es
     movw %ax, %ss
 
-    # Far jump to reload CS. 0x08 is the selector for our 64-bit code segment (GDT entry 1).
-    # AT&T syntax for far jump: ljmp $segment, $offset
-    # A common way to reload CS in 64-bit is to push the new CS selector and a return address, then lretq.
-    # lretq expects an 8-byte CS value on the stack. Push the selector
-    # as a 64-bit quantity to keep the stack balanced.
-    pushw $0x08         # Push new CS selector (kernel code segment) as 16-bit value
-    pushq %rax          # Push address of the label to "return" to
-    lretq               # Long return; pops RIP, then CS.
+    # Far return sequence to reload CS. The stack must contain the target RIP
+    # followed by the 16-bit selector. Using a 16-bit push avoids leaving
+    # excess bytes on the stack when lretq pops the selector.
+    leaq .Lflush_cs_label(%rip), %rax  # Address to continue after CS reload
+    pushw $0x08                       # New CS selector (kernel code segment)
+    pushq %rax                        # Target RIP
+    lretq                             # Pops RIP then CS
+
+.Lfar_ptr:
+    .quad .Lflush_cs_label   # 64-bit offset
+    .word 0x08               # New CS selector
 
 .Lflush_cs_label:
-    # This code is now executing with the new CS.
-    # %rbx was set after entry to gdt_flush. After lretq, we are in a new context for CS,
-    # but other GPRs like %rbx *should* be intact unless lretq itself somehow corrupted them
-    # (highly unlikely if GDT is valid).
-    # Re-establish rbx for safety if needed, but it should be fine.
-    # If 'L' doesn't print, it might indicate %rbx was clobbered or stack issue during lretq.
-    # For now, assume %rbx is still valid.
-
+    # Execution continues here with CS reloaded.
+    # %rbx was saved on entry and should remain intact.
     popq %rbx           # Restore %rbx
     retq                # Return to caller (init_gdt in D)
     .size gdt_flush, .-gdt_flush

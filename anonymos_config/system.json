@@ -1,0 +1,19 @@
+{
+  "system": {
+    "hostname": "anonymos",
+    "timezone": "UTC",
+    "kernelParams": ""
+  },
+  "network": {
+    "useTor": true,
+    "proxyChains": [
+      "socks5 127.0.0.1 9050",
+      "http 192.0.2.1 8080"
+    ],
+    "pfsense": {
+      "enabled": false,
+      "method": "docker",
+      "ip": "192.168.100.1"
+    }
+  }
+}

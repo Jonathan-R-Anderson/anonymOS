@@ -8,6 +8,9 @@ import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : basic_tty_shell;       // Simple interactive shell
+import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump; // New logging utilities
+import kernel.arch_interface.gdt : gdt_ptr;
+import kernel.hardware.network : net_init;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -64,6 +67,10 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // These are fundamental and must come first.
     pVGATest[2] = vga_entry('G', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK)); // G for GDT
     init_gdt();
+    log_message("GDT base: ");
+    log_hex(gdt_ptr.base);
+    log_message("\n");
+    log_register_state("After GDT Setup");
     pVGATest[3] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_GREEN, VGAColor.BLACK)); // D for GDT Done (or I for IDT)
 
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
@@ -72,6 +79,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
     asm { "sti"; } // Enable interrupts
+    log_register_state("After IDT Setup");
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
 
     // Initialize terminal (console output)
@@ -79,24 +87,33 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     terminal_initialize();
     pVGATest[7] = vga_entry('D', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // D for Terminal Done
 
-    terminal_writestring("GremlinOS: Core Arch & Terminal Initialized.\n");
+    logger_init();
+    log_message("anonymOS: Core Arch & Terminal Initialized.\n");
+    log_message("Boot info ptr: ");
+    log_hex(cast(ulong)multiboot_info_ptr);
+    log_message("\n");
+    log_mem_dump(multiboot_info_ptr, 64);
+    log_register_state("Initial Registers");
 
     // Phase 2: "preInit" - CPU features, early hardware
-    terminal_writestring("Initializing CPU features & early hardware...\n");
+    log_message("Initializing CPU features & early hardware...\n");
     init_cpu_features(); // For LAPIC, TSC etc. Important for SMP and precise timing.
                          // The Haskell RTS might benefit from a timer source.
     init_cmos_rtc();     // To get current time, if needed.
 
     // Phase 3: Memory Management - CRITICAL for Haskell
     // Also foundational for all subsequent managers and processes.
-    terminal_writestring("Initializing Memory Management (Frames, Paging, Heap)...\n");
+    log_message("Initializing Memory Management (Frames, Paging, Heap)...\n");
     init_frame_allocator(multiboot_info_ptr); // Needs memory map from bootloader
     init_paging();                            // Enable virtual memory
     init_kernel_heap();                       // For dynamic allocations by kernel & RTS
+    log_register_state("After Memory Init");
+    log_message("First 64 bytes of boot info:\n");
+    log_mem_dump(multiboot_info_ptr, 64);
 
     // Phase 4: Core OS Managers (as per blueprint)
     // These managers are crucial for realizing the dynamic, secure architecture.
-    terminal_writestring("Initializing Core OS Managers...\n");
+    log_message("Initializing Core OS Managers...\n");
     init_device_manager(multiboot_info_ptr);      // Sets up /dev and prepares for user-space drivers.
                                                  // Aligns with "Everything is a file" for devices.
     init_namespace_manager(multiboot_info_ptr);   // Prepares for per-process virtual filesystems and overlays.
@@ -104,33 +121,40 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     init_capability_supervisor(); // Initializes the framework for capability-based security.
 
     // Phase 5: Other Drivers and Kernel Services (can be managed/loaded via Device Manager later)
-    terminal_writestring("Initializing remaining Drivers & Kernel Services...\n");
+    log_message("Initializing remaining Drivers & Kernel Services...\n");
     init_keyboard_driver();   // Essential for interactive shell input!
     init_pci_bus();           // For discovering other devices (e.g., network, storage)
+    net_init();               // Initialize networking (stub)
     init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
     init_syscall_interface(); // If the shell or Haskell programs need kernel services
 
     // Phase 6: Filesystem Initialization (Root FS, Initrd)
     // The Namespace Manager will heavily interact with this.
-    terminal_writestring("Initializing Filesystem (e.g., initrd)...\n");
+    log_message("Initializing Filesystem (e.g., initrd)...\n");
     init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
 
-    terminal_writestring("All subsystems (stubs) initialized.\n");
+    log_message("All subsystems (stubs) initialized.\n");
+    log_register_state("Before Init Process");
+    log_message("Boot info snapshot:\n");
+    log_mem_dump(multiboot_info_ptr, 64);
 
     // Phase 7: Launch the first user-space process (PID 1 - /system/init)
     // This process will then use the initialized managers to set up the user environment,
     // load applications (snaps/recipes), etc., according to the declarative configuration.
-    terminal_writestring("Attempting to launch Init Process...\n");
+    log_message("Attempting to launch Init Process...\n");
     launch_init_process(); // This would not return if successful.
 
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
     // For now, fall through to a very basic built-in shell for direct testing.
-    terminal_writestring("Starting basic TTY shell...\n");
+    log_message("Starting basic TTY shell...\n");
     basic_tty_shell();
+
+    log_register_state("Shell exited");
 
     // This part should ideally not be reached if the shell takes over.
     // If it is, it means the shell exited or failed to start.
+    log_message("Shell exited or failed to initialize.\n");
     terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
     loop_forever_hlt();
 }

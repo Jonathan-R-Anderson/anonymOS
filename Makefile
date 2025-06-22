@@ -163,6 +163,7 @@ $(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE)
 		# echo "    echo \"Kernel load attempt finished. Multiboot2 info should be set.\"" >> $(ISO_GRUB_DIR)/grub.cfg # Debug echo, can be removed
 		echo "    boot" >> $(ISO_GRUB_DIR)/grub.cfg # The actual boot command
 		echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
+		command -v xorriso >/dev/null || { echo "Error: xorriso not installed. Please install it (e.g., sudo apt-get install xorriso)."; exit 1; }
 		$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR)
 	echo "ISO created: $@ (using grub.cfg in $(ISO_GRUB_DIR)/grub.cfg)"
 

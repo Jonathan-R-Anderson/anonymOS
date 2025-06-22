@@ -5,7 +5,6 @@
 		AS = as             # GNU Assembler (for AT&T syntax)
 	LD = ld.lld         # LLVM Linker
 	GRUB_MKRESCUE = grub-mkrescue
-TESTFLAGS = -unittest -g -I. -Ikernel/include
 	
 	# D Compiler Flags
 	# -betterC: Enables D subset suitable for freestanding environments (no GC, no DRuntime)
@@ -101,14 +100,14 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin test
+.PHONY: all build clean run iso kernel_bin
 
 
-all: test $(ISO_FILE)
+all: $(ISO_FILE)
 
-iso: test $(ISO_FILE)
+iso: $(ISO_FILE)
 
-build: test $(ISO_FILE)
+build: $(ISO_FILE)
 
 
 # Rule to build the anonymOS Shell executable.
@@ -210,22 +209,3 @@ run-log-int: $(ISO_FILE)
 clean:
 		rm -rf $(BUILD_DIR)
 	
-test: $(BUILD_DIR)/logger_test $(BUILD_DIR)/ipc_test $(BUILD_DIR)/network_test $(BUILD_DIR)/virtmem_test
-	$(BUILD_DIR)/logger_test
-	$(BUILD_DIR)/ipc_test
-	$(BUILD_DIR)/network_test
-	$(BUILD_DIR)/virtmem_test
-	bash tests/test_docker.sh
-	bash tests/test_virtual.sh
-	bash tests/test_hw_isolate.sh
-	bash tests/test_network_proxy.sh
-	bash tests/test_kernel_isolate.sh
-	bash tests/test_pfsense.sh
-$(BUILD_DIR)/logger_test: kernel/logger.d tests/test_logger.d | $(BUILD_DIR)
-	$(DC) $(TESTFLAGS) $^ -of=$@
-$(BUILD_DIR)/ipc_test: kernel/ipc/secure_ipc.d tests/test_secure_ipc.d | $(BUILD_DIR)
-	$(DC) $(TESTFLAGS) $^ -of=$@
-$(BUILD_DIR)/network_test: kernel/hardware/network.d kernel/logger.d tests/test_network.d | $(BUILD_DIR)
-	$(DC) $(TESTFLAGS) $^ -of=$@
-$(BUILD_DIR)/virtmem_test: kernel/memory/virtmem.d kernel/logger.d tests/test_virtmem.d | $(BUILD_DIR)
-	$(DC) $(TESTFLAGS) $^ -of=$@

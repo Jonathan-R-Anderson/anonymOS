@@ -21,11 +21,12 @@ gdt_flush:
     movw %ax, %es
     movw %ax, %ss
 
-    # Far return sequence to reload CS. The stack must contain the target RIP
-    # followed by the 16-bit selector. Using a 16-bit push avoids leaving
-    # excess bytes on the stack when lretq pops the selector.
+    # Far return sequence to reload CS. In 64-bit mode `lretq` pops an 8-byte
+    # RIP followed by an 8-byte CS value from the stack.  We therefore push the
+    # selector as a full 64-bit quantity so that the stack layout matches what
+    # `lretq` expects.
     leaq .Lflush_cs_label(%rip), %rax  # Address to continue after CS reload
-    pushw $0x08                       # New CS selector (kernel code segment)
+    pushq $0x08                       # New CS selector (kernel code segment)
     pushq %rax                        # Target RIP
     lretq                             # Pops RIP then CS
 

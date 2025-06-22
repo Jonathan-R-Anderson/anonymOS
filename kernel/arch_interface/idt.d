@@ -63,7 +63,10 @@ struct IDTPtr {
 }
 
 enum MAX_INTERRUPTS = 256;
-__gshared IDTEntry[MAX_INTERRUPTS] idt_entries; // The actual IDT
+// The 64-bit IDT must be 16-byte aligned according to the AMD64 manual.
+// Align the array explicitly so the base we give to `lidt` matches that
+// requirement.
+align(16) __gshared IDTEntry[MAX_INTERRUPTS] idt_entries; // The actual IDT
 __gshared IDTPtr idt_ptr;
 
 // Define an alias for the C-style function pointer type used for interrupt handlers

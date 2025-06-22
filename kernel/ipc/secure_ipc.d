@@ -3,10 +3,13 @@ module kernel.ipc.secure_ipc;
 import core.stdc.stdint : uint64_t;
 // Older revisions attempted to rely on the built-in `ucent` type for
 // 128‑bit arithmetic, however newer compilers remove that alias and expect
-// `core.int128.Ucent` instead.  Import it explicitly so the code builds
+// `core.int128.UCent` instead.  Import it explicitly so the code builds
 // across compiler versions.
 
-import core.int128 : Ucent; // unsigned 128-bit integer
+// The D runtime now exposes 128-bit integer types via `core.int128`.
+// Use the unsigned `UCent` alias so we can perform 128‑bit arithmetic
+// when computing modular exponentiation.
+import core.int128 : UCent; // unsigned 128-bit integer
 
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;
@@ -24,9 +27,9 @@ ulong modexp(ulong base, ulong exp, ulong mod)
     {
         if(exp & 1)
             // Cast to 128-bit to avoid overflow during multiplication
-            result = cast(ulong)((cast(Ucent)result * base) % mod);
+            result = cast(ulong)((cast(UCent)result * base) % mod);
         exp >>= 1;
-        base = cast(ulong)((cast(Ucent)base * base) % mod);
+        base = cast(ulong)((cast(UCent)base * base) % mod);
     }
     return result;
 }

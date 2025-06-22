@@ -1,31 +1,39 @@
 module kernel.ipc.secure_ipc;
 
-import core.stdc.stdint : uint64_t;
-// Older compiler versions exposed a built-in `ucent` type for 128‑bit
-// arithmetic.  Newer runtimes provide `core.int128.UCent` instead.  When
-// building with an older compiler the `UCent` symbol might not exist, so
-// we fall back to `Cent` (signed) and alias it to `UCent`.  This keeps the
-// implementation working across D releases without sprinkling version
-// checks throughout the code.
-
-static if (__traits(compiles, { import core.int128 : UCent; }))
-{
-    // Modern compilers: use the provided unsigned 128‑bit alias.
-    import core.int128 : UCent;
-}
-else
-{
-    // Older compilers: only `Cent` exists – alias it for compatibility.
-    import core.int128 : Cent;
-    alias UCent = Cent;
-}
-
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;
 
 struct DhKeyPair {
     ulong priv;
     ulong pub;
+}
+
+// Multiply two 64-bit values modulo `mod` without relying on 128-bit arithmetic
+// This uses the classic "double and add" method to avoid intermediate overflow.
+private ulong mulmod(ulong a, ulong b, ulong mod)
+{
+    ulong result = 0;
+    while(b > 0)
+    {
+        if(b & 1)
+        {
+            // result = (result + a) % mod without overflow
+            if(result >= mod - a)
+                result -= mod - a;
+            else
+                result += a;
+        }
+        b >>= 1;
+        if(b == 0)
+            break;
+
+        // a = (a * 2) % mod without overflow
+        if(a >= mod - a)
+            a -= mod - a;
+        else
+            a += a;
+    }
+    return result;
 }
 
 ulong modexp(ulong base, ulong exp, ulong mod)
@@ -35,10 +43,10 @@ ulong modexp(ulong base, ulong exp, ulong mod)
     while(exp > 0)
     {
         if(exp & 1)
-            // Cast to 128-bit to avoid overflow during multiplication
-            result = cast(ulong)((cast(UCent)result * cast(UCent)base) % mod);
+            result = mulmod(result, base, mod);
         exp >>= 1;
-        base = cast(ulong)((cast(UCent)base * cast(UCent)base) % mod);
+        if(exp)
+            base = mulmod(base, base, mod);
     }
     return result;
 }

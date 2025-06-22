@@ -5,7 +5,7 @@
 		AS = as             # GNU Assembler (for AT&T syntax)
 	LD = ld.lld         # LLVM Linker
 	GRUB_MKRESCUE = grub-mkrescue
-TESTFLAGS = -unittest -g -I.
+TESTFLAGS = -unittest -g -I. -Ikernel/include
 	
 	# D Compiler Flags
 	# -betterC: Enables D subset suitable for freestanding environments (no GC, no DRuntime)

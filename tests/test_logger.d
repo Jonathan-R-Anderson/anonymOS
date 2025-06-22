@@ -1,5 +1,6 @@
 import kernel.logger;
 import std.conv : to;
+import std.string : indexOf;
 import core.stdc.string : strcmp;
 
 void main() {

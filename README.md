@@ -140,7 +140,7 @@ The microkernel enforces capability checks at the lowest level for operations li
 * On the network side, *every connection is treated as hostile until proven otherwise*. anonymOS’s network service, when connecting to a remote host or another anonymOS node, will perform mutual authentication whenever possible. If two anonymOS nodes communicate, they can use a shared trust anchor (like a blockchain identity or certificate) to verify each other. All data in transit is encrypted with strong algorithms by default – there’s no plaintext internal protocol that isn’t encrypted or signed. Essentially, it operates as if the network is always the public internet, even if it’s actually a local LAN. This eliminates entire categories of vulnerabilities that rely on being in a “trusted network”.
 
 ### Secure IPC Protocol
-An additional library implements secure inter-process communication. Services perform a small Diffie-Hellman key exchange to establish a shared secret and validate rendezvous information before exchanging messages. Messages are XOR-encrypted with this secret and signed using a token derived from it. Both sides verify signatures so that IPC fails if tampering occurs or if the wrong endpoint responds. Unit tests cover the handshake and signing logic to ensure system services cannot communicate unless the protocol succeeds.
+An additional library implements secure inter-process communication. Services perform a small Diffie-Hellman key exchange to establish a shared secret and validate rendezvous information before exchanging messages. Messages are XOR-encrypted with this secret and signed using a token derived from it. Both sides verify signatures so that IPC fails if tampering occurs or if the wrong endpoint responds.
 
 
 The OS also institutes **fine-grained access controls** beyond capabilities in a few areas. For example, we integrate a *capability-based userland with higher-level policies*. A user might have a policy that “App X cannot access camera”; under the hood, that means App X’s process never gets a capability for the camera device file. But beyond that, suppose App X is compromised and tries to call a higher privileged service to do something sneaky. The services themselves are built to avoid acting beyond the caller’s authority. This again goes back to not using *ambient identity-based authority* (as in classical OS where if you run as user Alice, any process of Alice can do whatever Alice can). Instead, it’s more object-based: just because process runs as Alice, it doesn’t automatically get all Alice’s access – it only gets what it’s explicitly given. This can be augmented with user-level security policies, but the fundamental mechanism is capabilities.
@@ -493,8 +493,7 @@ Each process receives a private virtual address space managed by a small
 allocator in `kernel/memory/virtmem.d`.  Pages are backed by the host heap and
 grow on demand, so from the process perspective the memory appears
 effectively unlimited.  Other processes cannot access this memory unless a
-capability is explicitly shared.  The unit test `test_virtmem.d` exercises this
-manager.
+capability is explicitly shared. 
 
 ### Running on Real Hardware (Experimental)
 
@@ -523,7 +522,7 @@ If you’re hacking on a specific component:
 
 For debugging, you can enable verbose logging or use QEMU’s gdb stub to attach a debugger to the kernel. For user-space, since each service is a normal program, you can also run them under gdb inside QEMU if you have the binary and gdb server set up.
 
-The project is evolving rapidly, so for the latest developer documentation (like how to run tests, coding style, etc.), please see the `CONTRIBUTING.md` and `docs/` directory in the repository.
+The project is evolving rapidly, so for the latest developer documentation (like coding style, etc.), please see the `CONTRIBUTING.md` and `docs/` directory in the repository.
 
 ## License and Contribution Guidelines
 
@@ -536,9 +535,8 @@ By contributing to anonymOS, you agree that your contributions will be licensed 
 * **Development Workflow:** We use GitHub for our repository and issue tracking. To contribute, fork the repo, create a feature branch (descriptive name please), commit your changes with clear messages, and open a Pull Request (PR) against the `main` branch. Describe your changes thoroughly in the PR description, including the problem and solution.
 * **Coding Style:** We follow a strict coding style for C (kernel) and Rust (services) code. Generally, use `clang-format` for C code (style file provided) and `rustfmt` for Rust. Write clear, maintainable code with comments for any complex logic. All public functions should have doc comments.
 * **Commit Sign-off:** All commits must be *signed off* (add `Signed-off-by: Your Name <email>` in the commit message) to certify the contribution under the project’s license (this is a Developer Certificate of Origin (DCO) requirement).
-* **Testing:** If you add a new feature or fix a bug, please add corresponding tests if possible. Our repository includes a test suite (under `tests/` directory) that can be run with `make check`. New contributions should not break existing tests. For kernel changes, include steps to reproduce any issues fixed or logs if applicable.
 * **Discussion and Design:** For significant changes, we encourage discussing in an issue or the Discord/Matrix chat before implementation. This helps ensure the approach aligns with the project’s goals. Design proposals can be added to the `docs/proposals` directory or shared via issue for feedback.
-* **Branch Protection:** The `main` branch is protected; all PRs require at least one approval from a core maintainer and a passing CI build (which runs the test suite and linters on QEMU).
+* **Branch Protection:** The `main` branch is protected; all PRs require at least one approval from a core maintainer and a passing CI build.
 * **Community Conduct:** We have a Code of Conduct (see `CODE_OF_CONDUCT.md`) to foster a respectful, collaborative environment. Please be kind and professional in all interactions.
 
 By following these guidelines, you help us maintain project quality and velocity. We value every contributor’s effort and look forward to building anonymOS together as a community-driven, next-gen OS platform.

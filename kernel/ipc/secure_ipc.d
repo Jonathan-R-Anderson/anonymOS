@@ -36,9 +36,9 @@ ulong modexp(ulong base, ulong exp, ulong mod)
     {
         if(exp & 1)
             // Cast to 128-bit to avoid overflow during multiplication
-            result = cast(ulong)((cast(UCent)result * base) % mod);
+            result = cast(ulong)((cast(UCent)result * cast(UCent)base) % mod);
         exp >>= 1;
-        base = cast(ulong)((cast(UCent)base * base) % mod);
+        base = cast(ulong)((cast(UCent)base * cast(UCent)base) % mod);
     }
     return result;
 }

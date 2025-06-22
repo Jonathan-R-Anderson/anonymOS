@@ -313,6 +313,7 @@ This section explains how to build and run anonymOS from source for development 
 
 * **Operating System:** Linux (recommended) or macOS as a host. Building on Windows is not currently supported.
 * **Dependencies:** You will need GCC or Clang, GNU Make, and standard Unix build utilities. Also install QEMU (if you plan to run in a VM) and Git. If using Debian/Ubuntu as host, you can install dependencies with: `sudo apt-get install build-essential git qemu-system-x86`. For Fedora: `sudo dnf install @development-tools git qemu-system-x86`.
+* **Bootloader tools:** Install `grub-mkrescue` and `xorriso` for ISO creation (e.g., `sudo apt-get install grub-pc-bin xorriso mtools`).
 * **Rust (optional):** If parts of anonymOS are implemented in Rust (capability system or services), ensure Rust toolchain is installed (via rustup).
 
 ### Building from Source

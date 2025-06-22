@@ -5,29 +5,38 @@
 .global gdt_flush
 .type gdt_flush, @function
 .code64
+
+# -----------------------------------------------------------------------------
+# Segment selector constants derived from Linux's <asm/segment.h> layout.
+# They must match the indices used in kernel.arch_interface.gdt.d
+# (null descriptor = 0, kernel code = 1, kernel data = 2).
+
+.set GDT_ENTRY_KERNEL_CODE, 1
+.set GDT_ENTRY_KERNEL_DATA, 2
+.set __KERNEL_CS, (GDT_ENTRY_KERNEL_CODE * 8)
+.set __KERNEL_DS, (GDT_ENTRY_KERNEL_DATA * 8)
  
  gdt_flush:
      # x86-64 System V ABI: first argument (pointer to GdtPtr) is in %rdi
      pushq %rbx               # Preserve callee-saved register
- 
+
      lgdt (%rdi)         # Load the GDT pointer. GdtPtr struct in D needs 64-bit base.
- 
-     # Reload segment registers.
-     # In 64-bit long mode, DS, ES, SS are generally implicitly flat or loaded with a null selector.
-     # CS is loaded via a far jump/return. FS and GS can be used for OS-specific purposes (e.g., TLS).
-     # We'll load 0x10 into data segments, assuming the GDT has a valid 64-bit data segment descriptor there.
-     # The GDT itself must define these segments appropriately for long mode.
-     movw $0x10, %ax     # Selector for kernel data segment (GDT entry 2)
+
+     # Reload segment registers.  We use Linux-style selector macros
+     # similar to those found in <asm/segment.h> to avoid hard-coded values.
+     movw $__KERNEL_DS, %ax   # Selector for kernel data segment
      movw %ax, %ds
      movw %ax, %es
      movw %ax, %ss
+     movw %ax, %fs
+     movw %ax, %gs
 
      # Far return sequence to reload CS. In 64-bit mode `lretq` pops an 8-byte
      # RIP followed by an 8-byte CS value from the stack.  We therefore push the
      # selector as a full 64-bit quantity so that the stack layout matches what
      # `lretq` expects.
      leaq .Lflush_cs_label(%rip), %rax  # Address to continue after CS reload
-     pushq $0x08                       # New CS selector (kernel code segment)
+     pushq $__KERNEL_CS                # New CS selector (kernel code segment)
      pushq %rax                        # Target RIP
      lretq                             # Pops RIP then CS
 

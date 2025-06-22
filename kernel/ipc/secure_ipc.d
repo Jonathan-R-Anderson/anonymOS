@@ -1,6 +1,7 @@
 module kernel.ipc.secure_ipc;
 
 import core.stdc.stdint : uint64_t;
+import core.int128 : Ucent; // for 128-bit arithmetic
 
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;
@@ -18,9 +19,9 @@ ulong modexp(ulong base, ulong exp, ulong mod)
     {
         if(exp & 1)
             // Cast to 128-bit to avoid overflow during multiplication
-            result = cast(ulong)((cast(ucent)result * base) % mod);
+            result = cast(ulong)((cast(Ucent)result * base) % mod);
         exp >>= 1;
-        base = cast(ulong)((cast(ucent)base * base) % mod);
+        base = cast(ulong)((cast(Ucent)base * base) % mod);
     }
     return result;
 }

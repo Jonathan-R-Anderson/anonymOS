@@ -1,15 +1,24 @@
 module kernel.ipc.secure_ipc;
 
 import core.stdc.stdint : uint64_t;
-// Older revisions attempted to rely on the built-in `ucent` type for
-// 128‑bit arithmetic, however newer compilers remove that alias and expect
-// `core.int128.UCent` instead.  Import it explicitly so the code builds
-// across compiler versions.
+// Older compiler versions exposed a built-in `ucent` type for 128‑bit
+// arithmetic.  Newer runtimes provide `core.int128.UCent` instead.  When
+// building with an older compiler the `UCent` symbol might not exist, so
+// we fall back to `Cent` (signed) and alias it to `UCent`.  This keeps the
+// implementation working across D releases without sprinkling version
+// checks throughout the code.
 
-// The D runtime now exposes 128-bit integer types via `core.int128`.
-// Use the unsigned `UCent` alias so we can perform 128‑bit arithmetic
-// when computing modular exponentiation.
-import core.int128 : UCent; // unsigned 128-bit integer
+static if (__traits(compiles, { import core.int128 : UCent; }))
+{
+    // Modern compilers: use the provided unsigned 128‑bit alias.
+    import core.int128 : UCent;
+}
+else
+{
+    // Older compilers: only `Cent` exists – alias it for compatibility.
+    import core.int128 : Cent;
+    alias UCent = Cent;
+}
 
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;

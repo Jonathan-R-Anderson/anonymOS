@@ -56,6 +56,19 @@ pdpt_table:
 pd_table:
     .space 4096
 
+# -----------------------------------------------------------------------------
+# Minimal IDT to prevent triple faults before the real IDT is set up.
+# It contains 256 identical entries that all point to a simple fault handler.
+# -----------------------------------------------------------------------------
+.align 16
+early_idt:
+    .space 16 * 256                      # 256 descriptors
+early_idt_end:
+
+early_idt_ptr:
+    .word early_idt_end - early_idt - 1
+    .quad early_idt
+
 # Minimal GDT used to enter long mode
 .section .data
 .align 8
@@ -144,6 +157,27 @@ long_mode_start:
 
     cli                 # Disable interrupts during boot
 
+    # Build IDT entries pointing to early_fault
+    lea early_idt(%rip), %rdi        # Destination table
+    mov $256, %ecx                   # Number of entries
+1:  lea early_fault(%rip), %rax
+    movw %ax, (%rdi)
+    movw $0x08, 2(%rdi)
+    movb $0,  4(%rdi)
+    movb $0x8E, 5(%rdi)
+    shr $16, %rax
+    movw %ax, 6(%rdi)
+    shr $16, %rax
+    movl %eax, 8(%rdi)
+    movl $0,  12(%rdi)
+    add $16, %rdi
+    dec %ecx
+    jne 1b
+
+    # Load a minimal IDT so unexpected exceptions don't triple fault
+    lea early_idt_ptr(%rip), %rax
+    lidt (%rax)
+
     # Zero BSS so all __gshared/uninitialized globals are predictable
     lea _bss_start(%rip), %rdi
     lea _bss_end(%rip), %rcx
@@ -171,5 +205,11 @@ long_mode_start:
     cli                # Disable interrupts
     hlt                # Halt the CPU
     jmp .Lhalt_loop  # Loop indefinitely
+
+early_fault:
+    cli
+1:
+    hlt
+    jmp 1b
 
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

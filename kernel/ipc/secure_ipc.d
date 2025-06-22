@@ -1,7 +1,6 @@
 module kernel.ipc.secure_ipc;
 
 import core.stdc.stdint : uint64_t;
-import core.stdc.string : memcpy;
 
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;

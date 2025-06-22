@@ -225,7 +225,7 @@ $(BUILD_DIR)/logger_test: kernel/logger.d tests/test_logger.d | $(BUILD_DIR)
 	$(DC) $(TESTFLAGS) $^ -of=$@
 $(BUILD_DIR)/ipc_test: kernel/ipc/secure_ipc.d tests/test_secure_ipc.d | $(BUILD_DIR)
 	$(DC) $(TESTFLAGS) $^ -of=$@
-$(BUILD_DIR)/network_test: kernel/hardware/network.d tests/test_network.d | $(BUILD_DIR)
+$(BUILD_DIR)/network_test: kernel/hardware/network.d kernel/logger.d tests/test_network.d | $(BUILD_DIR)
 	$(DC) $(TESTFLAGS) $^ -of=$@
 $(BUILD_DIR)/virtmem_test: kernel/memory/virtmem.d tests/test_virtmem.d | $(BUILD_DIR)
 	$(DC) $(TESTFLAGS) $^ -of=$@

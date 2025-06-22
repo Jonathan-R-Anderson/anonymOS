@@ -1,9 +1,10 @@
  # gdt.s (AT&T syntax, 64-bit)
  # Contains gdt_flush function to load the GDT and refresh segment registers.
  
- .section .text
- .global gdt_flush
- .type gdt_flush, @function
+.section .text
+.global gdt_flush
+.type gdt_flush, @function
+.code64
  
  gdt_flush:
      # x86-64 System V ABI: first argument (pointer to GdtPtr) is in %rdi

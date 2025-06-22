@@ -1,6 +1,6 @@
 module kernel.memory.virtmem;
 
-import core.stdc.stdlib : malloc, realloc, free;
+import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message, log_hex;
 
 struct ProcMem {

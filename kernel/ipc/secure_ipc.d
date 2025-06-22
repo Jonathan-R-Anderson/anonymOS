@@ -1,10 +1,12 @@
 module kernel.ipc.secure_ipc;
 
 import core.stdc.stdint : uint64_t;
-// core.int128.Ucent was removed from newer runtimes.  Use the built-in
-// `ucent` type instead for 128-bit arithmetic support.
+// Older revisions attempted to rely on the built-in `ucent` type for
+// 128‑bit arithmetic, however newer compilers remove that alias and expect
+// `core.int128.Ucent` instead.  Import it explicitly so the code builds
+// across compiler versions.
 
-alias Ucent = ucent;
+import core.int128 : Ucent; // unsigned 128-bit integer
 
 enum ulong PRIME = 0xffffffffffc5UL; // not cryptographically strong
 enum ulong BASE = 5;

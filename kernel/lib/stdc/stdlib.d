@@ -1,6 +1,8 @@
 module kernel.lib.stdc.stdlib;
 
-import core.stdc.string : memcpy;
+// Use our own minimal memcpy implementation to avoid
+// pulling in external C runtime dependencies.
+import kernel.types : memcpy;
 
 // Minimal C standard library function implementations for -betterC builds.
 // We provide a very simple bump allocator for kernel use. This is not

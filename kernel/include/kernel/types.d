@@ -67,3 +67,16 @@ extern (C) void* memset(void* ptr, int value, size_t num) {
     }
     return ptr;
 }
+
+// Minimal implementation of memcpy for -betterC builds.
+// This avoids relying on an external C runtime while
+// providing the basic functionality needed by parts of
+// the kernel such as realloc.
+extern (C) void* memcpy(void* dest, const void* src, size_t num) {
+    auto d = cast(ubyte*)dest;
+    auto s = cast(const ubyte*)src;
+    for (size_t i = 0; i < num; i++) {
+        d[i] = s[i];
+    }
+    return dest;
+}

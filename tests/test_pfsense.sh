@@ -1,5 +1,7 @@
 #!/bin/bash
 set -e
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 mkdir -p tmpbin
 cat > tmpbin/docker <<'D'
 #!/bin/sh
@@ -15,7 +17,7 @@ cat > pfsense_cfg.json <<'J'
   }
 }
 J
-out=$(scripts/pfsense_setup.sh --dry-run --config pfsense_cfg.json)
+out=$("$ROOT_DIR"/scripts/pfsense_setup.sh --dry-run --config pfsense_cfg.json)
 [[ $out == docker* ]]
 [[ $out == *10.1.1.1* ]]
 rm pfsense_cfg.json

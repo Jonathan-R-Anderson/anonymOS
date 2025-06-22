@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
-out=$(scripts/network_proxy.sh --dry-run)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
+out=$("$ROOT_DIR"/scripts/network_proxy.sh --dry-run)
 [[ $out == *tor* ]]
 [[ $out == *PROXYCHAINS_CONF* ]]
 [[ $out == *socks5* ]]

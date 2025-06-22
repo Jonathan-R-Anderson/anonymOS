@@ -42,7 +42,8 @@ extern(C) void log_message(const(char)* s)
 
 extern(C) void log_hex(ulong val)
 {
-    char[18] buf;
+    // "0x" prefix + 16 hex digits + null terminator
+    char[19] buf;
     const(char)* hex = "0123456789ABCDEF";
     buf[0] = '0';
     buf[1] = 'x';
@@ -51,7 +52,7 @@ extern(C) void log_hex(ulong val)
         ubyte nib = cast(ubyte)((val >> (4 * (15 - i))) & 0xF);
         buf[2 + i] = hex[nib];
     }
-    buf[18-1] = '\0';
+    buf[18] = '\0';
     log_message(buf.ptr);
 }
 

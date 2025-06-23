@@ -316,8 +316,8 @@ extern(C) void fs_create_user(const(char)* name)
     // config file
     char[160] cfgPath;
     auto prefix = "/cfg/users/";
-    memcpy(cfgPath.ptr, prefix.ptr, strlen(prefix));
-    size_t pl = strlen(prefix);
+    memcpy(cfgPath.ptr, prefix.ptr, strlen(prefix.ptr));
+    size_t pl = strlen(prefix.ptr);
     memcpy(cfgPath.ptr + pl, name, nlen);
     pl += nlen;
     cfgPath[pl++] = '.'; cfgPath[pl++] = 'j'; cfgPath[pl++] = 's'; cfgPath[pl++] = 'o'; cfgPath[pl++] = 'n';

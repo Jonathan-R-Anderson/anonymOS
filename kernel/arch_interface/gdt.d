@@ -56,8 +56,8 @@ align(8) __gshared GdtEntry[7] gdt_entries;
 align(8) __gshared GdtPtr gdt_ptr;
 
 
-align(16) ubyte[4096] kernel_stack;
-align(16) ubyte[4096] ist1_stack;
+align(16) __gshared ubyte[4096] kernel_stack;
+align(16) __gshared ubyte[4096] ist1_stack;
 
 
 // Access byte values for common segment types

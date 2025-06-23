@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 
 -- | File finding utiliites for Shelly
 -- The basic 'find' takes a dir and gives back a list of files.

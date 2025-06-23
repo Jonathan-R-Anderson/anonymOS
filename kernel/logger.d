@@ -18,9 +18,10 @@ __gshared size_t logIndex;
 
 extern(C) void logger_init()
 {
+    import core.stdc.string : memset;
     logIndex = 0;
-    for(size_t i = 0; i < logBuffer.length; ++i)
-        logBuffer[i] = 0;
+    // Ensure the entire buffer is zeroed before use
+    memset(logBuffer.ptr, 0, logBuffer.length);
 }
 
 private void log_putc(char c)

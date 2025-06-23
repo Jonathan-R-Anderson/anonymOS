@@ -20,7 +20,8 @@
 
 gdt_flush:
     # rdi = pointer to GdtPtr (limit + base)
-    lgdt [rdi]                     # Load GDT pointer
+    # 'lgdt' expects a 10-byte descriptor (16-bit limit + 64-bit base)
+    lgdt [rdi]
 
     mov ax, __KERNEL_DS
     mov ds, ax

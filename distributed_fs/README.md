@@ -13,4 +13,4 @@ The implementation here is intentionally skeletal.  The focus is on documenting 
 - `storage/` – pluggable backends (local disk, cloud, etc.)
 - `examples/` – illustrative usage and integration tests
 
-To keep the repository small, all source files are heavily commented and include only minimal code.
+To keep the repository small, all source files are heavily commented and include only minimal code.  The storage layer now contains a stub [Distributed Hash Table](storage/dht.rs) that replicates stored blocks across multiple nodes to mimic RAID-style redundancy.

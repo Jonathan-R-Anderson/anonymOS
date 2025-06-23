@@ -2,6 +2,7 @@ module kernel.arch_interface.idt;
 
 import kernel.arch_interface.gdt : KERNEL_CODE_SELECTOR;
 import kernel.terminal : terminal_writestring;
+import kernel.logger : log_message, log_hex;
 
 import kernel.arch_interface.ports;
 
@@ -137,8 +138,13 @@ public void init_idt() {
 
     idt_ptr.limit = cast(ushort)(MAX_INTERRUPTS * IDTEntry.sizeof - 1);
     idt_ptr.base  = cast(ulong)&idt_entries[0];
+    // Ensure the pointer is canonical (upper bits cleared)
+    idt_ptr.base &= 0x0000FFFF_FFFF_FFFFUL;
 
     idt_load(&idt_ptr);
 
+    log_message("IDT base loaded: ");
+    log_hex(idt_ptr.base);
+    log_message("\n");
     terminal_writestring("IDT loaded.\n");
 }

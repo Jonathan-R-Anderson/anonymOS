@@ -6,7 +6,7 @@ import kernel.types : VGAColor, ErrorCode;
 import kernel.terminal; // Imports VGA_ADDRESS, vga_entry, vga_entry_color, terminal_initialize, etc.
 import kernel.device.vga : clear_screen;
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
-import kernel.arch_interface.idt : init_idt; // Updated import path
+import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : basic_tty_shell;       // Simple interactive shell
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
@@ -64,6 +64,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     pVGATest[0] = vga_entry('K', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));
     pVGATest[1] = vga_entry('0', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));
 
+    logger_init();
+
     // Phase 1: Early Architecture Setup (GDT, IDT) & Terminal
     // These are fundamental and must come first.
     pVGATest[2] = vga_entry('G', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK)); // G for GDT
@@ -77,6 +79,9 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
     init_idt(); // Set up IDT
+    log_message("IDT ptr base after init: ");
+    log_hex(idt_ptr.base);
+    log_message("\n");
     initialize_pic(); // Remap and configure PIC
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
@@ -93,7 +98,6 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     //clear_screen();
 
     
-    logger_init();
     log_test();
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
     log_message("Boot info ptr: ");

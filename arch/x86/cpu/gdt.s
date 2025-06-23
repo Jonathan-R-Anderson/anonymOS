@@ -32,12 +32,14 @@ gdt_flush:
     movw %ax, %fs
     movw %ax, %gs
 
-    # Reload CS using a far jump.  This flushes the instruction queue and
-    # ensures execution continues in the code segment defined in the new GDT.
-    leaq .Lflush_cs_label(%rip), %rax  # Address to continue after CS reload
-    # Perform the far jump using `ljmp` rather than a push/lretq sequence.
-    # This avoids subtle stack alignment problems seen during early boot.
-    ljmp $__KERNEL_CS, $.Lflush_cs_label
+    # Reload CS using a far return sequence. This avoids issues with
+    # assemblers that reject `ljmp` in 64-bit mode while still flushing the
+    # instruction queue. We push the target segment selector and address on
+    # the stack and execute `lretq` to perform the far jump.
+    pushq $__KERNEL_CS                        # Push new CS
+    leaq .Lflush_cs_label(%rip), %rax         # Address to continue after CS reload
+    pushq %rax
+    lretq                                     # Far return to reload CS
 
 .Lflush_cs_label:
     # Execution continues here with CS reloaded.

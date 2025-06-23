@@ -175,9 +175,11 @@ void init_gdt() {
 
     terminal_writestring("Flushing GDT...\n");
     gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct
-    // Load the Task Register so interrupts using IST work correctly
-    // tss_flush uses the TSS descriptor at GDT entry 5 (selector 0x28).
-    tss_flush();
+    // Load the Task Register using the selector constant so the value
+    // stays correct if the GDT layout changes.  Using the helper that
+    // accepts a selector avoids hard‑coding 0x28 inside the assembly
+    // routine and mirrors the semantics of lgdt.
+    load_tss(TSS_SELECTOR);
     // Add a direct VGA write *after* gdt_flush to see if it returns.
     // Use a distinct character and position.
     ushort* pVGADebug = cast(ushort*) VGA_ADDRESS; 

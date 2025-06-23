@@ -31,6 +31,7 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
         }
     }
 }
+pragma(msg, "GdtPtr.sizeof = ", GdtPtr.sizeof);
 static assert(GdtPtr.sizeof == 10, "GdtPtr must be 10 bytes to match lgdt encoding");
 
 // Indices of each descriptor in our table

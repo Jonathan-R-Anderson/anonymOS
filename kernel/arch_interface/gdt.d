@@ -105,47 +105,22 @@ extern (C) void load_tss(ushort selector);     // Defined in tss.s
 
 
 // Helper to set GDT entries in a provided GdtEntry.
-void set_idt_entry(size_t vec, void* handler, ubyte ist = 0, ubyte type_attributes = 0x8E) {
-    auto offset = cast(ulong)handler;
-    idt_entries[vec].offset_low  = cast(ushort)(offset & 0xFFFF);
-    idt_entries[vec].selector    = KERNEL_CODE_SELECTOR;
-    idt_entries[vec].ist         = ist & 0x07; // Only bits 0–2 valid
-    idt_entries[vec].type_attr   = type_attr;
-    idt_entries[vec].offset_mid  = cast(ushort)((offset >> 16) & 0xFFFF);
-    idt_entries[vec].offset_high = cast(uint)((offset >> 32) & 0xFFFFFFFF);
-    idt_entries[vec].zero        = 0;
+private static void set_gdt_entry(GdtEntry* entry, uint base, uint limit, ubyte access, ubyte gran) {
+    entry.limit_0_15 = cast(ushort)(limit & 0xFFFF);
+    entry.base_0_15 = cast(ushort)(base & 0xFFFF);
+    entry.base_16_23 = cast(ubyte)((base >> 16) & 0xFF);
+    entry.access_byte = access;
+    entry.limit_16_19_flags = cast(ubyte)(((limit >> 16) & 0x0F) | (gran & 0xF0));
+    entry.base_24_31 = cast(ubyte)((base >> 24) & 0xFF);
 }
 
 void init_gdt() {
     terminal_writestring("Initializing GDT...\n");
 
-    // Initialize all to dummy handler first (optional)
-    foreach (i; 0..idt_entries.length)
-        set_idt_entry(i, &default_interrupt_handler);
-
-    // Set double fault (vector 8) to use IST1 (index 1)
-    set_idt_entry(0x08, &isr_double_fault, 1); // IST1
-
-    // Optionally: GPF, Page Fault, etc.
-    set_idt_entry(0x0D, &isr_general_protection); // no IST
-    set_idt_entry(0x0E, &isr_page_fault);         // no IST
-
     size_t entry_size = GdtEntry.sizeof;
     size_t num_entries = gdt_entries.length;
     size_t total_gdt_size = entry_size * num_entries;
     ushort calculated_limit = cast(ushort)(total_gdt_size - 1);
-
-
-    // Load IDT
-    align(1) struct IdtPtr {
-        ushort limit;
-        ulong base;
-    }
-
-    IdtPtr idt_ptr;
-    idt_ptr.limit = cast(ushort)(idt_entries.length * IdtEntry.sizeof - 1);
-    idt_ptr.base = cast(ulong)&idt_entries[0];
-
 
     // Disable the I/O permission bitmap
     tss.io_map_base = cast(ushort)Tss64.sizeof;

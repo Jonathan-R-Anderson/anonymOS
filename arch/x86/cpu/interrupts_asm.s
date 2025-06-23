@@ -63,7 +63,6 @@ ISR_NOERRCODE 30
 ISR_NOERRCODE 31
 
 # Hardware IRQs (ISRs 32-47 after remapping)
-ISR_NOERRCODE 32  # IRQ0: Programmable Interval Timer
 ISR_NOERRCODE 33  # IRQ1: Keyboard
 ISR_NOERRCODE 34  # IRQ2: Cascade for 8259A Slave controller
 ISR_NOERRCODE 35  # IRQ3: COM2
@@ -79,6 +78,14 @@ ISR_NOERRCODE 44  # IRQ12: PS/2 mouse
 ISR_NOERRCODE 45  # IRQ13: FPU / Coprocessor / Inter-processor
 ISR_NOERRCODE 46  # IRQ14: Primary ATA hard disk
 ISR_NOERRCODE 47  # IRQ15: Secondary ATA hard disk
+
+
+.global isr32
+isr32:
+    cli
+    pushq $0  # Dummy error code
+    pushq $32 # IRQ vector number (0x20)
+    jmp isr_common_stub
 
 # Common ISR stub
 # The stack frame passed to the D handler (via %rdi pointing to it) will look like:
@@ -198,5 +205,6 @@ default_isr:
     cli
 1:  hlt
     jmp 1b
+
 
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

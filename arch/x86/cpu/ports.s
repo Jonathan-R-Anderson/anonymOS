@@ -12,14 +12,13 @@
 .global inl
 
 # void outb(ushort port, ubyte value)
-# port in %di, value in %sil
+# port in %di, value in %sil (System V ABI)
 outb:
-    movw %di, %dx       # Load port into DX (16-bit)
-    movb %sil, %al      # Load value into AL (8-bit)
-    outb %al, %dx       # Output byte from AL to port DX
-    # nop                 # Optional short delay
-    # nop
+    movw %di, %dx        # Load port into DX
+    movzbl %sil, %eax    # Zero-extend SIL to EAX (so AL = value)
+    outb %al, %dx        # Output AL to port DX
     retq
+
 
 # ubyte inb(ushort port)
 # port in %di, returns ubyte in %al

@@ -3,8 +3,12 @@ module kernel.arch_interface.idt;
 import kernel.arch_interface.gdt : KERNEL_CODE_SELECTOR;
 import kernel.terminal : terminal_writestring;
 
+import kernel.arch_interface.ports;
+
+
 extern (C) void idt_load(IDTPtr* idt_p);         // from idt_loader.s
 extern (C) void irq1_handler();                  // from keyboard_handler_asm.s
+
 
 // Exception handlers
 extern (C) void isr0();
@@ -93,8 +97,34 @@ void set_idt_entry(int vec, void* handler, ushort selector = 0x08) {
     entry.zero = 0;
 }
 
+void remap_pic() {
+    // Start PIC initialization
+    outb(0x20, 0x11); // Master: ICW1
+    outb(0xA0, 0x11); // Slave: ICW1
+
+    // Set vector offset
+    outb(0x21, 0x20); // Master: IRQ0 -> 0x20
+    outb(0xA1, 0x28); // Slave: IRQ8 -> 0x28
+
+    // Setup cascading
+    outb(0x21, 0x04); // Master: slave at IRQ2
+    outb(0xA1, 0x02); // Slave: identity
+
+    // 8086 mode
+    outb(0x21, 0x01);
+    outb(0xA1, 0x01);
+
+    // Mask all IRQs for now
+    outb(0x21, 0xFF);
+    outb(0xA1, 0xFF);
+}
+
 public void init_idt() {
-    terminal_writestring("Initializing IDT...\n");
+
+    terminal_writestring("Calling remap_pic()\n");
+
+    remap_pic();
+    set_idt_entry(0x20, &isr32); // IRQ0 = Timer
 
     foreach (i; 0 .. MAX_INTERRUPTS)
         set_idt_entry(i, &default_isr);
@@ -103,6 +133,7 @@ public void init_idt() {
     set_idt_entry(0x08, &isr8, 1);     // IST1
     set_idt_entry(0x0D, &isr13);  // #GP
     set_idt_entry(0x0E, &isr14);          // #PF
+    terminal_writestring("Initializing IDT...\n");
 
     idt_ptr.limit = cast(ushort)(MAX_INTERRUPTS * IDTEntry.sizeof - 1);
     idt_ptr.base  = cast(ulong)&idt_entries[0];

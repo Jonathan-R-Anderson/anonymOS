@@ -29,7 +29,7 @@ align(1) struct GdtEntry {
 pragma(pack, 1);
 align(1) struct GdtPtr { // Ensure no padding for lgdt
     ushort limit; // Size of GDT - 1
-    union {
+    align(1) union {
         ulong base; // Canonical 64-bit base address
         struct {
             uint base_low;  // Lower 32 bits of base

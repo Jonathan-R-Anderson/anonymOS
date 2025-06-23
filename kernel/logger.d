@@ -42,22 +42,15 @@ extern(C) void log_message(const(char)* s)
 
 extern(C) void log_hex(ulong val)
 {
-    // Format value as fixed-width 16 digit hexadecimal string
-    // Buffer layout: "0x" + 16 digits + null terminator
-    char[19] buf;
     immutable(char[16]) hex = "0123456789ABCDEF";
-
-    buf[0] = '0';
-    buf[1] = 'x';
-
+    // Write characters directly to avoid temporary buffers
+    log_putc('0');
+    log_putc('x');
     foreach (i; 0 .. 16)
     {
         auto shift = 60 - i * 4;
-        buf[2 + i] = hex[(val >> shift) & 0xF];
+        log_putc(hex[(val >> shift) & 0xF]);
     }
-
-    buf[$ - 1] = '\0';
-    log_message(buf.ptr);
 }
 
 extern(C) const(char)* logger_get_buffer()

@@ -5,6 +5,8 @@ module kernel.interrupts;
 import kernel.types : Registers, ErrorCode;
 import kernel.io : outb;
 import kernel.terminal : terminal_writestring, terminal_write_hex, terminal_putchar; // scancode_to_char is used in kernel.keyboard
+
+__gshared ulong timer_ticks = 0; // simple tick counter for IRQ0
 import kernel.panic : kernel_panic;
 
 public: // Export interrupt_handler_d
@@ -28,6 +30,12 @@ extern (C) void interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err
             outb(PIC2_COMMAND, PIC_EOI); // Slave PIC
         }
         outb(PIC1_COMMAND, PIC_EOI); // Master PIC
+
+        if (int_no == 0x20) {
+            // Timer interrupt - just increment tick counter
+            timer_ticks++;
+            return;
+        }
     }
 
     // --- Logging the interrupt ---

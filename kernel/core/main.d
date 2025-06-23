@@ -38,6 +38,7 @@ extern (C) void init_pci_bus();           // For discovering hardware
 extern (C) void init_scheduler();         // May be needed by Haskell RTS
 extern (C) void init_syscall_interface(); // If shell/apps need kernel services
 extern (C) void init_filesystem(void* multiboot_info_ptr); // For initrd/root fs
+extern (C) void init_user_manager();
 
 // Core OS Managers from the Blueprint
 extern (C) void init_device_manager(void* multiboot_info_ptr);      // Manages /dev, user-space drivers
@@ -148,6 +149,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // The Namespace Manager will heavily interact with this.
     log_message("Initializing Filesystem (e.g., initrd)...\n");
     init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
+    init_user_manager();
+    log_message("Temporary user 'setup' created for initial account setup.\n");
     clear_screen();
 
     log_message("All subsystems (stubs) initialized.\n");

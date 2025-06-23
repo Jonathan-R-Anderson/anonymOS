@@ -4,7 +4,6 @@ import kernel.arch_interface.gdt : KERNEL_CODE_SELECTOR;
 import kernel.terminal : terminal_writestring;
 
 extern (C) void idt_load(IDTPtr* idt_p);         // from idt_loader.s
-extern (C) void idt_flush(IDTPtr* idt_p);        // alias to `lidt` instruction
 extern (C) void irq1_handler();                  // from keyboard_handler_asm.s
 
 // Exception handlers
@@ -41,10 +40,7 @@ extern (C) void isr29();
 extern (C) void isr30();
 extern (C) void isr31();
 extern (C) void isr32();
-extern (C) void default_interrupt_handler();
-extern (C) void isr_general_protection();
-extern (C) void isr_page_fault();
-extern (C) void isr_double_fault(); // for #DF
+extern (C) void default_isr();
 
 // 64-bit IDT entry (16 bytes)
 align(1)
@@ -98,17 +94,17 @@ public void init_idt() {
     terminal_writestring("Initializing IDT...\n");
 
     foreach (i; 0 .. MAX_INTERRUPTS)
-        set_idt_entry(i, &default_interrupt_handler);
+        set_idt_entry(i, &default_isr);
 
     // Special handlers
-    set_idt_entry(0x08, &isr_double_fault, 1);     // IST1
-    set_idt_entry(0x0D, &isr_general_protection);  // #GP
-    set_idt_entry(0x0E, &isr_page_fault);          // #PF
+    set_idt_entry(0x08, &isr8, 1);     // IST1
+    set_idt_entry(0x0D, &isr13);  // #GP
+    set_idt_entry(0x0E, &isr14);          // #PF
 
     idt_ptr.limit = cast(ushort)(MAX_INTERRUPTS * IDTEntry.sizeof - 1);
     idt_ptr.base  = cast(ulong)&idt_entries[0];
 
-    idt_flush(&idt_ptr);
+    idt_load(&idt_ptr);
 
     terminal_writestring("IDT loaded.\n");
 }

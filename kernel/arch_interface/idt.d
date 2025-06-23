@@ -60,12 +60,23 @@ struct IDTEntry {
 }
 
 // IDT pointer structure (for lidt)
+// Similar to `GdtPtr` in gdt.d we use an explicit union for the base
+// address to avoid any padding that could otherwise be introduced by
+// the compiler.  Packing to byte alignment ensures the resulting
+// structure is exactly ten bytes as required by the `lidt` instruction.
 pragma(pack, 1);
 align(1) struct IDTPtr {
     ushort limit;
-    ulong  base;
+    align(1) union {
+        ulong base; // canonical 64-bit pointer
+        struct {
+            uint base_low;  // low 32 bits
+            uint base_high; // high 32 bits
+        }
+    }
 }
 pragma(pack);
+pragma(msg, "IDTPtr.sizeof = ", IDTPtr.sizeof);
 static assert(IDTPtr.sizeof == 10, "IDTPtr must be 10 bytes to match lidt encoding");
 
 enum MAX_INTERRUPTS = 256;

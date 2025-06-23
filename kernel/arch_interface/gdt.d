@@ -23,7 +23,13 @@ align(1) struct GdtEntry {
 // GDT Pointer Structure (for lgdt instruction)
 align(1) struct GdtPtr { // Ensure no padding for lgdt
     ushort limit; // Size of GDT - 1
-    ulong base; // Address of GDT (64-bit)
+    union {
+        ulong base; // Canonical 64-bit base address
+        struct {
+            uint base_low;  // Lower 32 bits of base
+            uint base_high; // Upper 32 bits of base
+        }
+    }
 }
 static assert(GdtPtr.sizeof == 10, "GdtPtr must be 10 bytes to match lgdt encoding");
 

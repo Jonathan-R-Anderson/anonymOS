@@ -50,9 +50,9 @@ extern(C) void log_test()
 {
     log_message("Hello from logger!\n");
     log_message("Address of logBuffer: ");
-    log_hex(cast(ulong)logBuffer.ptr);
-    log_message("\nlogIndex = ");
-    log_hex(logIndex);
+    //log_hex(cast(ulong)logBuffer.ptr);
+    //log_message("\nlogIndex = ");
+    //log_hex(logIndex);
     log_message("\n");
 }
 

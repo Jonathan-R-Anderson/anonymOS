@@ -81,9 +81,9 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
     asm { "sti"; } // Enable interrupts
-    log_register_state("After IDT Setup");
+    //log_register_state("After IDT Setup");
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
-    clear_screen();
+    //clear_screen();
 
     // Initialize terminal (console output)
     pVGATest[6] = vga_entry('T', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // T for Terminal Init
@@ -95,12 +95,12 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     
     logger_init();
     log_test();
+    /*
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
     log_message("Boot info ptr: ");
     log_hex(cast(ulong)multiboot_info_ptr);
     log_message("\n");
     log_mem_dump(multiboot_info_ptr, 64);
-    /*
     clear_screen();
     log_register_state("Initial Registers");
 

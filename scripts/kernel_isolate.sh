@@ -20,7 +20,8 @@ while [[ "$1" == --* ]]; do
 done
 
 ISO="$ROOT_DIR/build/anonymOS.iso"
-QEMU_CMD="qemu-system-x86_64 -cdrom $ISO -m 128M -display curses -vga std"
+QEMU_CMD="qemu-system-x86_64 -cdrom $ISO -m 128M -display curses -vga std \
+    -d int,guest_errors -D qemu.log -debugcon file:qemu.log -serial file:qemu.log"
 
 if [ "$BUILD" = yes ]; then
     CMD="docker build -t $IMAGE_NAME -f \"$ROOT_DIR/Dockerfile.kernel\" \"$ROOT_DIR\""

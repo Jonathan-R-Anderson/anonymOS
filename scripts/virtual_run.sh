@@ -14,7 +14,8 @@ if [ "$DRY_RUN" = no ] && [ ! -f "$ISO" ]; then
   exit 1
 fi
 QEMU="qemu-system-x86_64"
-CMD="$QEMU -cdrom $ISO -m 128M -display curses -vga std"
+CMD="$QEMU -cdrom $ISO -m 128M -display curses -vga std \
+    -d int,guest_errors -D qemu.log -debugcon file:qemu.log -serial file:qemu.log"
 if grep -q -E '(vmx|svm)' /proc/cpuinfo 2>/dev/null; then
   CMD="$CMD --enable-kvm"
 fi

@@ -95,7 +95,6 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     
     logger_init();
     log_test();
-    /*
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
     log_message("Boot info ptr: ");
     log_hex(cast(ulong)multiboot_info_ptr);
@@ -175,5 +174,4 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
     clear_screen();
     loop_forever_hlt();
-    */
 }

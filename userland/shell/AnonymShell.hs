@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-import Shelly -- From the local Shelly module
+import MinimalShelly -- From the local minimal Shelly module
 import Data.Text (Text, pack, unpack)
 import qualified Data.Text as T -- Import Data.Text qualified as T
 import qualified Data.Text.IO as TIO

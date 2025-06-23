@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Shelly
+module MinimalShelly
   ( Sh
   , shelly
   , silently

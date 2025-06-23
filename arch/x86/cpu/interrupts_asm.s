@@ -113,7 +113,7 @@ isr32:
 # A more robust way is to allocate space on stack and fill it, then pass pointer.
 # For now, let's push GPRs, then set up segments, then call.
 
-
+.global isr_common_stub
 isr_common_stub:
     # Save general purpose registers.
     # The D 'Registers' struct must match this order.

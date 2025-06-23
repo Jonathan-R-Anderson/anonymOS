@@ -203,11 +203,13 @@ void init_gdt() {
     terminal_write_hex(cast(ulong)&gdt_ptr);
     terminal_writestring("\n");
 
+    // Prepare the TSS before loading it so any fault during or immediately
+    // after the GDT switch has a valid stack to fall back to.
+    tss.rsp0 = cast(ulong)(kernel_stack.ptr + kernel_stack.length); // top of kernel stack
+    tss.ist1 = cast(ulong)(ist1_stack.ptr + ist1_stack.length);     // top of IST1 stack
+
     terminal_writestring("Flushing GDT...\n");
     gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct
-
-    tss.rsp0 = cast(ulong)&kernel_stack[$ - 1]; // top of kernel stack
-    tss.ist1 = cast(ulong)&ist1_stack[$ - 1];   // top of IST1 stack
 
 
     // Load the Task Register using the selector constant so the value

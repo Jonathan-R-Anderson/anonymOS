@@ -79,15 +79,18 @@ void idt_set_gate(ubyte num, CInterruptHandler fp, ushort sel, ubyte flags) {
     idt_entries[num].zero        = 0;
 }
 
-void set_idt_entry(size_t vec, void* handler, ubyte ist = 0, ubyte type_attr = 0x8E) {
-    auto offset = cast(ulong)handler;
-    idt_entries[vec].offset_low  = cast(ushort)(offset & 0xFFFF);
-    idt_entries[vec].selector    = KERNEL_CODE_SELECTOR;
-    idt_entries[vec].ist         = ist & 0x07;
-    idt_entries[vec].type_attr   = type_attr;
-    idt_entries[vec].offset_mid  = cast(ushort)((offset >> 16) & 0xFFFF);
-    idt_entries[vec].offset_high = cast(uint)((offset >> 32) & 0xFFFFFFFF);
-    idt_entries[vec].zero        = 0;
+extern (C) void isr_general_protection(); // You must provide this in asm or D
+
+void set_idt_entry(int vec, void* handler, ushort selector = 0x08) {
+    auto entry = &idt_entries[vec];
+    auto addr = cast(size_t)handler;
+    entry.offset_low = cast(ushort)(addr & 0xFFFF);
+    entry.selector = selector;
+    entry.ist = 0;
+    entry.type_attr = 0x8E;
+    entry.offset_middle = cast(ushort)((addr >> 16) & 0xFFFF);
+    entry.offset_high = cast(uint)((addr >> 32) & 0xFFFFFFFF);
+    entry.zero = 0;
 }
 
 public void init_idt() {

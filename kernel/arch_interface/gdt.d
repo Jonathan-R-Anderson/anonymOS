@@ -91,6 +91,7 @@ align(16) struct Tss64 {
     ushort io_map_base;
 }
 
+
 align(16) __gshared Tss64 tss = Tss64.init;
 
 // Second half of a 64-bit TSS descriptor (base high and reserved fields)

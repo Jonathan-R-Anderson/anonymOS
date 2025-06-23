@@ -74,9 +74,22 @@ early_idt_ptr:
 .align 8
 gdt_start:
     .quad 0x0000000000000000        # Null descriptor
-    .quad 0x00af9a000000ffff        # 64-bit code segment
-    .quad 0x00cf92000000ffff        # 64-bit data segment
+    .quad 0x00af9a000000ffff        # 0x08: Code (DPL=0)
+    .quad 0x00cf92000000ffff        # 0x10: Data (DPL=0)
+    .quad 0x0000000000000000        # 0x18: Unused (optional)
+    .quad 0x0000000000000000        # 0x20: Unused (optional)
+    .quad 0x0000000000000067        # 0x28: TSS low (set in next step)
+    .quad 0x0000000000000000        # 0x30: TSS high
+
 gdt_end:
+
+.section .bss
+.align 16
+tss64:
+    .space 104  # 64-bit TSS size
+
+
+.section .data
 gdt_desc:
     .word gdt_end - gdt_start - 1
     .long gdt_start
@@ -93,6 +106,9 @@ _start:
     cli
     movl $stack_top, %esp
     lgdt gdt_desc
+
+    mov $0x28, %ax
+    ltr %ax
 
     # Setup page tables for identity mapping
     call setup_page_tables

@@ -107,8 +107,11 @@ _start:
     movl $stack_top, %esp
     lgdt gdt_desc
 
-    mov $0x28, %ax
-    ltr %ax
+    # The final GDT and TSS are set up later in init_gdt().
+    # Loading TR here with a placeholder descriptor causes a GP fault
+    # before kmain runs, so defer it until the real GDT is installed.
+    # mov $0x28, %ax
+    # ltr %ax
 
     # Setup page tables for identity mapping
     call setup_page_tables

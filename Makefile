@@ -209,11 +209,7 @@ run-debug: $(ISO_FILE)
 	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -S -s
 
 run-log-int: $(ISO_FILE)
-       @echo ">>> Running QEMU with interrupt logging..."
-       qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) \
-               -d int -D qemu.log \
-               -debugcon file:qemu.log -global isa-debugcon.iobase=0x402 \
-               -M smm=off -no-shutdown -no-reboot
+    qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -d int -D qemu.log -debugcon file:qemu.log -global isa-debugcon.iobase=0x402 -M smm=off -no-shutdown -no-reboot
 
 clean:
 		rm -rf $(BUILD_DIR)

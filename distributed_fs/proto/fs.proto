@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+// FS service combines AsyncFS metadata semantics with UPSS cryptographic
+// guarantees.  The messages include optional capability tokens so clients can
+// prove authorization when talking to the server.
+
+package dfs;
+
+service FS {
+  // Read a file and return decrypted bytes.
+  rpc ReadFile(ReadRequest) returns (ReadResponse);
+
+  // Write a file.  The server encrypts the payload and appends a new revision
+  // in the underlying storage.
+  rpc WriteFile(WriteRequest) returns (WriteResponse);
+
+  // Create a directory.
+  rpc MkDir(MkDirRequest) returns (MkDirResponse);
+
+  // Retrieve metadata for a path (size, revision, hash...).
+  rpc GetMetadata(MetaRequest) returns (MetaResponse);
+
+  // Watch a directory for changes.  The server streams events after batching
+  // pending metadata updates in the AsyncFS style.
+  rpc WatchDir(WatchRequest) returns (stream WatchEvent);
+
+  // Commit a new revision of a file or directory to the immutable log.
+  rpc CommitRevision(CommitRequest) returns (CommitResponse);
+
+  // Remove or hide a revision (UPSS redaction support).
+  rpc RedactEntry(RedactRequest) returns (RedactResponse);
+}
+
+// Each request carries an optional capability token for authorization.
+message Capability {
+  bytes token = 1;
+}
+
+message ReadRequest  { string path = 1; Capability cap = 2; }
+message ReadResponse { bytes data = 1; }
+
+message WriteRequest { string path = 1; bytes data = 2; Capability cap = 3; }
+message WriteResponse { bool ok = 1; }
+
+message MkDirRequest { string path = 1; Capability cap = 2; }
+message MkDirResponse { bool ok = 1; }
+
+message MetaRequest { string path = 1; Capability cap = 2; }
+message MetaResponse {
+  uint64 size = 1;
+  uint64 revision = 2;
+  bytes  hash = 3; // hash of contents for integrity
+}
+
+message WatchRequest { string path = 1; Capability cap = 2; }
+message WatchEvent {
+  string path = 1;
+  string kind = 2; // "create", "modify", "delete"
+}
+
+message CommitRequest { string path = 1; Capability cap = 2; }
+message CommitResponse { uint64 revision = 1; }
+
+message RedactRequest { string path = 1; uint64 revision = 2; Capability cap = 3; }
+message RedactResponse { bool ok = 1; }

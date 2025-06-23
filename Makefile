@@ -92,6 +92,11 @@ ANON_SHELL_EXE = $(BUILD_DIR)/$(ANON_SHELL_EXE_NAME)
 ANON_TERM_EXE_NAME = anonym_terminal
 ANON_TERM_EXE = $(BUILD_DIR)/$(ANON_TERM_EXE_NAME)
 
+
+QEMU_FLAGS = -cpu qemu64,+lm \
+             -m 128M -no-reboot -no-shutdown -d guest_errors \
+             -display curses -vga std
+
 ## Object Files (preserving directory structure under OBJ_DIR)
 ALL_KERNEL_D_OBJS_NO_GENERATED = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ALL_KERNEL_D_SOURCES_NO_GENERATED))
 ANSI_ART_D_OBJ                 = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ANSI_ART_D_TARGET_FILE))
@@ -201,15 +206,17 @@ run: $(ISO_FILE)
 # In another terminal: gdb -ex "target remote localhost:1234" -ex "symbol-file $(KERNEL_BIN)" -ex "layout asm" -ex "break _start"
 # (Adjust gdb command if you use a cross-compiler gdb like i686-elf-gdb)
 run-debug: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -S -s -display curses -vga std
+	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -S -s
 
 run-log-int: $(ISO_FILE)
 	@echo ">>> Running QEMU with interrupt logging..."
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -d int -D qemu.log -display curses -vga std
+	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -d int -D qemu.log
 
 run-debug-gdt: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -s -S -debugcon file:debug.log -global isa-debugcon.iobase=0xe9
-
+	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) \
+	                   -S -s \
+	                   -debugcon file:debug.log \
+	                   -global isa-debugcon.iobase=0xe9
 clean:
 		rm -rf $(BUILD_DIR)
 	

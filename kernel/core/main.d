@@ -9,7 +9,7 @@ import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : basic_tty_shell;       // Simple interactive shell
-import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump; // New logging utilities
+import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
 
@@ -94,6 +94,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     
     logger_init();
+    log_test();
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
     log_message("Boot info ptr: ");
     log_hex(cast(ulong)multiboot_info_ptr);

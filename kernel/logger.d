@@ -32,12 +32,28 @@ private void log_putc(char c)
 
 extern(C) void log_message(const(char)* s)
 {
+    if (s is null)
+    {
+        log_putc('['); log_putc('N'); log_putc('U'); log_putc('L'); log_putc('L'); log_putc(']');
+        return;
+    }
+
     size_t i = 0;
-    while(s[i] != '\0')
+    while (s[i] != '\0')
     {
         log_putc(s[i]);
         ++i;
     }
+}
+
+extern(C) void log_test()
+{
+    log_message("Hello from logger!\n");
+    log_message("Address of logBuffer: ");
+    log_hex(cast(ulong)logBuffer.ptr);
+    log_message("\nlogIndex = ");
+    log_hex(logIndex);
+    log_message("\n");
 }
 
 extern(C) void log_hex(ulong val)

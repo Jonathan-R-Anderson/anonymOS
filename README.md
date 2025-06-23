@@ -365,7 +365,7 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
 
    This command allocates 1024 MB of RAM, 2 CPU cores, sets up the image as a virtio drive, and connects the VM’s serial console to your terminal (so you can see boot logs).
 
-2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. Within a few seconds, you’ll reach either a login prompt or a shell on the serial console. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
+2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. The system now launches the `ttyShelly` shell by default on the serial console. This interactive shell is compiled using the Shelly sources located under `dependencies/ttyShelly`. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
 
 3. **Login:** If prompted to log in and you haven’t configured an Ethereum-based login for testing, use the default development login. The default user is usually `wcuser` with password `wcpass` (these are set in the default config for development mode). Enter those credentials to get a shell. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.
 

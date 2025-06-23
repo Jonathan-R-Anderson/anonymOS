@@ -53,22 +53,15 @@ gdt_flush:
     call debug_dump_state
 
     lgdt (%rdi)         # Load the GDT pointer. GdtPtr struct in D needs 64-bit base.
-    call debug_dump_state
 
-     # Reload segment registers.  We use Linux-style selector macros
-     # similar to those found in <asm/segment.h> to avoid hard-coded values.
     movw $__KERNEL_DS, %ax   # Selector for kernel data segment
-    call debug_dump_state
     movw %ax, %ds
-    call debug_dump_state
     movw %ax, %es
-    call debug_dump_state
     movw %ax, %ss
-    call debug_dump_state
     movw %ax, %fs
-    call debug_dump_state
     movw %ax, %gs
-    call debug_dump_state
+    # Avoid calling into the debug helpers while the segment registers
+    # are in flux. Debug output resumes after CS is reloaded.
 
      # Far return sequence to reload CS. In 64-bit mode `lretq` pops an 8-byte
      # RIP followed by an 8-byte CS value from the stack.  We therefore push the

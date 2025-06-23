@@ -210,8 +210,8 @@ run-debug: $(ISO_FILE)
 
 run-log-int: $(ISO_FILE)
 	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -m 128M -display curses -vga std \
-	-d int,guest_errors -D qemu.log -debugcon file:qemu.log -serial file:qemu.log \
-	-M smm=off
+	-d int,guest_errors,cpu_reset -D qemu.log -debugcon file:qemu.log -serial file:qemu.log \
+	-M smm=off -no-reboot -S -s
 
 clean:
 		rm -rf $(BUILD_DIR)

@@ -172,6 +172,13 @@ void init_gdt() {
 
     terminal_writestring("  GDT Ptr Limit: "); terminal_write_hex(gdt_ptr.limit); terminal_writestring("\n");
     terminal_writestring("  GDT Ptr Base: "); terminal_write_hex(gdt_ptr.base); terminal_writestring("\n");
+    // Extra diagnostics to verify pointer correctness
+    terminal_writestring("  &gdt_entries[0] = ");
+    terminal_write_hex(cast(ulong)&gdt_entries[0]);
+    terminal_writestring("\n");
+    terminal_writestring("  &gdt_ptr = ");
+    terminal_write_hex(cast(ulong)&gdt_ptr);
+    terminal_writestring("\n");
 
     terminal_writestring("Flushing GDT...\n");
     gdt_flush(&gdt_ptr); // Pass pointer to the global GdtPtr struct

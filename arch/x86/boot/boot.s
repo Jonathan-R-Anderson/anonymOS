@@ -209,6 +209,17 @@ long_mode_start:
     lea early_idt_ptr(%rip), %rax
     lidt (%rax)
 
+    # Enable SSE and FPU for the D runtime
+    movq %cr0, %rax
+    orq $0x22, %rax          # Set MP (bit1) and NE (bit5)
+    andq $~0x4, %rax         # Clear EM (bit2)
+    movq %rax, %cr0
+
+    movq %cr4, %rax
+    orq $0x600, %rax         # Set OSFXSR (bit9) and OSXMMEXCPT (bit10)
+    movq %rax, %cr4
+    fninit                   # Initialize FPU state
+
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.
     # The magic value is in %rax (should be 0x36d76289 for Multiboot2).

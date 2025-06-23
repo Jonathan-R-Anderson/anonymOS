@@ -3,7 +3,12 @@
 //! Exposes helpers for starting the gRPC service so that integration tests can
 //! spawn an embedded server if desired.
 
+use crate::{network, metadata};
+
+/// Start the minimal filesystem server.
 pub fn start_server() {
-    // Real implementation would wire up gRPC, storage and crypto layers
-    println!("starting server (stub)");
+    // Initialize the simple network layer and flush any pending metadata.
+    network::init();
+    metadata::flush_on_read();
+    println!("server started");
 }

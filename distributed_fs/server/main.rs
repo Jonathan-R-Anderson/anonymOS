@@ -15,7 +15,6 @@
 use crate::lib::start_server;
 
 fn main() {
-    // Placeholder start-up logic
-    println!("distributed_fs server stub – not functional");
+    // Start the minimal server used in tests and examples
     start_server();
 }

@@ -5,22 +5,24 @@
 
 /// Encrypt a blob of data.
 pub fn encrypt_blob(data: &[u8]) -> Vec<u8> {
-    // Placeholder encryption – in reality use a symmetric cipher
-    data.to_vec()
+    // Very small XOR-based transformation used for the examples
+    data.iter().map(|b| b ^ 0xAA).collect()
 }
 
 /// Decrypt a blob of data.
 pub fn decrypt_blob(data: &[u8]) -> Vec<u8> {
-    // Placeholder
-    data.to_vec()
+    // Same operation as encrypt since XOR is symmetric
+    encrypt_blob(data)
 }
 
 /// Sign metadata and return a signature.
-pub fn sign_metadata(_meta: &[u8]) -> Vec<u8> {
-    Vec::new()
+pub fn sign_metadata(meta: &[u8]) -> Vec<u8> {
+    let mut sum: u32 = 0;
+    for b in meta { sum = sum.wrapping_add(*b as u32); }
+    sum.to_le_bytes().to_vec()
 }
 
 /// Verify metadata signature.
-pub fn verify_metadata(_meta: &[u8], _sig: &[u8]) -> bool {
-    true
+pub fn verify_metadata(meta: &[u8], sig: &[u8]) -> bool {
+    sign_metadata(meta) == sig
 }

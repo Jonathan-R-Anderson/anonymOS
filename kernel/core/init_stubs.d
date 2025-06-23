@@ -26,5 +26,4 @@ extern(C) void init_keyboard_driver()
 extern(C) void init_pci_bus() {}
 extern(C) void init_scheduler() {}
 extern(C) void init_syscall_interface() {}
-extern(C) void init_filesystem(void* multiboot_info_ptr) {}
 extern(C) void launch_init_process() {}

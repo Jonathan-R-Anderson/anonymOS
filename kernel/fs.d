@@ -177,7 +177,8 @@ private void saveNode(FILE* f, Node* n, char* prefix, size_t len)
     }
 }
 
-static immutable(char*)[] defaultDirs = [
+/// Default directory tree for the in-memory filesystem.
+__gshared immutable(char*)[] defaultDirs = [
     "/sys",
     "/sys/boot",
     "/sys/kernel",
@@ -229,7 +230,8 @@ static immutable(char*)[] defaultDirs = [
     "/net/dns",
 ];
 
-static immutable(char*)[] defaultFiles = [
+/// Default set of configuration files created on first boot.
+__gshared immutable(char*)[] defaultFiles = [
     "/cfg/hostname",
     "/cfg/users/alice.json",
     "/cfg/users/bob.json",

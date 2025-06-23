@@ -28,7 +28,7 @@ __gshared size_t logIndex;
 
 extern(C) void logger_init()
 {
-    import core.stdc.string : memset;
+    import kernel.types : memset;
     logIndex = 0;
     // Ensure the entire buffer is zeroed before use
     memset(logBuffer.ptr, 0, logBuffer.length);

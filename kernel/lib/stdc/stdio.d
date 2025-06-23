@@ -1,6 +1,16 @@
 module kernel.lib.stdc.stdio;
 
-// This is a stub module for -betterC compilation.
-// It prevents the full core.stdc.stdio from being pulled in,
-// which is not suitable for a freestanding kernel environment.
-// Add minimal, safe declarations here ONLY if absolutely required by the compiler.
+// Minimal declarations for FILE operations.
+// These allow compiling code that references basic C stdio
+// when targeting a freestanding kernel with -betterC.
+
+import kernel.lib.stdc.stdint; // for size_t alias via c_ulong etc if needed
+
+extern(C):
+struct FILE { int _dummy; }
+
+FILE* fopen(const(char)* path, const(char)* mode);
+int fclose(FILE* f);
+char* fgets(char* s, int size, FILE* stream);
+size_t fwrite(const(void)* ptr, size_t size, size_t nmemb, FILE* stream);
+size_t fread(void* ptr, size_t size, size_t nmemb, FILE* stream);

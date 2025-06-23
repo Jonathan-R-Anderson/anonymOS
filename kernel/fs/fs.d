@@ -2,8 +2,8 @@ module kernel.fs;
 
 pragma(LDC_no_moduleinfo);
 
-import core.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
-import core.stdc.string : strlen, memcpy, strchr;
+import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
+import kernel.types : strlen, memcpy, strchr;
 import kernel.lib.stdc.stdlib : malloc, free;
 import kernel.logger : log_message;
 

@@ -80,3 +80,24 @@ extern (C) void* memcpy(void* dest, const void* src, size_t num) {
     }
     return dest;
 }
+
+// Compute length of a C string
+extern(C) size_t strlen(const(char)* str) {
+    size_t len = 0;
+    while (str[len] != 0) {
+        ++len;
+    }
+    return len;
+}
+
+// Find first occurrence of character in C string
+extern(C) char* strchr(const char* str, int c) {
+    size_t i = 0;
+    auto ch = cast(char)c;
+    while (str[i] != 0) {
+        if (str[i] == ch)
+            return cast(char*)str + i;
+        ++i;
+    }
+    return null;
+}

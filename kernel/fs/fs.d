@@ -73,7 +73,7 @@ private Node* mkdirInternal(const(char)* path)
     size_t i = 1;
     while(path[i])
     {
-        char nameBuf[64];
+        char[64] nameBuf;
         size_t j = 0;
         while(path[i] && path[i] != '/' && j < nameBuf.length-1)
             nameBuf[j++] = path[i++];
@@ -97,7 +97,7 @@ private Node* createFile(const(char)* path)
     size_t len = strlen(path);
     size_t end = len;
     while(end > 1 && path[end-1] != '/') --end;
-    char dirBuf[128];
+    char[128] dirBuf;
     if(end == 1)
     {
         dirBuf[0] = '/';
@@ -128,7 +128,7 @@ extern(C) Node* fs_lookup(const(char)* path)
     size_t i = 1;
     while(cur !is null && path[i])
     {
-        char nameBuf[64];
+        char[64] nameBuf;
         size_t j = 0;
         while(path[i] && path[i] != '/' && j < nameBuf.length-1)
             nameBuf[j++] = path[i++];
@@ -163,7 +163,7 @@ private void saveNode(FILE* f, Node* n, char* prefix, size_t len)
         plen += nameLen;
         pathBuf[plen] = 0;
     }
-    char line[300];
+    char[300] line;
     line[0] = (n.kind == NodeType.Directory) ? 'D' : 'F';
     line[1] = ' ';
     memcpy(line.ptr + 2, pathBuf.ptr, plen);
@@ -252,11 +252,11 @@ private void loadFilesystem()
     if(f is null)
     {
         createDefaultTree();
-        auto out = fopen("fs.img", "wb");
-        if(out !is null)
+        auto outFile = fopen("fs.img", "wb");
+        if(outFile !is null)
         {
-            saveNode(out, fsRoot, null, 0);
-            fclose(out);
+            saveNode(outFile, fsRoot, null, 0);
+            fclose(outFile);
         }
         return;
     }
@@ -292,7 +292,7 @@ extern(C) void init_filesystem(void* info)
 
 extern(C) void fs_create_user(const(char)* name)
 {
-    char path[128];
+    char[128] path;
     size_t len;
     // /users/<name>
     path[0] = '/'; path[1] = 'u'; path[2] = 's'; path[3] = 'e'; path[4] = 'r'; path[5]='s'; path[6]='/';
@@ -301,7 +301,7 @@ extern(C) void fs_create_user(const(char)* name)
     memcpy(path.ptr + len, name, nlen);
     len += nlen; path[len]=0;
     mkdirInternal(path.ptr);
-    const(char*) subdirs[6] = ["bin","cfg","doc","media","projects","vault"];
+    const(char*)[6] subdirs = ["bin","cfg","doc","media","projects","vault"];
     foreach(i, sub; subdirs)
     {
         char[160] sp;
@@ -314,7 +314,7 @@ extern(C) void fs_create_user(const(char)* name)
         mkdirInternal(sp.ptr);
     }
     // config file
-    char cfgPath[160];
+    char[160] cfgPath;
     auto prefix = "/cfg/users/";
     memcpy(cfgPath.ptr, prefix.ptr, strlen(prefix));
     size_t pl = strlen(prefix);

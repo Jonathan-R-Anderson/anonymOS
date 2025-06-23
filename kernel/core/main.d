@@ -94,12 +94,12 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     
     logger_init();
-    /*
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
     log_message("Boot info ptr: ");
     log_hex(cast(ulong)multiboot_info_ptr);
     log_message("\n");
     log_mem_dump(multiboot_info_ptr, 64);
+    /*
     clear_screen();
     log_register_state("Initial Registers");
 

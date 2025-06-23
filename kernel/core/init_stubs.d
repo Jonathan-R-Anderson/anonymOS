@@ -25,5 +25,9 @@ extern(C) void init_keyboard_driver()
 }
 extern(C) void init_pci_bus() {}
 extern(C) void init_scheduler() {}
-extern(C) void init_syscall_interface() {}
+extern(C) void init_syscall_interface()
+{
+    import kernel.syscall : syscall_init;
+    syscall_init();
+}
 extern(C) void launch_init_process() {}

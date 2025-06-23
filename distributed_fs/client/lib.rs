@@ -5,8 +5,11 @@
 //! sketch out the high level structure.
 
 /// Mount the remote filesystem using a FUSE-like interface.
-pub fn mount(_addr: &str, _mountpoint: &str) {
-    // In a real implementation, this would spawn a gRPC client, perform
-    // authentication and expose the namespace locally via FUSE.
-    println!("mounting {} at {} (stub)", _addr, _mountpoint);
+use crate::network;
+
+pub fn mount(addr: &str, mountpoint: &str) {
+    // Initialize the network layer so we can communicate with the server.
+    network::init();
+    println!("mounting {} at {}", addr, mountpoint);
+    network::send(format!("mount:{}:{}", addr, mountpoint).as_bytes());
 }

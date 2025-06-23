@@ -117,7 +117,7 @@ build: $(ISO_FILE)
 
 # Rule to build the anonymOS Shell executable.
 # This will build for your HOST system, not anonymOS target yet.
-$(ANON_SHELL_EXE): $(ANON_SHELL_DIR)/AnonymShell.hs $(ANON_SHELL_DIR)/anonym-shell.cabal
+$(ANON_SHELL_EXE): $(ANON_SHELL_DIR)/TtyShellyShell.hs $(ANON_SHELL_DIR)/anonym-shell.cabal
 	@echo ">>> Building anonymOS Shell (requires GHC and Cabal)..."
 	@echo ">>> NOTE: This will build for your HOST system, not anonymOS target yet."
 	        @mkdir -p $(dir $@) # Ensure the output directory exists

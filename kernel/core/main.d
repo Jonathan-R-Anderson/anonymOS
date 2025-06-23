@@ -8,7 +8,7 @@ import kernel.device.vga : clear_screen;
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
-import kernel.shell : basic_tty_shell;       // Simple interactive shell
+import kernel.shell : ttyShelly_shell;       // Simple interactive shell
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
@@ -166,8 +166,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
     // For now, fall through to a very basic built-in shell for direct testing.
-    log_message("Starting basic TTY shell...\n");
-    basic_tty_shell();
+    log_message("Starting ttyShelly shell...\n");
+    ttyShelly_shell();
     clear_screen();
 
     log_register_state("Shell exited");

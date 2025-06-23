@@ -42,17 +42,21 @@ extern(C) void log_message(const(char)* s)
 
 extern(C) void log_hex(ulong val)
 {
-    // "0x" prefix + 16 hex digits + null terminator
+    // Format value as fixed-width 16 digit hexadecimal string
+    // Buffer layout: "0x" + 16 digits + null terminator
     char[19] buf;
-    const(char)* hex = "0123456789ABCDEF";
+    immutable(char[16]) hex = "0123456789ABCDEF";
+
     buf[0] = '0';
     buf[1] = 'x';
-    for(int i = 0; i < 16; ++i)
+
+    foreach (i; 0 .. 16)
     {
-        ubyte nib = cast(ubyte)((val >> (4 * (15 - i))) & 0xF);
-        buf[2 + i] = hex[nib];
+        auto shift = 60 - i * 4;
+        buf[2 + i] = hex[(val >> shift) & 0xF];
     }
-    buf[18] = '\0';
+
+    buf[$ - 1] = '\0';
     log_message(buf.ptr);
 }
 

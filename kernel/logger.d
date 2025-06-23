@@ -3,14 +3,24 @@ module kernel.logger;
 version(unittest)
 {
     import std.stdio : putchar;
-    void terminal_putchar(char c)
+
+    // During unittests, just write characters to stdout
+    private void qemu_putchar(char c)
     {
         putchar(c);
     }
 }
 else
 {
-    import kernel.terminal : terminal_putchar;
+    import kernel.io : outb;
+
+    enum DEBUG_PORT = 0x402; // QEMU debugcon port
+
+    // Send a character to QEMU's debug port so it is written to qemu.log
+    private void qemu_putchar(char c)
+    {
+        outb(DEBUG_PORT, cast(ubyte)c);
+    }
 }
 
 __gshared char[8192] logBuffer;
@@ -28,7 +38,7 @@ private void log_putc(char c)
 {
     if(logIndex < logBuffer.length - 1)
         logBuffer[logIndex++] = c;
-    terminal_putchar(c);
+    qemu_putchar(c);
 }
 
 extern(C) void log_message(const(char)* s)

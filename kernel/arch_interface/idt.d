@@ -60,11 +60,13 @@ struct IDTEntry {
 }
 
 // IDT pointer structure (for lidt)
-align(1)
-struct IDTPtr {
+pragma(pack, 1);
+align(1) struct IDTPtr {
     ushort limit;
-    ulong base;
+    ulong  base;
 }
+pragma(pack);
+static assert(IDTPtr.sizeof == 10, "IDTPtr must be 10 bytes to match lidt encoding");
 
 enum MAX_INTERRUPTS = 256;
 align(16) __gshared IDTEntry[MAX_INTERRUPTS] idt_entries;
@@ -143,6 +145,16 @@ public void init_idt() {
     idt_ptr.base  = cast(ulong)&idt_entries[0];
     // Ensure the pointer is canonical (upper bits cleared)
     idt_ptr.base &= 0x0000FFFF_FFFF_FFFFUL;
+
+    log_message("IDTPtr.sizeof=");
+    log_hex(IDTPtr.sizeof);
+    log_message("\n&idt_ptr=");
+    log_hex(cast(ulong)&idt_ptr);
+    log_message("\nidt_ptr.base=");
+    log_hex(idt_ptr.base);
+    log_message(" limit=");
+    log_hex(idt_ptr.limit);
+    log_message("\n");
 
     idt_load(&idt_ptr);
 

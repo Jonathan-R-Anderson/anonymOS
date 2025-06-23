@@ -176,6 +176,18 @@ long_mode_start:
 
     cli                 # Disable interrupts during boot
 
+    # Zero BSS so all __gshared/uninitialized globals are predictable
+    lea _bss_start(%rip), %rdi
+    lea _bss_end(%rip), %rcx
+    xor %rax, %rax
+.Lclear_bss:
+    cmp %rcx, %rdi
+    jge .Lbss_cleared
+    movq %rax, (%rdi)
+    add $8, %rdi
+    jmp .Lclear_bss
+.Lbss_cleared:
+
     # Build IDT entries pointing to early_fault
     lea early_idt(%rip), %rdi        # Destination table
     mov $256, %ecx                   # Number of entries
@@ -196,18 +208,6 @@ long_mode_start:
     # Load a minimal IDT so unexpected exceptions don't triple fault
     lea early_idt_ptr(%rip), %rax
     lidt (%rax)
-
-    # Zero BSS so all __gshared/uninitialized globals are predictable
-    lea _bss_start(%rip), %rdi
-    lea _bss_end(%rip), %rcx
-    xor %rax, %rax
-.Lclear_bss:
-    cmp %rcx, %rdi
-    jge .Lbss_cleared
-    movq %rax, (%rdi)
-    add $8, %rdi
-    jmp .Lclear_bss
-.Lbss_cleared:
 
     # Multiboot info:
     # For Multiboot2, the address of the Multiboot2 info structure is in %rbx.

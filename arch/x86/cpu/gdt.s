@@ -32,20 +32,13 @@ gdt_flush:
     movw %ax, %fs
     movw %ax, %gs
 
-     # Far return sequence to reload CS. In 64-bit mode `lretq` pops an 8-byte
-     # RIP followed by an 8-byte CS value from the stack.  We therefore push the
-     # selector as a full 64-bit quantity so that the stack layout matches what
-     # `lretq` expects.
+    # Reload CS using a far jump.  This flushes the instruction queue and
+    # ensures execution continues in the code segment defined in the new GDT.
     leaq .Lflush_cs_label(%rip), %rax  # Address to continue after CS reload
-    pushq $__KERNEL_CS                # New CS selector (kernel code segment)
-    pushq %rax                        # Target RIP
-    lretq                             # Pops RIP then CS
+    # Perform the far jump using `ljmp` rather than a push/lretq sequence.
+    # This avoids subtle stack alignment problems seen during early boot.
+    ljmp $__KERNEL_CS, $.Lflush_cs_label
 
-     # Old versions of this file provided a far pointer here for an alternate
-     # `ljmp`-based sequence.  It served no purpose and was being disassembled
-     # as instructions when debugging.  Removing it keeps the text section
-     # clean and ensures the return address points directly to the label below.
- 
 .Lflush_cs_label:
     # Execution continues here with CS reloaded.
     # %rbx was saved on entry and should remain intact.

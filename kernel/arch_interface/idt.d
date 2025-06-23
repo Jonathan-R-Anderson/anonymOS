@@ -125,10 +125,13 @@ public void init_idt() {
     terminal_writestring("Calling remap_pic()\n");
 
     remap_pic();
-    set_idt_entry(0x20, &isr32); // IRQ0 = Timer
 
     foreach (i; 0 .. MAX_INTERRUPTS)
         set_idt_entry(i, &default_isr);
+
+    // Hardware IRQs
+    set_idt_entry(0x20, &isr32);       // IRQ0: Timer
+    set_idt_entry(0x21, &irq1_handler); // IRQ1: Keyboard
 
     // Special handlers
     set_idt_entry(0x08, &isr8, 1);     // IST1

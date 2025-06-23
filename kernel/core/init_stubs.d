@@ -14,7 +14,15 @@ extern(C) void init_kernel_heap() {}
 extern(C) void init_device_manager(void* multiboot_info_ptr) {}
 extern(C) void init_namespace_manager(void* multiboot_info_ptr) {}
 extern(C) void init_capability_supervisor() {}
-extern(C) void init_keyboard_driver() {}
+extern(C) void init_keyboard_driver()
+{
+    import kernel.keyboard : initialize_keyboard;
+    import kernel.device.pic : irq_clear_mask;
+
+    initialize_keyboard();
+    // Ensure keyboard interrupts are unmasked
+    irq_clear_mask(1);
+}
 extern(C) void init_pci_bus() {}
 extern(C) void init_scheduler() {}
 extern(C) void init_syscall_interface() {}

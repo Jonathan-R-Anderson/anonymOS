@@ -21,5 +21,5 @@
 isr_general_protection:
     cli                       # Disable further interrupts
     # error code pushed by CPU; push vector number and run common stub
-    pushq $13                 # Interrupt vector
+    push 13                   # Interrupt vector
     jmp isr_common_stub

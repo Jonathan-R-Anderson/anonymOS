@@ -30,7 +30,10 @@ void main(string[] args)
 
     const patterns = [
         "long_mode_start",
-        "Starting basic TTY shell"
+        // The kernel outputs this message before launching the ttyShelly shell
+        // when the boot process succeeds.  Look for it in the QEMU log to
+        // verify that the system reached the shell startup phase.
+        "Starting ttyShelly shell"
     ];
 
     foreach (p; patterns)

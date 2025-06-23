@@ -1,9 +1,11 @@
 .intel_syntax noprefix
-.section .bss
-    .align 16
-.global tss64
-tss64:
-    .space 104                      # Space for 64‑bit TSS structure
+# This assembly implements gdt_flush which installs the new
+# GDT provided via pointer in RDI.  The previous version kept a
+# dummy TSS symbol here and preserved RBX even though the register
+# is never touched.  The extra symbol could lead to duplicate
+# definitions when linking with other objects and the unnecessary
+# push/pop complicates stack alignment.  Both have been removed
+# for simplicity and reliability.
 
 .section .text
 .global gdt_flush
@@ -18,8 +20,6 @@ tss64:
 
 gdt_flush:
     # rdi = pointer to GdtPtr (limit + base)
-    push rbx
-
     lgdt [rdi]                     # Load GDT pointer
 
     mov ax, __KERNEL_DS
@@ -36,7 +36,6 @@ gdt_flush:
     lretq
 
 .Lflush_cs_label:
-    pop rbx
     ret
     .size gdt_flush, .-gdt_flush
 

@@ -25,6 +25,7 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
     ushort limit; // Size of GDT - 1
     ulong base; // Address of GDT (64-bit)
 }
+static assert(GdtPtr.sizeof == 10, "GdtPtr must be 10 bytes to match lgdt encoding");
 
 // Indices of each descriptor in our table
 enum GDT_NULL        = 0;
@@ -174,7 +175,9 @@ void init_gdt() {
     tss_high.reserved   = 0;
 
     gdt_ptr.limit = calculated_limit;
-    gdt_ptr.base  = cast(ulong)&gdt_entries[0]; // Address of the first element of the global array
+    // Store the canonical address of the first GDT entry. The cast to size_t
+    // ensures the compiler uses the full 64-bit address when targeting x86_64.
+    gdt_ptr.base  = cast(size_t)&gdt_entries[0];
 
     terminal_writestring("  GDT Ptr Limit: "); terminal_write_hex(gdt_ptr.limit); terminal_writestring("\n");
     terminal_writestring("  GDT Ptr Base: "); terminal_write_hex(gdt_ptr.base); terminal_writestring("\n");

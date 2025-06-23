@@ -88,7 +88,7 @@ void set_idt_entry(int vec, void* handler, ushort selector = 0x08) {
     entry.selector = selector;
     entry.ist = 0;
     entry.type_attr = 0x8E;
-    entry.offset_middle = cast(ushort)((addr >> 16) & 0xFFFF);
+    entry.offset_mid = cast(ushort)((addr >> 16) & 0xFFFF);
     entry.offset_high = cast(uint)((addr >> 32) & 0xFFFFFFFF);
     entry.zero = 0;
 }

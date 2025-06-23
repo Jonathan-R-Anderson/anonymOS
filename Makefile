@@ -38,7 +38,7 @@ KERNEL_D_CORE_SRC           = $(wildcard kernel/core/*.d) $(wildcard kernel/core
 KERNEL_D_DEVICE_SRC         = $(wildcard kernel/device/*.d) $(wildcard kernel/hardware/*.d) $(wildcard kernel/memory/*.d)
 KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard kernel/include/kernel/*.d)
 KERNEL_D_LIB_STDC_SRC       = $(wildcard kernel/lib/stdc/*.d)
-KERNEL_D_FS_SRC             = $(wildcard kernel/fs/*.d)
+KERNEL_D_FS_SRC             = kernel/fs.d
 KERNEL_D_ROOT_SRC           = $(wildcard kernel/*.d) # e.g. interrupts.d, keyboard.d, terminal.d
 # Note: kernel/utils/ansi_art.d is generated, so it's handled as a target, not a source wildcard here.
 

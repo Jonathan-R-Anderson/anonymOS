@@ -67,7 +67,8 @@ ALL_ASM_SOURCES = \
     $(DEBUG_ASM_SRC) \
     $(INTERRUPTS_ASM_SRC) \
     $(KEYBOARD_HANDLER_ASM_SRC) \
-    $(TSS_ASM_SRC)
+    $(TSS_ASM_SRC) \
+    arch/x86/interrupt_stubs.s
 
 ## Other Files and Tools
 LINKER_SCRIPT               = arch/x86/linker.ld

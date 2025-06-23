@@ -118,7 +118,69 @@ In summary, the filesystem and namespace layer of anonymOS provides a **unifying
 * It generalizes device and service access to file operations (open, read, write, etc.).
 * It allows per-process tailoring (inherit and then mutate namespace), enabling sandboxing, multi-versioning, and testing setups without global impact.
 * It makes distribution transparent – local vs remote is mostly just a matter of which server you mount.
-* And it simplifies the programming model – developers can use familiar file semantics for a wide array of tasks, with the OS doing the heavy lifting of routing those operations to the correct handlers.
+### Default Filesystem Layout
+
+On first boot the system creates a minimal persistent filesystem on disk (`fs.img`). Subsequent boots load this tree so state survives reboots. The default layout is:
+
+```
+/
+├── sys/
+│   ├── boot/
+│   ├── kernel/
+│   ├── drivers/
+│   ├── init/
+│   └── profiles/
+├── apps/
+│   ├── coreutils/
+│   │   └── v1.2.3/
+│   ├── browser/
+│   │   └── v105.0/
+│   └── editor/
+│       └── v3.1/
+├── users/
+│   ├── alice/
+│   │   ├── bin/
+│   │   ├── cfg/
+│   │   ├── doc/
+│   │   ├── media/
+│   │   ├── projects/
+│   │   └── vault/
+│   └── bob/
+│       ├── bin/
+│       ├── cfg/
+│       ├── doc/
+│       ├── media/
+│       ├── projects/
+│       └── vault/
+├── srv/
+│   ├── sshd/
+│   ├── web/
+│   ├── dns/
+│   └── db/
+├── cfg/
+│   ├── hostname
+│   ├── users/
+│   │   ├── alice.json
+│   │   └── bob.json
+│   ├── network/
+│   │   └── interfaces.json
+│   └── system/
+│       └── packages.json
+├── vol/
+│   ├── usb0/
+│   ├── backup_drive/
+│   └── encrypted_partition/
+├── log/
+├── run/
+├── tmp/
+├── dev/
+└── net/
+    ├── ip/
+    ├── tcp/
+    └── dns/
+```
+
+This hierarchy forms the base namespace that processes inherit at startup.
 
 ## Security Model: Capability-Based and Zero-Trust
 

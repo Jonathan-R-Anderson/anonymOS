@@ -4,6 +4,7 @@ module kernel.main;
 
 import kernel.types : VGAColor, ErrorCode;
 import kernel.terminal; // Imports VGA_ADDRESS, vga_entry, vga_entry_color, terminal_initialize, etc.
+import kernel.device.vga : clear_screen;
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
@@ -72,21 +73,23 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_message("\n");
     log_register_state("After GDT Setup");
     pVGATest[3] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_GREEN, VGAColor.BLACK)); // D for GDT Done (or I for IDT)
+    clear_screen();
 
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
     init_idt(); // Set up IDT
-    /*
     initialize_pic(); // Remap and configure PIC
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
     asm { "sti"; } // Enable interrupts
     log_register_state("After IDT Setup");
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
+    clear_screen();
 
     // Initialize terminal (console output)
     pVGATest[6] = vga_entry('T', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // T for Terminal Init
     terminal_initialize();
     pVGATest[7] = vga_entry('D', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // D for Terminal Done
+    clear_screen();
 
     logger_init();
     log_message("anonymOS: Core Arch & Terminal Initialized.\n");
@@ -94,6 +97,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_hex(cast(ulong)multiboot_info_ptr);
     log_message("\n");
     log_mem_dump(multiboot_info_ptr, 64);
+    clear_screen();
     log_register_state("Initial Registers");
 
     // Phase 2: "preInit" - CPU features, early hardware
@@ -101,6 +105,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     init_cpu_features(); // For LAPIC, TSC etc. Important for SMP and precise timing.
                          // The Haskell RTS might benefit from a timer source.
     init_cmos_rtc();     // To get current time, if needed.
+    clear_screen();
 
     // Phase 3: Memory Management - CRITICAL for Haskell
     // Also foundational for all subsequent managers and processes.
@@ -111,6 +116,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_register_state("After Memory Init");
     log_message("First 64 bytes of boot info:\n");
     log_mem_dump(multiboot_info_ptr, 64);
+    clear_screen();
 
     // Phase 4: Core OS Managers (as per blueprint)
     // These managers are crucial for realizing the dynamic, secure architecture.
@@ -120,6 +126,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     init_namespace_manager(multiboot_info_ptr);   // Prepares for per-process virtual filesystems and overlays.
                                                  // Key for modular inheritance and isolation.
     init_capability_supervisor(); // Initializes the framework for capability-based security.
+    clear_screen();
 
     // Phase 5: Other Drivers and Kernel Services (can be managed/loaded via Device Manager later)
     log_message("Initializing remaining Drivers & Kernel Services...\n");
@@ -128,28 +135,33 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     net_init();               // Initialize networking (stub)
     init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
     init_syscall_interface(); // If the shell or Haskell programs need kernel services
+    clear_screen();
 
     // Phase 6: Filesystem Initialization (Root FS, Initrd)
     // The Namespace Manager will heavily interact with this.
     log_message("Initializing Filesystem (e.g., initrd)...\n");
     init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
+    clear_screen();
 
     log_message("All subsystems (stubs) initialized.\n");
     log_register_state("Before Init Process");
     log_message("Boot info snapshot:\n");
     log_mem_dump(multiboot_info_ptr, 64);
+    clear_screen();
 
     // Phase 7: Launch the first user-space process (PID 1 - /system/init)
     // This process will then use the initialized managers to set up the user environment,
     // load applications (snaps/recipes), etc., according to the declarative configuration.
     log_message("Attempting to launch Init Process...\n");
     launch_init_process(); // This would not return if successful.
+    clear_screen();
 
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
     // For now, fall through to a very basic built-in shell for direct testing.
     log_message("Starting basic TTY shell...\n");
     basic_tty_shell();
+    clear_screen();
 
     log_register_state("Shell exited");
 
@@ -157,6 +169,6 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // If it is, it means the shell exited or failed to start.
     log_message("Shell exited or failed to initialize.\n");
     terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
+    clear_screen();
     loop_forever_hlt();
-    */
 }

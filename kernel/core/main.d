@@ -75,6 +75,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     pVGATest[4] = vga_entry('I', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // I for IDT
     init_idt(); // Set up IDT
+    /*
     initialize_pic(); // Remap and configure PIC
     irq_clear_mask(0); // Timer
     irq_clear_mask(1); // Keyboard
@@ -157,4 +158,5 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_message("Shell exited or failed to initialize.\n");
     terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
     loop_forever_hlt();
+    */
 }

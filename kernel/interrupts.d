@@ -74,8 +74,6 @@ extern (C) void interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err
 }
 
 extern(C) void default_isr_handler() {
-    terminal_writestring("Unhandled interrupt triggered. System halted.\n");
-    while (true) {
-        asm { "cli"; "hlt"; }
-    }
+    // Log the spurious or unexpected interrupt but keep running
+    terminal_writestring("Unhandled interrupt triggered.\n");
 }

@@ -201,10 +201,10 @@ unhandled_interrupt:
 .extern default_isr_handler
 
 default_isr:
+    # Call the generic default handler which merely logs the event.
     call default_isr_handler
-    cli
-1:  hlt
-    jmp 1b
+    # Simply return from the interrupt so the kernel keeps running
+    iretq
 
 
 .section .note.GNU-stack, "", @progbits # Mark stack as non-executable

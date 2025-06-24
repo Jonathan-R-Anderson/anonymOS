@@ -1,7 +1,7 @@
 module kernel.plymouth;
 
 import kernel.terminal : terminal_writestring_color, terminal_putchar, terminal_writestring;
-import kernel.device.vga : VGAColor;
+import kernel.types : VGAColor;
 import kernel.logger : log_message;
 import kernel.utils.plymouth_logo : ansiArtData;
 
@@ -10,14 +10,16 @@ private immutable string[4] spinner = ["|", "/", "-", "\\"];
 
 extern(C) void plymouth_start()
 {
-    terminal_writestring_color(ansiArtData ~ "\n", VGAColor.LIGHT_BLUE, VGAColor.BLACK);
+    terminal_writestring_color(ansiArtData.ptr, VGAColor.LIGHT_BLUE, VGAColor.BLACK);
+    terminal_putchar('\n');
     log_message("plymouth: start\n");
 }
 
 extern(C) void plymouth_message(const(char)* msg)
 {
     if (msg is null) return;
-    terminal_writestring_color(cast(string)msg ~ "\n", VGAColor.LIGHT_GREY, VGAColor.BLACK);
+    terminal_writestring_color(msg, VGAColor.LIGHT_GREY, VGAColor.BLACK);
+    terminal_putchar('\n');
     log_message(msg);
     log_message("\n");
 }

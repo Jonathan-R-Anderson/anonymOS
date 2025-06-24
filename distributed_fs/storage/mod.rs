@@ -7,6 +7,7 @@
 //! across nodes, providing rudimentary redundancy similar to RAID.
 
 pub mod dht;
+pub mod netfs;
 
 /// Store an encrypted block.
 pub fn store_block(id: &str, data: &[u8]) {

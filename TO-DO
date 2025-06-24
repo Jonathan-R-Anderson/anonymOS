@@ -1,11 +1,16 @@
 
 After examining the repository, I found:
 
-kernel/lib/stdc/stdio.d contains only stub implementations for fopen, fread, etc., so no real filesystem-backed I/O is present. 
+kernel/lib/stdc/stdio.d now includes minimal implementations of fopen/fread/fwrite
+and related functions. These call directly into the host operating system using
+syscalls, so the kernel's in-memory filesystem can persist to a disk image when
+running under qemu or another emulator.
 
 kernel/lib/stdc/stdlib.d provides a stubbed system function that simply returns -1, with a TODO comment noting that it should hook into a user-space process launcher. 
 
-Filesystem support in kernel/fs.d currently relies on fopen/fread/fwrite but since these functions are stubs, the filesystem cannot actually persist data. 
+Filesystem support in kernel/fs.d uses these stdio wrappers to read and write
+`fs.img`. Persistence therefore works when running under a host OS, though it
+remains a simple in-memory tree dumped to disk.
 
 The request involves creating a fully functional user-space process launcher, adding complete filesystem support for stdio, integrating Node.js, and implementing system in the kernel—all major subsystems which are far beyond what the current repository provides. Completing these features would require developing large parts of an OS kernel (process management, actual drivers or system call interfaces, I/O handling) as well as integrating and cross-compiling a Node runtime.
 

@@ -51,7 +51,7 @@ hex = concatMap (printf "%02x") . B.unpack
 
 startDesktop :: String -> IO ()
 startDesktop user = do
-    let cfgPath = "home/" ++ user ++ "/.riced.conf"
+    let cfgPath = "users/" ++ user ++ "/.riced.conf"
     cfgExists <- doesFileExist cfgPath
     conf <- if cfgExists then readFile cfgPath else return ""
     putStrLn ("Loaded riced desktop for " ++ user)

@@ -1,5 +1,5 @@
-const React = require('react');
-const {render, Text, Box, useApp, useInput} = require('ink');
+import React from 'react';
+import {render, Text, Box, useApp, useInput} from 'ink';
 
 const expectedUser = 'wcuser';
 const expectedPass = 'wcpass';
@@ -44,15 +44,24 @@ const Login = () => {
     else if (stage === 'pass') setPassword(password + input);
   });
 
-  return (
-    <Box flexDirection="column">
-      <Text color="cyan">+-----------------------+</Text>
-      <Text color="cyan">|     anonymOS Login    |</Text>
-      <Text color="cyan">+-----------------------+</Text>
-      {stage === 'user' && <Text>Username: {username}</Text>}
-      {stage === 'pass' && <Text>Password: {'*'.repeat(password.length)}</Text>}
-      {stage === 'done' && <Text>{message} (press Enter)</Text>}
-    </Box>
+  const header = process.env.INK_LOGIN_HEADER || 'anonymOS Login';
+  const color = process.env.INK_LOGIN_COLOR || 'cyan';
+  const border = '+-----------------------+';
+  return React.createElement(
+    Box,
+    {flexDirection: 'column'},
+    React.createElement(Text, {color}, border),
+    React.createElement(Text, {color}, `|     ${header}    |`),
+    React.createElement(Text, {color}, border),
+    stage === 'user' && React.createElement(Text, null, `Username: ${username}`),
+    stage === 'pass' &&
+      React.createElement(
+        Text,
+        null,
+        `Password: ${'*'.repeat(password.length)}`
+      ),
+    stage === 'done' &&
+      React.createElement(Text, null, `${message} (press Enter)`)
   );
 };
 

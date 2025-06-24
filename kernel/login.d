@@ -1,12 +1,22 @@
 module kernel.login;
 
-import kernel.terminal : terminal_writestring, terminal_putchar;
+import kernel.terminal : terminal_writestring, terminal_putchar, terminal_writestring_color;
+import kernel.device.vga : clear_screen;
 import kernel.keyboard : keyboard_getchar;
 import kernel.types : strlen, memcmp;
+
+private void draw_login_banner()
+{
+    terminal_writestring_color("+-----------------------+\n", VGAColor.CYAN, VGAColor.BLACK);
+    terminal_writestring_color("|     anonymOS Login    |\n", VGAColor.CYAN, VGAColor.BLACK);
+    terminal_writestring_color("+-----------------------+\n", VGAColor.CYAN, VGAColor.BLACK);
+}
 
 /// Simple login prompt. Returns true if username/password match defaults.
 extern(C) bool login_prompt()
 {
+    clear_screen();
+    draw_login_banner();
     char[32] user;
     size_t ulen = 0;
     terminal_writestring("Username: ");

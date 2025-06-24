@@ -5,3 +5,4 @@ bin/
 dist-newstyle/
 qemu.log
 __pycache__/
+node_modules/

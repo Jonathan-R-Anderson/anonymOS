@@ -4,3 +4,4 @@ build/
 bin/
 dist-newstyle/
 qemu.log
+__pycache__/

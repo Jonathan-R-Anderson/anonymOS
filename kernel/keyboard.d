@@ -73,12 +73,15 @@ void initialize_keyboard() {
     // For this basic setup, we primarily rely on the BIOS having initialized
     // the keyboard controller.  However some BIOSes leave keyboard scanning
     // disabled which means no IRQ1 events are generated.  To be safe we
-    // explicitly enable scanning by sending the "Enable Scanning" command
-    // (0xF4) to the keyboard controller data port (0x60).  We do not check the
-    // status port here as this is a minimal driver used during early boot and
-    // the controller is expected to be ready.
+    // explicitly enable the controller interface and keyboard scanning.  Some
+    // emulators and BIOSes require sending the "Enable Keyboard Interface"
+    // command (0xAE) to the control port (0x64) before the device will honour
+    // the "Enable Scanning" command (0xF4) on the data port (0x60). We keep the
+    // logic simple and do not poll the status port as this driver runs very
+    // early during boot and the controller is assumed to be ready.
 
     import kernel.arch_interface.ports : outb;
+    outb(0x64, 0xAE); // Activate keyboard interface
     outb(0x60, 0xF4); // Enable keyboard scanning so IRQ1 will fire
 
     // All further setup (installing IRQ handler, unmasking in the PIC) is done

@@ -104,10 +104,11 @@ QEMU_FLAGS = -cpu qemu64,+lm \
              -m 128M -no-reboot -no-shutdown -d guest_errors \
              -display curses -vga std
 
-# Node.js runtime for Ink-based login
-NODE_VERSION = v18.20.0
-NODE_DIST = node-$(NODE_VERSION)-linux-x64
-NODE_DIR = $(BUILD_DIR)/$(NODE_DIST)
+# Node.js runtime for Ink-based login using nvm
+NVM_VERSION = v0.40.3
+NVM_DIR ?= $(HOME)/.nvm
+NODE_VERSION = v22.16.0
+NODE_DIR = $(NVM_DIR)/versions/node/$(NODE_VERSION)
 NODE_BIN = $(NODE_DIR)/bin/node
 NODE_SETUP = $(NODE_DIR)/.setup_done
 

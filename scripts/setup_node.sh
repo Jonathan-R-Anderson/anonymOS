@@ -1,20 +1,24 @@
 #!/bin/bash
 set -e
 DEST_DIR="$1"
-NODE_VERSION="v18.20.0"
-NODE_DIST="node-${NODE_VERSION}-linux-x64"
-NODE_TAR="${NODE_DIST}.tar.xz"
-NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/${NODE_TAR}"
-NODE_PATH="${DEST_DIR}/${NODE_DIST}"
+NVM_VERSION="v0.40.3"
+NODE_VERSION="v22.16.0"
+NVM_DIR="$HOME/.nvm"
+NODE_DIR="$NVM_DIR/versions/node/$NODE_VERSION"
 
-mkdir -p "$DEST_DIR"
-if [ ! -d "$NODE_PATH" ]; then
-    echo "Downloading Node.js ${NODE_VERSION}..."
-    curl -L "$NODE_URL" -o "$DEST_DIR/${NODE_TAR}"
-    tar -xf "$DEST_DIR/${NODE_TAR}" -C "$DEST_DIR"
+if [ ! -d "$NVM_DIR" ]; then
+    echo "Installing nvm $NVM_VERSION..."
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/$NVM_VERSION/install.sh" | bash
 fi
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 
-# Install login dependencies using the downloaded Node/npm
-"${NODE_PATH}/bin/npm" ci --omit=dev --prefix userland/ink-login
+if [ ! -d "$NODE_DIR" ]; then
+    echo "Installing Node.js $NODE_VERSION..."
+    nvm install "${NODE_VERSION#v}"
+fi
+nvm use "$NODE_VERSION"
 
-touch "${NODE_PATH}/.setup_done"
+npm ci --omit=dev --prefix userland/ink-login
+
+touch "$NODE_DIR/.setup_done"

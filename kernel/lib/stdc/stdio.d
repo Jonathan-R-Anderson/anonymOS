@@ -80,7 +80,8 @@ FILE* fopen(const(char)* path, const(char)* mode)
     bool createFile = false;
 
     // Parse access mode similar to standard C behaviour
-    final switch(mode[0])
+    // Use a normal switch because -betterC may not accept final switches
+    switch(mode[0])
     {
         case 'r':
             version(linux)  flags = O_RDONLY;
@@ -126,12 +127,14 @@ FILE* fopen(const(char)* path, const(char)* mode)
     int fd;
     version(linux)
     {
-        fd = cast(int)linux_syscall(SYS_OPEN, cast(long)path, flags, 0o666);
+        // Use standard numeric permissions (0x1B6 == 0666)
+        fd = cast(int)linux_syscall(SYS_OPEN, cast(long)path, flags, 0x1B6);
     }
     version(Plan9)
     {
         if(createFile)
-            fd = create(path, flags, 0o666);
+            // Create file with 0666 permissions on Plan9 as well
+            fd = create(path, flags, 0x1B6);
         else
             fd = open(path, flags);
     }

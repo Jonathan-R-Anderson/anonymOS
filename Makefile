@@ -218,7 +218,7 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 $(NODE_SETUP): | $(BUILD_DIR)
-	./scripts/install.sh $(BUILD_DIR)
+	bash ./scripts/install.sh $(BUILD_DIR)
 
 # Rule to generate the D file from ANSI art
 $(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)

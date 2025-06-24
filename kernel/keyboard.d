@@ -84,7 +84,9 @@ extern (C) void keyboard_interrupt_handler(ubyte scancode) {
         if (c != 0) {
             input_buffer[input_head] = c;
             input_head = (input_head + 1) % INPUT_BUF_SIZE;
-            terminal_putchar(c); // echo
+            // Do not echo here. The shell will handle character
+            // display so it can properly process control characters
+            // like backspace or newline.
         }
     }
     // The EOI is sent by the assembly handler after this D function returns.

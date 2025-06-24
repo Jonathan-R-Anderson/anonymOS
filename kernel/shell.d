@@ -20,9 +20,14 @@ extern(C) void ttyShellyMain()
                 line[idx] = '\0';
                 break;
             } else if (c == '\b') {
-                if (idx > 0) { idx--; terminal_writestring("\b \b"); }
+                if (idx > 0) {
+                    idx--;
+                    terminal_writestring("\b \b");
+                }
             } else {
                 line[idx++] = c;
+                // Echo the typed character so the user can see input
+                terminal_putchar(c);
             }
         }
 

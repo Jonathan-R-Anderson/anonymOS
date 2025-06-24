@@ -55,8 +55,10 @@ extern(C) void ttyShellyMain()
             continue; // Empty input, skip
         }
 
-        import std.string : fromStringz;
-        string cmd = fromStringz(line.ptr);
+        // Convert the null-terminated buffer to a slice without using
+        // the GC-enabled std.string.fromStringz helper which is
+        // incompatible with -betterC.
+        auto cmd = line[0 .. idx];
 
         // Debug output
         terminal_writestring("[DEBUG] Parsed input: ");

@@ -49,3 +49,14 @@ extern(C) void free(void* ptr)
     // Bump allocator does not support free; ignore.
 }
 
+/// Minimal stub for the C `system` function.
+/// In a real kernel this would launch a user space
+/// program via the process management subsystem.
+/// Currently it simply returns -1 to indicate the
+/// command was not executed.
+extern(C) int system(const(char)* cmd)
+{
+    // TODO: hook into a user space process launcher.
+    return -1;
+}
+

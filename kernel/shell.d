@@ -20,53 +20,78 @@ private bool similar(const(char)[] a, const(char)[] b)
 /// Haskell code, but that is currently not linked in the kernel build.
 extern(C) void ttyShellyMain()
 {
-    terminal_writestring("Welcome to ttyShelly stub shell.\n");
+    terminal_writestring("Welcome to ttyShelly stub shell.\r\n");
+
     char[256] line;
+
     while (true) {
-        size_t idx = 0;
+        // Display shell prompt
         terminal_writestring("wcuser@default:/# ");
+
+        size_t idx = 0;
+        // Clear buffer to avoid old data
+        for (size_t i = 0; i < line.length; ++i)
+            line[i] = 0;
+
         while (true) {
             char c = keyboard_getchar();
+
             if (c == '\n') {
-                terminal_putchar('\n');
+                terminal_writestring("\r\n");
                 line[idx] = '\0';
                 break;
             } else if (c == '\b') {
                 if (idx > 0) {
                     idx--;
-                    terminal_writestring("\b \b");
+                    terminal_writestring("\b \b"); // erase character visually
                 }
-            } else {
+            } else if (idx < line.length - 1) {
                 line[idx++] = c;
-                // Character was already echoed by the keyboard interrupt
-                // handler. The shell only needs to store it.
+                terminal_putchar(c); // echo character here instead of IRQ
             }
         }
 
-        if (idx == 0) continue;
+        if (idx == 0) {
+            continue; // Empty input, skip
+        }
 
-        if (line[0..idx] == "help") {
-            terminal_writestring("Available commands:\n");
-            terminal_writestring("  help - show this message\n");
-            terminal_writestring("  exit - halt the system\n");
-        } else if (line[0..idx] == "exit") {
-            terminal_writestring("Bye!\n");
+        import std.string : fromStringz;
+        string cmd = fromStringz(line.ptr);
+
+        // Debug output
+        terminal_writestring("[DEBUG] Parsed input: ");
+        terminal_writestring(cmd.ptr);
+        terminal_writestring("\r\n");
+
+        // Command matching
+        if (cmd == "help") {
+            terminal_writestring("Available commands:\r\n");
+            terminal_writestring("  help - show this message\r\n");
+            terminal_writestring("  exit - halt the system\r\n");
+        } else if (cmd == "exit") {
+            terminal_writestring("Bye!\r\n");
             asm { "hlt"; }
         } else {
             bool suggested = false;
-            if (similar(line[0..idx], "help")) {
-                terminal_writestring("Unknown command. Did you mean 'help'?\n");
+            if (similar(cmd, "help")) {
+                terminal_writestring("Unknown command. Did you mean 'help'?\r\n");
                 suggested = true;
-            } else if (similar(line[0..idx], "exit")) {
-                terminal_writestring("Unknown command. Did you mean 'exit'?\n");
+            } else if (similar(cmd, "exit")) {
+                terminal_writestring("Unknown command. Did you mean 'exit'?\r\n");
                 suggested = true;
             }
+
             if (!suggested) {
-                terminal_writestring("Unknown command. This is not a system call.\n");
+                terminal_writestring("Unknown command. This is not a system call.\r\n");
             }
         }
+
+        // Prompt will redraw at top of loop
     }
 }
+
+
+
 
 extern(C) void ttyShelly_shell()
 {

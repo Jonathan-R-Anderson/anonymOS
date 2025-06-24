@@ -77,19 +77,15 @@ void initialize_keyboard() {
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
 extern (C) void keyboard_interrupt_handler(ubyte scancode) {
-    // Bit 7 (0x80) is set if it's a key release (break code)
-    // We are only interested in key presses (make codes)
     if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode);
         if (c != 0) {
             input_buffer[input_head] = c;
             input_head = (input_head + 1) % INPUT_BUF_SIZE;
-            // Echo the character immediately so the user sees feedback
-            // even before the shell processes the input. The shell
-            // will handle backspace by writing "\b \b" to erase the
-            // previously echoed character.
-            terminal_putchar(c);
+
+            // Disable echo here to avoid double characters
+            // terminal_putchar(c); ← comment this out
         }
     }
-    // The EOI is sent by the assembly handler after this D function returns.
 }
+

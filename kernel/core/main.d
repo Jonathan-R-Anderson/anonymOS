@@ -201,11 +201,13 @@ extern (C) void kmain(void* multiboot_info_ptr) {
             }
         }
     }
-    if(!loggedIn) {
-        log_message("Login failed, falling back to shell...\n");
+    if(loggedIn) {
+        log_message("Starting ttyShelly shell...\n");
+        ttyShelly_shell();
+    } else {
+        log_message("All login attempts failed. Halting...\n");
+        loop_forever_hlt();
     }
-    log_message("Starting ttyShelly shell...\n");
-    ttyShelly_shell();
     clear_screen();
 
     log_register_state("Shell exited");

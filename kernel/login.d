@@ -4,6 +4,7 @@ import kernel.terminal : terminal_writestring, terminal_putchar, terminal_writes
 import kernel.device.vga : clear_screen;
 import kernel.keyboard : keyboard_getchar;
 import kernel.types : VGAColor, strlen, memcmp;
+import kernel.user_manager : set_current_user;
 
 private void draw_login_banner()
 {
@@ -55,6 +56,7 @@ extern(C) bool login_prompt()
        memcmp(pass.ptr, expected_pass, plen) == 0)
     {
         terminal_writestring("Login successful\n");
+        set_current_user(user.ptr);
         return true;
     }
     else
@@ -70,7 +72,19 @@ extern(C) bool ink_login_manager()
 {
     // Use our stubbed C library instead of the host C runtime
     import kernel.lib.stdc.stdlib : system;
-    // Invoke Node to run the Ink login script. Assumes node is available
+    // Invoke Node to run the Ink login script. Assumes node is available.
     int ret = system("node userland/ink-login/index.js");
-    return ret == 0;
+    if(ret == -1)
+    {
+        // If the command could not be executed (e.g. no Node runtime),
+        // fall back to the text-based login prompt instead of failing
+        // outright.
+        return login_prompt();
+    }
+    if(ret == 0)
+    {
+        set_current_user("wcuser");
+        return true;
+    }
+    return false;
 }

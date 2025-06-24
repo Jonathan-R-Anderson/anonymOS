@@ -39,16 +39,23 @@ extern (C) void interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err
     }
 
     // --- Logging the interrupt ---
+    // These debug prints generated excessive output during normal operation and
+    // could overwhelm the virtual terminal.  They were useful when initially
+    // bringing up the interrupt handling code but are now disabled.  The logic
+    // remains in comments so it can be quickly re-enabled while debugging.
+    /*
     terminal_writestring("Interrupt: ");
     terminal_write_hex(int_no);
 
-    // Check if the CPU pushed an error code for this exception type
-    bool has_cpu_error_code = (int_no == 8 || (int_no >= 10 && int_no <= 14) || int_no == 17 || int_no == 21 || int_no == 29 || int_no == 30);
+    bool has_cpu_error_code = (int_no == 8 || (int_no >= 10 && int_no <= 14) ||
+                               int_no == 17 || int_no == 21 || int_no == 29 ||
+                               int_no == 30);
     if (has_cpu_error_code) {
         terminal_writestring(", Error Code: ");
         terminal_write_hex(err_code_val);
     }
     terminal_putchar('\n');
+    */
 
     // --- Handling specific CPU exceptions ---
     // Note: Interrupt 33 (Keyboard) is now handled by keyboard_handler_asm.s

@@ -1,4 +1,4 @@
-# Makefile for Minimal D OS
+					# Makefile for Minimal D OS
 
 		# Tools
 		DC = ldc2           # D Compiler
@@ -94,6 +94,8 @@ ANON_SHELL_EXE_NAME = anonym_shell
 ANON_SHELL_EXE = $(BUILD_DIR)/$(ANON_SHELL_EXE_NAME)
 ANON_TERM_EXE_NAME = anonym_terminal
 ANON_TERM_EXE = $(BUILD_DIR)/$(ANON_TERM_EXE_NAME)
+ANON_LOGIN_EXE_NAME = anonym_login
+ANON_LOGIN_EXE = $(BUILD_DIR)/$(ANON_LOGIN_EXE_NAME)
 
 
 QEMU_FLAGS = -cpu qemu64,+lm \
@@ -137,7 +139,14 @@ $(ANON_TERM_EXE): $(ANON_SHELL_DIR)/GraphicalTerminal.hs $(ANON_SHELL_DIR)/anony
 	@cp $(ANON_SHELL_DIR)/dist-newstyle/build/*/*/anonym-shell-*/x/anonym-terminal/build/anonym-terminal/anonym-terminal $@
 	@echo ">>> anonymOS Terminal built to $@"
 
-$(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE)
+$(ANON_LOGIN_EXE): $(ANON_SHELL_DIR)/../login/LoginScreen.hs $(ANON_SHELL_DIR)/anonym-shell.cabal
+	@echo ">>> Building anonymOS Login (requires GHC and Cabal)..."
+	@mkdir -p $(dir $@)
+	cd $(ANON_SHELL_DIR) && cabal update && cabal build anonym-login --ghc-options="-static"
+	@cp $(ANON_SHELL_DIR)/dist-newstyle/build/*/*/anonym-shell-*/x/anonym-login/build/anonym-login/anonym-login $@
+	@echo ">>> anonymOS Login built to $@"
+
+$(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE) $(ANON_LOGIN_EXE)
 		@echo ">>> Creating ISO Image..."
 		mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR)
 		cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
@@ -155,7 +164,13 @@ $(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE)
 	cp $(ANON_TERM_EXE) $(ISO_BIN_DIR)/$(ANON_TERM_EXE_NAME); \
 	else \
 	echo "Warning: anonymOS Terminal executable not found at $(ANON_TERM_EXE). ISO will not include it."; \
-	fi
+        fi
+		@if [ -f "$(ANON_LOGIN_EXE)" ]; then \
+	echo "Copying '$(ANON_LOGIN_EXE)' to '$(strip $(ISO_BIN_DIR))/$(ANON_LOGIN_EXE_NAME)'"; \
+	cp $(ANON_LOGIN_EXE) $(ISO_BIN_DIR)/$(ANON_LOGIN_EXE_NAME); \
+		else \
+	echo "Warning: anonymOS Login executable not found at $(ANON_LOGIN_EXE). ISO will not include it."; \
+fi
 		# The 'if' statement above is treated as a self-contained shell command.
 		# The 'fi' correctly terminates it.
 		# The following 'echo' commands will be executed as separate shell commands.

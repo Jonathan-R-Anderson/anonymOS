@@ -76,6 +76,8 @@ ALL_ASM_SOURCES = \
 LINKER_SCRIPT               = arch/x86/linker.ld
 ANSI_ART_SRC_FILE           = kernel/utils/artwork.ans
 ANSI_ART_D_TARGET_FILE      = kernel/utils/ansi_art.d # Generated D file target
+PLYMOUTH_ART_SRC_FILE       = kernel/utils/plymouth_logo.ans
+PLYMOUTH_ART_D_TARGET_FILE  = kernel/utils/plymouth_logo.d
 PYTHON_SCRIPT_ANSI_TO_D     = scripts/ans_to_d.py
 PYTHON_INTERPRETER          = python3
 
@@ -105,7 +107,8 @@ QEMU_FLAGS = -cpu qemu64,+lm \
 ## Object Files (preserving directory structure under OBJ_DIR)
 ALL_KERNEL_D_OBJS_NO_GENERATED = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ALL_KERNEL_D_SOURCES_NO_GENERATED))
 ANSI_ART_D_OBJ                 = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ANSI_ART_D_TARGET_FILE))
-ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_OBJ)
+PLYMOUTH_ART_D_OBJ             = $(patsubst %.d,$(OBJ_DIR)/%.o,$(PLYMOUTH_ART_D_TARGET_FILE))
+ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_OBJ) $(PLYMOUTH_ART_D_OBJ)
 
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
@@ -205,6 +208,10 @@ $(BUILD_DIR):
 $(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)
 	@mkdir -p $(dir $@)
 	$(PYTHON_INTERPRETER) $(PYTHON_SCRIPT_ANSI_TO_D) $(ANSI_ART_SRC_FILE) $@
+
+$(PLYMOUTH_ART_D_TARGET_FILE): $(PLYMOUTH_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)
+	@mkdir -p $(dir $@)
+	$(PYTHON_INTERPRETER) $(PYTHON_SCRIPT_ANSI_TO_D) $(PLYMOUTH_ART_SRC_FILE) $@
 
 # Generic rule for D files (preserves source path under OBJ_DIR)
 $(OBJ_DIR)/%.o: %.d

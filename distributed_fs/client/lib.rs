@@ -10,6 +10,6 @@ use crate::network;
 pub fn mount(addr: &str, mountpoint: &str) {
     // Initialize the network layer so we can communicate with the server.
     network::init();
-    println!("mounting {} at {}", addr, mountpoint);
+    // Removed debug print
     network::send(format!("mount:{}:{}", addr, mountpoint).as_bytes());
 }

@@ -24,10 +24,20 @@ extern(C) void init_keyboard_driver()
     irq_clear_mask(1);
 }
 extern(C) void init_pci_bus() {}
-extern(C) void init_scheduler() {}
+extern(C) void init_scheduler()
+{
+    import kernel.process_manager : scheduler_init;
+    scheduler_init();
+}
 extern(C) void init_syscall_interface()
 {
     import kernel.syscall : syscall_init;
     syscall_init();
 }
-extern(C) void launch_init_process() {}
+extern(C) void launch_init_process()
+{
+    import kernel.process_manager : process_create, scheduler_run;
+    import kernel.shell : ttyShelly_shell;
+    process_create(&ttyShelly_shell);
+    scheduler_run();
+}

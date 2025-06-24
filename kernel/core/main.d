@@ -68,6 +68,10 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     pVGATest[1] = vga_entry('0', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));
 
     logger_init();
+
+    // Initialize terminal early so Plymouth output is visible
+    terminal_initialize();
+
     plymouth_start();
     plymouth_message("Booting anonymOS...");
 
@@ -95,9 +99,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
     //clear_screen();
 
-    // Initialize terminal (console output)
+    // Terminal was initialized earlier to display Plymouth. Mark progress here.
     pVGATest[6] = vga_entry('T', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // T for Terminal Init
-    terminal_initialize();
     pVGATest[7] = vga_entry('D', vga_entry_color(VGAColor.YELLOW, VGAColor.BLACK)); // D for Terminal Done
     
     //clear_screen();

@@ -81,6 +81,19 @@ extern (C) void* memcpy(void* dest, const void* src, size_t num) {
     return dest;
 }
 
+// Compare two memory regions
+extern(C) int memcmp(const void* lhs, const void* rhs, size_t num)
+{
+    auto a = cast(const ubyte*)lhs;
+    auto b = cast(const ubyte*)rhs;
+    for (size_t i = 0; i < num; ++i)
+    {
+        if (a[i] != b[i])
+            return a[i] < b[i] ? -1 : 1;
+    }
+    return 0;
+}
+
 // Compute length of a C string
 extern(C) size_t strlen(const(char)* str) {
     size_t len = 0;

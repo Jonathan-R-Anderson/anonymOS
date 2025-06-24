@@ -13,7 +13,7 @@ enum SyscallID : ulong {
     CreateUser  = 1,
 }
 
-alias SyscallHandler = long function(ulong, ulong, ulong, ulong, ulong, ulong);
+alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
 
 __gshared SyscallHandler[16] g_syscalls;
 

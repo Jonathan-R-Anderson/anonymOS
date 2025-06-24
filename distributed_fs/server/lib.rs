@@ -10,5 +10,5 @@ pub fn start_server() {
     // Initialize the simple network layer and flush any pending metadata.
     network::init();
     metadata::flush_on_read();
-    println!("server started");
+    // Removed debug print
 }

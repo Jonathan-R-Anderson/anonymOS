@@ -25,10 +25,7 @@ char keyboard_getchar()
     char c = input_buffer[input_tail];
     input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
 
-    // Debug: show retrieved character to verify ring buffer activity
-    terminal_writestring("[GET]");
-    terminal_putchar(c);
-    terminal_writestring("\n");
+    // Removed debug output that printed each retrieved character
 
     return c;
 }
@@ -78,13 +75,13 @@ void initialize_keyboard() {
     // and the IRQ is unmasked in the PIC.
     // More advanced setup might involve sending commands (e.g., 0xF4 to enable scanning)
     // to port 0x60 after checking status on port 0x64.
-    terminal_writestring("Keyboard driver initialized (ISR set, IRQ1 ready to be unmasked).\n");
+    // Removed debug initialization message
 }
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
 extern (C) void keyboard_interrupt_handler(ubyte scancode) {
     // Log to confirm IRQ1 firing
-    terminal_writestring("[IRQ1]\n");
+    // Removed debug interrupt notification
 
     if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode);

@@ -21,7 +21,7 @@ pub fn init() {
     let (tx, rx) = channel();
     let handle = Handle { tx, rx: Mutex::new(rx) };
     let _ = NET.set(handle);
-    println!("network layer initialized");
+    // Removed debug print
 }
 
 /// Send a packet across the in-memory channel.

@@ -60,10 +60,7 @@ extern(C) void ttyShellyMain()
         // incompatible with -betterC.
         auto cmd = line[0 .. idx];
 
-        // Debug output
-        terminal_writestring("[DEBUG] Parsed input: ");
-        terminal_writestring(cmd.ptr);
-        terminal_writestring("\r\n");
+        // Removed debug output
 
         // Command matching
         if (cmd == "help") {

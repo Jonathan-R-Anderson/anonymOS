@@ -2,7 +2,9 @@ module kernel.lib.stdc.stdlib;
 
 // Use our own minimal memcpy implementation to avoid
 // pulling in external C runtime dependencies.
-import kernel.types : memcpy;
+import kernel.types : memcpy, strlen, memcmp;
+import kernel.process_manager : process_create, scheduler_run;
+import kernel.shell : ttyShelly_shell;
 
 // Minimal C standard library function implementations for -betterC builds.
 // We provide a very simple bump allocator for kernel use. This is not
@@ -54,9 +56,28 @@ extern(C) void free(void* ptr)
 /// program via the process management subsystem.
 /// Currently it simply returns -1 to indicate the
 /// command was not executed.
+private bool str_eq(const(char)* a, string b)
+{
+    auto len = strlen(a);
+    if(len != b.length) return false;
+    return memcmp(a, b.ptr, len) == 0;
+}
+
 extern(C) int system(const(char)* cmd)
 {
-    // TODO: hook into a user space process launcher.
+    if(cmd is null) return -1;
+
+    // Very small command mapping to demonstrate integration with
+    // the kernel's process manager. Currently only the built-in
+    // shell can be launched as a user process.
+    if(str_eq(cmd, "shell"))
+    {
+        process_create(&ttyShelly_shell);
+        scheduler_run();
+        return 0;
+    }
+
+    // Command not recognized
     return -1;
 }
 

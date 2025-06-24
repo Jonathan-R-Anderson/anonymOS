@@ -10,11 +10,15 @@ struct User {
 
 __gshared User[8] users;
 __gshared size_t userCount;
+__gshared char[16] currentUser;
 
 extern(C) void init_user_manager() {
     userCount = 1;
     users[0].name[0..5] = "setup";
     users[0].name[5] = 0;
+    // Default current user to 'setup' until login occurs
+    currentUser[0..5] = "setup";
+    currentUser[5] = 0;
 }
 
 extern(C) bool create_user(const(char)* name) {
@@ -29,4 +33,17 @@ extern(C) bool create_user(const(char)* name) {
     ++userCount;
     fs_create_user(name);
     return true;
+}
+
+extern(C) void set_current_user(const(char)* name) {
+    size_t i = 0;
+    while(i < currentUser.length - 1 && name[i] != 0) {
+        currentUser[i] = cast(char)name[i];
+        ++i;
+    }
+    currentUser[i] = 0;
+}
+
+extern(C) const(char)* get_current_user() {
+    return currentUser.ptr;
 }

@@ -10,10 +10,14 @@ const Login = () => {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [message, setMessage] = React.useState('');
+  const [success, setSuccess] = React.useState(false);
 
   useInput((input, key) => {
     if (stage === 'done') {
-      if (key.return) exit();
+      if (key.return) {
+        exit();
+        process.exit(success ? 0 : 1);
+      }
       return;
     }
     if (key.return) {
@@ -22,8 +26,10 @@ const Login = () => {
       } else if (stage === 'pass') {
         if (username === expectedUser && password === expectedPass) {
           setMessage('Login successful');
+          setSuccess(true);
         } else {
           setMessage('Invalid credentials');
+          setSuccess(false);
         }
         setStage('done');
       }

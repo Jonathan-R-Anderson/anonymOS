@@ -26,7 +26,6 @@ align(1) struct GdtEntry {
 // for D structs would round the size of this structure up to the natural
 // alignment of `ulong` (8 bytes) which results in a 16 byte struct.  Packing
 // the structure to byte alignment ensures it matches the required layout.
-pragma(pack, 1);
 align(1) struct GdtPtr { // Ensure no padding for lgdt
     ushort limit; // Size of GDT - 1
     align(1) union {
@@ -37,7 +36,6 @@ align(1) struct GdtPtr { // Ensure no padding for lgdt
         }
     }
 }
-pragma(pack);
 pragma(msg, "GdtPtr.sizeof = ", GdtPtr.sizeof);
 static assert(GdtPtr.sizeof == 10, "GdtPtr must be 10 bytes to match lgdt encoding");
 

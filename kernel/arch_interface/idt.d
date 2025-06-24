@@ -64,7 +64,6 @@ struct IDTEntry {
 // address to avoid any padding that could otherwise be introduced by
 // the compiler.  Packing to byte alignment ensures the resulting
 // structure is exactly ten bytes as required by the `lidt` instruction.
-pragma(pack, 1);
 align(1) struct IDTPtr {
     ushort limit;
     align(1) union {
@@ -75,7 +74,6 @@ align(1) struct IDTPtr {
         }
     }
 }
-pragma(pack);
 pragma(msg, "IDTPtr.sizeof = ", IDTPtr.sizeof);
 static assert(IDTPtr.sizeof == 10, "IDTPtr must be 10 bytes to match lidt encoding");
 

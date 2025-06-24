@@ -13,13 +13,18 @@ version(unittest)
 else
 {
     import kernel.io : outb;
+    import kernel.terminal : terminal_putchar;
 
     enum DEBUG_PORT = 0x402; // QEMU debugcon port
 
     // Send a character to QEMU's debug port so it is written to qemu.log
     private void qemu_putchar(char c)
     {
+        // Write the character to QEMU's debug port so it is still captured in
+        // qemu.log, but also display it on the VGA console for easier debugging
+        // when log files are unavailable.
         outb(DEBUG_PORT, cast(ubyte)c);
+        terminal_putchar(c);
     }
 }
 

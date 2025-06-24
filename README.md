@@ -427,6 +427,14 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
 
    This command allocates 1024 MB of RAM, 2 CPU cores, sets up the image as a virtio drive, and connects the VM’s serial console to your terminal (so you can see boot logs).
 
+   If the output scrolls too quickly you can pipe it through `less` to get a scrollback buffer:
+
+   ```bash
+   qemu-system-x86_64 -m 1024 -smp 2 -drive format=raw,file=build/anonymOS.iso,if=virtio -serial stdio |& less -R
+   ```
+
+   Using `less` allows you to scroll through earlier log messages while the VM is running.
+
 2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. The system now launches an **Ink-based login manager** written in Node.js on the console. After successful authentication the `ttyShelly` shell starts. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
 
 3. **Login:** The Ink login manager accepts the default credentials `wcuser` / `wcpass`. After you enter them, the shell is spawned. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.

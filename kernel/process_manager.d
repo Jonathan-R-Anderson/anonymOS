@@ -12,6 +12,8 @@ struct Process {
     bool started;
 }
 
+alias EntryFunc = extern(C) void function();
+
 enum MAX_PROCESSES = 16;
 
 __gshared Process[MAX_PROCESSES] g_processes;
@@ -29,7 +31,7 @@ extern(C) void scheduler_init()
     log_message("scheduler_init\n");
 }
 
-extern(C) size_t process_create(extern(C) void function() entry)
+extern(C) size_t process_create(EntryFunc entry)
 {
     if(g_process_count >= g_processes.length)
         return size_t.max;

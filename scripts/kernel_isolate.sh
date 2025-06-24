@@ -4,16 +4,14 @@ set -e
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/.." && pwd)
 IMAGE_NAME=anonymos-kernel
-BUILD=no
 DRY_RUN=no
 
 usage() {
-    echo "Usage: $0 [--build] [--dry-run]" >&2
+    echo "Usage: $0 [--dry-run]" >&2
 }
 
 while [[ "$1" == --* ]]; do
     case "$1" in
-        --build) BUILD=yes ; shift ;;
         --dry-run) DRY_RUN=yes ; shift ;;
         *) usage; exit 1 ;;
     esac
@@ -23,15 +21,6 @@ ISO="$ROOT_DIR/build/anonymOS.iso"
 QEMU_CMD="qemu-system-x86_64 -cdrom $ISO -m 128M -display curses -vga std \
     -d int,guest_errors -D qemu.log -debugcon file:qemu.log -serial file:qemu.log"
 
-if [ "$BUILD" = yes ]; then
-    CMD="docker build -t $IMAGE_NAME -f \"$ROOT_DIR/Dockerfile.kernel\" \"$ROOT_DIR\""
-    if [ "$DRY_RUN" = yes ]; then
-        echo "$CMD"
-    else
-        eval "$CMD"
-    fi
-    exit 0
-fi
 
 if [ "$DRY_RUN" = no ] && [ ! -f "$ISO" ]; then
     echo "ISO image $ISO not found. Build it first (make iso)." >&2

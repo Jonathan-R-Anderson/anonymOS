@@ -443,10 +443,9 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
 
 ### Containerizing Userland with Docker
 
-For additional isolation of user services, a Docker setup is provided. The Docker image uses a minimal Alpine Linux base so only minimal packages are included. Use the helper script to build and run a container containing the anonymOS userland utilities:
+For additional isolation of user services, a Docker setup is provided. The Docker image uses a minimal Alpine Linux base so only minimal packages are included. Use the helper script to run a container containing the anonymOS userland utilities:
 
 ```bash
-scripts/docker_run.sh --build   # build the Docker image
 scripts/docker_run.sh           # run the image interactively
 ```
 
@@ -538,14 +537,13 @@ This allows you to run anonymOS in a fast virtual machine environment similar to
 
 
 
-### Isolating the Kernel with Docker
+### Isolating the Kernel in a Container
 
-To run the kernel itself in a container, use `scripts/kernel_isolate.sh`. This helper boots the ISO inside a Docker container with QEMU installed (from `Dockerfile.kernel`). The image is based on Alpine for minimal size. If Docker is not available, it falls back to `scripts/virtual_run.sh`.
+To run the kernel itself in a container, use `scripts/kernel_isolate.sh`. This helper boots the ISO inside a lightweight container environment using QEMU. If container support is not available, it falls back to `scripts/virtual_run.sh`.
 
 ```bash
-scripts/kernel_isolate.sh --build   # build the Docker image
 scripts/kernel_isolate.sh --dry-run # show the command
-scripts/kernel_isolate.sh           # boot inside Docker
+scripts/kernel_isolate.sh           # boot inside the container
 ```
 
 

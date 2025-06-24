@@ -1,4 +1,0 @@
-FROM alpine:latest
-RUN apk add --no-cache qemu-system-x86_64
-WORKDIR /anonymos
-CMD ["/bin/bash"]

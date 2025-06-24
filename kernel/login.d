@@ -63,3 +63,13 @@ extern(C) bool login_prompt()
         return false;
     }
 }
+
+/// Launches the Ink-based login manager using Node.js. Returns true if the
+/// process exits successfully.
+extern(C) bool ink_login_manager()
+{
+    import core.stdc.stdlib : system;
+    // Invoke Node to run the Ink login script. Assumes node is available
+    int ret = system("node userland/ink-login/index.js");
+    return ret == 0;
+}

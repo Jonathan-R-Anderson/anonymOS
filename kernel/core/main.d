@@ -185,13 +185,17 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
     // For now, fall through to a very basic built-in shell for direct testing.
-    log_message("Launching login prompt...\n");
+    log_message("Launching Ink login manager...\n");
     bool loggedIn = false;
-    import kernel.login : login_prompt;
-    foreach(i; 0 .. 3) {
-        if(login_prompt()) {
-            loggedIn = true;
-            break;
+    import kernel.login : ink_login_manager, login_prompt;
+    loggedIn = ink_login_manager();
+    if(!loggedIn) {
+        log_message("Ink login failed, falling back to text prompt...\n");
+        foreach(i; 0 .. 3) {
+            if(login_prompt()) {
+                loggedIn = true;
+                break;
+            }
         }
     }
     if(!loggedIn) {

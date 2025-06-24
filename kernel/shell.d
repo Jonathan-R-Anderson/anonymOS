@@ -26,8 +26,8 @@ extern(C) void ttyShellyMain()
                 }
             } else {
                 line[idx++] = c;
-                // Echo the typed character so the user can see input
-                terminal_putchar(c);
+                // Character was already echoed by the keyboard interrupt
+                // handler. The shell only needs to store it.
             }
         }
 

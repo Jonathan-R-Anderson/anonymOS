@@ -3,7 +3,7 @@ module kernel.login;
 import kernel.terminal : terminal_writestring, terminal_putchar, terminal_writestring_color;
 import kernel.device.vga : clear_screen;
 import kernel.keyboard : keyboard_getchar;
-import kernel.types : strlen, memcmp;
+import kernel.types : VGAColor, strlen, memcmp;
 
 private void draw_login_banner()
 {

@@ -71,11 +71,18 @@ char scancode_to_char(ubyte scancode) {
 
 void initialize_keyboard() {
     // For this basic setup, we primarily rely on the BIOS having initialized
-    // the keyboard controller. We just need to ensure our IRQ handler is ready
-    // and the IRQ is unmasked in the PIC.
-    // More advanced setup might involve sending commands (e.g., 0xF4 to enable scanning)
-    // to port 0x60 after checking status on port 0x64.
-    // Removed debug initialization message
+    // the keyboard controller.  However some BIOSes leave keyboard scanning
+    // disabled which means no IRQ1 events are generated.  To be safe we
+    // explicitly enable scanning by sending the "Enable Scanning" command
+    // (0xF4) to the keyboard controller data port (0x60).  We do not check the
+    // status port here as this is a minimal driver used during early boot and
+    // the controller is expected to be ready.
+
+    import kernel.arch_interface.ports : outb;
+    outb(0x60, 0xF4); // Enable keyboard scanning so IRQ1 will fire
+
+    // All further setup (installing IRQ handler, unmasking in the PIC) is done
+    // elsewhere during system initialization.
 }
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)

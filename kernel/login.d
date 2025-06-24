@@ -73,7 +73,7 @@ extern(C) bool ink_login_manager()
     // Use our stubbed C library instead of the host C runtime
     import kernel.lib.stdc.stdlib : system;
     // Invoke Node to run the Ink login script. Assumes node is available.
-    int ret = system("node userland/ink-login/index.js");
+    int ret = system("/bin/node /bin/ink-login/index.js");
     if(ret == -1)
     {
         // If the command could not be executed (e.g. no Node runtime),

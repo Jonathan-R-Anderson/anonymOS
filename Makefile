@@ -104,6 +104,13 @@ QEMU_FLAGS = -cpu qemu64,+lm \
              -m 128M -no-reboot -no-shutdown -d guest_errors \
              -display curses -vga std
 
+# Node.js runtime for Ink-based login
+NODE_VERSION = v18.20.0
+NODE_DIST = node-$(NODE_VERSION)-linux-x64
+NODE_DIR = $(BUILD_DIR)/$(NODE_DIST)
+NODE_BIN = $(NODE_DIR)/bin/node
+NODE_SETUP = $(NODE_DIR)/.setup_done
+
 ## Object Files (preserving directory structure under OBJ_DIR)
 ALL_KERNEL_D_OBJS_NO_GENERATED = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ALL_KERNEL_D_SOURCES_NO_GENERATED))
 ANSI_ART_D_OBJ                 = $(patsubst %.d,$(OBJ_DIR)/%.o,$(ANSI_ART_D_TARGET_FILE))
@@ -149,7 +156,7 @@ $(ANON_LOGIN_EXE): $(ANON_SHELL_DIR)/../login/LoginScreen.hs $(ANON_SHELL_DIR)/a
 	@cp $(ANON_SHELL_DIR)/dist-newstyle/build/*/*/anonym-shell-*/x/anonym-login/build/anonym-login/anonym-login $@
 	@echo ">>> anonymOS Login built to $@"
 
-$(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE) $(ANON_LOGIN_EXE)
+$(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE) $(ANON_LOGIN_EXE) $(NODE_SETUP)
 		@echo ">>> Creating ISO Image..."
 		mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR)
 		cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
@@ -168,12 +175,17 @@ $(ISO_FILE): $(KERNEL_BIN) $(ANON_SHELL_EXE) $(ANON_TERM_EXE) $(ANON_LOGIN_EXE)
 	else \
 	echo "Warning: anonymOS Terminal executable not found at $(ANON_TERM_EXE). ISO will not include it."; \
         fi
-		@if [ -f "$(ANON_LOGIN_EXE)" ]; then \
+	@if [ -f "$(ANON_LOGIN_EXE)" ]; then \
 	echo "Copying '$(ANON_LOGIN_EXE)' to '$(strip $(ISO_BIN_DIR))/$(ANON_LOGIN_EXE_NAME)'"; \
 	cp $(ANON_LOGIN_EXE) $(ISO_BIN_DIR)/$(ANON_LOGIN_EXE_NAME); \
-		else \
+	else \
 	echo "Warning: anonymOS Login executable not found at $(ANON_LOGIN_EXE). ISO will not include it."; \
-fi
+	fi
+	# Copy Node runtime and login script
+	cp $(NODE_BIN) $(ISO_BIN_DIR)/node
+	mkdir -p $(ISO_BIN_DIR)/ink-login
+	cp userland/ink-login/index.js $(ISO_BIN_DIR)/ink-login/
+	cp -r userland/ink-login/node_modules $(ISO_BIN_DIR)/ink-login/
 		# The 'if' statement above is treated as a self-contained shell command.
 		# The 'fi' correctly terminates it.
 		# The following 'echo' commands will be executed as separate shell commands.
@@ -197,16 +209,19 @@ kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN fi
 # Ensure ANSI art D file is generated before compiling D sources that might depend on it
 # or before linking if it's directly part of ALL_OBJS (which it is via KERNEL_D_OBJS)
 $(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # ANSI_ART_D_TARGET_FILE is a dep of its .o file, which is in ALL_OBJS
-	       mkdir -p $(BUILD_DIR)
-	       # Removed -lgcc as it's specific to GCC. LDC2/LLD should handle necessary runtime bits or emit self-contained code.
-	       $(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS)
+	mkdir -p $(BUILD_DIR)
+	# Removed -lgcc as it's specific to GCC. LDC2/LLD should handle necessary runtime bits or emit self-contained code.
+	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS)
 
-$(BUILD_DIR):
+	$(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
+	$(NODE_SETUP): | $(BUILD_DIR)
+	./scripts/setup_node.sh $(BUILD_DIR)
+
 # Rule to generate the D file from ANSI art
-$(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)
-	@mkdir -p $(dir $@)
+	$(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)
+		@mkdir -p $(dir $@)
 	$(PYTHON_INTERPRETER) $(PYTHON_SCRIPT_ANSI_TO_D) $(ANSI_ART_SRC_FILE) $@
 
 $(PLYMOUTH_ART_D_TARGET_FILE): $(PLYMOUTH_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)

@@ -3,6 +3,18 @@ module kernel.shell;
 import kernel.terminal : terminal_writestring, terminal_writestring_color, terminal_putchar;
 import kernel.keyboard : keyboard_getchar;
 
+private bool similar(const(char)[] a, const(char)[] b)
+{
+    size_t la = a.length;
+    size_t lb = b.length;
+    size_t minLen = (la < lb) ? la : lb;
+    size_t diff = (la > lb) ? la - lb : lb - la;
+    for(size_t i = 0; i < minLen; ++i) {
+        if (a[i] != b[i]) diff++;
+    }
+    return diff <= 1;
+}
+
 /// Stub implementation for the Haskell ttyShelly shell entry point.
 /// The real implementation is expected to come from the userland
 /// Haskell code, but that is currently not linked in the kernel build.
@@ -41,7 +53,17 @@ extern(C) void ttyShellyMain()
             terminal_writestring("Bye!\n");
             asm { "hlt"; }
         } else {
-            terminal_writestring("Unknown command\n");
+            bool suggested = false;
+            if (similar(line[0..idx], "help")) {
+                terminal_writestring("Unknown command. Did you mean 'help'?\n");
+                suggested = true;
+            } else if (similar(line[0..idx], "exit")) {
+                terminal_writestring("Unknown command. Did you mean 'exit'?\n");
+                suggested = true;
+            }
+            if (!suggested) {
+                terminal_writestring("Unknown command. This is not a system call.\n");
+            }
         }
     }
 }

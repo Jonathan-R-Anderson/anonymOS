@@ -1,5 +1,7 @@
 module kernel.device.vga;
 
+import kernel.io : outb, inb; // for hardware cursor updates
+
 // If hardware cursor control is desired, inb/outb would be needed.
 // extern (C) {
 //     ubyte inb(ushort port);
@@ -70,20 +72,37 @@ ushort make_vga_entry(ubyte c, ubyte color) { // Changed char to ubyte
     return c | (cast(ushort)color << 8);
 }
 
+void enable_cursor()
+{
+    outb(0x3D4, 0x0A);
+    ubyte start = inb(0x3D5) & 0xC0;
+    outb(0x3D5, start);
+    outb(0x3D4, 0x0B);
+    ubyte end = inb(0x3D5) & 0xE0;
+    outb(0x3D5, end | 15); // visible cursor
+}
+
+void disable_cursor()
+{
+    outb(0x3D4, 0x0A);
+    outb(0x3D5, 0x20);
+}
+
 void set_cursor_pos(ubyte r, ubyte c) {
     terminal_row = r;
-    terminal_column = c;    
-    // Optional: Update hardware cursor if you have inb/outb and want it
-    // ushort pos = r * VGA_WIDTH + c;
-    // outb(0x3D4, 14); // High byte
-    // outb(0x3D5, cast(ubyte)(pos >> 8));
-    // outb(0x3D4, 15); // Low byte
-    // outb(0x3D5, cast(ubyte)(pos & 0xFF));
+    terminal_column = c;
+
+    ushort pos = cast(ushort)(r) * VGA_WIDTH + c;
+    outb(0x3D4, 14);                 // Cursor high byte register
+    outb(0x3D5, cast(ubyte)(pos >> 8));
+    outb(0x3D4, 15);                 // Cursor low byte register
+    outb(0x3D5, cast(ubyte)(pos & 0xFF));
 }
 
 void reset_cursor_pos() {
     terminal_row = 0;
     terminal_column = 0;
+    set_cursor_pos(terminal_row, terminal_column);
 }
 
 void clear_screen() {
@@ -110,6 +129,7 @@ void initialize_terminal() {
     ansi_params[0..MAX_ANSI_PARAMS] = 0;
 
     clear_screen();
+    enable_cursor();
 }
 
 void scroll_terminal() {
@@ -125,6 +145,7 @@ void scroll_terminal() {
         vga_buffer[(VGA_HEIGHT - 1) * VGA_WIDTH + c] = make_vga_entry(' ', make_color(default_fg_color_val, current_bg));
     }
     terminal_row = VGA_HEIGHT - 1; // Cursor stays on the new last line
+    set_cursor_pos(terminal_row, 0);
 }
 
 private Color map_xterm_idx_to_vga_color(ubyte xterm_color_idx, bool is_fg_and_bold) {
@@ -270,9 +291,9 @@ private void put_char_at_cursor(ubyte c) { // Changed char to ubyte
     if (terminal_row >= VGA_HEIGHT) {
         scroll_terminal();
         // After scroll, cursor is on new last line, column 0
-        // set_cursor_pos(VGA_HEIGHT - 1, terminal_column); // terminal_column would be 0
+        set_cursor_pos(VGA_HEIGHT - 1, terminal_column); // terminal_column would be 0
     }
-    // set_cursor_pos(terminal_row, terminal_column); // If hardware cursor is active and updated frequently
+    set_cursor_pos(terminal_row, terminal_column); // Update hardware cursor
 }
 
 void terminal_putchar(ubyte c) { // Changed char to ubyte

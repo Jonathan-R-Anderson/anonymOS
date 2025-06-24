@@ -24,6 +24,12 @@ char keyboard_getchar()
     }
     char c = input_buffer[input_tail];
     input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
+
+    // Debug: show retrieved character to verify ring buffer activity
+    terminal_writestring("[GET]");
+    terminal_putchar(c);
+    terminal_writestring("\n");
+
     return c;
 }
 
@@ -77,6 +83,9 @@ void initialize_keyboard() {
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
 extern (C) void keyboard_interrupt_handler(ubyte scancode) {
+    // Log to confirm IRQ1 firing
+    terminal_writestring("[IRQ1]\n");
+
     if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode);
         if (c != 0) {

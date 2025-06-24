@@ -12,6 +12,21 @@ import kernel.lib.stdc.stdint; // Use local stdint stub
 
 public:
 
+enum INPUT_BUF_SIZE = 128;
+__gshared char[INPUT_BUF_SIZE] input_buffer;
+__gshared size_t input_head = 0;
+__gshared size_t input_tail = 0;
+
+char keyboard_getchar()
+{
+    while (input_head == input_tail) {
+        asm { "hlt"; }
+    }
+    char c = input_buffer[input_tail];
+    input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
+    return c;
+}
+
 // Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.
 // Returns 0 (null char) if the scancode is not printable or not mapped.
 char scancode_to_char(ubyte scancode) {
@@ -66,8 +81,10 @@ extern (C) void keyboard_interrupt_handler(ubyte scancode) {
     // We are only interested in key presses (make codes)
     if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode);
-        if (c != 0) { // If it's a printable character
-            terminal_putchar(c);
+        if (c != 0) {
+            input_buffer[input_head] = c;
+            input_head = (input_head + 1) % INPUT_BUF_SIZE;
+            terminal_putchar(c); // echo
         }
     }
     // The EOI is sent by the assembly handler after this D function returns.

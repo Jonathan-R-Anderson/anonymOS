@@ -3,6 +3,7 @@ module kernel.keyboard;
 // Use kernel.terminal for output
 import kernel.terminal : terminal_writestring, terminal_putchar;
 import kernel.lib.stdc.stdint; // Use local stdint stub
+import kernel.arch_interface.ports : inb, outb; // Direct port access
 
 // If needed for more direct keyboard controller interaction:
 // extern (C) {
@@ -20,12 +21,22 @@ __gshared size_t input_tail = 0;
 char keyboard_getchar()
 {
     while (input_head == input_tail) {
+        // Poll status port to see if data is available
+        ubyte status = inb(0x64);
+        if (status & 1) { // Output buffer full
+            ubyte sc = inb(0x60);
+            if ((sc & 0x80) == 0) { // Ignore key releases
+                char ch = scancode_to_char(sc);
+                if (ch != 0) {
+                    input_buffer[input_head] = ch;
+                    input_head = (input_head + 1) % INPUT_BUF_SIZE;
+                }
+            }
+        }
         asm { "hlt"; }
     }
     char c = input_buffer[input_tail];
     input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
-
-    // Removed debug output that printed each retrieved character
 
     return c;
 }

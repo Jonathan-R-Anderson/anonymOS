@@ -40,6 +40,7 @@ extern (C) void init_syscall_interface(); // If shell/apps need kernel services
 extern (C) void init_filesystem(void* multiboot_info_ptr); // For initrd/root fs
 extern (C) void init_user_manager();
 extern (C) void init_container_service();
+extern (C) void vmm_init();
 
 // Core OS Managers from the Blueprint
 extern (C) void init_device_manager(void* multiboot_info_ptr);      // Manages /dev, user-space drivers
@@ -149,6 +150,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     init_keyboard_driver();   // Essential for interactive shell input!
     init_pci_bus();           // For discovering other devices (e.g., network, storage)
     net_init();               // Initialize networking (stub)
+    vmm_init();               // Initialize hypervisor
     init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
     init_syscall_interface(); // If the shell or Haskell programs need kernel services
     init_container_service(); // Initialize container service (stub)

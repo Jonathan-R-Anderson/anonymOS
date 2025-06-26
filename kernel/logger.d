@@ -5,7 +5,7 @@ version(unittest)
     import std.stdio : putchar;
 
     // During unittests, just write characters to stdout
-    private void qemu_putchar(char c)
+    private void debug_putchar(char c)
     {
         putchar(c);
     }
@@ -15,14 +15,14 @@ else
     import kernel.io : outb;
     import kernel.terminal : terminal_putchar;
 
-    enum DEBUG_PORT = 0x402; // QEMU debugcon port
+    enum DEBUG_PORT = 0x402; // Simple debug port used for logging
 
-    // Send a character to QEMU's debug port so it is written to qemu.log
-    private void qemu_putchar(char c)
+    // Send a character to the debug port and also display it on the VGA console
+    private void debug_putchar(char c)
     {
-        // Write the character to QEMU's debug port so it is still captured in
-        // qemu.log, but also display it on the VGA console for easier debugging
-        // when log files are unavailable.
+        // Write the character to the debug port so it can be captured by
+        // external monitors while also displaying it on the VGA console for
+        // easier debugging when log files are unavailable.
         outb(DEBUG_PORT, cast(ubyte)c);
         terminal_putchar(c);
     }
@@ -43,7 +43,7 @@ private void log_putc(char c)
 {
     if(logIndex < logBuffer.length - 1)
         logBuffer[logIndex++] = c;
-    qemu_putchar(c);
+    debug_putchar(c);
 }
 
 extern(C) void log_message(const(char)* s)

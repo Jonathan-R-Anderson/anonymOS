@@ -3,7 +3,7 @@ module kernel.container_service;
 pragma(LDC_no_moduleinfo);
 
 import kernel.logger : log_message;
-import kernel.host.container_runtime : host_run_container;
+import kernel.hypervisor : vmm_create_vm, vmm_run_vm, vmm_destroy_vm;
 
 struct ContainerConfig {
     char[64] baseImage;
@@ -23,5 +23,7 @@ extern(C) void start_container(ContainerConfig* cfg)
     log_message("\ncmd: ");
     log_message(cfg.cmd.ptr);
     log_message("\n");
-    host_run_container(cfg.baseImage.ptr, cfg.cmd.ptr);
+    int id = vmm_create_vm();
+    vmm_run_vm(id);
+    vmm_destroy_vm(id);
 }

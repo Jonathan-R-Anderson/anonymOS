@@ -10,6 +10,11 @@ import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_chdir, fs_mount, fs_bind, fs_unmount,
                     Stat;
 import kernel.types; // for ulong
+import kernel.process_manager : process_create_with_parent, process_exit,
+                               process_wait, get_current_pid, g_processes;
+import kernel.process_manager : scheduler_run; // to run new procs
+import kernel.interrupts : timer_ticks;
+import kernel.shell : ttyShelly_shell;
 
 public:
 
@@ -33,11 +38,18 @@ enum SyscallID : ulong {
     Mount       = 16,
     Bind        = 17,
     Unmount     = 18,
+    RFork       = 19,
+    Exec        = 20,
+    Exit        = 21,
+    ErrStr      = 22,
+    Sleep       = 23,
+    Await       = 24,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
 
 __gshared SyscallHandler[32] g_syscalls;
+__gshared char[256] g_errstr;
 
 extern(C) long sys_write_string(ulong strPtr, ulong len, ulong, ulong, ulong, ulong)
 {
@@ -160,6 +172,82 @@ extern(C) long sys_unmount(ulong targetPtr, ulong, ulong, ulong, ulong, ulong)
     return fs_unmount(target);
 }
 
+enum RForkFlags : ulong { RFPROC = 1 }
+
+extern(C) long sys_rfork(ulong flags, ulong, ulong, ulong, ulong, ulong)
+{
+    size_t pid = get_current_pid();
+    size_t child = process_create_with_parent(g_processes[pid].entry, pid);
+    if(child == size_t.max)
+    {
+        auto msg = "rfork failed";
+        foreach(i; 0 .. msg.length) g_errstr[i] = msg[i];
+        g_errstr[msg.length] = 0;
+        return -1;
+    }
+    scheduler_run();
+    return cast(long)child;
+}
+
+extern(C) long sys_exec(ulong pathPtr, ulong argvPtr, ulong, ulong, ulong, ulong)
+{
+    auto path = cast(const(char)*)pathPtr;
+    // Only built-in shell supported
+    const(char)* shell = "shell";
+    size_t i = 0;
+    while(path[i] && shell[i] && path[i] == shell[i]) ++i;
+    if(path[i] == 0 && shell[i] == 0)
+    {
+        auto pid = get_current_pid();
+        g_processes[pid].entry = &ttyShelly_shell;
+        g_processes[pid].started = true;
+        ttyShelly_shell();
+        process_exit(pid, 0);
+    }
+    auto msg = "exec failed";
+    foreach(i; 0 .. msg.length) g_errstr[i] = msg[i];
+    g_errstr[msg.length] = 0;
+    return -1;
+}
+
+extern(C) long sys_exit(ulong status, ulong, ulong, ulong, ulong, ulong)
+{
+    auto pid = get_current_pid();
+    process_exit(pid, cast(int)status);
+    scheduler_run();
+    asm { "hlt"; }
+    return 0;
+}
+
+extern(C) long sys_errstr(ulong bufPtr, ulong n, ulong, ulong, ulong, ulong)
+{
+    auto buf = cast(char*)bufPtr;
+    size_t len = 0;
+    while(len < g_errstr.length && g_errstr[len]) ++len;
+    size_t copyLen = (n < len) ? cast(size_t)n : len;
+    for(size_t i = 0; i < copyLen; i++)
+        buf[i] = g_errstr[i];
+    return cast(long)copyLen;
+}
+
+extern(C) long sys_sleep(ulong nsec, ulong, ulong, ulong, ulong, ulong)
+{
+    auto start = timer_ticks;
+    while(timer_ticks - start < nsec) {
+        asm { "hlt"; }
+    }
+    return 0;
+}
+
+extern(C) long sys_await(ulong, ulong, ulong, ulong, ulong, ulong)
+{
+    auto pid = get_current_pid();
+    auto child = process_wait(pid);
+    if(child == size_t.max)
+        return -1;
+    return cast(long)child;
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -190,4 +278,10 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.Mount]       = &sys_mount;
     g_syscalls[cast(size_t)SyscallID.Bind]        = &sys_bind;
     g_syscalls[cast(size_t)SyscallID.Unmount]     = &sys_unmount;
+    g_syscalls[cast(size_t)SyscallID.RFork]       = &sys_rfork;
+    g_syscalls[cast(size_t)SyscallID.Exec]        = &sys_exec;
+    g_syscalls[cast(size_t)SyscallID.Exit]        = &sys_exit;
+    g_syscalls[cast(size_t)SyscallID.ErrStr]      = &sys_errstr;
+    g_syscalls[cast(size_t)SyscallID.Sleep]       = &sys_sleep;
+    g_syscalls[cast(size_t)SyscallID.Await]       = &sys_await;
 }

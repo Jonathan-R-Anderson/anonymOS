@@ -13,6 +13,8 @@ struct Process {
     bool exited;
     int exit_status;
     size_t parent;
+    extern(C) void function(const(char)*) note_handler;
+    ulong alarm_tick;
 }
 
 alias EntryFunc = extern(C) void function();
@@ -35,6 +37,8 @@ extern(C) void scheduler_init()
         p.exited = false;
         p.exit_status = 0;
         p.parent = size_t.max;
+        p.note_handler = null;
+        p.alarm_tick = 0;
     }
     log_message("scheduler_init\n");
 }
@@ -50,6 +54,8 @@ extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent)
     g_processes[pid].exited = false;
     g_processes[pid].exit_status = 0;
     g_processes[pid].parent = parent;
+    g_processes[pid].note_handler = null;
+    g_processes[pid].alarm_tick = 0;
     g_process_count++;
     log_message("process_create pid=");
     log_hex(pid);

@@ -18,6 +18,8 @@ import kernel.interrupts : timer_ticks;
 import kernel.shell : ttyShelly_shell;
 import kernel.sync : rendezvous, sem_acquire, sem_release, semaphore_init;
 import kernel.lib.stdc.stdlib : free;
+import kernel.memory.virtmem : brk, seg_attach, seg_detach, seg_brk,
+                              seg_free, seg_flush;
 
 public:
 
@@ -51,11 +53,17 @@ enum SyscallID : ulong {
     Rendezvous  = 26,
     SemAcquire  = 27,
     SemRelease  = 28,
+    Brk         = 29,
+    SegAttach   = 30,
+    SegDetach   = 31,
+    SegBrk      = 32,
+    SegFree     = 33,
+    SegFlush    = 34,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
 
-__gshared SyscallHandler[32] g_syscalls;
+__gshared SyscallHandler[64] g_syscalls;
 __gshared char[256] g_errstr;
 
 extern(C) long sys_write_string(ulong strPtr, ulong len, ulong, ulong, ulong, ulong)
@@ -212,7 +220,7 @@ extern(C) long sys_exec(ulong pathPtr, ulong argvPtr, ulong, ulong, ulong, ulong
         process_exit(pid, 0);
     }
     auto msg = "exec failed";
-    foreach(i; 0 .. msg.length) g_errstr[i] = msg[i];
+    foreach(j; 0 .. msg.length) g_errstr[j] = msg[j];
     g_errstr[msg.length] = 0;
     return -1;
 }
@@ -314,6 +322,38 @@ extern(C) long sys_semrelease(ulong id, ulong, ulong, ulong, ulong, ulong)
     return sem_release(cast(size_t)id);
 }
 
+extern(C) long sys_brk(ulong addr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto pid = get_current_pid();
+    return brk(pid, cast(size_t)addr);
+}
+
+extern(C) long sys_segattach(ulong pid, ulong seg, ulong addr, ulong len, ulong readonly, ulong)
+{
+    auto id = seg_attach(cast(size_t)pid, cast(void*)addr, cast(size_t)len, readonly != 0);
+    return id == size_t.max ? -1 : cast(long)id;
+}
+
+extern(C) long sys_segdetach(ulong pid, ulong seg, ulong, ulong, ulong, ulong)
+{
+    return seg_detach(cast(size_t)pid, cast(size_t)seg);
+}
+
+extern(C) long sys_segbrk(ulong pid, ulong seg, ulong len, ulong, ulong, ulong)
+{
+    return seg_brk(cast(size_t)pid, cast(size_t)seg, cast(size_t)len);
+}
+
+extern(C) long sys_segfree(ulong pid, ulong seg, ulong addr, ulong len, ulong, ulong)
+{
+    return seg_free(cast(size_t)pid, cast(size_t)seg, cast(void*)addr, cast(size_t)len);
+}
+
+extern(C) long sys_segflush(ulong pid, ulong seg, ulong addr, ulong len, ulong, ulong)
+{
+    return seg_flush(cast(size_t)pid, cast(size_t)seg, cast(void*)addr, cast(size_t)len);
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -354,5 +394,11 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.Rendezvous]  = &sys_rendezvous;
     g_syscalls[cast(size_t)SyscallID.SemAcquire]  = &sys_semacquire;
     g_syscalls[cast(size_t)SyscallID.SemRelease]  = &sys_semrelease;
+    g_syscalls[cast(size_t)SyscallID.Brk]         = &sys_brk;
+    g_syscalls[cast(size_t)SyscallID.SegAttach]   = &sys_segattach;
+    g_syscalls[cast(size_t)SyscallID.SegDetach]   = &sys_segdetach;
+    g_syscalls[cast(size_t)SyscallID.SegBrk]      = &sys_segbrk;
+    g_syscalls[cast(size_t)SyscallID.SegFree]     = &sys_segfree;
+    g_syscalls[cast(size_t)SyscallID.SegFlush]    = &sys_segflush;
     semaphore_init();
 }

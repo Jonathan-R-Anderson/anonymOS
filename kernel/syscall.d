@@ -59,12 +59,26 @@ enum SyscallID : ulong {
     SegBrk      = 32,
     SegFree     = 33,
     SegFlush    = 34,
+    FVersion    = 35,
+    FAuth       = 36,
+    Alarm       = 37,
+    Notify      = 38,
+    Noted       = 39,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
 
 __gshared SyscallHandler[64] g_syscalls;
 __gshared char[256] g_errstr;
+
+struct P9Conn {
+    size_t msize;
+    char[32] version;
+    size_t fid;
+    bool authenticated;
+}
+
+__gshared P9Conn g_p9conn;
 
 extern(C) long sys_write_string(ulong strPtr, ulong len, ulong, ulong, ulong, ulong)
 {
@@ -354,6 +368,57 @@ extern(C) long sys_segflush(ulong pid, ulong seg, ulong addr, ulong len, ulong, 
     return seg_flush(cast(size_t)pid, cast(size_t)seg, cast(void*)addr, cast(size_t)len);
 }
 
+extern(C) long sys_fversion(ulong msize, ulong versionPtr, ulong fid, ulong, ulong, ulong)
+{
+    g_p9conn.msize = cast(size_t)msize;
+    auto ver = cast(const(char)*)versionPtr;
+    size_t len = strlen(ver);
+    if(len >= g_p9conn.version.length)
+        len = g_p9conn.version.length - 1;
+    memcpy(g_p9conn.version.ptr, ver, len);
+    g_p9conn.version[len] = 0;
+    g_p9conn.fid = cast(size_t)fid;
+    g_p9conn.authenticated = false;
+    return 0;
+}
+
+extern(C) long sys_fauth(ulong afid, ulong unamePtr, ulong anamePtr, ulong, ulong, ulong)
+{
+    auto uname = cast(const(char)*)unamePtr;
+    auto aname = cast(const(char)*)anamePtr;
+    if(uname[0] == 0 || aname[0] == 0)
+        return -1;
+    g_p9conn.authenticated = true;
+    return 0;
+}
+
+extern(C) long sys_alarm(ulong timeout, ulong, ulong, ulong, ulong, ulong)
+{
+    auto pid = get_current_pid();
+    if(pid == size_t.max)
+        return -1;
+    if(timeout == 0)
+        g_processes[pid].alarm_tick = 0;
+    else
+        g_processes[pid].alarm_tick = timer_ticks + timeout;
+    return 0;
+}
+
+extern(C) long sys_notify(ulong handlerPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto pid = get_current_pid();
+    if(pid == size_t.max)
+        return -1;
+    g_processes[pid].note_handler = cast(extern(C) void function(const(char)*))handlerPtr;
+    return 0;
+}
+
+extern(C) long sys_noted(ulong mode, ulong, ulong, ulong, ulong, ulong)
+{
+    // Minimal implementation: simply acknowledge the note
+    return (mode == 0) ? 0 : -1;
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -400,5 +465,10 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.SegBrk]      = &sys_segbrk;
     g_syscalls[cast(size_t)SyscallID.SegFree]     = &sys_segfree;
     g_syscalls[cast(size_t)SyscallID.SegFlush]    = &sys_segflush;
+    g_syscalls[cast(size_t)SyscallID.FVersion]    = &sys_fversion;
+    g_syscalls[cast(size_t)SyscallID.FAuth]       = &sys_fauth;
+    g_syscalls[cast(size_t)SyscallID.Alarm]       = &sys_alarm;
+    g_syscalls[cast(size_t)SyscallID.Notify]      = &sys_notify;
+    g_syscalls[cast(size_t)SyscallID.Noted]       = &sys_noted;
     semaphore_init();
 }

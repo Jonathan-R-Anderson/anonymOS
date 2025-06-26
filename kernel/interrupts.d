@@ -5,6 +5,7 @@ module kernel.interrupts;
 import kernel.types : Registers, ErrorCode;
 import kernel.io : outb;
 import kernel.terminal : terminal_writestring, terminal_write_hex, terminal_putchar; // scancode_to_char is used in kernel.keyboard
+import kernel.process_manager : get_current_pid, g_processes;
 
 __gshared ulong timer_ticks = 0; // simple tick counter for IRQ0
 import kernel.panic : kernel_panic;
@@ -32,8 +33,17 @@ extern (C) void interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err
         outb(PIC1_COMMAND, PIC_EOI); // Master PIC
 
         if (int_no == 0x20) {
-            // Timer interrupt - just increment tick counter
+            // Timer interrupt - increment tick counter and check alarms
             timer_ticks++;
+            auto pid = get_current_pid();
+            if(pid != size_t.max) {
+                auto ref proc = g_processes[pid];
+                if(proc.alarm_tick != 0 && timer_ticks >= proc.alarm_tick) {
+                    proc.alarm_tick = 0;
+                    if(proc.note_handler !is null)
+                        proc.note_handler("alarm");
+                }
+            }
             return;
         }
     }

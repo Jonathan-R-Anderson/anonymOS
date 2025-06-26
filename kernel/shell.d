@@ -4,7 +4,7 @@ import kernel.terminal : terminal_writestring, terminal_writestring_color, termi
 import kernel.keyboard : keyboard_getchar;
 
 // Table of available syscalls and brief usage info.
-immutable(char*)[] syscallHelp = [
+__gshared const(char*)[] syscallHelp = [
     "0  WriteString(ptr,len)  - print string",
     "1  CreateUser(name)      - add user",
     "2  Open(path,mode)       - open file",

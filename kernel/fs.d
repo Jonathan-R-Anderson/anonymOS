@@ -29,6 +29,11 @@ struct FileDesc {
     size_t pos;
 }
 
+struct Stat {
+    NodeType kind;
+    size_t   size;
+}
+
 enum MAX_FDS = 16;
 __gshared FileDesc[MAX_FDS] g_fdtable;
 
@@ -140,6 +145,103 @@ extern(C) long fs_seek_file(int fd, long offset, int whence)
     }
     desc.pos = newPos;
     return cast(long)newPos;
+}
+
+extern(C) int fs_dup_fd(int oldfd, int newfd)
+{
+    if(oldfd < 0 || oldfd >= g_fdtable.length) return -1;
+    if(g_fdtable[oldfd].node is null) return -1;
+    if(newfd >= 0)
+    {
+        if(newfd >= g_fdtable.length) return -1;
+        g_fdtable[newfd] = g_fdtable[oldfd];
+        return newfd;
+    }
+    foreach(i, ref f; g_fdtable)
+    {
+        if(f.node is null)
+        {
+            f = g_fdtable[oldfd];
+            return cast(int)i;
+        }
+    }
+    return -1;
+}
+
+private size_t buildPath(Node* n, char* buf, size_t buflen)
+{
+    if(n is fsRoot)
+    {
+        if(buflen < 2) return 0;
+        buf[0] = '/';
+        buf[1] = 0;
+        return 1;
+    }
+    char*[32] segs;
+    size_t count = 0;
+    auto cur = n;
+    while(cur !is fsRoot && cur !is null && count < segs.length)
+    {
+        segs[count++] = cur.name;
+        cur = cur.parent;
+    }
+    size_t pos = 0;
+    if(pos < buflen) buf[pos++] = '/';
+    foreach(i; 0 .. count)
+    {
+        auto name = segs[count - i - 1];
+        size_t l = strlen(name);
+        if(pos + l >= buflen) l = buflen - pos - 1;
+        memcpy(buf + pos, name, l);
+        pos += l;
+        if(i < count - 1 && pos < buflen)
+            buf[pos++] = '/';
+    }
+    if(pos < buflen) buf[pos] = 0; else buf[buflen-1] = 0;
+    return pos;
+}
+
+extern(C) const(char)* fs_fd2path(int fd)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return null;
+    auto n = g_fdtable[fd].node;
+    if(n is null) return null;
+    static char[256] pathBuf;
+    buildPath(n, pathBuf.ptr, pathBuf.length);
+    return pathBuf.ptr;
+}
+
+extern(C) int fs_stat(const(char)* path, Stat* st)
+{
+    auto n = fs_lookup(path);
+    if(n is null) return -1;
+    st.kind = n.kind;
+    st.size = n.size;
+    return 0;
+}
+
+extern(C) int fs_fstat(int fd, Stat* st)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return -1;
+    auto n = g_fdtable[fd].node;
+    if(n is null) return -1;
+    st.kind = n.kind;
+    st.size = n.size;
+    return 0;
+}
+
+extern(C) int fs_wstat(const(char)* path, const Stat* st)
+{
+    auto n = fs_lookup(path);
+    if(n is null || n.kind != NodeType.File) return -1;
+    if(st.size > n.capacity)
+    {
+        n.data = cast(ubyte*)realloc(n.data, st.size);
+        if(st.size != 0 && n.data is null) return -1;
+        n.capacity = st.size;
+    }
+    n.size = st.size;
+    return 0;
 }
 
 private Node* createNode(const(char)* name, NodeType kind)

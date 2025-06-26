@@ -27,10 +27,10 @@ extern(C) int vmm_create_vm()
     {
         if(!vm.active)
         {
-            vm.id = i;
+            vm.id = cast(int)i;
             vm.active = true;
             log_message("vmm create\n");
-            return i;
+            return cast(int)i;
         }
     }
     return -1;

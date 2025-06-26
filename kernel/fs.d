@@ -23,6 +23,7 @@ struct Node {
 }
 
 __gshared Node* fsRoot;
+__gshared Node* fsCurrentDir;
 
 struct FileDesc {
     Node* node;
@@ -244,6 +245,21 @@ extern(C) int fs_wstat(const(char)* path, const Stat* st)
     return 0;
 }
 
+extern(C) int fs_fwstat(int fd, const Stat* st)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return -1;
+    auto n = g_fdtable[fd].node;
+    if(n is null || n.kind != NodeType.File) return -1;
+    if(st.size > n.capacity)
+    {
+        n.data = cast(ubyte*)realloc(n.data, st.size);
+        if(st.size != 0 && n.data is null) return -1;
+        n.capacity = st.size;
+    }
+    n.size = st.size;
+    return 0;
+}
+
 private Node* createNode(const(char)* name, NodeType kind)
 {
     auto n = cast(Node*)malloc(Node.sizeof);
@@ -262,6 +278,61 @@ private Node* createNode(const(char)* name, NodeType kind)
     n.data = null;
     n.size = 0;
     n.capacity = 0;
+    return n;
+}
+
+private void freeNodeTree(Node* n)
+{
+    if(n is null) return;
+    auto c = n.child;
+    while(c !is null)
+    {
+        auto next = c.sibling;
+        freeNodeTree(c);
+        c = next;
+    }
+    if(n.data !is null) free(n.data);
+    if(n.name !is null) free(n.name);
+    free(n);
+}
+
+private Node* cloneSubtree(Node* src)
+{
+    if(src is null) return null;
+    auto n = createNode(src.name, src.kind);
+    if(n is null) return null;
+    if(src.kind == NodeType.File && src.size > 0)
+    {
+        n.data = cast(ubyte*)malloc(src.size);
+        if(src.size != 0 && n.data is null)
+        {
+            free(n.name);
+            free(n);
+            return null;
+        }
+        memcpy(n.data, src.data, src.size);
+        n.size = src.size;
+        n.capacity = src.size;
+    }
+    auto child = src.child;
+    Node* prev = null;
+    while(child !is null)
+    {
+        auto c = cloneSubtree(child);
+        if(c is null)
+        {
+            // free previously cloned
+            freeNodeTree(n);
+            return null;
+        }
+        if(n.child is null)
+            n.child = c;
+        else
+            prev.sibling = c;
+        c.parent = n;
+        prev = c;
+        child = child.sibling;
+    }
     return n;
 }
 
@@ -516,6 +587,7 @@ extern(C) void init_filesystem(void* info)
 {
     loadFilesystem();
     fs_fdtable_init();
+    fsCurrentDir = fsRoot;
     log_message("Filesystem initialized\n");
 }
 
@@ -553,5 +625,83 @@ extern(C) void fs_create_user(const(char)* name)
     cfgPath[pl] = 0;
     createFile(cfgPath.ptr);
     save_filesystem();
+}
+
+extern(C) int fs_remove(const(char)* path)
+{
+    auto n = fs_lookup(path);
+    if(n is null || n is fsRoot) return -1;
+    auto parent = n.parent;
+    if(parent is null) return -1;
+    if(parent.child is n)
+        parent.child = n.sibling;
+    else
+    {
+        auto c = parent.child;
+        while(c !is null && c.sibling !is n)
+            c = c.sibling;
+        if(c is null) return -1;
+        c.sibling = n.sibling;
+    }
+    freeNodeTree(n);
+    save_filesystem();
+    return 0;
+}
+
+extern(C) int fs_chdir(const(char)* path)
+{
+    auto n = fs_lookup(path);
+    if(n is null || n.kind != NodeType.Directory) return -1;
+    fsCurrentDir = n;
+    return 0;
+}
+
+
+extern(C) int fs_mount(const(char)* spec, const(char)* target, int flags, const(char)* fs, const(char)* aname)
+{
+    auto src = fs_lookup(spec);
+    if(src is null) return -1;
+    auto copy = cloneSubtree(src);
+    if(copy is null) return -1;
+
+    size_t len = strlen(target);
+    size_t end = len;
+    while(end > 1 && target[end-1] != '/') --end;
+    char[128] dirBuf;
+    if(end == 1)
+    {
+        dirBuf[0] = '/'; dirBuf[1] = 0;
+    }
+    else
+    {
+        memcpy(dirBuf.ptr, target, end);
+        dirBuf[end] = 0;
+    }
+    auto parent = mkdirInternal(dirBuf.ptr);
+    if(parent is null)
+    {
+        freeNodeTree(copy);
+        return -1;
+    }
+    const(char)* fname = target + end;
+    if(copy.name !is null) { free(copy.name); }
+    size_t nl = strlen(fname);
+    copy.name = cast(char*)malloc(nl+1);
+    memcpy(copy.name, fname, nl);
+    copy.name[nl] = 0;
+    addChild(parent, copy);
+    save_filesystem();
+    return 0;
+}
+
+extern(C) int fs_bind(const(char)* oldp, const(char)* newp, int flags)
+{
+    // bind implemented as mount of a cloned subtree
+    return fs_mount(oldp, newp, flags, null, null);
+}
+
+extern(C) int fs_unmount(const(char)* target)
+{
+    return fs_remove(target);
 }
 

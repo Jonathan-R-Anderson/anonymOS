@@ -6,7 +6,9 @@ import kernel.terminal : terminal_putchar, terminal_writestring;
 import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_create_file_desc, fs_pread_file, fs_pwrite_file,
                     fs_seek_file, fs_dup_fd, fs_fd2path, fs_stat,
-                    fs_fstat, fs_wstat, Stat;
+                    fs_fstat, fs_wstat, fs_fwstat, fs_remove,
+                    fs_chdir, fs_mount, fs_bind, fs_unmount,
+                    Stat;
 import kernel.types; // for ulong
 
 public:
@@ -25,11 +27,17 @@ enum SyscallID : ulong {
     Stat        = 10,
     FStat       = 11,
     WStat       = 12,
+    FWStat      = 13,
+    Remove      = 14,
+    ChDir       = 15,
+    Mount       = 16,
+    Bind        = 17,
+    Unmount     = 18,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
 
-__gshared SyscallHandler[16] g_syscalls;
+__gshared SyscallHandler[32] g_syscalls;
 
 extern(C) long sys_write_string(ulong strPtr, ulong len, ulong, ulong, ulong, ulong)
 {
@@ -112,6 +120,46 @@ extern(C) long sys_wstat(ulong pathPtr, ulong statPtr, ulong, ulong, ulong, ulon
     return fs_wstat(path, st);
 }
 
+extern(C) long sys_fwstat(ulong fd, ulong statPtr, ulong, ulong, ulong, ulong)
+{
+    auto st = cast(const Stat*)statPtr;
+    return fs_fwstat(cast(int)fd, st);
+}
+
+extern(C) long sys_remove(ulong pathPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto path = cast(const(char)*)pathPtr;
+    return fs_remove(path);
+}
+
+extern(C) long sys_chdir(ulong pathPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto path = cast(const(char)*)pathPtr;
+    return fs_chdir(path);
+}
+
+extern(C) long sys_mount(ulong specPtr, ulong targetPtr, ulong flags, ulong fsPtr, ulong anamePtr, ulong)
+{
+    auto spec = cast(const(char)*)specPtr;
+    auto target = cast(const(char)*)targetPtr;
+    auto fsStr = cast(const(char)*)fsPtr;
+    auto aname = cast(const(char)*)anamePtr;
+    return fs_mount(spec, target, cast(int)flags, fsStr, aname);
+}
+
+extern(C) long sys_bind(ulong oldPtr, ulong newPtr, ulong flags, ulong, ulong, ulong)
+{
+    auto oldp = cast(const(char)*)oldPtr;
+    auto newp = cast(const(char)*)newPtr;
+    return fs_bind(oldp, newp, cast(int)flags);
+}
+
+extern(C) long sys_unmount(ulong targetPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto target = cast(const(char)*)targetPtr;
+    return fs_unmount(target);
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -136,4 +184,10 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.Stat]        = &sys_stat;
     g_syscalls[cast(size_t)SyscallID.FStat]       = &sys_fstat;
     g_syscalls[cast(size_t)SyscallID.WStat]       = &sys_wstat;
+    g_syscalls[cast(size_t)SyscallID.FWStat]      = &sys_fwstat;
+    g_syscalls[cast(size_t)SyscallID.Remove]      = &sys_remove;
+    g_syscalls[cast(size_t)SyscallID.ChDir]       = &sys_chdir;
+    g_syscalls[cast(size_t)SyscallID.Mount]       = &sys_mount;
+    g_syscalls[cast(size_t)SyscallID.Bind]        = &sys_bind;
+    g_syscalls[cast(size_t)SyscallID.Unmount]     = &sys_unmount;
 }

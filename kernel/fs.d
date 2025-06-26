@@ -216,7 +216,7 @@ extern(C) long fs_seek_file(int fd, long offset, int whence)
     if(desc.node.kind == NodeType.Pipe) return -1;
     if(desc.node.kind != NodeType.File) return -1;
     size_t newPos = 0;
-    final switch(whence)
+    switch(whence)
     {
         case 0: // SEEK_SET
             newPos = cast(size_t)offset;
@@ -293,7 +293,7 @@ extern(C) const(char)* fs_fd2path(int fd)
     if(fd < 0 || fd >= g_fdtable.length) return null;
     auto n = g_fdtable[fd].node;
     if(n is null) return null;
-    static char[256] pathBuf;
+    __gshared static char[256] pathBuf;
     buildPath(n, pathBuf.ptr, pathBuf.length);
     return pathBuf.ptr;
 }

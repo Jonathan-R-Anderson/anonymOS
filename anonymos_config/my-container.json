@@ -1,0 +1,21 @@
+{
+  "name": "my-container",
+  "base_image": "/var/images/ubuntu-rootfs.img",
+  "mounts": [
+    { "source": "/home/user/data", "target": "/data" },
+    { "source": "/etc/resolv.conf", "target": "/etc/resolv.conf" }
+  ],
+  "network": {
+    "type": "bridge",
+    "ip": "192.168.100.101"
+  },
+  "env": {
+    "MY_VAR": "value",
+    "PATH": "/usr/local/bin:/usr/bin:/bin"
+  },
+  "startup_command": ["/bin/bash"],
+  "limits": {
+    "cpu": 1,
+    "memory": "512m"
+  }
+}

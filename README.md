@@ -491,6 +491,13 @@ ldc2 src/user/apps/container_service/container_service.d -ofcontainer_service
 The `--run` flag actually executes the QEMU command; omitting it merely prints
 the parsed settings.  This mechanism demonstrates how anonymOS can manage
 container-style workloads without relying on an external Docker daemon.
+### JSON Environment Launcher
+
+The `env_launcher` tool reads container settings from a JSON file located next to `system.json`. Compile and run:
+```bash
+ldc2 src/user/apps/env_launcher/env_launcher.d -ofenv_launcher
+./env_launcher anonymos_config/my-container.json
+```
 
 ### System Configuration and Proxy Setup
 

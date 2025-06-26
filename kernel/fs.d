@@ -21,6 +21,45 @@ struct Node {
 
 __gshared Node* fsRoot;
 
+struct FileDesc {
+    Node* node;
+}
+
+enum MAX_FDS = 16;
+__gshared FileDesc[MAX_FDS] g_fdtable;
+
+extern(C) void fs_fdtable_init()
+{
+    foreach(ref f; g_fdtable)
+        f.node = null;
+}
+
+extern(C) int fs_open_file(const(char)* path, int mode)
+{
+    auto n = fs_lookup(path);
+    if(n is null || n.kind != NodeType.File)
+        return -1;
+    foreach(i, ref f; g_fdtable)
+    {
+        if(f.node is null)
+        {
+            f.node = n;
+            return cast(int)i;
+        }
+    }
+    return -1;
+}
+
+extern(C) int fs_close_file(int fd)
+{
+    if(fd < 0 || fd >= g_fdtable.length)
+        return -1;
+    if(g_fdtable[fd].node is null)
+        return -1;
+    g_fdtable[fd].node = null;
+    return 0;
+}
+
 private Node* createNode(const(char)* name, NodeType kind)
 {
     auto n = cast(Node*)malloc(Node.sizeof);
@@ -289,6 +328,7 @@ extern(C) void save_filesystem()
 extern(C) void init_filesystem(void* info)
 {
     loadFilesystem();
+    fs_fdtable_init();
     log_message("Filesystem initialized\n");
 }
 

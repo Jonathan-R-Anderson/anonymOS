@@ -3,6 +3,7 @@ module kernel.container_service;
 pragma(LDC_no_moduleinfo);
 
 import kernel.logger : log_message;
+import kernel.host.container_runtime : host_run_container;
 
 struct ContainerConfig {
     char[64] baseImage;
@@ -22,5 +23,5 @@ extern(C) void start_container(ContainerConfig* cfg)
     log_message("\ncmd: ");
     log_message(cfg.cmd.ptr);
     log_message("\n");
-    // In a real implementation this would launch QEMU or a container runtime
+    host_run_container(cfg.baseImage.ptr, cfg.cmd.ptr);
 }

@@ -374,7 +374,6 @@ This section explains how to build and run anonymOS from source for development 
 ### Prerequisites
 
 * **Operating System:** Linux (recommended) or macOS as a host. Building on Windows is not currently supported.
-* **Dependencies:** You will need GCC or Clang, GNU Make, and standard Unix build utilities. Also install QEMU (if you plan to run in a VM) and Git. If using Debian/Ubuntu as host, you can install dependencies with: `sudo apt-get install build-essential git qemu-system-x86`. For Fedora: `sudo dnf install @development-tools git qemu-system-x86`.
 * **Bootloader tools:** Install `grub-mkrescue` and `xorriso` for ISO creation (e.g., `sudo apt-get install grub-pc-bin xorriso mtools`).
 * **Rust (optional):** If parts of anonymOS are implemented in Rust (capability system or services), ensure Rust toolchain is installed (via rustup).
 
@@ -411,18 +410,14 @@ This section explains how to build and run anonymOS from source for development 
 
 ### Running anonymOS (Emulated)
 
-You can test anonymOS in QEMU (an open-source emulator) without installing on real hardware. For extra isolation, you can run the kernel in Docker with `scripts/kernel_isolate.sh` if Docker is installed:
 
-1. **Basic QEMU Run:** Use the provided Make target to run with QEMU:
 
    ```bash
    make run
    ```
 
-   This typically invokes QEMU with appropriate options, e.g.:
 
    ```bash
-   qemu-system-x86_64 -m 1024 -smp 2 -drive format=raw,file=build/anonymOS.iso,if=virtio -serial stdio
    ```
 
    This command allocates 1024 MB of RAM, 2 CPU cores, sets up the image as a virtio drive, and connects the VM’s serial console to your terminal (so you can see boot logs).
@@ -430,12 +425,10 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
    If the output scrolls too quickly you can pipe it through `less` to get a scrollback buffer:
 
    ```bash
-   qemu-system-x86_64 -m 1024 -smp 2 -drive format=raw,file=build/anonymOS.iso,if=virtio -serial stdio |& less -R
    ```
 
    Using `less` allows you to scroll through earlier log messages while the VM is running.
 
-2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. The system now displays a simple text-based login prompt on the console. After successful authentication the built-in shell starts. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
 
 3. **Login:** The login prompt accepts the default credentials `wcuser` / `wcpass`. After you enter them, the shell is spawned. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.
 
@@ -443,18 +436,15 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
 
    * Run `ls /` to see the top-level filesystem. You’ll find unconventional layout due to namespaces (for instance, `/proc` might be there provided by our process server, `/dev` with device files, etc.).
    * Try basic commands: `echo hello > /dev/cons` (this should print “hello” on the console, since `/dev/cons` is the console output file in Plan9/anonymOS).
-   * Check the network: if a userland network stack is running, you can try `ping`. In this early stage it might not be fully set up. If not, you can start the network service manually or ensure QEMU’s networking is enabled (the `make run` uses user networking by default).
    * View logs: `cat /logs/audit` or similar to see if audit logs are being recorded (could be empty if nothing has happened).
    * List snaps: `ls /snap` to see mounted snaps and their versions.
 
-5. **Shut Down:** To exit QEMU, you can either type the shutdown command in the VM (e.g., `sudo halt` or `poweroff` if those are supported) or simply close QEMU. The OS is still in development, so graceful shutdown may not be fully implemented – in many cases, closing the QEMU window or pressing `Ctrl-A X` (if using QEMU monitor hotkeys) will suffice.
 
 ### Containerizing Userland with Docker
 
 For additional isolation of user services, a Docker setup is provided. The Docker image uses a minimal Alpine Linux base so only minimal packages are included. Use the helper script to run a container containing the anonymOS userland utilities:
 
 ```bash
-scripts/docker_run.sh           # run the image interactively
 ```
 
 Pass `--dry-run` to preview the Docker command without executing it. This container does not run the kernel; it merely hosts userland processes in a secure environment.
@@ -462,17 +452,14 @@ Pass `--dry-run` to preview the Docker command without executing it. This contai
 ### Isolating System Services with Docker
 
 System services can also be launched inside containers for extra security. The
-`docker_service.sh` helper runs a service binary using the same Docker image but
 shares the host namespaces so Plan 9 style per-process namespaces still work.
 The host's Docker socket is mounted so any additional containers or virtual
 machines started by these services execute alongside the system container rather
 than nested within it.
 
 ```bash
-scripts/docker_service.sh /path/to/service [args]
 ```
 
-Use `--dry-run` for debugging to see the exact `docker run` invocation.
 
 ### Internal Container Service
 
@@ -484,10 +471,8 @@ launch lightweight containers via Docker.  The user tool parses a simplified
 is available at `containers/Containerfile.example`.
 
 You can also invoke containers directly using the `run_container.sh` helper
-which selects Docker or QEMU based on availability:
 
 ```bash
-scripts/run_container.sh --image alpine:latest --cmd "/bin/sh"
 ```
 
 ```bash
@@ -524,7 +509,7 @@ same format as `proxychains`:
     ],
     "pfsense": {
       "enabled": true,
-      "method": "docker",
+      "method": "vm",
       "ip": "192.168.100.1"
     }
   }
@@ -548,12 +533,8 @@ pfSense instance for additional security.
 
 ### Running anonymOS in Virtual Machines
 
-To test with hardware virtualization, use the `virtual_run.sh` script which
-invokes QEMU with KVM acceleration when available:
 
 ```bash
-scripts/virtual_run.sh --dry-run   # show the qemu command
-scripts/virtual_run.sh             # boot the ISO with KVM if supported
 ```
 This allows you to run anonymOS in a fast virtual machine environment similar to how RancherOS leverages Docker for services.
 
@@ -561,11 +542,8 @@ This allows you to run anonymOS in a fast virtual machine environment similar to
 
 ### Isolating the Kernel in a Container
 
-To run the kernel itself in a container, use `scripts/kernel_isolate.sh`. This helper boots the ISO inside a lightweight container environment using QEMU. If container support is not available, it falls back to `scripts/virtual_run.sh`.
 
 ```bash
-scripts/kernel_isolate.sh --dry-run # show the command
-scripts/kernel_isolate.sh           # boot inside the container
 ```
 
 
@@ -584,7 +562,6 @@ helper.
 Example dry run:
 
 ```bash
-scripts/hardware_isolate.sh --dry-run --device /dev/net/tun net-driver
 ```
 
 ### Process Memory Virtualization
@@ -594,6 +571,14 @@ allocator in `kernel/memory/virtmem.d`.  Pages are backed by the host heap and
 grow on demand, so from the process perspective the memory appears
 effectively unlimited.  Other processes cannot access this memory unless a
 capability is explicitly shared. 
+
+### Hypervisor Virtualization
+
+anonymOS now includes a lightweight hypervisor inspired by the NOVA microhypervisor.
+The kernel exposes system calls to create and run minimal virtual machines without
+relying on external tools. This built-in virtualization layer allows advanced isolation
+of services while keeping the trusted computing base small.
+
 
 ### Running on Real Hardware (Experimental)
 
@@ -608,7 +593,6 @@ If you want to try anonymOS on a real machine:
 
   (Replace `/dev/sdX` with your USB drive path, be **very careful** to choose the correct drive).
 * Boot your target PC from this USB. Ensure secure boot is off (or you have enrolled the test keys, since our build might not have a signed bootloader for Secure Boot).
-* The system should boot into the same environment as QEMU. Keep in mind hardware support is limited (only basic virtio, some Intel/AMD chipset devices). This is primarily for developers to experiment; it’s not production-ready on diverse hardware yet.
 
 ### Rebuilding and Development Cycle
 
@@ -616,11 +600,8 @@ During development, you might edit parts of the code (say the kernel or a servic
 
 If you’re hacking on a specific component:
 
-* Kernel: The kernel code is under `kernel/`. After changes, `make build` will produce a new kernel. You can often test it by just running QEMU again (the image includes the kernel, but for speed you could also set QEMU to boot the kernel directly with `-kernel` option).
-* Services: Services are usually user-space programs under `services/<name>/`. If you change one, it will rebuild and repack the image. Alternatively, inside a running system, you could compile a service and replace it for quick testing (since we have a dev environment in QEMU).
 * Configuration: The default config used for the image build is `anonymos_config/system.json`. Editing this file lets you control which services are enabled and how networking proxies are configured.
 
-For debugging, you can enable verbose logging or use QEMU’s gdb stub to attach a debugger to the kernel. For user-space, since each service is a normal program, you can also run them under gdb inside QEMU if you have the binary and gdb server set up.
 
 The project is evolving rapidly, so for the latest developer documentation (like coding style, etc.), please see the `CONTRIBUTING.md` and `docs/` directory in the repository.
 

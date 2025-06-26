@@ -77,9 +77,7 @@ ALL_ASM_SOURCES = \
 ## Other Files and Tools
 LINKER_SCRIPT               = arch/x86/linker.ld
 ANSI_ART_SRC_FILE           = kernel/utils/artwork.ans
-ANSI_ART_D_TARGET_FILE      = kernel/utils/ansi_art.d # Generated D file target
-PYTHON_SCRIPT_ANSI_TO_D     = scripts/ans_to_d.py
-PYTHON_INTERPRETER          = python3
+ANSI_ART_D_TARGET_FILE      = kernel/utils/ansi_art.d
 
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/obj
@@ -92,9 +90,6 @@ ISO_FILE = $(BUILD_DIR)/anonymOS.iso
 
 
 
-QEMU_FLAGS = -cpu qemu64,+lm \
-             -m 128M -no-reboot -no-shutdown -d guest_errors \
-             -display curses -vga std
 
 
 ## Object Files (preserving directory structure under OBJ_DIR)
@@ -153,10 +148,6 @@ $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
 
-# Rule to generate the D file from ANSI art
-$(ANSI_ART_D_TARGET_FILE): $(ANSI_ART_SRC_FILE) $(PYTHON_SCRIPT_ANSI_TO_D)
-	@mkdir -p $(dir $@)
-	$(PYTHON_INTERPRETER) $(PYTHON_SCRIPT_ANSI_TO_D) $(ANSI_ART_SRC_FILE) $@
 
 
 # Generic rule for D files (preserves source path under OBJ_DIR)
@@ -169,20 +160,6 @@ $(OBJ_DIR)/%.o: %.s
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) $< -o $@
 
-run: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -display curses -vga std
-
-# Optional: Run with QEMU paused, waiting for GDB
-# In another terminal: i686-elf-gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.bin" -ex "layout asm" -ex "break _start"
-# In another terminal: gdb -ex "target remote localhost:1234" -ex "symbol-file $(KERNEL_BIN)" -ex "layout asm" -ex "break _start"
-# (Adjust gdb command if you use a cross-compiler gdb like i686-elf-gdb)
-run-debug: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -S -s
-
-run-log-int: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -m 128M -display curses -vga std \
-	-d int,guest_errors,cpu_reset -D qemu.log -debugcon file:qemu.log -serial file:qemu.log \
-	-M smm=off -no-reboot -S -s
 
 clean:
 		rm -rf $(BUILD_DIR)

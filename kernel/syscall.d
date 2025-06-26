@@ -10,6 +10,7 @@ import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_chdir, fs_mount, fs_bind, fs_unmount,
                     fs_create_pipe, g_fdtable, Pipe,
                     Stat;
+import kernel.hypervisor : vmm_create_vm, vmm_run_vm, vmm_destroy_vm;
 import kernel.types; // for ulong
 import kernel.process_manager : process_create_with_parent, process_exit,
                                process_wait, get_current_pid, g_processes;
@@ -64,6 +65,9 @@ enum SyscallID : ulong {
     Alarm       = 37,
     Notify      = 38,
     Noted       = 39,
+    VMCreate    = 40,
+    VMRun       = 41,
+    VMDestroy   = 42,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
@@ -421,6 +425,22 @@ extern(C) long sys_noted(ulong mode, ulong, ulong, ulong, ulong, ulong)
     return (mode == 0) ? 0 : -1;
 }
 
+extern(C) long sys_vmcreate(ulong, ulong, ulong, ulong, ulong, ulong)
+{
+    return vmm_create_vm();
+}
+
+extern(C) long sys_vmrun(ulong id, ulong, ulong, ulong, ulong, ulong)
+{
+    return vmm_run_vm(cast(int)id);
+}
+
+extern(C) long sys_vmdestroy(ulong id, ulong, ulong, ulong, ulong, ulong)
+{
+    vmm_destroy_vm(cast(int)id);
+    return 0;
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -472,5 +492,8 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.Alarm]       = &sys_alarm;
     g_syscalls[cast(size_t)SyscallID.Notify]      = &sys_notify;
     g_syscalls[cast(size_t)SyscallID.Noted]       = &sys_noted;
+    g_syscalls[cast(size_t)SyscallID.VMCreate]    = &sys_vmcreate;
+    g_syscalls[cast(size_t)SyscallID.VMRun]       = &sys_vmrun;
+    g_syscalls[cast(size_t)SyscallID.VMDestroy]   = &sys_vmdestroy;
     semaphore_init();
 }

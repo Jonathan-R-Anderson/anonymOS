@@ -4,7 +4,7 @@ pragma(LDC_no_moduleinfo);
 
 import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
 import kernel.types : strlen, memcpy, strchr;
-import kernel.lib.stdc.stdlib : malloc, free;
+import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message;
 
 public:
@@ -17,12 +17,16 @@ struct Node {
     Node*      parent;
     Node*      child;
     Node*      sibling;
+    ubyte*     data;
+    size_t     size;
+    size_t     capacity;
 }
 
 __gshared Node* fsRoot;
 
 struct FileDesc {
     Node* node;
+    size_t pos;
 }
 
 enum MAX_FDS = 16;
@@ -31,7 +35,10 @@ __gshared FileDesc[MAX_FDS] g_fdtable;
 extern(C) void fs_fdtable_init()
 {
     foreach(ref f; g_fdtable)
+    {
         f.node = null;
+        f.pos = 0;
+    }
 }
 
 extern(C) int fs_open_file(const(char)* path, int mode)
@@ -44,6 +51,7 @@ extern(C) int fs_open_file(const(char)* path, int mode)
         if(f.node is null)
         {
             f.node = n;
+            f.pos = 0;
             return cast(int)i;
         }
     }
@@ -57,7 +65,81 @@ extern(C) int fs_close_file(int fd)
     if(g_fdtable[fd].node is null)
         return -1;
     g_fdtable[fd].node = null;
+    g_fdtable[fd].pos = 0;
     return 0;
+}
+
+extern(C) int fs_create_file_desc(const(char)* path, int mode, int perm)
+{
+    auto n = createFile(path);
+    if(n is null) return -1;
+    n.size = 0;
+    foreach(i, ref f; g_fdtable)
+    {
+        if(f.node is null)
+        {
+            f.node = n;
+            f.pos = 0;
+            return cast(int)i;
+        }
+    }
+    return -1;
+}
+
+extern(C) long fs_pread_file(int fd, void* buf, size_t count, size_t offset)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return -1;
+    auto n = g_fdtable[fd].node;
+    if(n is null || n.kind != NodeType.File) return -1;
+    if(offset >= n.size) return 0;
+    size_t toRead = count;
+    if(offset + toRead > n.size)
+        toRead = n.size - offset;
+    memcpy(buf, n.data + offset, toRead);
+    return cast(long)toRead;
+}
+
+extern(C) long fs_pwrite_file(int fd, const(void)* buf, size_t count, size_t offset)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return -1;
+    auto n = g_fdtable[fd].node;
+    if(n is null || n.kind != NodeType.File) return -1;
+    size_t end = offset + count;
+    if(end > n.capacity)
+    {
+        size_t newCap = end;
+        n.data = cast(ubyte*)realloc(n.data, newCap);
+        if(n.data is null) return -1;
+        n.capacity = newCap;
+    }
+    memcpy(n.data + offset, buf, count);
+    if(end > n.size)
+        n.size = end;
+    return cast(long)count;
+}
+
+extern(C) long fs_seek_file(int fd, long offset, int whence)
+{
+    if(fd < 0 || fd >= g_fdtable.length) return -1;
+    auto desc = &g_fdtable[fd];
+    if(desc.node is null || desc.node.kind != NodeType.File) return -1;
+    size_t newPos = 0;
+    final switch(whence)
+    {
+        case 0: // SEEK_SET
+            newPos = cast(size_t)offset;
+            break;
+        case 1: // SEEK_CUR
+            newPos = desc.pos + cast(size_t)offset;
+            break;
+        case 2: // SEEK_END
+            newPos = desc.node.size + cast(size_t)offset;
+            break;
+        default:
+            return -1;
+    }
+    desc.pos = newPos;
+    return cast(long)newPos;
 }
 
 private Node* createNode(const(char)* name, NodeType kind)
@@ -75,6 +157,9 @@ private Node* createNode(const(char)* name, NodeType kind)
     n.parent = null;
     n.child = null;
     n.sibling = null;
+    n.data = null;
+    n.size = 0;
+    n.capacity = 0;
     return n;
 }
 

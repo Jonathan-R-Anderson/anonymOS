@@ -37,7 +37,7 @@ extern (C) void interrupt_handler_d(Registers* regs_ptr, ulong int_no, ulong err
             timer_ticks++;
             auto pid = get_current_pid();
             if(pid != size_t.max) {
-                auto ref proc = g_processes[pid];
+                auto proc = &g_processes[pid];
                 if(proc.alarm_tick != 0 && timer_ticks >= proc.alarm_tick) {
                     proc.alarm_tick = 0;
                     if(proc.note_handler !is null)

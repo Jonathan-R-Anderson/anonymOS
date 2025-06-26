@@ -73,10 +73,12 @@ __gshared char[256] g_errstr;
 
 struct P9Conn {
     size_t msize;
-    char[32] version;
+    char[32] version_;
     size_t fid;
     bool authenticated;
 }
+
+alias NoteHandlerFn = extern(C) void function(const(char)*);
 
 __gshared P9Conn g_p9conn;
 
@@ -373,10 +375,10 @@ extern(C) long sys_fversion(ulong msize, ulong versionPtr, ulong fid, ulong, ulo
     g_p9conn.msize = cast(size_t)msize;
     auto ver = cast(const(char)*)versionPtr;
     size_t len = strlen(ver);
-    if(len >= g_p9conn.version.length)
-        len = g_p9conn.version.length - 1;
-    memcpy(g_p9conn.version.ptr, ver, len);
-    g_p9conn.version[len] = 0;
+    if(len >= g_p9conn.version_.length)
+        len = g_p9conn.version_.length - 1;
+    memcpy(g_p9conn.version_.ptr, ver, len);
+    g_p9conn.version_[len] = 0;
     g_p9conn.fid = cast(size_t)fid;
     g_p9conn.authenticated = false;
     return 0;
@@ -409,7 +411,7 @@ extern(C) long sys_notify(ulong handlerPtr, ulong, ulong, ulong, ulong, ulong)
     auto pid = get_current_pid();
     if(pid == size_t.max)
         return -1;
-    g_processes[pid].note_handler = cast(extern(C) void function(const(char)*))handlerPtr;
+    g_processes[pid].note_handler = cast(NoteHandlerFn)(handlerPtr);
     return 0;
 }
 

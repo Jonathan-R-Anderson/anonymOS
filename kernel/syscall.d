@@ -5,7 +5,8 @@ pragma(LDC_no_moduleinfo);
 import kernel.terminal : terminal_putchar, terminal_writestring;
 import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_create_file_desc, fs_pread_file, fs_pwrite_file,
-                    fs_seek_file;
+                    fs_seek_file, fs_dup_fd, fs_fd2path, fs_stat,
+                    fs_fstat, fs_wstat, Stat;
 import kernel.types; // for ulong
 
 public:
@@ -19,6 +20,11 @@ enum SyscallID : ulong {
     PWrite      = 5,
     Seek        = 6,
     Close       = 7,
+    Dup         = 8,
+    FD2Path     = 9,
+    Stat        = 10,
+    FStat       = 11,
+    WStat       = 12,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
@@ -75,6 +81,37 @@ extern(C) long sys_close(ulong fd, ulong, ulong, ulong, ulong, ulong)
     return fs_close_file(cast(int)fd);
 }
 
+extern(C) long sys_dup(ulong oldfd, ulong newfd, ulong, ulong, ulong, ulong)
+{
+    return fs_dup_fd(cast(int)oldfd, cast(int)newfd);
+}
+
+extern(C) long sys_fd2path(ulong fd, ulong, ulong, ulong, ulong, ulong)
+{
+    auto p = fs_fd2path(cast(int)fd);
+    return cast(long)p;
+}
+
+extern(C) long sys_stat(ulong pathPtr, ulong statPtr, ulong, ulong, ulong, ulong)
+{
+    auto path = cast(const(char)*)pathPtr;
+    auto st = cast(Stat*)statPtr;
+    return fs_stat(path, st);
+}
+
+extern(C) long sys_fstat(ulong fd, ulong statPtr, ulong, ulong, ulong, ulong)
+{
+    auto st = cast(Stat*)statPtr;
+    return fs_fstat(cast(int)fd, st);
+}
+
+extern(C) long sys_wstat(ulong pathPtr, ulong statPtr, ulong, ulong, ulong, ulong)
+{
+    auto path = cast(const(char)*)pathPtr;
+    auto st = cast(const Stat*)statPtr;
+    return fs_wstat(path, st);
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -94,4 +131,9 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.PWrite]      = &sys_pwrite;
     g_syscalls[cast(size_t)SyscallID.Seek]        = &sys_seek;
     g_syscalls[cast(size_t)SyscallID.Close]       = &sys_close;
+    g_syscalls[cast(size_t)SyscallID.Dup]         = &sys_dup;
+    g_syscalls[cast(size_t)SyscallID.FD2Path]     = &sys_fd2path;
+    g_syscalls[cast(size_t)SyscallID.Stat]        = &sys_stat;
+    g_syscalls[cast(size_t)SyscallID.FStat]       = &sys_fstat;
+    g_syscalls[cast(size_t)SyscallID.WStat]       = &sys_wstat;
 }

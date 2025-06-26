@@ -479,16 +479,23 @@ Use `--dry-run` for debugging to see the exact `docker run` invocation.
 The repository includes a container management subsystem inside the kernel
 implemented in D.  A simple user-space tool still exists for convenience, but
 the kernel now provides `init_container_service` and `start_container` to
-launch lightweight QEMU containers.  The stub user tool parses a simplified
+launch lightweight containers via Docker.  The user tool parses a simplified
 **Containerfile** and invokes these kernel functions.  A sample configuration
 is available at `containers/Containerfile.example`.
+
+You can also invoke containers directly using the `run_container.sh` helper
+which selects Docker or QEMU based on availability:
+
+```bash
+scripts/run_container.sh --image alpine:latest --cmd "/bin/sh"
+```
 
 ```bash
 ldc2 src/user/apps/container_service/container_service.d -ofcontainer_service
 ./container_service containers/Containerfile.example --run
 ```
 
-The `--run` flag actually executes the QEMU command; omitting it merely prints
+The `--run` flag actually spawns the container; omitting it merely prints
 the parsed settings.  This mechanism demonstrates how anonymOS can manage
 container-style workloads without relying on an external Docker daemon.
 ### JSON Environment Launcher

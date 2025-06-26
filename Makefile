@@ -160,6 +160,20 @@ $(OBJ_DIR)/%.o: %.s
 	@mkdir -p $(dir $@)
 	$(AS) $(ASFLAGS) $< -o $@
 
+run: $(ISO_FILE)
+	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -display curses -vga std
+
+# Optional: Run with QEMU paused, waiting for GDB
+# In another terminal: i686-elf-gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.bin" -ex "layout asm" -ex "break _start"
+# In another terminal: gdb -ex "target remote localhost:1234" -ex "symbol-file $(KERNEL_BIN)" -ex "layout asm" -ex "break _start"
+# (Adjust gdb command if you use a cross-compiler gdb like i686-elf-gdb)
+run-debug: $(ISO_FILE)
+	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -S -s
+
+run-log-int: $(ISO_FILE)
+	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -m 128M -display curses -vga std \
+	-d int,guest_errors,cpu_reset -D qemu.log -debugcon file:qemu.log -serial file:qemu.log \
+	-M smm=off -no-reboot -S -s
 
 clean:
 		rm -rf $(BUILD_DIR)

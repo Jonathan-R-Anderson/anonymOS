@@ -8,6 +8,7 @@ import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_seek_file, fs_dup_fd, fs_fd2path, fs_stat,
                     fs_fstat, fs_wstat, fs_fwstat, fs_remove,
                     fs_chdir, fs_mount, fs_bind, fs_unmount,
+                    fs_create_pipe, g_fdtable, Pipe,
                     Stat;
 import kernel.types; // for ulong
 import kernel.process_manager : process_create_with_parent, process_exit,
@@ -15,6 +16,8 @@ import kernel.process_manager : process_create_with_parent, process_exit,
 import kernel.process_manager : scheduler_run; // to run new procs
 import kernel.interrupts : timer_ticks;
 import kernel.shell : ttyShelly_shell;
+import kernel.sync : rendezvous, sem_acquire, sem_release, semaphore_init;
+import kernel.lib.stdc.stdlib : free;
 
 public:
 
@@ -44,6 +47,10 @@ enum SyscallID : ulong {
     ErrStr      = 22,
     Sleep       = 23,
     Await       = 24,
+    Pipe        = 25,
+    Rendezvous  = 26,
+    SemAcquire  = 27,
+    SemRelease  = 28,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
@@ -248,6 +255,65 @@ extern(C) long sys_await(ulong, ulong, ulong, ulong, ulong, ulong)
     return cast(long)child;
 }
 
+extern(C) long sys_pipe(ulong fdsPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    auto fds = cast(int*)fdsPtr;
+    auto n = fs_create_pipe();
+    if(n is null) return -1;
+    int rd = -1, wr = -1;
+    foreach(i, ref f; g_fdtable)
+    {
+        if(f.node is null)
+        {
+            if(rd == -1)
+            {
+                rd = cast(int)i;
+                f.node = n;
+                f.pos = 0;
+                f.pipeRead = true;
+            }
+            else
+            {
+                wr = cast(int)i;
+                f.node = n;
+                f.pos = 0;
+                f.pipeWrite = true;
+                break;
+            }
+        }
+    }
+    if(rd == -1 || wr == -1)
+    {
+        if(rd != -1)
+        {
+            g_fdtable[rd].node = null;
+            g_fdtable[rd].pipeRead = false;
+        }
+        auto p = cast(Pipe*)n.data;
+        free(p);
+        free(n);
+        return -1;
+    }
+    fds[0] = rd;
+    fds[1] = wr;
+    return 0;
+}
+
+extern(C) long sys_rendezvous(ulong tag, ulong val, ulong, ulong, ulong, ulong)
+{
+    return rendezvous(tag, cast(long)val);
+}
+
+extern(C) long sys_semacquire(ulong id, ulong, ulong, ulong, ulong, ulong)
+{
+    return sem_acquire(cast(size_t)id);
+}
+
+extern(C) long sys_semrelease(ulong id, ulong, ulong, ulong, ulong, ulong)
+{
+    return sem_release(cast(size_t)id);
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -284,4 +350,9 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.ErrStr]      = &sys_errstr;
     g_syscalls[cast(size_t)SyscallID.Sleep]       = &sys_sleep;
     g_syscalls[cast(size_t)SyscallID.Await]       = &sys_await;
+    g_syscalls[cast(size_t)SyscallID.Pipe]        = &sys_pipe;
+    g_syscalls[cast(size_t)SyscallID.Rendezvous]  = &sys_rendezvous;
+    g_syscalls[cast(size_t)SyscallID.SemAcquire]  = &sys_semacquire;
+    g_syscalls[cast(size_t)SyscallID.SemRelease]  = &sys_semrelease;
+    semaphore_init();
 }

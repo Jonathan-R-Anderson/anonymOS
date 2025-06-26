@@ -9,7 +9,7 @@ import kernel.logger : log_message;
 
 public:
 
-enum NodeType { Directory, File }
+enum NodeType { Directory, File, Pipe }
 
 struct Node {
     char*      name;
@@ -25,9 +25,18 @@ struct Node {
 __gshared Node* fsRoot;
 __gshared Node* fsCurrentDir;
 
+struct Pipe {
+    ubyte[1024] buffer;
+    size_t readPos;
+    size_t writePos;
+    size_t count;
+}
+
 struct FileDesc {
     Node* node;
     size_t pos;
+    bool pipeRead;
+    bool pipeWrite;
 }
 
 struct Stat {
@@ -44,7 +53,33 @@ extern(C) void fs_fdtable_init()
     {
         f.node = null;
         f.pos = 0;
+        f.pipeRead = false;
+        f.pipeWrite = false;
     }
+}
+
+extern(C) Node* fs_create_pipe()
+{
+    auto n = cast(Node*)malloc(Node.sizeof);
+    if(n is null) return null;
+    n.name = null;
+    n.kind = NodeType.Pipe;
+    n.parent = null;
+    n.child = null;
+    n.sibling = null;
+    auto p = cast(Pipe*)malloc(Pipe.sizeof);
+    if(p is null)
+    {
+        free(n);
+        return null;
+    }
+    p.readPos = 0;
+    p.writePos = 0;
+    p.count = 0;
+    n.data = cast(ubyte*)p;
+    n.size = 0;
+    n.capacity = Pipe.sizeof;
+    return n;
 }
 
 extern(C) int fs_open_file(const(char)* path, int mode)
@@ -70,8 +105,29 @@ extern(C) int fs_close_file(int fd)
         return -1;
     if(g_fdtable[fd].node is null)
         return -1;
+    auto n = g_fdtable[fd].node;
     g_fdtable[fd].node = null;
     g_fdtable[fd].pos = 0;
+    g_fdtable[fd].pipeRead = false;
+    g_fdtable[fd].pipeWrite = false;
+    if(n.kind == NodeType.Pipe)
+    {
+        bool stillUsed = false;
+        foreach(ref f; g_fdtable)
+        {
+            if(f.node is n)
+            {
+                stillUsed = true;
+                break;
+            }
+        }
+        if(!stillUsed)
+        {
+            auto p = cast(Pipe*)n.data;
+            free(p);
+            free(n);
+        }
+    }
     return 0;
 }
 
@@ -96,7 +152,21 @@ extern(C) long fs_pread_file(int fd, void* buf, size_t count, size_t offset)
 {
     if(fd < 0 || fd >= g_fdtable.length) return -1;
     auto n = g_fdtable[fd].node;
-    if(n is null || n.kind != NodeType.File) return -1;
+    if(n is null) return -1;
+    if(n.kind == NodeType.Pipe)
+    {
+        auto p = cast(Pipe*)n.data;
+        size_t read = 0;
+        auto b = cast(ubyte*)buf;
+        while(read < count && p.count > 0)
+        {
+            b[read++] = p.buffer[p.readPos];
+            p.readPos = (p.readPos + 1) % p.buffer.length;
+            p.count--;
+        }
+        return cast(long)read;
+    }
+    if(n.kind != NodeType.File) return -1;
     if(offset >= n.size) return 0;
     size_t toRead = count;
     if(offset + toRead > n.size)
@@ -109,7 +179,21 @@ extern(C) long fs_pwrite_file(int fd, const(void)* buf, size_t count, size_t off
 {
     if(fd < 0 || fd >= g_fdtable.length) return -1;
     auto n = g_fdtable[fd].node;
-    if(n is null || n.kind != NodeType.File) return -1;
+    if(n is null) return -1;
+    if(n.kind == NodeType.Pipe)
+    {
+        auto p = cast(Pipe*)n.data;
+        size_t written = 0;
+        auto b = cast(const ubyte*)buf;
+        while(written < count && p.count < p.buffer.length)
+        {
+            p.buffer[p.writePos] = b[written++];
+            p.writePos = (p.writePos + 1) % p.buffer.length;
+            p.count++;
+        }
+        return cast(long)written;
+    }
+    if(n.kind != NodeType.File) return -1;
     size_t end = offset + count;
     if(end > n.capacity)
     {
@@ -128,7 +212,9 @@ extern(C) long fs_seek_file(int fd, long offset, int whence)
 {
     if(fd < 0 || fd >= g_fdtable.length) return -1;
     auto desc = &g_fdtable[fd];
-    if(desc.node is null || desc.node.kind != NodeType.File) return -1;
+    if(desc.node is null) return -1;
+    if(desc.node.kind == NodeType.Pipe) return -1;
+    if(desc.node.kind != NodeType.File) return -1;
     size_t newPos = 0;
     final switch(whence)
     {

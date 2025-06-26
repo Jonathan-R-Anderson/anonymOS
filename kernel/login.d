@@ -66,25 +66,9 @@ extern(C) bool login_prompt()
     }
 }
 
-/// Launches the Ink-based login manager using Node.js. Returns true if the
-/// process exits successfully.
+/// Native login manager that presents the text-based login prompt.
+/// This replaces the previous Ink-based Node.js implementation.
 extern(C) bool ink_login_manager()
 {
-    // Use our stubbed C library instead of the host C runtime
-    import kernel.lib.stdc.stdlib : system;
-    // Invoke Node to run the Ink login script. Assumes node is available.
-    int ret = system("/bin/node /bin/ink-login/index.js");
-    if(ret == -1)
-    {
-        // If the command could not be executed (e.g. no Node runtime),
-        // fall back to the text-based login prompt instead of failing
-        // outright.
-        return login_prompt();
-    }
-    if(ret == 0)
-    {
-        set_current_user("wcuser");
-        return true;
-    }
-    return false;
+    return login_prompt();
 }

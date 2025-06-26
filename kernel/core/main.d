@@ -9,7 +9,6 @@ import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : ttyShelly_shell;       // Simple interactive shell
-import kernel.plymouth;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
@@ -71,9 +70,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Initialize terminal early so Plymouth output is visible
     terminal_initialize();
-
-    plymouth_start();
-    plymouth_message("Booting anonymOS...");
+    terminal_writestring_color("anonymOS booting...\n", VGAColor.LIGHT_BLUE, VGAColor.BLACK);
 
     // Phase 1: Early Architecture Setup (GDT, IDT) & Terminal
     // These are fundamental and must come first.
@@ -117,8 +114,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Phase 2: "preInit" - CPU features, early hardware
     log_message("Initializing CPU features & early hardware...\n");
-    plymouth_message("Initializing CPU features...");
-    plymouth_tick();
+    terminal_writestring("Initializing CPU features...\n");
     init_cpu_features(); // For LAPIC, TSC etc. Important for SMP and precise timing.
                          // The Haskell RTS might benefit from a timer source.
     init_cmos_rtc();     // To get current time, if needed.
@@ -127,8 +123,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // Phase 3: Memory Management - CRITICAL for Haskell
     // Also foundational for all subsequent managers and processes.
     log_message("Initializing Memory Management (Frames, Paging, Heap)...\n");
-    plymouth_message("Initializing memory management...");
-    plymouth_tick();
+    terminal_writestring("Initializing memory management...\n");
     init_frame_allocator(multiboot_info_ptr); // Needs memory map from bootloader
     init_paging();                            // Enable virtual memory
     init_kernel_heap();                       // For dynamic allocations by kernel & RTS
@@ -140,8 +135,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // Phase 4: Core OS Managers (as per blueprint)
     // These managers are crucial for realizing the dynamic, secure architecture.
     log_message("Initializing Core OS Managers...\n");
-    plymouth_message("Setting up core managers...");
-    plymouth_tick();
+    terminal_writestring("Setting up core managers...\n");
     init_device_manager(multiboot_info_ptr);      // Sets up /dev and prepares for user-space drivers.
                                                  // Aligns with "Everything is a file" for devices.
     init_namespace_manager(multiboot_info_ptr);   // Prepares for per-process virtual filesystems and overlays.
@@ -151,8 +145,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Phase 5: Other Drivers and Kernel Services (can be managed/loaded via Device Manager later)
     log_message("Initializing remaining Drivers & Kernel Services...\n");
-    plymouth_message("Starting drivers and services...");
-    plymouth_tick();
+    terminal_writestring("Starting drivers and services...\n");
     init_keyboard_driver();   // Essential for interactive shell input!
     init_pci_bus();           // For discovering other devices (e.g., network, storage)
     net_init();               // Initialize networking (stub)
@@ -164,8 +157,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // Phase 6: Filesystem Initialization (Root FS, Initrd)
     // The Namespace Manager will heavily interact with this.
     log_message("Initializing Filesystem (e.g., initrd)...\n");
-    plymouth_message("Mounting filesystem...");
-    plymouth_tick();
+    terminal_writestring("Mounting filesystem...\n");
     init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
     init_user_manager();
     log_message("Temporary user 'setup' created for initial account setup.\n");
@@ -181,7 +173,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // This process will then use the initialized managers to set up the user environment,
     // load applications (snaps/recipes), etc., according to the declarative configuration.
     log_message("Attempting to launch Init Process...\n");
-    plymouth_finish();
+    terminal_writestring_color("Boot complete.\n", VGAColor.GREEN, VGAColor.BLACK);
     launch_init_process(); // This would not return if successful.
     clear_screen();
 

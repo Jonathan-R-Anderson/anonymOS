@@ -435,9 +435,9 @@ You can test anonymOS in QEMU (an open-source emulator) without installing on re
 
    Using `less` allows you to scroll through earlier log messages while the VM is running.
 
-2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. The system now launches an **Ink-based login manager** written in Node.js on the console. The build process bundles a minimal Node.js runtime and the login script directly into the ISO, so no external setup is required. After successful authentication the `ttyShelly` shell starts. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
+2. **Boot Process:** Once QEMU starts, you should see the bootloader and then the anonymOS kernel booting. The system now displays a simple text-based login prompt on the console. After successful authentication the built-in shell starts. On first boot, anonymOS might generate some keys (for host identity) – this will be indicated in the log. You might see log lines from the microkernel and then from various services as they start up.
 
-3. **Login:** The Ink login manager accepts the default credentials `wcuser` / `wcpass`. After you enter them, the shell is spawned. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.
+3. **Login:** The login prompt accepts the default credentials `wcuser` / `wcpass`. After you enter them, the shell is spawned. If the system is configured for Ethereum login only, you would instead follow instructions to sign a token – but by default, developer builds have a fallback login.
 
 4. **Explore the System:** Once logged in, you can explore:
 

@@ -3,6 +3,7 @@ module kernel.user_manager;
 pragma(LDC_no_moduleinfo);
 
 import kernel.fs : fs_create_user;
+import kernel.object_namespace : Object;
 public:
 struct User {
     char[16] name;
@@ -46,4 +47,29 @@ extern(C) void set_current_user(const(char)* name) {
 
 extern(C) const(char)* get_current_user() {
     return currentUser.ptr;
+}
+
+extern(C) long obj_um_create_user(Object* obj, void** args, size_t nargs)
+{
+    if(nargs < 1 || args[0] is null) return -1;
+    auto name = cast(const(char)*)args[0];
+    return create_user(name) ? 0 : -1;
+}
+
+extern(C) long obj_um_set_current_user(Object* obj, void** args, size_t nargs)
+{
+    if(nargs < 1 || args[0] is null) return -1;
+    auto name = cast(const(char)*)args[0];
+    set_current_user(name);
+    return 0;
+}
+
+extern(C) long obj_um_get_current_user(Object* obj, void** args, size_t nargs)
+{
+    if(nargs >= 1 && args[0] !is null)
+    {
+        auto dest = cast(const(char**) )args[0];
+        *dest = get_current_user();
+    }
+    return 0;
 }

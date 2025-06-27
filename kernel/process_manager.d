@@ -3,6 +3,7 @@ module kernel.process_manager;
 pragma(LDC_no_moduleinfo);
 
 import kernel.logger : log_message, log_hex;
+import kernel.object_namespace : Object;
 
 public:
 
@@ -114,5 +115,19 @@ extern(C) size_t process_wait(size_t parent)
 extern(C) size_t get_current_pid()
 {
     return current_pid;
+}
+
+extern(C) long obj_pm_create_process(Object* obj, void** args, size_t nargs)
+{
+    if(nargs < 1 || args[0] is null)
+        return -1;
+    auto entry = cast(EntryFunc)args[0];
+    return cast(long)process_create(entry);
+}
+
+extern(C) long obj_pm_run(Object* obj, void** args, size_t nargs)
+{
+    scheduler_run();
+    return 0;
 }
 

@@ -2,10 +2,10 @@ import std.stdio;
 import std.string;
 import std.array;
 import std.algorithm;
-import std.parallelism;
 import std.range;
+import std.conv : to;
 import std.file : chdir, getcwd, dirEntries, SpanMode;
-import std.process : system, environment;
+import std.process : executeShell, environment;
 
 string[] history;
 string[string] aliases;
@@ -43,13 +43,8 @@ void run(string input) {
 
 void runParallel(string input) {
     auto cmds = input.split("&");
-    if(cmds.length > 1) {
-        foreach(c; cmds) {
-            taskPool.put(() { runCommand(c.strip); });
-        }
-        taskPool.finish();
-    } else {
-        runCommand(input.strip);
+    foreach(c; cmds) {
+        runCommand(c.strip);
     }
 }
 
@@ -151,8 +146,8 @@ void runCommand(string cmd) {
         }
     } else {
         // attempt to run external command
-        auto rc = system(cmd);
-        if(rc != 0) {
+        auto result = executeShell(cmd);
+        if(result.status != 0) {
             writeln("Unknown command: ", op);
         }
     }

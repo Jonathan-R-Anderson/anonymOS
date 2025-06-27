@@ -1,6 +1,6 @@
 module dlexer;
 
-import std.regex : regex, match, Captures;
+import std.regex : regex, match, Captures, Regex;
 import std.array : array;
 import std.string : strip;
 

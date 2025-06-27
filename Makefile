@@ -90,10 +90,11 @@ ISO_BIN_DIR = $(ISO_DIR)/bin
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 ISO_FILE = $(BUILD_DIR)/anonymOS.iso
 
-# Shell sources and target
-SH_SOURCES = src/user/apps/sh/interpreter.d \
-             src/user/apps/sh/dlexer.d \
-             src/user/apps/sh/dparser.d
+# Shell sources and target pulled from external repository
+SH_DIR = third_party/sh
+SH_SOURCES = $(SH_DIR)/src/interpreter.d \
+             $(SH_DIR)/src/dlexer.d \
+             $(SH_DIR)/src/dparser.d
 SH_BIN = $(BUILD_DIR)/bin/sh
 # Original D compiler built with the cross-compiler
 DMD_DIR = third_party/dmd
@@ -178,9 +179,12 @@ $(DMD_BIN): | $(BUILD_DIR)
 
 dmd: $(DMD_BIN)
 
-$(SH_BIN): $(SH_SOURCES) | $(BUILD_DIR)
-	        mkdir -p $(dir $@)
-	        $(DC) $(SH_SOURCES) -of=$@
+$(SH_BIN): fetch_shell $(SH_SOURCES) | $(BUILD_DIR)
+	mkdir -p $(dir $@)
+	$(DC) $(SH_SOURCES) -of=$@
+
+fetch_shell:
+	./scripts/fetch_shell.sh
 
 sh: $(SH_BIN)
 

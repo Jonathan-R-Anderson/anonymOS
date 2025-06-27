@@ -32,6 +32,77 @@ The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to b
 
 The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.  The shell binary is compiled into the image automatically.
 
+## Object Namespace Overview
+
+At boot an object tree is created that exposes kernel services through a single
+hierarchy.  The layout is minimal and currently looks like:
+
+```
+/
+├─sys
+│  └─scheduler (methods: create, run)
+├─net
+├─user
+│  └─userManager (methods: createUser, setCurrentUser, getCurrentUser)
+├─dev
+├─proc
+└─srv
+```
+
+Objects do not yet enforce permissions or inheritance.  Methods are invoked via
+`obj_call(path, method, args)` using the syscall interface.
+
+## Filesystem Layout
+
+If no `fs.img` is present the kernel populates an in-memory filesystem with a
+default set of directories and configuration files:
+
+```
+/
+├─sys/{boot,kernel,drivers,init,profiles}
+├─apps/
+│  ├─coreutils/v1.2.3
+│  ├─browser/v105.0
+│  └─editor/v3.1
+├─users/
+│  ├─alice/{bin,cfg,doc,media,projects,vault}
+│  └─bob/{bin,cfg,doc,media,projects,vault}
+├─srv/{sshd,web,dns,db}
+├─cfg/
+│  ├─hostname
+│  ├─users/{alice.json,bob.json}
+│  ├─network/interfaces.json
+│  └─system/packages.json
+├─vol/{usb0,backup_drive,encrypted_partition}
+├─log
+├─run
+├─tmp
+├─dev
+└─net/{ip,tcp,dns}
+```
+
+Permissions and ownership are not yet implemented—any user may read or write
+files.  Newly created users have their own subtrees under `/users` and a JSON
+configuration file under `/cfg/users`.
+
+## Example Shell Usage
+
+The built-in shell is based on the `-sh` project and supports a small but
+growing set of commands.  Typical interactions might look like:
+
+```bash
+$ ls /users
+alice bob
+$ cd /users/alice
+$ echo "hello" > doc/greeting.txt
+$ cat doc/greeting.txt
+hello
+```
+
+The interpreter also provides features such as arithmetic, variables, loops,
+background jobs and file utilities like `cp`, `mv` and `mkdir` as described in
+the [`-sh` README](https://github.com/Jonathan-R-Anderson/-sh).
+
 ## License
 
 This project is released under the MIT license.  See `LICENSE` for details.

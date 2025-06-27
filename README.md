@@ -510,8 +510,10 @@ filesystem to run inside the container. A minimal example is shown below:
 }
 ```
 
-The Linux base image is **not** built automatically. If you need a minimal
-Alpine root filesystem for containers, run the helper manually:
+The Linux base image is **not** built automatically. The helper below
+downloads a minimal Alpine rootfs and installs Bash with common GNU
+utilities so your containers have a full set of familiar Linux commands.
+Run it manually:
 
 ```bash
 sudo scripts/build_rootfs.sh /var/images
@@ -519,6 +521,16 @@ sudo scripts/build_rootfs.sh /var/images
 
 This will place `alpine-rootfs.img` under `/var/images`, which you can then
 reference in the `base_image` field of your container configuration.
+
+To install the same set of utilities on the host anonymOS instance, run:
+
+```bash
+sudo scripts/install_host_utils.sh
+```
+
+This uses the available package manager (`apk`, `apt`, or `pacman`) to install
+standard tools like `coreutils` so the host environment has the full suite of
+Linux commands available.
 
 
 ### System Configuration and Proxy Setup

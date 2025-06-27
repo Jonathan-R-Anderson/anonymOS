@@ -5,11 +5,13 @@ import std.string;
 
 extern(C):
 struct KernelContainerConfig {
-    const(char)* baseImage;
-    const(char)* cmd;
+    char[64] baseImage;
+    char[64] cmd;
 }
+long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6);
+extern(D):
 
-void start_container(KernelContainerConfig* cfg);
+enum SYS_CONTAINER_START = 43;
 
 struct ContainerConfig {
     string name;
@@ -54,10 +56,17 @@ void main(string[] args) {
     writeln("  Command: ", cfg.cmd);
 
     KernelContainerConfig kcfg;
-    kcfg.baseImage = toStringz(cfg.baseImage);
-    kcfg.cmd = toStringz(cfg.cmd);
+    auto bLen = cfg.baseImage.length;
+    if (bLen >= kcfg.baseImage.length) bLen = kcfg.baseImage.length - 1;
+    kcfg.baseImage[0 .. bLen] = cfg.baseImage[0 .. bLen];
+    kcfg.baseImage[bLen] = 0;
 
-    writeln("Requesting kernel to start container...");
-    start_container(&kcfg);
+    auto cLen = cfg.cmd.length;
+    if (cLen >= kcfg.cmd.length) cLen = kcfg.cmd.length - 1;
+    kcfg.cmd[0 .. cLen] = cfg.cmd[0 .. cLen];
+    kcfg.cmd[cLen] = 0;
+
+    writeln("Requesting kernel to start container via syscall...");
+    do_syscall(SYS_CONTAINER_START, cast(ulong)&kcfg, 0, 0, 0, 0, 0);
 }
 

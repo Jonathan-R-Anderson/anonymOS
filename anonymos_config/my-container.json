@@ -1,6 +1,6 @@
 {
   "name": "my-container",
-  "base_image": "/var/images/ubuntu-rootfs.img",
+  "base_image": "/var/images/alpine-rootfs.img",
   "mounts": [
     { "source": "/home/user/data", "target": "/data" },
     { "source": "/etc/resolv.conf", "target": "/etc/resolv.conf" }

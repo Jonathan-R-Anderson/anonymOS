@@ -558,6 +558,16 @@ When the compiler already embeds the target triple you may need to clear the
 ```bash
 make DC=/path/to/ldc2 DFLAGS_TARGET_64="" build
 ```
+### Bootstrapping the Original D Compiler
+
+To run the stock `dmd` compiler inside anonymOS you need to build it using the cross compiled `ldc2`:
+
+```bash
+./scripts/build_dmd.sh
+```
+
+The resulting binary is placed at `build/bin/dmd` and will be included in the ISO during `make build` so it can be invoked from the anonymOS shell.
+
 
 
 ### System Configuration and Proxy Setup

@@ -95,6 +95,9 @@ SH_SOURCES = src/user/apps/sh/interpreter.d \
              src/user/apps/sh/dlexer.d \
              src/user/apps/sh/dparser.d
 SH_BIN = $(BUILD_DIR)/bin/sh
+# Original D compiler built with the cross-compiler
+DMD_DIR = third_party/dmd
+DMD_BIN = $(BUILD_DIR)/bin/dmd
 
 
 
@@ -108,7 +111,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh
+.PHONY: all build clean run iso kernel_bin sh dmd
 
 
 all: $(ISO_FILE)
@@ -118,11 +121,12 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN) $(SH_BIN)
+$(ISO_FILE): $(KERNEL_BIN) $(SH_BIN) $(DMD_BIN)
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR)
-	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
-	cp $(SH_BIN) $(ISO_BIN_DIR)/
+       cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
+       cp $(SH_BIN) $(ISO_BIN_DIR)/
+       cp $(DMD_BIN) $(ISO_BIN_DIR)/
 		# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".
@@ -166,8 +170,13 @@ $(OBJ_DIR)/%.o: %.d
 
 # Generic rule for Assembly files (preserves source path under OBJ_DIR)
 $(OBJ_DIR)/%.o: %.s
-	        @mkdir -p $(dir $@)
-	        $(AS) $(ASFLAGS) $< -o $@
+                @mkdir -p $(dir $@)
+                $(AS) $(ASFLAGS) $< -o $@
+
+$(DMD_BIN): | $(BUILD_DIR)
+	./scripts/build_dmd.sh
+
+dmd: $(DMD_BIN)
 
 $(SH_BIN): $(SH_SOURCES) | $(BUILD_DIR)
 	        mkdir -p $(dir $@)

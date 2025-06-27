@@ -6,6 +6,7 @@ import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.types : strlen, memcpy, memcmp;
 import kernel.process_manager : obj_pm_create_process, obj_pm_run;
 import kernel.user_manager : obj_um_create_user, obj_um_set_current_user, obj_um_get_current_user;
+import kernel.object_validator : validate_object_graph;
 
 public:
 
@@ -184,5 +185,8 @@ extern(C) void object_namespace_init()
     obj_add_method(userMgr, "createUser", &obj_um_create_user);
     obj_add_method(userMgr, "setCurrentUser", &obj_um_set_current_user);
     obj_add_method(userMgr, "getCurrentUser", &obj_um_get_current_user);
+
+    // Validate the object graph using A* search
+    validate_object_graph();
 }
 

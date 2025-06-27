@@ -1,4 +1,4 @@
-					# Makefile for Minimal D OS
+			# Makefile for Minimal D OS
 
 		# Tools
 		DC = ldc2           # D Compiler
@@ -15,8 +15,10 @@
 	# -output-o: Ensures .o file is output (LDC specific)
 	# -I.: Include current directory for imports (if any local modules were used) -disable-asserts: Disable runtime asserts
 	DFLAGS_BASE = -betterC -O1 -g -boundscheck=off -output-o
-	DFLAGS_TARGET_32 = -mtriple=i386-unknown-elf -mcpu=pentium4
-	DFLAGS_TARGET_64 = -mtriple=x86_64-unknown-elf -mcpu=x86-64 # Target 64-bit
+       DFLAGS_TARGET_32 ?= -mtriple=i386-unknown-elf -mcpu=pentium4
+       # When using a cross compiler, the target triple is often built-in, so
+       # allow overriding this variable to blank it: `make DFLAGS_TARGET_64=""`.
+       DFLAGS_TARGET_64 ?= -mtriple=x86_64-unknown-elf -mcpu=x86-64 # Target 64-bit
 
 # Assembler Flags
 ASFLAGS = --64 # Tell GNU AS to assemble for 64-bit mode. elf64 is usually inferred.
@@ -88,6 +90,12 @@ ISO_BIN_DIR = $(ISO_DIR)/bin
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 ISO_FILE = $(BUILD_DIR)/anonymOS.iso
 
+# Shell sources and target
+SH_SOURCES = src/user/apps/sh/interpreter.d \
+             src/user/apps/sh/dlexer.d \
+             src/user/apps/sh/dparser.d
+SH_BIN = $(BUILD_DIR)/bin/sh
+
 
 
 
@@ -100,7 +108,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin
+.PHONY: all build clean run iso kernel_bin sh
 
 
 all: $(ISO_FILE)
@@ -110,10 +118,11 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN)
+$(ISO_FILE): $(KERNEL_BIN) $(SH_BIN)
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR)
 	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
+	cp $(SH_BIN) $(ISO_BIN_DIR)/
 		# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".
@@ -121,16 +130,16 @@ $(ISO_FILE): $(KERNEL_BIN)
 		# The 'fi' correctly terminates it.
 		# The following 'echo' commands will be executed as separate shell commands.
 		# Ensure all line-continuing backslashes ('\') within the 'if' block are correct.
-		echo "Generating $(ISO_GRUB_DIR)/grub.cfg..." # This line and subsequent echos form the grub.cfg
-		echo "set timeout=3" > $(ISO_GRUB_DIR)/grub.cfg 
-		echo "set default=0" >> $(ISO_GRUB_DIR)/grub.cfg
-		echo "" >> $(ISO_GRUB_DIR)/grub.cfg # Add a blank line for readability
-	       echo "menuentry \"anonymOS\" {" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "Generating $(ISO_GRUB_DIR)/grub.cfg..." # This line and subsequent echos form the grub.cfg
+	echo "set timeout=3" > $(ISO_GRUB_DIR)/grub.cfg 
+	echo "set default=0" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "" >> $(ISO_GRUB_DIR)/grub.cfg # Add a blank line for readability
+	echo "menuentry \"anonymOS\" {" >> $(ISO_GRUB_DIR)/grub.cfg
 		# echo "    echo \"Attempting to load kernel: /boot/kernel.bin ...\"" >> $(ISO_GRUB_DIR)/grub.cfg # Debug echo, can be removed
-		echo "    multiboot2 /boot/kernel.bin" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "    multiboot2 /boot/kernel.bin" >> $(ISO_GRUB_DIR)/grub.cfg
 		# echo "    echo \"Kernel load attempt finished. Multiboot2 info should be set.\"" >> $(ISO_GRUB_DIR)/grub.cfg # Debug echo, can be removed
-		echo "    boot" >> $(ISO_GRUB_DIR)/grub.cfg # The actual boot command
-		echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
+	echo "    boot" >> $(ISO_GRUB_DIR)/grub.cfg # The actual boot command
+	echo "}" >> $(ISO_GRUB_DIR)/grub.cfg
 		command -v xorriso >/dev/null || { echo "Error: xorriso not installed. Please install it (e.g., sudo apt-get install xorriso)."; exit 1; }
 		$(GRUB_MKRESCUE) -v -o $@ $(ISO_DIR)
 	echo "ISO created: $@ (using grub.cfg in $(ISO_GRUB_DIR)/grub.cfg)"
@@ -157,8 +166,14 @@ $(OBJ_DIR)/%.o: %.d
 
 # Generic rule for Assembly files (preserves source path under OBJ_DIR)
 $(OBJ_DIR)/%.o: %.s
-	@mkdir -p $(dir $@)
-	$(AS) $(ASFLAGS) $< -o $@
+	        @mkdir -p $(dir $@)
+	        $(AS) $(ASFLAGS) $< -o $@
+
+$(SH_BIN): $(SH_SOURCES) | $(BUILD_DIR)
+	        mkdir -p $(dir $@)
+	        $(DC) $(SH_SOURCES) -of=$@
+
+sh: $(SH_BIN)
 
 run: $(ISO_FILE)
 	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -display curses -vga std

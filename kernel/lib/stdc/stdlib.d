@@ -68,9 +68,9 @@ extern(C) int system(const(char)* cmd)
     if(cmd is null) return -1;
 
     // Very small command mapping to demonstrate integration with
-    // the kernel's process manager. Currently only the built-in
-    // shell can be launched as a user process.
-    if(str_eq(cmd, "shell"))
+    // the kernel's process manager. The built-in shell can be
+    // launched via either "shell" or "sh".
+    if(str_eq(cmd, "shell") || str_eq(cmd, "sh"))
     {
         process_create(&ttyShelly_shell);
         scheduler_run();

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Build a minimal Alpine root filesystem image for anonymOS containers
+# Build an Alpine root filesystem image for anonymOS containers
+# with a standard set of Linux utilities preinstalled.
 # Usage: sudo ./scripts/build_rootfs.sh [output_dir]
 
 set -e
@@ -7,6 +8,7 @@ set -e
 OUTPUT_DIR=${1:-/var/images}
 IMAGE="${OUTPUT_DIR}/alpine-rootfs.img"
 SIZE=512M
+PACKAGES="bash bash-completion coreutils util-linux findutils grep sed gawk"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -24,8 +26,12 @@ ROOTFS_TAR="/tmp/alpine-minirootfs.tar.gz"
 curl -L https://dl-cdn.alpinelinux.org/alpine/latest-stable/releases/x86_64/alpine-minirootfs-3.19.1-x86_64.tar.gz -o "$ROOTFS_TAR"
 tar -xzf "$ROOTFS_TAR" -C "$MNT"
 
+# Install a fuller set of commands inside the chroot
+cp /etc/resolv.conf "$MNT/etc/resolv.conf"
+chroot "$MNT" /bin/sh -c "apk add --no-cache $PACKAGES"
+
 umount "$MNT"
 rm -rf "$MNT" "$ROOTFS_TAR"
 
-echo "Base image created at $IMAGE"
+echo "Base image with standard utilities created at $IMAGE"
 

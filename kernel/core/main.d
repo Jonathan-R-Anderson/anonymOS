@@ -9,6 +9,7 @@ import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : ttyShelly_shell;       // Simple interactive shell
+import kernel.lib.stdc.stdlib : system;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
@@ -197,7 +198,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     }
     if(loggedIn) {
         log_message("Starting ttyShelly shell...\n");
-        ttyShelly_shell();
+        system("sh");
     } else {
         log_message("All login attempts failed. Halting...\n");
         loop_forever_hlt();

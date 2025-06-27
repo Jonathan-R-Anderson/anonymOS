@@ -532,6 +532,33 @@ This uses the available package manager (`apk`, `apt`, or `pacman`) to install
 standard tools like `coreutils` so the host environment has the full suite of
 Linux commands available.
 
+### Interactive Shell
+
+The `sh` interpreter from the `-sh` repository is bundled under
+`src/user/apps/sh`.  Build it using your cross compiled `ldc2` and copy the
+resulting binary into the boot image:
+
+```bash
+ldc2 src/user/apps/sh/interpreter.d \
+    src/user/apps/sh/dlexer.d \
+    src/user/apps/sh/dparser.d -of=sh
+```
+
+During `make build` the resulting `sh` binary is placed in `build/bin` and added
+to the ISO image so it becomes the default TTY shell after login. If you use a
+cross compiler, provide it via the `DC` variable when invoking make:
+
+```bash
+make DC=/path/to/ldc2 build
+```
+
+When the compiler already embeds the target triple you may need to clear the
+`DFLAGS_TARGET_64` variable:
+
+```bash
+make DC=/path/to/ldc2 DFLAGS_TARGET_64="" build
+```
+
 
 ### System Configuration and Proxy Setup
 

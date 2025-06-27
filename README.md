@@ -8,6 +8,7 @@ anonymOS is an experimental microkernel operating system.  It draws inspiration 
 - **User mode services** for the file server, drivers and process management.
 - **Lightweight hypervisor** allowing minimal virtual machines.
 - **Container images** built with Alpine Linux utilities.
+- **Object-based namespaces** expose managers like the scheduler and user manager through a unified object tree.
 - **TTY shell** built from the [\-sh](https://github.com/Jonathan-R-Anderson/-sh) project and fetched automatically during the build.
 
 ## Planned Features

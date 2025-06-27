@@ -11,6 +11,7 @@ import kernel.fs : fs_create_user, fs_open_file, fs_close_file,
                     fs_create_pipe, g_fdtable, Pipe,
                     Stat;
 import kernel.hypervisor : vmm_create_vm, vmm_run_vm, vmm_destroy_vm;
+import kernel.container_service : start_container, ContainerConfig;
 import kernel.types; // for ulong
 import kernel.process_manager : process_create_with_parent, process_exit,
                                process_wait, get_current_pid, g_processes;
@@ -68,6 +69,7 @@ enum SyscallID : ulong {
     VMCreate    = 40,
     VMRun       = 41,
     VMDestroy   = 42,
+    ContainerStart = 43,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
@@ -441,6 +443,12 @@ extern(C) long sys_vmdestroy(ulong id, ulong, ulong, ulong, ulong, ulong)
     return 0;
 }
 
+extern(C) long sys_container_start(ulong cfgPtr, ulong, ulong, ulong, ulong, ulong)
+{
+    start_container(cast(ContainerConfig*)cfgPtr);
+    return 0;
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -495,5 +503,6 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.VMCreate]    = &sys_vmcreate;
     g_syscalls[cast(size_t)SyscallID.VMRun]       = &sys_vmrun;
     g_syscalls[cast(size_t)SyscallID.VMDestroy]   = &sys_vmdestroy;
+    g_syscalls[cast(size_t)SyscallID.ContainerStart] = &sys_container_start;
     semaphore_init();
 }

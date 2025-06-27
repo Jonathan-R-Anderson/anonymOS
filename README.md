@@ -464,10 +464,9 @@ than nested within it.
 ### Internal Container Service
 
 The repository includes a container management subsystem inside the kernel
-implemented in D.  A simple user-space tool still exists for convenience, but
-the kernel now provides `init_container_service` and `start_container` to
-launch lightweight containers via Docker.  The user tool parses a simplified
-**Containerfile** and invokes these kernel functions.  A sample configuration
+implemented in D.  A user-space helper parses a simplified **Containerfile** or
+JSON configuration and invokes the new `ContainerStart` system call to launch an
+isolated environment.  A sample configuration
 is available at `containers/Containerfile.example`.
 
 You can also invoke containers directly using the `run_container.sh` helper
@@ -485,11 +484,15 @@ the parsed settings.  This mechanism demonstrates how anonymOS can manage
 container-style workloads without relying on an external Docker daemon.
 ### JSON Environment Launcher
 
-The `env_launcher` tool reads container settings from a JSON file located next to `system.json`. Compile and run:
+The `env_launcher` tool reads container settings from a JSON file located next
+to `system.json`. Compile and run:
 ```bash
 ldc2 src/user/apps/env_launcher/env_launcher.d -ofenv_launcher
 ./env_launcher anonymos_config/my-container.json
 ```
+
+This utility invokes the new `ContainerStart` system call, which instructs the
+kernel to create an isolated environment based on the provided configuration.
 
 ### System Configuration and Proxy Setup
 

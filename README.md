@@ -520,6 +520,7 @@ sudo scripts/build_rootfs.sh /var/images
 This will place `alpine-rootfs.img` under `/var/images`, which you can then
 reference in the `base_image` field of your container configuration.
 
+
 ### System Configuration and Proxy Setup
 
 anonymOS reads its system configuration from a JSON file located at

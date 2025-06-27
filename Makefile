@@ -124,9 +124,9 @@ build: $(ISO_FILE)
 $(ISO_FILE): $(KERNEL_BIN) $(SH_BIN) $(DMD_BIN)
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR)
-       cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
-       cp $(SH_BIN) $(ISO_BIN_DIR)/
-       cp $(DMD_BIN) $(ISO_BIN_DIR)/
+	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
+	cp $(SH_BIN) $(ISO_BIN_DIR)/
+	cp $(DMD_BIN) $(ISO_BIN_DIR)/
 		# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".
@@ -170,8 +170,8 @@ $(OBJ_DIR)/%.o: %.d
 
 # Generic rule for Assembly files (preserves source path under OBJ_DIR)
 $(OBJ_DIR)/%.o: %.s
-                @mkdir -p $(dir $@)
-                $(AS) $(ASFLAGS) $< -o $@
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
 
 $(DMD_BIN): | $(BUILD_DIR)
 	./scripts/build_dmd.sh

@@ -12,7 +12,11 @@ extern(C) void init_frame_allocator(void* multiboot_info_ptr) {}
 extern(C) void init_paging() {}
 extern(C) void init_kernel_heap() {}
 extern(C) void init_device_manager(void* multiboot_info_ptr) {}
-extern(C) void init_namespace_manager(void* multiboot_info_ptr) {}
+extern(C) void init_namespace_manager(void* multiboot_info_ptr)
+{
+    import kernel.object_namespace : object_namespace_init;
+    object_namespace_init();
+}
 extern(C) void init_capability_supervisor() {}
 extern(C) void init_keyboard_driver()
 {

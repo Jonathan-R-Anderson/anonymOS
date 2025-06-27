@@ -120,7 +120,10 @@ In summary, the filesystem and namespace layer of anonymOS provides a **unifying
 * It makes distribution transparent – local vs remote is mostly just a matter of which server you mount.
 ### Default Filesystem Layout
 
-On first boot the system creates a minimal persistent filesystem on disk (`fs.img`). Subsequent boots load this tree so state survives reboots. The default layout is:
+anonymOS ships with a small Plan 9 style root filesystem that can be
+distributed read‑only. On first boot this image is expanded into a writable
+`fs.img` so local state can be stored if desired. Subsequent boots load that
+image so your data persists. The default layout is:
 
 ```
 /
@@ -388,13 +391,16 @@ This section explains how to build and run anonymOS from source for development 
 
 2. **Configure Build Options:** anonymOS may provide a `config.mk` or use environment variables to configure optional features. For example, you can set `ENABLE_ETHEREUM=1` to include Ethereum client support (if you have the libraries), or choose a target architecture. By default, the build targets x86\_64. If you need to adjust, open the top-level `Makefile` or config and set variables as needed.
 
-3. **Build the System:** Use the provided Makefile to build the kernel and base system:
+3. **Build the System:** Use the Makefile. There are only two build targets:
+
+   * `make build` – builds an ISO with verbose logging enabled for debugging.
+   * `make iso` – produces a minimal release image without extra logs.
 
    ```bash
    make build
    ```
 
-   This will compile the microkernel and all core user-space components, and then package them into a bootable image. The build system will output two main artifacts:
+   Both targets compile the microkernel and user-space components, then package them into a bootable image. The build system outputs two main artifacts:
 
    * `anonymOS.iso` (or `.img`): a bootable disk image containing the kernel and core snaps.
    * `anonymOS.bin`: the raw kernel binary (for advanced use or direct boot).
@@ -493,6 +499,27 @@ ldc2 src/user/apps/env_launcher/env_launcher.d -ofenv_launcher
 
 This utility invokes the new `ContainerStart` system call, which instructs the
 kernel to create an isolated environment based on the provided configuration.
+The configuration must specify a **base_image** pointing to the Linux root
+filesystem to run inside the container. A minimal example is shown below:
+
+```json
+{
+  "name": "my-container",
+"base_image": "/var/images/alpine-rootfs.img",
+"startup_command": ["/bin/bash"]
+}
+```
+
+The Linux base image is **not** built automatically. If you need a minimal
+Alpine root filesystem for containers, run the helper manually:
+
+```bash
+sudo scripts/build_rootfs.sh /var/images
+```
+
+This will place `alpine-rootfs.img` under `/var/images`, which you can then
+reference in the `base_image` field of your container configuration.
+
 
 ### System Configuration and Proxy Setup
 
@@ -581,6 +608,14 @@ anonymOS now includes a lightweight hypervisor inspired by the NOVA microhypervi
 The kernel exposes system calls to create and run minimal virtual machines without
 relying on external tools. This built-in virtualization layer allows advanced isolation
 of services while keeping the trusted computing base small.
+
+To boot a Linux userland inside such a VM, pass a JSON configuration to
+`env_launcher` that references `alpine-rootfs.img` as the `base_image`.
+The VM's console is attached to the host serial output and networking is
+configured according to the JSON file. Management currently happens via the
+command line; a graphical desktop inside the VM is possible but anonymOS does
+not yet provide an integrated display server, so this is best suited for
+headless workloads.
 
 
 ### Running on Real Hardware (Experimental)

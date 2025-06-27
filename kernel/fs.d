@@ -742,6 +742,13 @@ extern(C) int fs_chdir(const(char)* path)
     return 0;
 }
 
+extern(C) const(char)* fs_getcwd()
+{
+    __gshared static char[256] cwdBuf;
+    buildPath(fsCurrentDir, cwdBuf.ptr, cwdBuf.length);
+    return cwdBuf.ptr;
+}
+
 
 extern(C) int fs_mount(const(char)* spec, const(char)* target, int flags, const(char)* fs, const(char)* aname)
 {

@@ -68,8 +68,8 @@ extern(C) long obj_um_get_current_user(Object* obj, void** args, size_t nargs)
 {
     if(nargs >= 1 && args[0] !is null)
     {
-        auto dest = cast(const(char**) )args[0];
-        *dest = get_current_user();
+        auto dest = cast(char**)args[0];
+        *dest = cast(char*)get_current_user();
     }
     return 0;
 }

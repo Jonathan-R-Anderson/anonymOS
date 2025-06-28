@@ -20,7 +20,7 @@ struct UdpHeader
 // Send UDP datagram
 extern(C) void udp_send(uint dstIp, ushort srcPort, ushort dstPort, const(ubyte)* data, size_t len)
 {
-    ubyte[sizeof(UdpHeader) + 1500] buf;
+    ubyte[UdpHeader.sizeof + 1500] buf;
     auto udp = cast(UdpHeader*)buf.ptr;
     udp.src_port = swap16(srcPort);
     udp.dst_port = swap16(dstPort);
@@ -32,7 +32,7 @@ extern(C) void udp_send(uint dstIp, ushort srcPort, ushort dstPort, const(ubyte)
         payload[i] = data[i];
 
     // Pseudo header for checksum
-    ubyte[12 + sizeof(UdpHeader) + 1500] pseudo; // over-alloc
+    ubyte[12 + UdpHeader.sizeof + 1500] pseudo; // over-alloc
     auto p = pseudo.ptr;
     *(cast(uint*)p) = swap32(localIp); p += 4;
     *(cast(uint*)p) = swap32(dstIp);  p += 4;

@@ -36,7 +36,7 @@ extern(C) void ip_init(uint ip)
 // Build and send IPv4 packet
 extern(C) void ip_send(uint dstIp, ubyte proto, const(ubyte)* payload, size_t len)
 {
-    ubyte[sizeof(EthernetHeader) + sizeof(IpHeader) + 1500] buf; // allocate enough
+    ubyte[EthernetHeader.sizeof + IpHeader.sizeof + 1500] buf; // allocate enough
     auto eth = cast(EthernetHeader*)buf.ptr;
 
     const(ubyte)* dstMac = arp_lookup(dstIp);

@@ -69,6 +69,32 @@ private bool similar(const(char)[] a, const(char)[] b)
     return diff <= 1;
 }
 
+/// Return the current CPU privilege level (CPL) using the CS register.
+private ubyte get_cpl()
+{
+    ushort cs;
+    asm { "mov %%cs, %0" : "=r"(cs); }
+    return cast(ubyte)(cs & 3);
+}
+
+/// Print the dynamic shell prompt in the form user@namespace:path(permission)
+private void print_prompt()
+{
+    import kernel.user_manager : get_current_user;
+    import kernel.fs : fs_getcwd;
+
+    auto user = get_current_user();
+    auto cwd = fs_getcwd();
+    ubyte cpl = get_cpl();
+
+    terminal_writestring(user);
+    terminal_writestring("@default:"); // namespace placeholder
+    terminal_writestring(cwd);
+    terminal_writestring("(");
+    terminal_putchar(cast(char)('0' + cpl));
+    terminal_writestring(") ");
+}
+
 
 /// Stub implementation for the Haskell ttyShelly shell entry point.
 /// The real implementation is expected to come from the userland
@@ -80,8 +106,8 @@ extern(C) void ttyShellyMain()
     char[256] line;
 
     while (true) {
-        // Display shell prompt
-        terminal_writestring("wcuser@default:/# ");
+        // Display shell prompt dynamically
+        print_prompt();
 
         size_t idx = 0;
         // Clear buffer to avoid old data

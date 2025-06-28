@@ -2,9 +2,6 @@ module kernel.shell;
 
 import kernel.terminal : terminal_writestring, terminal_writestring_color, terminal_putchar;
 import kernel.keyboard : keyboard_getchar;
-import kernel.fs : Node, NodeType, Stat, fsCurrentDir, fs_lookup, fs_chdir,
-                   fs_open_file, fs_pread_file, fs_close_file, fs_stat,
-                   fs_getcwd;
 
 // Table of available syscalls and brief usage info.
 __gshared const(char*)[] syscallHelp = [
@@ -72,65 +69,6 @@ private bool similar(const(char)[] a, const(char)[] b)
     return diff <= 1;
 }
 
-private bool streq(const(char)* a, const(char)* b)
-{
-    size_t i = 0;
-    while(a[i] && b[i])
-    {
-        if(a[i] != b[i]) return false;
-        ++i;
-    }
-    return a[i] == 0 && b[i] == 0;
-}
-
-private void printPrompt()
-{
-    terminal_writestring("wcuser@default:");
-    terminal_writestring(fs_getcwd());
-    terminal_writestring("$ ");
-}
-
-private void listDir(Node* dir)
-{
-    auto c = dir.child;
-    while(c !is null)
-    {
-        terminal_writestring(c.name);
-        if(c.kind == NodeType.Directory)
-            terminal_writestring("/");
-        terminal_writestring(" ");
-        c = c.sibling;
-    }
-    terminal_writestring("\r\n");
-}
-
-private void catFile(const(char)* path)
-{
-    Stat st;
-    if(fs_stat(path, &st) != 0 || st.kind != NodeType.File)
-    {
-        terminal_writestring("File not found\r\n");
-        return;
-    }
-    int fd = fs_open_file(path, 0);
-    if(fd < 0)
-    {
-        terminal_writestring("Unable to open file\r\n");
-        return;
-    }
-    size_t off = 0;
-    char[128] buf;
-    while(true)
-    {
-        long r = fs_pread_file(fd, buf.ptr, buf.length, off);
-        if(r <= 0) break;
-        for(size_t i = 0; i < cast(size_t)r; i++)
-            terminal_putchar(buf[i]);
-        off += cast(size_t)r;
-    }
-    fs_close_file(fd);
-    terminal_writestring("\r\n");
-}
 
 /// Stub implementation for the Haskell ttyShelly shell entry point.
 /// The real implementation is expected to come from the userland
@@ -143,7 +81,7 @@ extern(C) void ttyShellyMain()
 
     while (true) {
         // Display shell prompt
-        printPrompt();
+        terminal_writestring("wcuser@default:/# ");
 
         size_t idx = 0;
         // Clear buffer to avoid old data
@@ -172,77 +110,33 @@ extern(C) void ttyShellyMain()
             continue; // Empty input, skip
         }
 
-        size_t pos = 0;
-        while(line[pos] && line[pos] != ' ') ++pos;
-        char* arg = null;
-        if(line[pos])
-        {
-            line[pos] = 0;
-            arg = line.ptr + pos + 1;
-        }
+        // Convert the null-terminated buffer to a slice without using
+        // the GC-enabled std.string.fromStringz helper which is
+        // incompatible with -betterC.
+        auto cmd = line[0 .. idx];
 
-        if(streq(line.ptr, "help"))
-        {
+        // Command matching
+        if (cmd == "help") {
             terminal_writestring("Available commands:\r\n");
             terminal_writestring("  help - show this message\r\n");
             terminal_writestring("  exit - halt the system\r\n");
-            terminal_writestring("  ls [dir] - list directory\r\n");
-            terminal_writestring("  cd DIR - change directory\r\n");
-            terminal_writestring("  pwd - print working directory\r\n");
-            terminal_writestring("  cat FILE - show file contents\r\n");
             printSyscalls();
-        }
-        else if(streq(line.ptr, "exit"))
-        {
+        } else if (cmd == "exit") {
             terminal_writestring("Bye!\r\n");
             asm { "hlt"; }
-        }
-        else if(streq(line.ptr, "pwd"))
-        {
-            terminal_writestring(fs_getcwd());
-            terminal_writestring("\r\n");
-        }
-        else if(streq(line.ptr, "ls"))
-        {
-            Node* dir = fsCurrentDir;
-            if(arg !is null && arg[0] != 0)
-            {
-                dir = fs_lookup(arg);
+        } else {
+            bool suggested = false;
+            if (similar(cmd, "help")) {
+                terminal_writestring("Unknown command. Did you mean 'help'?\r\n");
+                suggested = true;
+            } else if (similar(cmd, "exit")) {
+                terminal_writestring("Unknown command. Did you mean 'exit'?\r\n");
+                suggested = true;
             }
-            if(dir is null || dir.kind != NodeType.Directory)
-            {
-                terminal_writestring("No such directory\r\n");
+
+            if (!suggested) {
+                terminal_writestring("Unknown command. This is not a system call.\r\n");
             }
-            else
-            {
-                listDir(dir);
-            }
-        }
-        else if(streq(line.ptr, "cd"))
-        {
-            if(arg is null)
-            {
-                terminal_writestring("Usage: cd DIR\r\n");
-            }
-            else if(fs_chdir(arg) != 0)
-            {
-                terminal_writestring("Directory not found\r\n");
-            }
-        }
-        else if(streq(line.ptr, "cat"))
-        {
-            if(arg is null)
-            {
-                terminal_writestring("Usage: cat FILE\r\n");
-            }
-            else
-            {
-                catFile(arg);
-            }
-        }
-        else
-        {
-            terminal_writestring("Unknown command\r\n");
         }
 
         // Prompt will redraw at top of loop

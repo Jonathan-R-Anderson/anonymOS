@@ -69,9 +69,10 @@ extern(C) void arp_send_request(uint targetIp)
     hdr.tha = [0,0,0,0,0,0];
     hdr.tip = swap32(targetIp);
 
-    ubyte[sizeof(EthernetHeader)+sizeof(ArpHeader)] frame;
+    ubyte[EthernetHeader.sizeof + ArpHeader.sizeof] frame;
     auto eth = cast(EthernetHeader*)frame.ptr;
-    eth.dst[] = [0xFF,0xFF,0xFF,0xFF,0xFF,0xFF];
+    ubyte[6] broadcast = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+    eth.dst[] = broadcast[];
     eth.src[] = localMac;
     eth.eth_type = swap16(ETH_TYPE_ARP);
 

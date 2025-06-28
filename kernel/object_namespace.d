@@ -10,9 +10,11 @@ import kernel.object_validator : validate_object_graph;
 
 public:
 
+alias ObjMethodFunc = extern(C) long function(Object*, void**, size_t);
+
 struct ObjMethod {
     const(char)* name;
-    extern(C) long function(Object*, void**, size_t) func;
+    ObjMethodFunc func;
 }
 
 struct ObjProperty {
@@ -69,7 +71,7 @@ extern(C) void obj_add_child(Object* parent, Object* child)
     parent.child = child;
 }
 
-extern(C) int obj_add_method(Object* obj, const(char)* name, extern(C) long function(Object*, void**, size_t) func)
+extern(C) int obj_add_method(Object* obj, const(char)* name, ObjMethodFunc func)
 {
     if(obj is null) return -1;
     if(obj.methodCount == obj.methodCapacity)

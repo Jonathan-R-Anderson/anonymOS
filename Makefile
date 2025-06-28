@@ -38,6 +38,7 @@ ASFLAGS = --64 # Tell GNU AS to assemble for 64-bit mode. elf64 is usually infer
 KERNEL_D_ARCH_IF_SRC        = $(wildcard kernel/arch_interface/*.d)
 KERNEL_D_CORE_SRC           = $(wildcard kernel/core/*.d) $(wildcard kernel/core/stdc/*.d)
 KERNEL_D_DEVICE_SRC         = $(wildcard kernel/device/*.d) $(wildcard kernel/hardware/*.d) $(wildcard kernel/memory/*.d)
+KERNEL_D_NET_SRC            = $(wildcard kernel/net/*.d)
 KERNEL_D_HOST_SRC           = $(wildcard kernel/host/*.d)
 KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard kernel/include/kernel/*.d)
 KERNEL_D_LIB_STDC_SRC       = $(wildcard kernel/lib/stdc/*.d)
@@ -49,6 +50,7 @@ ALL_KERNEL_D_SOURCES_NO_GENERATED = \
     $(KERNEL_D_ARCH_IF_SRC) \
     $(KERNEL_D_CORE_SRC) \
     $(KERNEL_D_DEVICE_SRC) \
+    $(KERNEL_D_NET_SRC) \
     $(KERNEL_D_HOST_SRC) \
     $(KERNEL_D_INCLUDE_KERNEL_SRC) \
     $(KERNEL_D_LIB_STDC_SRC) \

@@ -13,6 +13,7 @@ import kernel.lib.stdc.stdlib : system;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
+import kernel.net.stack : net_stack_init, net_poll;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -150,7 +151,11 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     terminal_writestring("Starting drivers and services...\n");
     init_keyboard_driver();   // Essential for interactive shell input!
     init_pci_bus();           // For discovering other devices (e.g., network, storage)
-    net_init();               // Initialize networking (stub)
+    net_init();               // Initialize NIC queues
+    ubyte[6] mac = [0x02,0x00,0x00,0x00,0x00,0x02];
+    uint ip = 0xC0A80064; // 192.168.0.100
+    net_stack_init(mac.ptr, ip);
+    net_poll();               // Process any early packets
     vmm_init();               // Initialize hypervisor
     init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
     init_syscall_interface(); // If the shell or Haskell programs need kernel services

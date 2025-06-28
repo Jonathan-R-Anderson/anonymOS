@@ -30,7 +30,9 @@ The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to b
 
 ## Shell Integration
 
-The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.  The shell binary is compiled into the image automatically.
+The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.  \
+Because the `fetch_shell` Makefile target is marked as phony, this step runs on every build,
+ensuring the latest shell sources are fetched and compiled into the image automatically.
 
 ## Object Namespace Overview
 

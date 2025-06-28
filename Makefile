@@ -114,7 +114,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd
+.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell
 
 
 all: $(ISO_FILE)

@@ -18,8 +18,12 @@ enum VGA_HEIGHT = 25;
 // which meant memory-mapped I/O was not guaranteed safe from optimizations.
 // The compiler issue appears resolved, so we declare `g_pVGAMemory` using
 // `shared(volatile(ushort))*` for correct semantics.
-__gshared shared(volatile(ushort))* g_pVGAMemory =
-    cast(shared(volatile(ushort))* ) VGA_ADDRESS;
+// Older toolchains used here do not support a pointer typed as
+// `shared(volatile(T))`.  Use a plain volatile pointer in
+// `__gshared` storage to keep the semantics while avoiding parse
+// errors when compiling with -betterC.
+__gshared volatile(ushort)* g_pVGAMemory =
+    cast(volatile(ushort)*) VGA_ADDRESS;
 __gshared size_t g_TerminalRow;
 __gshared size_t g_TerminalColumn;
 __gshared ubyte g_TerminalColor;

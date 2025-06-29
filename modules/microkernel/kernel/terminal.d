@@ -2,6 +2,8 @@
 
 module kernel.terminal;
 
+import core.volatile; // for volatile semantics on VGA memory
+
 import kernel.types : VGAColor;
 
 public: // Export these functions and constants
@@ -11,13 +13,13 @@ enum VGA_ADDRESS = 0xB8000;
 enum VGA_WIDTH = 80;
 enum VGA_HEIGHT = 25;
 
-// Use volatile for memory-mapped I/O to prevent unwanted compiler optimizations
-// FIXME: The 'volatile' keyword (for volatile(T) type constructor) is reported as an
-// "undefined identifier" by the current LDC2 -betterC setup for this target.
-// This means memory-mapped I/O to VGA_ADDRESS is NOT guaranteed to be safe from compiler optimizations.
-// For true correctness, the compiler issue with 'volatile' needs to be resolved,
-// or all accesses to g_pVGAMemory should be done via inline assembly.
-__gshared ushort* g_pVGAMemory = cast(ushort*) VGA_ADDRESS;
+// Use volatile for memory-mapped I/O to prevent unwanted compiler optimizations.
+// FIXME: Previous toolchains reported `volatile(T)` as undefined with -betterC,
+// which meant memory-mapped I/O was not guaranteed safe from optimizations.
+// The compiler issue appears resolved, so we declare `g_pVGAMemory` using
+// `shared(volatile(ushort))*` for correct semantics.
+__gshared shared(volatile(ushort))* g_pVGAMemory =
+    cast(shared(volatile(ushort))* ) VGA_ADDRESS;
 __gshared size_t g_TerminalRow;
 __gshared size_t g_TerminalColumn;
 __gshared ubyte g_TerminalColor;

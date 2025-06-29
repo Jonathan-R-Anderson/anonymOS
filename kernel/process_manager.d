@@ -79,6 +79,9 @@ extern(C) void scheduler_run()
             log_message("running process ");
             log_hex(p.pid);
             log_message("\n");
+            log_message("entry address=");
+            log_hex(cast(ulong)p.entry);
+            log_message("\n");
             current_pid = p.pid;
             p.entry();
             current_pid = size_t.max;

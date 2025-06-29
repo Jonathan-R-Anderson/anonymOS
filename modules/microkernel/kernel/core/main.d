@@ -15,6 +15,7 @@ import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
 import kernel.net.stack : net_stack_init, net_poll;
 import kernel.sanity : run_sanity_checks;
+import kernel.thread : thread_init, thread_create, thread_start, thread_yield, threads_active, thread_exit;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -60,6 +61,11 @@ void loop_forever_hlt() {
         asm { "hlt"; } // Halt until next interrupt (or forever if none)
     }
 }
+
+// Startup thread routines
+extern(C) void t_init_process() { launch_init_process(); thread_exit(); }
+extern(C) void t_sanity() { run_sanity_checks(); thread_exit(); }
+extern(C) void t_build() { build_d_compiler(); build_shell(); thread_exit(); }
 
 // VGA Constants
 
@@ -183,10 +189,16 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // load applications (snaps/recipes), etc., according to the declarative configuration.
     log_message("Attempting to launch Init Process...\n");
     terminal_writestring_color("Boot complete.\n", VGAColor.GREEN, VGAColor.BLACK);
-    launch_init_process(); // Returns after init setup
-    run_sanity_checks();
-    build_d_compiler();
-    build_shell();
+    // Run setup tasks concurrently using the simple thread system
+    thread_init();
+    thread_create(&t_init_process);
+    thread_create(&t_sanity);
+    thread_create(&t_build);
+    thread_start();
+    while(threads_active())
+        thread_yield();
+
+    // All setup threads completed
     clear_screen();
 
     // Start the builtin -sh shell for direct testing.

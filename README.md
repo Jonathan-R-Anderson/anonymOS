@@ -11,7 +11,7 @@ anonymOS is an experimental microkernel operating system.  It draws inspiration 
 ## IRC
 
 <a href="https://web.libera.chat/#anonymos" target="_blank">
-  <img src="https://networkencyclopedia.com/wp-content/uploads/2019/09/internet-relay-chat-irc.jpg" alt="Join us on Discord" width="64" height="64">
+  <img src="https://news.filehippo.com/wp-content/uploads/2014/08/id.wikipedia.org_.png" alt="Join us on Discord" width="64" height="64">
 </a>
 
 ## Implemented Features

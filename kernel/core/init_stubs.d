@@ -42,6 +42,19 @@ extern(C) void launch_init_process()
 {
     import kernel.process_manager : process_create, scheduler_run;
     import kernel.shell : ttyShelly_shell;
-    process_create(&ttyShelly_shell);
+    import kernel.logger : log_message, log_hex;
+    import kernel.panic : kernel_panic;
+    import kernel.types : ErrorCode;
+
+    auto pid = process_create(&ttyShelly_shell);
+    if(pid == size_t.max)
+    {
+        log_message("Failed to create init process\n");
+        kernel_panic("Init process creation failed", ErrorCode.UNKNOWN_FAILURE);
+    }
+
+    log_message("Init process pid=");
+    log_hex(pid);
+    log_message("\n");
     scheduler_run();
 }

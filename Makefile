@@ -88,7 +88,8 @@ ALL_ASM_SOURCES = \
     $(INTERRUPTS_ASM_SRC) \
     $(KEYBOARD_HANDLER_ASM_SRC) \
     $(TSS_ASM_SRC) \
-    $(MICROKERNEL_DIR)/arch/x86/interrupt_stubs.s
+    $(MICROKERNEL_DIR)/arch/x86/interrupt_stubs.s \
+    $(MICROKERNEL_DIR)/arch/x86/cpu/thread_switch.s
 
 ## Other Files and Tools
 LINKER_SCRIPT               = $(MICROKERNEL_DIR)/arch/x86/linker.ld

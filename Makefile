@@ -52,8 +52,8 @@ KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard $(MICROKERNEL_DIR)/kernel/include/kerne
 KERNEL_D_LIB_STDC_SRC       = $(wildcard $(MICROKERNEL_DIR)/kernel/lib/stdc/*.d)
 KERNEL_D_FS_SRC             = $(MICROKERNEL_DIR)/kernel/fs.d
 KERNEL_D_ROOT_SRC           = $(filter-out $(KERNEL_D_FS_SRC),$(wildcard $(MICROKERNEL_DIR)/kernel/*.d))
-HYPERVISOR_SRC              = $(HYPERVISOR_DIR)/hypervisor.d
-OBJECT_TREE_SRC             = $(OBJECT_TREE_DIR)/object_namespace.d $(OBJECT_TREE_DIR)/object_validator.d
+HYPERVISOR_SRC              = $(HYPERVISOR_DIR)/kernel/hypervisor.d
+OBJECT_TREE_SRC             = $(OBJECT_TREE_DIR)/kernel/object_namespace.d $(OBJECT_TREE_DIR)/kernel/object_validator.d
 # Note: kernel/utils/ansi_art.d is generated, so it's handled as a target, not a source wildcard here.
 
 ALL_KERNEL_D_SOURCES_NO_GENERATED = \

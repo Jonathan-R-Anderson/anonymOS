@@ -148,17 +148,15 @@ extern(C) void ttyShellyMain()
 {
     import kernel.process_manager : get_current_pid, process_exit;
 
-    terminal_writestring("Welcome to ttyShelly stub shell.\r\n");
+    terminal_writestring("Welcome to ttyShelly shell.\r\n");
     setup_first_user();
 
-    // Run the installer once and then exit to allow the scheduler to
-    // continue. In a full build this would compile the shell using the
-    // freshly installed D compiler.
+    // Stub installer step. In a real build this would compile the
+    // third-party shell using the bundled D compiler.
     install_d_compiler();
 
-    terminal_writestring("Setup complete. Exiting installer.\r\n");
-    auto pid = get_current_pid();
-    process_exit(pid, 0);
+    terminal_writestring("Initialization complete. Starting shell...\r\n");
+    ttyShellyInteractive();
 }
 
 /// Original interactive loop preserved as a separate function. It
@@ -207,12 +205,27 @@ extern(C) void ttyShellyInteractive()
         // Command matching
         if (cmd == "help") {
             terminal_writestring("Available commands:\r\n");
-            terminal_writestring("  help - show this message\r\n");
-            terminal_writestring("  exit - halt the system\r\n");
+            terminal_writestring("  help  - show this message\r\n");
+            terminal_writestring("  clear - clear the screen\r\n");
+            terminal_writestring("  echo  - print text\r\n");
+            terminal_writestring("  exit  - terminate shell\r\n");
             printSyscalls();
+        } else if (cmd == "clear") {
+            import kernel.device.vga : clear_screen;
+            clear_screen();
+        } else if (cmd.length >= 4 && cmd[0 .. 4] == "echo" && (cmd.length == 4 || cmd[4] == ' ')) {
+            size_t start = 4;
+            if (start < cmd.length && cmd[start] == ' ') start++;
+            foreach(i; start .. cmd.length) {
+                terminal_putchar(cmd[i]);
+            }
+            terminal_writestring("\r\n");
         } else if (cmd == "exit") {
+            import kernel.process_manager : get_current_pid, process_exit;
             terminal_writestring("Bye!\r\n");
-            asm { "hlt"; }
+            auto pid = get_current_pid();
+            process_exit(pid, 0);
+            break;
         } else {
             bool suggested = false;
             if (similar(cmd, "help")) {

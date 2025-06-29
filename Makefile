@@ -94,9 +94,10 @@ ISO_FILE = $(BUILD_DIR)/anonymOS.iso
 
 # Shell sources and target pulled from external repository
 SH_DIR = third_party/sh
-SH_SOURCES = $(SH_DIR)/src/interpreter.d \
-             $(SH_DIR)/src/dlexer.d \
-             $(SH_DIR)/src/dparser.d
+# All shell modules from the external -sh repository
+SH_SOURCES = $(wildcard $(SH_DIR)/src/*.d)
+# Include paths so ldc2 can locate shell modules and the bundled mstd library
+SH_DFLAGS = -I$(SH_DIR) -I$(SH_DIR)/src
 SH_BIN = $(BUILD_DIR)/bin/sh
 # Original D compiler built with the cross-compiler
 DMD_DIR = third_party/dmd
@@ -183,7 +184,7 @@ dmd: $(DMD_BIN)
 
 $(SH_BIN): check_shell_support fetch_shell $(SH_SOURCES) | $(BUILD_DIR)
 	mkdir -p $(dir $@)
-	$(DC) $(SH_SOURCES) -of=$@
+	$(DC) $(SH_DFLAGS) $(SH_SOURCES) -of=$@
 
 check_shell_support:
 	./scripts/check_shell_support.sh

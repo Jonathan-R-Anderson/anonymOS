@@ -1,4 +1,5 @@
-					# Makefile for Minimal D OS
+# Makefile for Minimal D OS
+.DEFAULT_GOAL := run-log-int
 
 		# Tools
 		DC = ldc2           # D Compiler
@@ -115,7 +116,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support
+.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support update-run
 
 
 all: $(ISO_FILE)
@@ -212,4 +213,11 @@ run-log-int: $(ISO_FILE)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+update-run:
+	git pull
+	clear
+	bash ./scripts/build_dmd.sh
+	$(MAKE) clean
+	$(MAKE) run-log-int
 	

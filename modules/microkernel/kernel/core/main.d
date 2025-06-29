@@ -189,16 +189,15 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // load applications (snaps/recipes), etc., according to the declarative configuration.
     log_message("Attempting to launch Init Process...\n");
     terminal_writestring_color("Boot complete.\n", VGAColor.GREEN, VGAColor.BLACK);
-    // Run setup tasks concurrently using the simple thread system
-    thread_init();
-    thread_create(&t_init_process);
-    thread_create(&t_sanity);
-    thread_create(&t_build);
-    thread_start();
-    while(threads_active())
-        thread_yield();
+    // Run setup tasks sequentially instead of using the minimal
+    // cooperative thread system. This avoids the possibility of a
+    // misbehaving thread preventing the system from reaching the shell.
+    launch_init_process();
+    run_sanity_checks();
+    build_d_compiler();
+    build_shell();
 
-    // All setup threads completed
+    // All setup tasks completed
     clear_screen();
 
     // Start the builtin -sh shell for direct testing.

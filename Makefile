@@ -32,19 +32,27 @@ ASFLAGS = --64 # Tell GNU AS to assemble for 64-bit mode. elf64 is usually infer
 	# Update DFLAGS for the new directory structure and D module conventions
 	# -I. allows `import kernel.core.module;`
 	# -Ikernel/include allows `import kernel.types;` for `kernel/include/kernel/types.d`
-	DFLAGS := $(DFLAGS_BASE) $(DFLAGS_TARGET_64) -I. -Ikernel/include
+MICROKERNEL_DIR := modules/microkernel
+HYPERVISOR_DIR  := modules/hypervisor
+OBJECT_TREE_DIR := modules/object-tree
+
+       DFLAGS := $(DFLAGS_BASE) $(DFLAGS_TARGET_64) -I. \
+               -I$(MICROKERNEL_DIR)/kernel/include \
+               -I$(HYPERVISOR_DIR) -I$(OBJECT_TREE_DIR)
 	
 # Files and Directories
 ## D Source Files
-KERNEL_D_ARCH_IF_SRC        = $(wildcard kernel/arch_interface/*.d)
-KERNEL_D_CORE_SRC           = $(wildcard kernel/core/*.d) $(wildcard kernel/core/stdc/*.d)
-KERNEL_D_DEVICE_SRC         = $(wildcard kernel/device/*.d) $(wildcard kernel/hardware/*.d) $(wildcard kernel/memory/*.d)
-KERNEL_D_NET_SRC            = $(wildcard kernel/net/*.d)
-KERNEL_D_HOST_SRC           = $(wildcard kernel/host/*.d)
-KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard kernel/include/kernel/*.d)
-KERNEL_D_LIB_STDC_SRC       = $(wildcard kernel/lib/stdc/*.d)
-KERNEL_D_FS_SRC             = kernel/fs.d
-KERNEL_D_ROOT_SRC           = $(filter-out $(KERNEL_D_FS_SRC),$(wildcard kernel/*.d)) # e.g. interrupts.d, keyboard.d, terminal.d but not fs.d
+KERNEL_D_ARCH_IF_SRC        = $(wildcard $(MICROKERNEL_DIR)/kernel/arch_interface/*.d)
+KERNEL_D_CORE_SRC           = $(wildcard $(MICROKERNEL_DIR)/kernel/core/*.d) $(wildcard $(MICROKERNEL_DIR)/kernel/core/stdc/*.d)
+KERNEL_D_DEVICE_SRC         = $(wildcard $(MICROKERNEL_DIR)/kernel/device/*.d) $(wildcard $(MICROKERNEL_DIR)/kernel/hardware/*.d) $(wildcard $(MICROKERNEL_DIR)/kernel/memory/*.d)
+KERNEL_D_NET_SRC            = $(wildcard $(MICROKERNEL_DIR)/kernel/net/*.d)
+KERNEL_D_HOST_SRC           = $(wildcard $(MICROKERNEL_DIR)/kernel/host/*.d)
+KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard $(MICROKERNEL_DIR)/kernel/include/kernel/*.d)
+KERNEL_D_LIB_STDC_SRC       = $(wildcard $(MICROKERNEL_DIR)/kernel/lib/stdc/*.d)
+KERNEL_D_FS_SRC             = $(MICROKERNEL_DIR)/kernel/fs.d
+KERNEL_D_ROOT_SRC           = $(filter-out $(KERNEL_D_FS_SRC),$(wildcard $(MICROKERNEL_DIR)/kernel/*.d))
+HYPERVISOR_SRC              = $(HYPERVISOR_DIR)/hypervisor.d
+OBJECT_TREE_SRC             = $(OBJECT_TREE_DIR)/object_namespace.d $(OBJECT_TREE_DIR)/object_validator.d
 # Note: kernel/utils/ansi_art.d is generated, so it's handled as a target, not a source wildcard here.
 
 ALL_KERNEL_D_SOURCES_NO_GENERATED = \
@@ -56,17 +64,19 @@ ALL_KERNEL_D_SOURCES_NO_GENERATED = \
     $(KERNEL_D_INCLUDE_KERNEL_SRC) \
     $(KERNEL_D_LIB_STDC_SRC) \
     $(KERNEL_D_FS_SRC) \
-    $(KERNEL_D_ROOT_SRC)
+    $(KERNEL_D_ROOT_SRC) \
+    $(HYPERVISOR_SRC) \
+    $(OBJECT_TREE_SRC)
 
 ## Assembly Source Files
-BOOT_ASM_SRC                = arch/x86/boot/boot.s
-GDT_ASM_SRC                 = arch/x86/cpu/gdt.s
-IDT_LOADER_ASM_SRC          = arch/x86/cpu/idt_loader.s
-PORTS_ASM_SRC               = arch/x86/cpu/ports.s
-DEBUG_ASM_SRC               = kernel/utils/debug_asm.s
-INTERRUPTS_ASM_SRC          = arch/x86/cpu/interrupts_asm.s
-KEYBOARD_HANDLER_ASM_SRC    = arch/x86/cpu/keyboard_handler_asm_to_merge.s # Adjusted name from tree
-TSS_ASM_SRC                 = arch/x86/cpu/tss.s
+BOOT_ASM_SRC                = $(MICROKERNEL_DIR)/arch/x86/boot/boot.s
+GDT_ASM_SRC                 = $(MICROKERNEL_DIR)/arch/x86/cpu/gdt.s
+IDT_LOADER_ASM_SRC          = $(MICROKERNEL_DIR)/arch/x86/cpu/idt_loader.s
+PORTS_ASM_SRC               = $(MICROKERNEL_DIR)/arch/x86/cpu/ports.s
+DEBUG_ASM_SRC               = $(MICROKERNEL_DIR)/kernel/utils/debug_asm.s
+INTERRUPTS_ASM_SRC          = $(MICROKERNEL_DIR)/arch/x86/cpu/interrupts_asm.s
+KEYBOARD_HANDLER_ASM_SRC    = $(MICROKERNEL_DIR)/arch/x86/cpu/keyboard_handler_asm_to_merge.s
+TSS_ASM_SRC                 = $(MICROKERNEL_DIR)/arch/x86/cpu/tss.s
 
 ALL_ASM_SOURCES = \
     $(BOOT_ASM_SRC) \
@@ -77,12 +87,12 @@ ALL_ASM_SOURCES = \
     $(INTERRUPTS_ASM_SRC) \
     $(KEYBOARD_HANDLER_ASM_SRC) \
     $(TSS_ASM_SRC) \
-    arch/x86/interrupt_stubs.s
+    $(MICROKERNEL_DIR)/arch/x86/interrupt_stubs.s
 
 ## Other Files and Tools
-LINKER_SCRIPT               = arch/x86/linker.ld
-ANSI_ART_SRC_FILE           = kernel/utils/artwork.ans
-ANSI_ART_D_TARGET_FILE      = kernel/utils/ansi_art.d
+LINKER_SCRIPT               = $(MICROKERNEL_DIR)/arch/x86/linker.ld
+ANSI_ART_SRC_FILE           = $(MICROKERNEL_DIR)/kernel/utils/artwork.ans
+ANSI_ART_D_TARGET_FILE      = $(MICROKERNEL_DIR)/kernel/utils/ansi_art.d
 
 BUILD_DIR = build
 OBJ_DIR = $(BUILD_DIR)/obj

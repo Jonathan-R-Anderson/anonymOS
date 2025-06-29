@@ -98,7 +98,7 @@ private void print_prompt()
 /// Simple first-time setup that installs the non-cross D compiler
 /// and prepares the shell environment. This is only a stub that
 /// prints status messages but represents running the real installer.
-private void build_d_compiler()
+void build_d_compiler()
 {
     import kernel.logger : log_message;
 
@@ -109,7 +109,7 @@ private void build_d_compiler()
     terminal_writestring("D compiler installed.\r\n");
 }
 
-private void build_shell()
+void build_shell()
 {
     import kernel.logger : log_message;
 

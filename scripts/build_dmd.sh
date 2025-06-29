@@ -8,10 +8,21 @@ set -e
 
 SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 DMD_DIR="$PROJECT_ROOT/third_party/dmd"
 BIN_DIR="$PROJECT_ROOT/build/bin"
 HOST_DMD=${HOST_DMD:-ldmd2}
 JOBS=${JOBS:-$(nproc)}
+
+# Fetch the dmd sources if they are missing
+if [ ! -d "$DMD_DIR/.git" ]; then
+    echo "Fetching dmd sources..."
+    mkdir -p "$PROJECT_ROOT/third_party"
+    git clone --depth 1 https://github.com/dlang/dmd.git "$DMD_DIR"
+else
+    echo "Updating dmd sources..."
+    git -C "$DMD_DIR" pull --ff-only
+fi
 
 mkdir -p "$BIN_DIR"
 

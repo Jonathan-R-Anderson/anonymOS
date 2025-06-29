@@ -7,48 +7,143 @@ import kernel.process_manager : process_create, scheduler_run;
 import kernel.shell : ttyShelly_shell;
 
 // Minimal C standard library function implementations for -betterC builds.
-// We provide a very simple bump allocator for kernel use. This is not
-// thread safe and does not support freeing memory.
+// The previous revision used a bump allocator that could only grow the heap.
+// This version implements a tiny free list based allocator so that memory
+// can be returned back to the heap.
 
 struct BlockHeader {
-    size_t size;
+    size_t size;          // Size of the user portion
+    BlockHeader* next;    // Next block in free list when free
 }
 
 enum HEAP_SIZE = 1024 * 1024; // 1 MiB heap for kernel allocations
 __gshared align(8) ubyte[HEAP_SIZE] heap;
-__gshared size_t heapIndex = 0;
+__gshared BlockHeader* freeList;
+__gshared bool heapInit = false;
+
+private enum ALIGN = 8;
+
+private size_t alignUp(size_t n)
+{
+    return (n + (ALIGN - 1)) & ~(ALIGN - 1);
+}
+
+private void heap_init()
+{
+    if(!heapInit)
+    {
+        auto first = cast(BlockHeader*)heap.ptr;
+        first.size = HEAP_SIZE - BlockHeader.sizeof;
+        first.next = null;
+        freeList = first;
+        heapInit = true;
+    }
+}
 
 extern(C) void* malloc(size_t size)
 {
-    size_t total = size + BlockHeader.sizeof;
-    if(heapIndex + total > HEAP_SIZE) return null;
-    auto hdr = cast(BlockHeader*) &heap[heapIndex];
-    hdr.size = size;
-    heapIndex += total;
-    return hdr + 1;
+    heap_init();
+    size = alignUp(size);
+    BlockHeader* prev = null;
+    for(auto cur = freeList; cur !is null; prev = cur, cur = cur.next)
+    {
+        if(cur.size >= size)
+        {
+            size_t remain = cur.size - size;
+            if(remain >= BlockHeader.sizeof + ALIGN)
+            {
+                auto next = cast(BlockHeader*)((cast(ubyte*)(cur + 1)) + size);
+                next.size = remain - BlockHeader.sizeof;
+                next.next = cur.next;
+                if(prev is null)
+                    freeList = next;
+                else
+                    prev.next = next;
+                cur.size = size;
+            }
+            else
+            {
+                if(prev is null)
+                    freeList = cur.next;
+                else
+                    prev.next = cur.next;
+            }
+            return cur + 1;
+        }
+    }
+    return null;
 }
 
 extern(C) void* realloc(void* ptr, size_t size)
 {
     if(ptr is null) return malloc(size);
+    if(size == 0)
+    {
+        free(ptr);
+        return null;
+    }
+    size = alignUp(size);
     auto oldHdr = cast(BlockHeader*)ptr - 1;
-    size_t oldSize = oldHdr.size;
+    auto oldSize = oldHdr.size;
     if(size <= oldSize)
     {
-        oldHdr.size = size;
+        size_t remain = oldSize - size;
+        if(remain >= BlockHeader.sizeof + ALIGN)
+        {
+            auto newBlock = cast(BlockHeader*)((cast(ubyte*)(oldHdr + 1)) + size);
+            newBlock.size = remain - BlockHeader.sizeof;
+            oldHdr.size = size;
+            free(newBlock + 1);
+        }
         return ptr;
     }
     auto newPtr = malloc(size);
     if(newPtr !is null)
     {
         memcpy(newPtr, ptr, oldSize);
+        free(ptr);
     }
     return newPtr;
 }
 
 extern(C) void free(void* ptr)
 {
-    // Bump allocator does not support free; ignore.
+    if(ptr is null) return;
+    heap_init();
+    auto hdr = cast(BlockHeader*)ptr - 1;
+    BlockHeader* prev = null;
+    auto cur = freeList;
+    while(cur !is null && cur < hdr)
+    {
+        prev = cur;
+        cur = cur.next;
+    }
+    hdr.next = cur;
+    if(prev is null)
+        freeList = hdr;
+    else
+        prev.next = hdr;
+
+    // merge with next
+    if(hdr.next !is null)
+    {
+        auto expected = cast(BlockHeader*)((cast(ubyte*)(hdr + 1)) + hdr.size);
+        if(expected is hdr.next)
+        {
+            hdr.size += BlockHeader.sizeof + hdr.next.size;
+            hdr.next = hdr.next.next;
+        }
+    }
+    // merge with prev
+    if(prev !is null)
+    {
+        auto expected = cast(BlockHeader*)((cast(ubyte*)(prev + 1)) + prev.size);
+        if(expected is hdr)
+        {
+            prev.size += BlockHeader.sizeof + hdr.size;
+            prev.next = hdr.next;
+        }
+    }
 }
 
 /// Minimal stub for the C `system` function.

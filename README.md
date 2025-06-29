@@ -4,9 +4,9 @@ anonymOS is an experimental microkernel operating system.  It draws inspiration 
 
 ## DISCORD
 
-<a href="https://discord.gg/GN8qHardT7" target="_blank">
+<center><a href="https://discord.gg/GN8qHardT7" target="_blank">
   <img src="https://cdn.icon-icons.com/icons2/2108/PNG/512/discord_icon_130958.png" alt="Join us on Discord" width="64" height="64">
-</a>
+</a></center>
 
 
 

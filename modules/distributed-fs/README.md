@@ -1,7 +1,9 @@
-# Distributed Filesystem
+# distributedFS
 
-Experimental cryptographic filesystem aimed at decentralized storage. The files
-here are synced from the
-[distributedFS](https://github.com/Jonathan-R-Anderson/distributedFS)
-repository. Use `../../scripts/fetch_modules.sh` to clone or update the module
-so integration stays aligned with upstream development.
+This repository contains a minimal Plan9-inspired distributed filesystem implemented in D.
+It mirrors the early layout from the `internetcomputer` project and stores file blocks in a
+small disk-backed DHT so data survives restarts. When a DHT is not available, it falls
+back to a simple on-disk store. The tree contains `/users`, `/dev`, `/proc` and `/hardware`
+directories similar to Plan9.
+
+Run `make` to build the server binary using `ldc2`.

@@ -14,12 +14,14 @@ struct ThreadContext {
     ulong r15;
 }
 
-extern(C) void switch_thread(ThreadContext* old, ThreadContext* new);
-extern(C) void restore_first(ThreadContext* new);
+extern(C) void switch_thread(ThreadContext* old, ThreadContext* next);
+extern(C) void restore_first(ThreadContext* next);
+
+alias ThreadEntry = extern(C) void function();
 
 struct Thread {
     ThreadContext ctx;
-    extern(C) void function() entry;
+    ThreadEntry entry;
     ubyte* stack;
     bool active;
 }
@@ -35,7 +37,7 @@ extern(C) void thread_init()
     current_thread = size_t.max;
 }
 
-extern(C) size_t thread_create(extern(C) void function() fn)
+extern(C) size_t thread_create(ThreadEntry fn)
 {
     import kernel.logger : log_message, log_hex;
     if(g_thread_count >= MAX_THREADS)

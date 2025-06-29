@@ -125,15 +125,14 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN) $(SH_BIN) $(DMD_BIN)
+$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
 	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
-	cp $(SH_BIN) $(ISO_BIN_DIR)/
 	cp $(DMD_BIN) $(ISO_BIN_DIR)/
 	cp -r third_party/sh $(ISO_DIR)/third_party/
 	cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
-		# Critical: Ensure the backslash '\' after 'then' on the line below
+			# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".
 		# The 'if' statement above is treated as a self-contained shell command.

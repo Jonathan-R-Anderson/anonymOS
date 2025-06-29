@@ -17,7 +17,6 @@ import kernel.process_manager : process_create_with_parent, process_exit,
                                process_wait, get_current_pid, g_processes;
 import kernel.process_manager : scheduler_run; // to run new procs
 import kernel.interrupts : timer_ticks;
-import kernel.shell : ttyShelly_shell;
 import kernel.elf_loader : load_elf;
 import kernel.process_manager : EntryFunc;
 import kernel.sync : rendezvous, sem_acquire, sem_release, semaphore_init;

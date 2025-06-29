@@ -8,12 +8,13 @@ import kernel.device.vga : clear_screen;
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
-import kernel.shell : ttyShelly_shell;       // Simple interactive shell
+import kernel.shell : sh_shell, build_d_compiler, build_shell, init_setup; // -sh shell and build helpers
 import kernel.lib.stdc.stdlib : system;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
 import kernel.net.stack : net_stack_init, net_poll;
+import kernel.sanity : run_sanity_checks;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -48,7 +49,7 @@ extern (C) void vmm_init();
 extern (C) void init_device_manager(void* multiboot_info_ptr);      // Manages /dev, user-space drivers
 extern (C) void init_namespace_manager(void* multiboot_info_ptr);   // Manages per-process namespaces, overlays
 extern (C) void init_capability_supervisor(); // Enforces capability-based security
-extern (C) void launch_init_process();        // Launches the first user-space process (e.g., /system/init)
+extern (C) void launch_init_process();        // Launches the first user-space process (e.g., /system/init) and returns when it exits
 
 
 
@@ -182,13 +183,14 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // load applications (snaps/recipes), etc., according to the declarative configuration.
     log_message("Attempting to launch Init Process...\n");
     terminal_writestring_color("Boot complete.\n", VGAColor.GREEN, VGAColor.BLACK);
-    launch_init_process(); // This would not return if successful.
+    launch_init_process(); // Returns after init setup
+    run_sanity_checks();
+    build_d_compiler();
+    build_shell();
     clear_screen();
 
-    // For now, we'll fall through to the Haskell shell for direct testing.
-    // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
-    // For now, fall through to a very basic built-in shell for direct testing.
-    log_message("Starting ttyShelly shell...\n");
+    // Start the builtin -sh shell for direct testing.
+    log_message("Starting -sh shell...\n");
     system("sh");
     clear_screen();
 

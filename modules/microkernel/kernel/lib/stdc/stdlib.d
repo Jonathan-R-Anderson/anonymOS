@@ -4,7 +4,7 @@ module kernel.lib.stdc.stdlib;
 // pulling in external C runtime dependencies.
 import kernel.types : memcpy, strlen, memcmp;
 import kernel.process_manager : process_create, scheduler_run;
-import kernel.shell : ttyShelly_shell;
+import kernel.shell : sh_shell;
 
 // Minimal C standard library function implementations for -betterC builds.
 // The previous revision used a bump allocator that could only grow the heap.
@@ -167,7 +167,7 @@ extern(C) int system(const(char)* cmd)
     // launched via either "shell" or "sh".
     if(str_eq(cmd, "shell") || str_eq(cmd, "sh"))
     {
-        process_create(&ttyShelly_shell);
+        process_create(&sh_shell);
         scheduler_run();
         return 0;
     }

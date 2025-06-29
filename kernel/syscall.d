@@ -18,6 +18,8 @@ import kernel.process_manager : process_create_with_parent, process_exit,
 import kernel.process_manager : scheduler_run; // to run new procs
 import kernel.interrupts : timer_ticks;
 import kernel.shell : ttyShelly_shell;
+import kernel.elf_loader : load_elf;
+import kernel.process_manager : EntryFunc;
 import kernel.sync : rendezvous, sem_acquire, sem_release, semaphore_init;
 import kernel.lib.stdc.stdlib : free;
 import kernel.memory.virtmem : brk, seg_attach, seg_detach, seg_brk,
@@ -229,22 +231,25 @@ extern(C) long sys_rfork(ulong flags, ulong, ulong, ulong, ulong, ulong)
 extern(C) long sys_exec(ulong pathPtr, ulong argvPtr, ulong, ulong, ulong, ulong)
 {
     auto path = cast(const(char)*)pathPtr;
-    // Only built-in shell supported
-    const(char)* shell = "shell";
-    size_t i = 0;
-    while(path[i] && shell[i] && path[i] == shell[i]) ++i;
-    if(path[i] == 0 && shell[i] == 0)
+    void* entry = null;
+    if(load_elf(path, &entry) != 0 || entry is null)
     {
-        auto pid = get_current_pid();
-        g_processes[pid].entry = &ttyShelly_shell;
-        g_processes[pid].started = true;
-        ttyShelly_shell();
-        process_exit(pid, 0);
+        auto msg = "exec failed";
+        foreach(j; 0 .. msg.length) g_errstr[j] = msg[j];
+        g_errstr[msg.length] = 0;
+        return -1;
     }
-    auto msg = "exec failed";
-    foreach(j; 0 .. msg.length) g_errstr[j] = msg[j];
-    g_errstr[msg.length] = 0;
-    return -1;
+    size_t parent = get_current_pid();
+    auto child = process_create_with_parent(cast(EntryFunc)entry, parent);
+    if(child == size_t.max)
+    {
+        auto msg = "exec failed";
+        foreach(j; 0 .. msg.length) g_errstr[j] = msg[j];
+        g_errstr[msg.length] = 0;
+        return -1;
+    }
+    scheduler_run();
+    return cast(long)child;
 }
 
 extern(C) long sys_exit(ulong status, ulong, ulong, ulong, ulong, ulong)

@@ -116,7 +116,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support update-run
+.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support update-run debug
 
 
 all: $(ISO_FILE)
@@ -210,6 +210,8 @@ run-log-int: $(ISO_FILE)
 	qemu-system-x86_64 -cdrom $< $(QEMU_FLAGS) -m 128M -display curses -vga std \
 	-d int,guest_errors,cpu_reset -D qemu.log -debugcon file:qemu.log -serial file:qemu.log \
 	-M smm=off -no-reboot -S -s
+debug:
+	./scripts/run_with_gdb.sh
 
 clean:
 	rm -rf $(BUILD_DIR)

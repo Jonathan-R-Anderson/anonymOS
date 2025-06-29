@@ -27,6 +27,7 @@ make build
 ```
 
 The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to boot it in QEMU.
+For debugging, run `make debug` to build the system, launch QEMU in debug mode and automatically attach GDB.
 
 To include the stock `dmd` compiler in the image, run `./scripts/build_dmd.sh` before `make build`. The script automatically fetches the upstream sources if they are missing and compiles them with your cross-compiled `ldc2`.
 

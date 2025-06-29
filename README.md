@@ -18,6 +18,36 @@ anonymOS is an experimental microkernel operating system.  It draws inspiration 
 - **Container images** built with Alpine Linux utilities.
 - **Object-based namespaces** expose managers like the scheduler and user manager through a unified object tree.
 - **TTY shell** built from the [\-sh](https://github.com/Jonathan-R-Anderson/-sh) project and fetched automatically during the build.
+## Repository Modules
+
+Source code is organized in the `modules/` directory so each feature can be
+split into its own repository.  Each module has a README describing its
+purpose and now contains the actual sources for that component:
+
+- `microkernel/` – core OS kernel implementation
+- `user-services/` – user-space daemons and drivers
+- `hypervisor/` – lightweight virtualization support
+- `containers/` – container image tooling
+- `object-tree/` – object namespace infrastructure
+- `distributed-fs/` – experimental cryptographic filesystem
+
+### Using modules as separate repositories
+
+You can treat each subfolder under `modules/` as an independent Git
+repository. To assemble the full project clone each module into its
+subdirectory (using `git submodule` or manual clones) then run `make` from the
+repository root:
+
+```bash
+git submodule add <microkernel_repo> modules/microkernel
+git submodule add <user_services_repo> modules/user-services
+git submodule add <hypervisor_repo> modules/hypervisor
+git submodule add <containers_repo> modules/containers
+git submodule add <object_tree_repo> modules/object-tree
+git submodule add <distributed_fs_repo> modules/distributed-fs
+make build
+```
+
 
 ## Planned Features
 

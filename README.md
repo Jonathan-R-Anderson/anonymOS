@@ -30,19 +30,20 @@ The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to b
 
 ## Shell Integration
 
-The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.
-Before compiling it, `scripts/check_shell_support.sh` verifies that the kernel provides the
-required terminal and keyboard drivers. If these checks fail the build stops and explains what
-is missing. Because the `fetch_shell` Makefile target is marked as phony, this step runs on
-every build, ensuring the latest shell sources are fetched and compiled into the image
-automatically. The shell's prompt now dynamically displays the logged-in user, namespace,
-current directory and CPU privilege level using the format `user@namespace:/path(permission)`.
+The build pulls the TTY shell from the external repository using
+`scripts/fetch_shell.sh`. `scripts/check_shell_support.sh` can still be used to
+verify that the kernel exposes the required terminal and keyboard drivers, but
+the Makefile no longer compiles the shell during ISO creation. Instead the shell
+sources are copied to the image under `/third_party/sh` and the actual build is
+performed after installation. The shell's prompt dynamically displays the
+logged-in user, namespace, current directory and CPU privilege level using the
+format `user@namespace:/path(permission)`.
 
-The ISO also packages the shell sources in `/third_party/sh` along with a helper
-script `install_shell_in_os.sh` located in `/sys/init`.  Running this script
-inside anonymOS compiles the shell with the bundled `dmd` compiler and installs
-the result to `/bin/sh`.  This allows the shell to be rebuilt from source during
-system setup if desired.
+The ISO packages the shell sources in `/third_party/sh` along with a helper
+script `install_shell_in_os.sh` located in `/sys/init`.  After installing the
+system, run this script to compile the shell with the bundled `dmd` compiler and
+install the result to `/bin/sh`.  This approach keeps the raw sources available
+while deferring compilation to the installed environment.
 
 ## Object Namespace Overview
 

@@ -30,11 +30,13 @@ The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to b
 
 ## Shell Integration
 
-The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.\
-Because the `fetch_shell` Makefile target is marked as phony, this step runs on every build,
-ensuring the latest shell sources are fetched and compiled into the image automatically. The
-shell's prompt now dynamically displays the logged-in user, namespace, current directory and
-CPU privilege level using the format `user@namespace:/path(permission)`.
+The build pulls the TTY shell from the external repository using `scripts/fetch_shell.sh`.
+Before compiling it, `scripts/check_shell_support.sh` verifies that the kernel provides the
+required terminal and keyboard drivers. If these checks fail the build stops and explains what
+is missing. Because the `fetch_shell` Makefile target is marked as phony, this step runs on
+every build, ensuring the latest shell sources are fetched and compiled into the image
+automatically. The shell's prompt now dynamically displays the logged-in user, namespace,
+current directory and CPU privilege level using the format `user@namespace:/path(permission)`.
 
 ## Object Namespace Overview
 

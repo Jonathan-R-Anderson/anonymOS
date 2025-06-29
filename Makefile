@@ -114,7 +114,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell
+.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support
 
 
 all: $(ISO_FILE)
@@ -181,9 +181,12 @@ $(DMD_BIN): | $(BUILD_DIR)
 
 dmd: $(DMD_BIN)
 
-$(SH_BIN): fetch_shell $(SH_SOURCES) | $(BUILD_DIR)
+$(SH_BIN): check_shell_support fetch_shell $(SH_SOURCES) | $(BUILD_DIR)
 	mkdir -p $(dir $@)
 	$(DC) $(SH_SOURCES) -of=$@
+
+check_shell_support:
+	./scripts/check_shell_support.sh
 
 fetch_shell:
 	./scripts/fetch_shell.sh

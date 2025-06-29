@@ -33,20 +33,11 @@ purpose and now contains the actual sources for that component:
 
 ### Using modules as separate repositories
 
-You can treat each subfolder under `modules/` as an independent Git
-repository. To assemble the full project clone each module into its
-subdirectory (using `git submodule` or manual clones) then run `make` from the
-repository root:
-
-```bash
-git submodule add <microkernel_repo> modules/microkernel
-git submodule add <user_services_repo> modules/user-services
-git submodule add <hypervisor_repo> modules/hypervisor
-git submodule add <containers_repo> modules/containers
-git submodule add <object_tree_repo> modules/object-tree
-git submodule add <distributed_fs_repo> modules/distributed-fs
-make build
-```
+Each folder under `modules/` corresponds to a separate repository hosted on
+GitHub. The build system automatically clones or updates these modules using
+`scripts/fetch_modules.sh` so you no longer need to add them as Git
+submodules manually. Simply run `make build` and the required components will
+be fetched prior to compilation.
 
 
 ## Planned Features

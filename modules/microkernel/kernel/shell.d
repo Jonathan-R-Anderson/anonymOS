@@ -98,7 +98,7 @@ private void print_prompt()
 /// Simple first-time setup that installs the non-cross D compiler
 /// and prepares the shell environment. This is only a stub that
 /// prints status messages but represents running the real installer.
-private void install_d_compiler()
+private void build_d_compiler()
 {
     import kernel.logger : log_message;
 
@@ -107,6 +107,16 @@ private void install_d_compiler()
     // In a full system this would unpack and build the native dmd
     // compiler so the shell can be compiled inside the OS.
     terminal_writestring("D compiler installed.\r\n");
+}
+
+private void build_shell()
+{
+    import kernel.logger : log_message;
+
+    terminal_writestring("Compiling -sh shell...\r\n");
+    log_message("Building -sh shell\n");
+    // A real system would invoke the bundled dmd here
+    terminal_writestring("Shell built.\r\n");
 }
 
 private void setup_first_user()
@@ -141,28 +151,23 @@ private void setup_first_user()
 
 
 
-/// Stub implementation for the Haskell ttyShelly shell entry point.
-/// The real implementation is expected to come from the userland
-/// Haskell code, but that is currently not linked in the kernel build.
-extern(C) void ttyShellyMain()
+/// Entry point for the built-in -sh shell.
+/// In a real system this would start the userland shell process.
+extern(C) void shMain()
 {
     import kernel.process_manager : get_current_pid, process_exit;
 
-    terminal_writestring("Welcome to ttyShelly shell.\r\n");
+    terminal_writestring("Welcome to -sh shell.\r\n");
     setup_first_user();
 
-    // Stub installer step. In a real build this would compile the
-    // third-party shell using the bundled D compiler.
-    install_d_compiler();
-
     terminal_writestring("Initialization complete. Starting shell...\r\n");
-    ttyShellyInteractive();
+    shInteractive();
 }
 
 /// Original interactive loop preserved as a separate function. It
 /// can be invoked explicitly once the installer has completed and
 /// the shell has been compiled.
-extern(C) void ttyShellyInteractive()
+extern(C) void shInteractive()
 {
     char[256] line;
 
@@ -248,20 +253,18 @@ extern(C) void ttyShellyInteractive()
 
 
 
-extern(C) void ttyShelly_shell()
+extern(C) void sh_shell()
 {
-    // Invoke the stub or real Haskell shell if linked.
-    ttyShellyMain();
+    // Invoke the stub shell implementation.
+    shMain();
 }
 
 /// Entry point for the system installer process. This runs the minimal
 /// setup steps such as creating the default user and installing the
 /// bundled D compiler before handing control to the interactive shell.
-extern(C) void install()
+extern(C) void init_setup()
 {
     terminal_writestring("Running installer...\r\n");
     setup_first_user();
-    install_d_compiler();
-    terminal_writestring("Installer finished. Starting shell...\r\n");
-    ttyShellyInteractive();
+    terminal_writestring("Installer finished.\r\n");
 }

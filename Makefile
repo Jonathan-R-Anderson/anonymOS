@@ -126,7 +126,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell check_shell_support update-run debug
+.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell fetch_modules check_shell_support update-run debug
 
 
 all: $(ISO_FILE)
@@ -136,7 +136,7 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell
+$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_modules
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
 	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
@@ -168,7 +168,7 @@ kernel_bin: $(KERNEL_BIN) # PHONY target now depends on the actual KERNEL_BIN fi
 
 # Ensure ANSI art D file is generated before compiling D sources that might depend on it
 # or before linking if it's directly part of ALL_OBJS (which it is via KERNEL_D_OBJS)
-$(KERNEL_BIN): $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # ANSI_ART_D_TARGET_FILE is a dep of its .o file, which is in ALL_OBJS
+$(KERNEL_BIN): fetch_modules $(ALL_OBJS) $(LINKER_SCRIPT) | $(BUILD_DIR) # ANSI_ART_D_TARGET_FILE is a dep of its .o file, which is in ALL_OBJS
 	mkdir -p $(BUILD_DIR)
 	# Removed -lgcc as it's specific to GCC. LDC2/LLD should handle necessary runtime bits or emit self-contained code.
 	$(LD) $(LDFLAGS) -T $(LINKER_SCRIPT) -o $@ $(ALL_OBJS)
@@ -203,6 +203,9 @@ check_shell_support:
 
 fetch_shell:
 	./scripts/fetch_shell.sh
+
+fetch_modules:
+	./scripts/fetch_modules.sh
 
 sh: $(SH_BIN)
 

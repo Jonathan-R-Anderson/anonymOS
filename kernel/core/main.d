@@ -188,26 +188,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // For now, we'll fall through to the Haskell shell for direct testing.
     // In the full blueprint, the Haskell shell itself might be an app launched by /system/init.
     // For now, fall through to a very basic built-in shell for direct testing.
-    log_message("Launching Ink login manager...\n");
-    bool loggedIn = false;
-    import kernel.login : ink_login_manager, login_prompt;
-    loggedIn = ink_login_manager();
-    if(!loggedIn) {
-        log_message("Ink login failed, falling back to text prompt...\n");
-        foreach(i; 0 .. 3) {
-            if(login_prompt()) {
-                loggedIn = true;
-                break;
-            }
-        }
-    }
-    if(loggedIn) {
-        log_message("Starting ttyShelly shell...\n");
-        system("sh");
-    } else {
-        log_message("All login attempts failed. Halting...\n");
-        loop_forever_hlt();
-    }
+    log_message("Starting ttyShelly shell...\n");
+    system("sh");
     clear_screen();
 
     log_register_state("Shell exited");

@@ -109,6 +109,44 @@ private void install_d_compiler()
     terminal_writestring("D compiler installed.\r\n");
 }
 
+private void setup_first_user()
+{
+    import kernel.user_manager : create_user, set_current_user, userCount;
+    import kernel.fs : fs_create_file_desc, fs_pwrite_file, fs_close_file;
+    char[32] user;
+    size_t ulen = 0;
+    if(userCount > 1) return;
+    terminal_writestring("Create username: ");
+    while(true){
+        char c = keyboard_getchar();
+        if(c == '\n') { terminal_writestring("\r\n"); break; }
+        else if(c == '\b') { if(ulen > 0) { ulen--; terminal_writestring("\b \b"); } }
+        else if(ulen < user.length - 1) { user[ulen++] = c; terminal_putchar(c); }
+    }
+    user[ulen] = 0;
+    char[32] pass; size_t plen = 0;
+    terminal_writestring("Create password: ");
+    while(true){
+        char c = keyboard_getchar();
+        if(c == '\n') { terminal_writestring("\r\n"); break; }
+        else if(c == '\b') { if(plen > 0) { plen--; terminal_writestring("\b \b"); } }
+        else if(plen < pass.length - 1) { pass[plen++] = c; terminal_putchar('*'); }
+    }
+    pass[plen] = 0;
+    create_user(user.ptr);
+    set_current_user(user.ptr);
+    int fd = fs_create_file_desc("/etc/shadow", 0, 0);
+    if(fd >= 0){
+        fs_pwrite_file(fd, user.ptr, ulen, 0);
+        char colon = ':';
+        fs_pwrite_file(fd, &colon, 1, ulen);
+        fs_pwrite_file(fd, pass.ptr, plen, ulen + 1);
+        fs_close_file(fd);
+    }
+    terminal_writestring("User created\r\n");
+}
+
+
 
 /// Stub implementation for the Haskell ttyShelly shell entry point.
 /// The real implementation is expected to come from the userland
@@ -118,6 +156,7 @@ extern(C) void ttyShellyMain()
     import kernel.process_manager : get_current_pid, process_exit;
 
     terminal_writestring("Welcome to ttyShelly stub shell.\r\n");
+    setup_first_user();
 
     // Run the installer once and then exit to allow the scheduler to
     // continue. In a full build this would compile the shell using the

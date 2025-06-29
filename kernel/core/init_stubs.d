@@ -41,12 +41,12 @@ extern(C) void init_syscall_interface()
 extern(C) void launch_init_process()
 {
     import kernel.process_manager : process_create, scheduler_run;
-    import kernel.shell : ttyShelly_shell;
+    import kernel.shell : install;
     import kernel.logger : log_message, log_hex;
     import kernel.panic : kernel_panic;
     import kernel.types : ErrorCode;
 
-    auto pid = process_create(&ttyShelly_shell);
+    auto pid = process_create(&install);
     if(pid == size_t.max)
     {
         log_message("Failed to create init process\n");

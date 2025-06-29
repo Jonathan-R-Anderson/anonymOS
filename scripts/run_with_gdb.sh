@@ -8,8 +8,10 @@ cd "$PROJECT_ROOT"
 # Build the system
 make build
 
-# Start QEMU in debug mode
-qemu-system-x86_64 -cdrom build/anonymOS.iso -S -s -m 128M -display curses -vga std &
+# Start QEMU in debug mode.  Use the default graphical display so the
+# emulator output appears in its own window separate from this GDB
+# session.
+qemu-system-x86_64 -cdrom build/anonymOS.iso -S -s -m 128M -vga std &
 QEMU_PID=$!
 
 # Give QEMU time to open the GDB port

@@ -253,3 +253,15 @@ extern(C) void ttyShelly_shell()
     // Invoke the stub or real Haskell shell if linked.
     ttyShellyMain();
 }
+
+/// Entry point for the system installer process. This runs the minimal
+/// setup steps such as creating the default user and installing the
+/// bundled D compiler before handing control to the interactive shell.
+extern(C) void install()
+{
+    terminal_writestring("Running installer...\r\n");
+    setup_first_user();
+    install_d_compiler();
+    terminal_writestring("Installer finished. Starting shell...\r\n");
+    ttyShellyInteractive();
+}

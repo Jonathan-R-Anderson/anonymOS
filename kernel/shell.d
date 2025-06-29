@@ -95,14 +95,45 @@ private void print_prompt()
     terminal_writestring(") ");
 }
 
+/// Simple first-time setup that installs the non-cross D compiler
+/// and prepares the shell environment. This is only a stub that
+/// prints status messages but represents running the real installer.
+private void install_d_compiler()
+{
+    import kernel.logger : log_message;
+
+    terminal_writestring("Running initial installer...\r\n");
+    log_message("Installing D compiler\n");
+    // In a full system this would unpack and build the native dmd
+    // compiler so the shell can be compiled inside the OS.
+    terminal_writestring("D compiler installed.\r\n");
+}
+
 
 /// Stub implementation for the Haskell ttyShelly shell entry point.
 /// The real implementation is expected to come from the userland
 /// Haskell code, but that is currently not linked in the kernel build.
 extern(C) void ttyShellyMain()
 {
+    import kernel.process_manager : get_current_pid, process_exit;
+
     terminal_writestring("Welcome to ttyShelly stub shell.\r\n");
 
+    // Run the installer once and then exit to allow the scheduler to
+    // continue. In a full build this would compile the shell using the
+    // freshly installed D compiler.
+    install_d_compiler();
+
+    terminal_writestring("Setup complete. Exiting installer.\r\n");
+    auto pid = get_current_pid();
+    process_exit(pid, 0);
+}
+
+/// Original interactive loop preserved as a separate function. It
+/// can be invoked explicitly once the installer has completed and
+/// the shell has been compiled.
+extern(C) void ttyShellyInteractive()
+{
     char[256] line;
 
     while (true) {

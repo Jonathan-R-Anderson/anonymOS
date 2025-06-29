@@ -142,6 +142,7 @@ extern(C) int fs_create_file_desc(const(char)* path, int mode, int perm)
         {
             f.node = n;
             f.pos = 0;
+            save_filesystem();
             return cast(int)i;
         }
     }
@@ -205,6 +206,7 @@ extern(C) long fs_pwrite_file(int fd, const(void)* buf, size_t count, size_t off
     memcpy(n.data + offset, buf, count);
     if(end > n.size)
         n.size = end;
+    save_filesystem();
     return cast(long)count;
 }
 

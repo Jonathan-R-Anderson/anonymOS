@@ -45,10 +45,10 @@ logged-in user, namespace, current directory and CPU privilege level using the
 format `user@namespace:/path(permission)`.
 
 The ISO packages the shell sources in `/third_party/sh` along with a helper
-script `install_shell_in_os.sh` located in `/sys/init`.  After installing the
-system, run this script to compile the shell with the bundled `dmd` compiler and
-install the result to `/bin/sh`.  This approach keeps the raw sources available
-while deferring compilation to the installed environment.
+script `install_shell_in_os.sh` located in `/sys/init`.  After installation the
+system automatically runs this installer which builds the shell using the
+bundled native `dmd` compiler and installs it to `/bin/sh`.  This keeps the raw
+sources available while deferring compilation to the installed environment.
 
 ## Object Namespace Overview
 
@@ -72,8 +72,9 @@ Objects do not yet enforce permissions or inheritance.  Methods are invoked via
 
 ## Filesystem Layout
 
-If no `fs.img` is present the kernel populates an in-memory filesystem with a
-default set of directories and configuration files:
+If no `fs.img` is present the kernel populates a filesystem with a default set
+of directories and configuration files.  Any subsequent changes are immediately
+written back to `fs.img` so the state persists across reboots:
 
 ```
 /

@@ -21,4 +21,4 @@ fetch_repo modules/user-services https://github.com/Jonathan-R-Anderson/anonymos
 fetch_repo modules/hypervisor https://github.com/Jonathan-R-Anderson/anonymos-hypervisor.git
 fetch_repo modules/containers https://github.com/Jonathan-R-Anderson/anonymos-containers.git
 fetch_repo modules/object-tree https://github.com/Jonathan-R-Anderson/anonymos-object-tree.git
-fetch_repo modules/distributed-fs https://github.com/Jonathan-R-Anderson/anonymos-distributed-fs.git
+fetch_repo modules/distributed-fs https://github.com/Jonathan-R-Anderson/distributedFS.git

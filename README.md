@@ -38,6 +38,12 @@ every build, ensuring the latest shell sources are fetched and compiled into the
 automatically. The shell's prompt now dynamically displays the logged-in user, namespace,
 current directory and CPU privilege level using the format `user@namespace:/path(permission)`.
 
+The ISO also packages the shell sources in `/third_party/sh` along with a helper
+script `install_shell_in_os.sh` located in `/sys/init`.  Running this script
+inside anonymOS compiles the shell with the bundled `dmd` compiler and installs
+the result to `/bin/sh`.  This allows the shell to be rebuilt from source during
+system setup if desired.
+
 ## Object Namespace Overview
 
 At boot an object tree is created that exposes kernel services through a single

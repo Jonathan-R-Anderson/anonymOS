@@ -28,16 +28,18 @@ purpose and now contains the actual sources for that component:
 - `user-services/` – user-space daemons and drivers
 - `hypervisor/` – lightweight virtualization support
 - `containers/` – container image tooling
-- `object-tree/` – object namespace infrastructure
-- `distributed-fs/` – experimental cryptographic filesystem
+- `object-tree/` – object namespace infrastructure (fetched from [anonymos-object-tree](https://github.com/Jonathan-R-Anderson/anonymos-object-tree))
+- `distributed-fs/` – experimental cryptographic filesystem (fetched from [distributedFS](https://github.com/Jonathan-R-Anderson/distributedFS))
 
 ### Using modules as separate repositories
 
 Each folder under `modules/` corresponds to a separate repository hosted on
 GitHub. The build system automatically clones or updates these modules using
-`scripts/fetch_modules.sh` so you no longer need to add them as Git
-submodules manually. Simply run `make build` and the required components will
-be fetched prior to compilation.
+`scripts/fetch_modules.sh`, which performs `git clone` or `git pull` for each
+component. This keeps the sources in sync with their maintainers so the
+integration here always tracks the latest upstream changes. Simply run
+`make build` and the required components will be fetched prior to
+compilation.
 
 
 ## Planned Features

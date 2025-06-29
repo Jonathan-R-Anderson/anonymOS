@@ -79,7 +79,15 @@ extern(C) void thread_yield()
     if(g_thread_count < 2)
         return;
     size_t old = current_thread;
-    size_t next = (current_thread + 1) % g_thread_count;
+    size_t next = old;
+    for(size_t i = 0; i < g_thread_count; ++i)
+    {
+        next = (next + 1) % g_thread_count;
+        if(g_threads[next].active)
+            break;
+    }
+    if(next == old)
+        return; // no other active thread
     current_thread = next;
     switch_thread(&g_threads[old].ctx, &g_threads[next].ctx);
 }
@@ -87,6 +95,29 @@ extern(C) void thread_yield()
 extern(C) void thread_exit()
 {
     g_threads[current_thread].active = false;
+    size_t old = current_thread;
+    size_t next = old;
+    for(size_t i = 0; i < g_thread_count; ++i)
+    {
+        next = (next + 1) % g_thread_count;
+        if(g_threads[next].active)
+            break;
+    }
+    if(g_threads[next].active)
+    {
+        current_thread = next;
+        switch_thread(&g_threads[old].ctx, &g_threads[next].ctx);
+    }
     while(true) asm { "hlt"; }
+}
+
+extern(C) bool threads_active()
+{
+    foreach(t; g_threads[0 .. g_thread_count])
+    {
+        if(t.active)
+            return true;
+    }
+    return false;
 }
 

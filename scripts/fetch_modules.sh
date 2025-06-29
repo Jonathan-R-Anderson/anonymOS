@@ -6,13 +6,19 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 fetch_repo() {
     DIR="$1"
     REPO="$2"
-    if [ ! -d "$PROJECT_ROOT/$DIR/.git" ]; then
-        echo "Cloning $REPO into $DIR"
-        rm -rf "$PROJECT_ROOT/$DIR"
-        git clone --depth 1 "$REPO" "$PROJECT_ROOT/$DIR"
+    if GIT_TERMINAL_PROMPT=0 git ls-remote "$REPO" >/dev/null 2>&1; then
+        if [ ! -d "$PROJECT_ROOT/$DIR/.git" ]; then
+            echo "Cloning $REPO into $DIR"
+            rm -rf "$PROJECT_ROOT/$DIR"
+            git clone --depth 1 "$REPO" "$PROJECT_ROOT/$DIR"
+        else
+            echo "Updating $DIR"
+            if ! git -C "$PROJECT_ROOT/$DIR" pull --ff-only; then
+                echo "Failed to update $DIR. Skipping." >&2
+            fi
+        fi
     else
-        echo "Updating $DIR"
-        git -C "$PROJECT_ROOT/$DIR" pull --ff-only
+        echo "Repository $REPO not found. Skipping." >&2
     fi
 }
 

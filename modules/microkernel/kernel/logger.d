@@ -14,6 +14,7 @@ else
 {
     import kernel.io : outb;
     import kernel.terminal : terminal_putchar;
+    import kernel.serial : serial_init, serial_putchar;
 
     enum DEBUG_PORT = 0x402; // Simple debug port used for logging
 
@@ -24,6 +25,7 @@ else
         // external monitors while also displaying it on the VGA console for
         // easier debugging when log files are unavailable.
         outb(DEBUG_PORT, cast(ubyte)c);
+        serial_putchar(c);
         terminal_putchar(c);
     }
 }
@@ -34,6 +36,7 @@ __gshared size_t logIndex;
 extern(C) void logger_init()
 {
     import kernel.types : memset;
+    serial_init();
     logIndex = 0;
     // Ensure the entire buffer is zeroed before use
     memset(logBuffer.ptr, 0, logBuffer.length);

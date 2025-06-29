@@ -36,9 +36,10 @@ MICROKERNEL_DIR := modules/microkernel
 HYPERVISOR_DIR  := modules/hypervisor
 OBJECT_TREE_DIR := modules/object-tree
 
-       DFLAGS := $(DFLAGS_BASE) $(DFLAGS_TARGET_64) -I. \
-               -I$(MICROKERNEL_DIR)/kernel/include \
-               -I$(HYPERVISOR_DIR) -I$(OBJECT_TREE_DIR)
+   DFLAGS := $(DFLAGS_BASE) $(DFLAGS_TARGET_64) -I. \
+           -I$(MICROKERNEL_DIR) \
+           -I$(MICROKERNEL_DIR)/kernel/include \
+           -I$(HYPERVISOR_DIR) -I$(OBJECT_TREE_DIR)
 	
 # Files and Directories
 ## D Source Files

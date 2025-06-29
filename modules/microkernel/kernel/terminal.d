@@ -13,17 +13,10 @@ enum VGA_ADDRESS = 0xB8000;
 enum VGA_WIDTH = 80;
 enum VGA_HEIGHT = 25;
 
-// Use volatile for memory-mapped I/O to prevent unwanted compiler optimizations.
-// FIXME: Previous toolchains reported `volatile(T)` as undefined with -betterC,
-// which meant memory-mapped I/O was not guaranteed safe from optimizations.
-// The compiler issue appears resolved, so we declare `g_pVGAMemory` using
-// `shared(volatile(ushort))*` for correct semantics.
-// Older toolchains used here do not support a pointer typed as
-// `shared(volatile(T))`.  Use a plain volatile pointer in
-// `__gshared` storage to keep the semantics while avoiding parse
-// errors when compiling with -betterC.
-__gshared volatile(ushort)* g_pVGAMemory =
-    cast(volatile(ushort)*) VGA_ADDRESS;
+// Use a plain pointer to the VGA buffer. Some toolchains do not support
+// the `volatile` type qualifier when compiling with `-betterC`, so we fall
+// back to the simplest form to avoid parse errors.
+__gshared ushort* g_pVGAMemory = cast(ushort*) VGA_ADDRESS;
 __gshared size_t g_TerminalRow;
 __gshared size_t g_TerminalColumn;
 __gshared ubyte g_TerminalColor;

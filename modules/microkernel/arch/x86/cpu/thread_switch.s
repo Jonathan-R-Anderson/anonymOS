@@ -3,8 +3,8 @@
 .global switch_thread
 .global restore_first
 
-# void switch_thread(ThreadContext* old, ThreadContext* new)
-# rdi = old, rsi = new
+# void switch_thread(ThreadContext* old, ThreadContext* next)
+# rdi = old, rsi = next
 switch_thread:
     movq %rsp, 0(%rdi)
     movq %rbp, 8(%rdi)
@@ -23,7 +23,7 @@ switch_thread:
     movq 48(%rsi), %r15
     ret
 
-# void restore_first(ThreadContext* new)
+# void restore_first(ThreadContext* next)
 restore_first:
     movq 0(%rdi), %rsp
     movq 8(%rdi), %rbp

@@ -236,7 +236,7 @@ fetch_dmd:
 	       ./scripts/fetch_dmd.sh
 
 run: $(ISO_FILE)
-	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 512M -display curses -vga std
+	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 512M -serial stdio -display none
 
 # Optional: Run with QEMU paused, waiting for GDB
 # In another terminal: i686-elf-gdb -ex "target remote localhost:1234" -ex "symbol-file build/kernel.bin" -ex "layout asm" -ex "break _start"

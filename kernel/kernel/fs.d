@@ -2,7 +2,7 @@ module kernel.fs;
 
 pragma(LDC_no_moduleinfo);
 
-import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
+import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread, fseek;
 import kernel.types : strlen, memcpy, strchr;
 import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message;
@@ -548,12 +548,34 @@ private void saveNode(FILE* f, Node* n, char* prefix, size_t len)
         plen += nameLen;
         pathBuf[plen] = 0;
     }
-    char[300] line;
-    line[0] = (n.kind == NodeType.Directory) ? 'D' : 'F';
-    line[1] = ' ';
-    memcpy(line.ptr + 2, pathBuf.ptr, plen);
-    line[2 + plen] = '\n';
-    fwrite(line.ptr, 1, plen + 3, f);
+    if(n.kind == NodeType.Directory) {
+        char[300] line;
+        line[0] = 'D'; line[1] = ' ';
+        memcpy(line.ptr + 2, pathBuf.ptr, plen);
+        line[2 + plen] = '\n';
+        fwrite(line.ptr, 1, plen + 3, f);
+    } else {
+        // File header: F <path> <size>\n
+        char[300] line;
+        auto szStr = cast(char[32])"";
+        size_t szLen = 0;
+        size_t tmp = n.size;
+        if(tmp == 0) { szStr[0]='0'; szLen=1; }
+        else {
+            char[32] rev; size_t r=0;
+            while(tmp>0) { rev[r++] = '0'+ (tmp%10); tmp/=10; }
+            for(size_t i=0;i<r;i++) szStr[i]=rev[r-1-i];
+            szLen=r;
+        }
+        line[0]='F'; line[1]=' ';
+        memcpy(line.ptr+2, pathBuf.ptr, plen); size_t pos=2+plen;
+        line[pos++]=' ';
+        memcpy(line.ptr+pos, szStr.ptr, szLen); pos+=szLen;
+        line[pos++]='\n';
+        fwrite(line.ptr,1,pos,f);
+        if(n.size>0 && n.data !is null)
+            fwrite(n.data,1,n.size,f);
+    }
     auto c = n.child;
     while(c !is null)
     {
@@ -659,10 +681,32 @@ private void loadFilesystem()
         auto p = line.ptr + 2;
         auto nl = strchr(p, '\n');
         if(nl !is null) *nl = 0;
-        if(line[0] == 'D')
+        if(line[0] == 'D') {
             mkdirInternal(p);
-        else
-            createFile(p);
+            continue;
+        }
+
+        // File line: "F <path> <size>"
+        // Split path and size
+        size_t pathLen = 0;
+        while(p[pathLen] && p[pathLen] != ' ') ++pathLen;
+        size_t sz = 0;
+        if(p[pathLen] == ' ') {
+            char* szStr = p + pathLen + 1;
+            while(*szStr) { sz = sz*10 + (*szStr - '0'); ++szStr; }
+            p[pathLen] = 0;
+        }
+        auto node = createFile(p);
+        if(node is null) {
+            // skip bytes
+            fseek(f, sz, 1);
+            continue;
+        }
+        if(sz>0) {
+            node.data = cast(ubyte*)malloc(sz);
+            node.size = sz; node.capacity = sz;
+            fread(node.data,1,sz,f);
+        }
     }
     fclose(f);
 }

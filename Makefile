@@ -105,6 +105,7 @@ ISO_GRUB_DIR = $(ISO_BOOT_DIR)/grub
 ISO_BIN_DIR = $(ISO_DIR)/bin
 KERNEL_BIN = $(BUILD_DIR)/kernel.bin
 ISO_FILE = $(BUILD_DIR)/anonymOS.iso
+FS_IMG = $(BUILD_DIR)/fs.img
 
 # Shell sources and target pulled from external repository
 SH_DIR = third_party/sh
@@ -139,7 +140,7 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_dmd fetch_modules build_comprehensive_shell
+$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) $(FS_IMG) fetch_shell fetch_dmd fetch_modules build_comprehensive_shell
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
 	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
@@ -157,6 +158,7 @@ $(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_dmd fetch_modules build_
 	cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
 	cp scripts/install_dmd_in_os.sh $(ISO_DIR)/sys/init/
 	cp scripts/install_posix_in_os.sh $(ISO_DIR)/sys/init/
+	cp $(FS_IMG) $(ISO_DIR)/
 	echo "Generating $(ISO_GRUB_DIR)/grub.cfg..." # This line and subsequent echos form the grub.cfg
 	echo "set timeout=0" > $(ISO_GRUB_DIR)/grub.cfg
 	echo "set default=0" >> $(ISO_GRUB_DIR)/grub.cfg
@@ -261,4 +263,7 @@ update-run:
 	bash ./scripts/build_dmd.sh
 	$(MAKE) clean
 	$(MAKE) run
+	
+$(FS_IMG): $(SH_BIN) scripts/build_fs_img.sh
+	./scripts/build_fs_img.sh
 	

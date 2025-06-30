@@ -10,8 +10,11 @@ SH_DIR="$PROJECT_ROOT/third_party/sh"
 OUT_DIR="$PROJECT_ROOT/build/bin"
 OUT="$OUT_DIR/sh"
 DC=${DC:-ldc2}
-TRIPLE=${TRIPLE:-x86_64-unknown-elf}
+TRIPLE=${TRIPLE:-x86_64-linux-gnu}
 CPU=${CPU:-x86-64}
+CC=${CC:-x86_64-linux-gnu-gcc}
+LD=${LD:-x86_64-linux-gnu-gcc}
+export CC
 
 # Ensure sources are present
 if [ ! -d "$SH_DIR" ]; then
@@ -21,18 +24,8 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-# Determine modules that avoid unsupported features (mirrors build_betterc.sh)
-unsupported=$(grep -lE '\b(Exception|import std|try|catch|throw)\b' "$SH_DIR"/src/*.d | tr '\n' ' ')
-modules=""
-for f in "$SH_DIR"/src/*.d; do
-    base=$(basename "$f")
-    if echo "$unsupported" | grep -q "$f"; then
-        continue
-    fi
-    [ "$base" = "example.d" ] && continue
-    modules="$modules $f"
-done
-modules="$modules $SH_DIR/src/interpreter.d"
-
-$DC -betterC --nodefaultlib -I"$SH_DIR" -I"$SH_DIR/src" -mtriple=$TRIPLE -mcpu=$CPU $modules -of="$OUT"
+$DC --gcc="$CC" --linker="$LD" \
+    -I"$SH_DIR" -I"$SH_DIR/src" \
+    -mtriple=$TRIPLE -mcpu=$CPU \
+    $SH_DIR/src/*.d -of="$OUT"
 echo "Shell built at $OUT"

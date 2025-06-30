@@ -3,6 +3,7 @@
 module kernel.terminal;
 
 import core.volatile; // for volatile semantics on VGA memory
+import kernel.serial : serial_putchar; // Add this near other imports
 
 import kernel.types : VGAColor;
 
@@ -63,9 +64,20 @@ void terminal_scroll() {
 }
 
 void terminal_putchar(char c) {
-    if (c == '\n') {
+    // Send character to serial for headless/stdio use
+    serial_putchar(c);
+    if (c == '\n' || c == '\r') {
         g_TerminalColumn = 0;
-        g_TerminalRow++;
+        if (c == '\n') {
+            g_TerminalRow++;
+        }
+    } else if (c == '\b') {
+        // Handle backspace
+        if (g_TerminalColumn > 0) {
+            g_TerminalColumn--;
+            const size_t index = g_TerminalRow * VGA_WIDTH + g_TerminalColumn;
+            g_pVGAMemory[index] = vga_entry(' ', g_TerminalColor);
+        }
     } else {
         const size_t index = g_TerminalRow * VGA_WIDTH + g_TerminalColumn;
         g_pVGAMemory[index] = vga_entry(c, g_TerminalColor);

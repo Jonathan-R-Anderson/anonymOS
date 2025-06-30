@@ -35,6 +35,21 @@ struct Object {
     size_t propCapacity;
 }
 
+private void free_object_recursive(Object* obj)
+{
+    if(obj is null) return;
+    auto child = obj.child;
+    while(child !is null)
+    {
+        auto next = child.sibling;
+        free_object_recursive(child);
+        child = next;
+    }
+    if(obj.methods !is null) free(obj.methods);
+    if(obj.properties !is null) free(obj.properties);
+    free(obj);
+}
+
 __gshared Object* rootObject;
 
 private bool str_eq(const(char)* a, const(char)* b)
@@ -69,6 +84,28 @@ extern(C) void obj_add_child(Object* parent, Object* child)
     child.parent = parent;
     child.sibling = parent.child;
     parent.child = child;
+}
+
+private void unlink_child(Object* parent, Object* child)
+{
+    if(parent is null || child is null) return;
+    if(parent.child is child)
+    {
+        parent.child = child.sibling;
+        return;
+    }
+    auto c = parent.child;
+    while(c !is null && c.sibling !is child)
+        c = c.sibling;
+    if(c !is null)
+        c.sibling = child.sibling;
+}
+
+extern(C) void obj_remove(Object* obj)
+{
+    if(obj is null || obj is rootObject) return;
+    unlink_child(obj.parent, obj);
+    free_object_recursive(obj);
 }
 
 extern(C) int obj_add_method(Object* obj, const(char)* name, ObjMethodFunc func)
@@ -149,6 +186,49 @@ extern(C) Object* obj_lookup(const(char)* path)
     return cur;
 }
 
+private Object* ensure_path(const(char)* path, bool createMissing)
+{
+    if(path is null || path[0] != '/') return null;
+    auto cur = rootObject;
+    size_t i = 1;
+    char[64] nameBuf;
+    while(cur !is null && path[i] != 0)
+    {
+        size_t j = 0;
+        while(path[i] != '/' && path[i] != 0 && j < nameBuf.length-1)
+            nameBuf[j++] = path[i++];
+        nameBuf[j] = 0;
+        if(j == 0)
+        {
+            if(path[i] == '/') i++;
+            continue;
+        }
+        auto next = find_child(cur, nameBuf.ptr);
+        if(next is null)
+        {
+            if(!createMissing) return null;
+            next = obj_create(nameBuf.ptr);
+            obj_add_child(cur, next);
+        }
+        cur = next;
+        if(path[i] == '/') i++;
+    }
+    return cur;
+}
+
+extern(C) Object* obj_create_path(const(char)* path)
+{
+    return ensure_path(path, true);
+}
+
+extern(C) int obj_destroy_path(const(char)* path)
+{
+    auto obj = ensure_path(path, false);
+    if(obj is null || obj is rootObject) return -1;
+    obj_remove(obj);
+    return 0;
+}
+
 extern(C) long obj_call(const(char)* path, const(char)* methodName, void** args, size_t nargs)
 {
     auto obj = obj_lookup(path);
@@ -188,7 +268,7 @@ extern(C) void object_namespace_init()
     obj_add_method(userMgr, "setCurrentUser", &obj_um_set_current_user);
     obj_add_method(userMgr, "getCurrentUser", &obj_um_get_current_user);
 
-    // Validate the object graph to ensure there are no cycles
+    // Validate the object graph using A* search
     validate_object_graph();
 }
 

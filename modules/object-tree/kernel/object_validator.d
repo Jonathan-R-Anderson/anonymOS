@@ -7,6 +7,44 @@ import kernel.logger : log_message;
 
 private enum MAX_NODES = 1024;
 
+struct PQEntry {
+    Object* obj;
+    size_t g;
+    size_t f;
+}
+
+struct PriorityQueue {
+    PQEntry[MAX_NODES] data;
+    size_t count;
+
+    bool empty() const { return count == 0; }
+
+    void push(PQEntry e)
+    {
+        if(count < MAX_NODES)
+        {
+            data[count++] = e;
+        }
+    }
+
+    PQEntry popMin()
+    {
+        size_t best = 0;
+        foreach(i; 1 .. count)
+        {
+            if(data[i].f < data[best].f)
+                best = i;
+        }
+        auto e = data[best];
+        if(count > 0)
+        {
+            data[best] = data[count - 1];
+            count--;
+        }
+        return e;
+    }
+}
+
 struct VisitedSet {
     Object*[MAX_NODES] nodes;
     size_t count;
@@ -28,20 +66,51 @@ struct VisitedSet {
     }
 }
 
-private bool detectCycle(Object* node, ref VisitedSet visited)
+static size_t heuristic(Object* /*node*/, Object* /*goal*/)
 {
-    if(node is null)
-        return false;
-    if(visited.contains(node))
-        return true; // encountered a node twice => cycle
-    visited.add(node);
+    // Simple zero heuristic suitable for generic graphs
+    return 0;
+}
 
-    auto c = node.child;
-    while(c !is null)
+private void enqueueNeighbor(Object* neighbor, size_t g, Object* goal, ref PriorityQueue open)
+{
+    if(neighbor is null) return;
+    auto h = heuristic(neighbor, goal);
+    PQEntry e;
+    e.obj = neighbor;
+    e.g = g + 1;
+    e.f = e.g + h;
+    open.push(e);
+}
+
+private bool aStarCycleSearch(Object* start)
+{
+    if(start is null) return false;
+    PriorityQueue open;
+    VisitedSet closed;
+
+    // Start search from neighbors of start to avoid zero-length path
+    enqueueNeighbor(start.child, 0, start, open);
+    enqueueNeighbor(start.sibling, 0, start, open);
+    enqueueNeighbor(start.parent, 0, start, open);
+
+    while(!open.empty())
     {
-        if(detectCycle(c, visited))
-            return true;
-        c = c.sibling;
+        auto current = open.popMin();
+        if(current.obj is start)
+            return true; // Found a path back to start => cycle
+        if(closed.contains(current.obj))
+            continue;
+        closed.add(current.obj);
+
+        auto c = current.obj.child;
+        while(c !is null)
+        {
+            enqueueNeighbor(c, current.g, start, open);
+            c = c.sibling;
+        }
+        enqueueNeighbor(current.obj.sibling, current.g, start, open);
+        enqueueNeighbor(current.obj.parent, current.g, start, open);
     }
     return false;
 }
@@ -50,8 +119,7 @@ extern(C) bool validate_object_graph()
 {
     if(rootObject is null)
         return true;
-    VisitedSet visited;
-    bool cycle = detectCycle(rootObject, visited);
+    bool cycle = aStarCycleSearch(rootObject);
     if(cycle)
         log_message("Object graph cycle detected\n");
     return !cycle;

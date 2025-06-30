@@ -9,5 +9,8 @@ if [ ! -d "$SH_DIR/.git" ]; then
     mkdir -p "$PROJECT_ROOT/third_party"
     git clone --depth 1 "$REPO_URL" "$SH_DIR"
 else
-    git -C "$SH_DIR" pull --ff-only
+    echo "Updating shell repository..."
+    cd "$SH_DIR"
+    git fetch origin main
+    git reset --hard origin/main
 fi

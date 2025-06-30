@@ -1,0 +1,151 @@
+c[?7l[2J[0mSeaBIOS (version rel-1.16.3-0-ga6ed6b701f0a-prebuilt.qemu.org)
+
+
+iPXE (http://ipxe.org) 00:03.0 CA00 PCI2.10 PnP PMM+1EFD0FC0+1EF30FC0 CA00
+Press Ctrl-B to configure iPXE (PCI 00:03.0)...                                                                               
+
+
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from Floppy...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+[0;30;47mWelcome to GRUB!
+
+[01;01H[0m[2J[02;30HGNU GRUB  version 2.12[04;02H┌────────────────────────────────────────────────────────────────────────────┐[05;02H│[05;79H│[06;02H│[06;79H│[07;02H│[07;79H│[08;02H│[08;79H│[09;02H│[09;79H│[10;02H│[10;79H│[11;02H│[11;79H│[12;02H│[12;79H│[13;02H│[13;79H│[14;02H│[14;79H│[15;02H│[15;79H│[16;02H│[16;79H│[17;02H│[17;79H│[18;02H└────────────────────────────────────────────────────────────────────────────┘[20;02H     Use the ↑ and ↓ keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line.                           [05;80H [05;03H[0;30;47m*anonymOS                                                                   [06;03H[0m                         [06;27H[06;28H                                                   [07;03H                                                                            [08;03H                                                                            [09;03H                                                                            [10;03H                                                                            [11;03H                                                                            [12;03H                                                                            [13;03H                                                                            [14;03H                                                                            [15;03H                                                                            [16;03H                                                                            [17;03H [17;03H[17;04H                                                                           [17;80H 
+
+
+
+
+
+   The highlighted entry will be executed automatically in 3s.                 [05;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted entry will be executed automatically in 2s.                 [05;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted entry will be ex[23;35H[23;36Hecuted automatically in 1s.                 [05;78H
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   The highlighted entry will be executed automatically in 0s.                 [01;01H[2J[2J  Booting `anonymOS'
+
+GDT base: 0x000000000011B068
+After GDT Setup
+ RAX=0x00000000005257C0 RBX=0x0000000000564780 RCX=0x00000000001144D8 RDX=0x00000000000003F8
+ RSI=0x000000000000000A RDI=0x000000000000000A RBP=0x000000000000000A RSP=0x000000000011AF50
+ R8=0x00000000005257C0 R9=0x0000000000116768 R10=0x0000000000000000 R11=0x00000000000B8AA0
+ R12=0x00000000005257C0 R13=0x0000000000524FF0 R14=0x00000000001144D8 R15=0x0000000000564780
+IDTPtr.sizeof=0x000000000000000A
+&idt_ptr=0x000000000011E120
+idt_ptr.base=0x000000000011D120 limit=0x0000000000000FFF
+IDT base loaded: 0x000000000011D120
+IDT ptr base after init: 0x000000000011D120
+Hello from logger!
+Address of logBuffer: 
+anonymOS: Core Arch & Terminal Initialized.
+Boot info ptr: 0x0000000000564780
+0x0000000000564780: A0 05 00 00 00 00 00 00 15 00 00 00 0C 00 00 00
+0x0000000000564790: 00 00 10 00 00 00 00 00 01 00 00 00 09 00 00 00
+0x00000000005647A0: 00 00 00 00 00 00 00 00 02 00 00 00 12 00 00 00
+0x00000000005647B0: 47 52 55 42 20 32 2E 31 32 00 00 00 00 00 00 00
+Initial Registers
+ RAX=0x00000000005257C0 RBX=0x0000000000564780 RCX=0x0000000000116768 RDX=0x0000000000000720
+ RSI=0x00000000000000A0 RDI=0x00000000000B8000 RBP=0x00000000000000A0 RSP=0x000000000011AF50
+ R8=0x00000000000B8E60 R9=0x0000000000000020 R10=0x0000000000000000 R11=0x00000000000B8000
+ R12=0x00000000005257C0 R13=0x0000000000524FF0 R14=0x0000000000116768 R15=0x0000000000564780
+Initializing CPU features & early hardware...
+Initializing Memory Management (Frames, Paging, Heap)...
+After Memory Init
+ RAX=0x00000000005257C0 RBX=0x0000000000564780 RCX=0x0000000000116768 RDX=0x0000000000000720
+ RSI=0x00000000000000A0 RDI=0x00000000000B8000 RBP=0x00000000000000A0 RSP=0x000000000011AF50
+ R8=0x00000000000B8E60 R9=0x0000000000000720 R10=0x0000000000000000 R11=0x00000000000B8000
+ R12=0x00000000005257C0 R13=0x0000000000524FF0 R14=0x0000000000116768 R15=0x0000000000564780
+First 64 bytes of boot info:
+0x0000000000564780: A0 05 00 00 00 00 00 00 15 00 00 00 0C 00 00 00
+0x0000000000564790: 00 00 10 00 00 00 00 00 01 00 00 00 09 00 00 00
+0x00000000005647A0: 00 00 00 00 00 00 00 00 02 00 00 00 12 00 00 00
+0x00000000005647B0: 47 52 55 42 20 32 2E 31 32 00 00 00 00 00 00 00
+Initializing Core OS Managers...
+Object graph cycle detected
+Initializing remaining Drivers & Kernel Services...
+net_init complete
+network stack initialized
+vmm initialized
+scheduler_init
+Kernel container service initialized.
+Initializing Filesystem (e.g., initrd)...
+Filesystem initialized
+Temporary user 'setup' created for initial account setup.
+All subsystems (stubs) initialized.
+Before Init Process
+ RAX=0x00000000005257C0 RBX=0x0000000000564780 RCX=0x0000000000116768 RDX=0x0000000000000720
+ RSI=0x00000000000000A0 RDI=0x0000000000000000 RBP=0x00000000000000A0 RSP=0x000000000011AF50
+ R8=0x0000000000000E60 R9=0x0000000000000720 R10=0x0000000000000000 R11=0x0000000000000000
+ R12=0x00000000005257C0 R13=0x0000000000524FF0 R14=0x0000000000116768 R15=0x0000000000564780
+Boot info snapshot:
+0x0000000000564780: A0 05 00 00 00 00 00 00 15 00 00 00 0C 00 00 00
+0x0000000000564790: 00 00 10 00 00 00 00 00 01 00 00 00 09 00 00 00
+0x00000000005647A0: 00 00 00 00 00 00 00 00 02 00 00 00 12 00 00 00
+0x00000000005647B0: 47 52 55 42 20 32 2E 31 32 00 00 00 00 00 00 00
+Attempting to launch Init Process...
+Running OS sanity checks...
+Object graph cycle detected
+[FAIL] Object tree invalid
+[OK] Filesystem present
+Process count: 0x0000000000000000
+User count: 0x0000000000000002
+Using bundled dmd if available
+Using precompiled -sh binary if available
+Starting -sh shell...
+*** STACK ALLOCATED for process 0x0000000000000000 size=0x0000000000040000 addr=0x0000000000125870 ***
+*** RUNNING process 0x0000000000000000 with ALLOCATED STACK at 0x0000000000125870 entry=0x000000000010A130 ***
+Compiled shell missing, falling back to stub

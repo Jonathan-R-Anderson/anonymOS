@@ -9,5 +9,8 @@ if [ ! -d "$DMD_DIR/.git" ]; then
     mkdir -p "$PROJECT_ROOT/third_party"
     git clone --depth 1 "$REPO_URL" "$DMD_DIR"
 else
-    git -C "$DMD_DIR" pull --ff-only
+    echo "Updating DMD repository..."
+    cd "$DMD_DIR"
+    git fetch origin master
+    git reset --hard origin/master
 fi

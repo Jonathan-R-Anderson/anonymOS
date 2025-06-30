@@ -13,4 +13,20 @@ alias FILE     = void*;   // opaque FILE* handle, never dereferenced
 // These appear in a handful of the core.stdc.* wrappers, keep them simple.
 alias c_long        = long;
 alias c_ulong       = ulong;
-alias c_long_double = real; 
+alias c_long_double = real;
+
+// Fixed-width integer aliases expected by core.stdc.stdint
+alias  int8_t  =  byte;
+alias uint8_t  = ubyte;
+alias  int16_t =  short;
+alias uint16_t = ushort;
+alias  int32_t =  int;
+alias uint32_t = uint;
+alias  int64_t =  long;
+alias uint64_t = ulong;
+
+alias intptr_t  = long;
+alias uintptr_t = ulong;
+
+alias intmax_t  = long;
+alias uintmax_t = ulong; 

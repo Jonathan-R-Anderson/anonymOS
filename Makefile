@@ -223,7 +223,7 @@ fetch_posix:
 	./scripts/fetch_posix.sh
 
 fetch_modules:
-	@echo "Modules already present in modules/ directory"
+	@echo "Required sub-repositories already present in top-level directories (kernel/, hypervisor/, object-tree/)"
 	@test -d kernel || { echo "Error: kernel not found"; exit 1; }
 	@test -d hypervisor || { echo "Error: hypervisor not found"; exit 1; }
 	@test -d object-tree || { echo "Error: object-tree not found"; exit 1; }

@@ -8,7 +8,5 @@ enum SIGKILL = 9;
 
 int kill(pid_t pid, int sig);
 
-struct sigaction { void* handler; }
-alias sigaction_t = sigaction;
-pragma(mangle, "sigaction") int _sigaction(int signum, const(sigaction)* act, sigaction* old){ return -1; }
-alias sigaction = _sigaction; 
+struct sigaction_t { void* handler; }
+pragma(mangle, "sigaction") int sigaction(int signum, const(sigaction_t)* act, sigaction_t* old){ return -1; } 

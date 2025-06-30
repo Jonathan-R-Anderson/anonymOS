@@ -49,4 +49,7 @@ alias uint_fast16_t   = uint32_t;
 alias  int_fast32_t   =  int32_t;
 alias uint_fast32_t   = uint32_t;
 alias  int_fast64_t   =  int64_t;
-alias uint_fast64_t   = uint64_t; 
+alias uint_fast64_t   = uint64_t;
+
+alias wint_t  = wchar_t;
+alias fpos_t  = long; 

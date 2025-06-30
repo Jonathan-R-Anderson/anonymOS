@@ -82,8 +82,13 @@ format `user@namespace:/path(permission)`.
 The ISO packages the shell sources in `/third_party/sh` along with a helper
 script `install_shell_in_os.sh` located in `/sys/init`.  After installation the
 system automatically runs this installer which builds the shell using the
-bundled native `dmd` compiler and installs it to `/bin/sh`.  This keeps the raw
-sources available while deferring compilation to the installed environment.
+bundled native `dmd` compiler and installs it to `/bin/sh`.  The D compiler
+sources are also copied to `/third_party/dmd` with a companion script
+`install_dmd_in_os.sh`. During the initial setup this script builds the native
+compiler inside anonymOS so the shell compilation happens entirely within the
+OS environment.
+This keeps the raw sources available while deferring compilation to the
+installed system.
 
 ## Object Namespace Overview
 

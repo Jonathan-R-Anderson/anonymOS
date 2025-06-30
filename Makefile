@@ -111,9 +111,9 @@ SH_DIR = third_party/sh
 SH_SOURCES = $(wildcard $(SH_DIR)/src/*.d)
 # Include paths so ldc2 can locate shell modules and the bundled mstd library
 SH_DFLAGS = -I$(SH_DIR) -I$(SH_DIR)/src
-SH_BIN = $(BUILD_DIR)/bin/sh
 # Original D compiler built with the cross-compiler
 DMD_DIR = third_party/dmd
+DMD_SRC_DIR = third_party/dmd
 DMD_BIN = $(BUILD_DIR)/bin/dmd
 
 
@@ -128,7 +128,7 @@ ALL_KERNEL_D_OBJS              = $(ALL_KERNEL_D_OBJS_NO_GENERATED) $(ANSI_ART_D_
 ALL_ASM_OBJS      = $(patsubst %.s,$(OBJ_DIR)/%.o,$(ALL_ASM_SOURCES))
 ALL_OBJS          = $(ALL_ASM_OBJS) $(ALL_KERNEL_D_OBJS)
 
-.PHONY: all build clean run iso kernel_bin sh dmd fetch_shell fetch_modules check_shell_support update-run debug
+.PHONY: all build clean run iso kernel_bin dmd fetch_shell fetch_modules fetch_dmd update-run debug
 
 
 all: $(ISO_FILE)
@@ -138,13 +138,15 @@ iso: $(ISO_FILE)
 build: $(ISO_FILE)
 
 
-$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_modules
+$(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_dmd fetch_modules
 	@echo ">>> Creating ISO Image..."
 	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
-	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
-	cp $(DMD_BIN) $(ISO_BIN_DIR)/
-	rsync -a --exclude='.git' third_party/sh/ $(ISO_DIR)/third_party/sh/
-	cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
+       cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
+       cp $(DMD_BIN) $(ISO_BIN_DIR)/
+       rsync -a --exclude='.git' third_party/sh/ $(ISO_DIR)/third_party/sh/
+       rsync -a --exclude='.git' $(DMD_SRC_DIR)/ $(ISO_DIR)/third_party/dmd/
+       cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
+       cp scripts/install_dmd_in_os.sh $(ISO_DIR)/sys/init/
 			# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".
@@ -196,20 +198,14 @@ $(DMD_BIN): | $(BUILD_DIR)
 
 dmd: $(DMD_BIN)
 
-$(SH_BIN): check_shell_support fetch_shell $(SH_SOURCES) | $(BUILD_DIR)
-	mkdir -p $(dir $@)
-	$(DC) $(SH_DFLAGS) $(SH_SOURCES) -of=$@
-
-check_shell_support:
-	./scripts/check_shell_support.sh
-
 fetch_shell:
-	./scripts/fetch_shell.sh
+       ./scripts/fetch_shell.sh
 
 fetch_modules:
-	./scripts/fetch_modules.sh
+       ./scripts/fetch_modules.sh
 
-sh: $(SH_BIN)
+fetch_dmd:
+       ./scripts/fetch_dmd.sh
 
 run: $(ISO_FILE)
 	qemu-system-x86_64 -cdrom $(ISO_FILE) -m 128M -display curses -vga std

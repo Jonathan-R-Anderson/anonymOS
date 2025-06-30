@@ -4,8 +4,8 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-terminal_file="$PROJECT_ROOT/kernel/terminal.d"
-keyboard_file="$PROJECT_ROOT/kernel/keyboard.d"
+terminal_file="$PROJECT_ROOT/modules/microkernel/kernel/terminal.d"
+keyboard_file="$PROJECT_ROOT/modules/microkernel/kernel/keyboard.d"
 
 echo "Checking shell support..."
 

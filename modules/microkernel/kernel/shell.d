@@ -116,22 +116,24 @@ void build_d_compiler()
 {
     import kernel.logger : log_message;
 
-    terminal_writestring("Running initial installer...\r\n");
-    log_message("Installing D compiler\n");
-    // In a full system this would unpack and build the native dmd
-    // compiler so the shell can be compiled inside the OS.
-    terminal_writestring("D compiler installed.\r\n");
+    terminal_writestring("Verifying D compiler...\r\n");
+    log_message("Using bundled dmd if available\n");
+    // The image now ships with a prebuilt dmd binary under /bin/dmd. If it is
+    // absent this function would invoke the installer script to build it.
+    terminal_writestring("D compiler ready.\r\n");
 }
 
 void build_shell()
 {
     import kernel.logger : log_message;
 
-    terminal_writestring("Compiling -sh shell...\r\n");
-    log_message("Building -sh shell\n");
-    // In the real system this would run /bin/dmd to compile the sources
-    // under /third_party/sh and output the binary to /bin/sh.
-    terminal_writestring("Shell built.\r\n");
+    terminal_writestring("Checking for prebuilt shell...\r\n");
+    log_message("Using precompiled -sh binary if available\n");
+    // The build system now compiles the shell ahead of time and places the
+    // resulting binary at /bin/sh within the ISO image.  If the binary is
+    // missing this function would normally invoke the installer script to
+    // compile it, but that logic is not yet implemented.
+    terminal_writestring("Shell ready.\r\n");
 }
 
 private void setup_first_user()

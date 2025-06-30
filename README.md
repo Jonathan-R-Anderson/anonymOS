@@ -71,22 +71,18 @@ To include the stock `dmd` compiler in the image, run `./scripts/build_dmd.sh` b
 ## Shell Integration
 
 The build pulls the TTY shell from the external repository using
-`scripts/fetch_shell.sh`. `scripts/check_shell_support.sh` can still be used to
-verify that the kernel exposes the required terminal and keyboard drivers, but
-the Makefile no longer compiles the shell during ISO creation. Instead the shell
-sources are copied to the image under `/third_party/sh` and the actual build is
-performed after installation. The shell's prompt dynamically displays the
-logged-in user, namespace, current directory and CPU privilege level using the
-format `user@namespace:/path(permission)`.
+`scripts/fetch_shell.sh`.  The Makefile now compiles the shell directly with the
+cross compiler so the resulting binary is placed in the ISO under `/bin/sh`.
+`scripts/check_shell_support.sh` can still verify that the kernel exposes the
+required terminal and keyboard drivers.  The shell's prompt dynamically
+displays the logged-in user, namespace, current directory and CPU privilege
+level using the format `user@namespace:/path(permission)`.
 
-The ISO packages the shell sources in `/third_party/sh` along with a helper
-script `install_shell_in_os.sh` located in `/sys/init`.  After installation the
-system automatically runs this installer which builds the shell using the
-bundled native `dmd` compiler and installs it to `/bin/sh`.  The D compiler
-sources are also copied to `/third_party/dmd` with a companion script
-`install_dmd_in_os.sh`. During the initial setup this script builds the native
-compiler inside anonymOS so the shell compilation happens entirely within the
-OS environment.
+The ISO still includes the shell sources in `/third_party/sh` and the helper
+install script `install_shell_in_os.sh` in `/sys/init`.  However the compiled
+binary is already present, so the installer becomes optional.  The D compiler
+sources remain under `/third_party/dmd` with `install_dmd_in_os.sh` should you
+wish to rebuild the tools from within anonymOS.
 This keeps the raw sources available while deferring compilation to the
 installed system.  The default filesystem therefore includes `/bin` for final
 binaries and `/third_party` for unbuilt sources.  At runtime the kernel

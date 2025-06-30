@@ -5,6 +5,8 @@ SRC_DIR="/third_party/dmd"
 DMD="/bin/dmd"
 OUT="/bin/dmd"
 
+[ ! -d "/bin" ] && mkdir -p "/bin"
+
 if [ ! -x "$DMD" ]; then
     echo "dmd compiler not found at $DMD" >&2
     exit 1

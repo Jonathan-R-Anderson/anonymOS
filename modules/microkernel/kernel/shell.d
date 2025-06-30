@@ -115,7 +115,8 @@ void build_shell()
 
     terminal_writestring("Compiling -sh shell...\r\n");
     log_message("Building -sh shell\n");
-    // A real system would invoke the bundled dmd here
+    // In the real system this would run /bin/dmd to compile the sources
+    // under /third_party/sh and output the binary to /bin/sh.
     terminal_writestring("Shell built.\r\n");
 }
 
@@ -255,8 +256,24 @@ extern(C) void shInteractive()
 
 extern(C) void sh_shell()
 {
-    // Invoke the stub shell implementation.
-    shMain();
+    import kernel.logger : log_message;
+    import kernel.elf_loader : load_elf;
+    import kernel.process_manager : process_create, scheduler_run;
+
+    // After build_shell() the compiled binary should reside at /bin/sh
+    void* entry = null;
+    if(load_elf("/bin/sh", &entry) == 0 && entry !is null)
+    {
+        log_message("Launching compiled shell\n");
+        auto pid = process_create(cast(EntryFunc)entry);
+        scheduler_run();
+    }
+    else
+    {
+        log_message("Compiled shell missing, falling back to stub\n");
+        // Invoke the stub shell implementation.
+        shMain();
+    }
 }
 
 /// Entry point for the system installer process. This runs the minimal

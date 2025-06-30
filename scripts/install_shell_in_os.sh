@@ -7,6 +7,8 @@ SRC_DIR="/third_party/sh"
 DMD="/bin/dmd"
 OUT="/bin/sh"
 
+[ ! -d "/bin" ] && mkdir -p "/bin"
+
 if [ ! -x "$DMD" ]; then
     echo "dmd compiler not found at $DMD" >&2
     exit 1

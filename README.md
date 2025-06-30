@@ -88,7 +88,11 @@ sources are also copied to `/third_party/dmd` with a companion script
 compiler inside anonymOS so the shell compilation happens entirely within the
 OS environment.
 This keeps the raw sources available while deferring compilation to the
-installed system.
+installed system.  The default filesystem therefore includes `/bin` for final
+binaries and `/third_party` for unbuilt sources.  At runtime the kernel
+attempts to execute the compiled shell from `/bin/sh` once the installer has
+finished.  If the binary is missing the built-in minimal shell implementation
+is used as a fallback.
 
 ## Object Namespace Overview
 
@@ -123,6 +127,8 @@ written back to `fs.img` so the state persists across reboots:
 │  ├─coreutils/v1.2.3
 │  ├─browser/v105.0
 │  └─editor/v3.1
+├─bin
+├─third_party/{sh,dmd}
 ├─users/
 │  ├─alice/{bin,cfg,doc,media,projects,vault}
 │  └─bob/{bin,cfg,doc,media,projects,vault}

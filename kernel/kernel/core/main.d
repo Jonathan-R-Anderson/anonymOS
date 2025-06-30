@@ -16,6 +16,7 @@ import kernel.hardware.network : net_init;
 import kernel.net.stack : net_stack_init, net_poll;
 import kernel.sanity : run_sanity_checks;
 import kernel.thread : thread_init, thread_create, thread_start, thread_yield, threads_active, thread_exit;
+import kernel.elf_loader : load_elf;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -197,13 +198,20 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // All setup tasks completed
     clear_screen();
 
-    // Start the comprehensive builtin shell with 100+ commands
-    log_message("Starting comprehensive shell with 100+ built-in commands...\n");
-    process_create(&sh_shell);
-    scheduler_run();
-    clear_screen();
+    // Attempt to load external -sh ELF located at /bin/sh
+    void* sh_entry;
+    if(load_elf("/bin/sh", &sh_entry) == 0 && sh_entry !is null)
+    {
+        log_message("Loaded /bin/sh ELF successfully – launching external shell...\n");
+        process_create(cast(EntryFunc)sh_entry);
+    }
+    else
+    {
+        log_message("/bin/sh not found or failed to load – falling back to built-in shell...\n");
+        process_create(&sh_shell);
+    }
 
-    log_register_state("Shell exited");
+    scheduler_run();
 
     // This part should ideally not be reached if the shell takes over.
     // If it is, it means the shell exited or failed to start.

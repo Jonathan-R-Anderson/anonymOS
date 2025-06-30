@@ -17,6 +17,7 @@ int printf(const char*, ...);
 int fprintf(FILE*, const char*, ...);
 int sprintf(char*, const char*, ...);
 int snprintf(char*, size_t, const char*, ...);
+int vsnprintf(char*, size_t, const char*, void*);
 
 size_t fread(void*, size_t, size_t, FILE*);
 size_t fwrite(const void*, size_t, size_t, FILE*);

@@ -10,7 +10,6 @@ enum S_IFDIR = 0x4000;
 enum S_IFREG = 0x8000;
 
 // Provide public aliases with expected names
-alias stat  = _stat;
 alias lstat = _lstat;
 alias fstat = _fstat;
 

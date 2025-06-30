@@ -188,7 +188,7 @@ extern(C) void object_namespace_init()
     obj_add_method(userMgr, "setCurrentUser", &obj_um_set_current_user);
     obj_add_method(userMgr, "getCurrentUser", &obj_um_get_current_user);
 
-    // Validate the object graph using A* search
+    // Validate the object graph to ensure there are no cycles
     validate_object_graph();
 }
 

@@ -20,4 +20,14 @@ mkdir -p "$BUILD_DIR"
   fi
 } > "$IMG"
 
-echo "filesystem image written to $IMG" 
+echo "filesystem image written to $IMG"
+
+# Generate D source embedding the image
+EMBED_SRC="$(dirname "$0")/../kernel/kernel/fs_embedded.d"
+{
+  echo "module kernel.fs_embedded;"
+  echo "__gshared immutable(ubyte)[] fs_embedded = ["
+  # remove the first declaration line and any trailing lines that close the array or declare its length
+  xxd -i "$IMG" | sed '1d' | grep -v "};" | grep -v "unsigned"
+  echo "];"
+} > "$EMBED_SRC" 

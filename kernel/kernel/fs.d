@@ -6,6 +6,7 @@ import kernel.types : strlen, memcpy, strchr;
 import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message;
 import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
+import kernel.fs_embedded : fs_embedded;
 
 public:
 
@@ -659,11 +660,74 @@ private void createDefaultTree()
         createFile(f);
 }
 
+private void loadFromBuffer(const(ubyte)* buf, size_t len)
+{
+    size_t pos = 0;
+    char[256] lineBuf;
+    while(pos < len)
+    {
+        // read until newline or end
+        size_t l = 0;
+        while(pos < len && buf[pos] != '\n' && l < lineBuf.length-1)
+        {
+            lineBuf[l++] = cast(char)buf[pos++];
+        }
+        // skip newline
+        if(pos < len && buf[pos] == '\n') pos++;
+        lineBuf[l] = 0;
+        if(l == 0) continue;
+        if(lineBuf[0] != 'D' && lineBuf[0] != 'F') continue;
+        auto p = lineBuf.ptr + 2;
+        if(lineBuf[0] == 'D')
+        {
+            mkdirInternal(p);
+            continue;
+        }
+        // 'F' line
+        size_t pathLen = 0;
+        while(p[pathLen] && p[pathLen] != ' ') ++pathLen;
+        size_t sz = 0;
+        if(p[pathLen] == ' ')
+        {
+            char* szStr = p + pathLen + 1;
+            while(*szStr)
+            {
+                sz = sz*10 + (*szStr - '0');
+                ++szStr;
+            }
+            p[pathLen] = 0;
+        }
+        auto node = createFile(p);
+        if(node is null)
+        {
+            pos += sz; // skip payload
+            continue;
+        }
+        if(sz > 0)
+        {
+            node.data = cast(ubyte*)malloc(sz);
+            node.size = sz;
+            node.capacity = sz;
+            memcpy(node.data, cast(void*)(buf+pos), sz);
+        }
+        pos += sz;
+    }
+}
+
 private void loadFilesystem()
 {
     auto f = fopen("fs.img", "rb");
     if(f is null)
     {
+        if(fs_embedded.length != 0)
+        {
+            // Load from embedded image in memory
+            loadFromBuffer(fs_embedded.ptr, fs_embedded.length);
+            fs_fdtable_init();
+            fsCurrentDir = fsRoot;
+            log_message("Filesystem loaded from embedded image\n");
+            return;
+        }
         createDefaultTree();
         auto outFile = fopen("fs.img", "wb");
         if(outFile !is null)

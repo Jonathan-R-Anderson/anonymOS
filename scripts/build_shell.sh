@@ -7,6 +7,7 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SH_DIR="$PROJECT_ROOT/third_party/sh"
+POSIX_DIR="$PROJECT_ROOT/third_party/posix"
 STUB="$PROJECT_ROOT/third_party/stub_shell.d"
 OUT_DIR="$PROJECT_ROOT/build/bin"
 OUT="$OUT_DIR/sh"
@@ -24,8 +25,19 @@ mkdir -p "$OUT_DIR"
 
 # Try building the full shell. If compilation fails, fall back to a simple stub
 # so the overall OS build can proceed.
-if ! $DC -I"$SH_DIR" -I"$SH_DIR/src" \
-    $SH_DIR/src/*.d -of="$OUT" 2>/tmp/sh_build_err.log; then
+POSIX_OBJ="$OUT_DIR/posix.o"
+
+# Build POSIX wrappers used by the shell
+if [ -d "$POSIX_DIR" ]; then
+    $DC -betterC -c -I"$POSIX_DIR/src" "$POSIX_DIR/src/posix.d" -of="$POSIX_OBJ"
+else
+    echo "POSIX sources not found in $POSIX_DIR" >&2
+    exit 1
+fi
+
+# Try building the full shell. If compilation fails, fall back to a simple stub
+if ! $DC -I"$SH_DIR" -I"$SH_DIR/src" -I"$POSIX_DIR/src" \
+    "$POSIX_OBJ" $SH_DIR/src/*.d -of="$OUT" 2>/tmp/sh_build_err.log; then
     echo "Full shell build failed, falling back to stub." >&2
     $DC "$STUB" -of="$OUT"
 fi

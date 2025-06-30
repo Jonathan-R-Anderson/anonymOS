@@ -7,3 +7,5 @@ qemu.log
 __pycache__/
 node_modules/
 third_party/
+!third_party/posix/
+!third_party/posix/**

@@ -202,13 +202,16 @@ $(DMD_BIN): | $(BUILD_DIR)
 	./scripts/build_dmd.sh
 
 # Build the shell using LDC2 in -betterC mode
-$(SH_BIN): $(SH_SOURCES) fetch_shell | $(BUILD_DIR)
+$(SH_BIN): fetch_shell | $(BUILD_DIR)
 	@echo ">>> Building shell binary..."
 	mkdir -p $(BUILD_DIR)/bin
-	# Use the shell's full build script instead of betterC
-	cd $(SH_DIR) && ./build_full.sh
-	cp $(SH_DIR)/interpreter $@
-	@echo "Shell binary built: $@"
+	# Delegate the build process to the comprehensive shell build script.
+	bash scripts/build_comprehensive_shell.sh
+	@if [ ! -f $(SH_BIN) ]; then \
+		echo "Error: Shell binary not produced"; \
+		exit 1; \
+	fi
+	@echo "Shell binary ready: $(SH_BIN)"
 
 dmd: $(DMD_BIN)
 

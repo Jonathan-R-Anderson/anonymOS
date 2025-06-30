@@ -101,4 +101,10 @@ extern(C) int puts(const char* s) { return 0; }
 extern(C) int putchar(int c) { return c; }
 extern(C) int fputs(const char* s, FILE* f) { return 0; }
 extern(C) int fputc(int c, FILE* f) { return c; }
-extern(C) int fflush(FILE* f) { return 0; } 
+extern(C) int fflush(FILE* f) { return 0; }
+
+extern(C) int chdir(const char* path) { return 0; }
+extern(C) char* getcwd(char* buf, size_t size) { return null; }
+extern(C) int symlink(const char* target, const char* linkpath) { return 0; }
+extern(C) long readlink(const char* path, char* buf, size_t bufsiz) { return -1; }
+extern(C) int unlink(const char* path) { return 0; } 

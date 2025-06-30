@@ -1,6 +1,6 @@
 module core.stdc.stdio;
 
-public import core.stdc.config : FILE, fpos_t, size_t, wchar_t;
+public import core.stdc.config : FILE, fpos_t, wchar_t;
 
 extern(C):
 

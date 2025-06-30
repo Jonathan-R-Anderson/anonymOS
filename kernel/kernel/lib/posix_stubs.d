@@ -84,6 +84,6 @@ struct stat
     ulong st_size;
 }
 
-extern(C) int stat (const char* p, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
-extern(C) int fstat(int fd, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
-extern(C) int lstat(const char* p, stat* s){ return stat(p,s); } 
+pragma(mangle, "stat")  extern(C) int _stat (const char* p, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
+pragma(mangle, "fstat") extern(C) int _fstat(int fd, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
+pragma(mangle, "lstat") extern(C) int _lstat(const char* p, stat* s){ return _stat(p,s); } 

@@ -1,7 +1,6 @@
 module kernel.lib.posix_stubs;
 
-import kernel.lib.posix_stubs; // self reference ok
-import core.stdc.config : FILE, size_t;
+alias FILE = void*;
 
 extern(C):
 

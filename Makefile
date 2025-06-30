@@ -141,15 +141,15 @@ build: $(ISO_FILE)
 
 $(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_posix fetch_dmd fetch_modules
 	@echo ">>> Creating ISO Image..."
-       mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
+	mkdir -p $(ISO_BOOT_DIR) $(ISO_GRUB_DIR) $(ISO_BIN_DIR) $(ISO_DIR)/third_party $(ISO_DIR)/sys/init
 	cp $(KERNEL_BIN) $(ISO_BOOT_DIR)/
 	cp $(DMD_BIN) $(ISO_BIN_DIR)/
-       rsync -a --exclude='.git' third_party/sh/ $(ISO_DIR)/third_party/sh/
-       rsync -a --exclude='.git' third_party/posix/ $(ISO_DIR)/third_party/posix/
-       rsync -a --exclude='.git' $(DMD_SRC_DIR)/ $(ISO_DIR)/third_party/dmd/
-       cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
-       cp scripts/install_dmd_in_os.sh $(ISO_DIR)/sys/init/
-       cp scripts/install_posix_in_os.sh $(ISO_DIR)/sys/init/
+	rsync -a --exclude='.git' third_party/sh/ $(ISO_DIR)/third_party/sh/
+	rsync -a --exclude='.git' third_party/posix/ $(ISO_DIR)/third_party/posix/
+	rsync -a --exclude='.git' $(DMD_SRC_DIR)/ $(ISO_DIR)/third_party/dmd/
+	cp scripts/install_shell_in_os.sh $(ISO_DIR)/sys/init/
+	cp scripts/install_dmd_in_os.sh $(ISO_DIR)/sys/init/
+	cp scripts/install_posix_in_os.sh $(ISO_DIR)/sys/init/
 			# Critical: Ensure the backslash '\' after 'then' on the line below
 		# is the *absolute last character* on that line. No trailing spaces.
 		# This is the most common cause for the "expecting fi" error on "line 2".

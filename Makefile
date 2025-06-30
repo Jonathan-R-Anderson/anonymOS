@@ -260,5 +260,5 @@ update-run:
 	clear
 	bash ./scripts/build_dmd.sh
 	$(MAKE) clean
-	$(MAKE) run-log-int
+	$(MAKE) run
 	

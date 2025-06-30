@@ -4,11 +4,46 @@ pragma(LDC_no_moduleinfo);
 
 extern(C) @nogc nothrow:
 
-import core.sys.posix.unistd : read, write, close, lseek = lseek64, fork, execve, pipe, chdir, getcwd, dup, dup2, unlink, rmdir, getpid, getppid, getuid, geteuid, getgid, getegid, chown, fchown, sleep, usleep;
+import core.sys.posix.unistd :
+    read,
+    write,
+    close,
+    lseek = lseek64,
+    fork,
+    execve,
+    pipe,
+    chdir,
+    getcwd,
+    dup,
+    dup2,
+    unlink,
+    rmdir,
+    getpid,
+    getppid,
+    getuid,
+    geteuid,
+    getgid,
+    getegid,
+    chown,
+    fchown,
+    sleep,
+    usleep,
+    access,
+    isatty,
+    _exit,
+    brk,
+    sbrk,
+    readlink;
 import core.sys.posix.sys.types : useconds_t;
 import core.sys.posix.stdio : rename;
-import core.sys.posix.signal : kill;
+import core.sys.posix.signal : kill, sigaction, sigaction_t;
+import core.stdc.signal : signal, sigfn_t;
 import core.sys.posix.sys.wait : waitpid;
+import core.sys.posix.sys.ioctl : ioctl;
+import core.sys.posix.sys.mman : mmap, munmap, mprotect, posix_madvise as c_posix_madvise;
+import core.sys.posix.sys.time : gettimeofday, timeval;
+import core.sys.posix.time : clock_gettime, timespec;
+import core.stdc.config : c_ulong, ptrdiff_t;
 public import core.sys.posix.fcntl : open, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT,
     O_TRUNC, O_APPEND, fcntl, creat;
 import core.sys.posix.sys.stat : stat, fstat, lstat, stat_t, mode_t, off_t, chmod, fchmod, mkdir, umask;
@@ -198,5 +233,80 @@ uint posix_sleep(uint seconds)
 int posix_usleep(useconds_t usec)
 {
     return usleep(usec);
+}
+
+void posix__exit(int status)
+{
+    _exit(status);
+}
+
+int posix_isatty(int fd)
+{
+    return isatty(fd);
+}
+
+int posix_access(const(char)* path, int mode)
+{
+    return access(path, mode);
+}
+
+int posix_brk(void* addr)
+{
+    return brk(addr);
+}
+
+void* posix_sbrk(ptrdiff_t increment)
+{
+    return sbrk(increment);
+}
+
+void* posix_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
+{
+    return mmap(addr, length, prot, flags, fd, offset);
+}
+
+int posix_munmap(void* addr, size_t length)
+{
+    return munmap(addr, length);
+}
+
+int posix_mprotect(void* addr, size_t length, int prot)
+{
+    return mprotect(addr, length, prot);
+}
+
+int posix_madvise(void* addr, size_t length, int advice)
+{
+    return c_posix_madvise(addr, length, advice);
+}
+
+int posix_gettimeofday(timeval* tv, void* tz)
+{
+    return gettimeofday(tv, tz);
+}
+
+int posix_clock_gettime(int clk_id, timespec* ts)
+{
+    return clock_gettime(clk_id, ts);
+}
+
+int posix_sigaction(int sig, const(sigaction_t)* act, sigaction_t* oact)
+{
+    return sigaction(sig, act, oact);
+}
+
+sigfn_t posix_signal(int sig, sigfn_t func)
+{
+    return signal(sig, func);
+}
+
+int posix_ioctl(int fd, c_ulong request, ...)
+{
+    return ioctl(fd, request);
+}
+
+long posix_readlink(const(char)* path, char* buf, size_t bufsiz)
+{
+    return readlink(path, buf, bufsiz);
 }
 

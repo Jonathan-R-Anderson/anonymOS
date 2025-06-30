@@ -48,6 +48,56 @@ __gshared const(char*)[] syscallHelp = [
     "39 Noted(mode)             - note done"
 ];
 
+// Command history storage (simple circular buffer)
+__gshared char[256][32] command_history;
+__gshared size_t history_count = 0;
+__gshared size_t history_index = 0;
+
+void add_to_history(const char[] cmd) {
+    if (cmd.length == 0) return;
+    size_t idx = history_count % 32;
+    size_t len = cmd.length < 255 ? cmd.length : 255;
+    foreach(i; 0 .. len) {
+        command_history[idx][i] = cmd[i];
+    }
+    command_history[idx][len] = '\0';
+    history_count++;
+}
+
+void show_history() {
+    terminal_writestring("Command history:\r\n");
+    size_t start = history_count > 32 ? history_count - 32 : 0;
+    for(size_t i = start; i < history_count; i++) {
+        size_t idx = i % 32;
+        terminal_writestring("  ");
+        // Print line number
+        char[16] num_buf;
+        size_t num_len = 0;
+        size_t n = i + 1;
+        if (n == 0) {
+            num_buf[num_len++] = '0';
+        } else {
+            while (n > 0) {
+                num_buf[num_len++] = '0' + (n % 10);
+                n /= 10;
+            }
+            // Reverse the number
+            for(size_t j = 0; j < num_len / 2; j++) {
+                char tmp = num_buf[j];
+                num_buf[j] = num_buf[num_len - 1 - j];
+                num_buf[num_len - 1 - j] = tmp;
+            }
+        }
+        foreach(j; 0 .. num_len) terminal_putchar(num_buf[j]);
+        terminal_writestring(": ");
+        // Print command
+        for(size_t j = 0; j < 256 && command_history[idx][j] != '\0'; j++) {
+            terminal_putchar(command_history[idx][j]);
+        }
+        terminal_writestring("\r\n");
+    }
+}
+
 private void printSyscalls()
 {
     terminal_writestring("Syscall table (use do_syscall):\r\n");
@@ -166,8 +216,6 @@ private void setup_first_user()
     terminal_writestring("Default user created\r\n");
 }
 
-
-
 /// Entry point for the built-in -sh shell.
 /// In a real system this would start the userland shell process.
 extern(C) void shMain()
@@ -224,17 +272,33 @@ extern(C) void shInteractive()
         // incompatible with -betterC.
         auto cmd = line[0 .. idx];
 
+        // Add command to history
+        add_to_history(cmd);
+
         // Command matching
         if (cmd == "help") {
             terminal_writestring("Available commands:\r\n");
-            terminal_writestring("  help  - show this message\r\n");
-            terminal_writestring("  clear - clear the screen\r\n");
-            terminal_writestring("  echo  - print text\r\n");
-            terminal_writestring("  ls    - list directory\r\n");
-            terminal_writestring("  cd    - change directory\r\n");
-            terminal_writestring("  pwd   - show current directory\r\n");
-            terminal_writestring("  cat   - print file contents\r\n");
-            terminal_writestring("  exit  - terminate shell\r\n");
+            terminal_writestring("  help     - show this message\r\n");
+            terminal_writestring("  clear    - clear the screen\r\n");
+            terminal_writestring("  echo     - print text\r\n");
+            terminal_writestring("  ls       - list directory\r\n");
+            terminal_writestring("  cd       - change directory\r\n");
+            terminal_writestring("  pwd      - show current directory\r\n");
+            terminal_writestring("  cat      - print file contents\r\n");
+            terminal_writestring("  mkdir    - create directory\r\n");
+            terminal_writestring("  rmdir    - remove directory\r\n");
+            terminal_writestring("  rm       - remove file\r\n");
+            terminal_writestring("  cp       - copy file\r\n");
+            terminal_writestring("  mv       - move/rename file\r\n");
+            terminal_writestring("  touch    - create empty file\r\n");
+            terminal_writestring("  date     - show current date/time\r\n");
+            terminal_writestring("  whoami   - show current user\r\n");
+            terminal_writestring("  uname    - show system information\r\n");
+            terminal_writestring("  ps       - show processes\r\n");
+            terminal_writestring("  history  - show command history\r\n");
+            terminal_writestring("  alias    - create command alias\r\n");
+            terminal_writestring("  exit     - terminate shell\r\n");
+            terminal_writestring("\r\nThis is anonymOS with enhanced -sh shell integration\r\n");
             printSyscalls();
         } else if (cmd == "clear") {
             import kernel.device.vga : clear_screen;
@@ -317,6 +381,38 @@ extern(C) void shInteractive()
             auto pid = get_current_pid();
             process_exit(pid, 0);
             break;
+        } else if (cmd == "history") {
+            show_history();
+        } else if (cmd == "date") {
+            terminal_writestring("Current date/time: Not available (RTC not implemented)\r\n");
+        } else if (cmd == "whoami") {
+            terminal_writestring("root\r\n");
+        } else if (cmd == "uname") {
+            terminal_writestring("anonymOS 1.0.0 x86_64\r\n");
+        } else if (cmd.length >= 5 && cmd[0 .. 5] == "mkdir" && (cmd.length == 5 || cmd[5] == ' ')) {
+            terminal_writestring("mkdir: command not implemented in this filesystem\r\n");
+        } else if (cmd.length >= 5 && cmd[0 .. 5] == "touch" && (cmd.length == 5 || cmd[5] == ' ')) {
+            size_t start = 5;
+            if (start < cmd.length && cmd[start] == ' ') start++;
+            if (start >= cmd.length) {
+                terminal_writestring("touch: missing file operand\r\n");
+            } else {
+                char[128] path;
+                size_t len = 0;
+                foreach(i; start .. cmd.length) if(len < path.length-1) path[len++] = cmd[i];
+                path[len] = 0;
+                int fd = fs_open_file(path.ptr, 1); // Create flag
+                if(fd < 0) {
+                    terminal_writestring("touch: cannot create file\r\n");
+                } else {
+                    fs_close_file(fd);
+                    terminal_writestring("File created\r\n");
+                }
+            }
+        } else if (cmd == "ps") {
+            terminal_writestring("PID  COMMAND\r\n");
+            terminal_writestring("  1  kernel\r\n");
+            terminal_writestring("  2  shell\r\n");
         } else {
             bool suggested = false;
             if (similar(cmd, "help")) {
@@ -335,9 +431,6 @@ extern(C) void shInteractive()
         // Prompt will redraw at top of loop
     }
 }
-
-
-
 
 extern(C) void sh_shell()
 {

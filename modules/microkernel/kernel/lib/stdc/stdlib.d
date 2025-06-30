@@ -16,7 +16,7 @@ struct BlockHeader {
     BlockHeader* next;    // Next block in free list when free
 }
 
-enum HEAP_SIZE = 1024 * 1024; // 1 MiB heap for kernel allocations
+enum HEAP_SIZE = 4 * 1024 * 1024; // 4 MiB heap for kernel allocations - increased from 1MB
 __gshared align(8) ubyte[HEAP_SIZE] heap;
 __gshared BlockHeader* freeList;
 __gshared bool heapInit = false;

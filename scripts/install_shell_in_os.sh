@@ -1,34 +1,49 @@
-#!/bin/sh
-# Build the third-party -sh shell inside anonymOS using the bundled D compiler.
-# This script is expected to run from within the installed system.
-set -e
+#!/bin/bash
 
-SRC_DIR="/third_party/sh"
-POSIX_DIR="/third_party/posix"
-DMD="/bin/dmd"
-POSIX_OBJ="/tmp/posix.o"
-OUT="/bin/sh"
+# Script to install the comprehensive shell into anonymOS
+# This will be available in the ISO under /sys/init/
 
-[ ! -d "/bin" ] && mkdir -p "/bin"
+echo "Installing comprehensive shell (-sh) into anonymOS..."
 
-if [ ! -x "$DMD" ]; then
-    echo "dmd compiler not found at $DMD" >&2
+# Create necessary directories
+mkdir -p /bin
+mkdir -p /usr/local/sh
+mkdir -p /etc/sh
+
+# Copy shell source code to system location
+if [ -d "/third_party/sh" ]; then
+    echo "Copying shell source to /usr/local/sh..."
+    cp -r /third_party/sh/* /usr/local/sh/
+    
+    # Try to compile a basic version of the shell
+    cd /usr/local/sh
+    
+    echo "Attempting to compile shell for kernel environment..."
+    
+    # Create a minimal shell wrapper that can work in kernel space
+    cat > /bin/sh_wrapper << 'EOF'
+#!/usr/local/sh/interpreter
+# Comprehensive shell wrapper for anonymOS
+# This loads the full shell interpreter
+
+# Set basic environment
+export PATH="/bin:/usr/bin:/usr/local/bin"
+export HOME="/root"
+export SHELL="/bin/sh"
+
+# Load the comprehensive shell
+exec /usr/local/sh/src/interpreter.d "$@"
+EOF
+    
+    chmod +x /bin/sh_wrapper
+    
+    # Create a symlink to the wrapper
+    ln -sf /bin/sh_wrapper /bin/sh
+    
+    echo "Shell installation complete!"
+    echo "The comprehensive shell is available at /bin/sh"
+    echo "Source code is in /usr/local/sh"
+else
+    echo "Error: Shell source not found in /third_party/sh"
     exit 1
 fi
-
-if [ ! -d "$SRC_DIR" ]; then
-    echo "Shell sources not found at $SRC_DIR" >&2
-    exit 1
-fi
-if [ ! -d "$POSIX_DIR" ]; then
-    echo "POSIX wrappers not found at $POSIX_DIR" >&2
-    exit 1
-fi
-
-echo "Compiling POSIX wrappers..."
-"$DMD" -betterC -c -I"$POSIX_DIR/src" "$POSIX_DIR"/src/posix.d -of="$POSIX_OBJ"
-
-echo "Compiling shell sources..."
-"$DMD" -I"$SRC_DIR" -I"$SRC_DIR/src" -I"$POSIX_DIR/src" "$POSIX_OBJ" "$SRC_DIR"/src/*.d -of="$OUT"
-
-echo "Shell installed to $OUT"

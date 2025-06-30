@@ -13,8 +13,6 @@ int link(const char* existing, const char* newpath);
 int getpid();
 int rename(const char* oldp, const char* newp);
 
-auto stubInt(...) { return -1; }
-
 extern(C):
 ssize_t read(int fd, void* buf, size_t n) { return -1; }
 ssize_t write(int fd, const(void)* buf, size_t n) { return -1; }
@@ -28,4 +26,8 @@ int dup2(int oldfd, int newfd) { return -1; }
 int getppid() { return 0; }
 int getuid() { return 0; }
 int geteuid() { return 0; }
-int getgid() { return 0; } 
+int getgid() { return 0; }
+int rmdir(const char* path) { return -1; }
+int getegid() { return 0; }
+int chown(const char* path, int uid, int gid) { return -1; }
+int fchown(int fd, int uid, int gid) { return -1; } 

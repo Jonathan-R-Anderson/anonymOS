@@ -160,6 +160,10 @@ The interpreter also provides features such as arithmetic, variables, loops,
 background jobs and file utilities like `cp`, `mv` and `mkdir` as described in
 the [`-sh` README](https://github.com/Jonathan-R-Anderson/-sh).
 
+## LDC Cross-Compilation
+
+The `ldc_port` directory provides minimal pieces for bootstrapping LDC on the Internet Computer OS. It includes `libc.c`, `ic.ld`, a `druntime.patch` and a `ldc_ic.cmake` snippet to configure a custom target triple.
+
 ## License
 
 This project is released under the MIT license.  See `LICENSE` for details.

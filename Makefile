@@ -214,7 +214,11 @@ shell: $(SH_BIN)
 
 build_comprehensive_shell:
 	@echo ">>> Building comprehensive shell..."
-	./scripts/build_comprehensive_shell.sh
+	@if [ -x "$(CURDIR)/scripts/build_comprehensive_shell.sh" ]; then \
+		bash "$(CURDIR)/scripts/build_comprehensive_shell.sh"; \
+	else \
+		echo "Warning: build_comprehensive_shell.sh not found, skipping comprehensive shell build"; \
+	fi
 
 fetch_shell:
 	./scripts/fetch_shell.sh

@@ -4,6 +4,7 @@ module kernel.keyboard;
 import kernel.terminal : terminal_writestring, terminal_putchar;
 import kernel.lib.stdc.stdint; // Use local stdint stub
 import kernel.arch_interface.ports : inb, outb; // Direct port access
+import kernel.logger : log_message; // For debug logging
 
 // If needed for more direct keyboard controller interaction:
 // extern (C) {

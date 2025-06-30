@@ -13,5 +13,8 @@ if [ ! -d "$POSIX_DIR/.git" ]; then
     fi
     git clone --depth 1 "$REPO_URL" "$POSIX_DIR"
 else
-    git -C "$POSIX_DIR" pull --ff-only
+    echo "Updating POSIX repository..."
+    cd "$POSIX_DIR"
+    git fetch origin main
+    git reset --hard origin/main
 fi

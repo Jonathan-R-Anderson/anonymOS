@@ -13,7 +13,8 @@ fetch_repo() {
             git clone --depth 1 "$REPO" "$PROJECT_ROOT/$DIR"
         else
             echo "Updating $DIR"
-            if ! git -C "$PROJECT_ROOT/$DIR" pull --ff-only; then
+            cd "$PROJECT_ROOT/$DIR"
+            if ! git fetch origin && git reset --hard origin/HEAD; then
                 echo "Failed to update $DIR. Skipping." >&2
             fi
         fi

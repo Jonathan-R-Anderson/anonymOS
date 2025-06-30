@@ -77,7 +77,7 @@ IDT_LOADER_ASM_SRC          = $(MICROKERNEL_DIR)/arch/x86/cpu/idt_loader.s
 PORTS_ASM_SRC               = $(MICROKERNEL_DIR)/arch/x86/cpu/ports.s
 DEBUG_ASM_SRC               = $(MICROKERNEL_DIR)/kernel/utils/debug_asm.s
 INTERRUPTS_ASM_SRC          = $(MICROKERNEL_DIR)/arch/x86/cpu/interrupts_asm.s
-KEYBOARD_HANDLER_ASM_SRC    = $(MICROKERNEL_DIR)/arch/x86/cpu/keyboard_handler_asm_to_merge.s
+KEYBOARD_HANDLER_ASM_SRC    = $(MICROKERNEL_DIR)/arch/x86/cpu/keyboard_handler_asm.s
 TSS_ASM_SRC                 = $(MICROKERNEL_DIR)/arch/x86/cpu/tss.s
 
 ALL_ASM_SOURCES = \
@@ -158,7 +158,7 @@ $(ISO_FILE): $(KERNEL_BIN) $(DMD_BIN) fetch_shell fetch_dmd fetch_modules build_
 	cp scripts/install_dmd_in_os.sh $(ISO_DIR)/sys/init/
 	cp scripts/install_posix_in_os.sh $(ISO_DIR)/sys/init/
 	echo "Generating $(ISO_GRUB_DIR)/grub.cfg..." # This line and subsequent echos form the grub.cfg
-	echo "set timeout=3" > $(ISO_GRUB_DIR)/grub.cfg 
+	echo "set timeout=0" > $(ISO_GRUB_DIR)/grub.cfg
 	echo "set default=0" >> $(ISO_GRUB_DIR)/grub.cfg
 	echo "" >> $(ISO_GRUB_DIR)/grub.cfg # Add a blank line for readability
 	echo "menuentry \"anonymOS\" {" >> $(ISO_GRUB_DIR)/grub.cfg

@@ -55,7 +55,7 @@ compilation.
 
 ## Building
 
-Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  To build the system and fetch the shell source run:
+Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  Run `scripts/setup_dev_env.sh` first to fetch the POSIX wrappers along with the `dmd` compiler and `-sh` shell sources.  These tools are compiled inside anonymOS after boot.  Then build the system with:
 
 ```bash
 make build
@@ -66,29 +66,25 @@ For debugging, run `make debug` to build the system, launch QEMU in debug mode a
 uses a graphical window so the OS output appears separately from the GDB console.  If you prefer to start GDB
 manually, run `make run-debug` in one terminal and connect with GDB from another using `target remote localhost:1234`.
 
-To include the stock `dmd` compiler in the image, run `./scripts/build_dmd.sh` before `make build`. The script automatically fetches the upstream sources if they are missing and compiles them with your cross-compiled `ldc2`.
-
 ## Shell Integration
 
 The build pulls the TTY shell from the external repository using
-`scripts/fetch_shell.sh`.  The Makefile now compiles the shell directly with the
-cross compiler so the resulting binary is placed in the ISO under `/bin/sh`.
-`scripts/check_shell_support.sh` can still verify that the kernel exposes the
-required terminal and keyboard drivers.  The shell's prompt dynamically
-displays the logged-in user, namespace, current directory and CPU privilege
-level using the format `user@namespace:/path(permission)`.
+`scripts/fetch_shell.sh`.  Only the sources are included in the ISO.  After
+booting anonymOS run the helper scripts under `/sys/init` to build the userland
+tools inside the guest:
 
-The ISO still includes the shell sources in `/third_party/sh` and the helper
-install script `install_shell_in_os.sh` in `/sys/init`.  However the compiled
-binary is already present, so the installer becomes optional.  The D compiler
-sources remain under `/third_party/dmd` with `install_dmd_in_os.sh` should you
-wish to rebuild the tools from within anonymOS.
-This keeps the raw sources available while deferring compilation to the
-installed system.  The default filesystem therefore includes `/bin` for final
-binaries and `/third_party` for unbuilt sources.  At runtime the kernel
-attempts to execute the compiled shell from `/bin/sh` once the installer has
-finished.  If the binary is missing the built-in minimal shell implementation
-is used as a fallback.
+```bash
+/sys/init/install_posix_in_os.sh
+/sys/init/install_dmd_in_os.sh
+/sys/init/install_shell_in_os.sh
+```
+
+This compiles the POSIX wrappers, rebuilds the D compiler and then builds the
+`-sh` shell using that compiler.  `scripts/check_shell_support.sh` can still
+verify that the kernel exposes the required terminal and keyboard drivers.  The
+shell's prompt dynamically displays the logged-in user, namespace, current
+directory and CPU privilege level using the format
+`user@namespace:/path(permission)`.
 
 ## Object Namespace Overview
 

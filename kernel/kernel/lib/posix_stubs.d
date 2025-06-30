@@ -76,7 +76,6 @@ extern(C) int strncasecmp(const char* a, const char* b, size_t n)
 // filesystem dummies ---------------------------------------------------------
 extern(C) int mkdir(const char* path, int mode) { return 0; }
 extern(C) int rmdir(const char* path)         { return 0; }
-extern(C) int unlink(const char* path)        { return 0; }
 
 struct stat
 {

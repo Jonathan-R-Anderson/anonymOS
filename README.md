@@ -55,7 +55,15 @@ compilation.
 
 ## Building
 
-Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  Run `scripts/setup_dev_env.sh` first to fetch the POSIX wrappers along with the `dmd` compiler and `-sh` shell sources.  These tools are compiled inside anonymOS after boot.  Then build the system with:
+Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  Run
+`scripts/setup_dev_env.sh` first to fetch the POSIX wrappers and shell sources
+directly from their GitHub repositories:
+
+- [anonymos-posix](https://github.com/Jonathan-R-Anderson/anonymos-posix)
+- [\-sh](https://github.com/Jonathan-R-Anderson/-sh)
+
+These external components are compiled inside anonymOS after boot.  Then build
+the system with:
 
 ```bash
 make build

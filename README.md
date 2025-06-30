@@ -55,7 +55,7 @@ compilation.
 
 ## Building
 
-Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  To build the system and fetch the shell source run:
+Prerequisites include `grub-mkrescue`, `xorriso` and the `ldc2` D compiler.  Run `scripts/setup_dev_env.sh` first to fetch the POSIX wrappers, build the full `dmd` compiler and compile the `-sh` shell.  Then build the system with:
 
 ```bash
 make build

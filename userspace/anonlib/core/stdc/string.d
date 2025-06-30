@@ -3,12 +3,13 @@ module core.stdc.string;
 extern(C):
 int strcasecmp(const char*, const char*);
 int strncasecmp(const char*, const char*, ulong n);
-size_t strlen(const char*);
-void* memcpy(void*, const void*, size_t);
-int memcmp(const void*, const void*, size_t);
-int strcmp(const char*, const char*);
 
-size_t strlen(const char* s)
+// Remove the previous prototypes – we provide full definitions below that
+// are usable at compile-time.  The compiler will infer the extern(C)
+// linkage from the attribute.
+
+pure nothrow @nogc @trusted pragma(inline, true)
+extern(C) size_t strlen(const char* s)
 {
     size_t i = 0;
     if(s is null) return 0;
@@ -16,7 +17,8 @@ size_t strlen(const char* s)
     return i;
 }
 
-void* memcpy(void* dst, const void* src, size_t n)
+pure nothrow @nogc @trusted pragma(inline, true)
+extern(C) void* memcpy(void* dst, const void* src, size_t n)
 {
     auto d = cast(ubyte*)dst;
     auto s = cast(const(ubyte)*)src;
@@ -24,7 +26,8 @@ void* memcpy(void* dst, const void* src, size_t n)
     return dst;
 }
 
-int memcmp(const void* a, const void* b, size_t n)
+pure nothrow @nogc @trusted pragma(inline, true)
+extern(C) int memcmp(const void* a, const void* b, size_t n)
 {
     auto pa = cast(const(ubyte)*)a;
     auto pb = cast(const(ubyte)*)b;
@@ -36,7 +39,8 @@ int memcmp(const void* a, const void* b, size_t n)
     return 0;
 }
 
-int strcmp(const char* a, const char* b)
+pure nothrow @nogc @trusted pragma(inline, true)
+extern(C) int strcmp(const char* a, const char* b)
 {
     size_t i = 0;
     while(a[i] && b[i])

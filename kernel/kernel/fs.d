@@ -5,6 +5,7 @@ pragma(LDC_no_moduleinfo);
 import kernel.types : strlen, memcpy, strchr;
 import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message;
+import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread;
 
 public:
 

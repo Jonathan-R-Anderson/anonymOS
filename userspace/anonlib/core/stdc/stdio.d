@@ -24,4 +24,11 @@ size_t fwrite(const void*, size_t, size_t, FILE*);
 
 int fflush(FILE*);
 int fopen(const char*, const char*);
-int fclose(FILE*); 
+int fclose(FILE*);
+
+long ftell(FILE*);
+int fseek(FILE*, long, int);
+
+enum SEEK_SET = 0;
+enum SEEK_CUR = 1;
+enum SEEK_END = 2; 

@@ -25,6 +25,10 @@ enum S_IWUSR = 0x80;
 enum S_IXUSR = 0x40;
 enum S_IRGRP = 0x20;
 enum S_IWGRP = 0x10;
+enum S_IXGRP = 0x8;
+enum S_IROTH = 0x4;
+enum S_IWOTH = 0x2;
+enum S_IXOTH = 0x1;
 
 pragma(mangle, "stat")  int _stat(const char* path, stat* buf) { return -1; }
 pragma(mangle, "lstat") int _lstat(const char* path, stat* buf) { return -1; }

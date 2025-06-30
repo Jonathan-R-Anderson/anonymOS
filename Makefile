@@ -50,7 +50,9 @@ KERNEL_D_DEVICE_SRC         = $(wildcard $(MICROKERNEL_DIR)/kernel/device/*.d) $
 KERNEL_D_NET_SRC            = $(wildcard $(MICROKERNEL_DIR)/kernel/net/*.d)
 KERNEL_D_HOST_SRC           = $(wildcard $(MICROKERNEL_DIR)/kernel/host/*.d)
 KERNEL_D_INCLUDE_KERNEL_SRC = $(wildcard $(MICROKERNEL_DIR)/kernel/include/kernel/*.d)
+# library code (std c subset + extra)
 KERNEL_D_LIB_STDC_SRC       = $(wildcard $(MICROKERNEL_DIR)/kernel/lib/stdc/*.d)
+KERNEL_D_LIB_EXTRA_SRC      = $(wildcard $(MICROKERNEL_DIR)/kernel/lib/*.d)
 KERNEL_D_FS_SRC             = $(MICROKERNEL_DIR)/kernel/fs.d
 KERNEL_D_ROOT_SRC           = $(filter-out $(KERNEL_D_FS_SRC),$(wildcard $(MICROKERNEL_DIR)/kernel/*.d))
 HYPERVISOR_SRC              = $(HYPERVISOR_DIR)/kernel/hypervisor.d
@@ -64,7 +66,7 @@ ALL_KERNEL_D_SOURCES_NO_GENERATED = \
     $(KERNEL_D_NET_SRC) \
     $(KERNEL_D_HOST_SRC) \
     $(KERNEL_D_INCLUDE_KERNEL_SRC) \
-    $(KERNEL_D_LIB_STDC_SRC) \
+    $(KERNEL_D_LIB_STDC_SRC) $(KERNEL_D_LIB_EXTRA_SRC) \
     $(KERNEL_D_FS_SRC) \
     $(KERNEL_D_ROOT_SRC) \
     $(HYPERVISOR_SRC) \

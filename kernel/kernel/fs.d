@@ -2,7 +2,6 @@ module kernel.fs;
 
 pragma(LDC_no_moduleinfo);
 
-import kernel.lib.stdc.stdio : FILE, fopen, fclose, fgets, fwrite, fread, fseek;
 import kernel.types : strlen, memcpy, strchr;
 import kernel.lib.stdc.stdlib : malloc, realloc, free;
 import kernel.logger : log_message;
@@ -698,8 +697,14 @@ private void loadFilesystem()
         }
         auto node = createFile(p);
         if(node is null) {
-            // skip bytes
-            fseek(f, sz, 1);
+            // skip bytes by reading into temp buffer
+            ubyte[256] tmp;
+            size_t remaining = sz;
+            while(remaining > 0) {
+                size_t chunk = remaining > tmp.length ? tmp.length : remaining;
+                fread(tmp.ptr, 1, chunk, f);
+                remaining -= chunk;
+            }
             continue;
         }
         if(sz>0) {

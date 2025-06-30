@@ -115,7 +115,6 @@ extern (C) void keyboard_interrupt_handler(ubyte scancode) {
             // terminal_putchar(c); ← comment this out
         }
     }
-    log_message("keyboard_interrupt_handler triggered\n");  // Add this
 
 }
 

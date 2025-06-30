@@ -29,4 +29,24 @@ alias intptr_t  = long;
 alias uintptr_t = ulong;
 
 alias intmax_t  = long;
-alias uintmax_t = ulong; 
+alias uintmax_t = ulong;
+
+// least-/fast-width aliases required by core.stdc.stdint
+alias  int_least8_t   =  int8_t;
+alias uint_least8_t   = uint8_t;
+alias  int_least16_t  =  int16_t;
+alias uint_least16_t  = uint16_t;
+alias  int_least32_t  =  int32_t;
+alias uint_least32_t  = uint32_t;
+alias  int_least64_t  =  int64_t;
+alias uint_least64_t  = uint64_t;
+
+alias  int_fast8_t    =  int8_t;
+alias uint_fast8_t    = uint8_t;
+// C typically promotes 16-bit fast types to at least 32 bits
+alias  int_fast16_t   =  int32_t;
+alias uint_fast16_t   = uint32_t;
+alias  int_fast32_t   =  int32_t;
+alias uint_fast32_t   = uint32_t;
+alias  int_fast64_t   =  int64_t;
+alias uint_fast64_t   = uint64_t; 

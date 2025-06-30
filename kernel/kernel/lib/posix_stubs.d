@@ -1,7 +1,5 @@
 module kernel.lib.posix_stubs;
 
-import core.stdc.stddef : size_t;
-
 extern(C):
 
 alias time_t = long; // simple 64-bit Unix epoch seconds

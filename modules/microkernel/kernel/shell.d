@@ -258,7 +258,7 @@ extern(C) void sh_shell()
 {
     import kernel.logger : log_message;
     import kernel.elf_loader : load_elf;
-    import kernel.process_manager : process_create, scheduler_run;
+    import kernel.process_manager : process_create, scheduler_run, EntryFunc;
 
     // After build_shell() the compiled binary should reside at /bin/sh
     void* entry = null;

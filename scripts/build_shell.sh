@@ -15,10 +15,16 @@ DC=${DC:-ldc2}
 CC=${CC:-gcc}
 export CC
 
+# Ensure the ldc2 compiler is available
+if ! command -v "$DC" >/dev/null 2>&1; then
+    echo "D compiler '$DC' not found. Install ldc2 or set DC to your compiler." >&2
+    exit 1
+fi
+
 # Ensure sources are present
 if [ ! -d "$SH_DIR" ]; then
-    echo "Shell sources not found in $SH_DIR" >&2
-    exit 1
+    echo "Shell sources not found in $SH_DIR, fetching..." >&2
+    "$SCRIPT_DIR/fetch_shell.sh"
 fi
 
 mkdir -p "$OUT_DIR"
@@ -39,6 +45,7 @@ fi
 if ! $DC -I"$SH_DIR" -I"$SH_DIR/src" -I"$POSIX_DIR/src" \
     "$POSIX_OBJ" $SH_DIR/src/*.d -of="$OUT" 2>/tmp/sh_build_err.log; then
     echo "Full shell build failed, falling back to stub." >&2
+    head -n 20 /tmp/sh_build_err.log >&2 || true
     $DC "$STUB" -of="$OUT"
 fi
 

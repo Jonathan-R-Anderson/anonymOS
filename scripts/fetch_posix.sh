@@ -3,7 +3,8 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 POSIX_DIR="$PROJECT_ROOT/third_party/posix"
-REPO_URL="https://github.com/Jonathan-R-Anderson/anonymos-posix.git"
+# Repository providing the POSIX wrappers used by anonymOS
+REPO_URL="https://github.com/Jonathan-R-Anderson/anonymos-posix"
 if [ ! -d "$POSIX_DIR/.git" ]; then
     mkdir -p "$PROJECT_ROOT/third_party"
     if [ -d "$POSIX_DIR" ] && [ "$(ls -A "$POSIX_DIR" 2>/dev/null)" ]; then

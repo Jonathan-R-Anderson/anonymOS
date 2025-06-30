@@ -200,16 +200,16 @@ $(DMD_BIN): | $(BUILD_DIR)
 	./scripts/build_dmd.sh
 
 $(SH_BIN): fetch_shell fetch_posix | $(BUILD_DIR)
-        ./scripts/build_shell.sh
+	./scripts/build_shell.sh
 
 dmd: $(DMD_BIN)
 sh: $(SH_BIN)
 
 fetch_shell:
-               ./scripts/fetch_shell.sh
+	./scripts/fetch_shell.sh
 
 fetch_posix:
-               ./scripts/fetch_posix.sh
+	./scripts/fetch_posix.sh
 
 fetch_modules:
 	       ./scripts/fetch_modules.sh

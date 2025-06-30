@@ -3,6 +3,7 @@ module core.sys.posix.unistd;
 extern(C):
 alias size_t = ulong;
 alias ssize_t = long;
+alias intptr_t = long;
 
 int chdir(const char* path);
 char* getcwd(char* buf, size_t size);

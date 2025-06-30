@@ -5,7 +5,8 @@
 		DC = ldc2           # D Compiler
 		AS = as             # GNU Assembler (for AT&T syntax)
 	LD = ld.lld         # LLVM Linker
-	GRUB_MKRESCUE = grub-mkrescue
+GRUB_MKRESCUE = grub-mkrescue
+QEMU_FLAGS ?= -nographic
 	
 	# D Compiler Flags
 	# -betterC: Enables D subset suitable for freestanding environments (no GC, no DRuntime)

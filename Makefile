@@ -268,5 +268,5 @@ update-run:
 	$(MAKE) run
 	
 $(FS_IMG): $(SH_BIN) scripts/build_fs_img.sh
-	./scripts/build_fs_img.sh
+	bash scripts/build_fs_img.sh
 	

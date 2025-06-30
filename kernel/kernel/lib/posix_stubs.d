@@ -1,5 +1,8 @@
 module kernel.lib.posix_stubs;
 
+import kernel.lib.posix_stubs; // self reference ok
+import core.stdc.config : FILE, size_t;
+
 extern(C):
 
 alias time_t = long; // simple 64-bit Unix epoch seconds
@@ -84,4 +87,21 @@ struct stat
 
 pragma(mangle, "stat")  extern(C) int _stat (const char* p, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
 pragma(mangle, "fstat") extern(C) int _fstat(int fd, stat* s){ if(s){s.st_mode=0x8000; s.st_size=0;} return 0; }
-pragma(mangle, "lstat") extern(C) int _lstat(const char* p, stat* s){ return _stat(p,s); } 
+pragma(mangle, "lstat") extern(C) int _lstat(const char* p, stat* s){ return _stat(p,s); }
+
+// Minimal stdio globals and functions so linking succeeds
+__gshared FILE* stdin;
+__gshared FILE* stdout;
+__gshared FILE* stderr;
+
+extern(C) int printf(const char* fmt, ...) { return 0; }
+extern(C) int fprintf(FILE* fp, const char* fmt, ...) { return 0; }
+extern(C) int sprintf(char* buf, const char* fmt, ...) { return 0; }
+extern(C) int snprintf(char* buf, size_t n, const char* fmt, ...) { return 0; }
+extern(C) int puts(const char* s) { return 0; }
+extern(C) int putchar(int c) { return c; }
+extern(C) int fputs(const char* s, FILE* f) { return 0; }
+extern(C) int fputc(int c, FILE* f) { return c; }
+extern(C) size_t fwrite(const void* p, size_t sz, size_t n, FILE* f) { return n; }
+extern(C) size_t fread(void* p, size_t sz, size_t n, FILE* f) { return 0; }
+extern(C) int fflush(FILE* f) { return 0; } 

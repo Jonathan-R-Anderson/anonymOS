@@ -2,6 +2,7 @@ module kernel.shell;
 
 import kernel.terminal : terminal_writestring, terminal_writestring_color, terminal_putchar;
 import kernel.keyboard : keyboard_getchar;
+import kernel.fs : fs_chdir, fs_getcwd, fs_lookup, fs_pread_file, fs_open_file, fs_close_file, Node, NodeType, fsCurrentDir;
 
 // Table of available syscalls and brief usage info.
 __gshared const(char*)[] syscallHelp = [
@@ -93,6 +94,19 @@ private void print_prompt()
     terminal_writestring("(");
     terminal_putchar(cast(char)('0' + cpl));
     terminal_writestring(") ");
+}
+
+private void list_dir(Node* dir)
+{
+    auto child = dir.child;
+    while(child !is null)
+    {
+        terminal_writestring(child.name);
+        if(child.sibling !is null)
+            terminal_writestring(" ");
+        child = child.sibling;
+    }
+    terminal_writestring("\r\n");
 }
 
 /// Simple first-time setup that installs the non-cross D compiler
@@ -214,6 +228,10 @@ extern(C) void shInteractive()
             terminal_writestring("  help  - show this message\r\n");
             terminal_writestring("  clear - clear the screen\r\n");
             terminal_writestring("  echo  - print text\r\n");
+            terminal_writestring("  ls    - list directory\r\n");
+            terminal_writestring("  cd    - change directory\r\n");
+            terminal_writestring("  pwd   - show current directory\r\n");
+            terminal_writestring("  cat   - print file contents\r\n");
             terminal_writestring("  exit  - terminate shell\r\n");
             printSyscalls();
         } else if (cmd == "clear") {
@@ -226,6 +244,71 @@ extern(C) void shInteractive()
                 terminal_putchar(cmd[i]);
             }
             terminal_writestring("\r\n");
+        } else if (cmd == "pwd") {
+            auto cwd = fs_getcwd();
+            terminal_writestring(cwd);
+            terminal_writestring("\r\n");
+        } else if (cmd.length >= 2 && cmd[0 .. 2] == "cd" && (cmd.length == 2 || cmd[2] == ' ')) {
+            size_t start = 2;
+            if (start < cmd.length && cmd[start] == ' ') start++;
+            if (start >= cmd.length) {
+                terminal_writestring("cd: missing operand\r\n");
+            } else {
+                char[128] path;
+                size_t len = 0;
+                foreach(i; start .. cmd.length) if(len < path.length-1) path[len++] = cmd[i];
+                path[len] = 0;
+                if(fs_chdir(path.ptr) != 0)
+                    terminal_writestring("cd: no such dir\r\n");
+            }
+        } else if (cmd == "ls" || (cmd.length > 2 && cmd[0 .. 2] == "ls" && cmd[2] == ' ')) {
+            Node* dir = fsCurrentDir;
+            size_t start = 2;
+            if (cmd.length > 2 && cmd[2] == ' ') {
+                start = 3;
+                if(start < cmd.length) {
+                    char[128] path;
+                    size_t len=0;
+                    foreach(i; start .. cmd.length) if(len < path.length-1) path[len++] = cmd[i];
+                    path[len]=0;
+                    auto n = fs_lookup(path.ptr);
+                    if(n !is null && n.kind == NodeType.Directory)
+                        dir = n;
+                    else {
+                        terminal_writestring("ls: no such dir\r\n");
+                        continue;
+                    }
+                }
+            }
+            list_dir(dir);
+        } else if (cmd.length >= 3 && cmd[0 .. 3] == "cat" && (cmd.length == 3 || cmd[3] == ' ')) {
+            size_t start = 3;
+            if (start < cmd.length && cmd[start] == ' ') start++;
+            if (start >= cmd.length) {
+                terminal_writestring("cat: missing file\r\n");
+            } else {
+                char[128] path;
+                size_t len=0;
+                foreach(i; start .. cmd.length) if(len < path.length-1) path[len++] = cmd[i];
+                path[len]=0;
+                int fd = fs_open_file(path.ptr,0);
+                if(fd < 0) {
+                    terminal_writestring("cat: cannot open file\r\n");
+                } else {
+                    import kernel.fs : Stat, fs_fstat;
+                    Stat st; if(fs_fstat(fd,&st)==0) {
+                        char[256] buf; size_t pos=0;
+                        while(pos < st.size) {
+                            auto r = fs_pread_file(fd, buf.ptr, buf.length, pos);
+                            if(r <= 0) break; 
+                            foreach(i; 0 .. r) terminal_putchar(buf[i]);
+                            pos += r;
+                        }
+                    }
+                    fs_close_file(fd);
+                    terminal_writestring("\r\n");
+                }
+            }
         } else if (cmd == "exit") {
             import kernel.process_manager : get_current_pid, process_exit;
             terminal_writestring("Bye!\r\n");

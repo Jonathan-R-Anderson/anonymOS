@@ -18,6 +18,7 @@ enum INPUT_BUF_SIZE = 128;
 __gshared char[INPUT_BUF_SIZE] input_buffer;
 __gshared size_t input_head = 0;
 __gshared size_t input_tail = 0;
+__gshared bool shift_state = false; // track whether shift is pressed
 
 char keyboard_getchar()
 {
@@ -26,8 +27,13 @@ char keyboard_getchar()
         ubyte status = inb(0x64);
         if (status & 1) { // Output buffer full
             ubyte sc = inb(0x60);
-            if ((sc & 0x80) == 0) { // Ignore key releases
-                char ch = scancode_to_char(sc);
+            // Update shift state
+            if (sc == 0x2A || sc == 0x36) {
+                shift_state = true; // LSHIFT or RSHIFT press
+            } else if (sc == 0xAA || sc == 0xB6) {
+                shift_state = false; // release
+            } else if ((sc & 0x80) == 0) { // Key press
+                char ch = scancode_to_char(sc, shift_state);
                 if (ch != 0) {
                     input_buffer[input_head] = ch;
                     input_head = (input_head + 1) % INPUT_BUF_SIZE;
@@ -44,33 +50,61 @@ char keyboard_getchar()
 
 // Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.
 // Returns 0 (null char) if the scancode is not printable or not mapped.
-char scancode_to_char(ubyte scancode) {
-    // Does not handle shift, ctrl, alt, or key releases yet.
-    // Only handles key presses (scancode bit 7 is 0).
-    // The check for key release (scancode & 0x80) is done by the caller in interrupts.d
+char scancode_to_char(ubyte scancode, bool shift) {
+    // Handles a limited US keyboard layout with optional shift state.
 
     switch (scancode) {
         // Row 1 (Numbers and symbols)
-        case 0x02: return '1'; case 0x03: return '2'; case 0x04: return '3';
-        case 0x05: return '4'; case 0x06: return '5'; case 0x07: return '6';
-        case 0x08: return '7'; case 0x09: return '8'; case 0x0A: return '9';
-        case 0x0B: return '0'; case 0x0C: return '-'; case 0x0D: return '=';
+        case 0x02: return shift ? '!' : '1';
+        case 0x03: return shift ? '@' : '2';
+        case 0x04: return shift ? '#' : '3';
+        case 0x05: return shift ? '$' : '4';
+        case 0x06: return shift ? '%' : '5';
+        case 0x07: return shift ? '^' : '6';
+        case 0x08: return shift ? '&' : '7';
+        case 0x09: return shift ? '*' : '8';
+        case 0x0A: return shift ? '(' : '9';
+        case 0x0B: return shift ? ')' : '0';
+        case 0x0C: return shift ? '_' : '-';
+        case 0x0D: return shift ? '+' : '=';
         // Row 2 (QWERTY)
-        case 0x10: return 'q'; case 0x11: return 'w'; case 0x12: return 'e';
-        case 0x13: return 'r'; case 0x14: return 't'; case 0x15: return 'y';
-        case 0x16: return 'u'; case 0x17: return 'i'; case 0x18: return 'o';
-        case 0x19: return 'p'; case 0x1A: return '['; case 0x1B: return ']';
+        case 0x10: return shift ? 'Q' : 'q';
+        case 0x11: return shift ? 'W' : 'w';
+        case 0x12: return shift ? 'E' : 'e';
+        case 0x13: return shift ? 'R' : 'r';
+        case 0x14: return shift ? 'T' : 't';
+        case 0x15: return shift ? 'Y' : 'y';
+        case 0x16: return shift ? 'U' : 'u';
+        case 0x17: return shift ? 'I' : 'i';
+        case 0x18: return shift ? 'O' : 'o';
+        case 0x19: return shift ? 'P' : 'p';
+        case 0x1A: return shift ? '{' : '[';
+        case 0x1B: return shift ? '}' : ']';
         // Row 3 (ASDFGH)
-        case 0x1E: return 'a'; case 0x1F: return 's'; case 0x20: return 'd';
-        case 0x21: return 'f'; case 0x22: return 'g'; case 0x23: return 'h';
-        case 0x24: return 'j'; case 0x25: return 'k'; case 0x26: return 'l';
-        case 0x27: return ';'; case 0x28: return '\''; case 0x29: return '`';
+        case 0x1E: return shift ? 'A' : 'a';
+        case 0x1F: return shift ? 'S' : 's';
+        case 0x20: return shift ? 'D' : 'd';
+        case 0x21: return shift ? 'F' : 'f';
+        case 0x22: return shift ? 'G' : 'g';
+        case 0x23: return shift ? 'H' : 'h';
+        case 0x24: return shift ? 'J' : 'j';
+        case 0x25: return shift ? 'K' : 'k';
+        case 0x26: return shift ? 'L' : 'l';
+        case 0x27: return shift ? ':' : ';';
+        case 0x28: return shift ? '"' : '\'';
+        case 0x29: return shift ? '~' : '`';
         // Row 4 (ZXCVBN)
-        case 0x2B: return '\\'; // Note: Original US layout might have this next to Enter or LShift
-        case 0x2C: return 'z'; case 0x2D: return 'x'; case 0x2E: return 'c';
-        case 0x2F: return 'v'; case 0x30: return 'b'; case 0x31: return 'n';
-        case 0x32: return 'm'; case 0x33: return ','; case 0x34: return '.';
-        case 0x35: return '/';
+        case 0x2B: return shift ? '|' : '\\';
+        case 0x2C: return shift ? 'Z' : 'z';
+        case 0x2D: return shift ? 'X' : 'x';
+        case 0x2E: return shift ? 'C' : 'c';
+        case 0x2F: return shift ? 'V' : 'v';
+        case 0x30: return shift ? 'B' : 'b';
+        case 0x31: return shift ? 'N' : 'n';
+        case 0x32: return shift ? 'M' : 'm';
+        case 0x33: return shift ? '<' : ',';
+        case 0x34: return shift ? '>' : '.';
+        case 0x35: return shift ? '?' : '/';
         // Special characters
         case 0x0E: return '\b'; // Backspace
         case 0x0F: return '\t'; // Tab
@@ -105,14 +139,18 @@ extern (C) void keyboard_interrupt_handler(ubyte scancode) {
     // Log to confirm IRQ1 firing
     // Removed debug interrupt notification
 
-    if (!(scancode & 0x80)) {
-        char c = scancode_to_char(scancode);
+    if (scancode == 0x2A || scancode == 0x36) {
+        shift_state = true;
+    } else if (scancode == 0xAA || scancode == 0xB6) {
+        shift_state = false;
+    } else if (!(scancode & 0x80)) {
+        char c = scancode_to_char(scancode, shift_state);
         if (c != 0) {
             input_buffer[input_head] = c;
             input_head = (input_head + 1) % INPUT_BUF_SIZE;
 
             // Disable echo here to avoid double characters
-            // terminal_putchar(c); ← comment this out
+            // terminal_putchar(c);
         }
     }
 

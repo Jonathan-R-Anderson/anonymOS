@@ -12,4 +12,5 @@ void exit(int status) { while(true){} }
 long strtol(const char* nptr, char** end, int base){ return 0; }
 long strtoll(const char* nptr, char** end, int base){ return 0; }
 double strtod(const char* nptr, char** end){ return 0.0; }
-int system(const char* cmd){ return 0; } 
+int system(const char* cmd){ return 0; }
+int abort(){ while(true){} return 0; } 

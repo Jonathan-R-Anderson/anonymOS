@@ -10,4 +10,5 @@ int kill(pid_t pid, int sig);
 
 struct sigaction { void* handler; }
 alias sigaction_t = sigaction;
-int sigaction(int signum, const(sigaction)* act, sigaction* old){ return -1; } 
+pragma(mangle, "sigaction") int _sigaction(int signum, const(sigaction)* act, sigaction* old){ return -1; }
+alias sigaction = _sigaction; 

@@ -6,6 +6,7 @@ import kernel.lib.stdc.stdint; // Use local stdint stub
 import kernel.arch_interface.ports : inb, outb; // Direct port access
 import kernel.logger : log_message; // For debug logging
 import kernel.types : VGAColor;
+import kernel.serial : SERIAL_PORT; // allow access to COM1 base address
 
 // If needed for more direct keyboard controller interaction:
 // extern (C) {
@@ -24,134 +25,61 @@ __gshared bool shift_state = false; // track whether shift is pressed
 // Debug counter for keyboard interrupts
 __gshared uint keyboard_interrupt_count = 0;
 
+__gshared bool suppress_ps2_duplicate = false;
+__gshared char last_serial_char;
+__gshared bool serial_input_mode = false; // prefer serial once we detect it
+
 char keyboard_getchar()
 {
     import kernel.arch_interface.ports : inb, outb;
-    uint timeout_counter = 0;
-    const uint MAX_TIMEOUT = 100000; // Reduced timeout for faster debugging
-    
-    // First, let's test if the keyboard controller is even responding
-    log_message("DEBUG: Testing keyboard controller directly...\n");
-    
-    // Check keyboard controller status
-    ubyte status = inb(0x64);
-    log_message("DEBUG: Keyboard controller status: ");
-    
-    // Simple output - show raw value as single characters
-    if (status == 0) {
-        terminal_writestring_color("0", VGAColor.CYAN, VGAColor.BLACK);
-    } else {
-        // Show some bits of status for debugging
-        terminal_writestring_color("NON_ZERO(", VGAColor.CYAN, VGAColor.BLACK);
-        if (status & 0x01) terminal_writestring_color("DATA_READY,", VGAColor.GREEN, VGAColor.BLACK);
-        if (status & 0x02) terminal_writestring_color("INPUT_FULL,", VGAColor.RED, VGAColor.BLACK);
-        if (status & 0x04) terminal_writestring_color("SYS_FLAG,", VGAColor.YELLOW, VGAColor.BLACK);
-        if (status & 0x08) terminal_writestring_color("CMD_DATA,", VGAColor.MAGENTA, VGAColor.BLACK);
-        terminal_writestring_color(")", VGAColor.CYAN, VGAColor.BLACK);
-    }
-    terminal_writestring("\n");
-    
-    // Try to enable keyboard scanning explicitly
-    log_message("DEBUG: Sending enable commands to keyboard controller...\n");
-    outb(0x64, 0xAE); // Enable keyboard interface
-    outb(0x60, 0xF4); // Enable keyboard scanning
-    
-    // Check status again
-    status = inb(0x64);
-    log_message("DEBUG: Keyboard controller status after enable: ");
-    if (status == 0) {
-        terminal_writestring_color("0", VGAColor.CYAN, VGAColor.BLACK);
-    } else {
-        terminal_writestring_color("NON_ZERO(", VGAColor.CYAN, VGAColor.BLACK);
-        if (status & 0x01) terminal_writestring_color("DATA_READY,", VGAColor.GREEN, VGAColor.BLACK);
-        if (status & 0x02) terminal_writestring_color("INPUT_FULL,", VGAColor.RED, VGAColor.BLACK);
-        if (status & 0x04) terminal_writestring_color("SYS_FLAG,", VGAColor.YELLOW, VGAColor.BLACK);
-        if (status & 0x08) terminal_writestring_color("CMD_DATA,", VGAColor.MAGENTA, VGAColor.BLACK);
-        terminal_writestring_color(")", VGAColor.CYAN, VGAColor.BLACK);
-    }
-    terminal_writestring("\n");
-    
-    // Check if there's any data available (bit 0 set)
-    if (status & 0x01) {
-        ubyte scancode = inb(0x60);
-        log_message("DEBUG: Found pending scancode!\n");
-        char c = scancode_to_char(scancode, shift_state);
-        if (c != 0) {
-            terminal_writestring_color("DEBUG: Converted to character, returning it\n", VGAColor.GREEN, VGAColor.BLACK);
-            return c;
+    // Always poll for input to avoid freezing when interrupts are not
+    // delivered (e.g., when running under `qemu -serial stdio` where PS/2
+    // IRQ1 might be disabled and serial IRQs are not enabled). We still give
+    // priority to any characters already queued by the interrupt handler.
+    while (true) {
+        // First consume any key that the IRQ handler might have queued.
+        if (input_head != input_tail) {
+            char queued = input_buffer[input_tail];
+            input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
+            return queued;
         }
-    } else {
-        log_message("DEBUG: No data available in keyboard buffer\n");
-    }
-    
-    // Test interrupt count
-    log_message("DEBUG: Keyboard interrupt count so far: ");
-    if (keyboard_interrupt_count == 0) {
-        terminal_writestring_color("ZERO", VGAColor.YELLOW, VGAColor.BLACK);
-    } else {
-        terminal_writestring_color("NON_ZERO", VGAColor.GREEN, VGAColor.BLACK);
-    }
-    terminal_writestring("\n");
-    
-    log_message("DEBUG: Waiting for keyboard input...\n");
-    
-    while (input_head == input_tail) {
-        timeout_counter++;
-        if (timeout_counter >= MAX_TIMEOUT) {
-            // Debug: Print interrupt count and timeout
-            terminal_writestring_color("TIMEOUT: No keyboard input received after 100k iterations\n", VGAColor.RED, VGAColor.BLACK);
-            terminal_writestring_color("Keyboard interrupt count: ", VGAColor.RED, VGAColor.BLACK);
-            if (keyboard_interrupt_count == 0) {
-                terminal_writestring_color("ZERO\n", VGAColor.YELLOW, VGAColor.BLACK);
-            } else {
-                terminal_writestring_color("NON_ZERO\n", VGAColor.GREEN, VGAColor.BLACK);
-            }
-            terminal_writestring_color("Trying polling mode as fallback...\n", VGAColor.RED, VGAColor.BLACK);
-            
-            // Try polling mode as fallback
-            uint poll_count = 0;
-            while (poll_count < 10000) {
-                status = inb(0x64);
-                if (status & 0x01) {
-                    ubyte scancode = inb(0x60);
-                    terminal_writestring_color("Got scancode via polling: ", VGAColor.GREEN, VGAColor.BLACK);
-                    // Show scancode as individual bits for debugging
-                    for (int i = 7; i >= 0; i--) {
-                        if (scancode & (1 << i)) {
-                            terminal_writestring_color("1", VGAColor.GREEN, VGAColor.BLACK);
-                        } else {
-                            terminal_writestring_color("0", VGAColor.CYAN, VGAColor.BLACK);
-                        }
-                    }
-                    terminal_writestring("\n");
-                    
-                    char c = scancode_to_char(scancode, shift_state);
-                    if (c != 0) {
-                        terminal_writestring_color("Converted to: ", VGAColor.GREEN, VGAColor.BLACK);
-                        terminal_putchar(c);
-                        terminal_writestring("\n");
-                        return c;
-                    }
-                }
-                poll_count++;
-                // Short delay
-                for (int i = 0; i < 100; i++) {
-                    asm { "pause"; }
-                }
-            }
-            
-            terminal_writestring_color("Polling also failed - no keyboard response detected\n", VGAColor.RED, VGAColor.BLACK);
-            return ' '; // Return space as fallback to prevent infinite hang
-        }
-        
-        // Simply wait for an interrupt to fill the buffer
-        // The keyboard interrupt handler will populate input_buffer
-        asm { "hlt"; }
-    }
-    char c = input_buffer[input_tail];
-    input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
 
-    return c;
+        // --- Check serial port first so headless/stdio input works ---
+        ubyte lsr = inb(SERIAL_PORT + 5); // Line Status Register
+        if (lsr & 0x01) { // Data Ready
+            char s = cast(char) inb(SERIAL_PORT);
+            if (s == '\r') s = '\n'; // Normalize CR to LF
+
+            serial_input_mode = true; // from now on rely on serial only
+
+            // Drop any queued chars (clear PS/2 buffer)
+            input_head = input_tail; // flush existing buffer
+
+            return s;
+        }
+
+        // Poll PS/2 keyboard controller
+        if(serial_input_mode) {
+            // Skip PS/2 polling once serial mode engaged
+        } else {
+            ubyte status = inb(0x64);
+            if (status & 0x01) { // Data available
+                ubyte scancode = inb(0x60);
+                char c = scancode_to_char(scancode, shift_state);
+                if (c != 0) {
+                    return c;
+                }
+                // Handle shift keys in polling mode too
+                if (scancode == 0x2A || scancode == 0x36) {
+                    shift_state = true;
+                } else if (scancode == 0xAA || scancode == 0xB6) {
+                    shift_state = false;
+                }
+            }
+        }
+        // Small delay to prevent overwhelming the I/O ports
+        for (int i = 0; i < 1000; i++) asm { "pause"; }
+    }
 }
 
 // Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.
@@ -242,6 +170,8 @@ void initialize_keyboard() {
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
 extern (C) void keyboard_interrupt_handler(ubyte scancode) {
+    if(serial_input_mode) return; // ignore PS/2 once serial mode active
+
     keyboard_interrupt_count++; // Debug: track interrupt count
     
     if (scancode == 0x2A || scancode == 0x36) {
@@ -250,6 +180,12 @@ extern (C) void keyboard_interrupt_handler(ubyte scancode) {
         shift_state = false;
     } else if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode, shift_state);
+        // If we just received the same char from serial, suppress this duplicate
+        if (suppress_ps2_duplicate && c == last_serial_char) {
+            suppress_ps2_duplicate = false;
+            return; // discard duplicate
+        }
+        suppress_ps2_duplicate = false; // reset otherwise
         if (c != 0) {
             input_buffer[input_head] = c;
             input_head = (input_head + 1) % INPUT_BUF_SIZE;

@@ -6,11 +6,80 @@ set -e
 
 BUILD_DIR="build"
 TARGET_DIR="$BUILD_DIR/bin"
+SH_DIR="third_party/sh"
 
 echo "Building kernel-compatible shell for anonymOS..."
 
 # Create build directory
 mkdir -p "$TARGET_DIR"
+
+# Check if the comprehensive shell source exists
+if [ -d "$SH_DIR" ]; then
+    echo "Found comprehensive shell source, attempting to build..."
+    
+    # Try building the comprehensive shell using its betterC build script
+    if [ -f "$SH_DIR/build_betterc.sh" ]; then
+        echo "Using betterC build script for kernel compatibility..."
+        cd "$SH_DIR"
+        if bash build_betterc.sh; then
+            echo "Comprehensive shell compiled successfully!"
+            cd - > /dev/null
+            cp "$SH_DIR/interpreter" "$TARGET_DIR/sh"
+            
+            # Create installation script for runtime use
+            cat > "$TARGET_DIR/install_comprehensive_shell.sh" << 'INSTALL_EOF'
+#!/bin/sh
+# Runtime installer for comprehensive shell
+echo "Installing comprehensive shell from /third_party/sh..."
+cd /third_party/sh
+if [ -x "build_betterc.sh" ]; then
+    bash build_betterc.sh
+    cp interpreter /bin/sh_comprehensive
+    echo "Comprehensive shell installed as /bin/sh_comprehensive"
+elif [ -x "interpreter" ]; then
+    cp interpreter /bin/sh_comprehensive
+    echo "Comprehensive shell installed as /bin/sh_comprehensive"
+else
+    echo "Comprehensive shell source available but not compiled"
+    echo "D compiler needed to build: /bin/dmd"
+fi
+INSTALL_EOF
+            chmod +x "$TARGET_DIR/install_comprehensive_shell.sh"
+            
+            echo "Comprehensive shell integration complete!"
+            echo "- Shell binary: $TARGET_DIR/sh"
+            echo "- Runtime installer: $TARGET_DIR/install_comprehensive_shell.sh"
+            exit 0
+        fi
+        cd - > /dev/null
+    fi
+    
+    # Try manual compilation with proper flags
+    echo "Attempting manual compilation with ldc2..."
+    if command -v ldc2 >/dev/null 2>&1; then
+        cd "$SH_DIR"
+        # Use the modules that are betterC compatible
+        modules=""
+        for f in src/*.d; do
+            # Skip modules that require full D runtime
+            if ! grep -q "Exception\|import std\|try\|catch\|throw" "$f" 2>/dev/null; then
+                modules+="$f "
+            fi
+        done
+        
+        # Always include interpreter even if it has runtime dependencies
+        modules+="src/interpreter.d"
+        
+        echo "Compiling with betterC mode..."
+        if ldc2 -betterC --relocation-model=static -I=. -Isrc -mtriple=x86_64-unknown-elf $modules -of=interpreter; then
+            echo "Comprehensive shell compiled successfully with ldc2!"
+            cd - > /dev/null
+            cp "$SH_DIR/interpreter" "$TARGET_DIR/sh"
+            exit 0
+        fi
+        cd - > /dev/null
+    fi
+fi
 
 # Create a minimal kernel-compatible shell that can load the comprehensive shell
 echo "Creating kernel-compatible shell interface..."
@@ -39,10 +108,10 @@ extern(C) void shell_main() {
 }
 EOF
 
-# Compile with basic flags for kernel compatibility
+# Compile with proper flags for kernel compatibility
 if command -v ldc2 >/dev/null 2>&1; then
     echo "Compiling kernel shell with ldc2..."
-    if ldc2 -betterC -fno-pic -mtriple=x86_64-unknown-elf kernel_shell.d -of="$TARGET_DIR/sh"; then
+    if ldc2 -betterC --relocation-model=static -mtriple=x86_64-unknown-elf kernel_shell.d -of="$TARGET_DIR/sh"; then
         echo "Kernel shell compiled successfully!"
         rm kernel_shell.d
         

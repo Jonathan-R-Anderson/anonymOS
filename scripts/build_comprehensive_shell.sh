@@ -22,7 +22,7 @@ POSIX_SOURCES=$(find "$POSIX_DIR/src" -name '*.d' | tr '\n' ' ' || true)
 
 ldc2 -O2 -release --d-version=Posix --d-version=GNU \
      -mtriple=x86_64-unknown-elf -mcpu=x86-64 \
-     -I"$SRC_DIR" -I"$SRC_DIR/src" -I"$POSIX_DIR/src" \
+     -I"userspace/anonlib" -I"$SRC_DIR" -I"$SRC_DIR/src" -I"$POSIX_DIR/src" \
      $SH_SOURCES $POSIX_SOURCES "$STUB" \
      -L-L"$RUNTIME_LIBDIR" -L-lphobos2-ldc -L-ldruntime-ldc \
      -of="$TARGET"

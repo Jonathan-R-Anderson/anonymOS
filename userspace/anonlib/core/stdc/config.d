@@ -1,0 +1,16 @@
+module core.stdc.config;
+
+// Minimal freestanding replacements for the basic C types that D programs
+// expect when compiling with druntime.  We only define the identifiers that
+// the –sh interpreter (and its dependencies) actually reference.
+// Nothing here provides real ABI-level compatibility – the goal is only to
+// satisfy the compiler during a freestanding cross-compile.
+
+alias time_t   = long;    // seconds since Unix epoch
+alias wchar_t  = ushort;  // 16-bit wide char – matches Windows & LLVM default
+alias FILE     = void*;   // opaque FILE* handle, never dereferenced
+
+// These appear in a handful of the core.stdc.* wrappers, keep them simple.
+alias c_long        = long;
+alias c_ulong       = ulong;
+alias c_long_double = real; 

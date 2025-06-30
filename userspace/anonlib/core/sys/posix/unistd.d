@@ -31,8 +31,12 @@ int rmdir(const char* path) { return -1; }
 int getegid() { return 0; }
 int chown(const char* path, int uid, int gid) { return -1; }
 int fchown(int fd, int uid, int gid) { return -1; }
-ssize_t sleep(unsigned int seconds) { return 0; }
+
+import core.sys.posix.sys.types : useconds_t;
+
+uint sleep(uint seconds) { return 0; }
 int usleep(useconds_t u) { return 0; }
+
 int access(const char* path, int mode) { return -1; }
 int isatty(int fd) { return 0; }
 void _exit(int status) {}

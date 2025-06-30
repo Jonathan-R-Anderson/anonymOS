@@ -101,6 +101,4 @@ extern(C) int puts(const char* s) { return 0; }
 extern(C) int putchar(int c) { return c; }
 extern(C) int fputs(const char* s, FILE* f) { return 0; }
 extern(C) int fputc(int c, FILE* f) { return c; }
-extern(C) size_t fwrite(const void* p, size_t sz, size_t n, FILE* f) { return n; }
-extern(C) size_t fread(void* p, size_t sz, size_t n, FILE* f) { return 0; }
 extern(C) int fflush(FILE* f) { return 0; } 

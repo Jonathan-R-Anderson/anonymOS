@@ -70,24 +70,14 @@ extern(C) int load_elf(const(char)* path, void** entry)
             continue;
         if(segCount >= segs.length)
             return -1;
-        auto mem = malloc(cast(size_t)ph.p_memsz);
-        if(mem is null)
-            return -1;
-        memcpy(mem, data + ph.p_offset, cast(size_t)ph.p_filesz);
+        void* dest = cast(void*)ph.p_vaddr;
+        memcpy(dest, data + ph.p_offset, cast(size_t)ph.p_filesz);
         if(ph.p_memsz > ph.p_filesz)
-            memset(cast(void*)(cast(ubyte*)mem + ph.p_filesz), 0, cast(size_t)(ph.p_memsz - ph.p_filesz));
-        segs[segCount++] = LoadedSeg(ph.p_vaddr, mem, ph.p_memsz);
+            memset(cast(void*)(cast(ubyte*)dest + ph.p_filesz), 0, cast(size_t)(ph.p_memsz - ph.p_filesz));
+        segs[segCount++] = LoadedSeg(ph.p_vaddr, dest, ph.p_memsz);
     }
 
-    foreach(j; 0 .. segCount)
-    {
-        auto s = segs[j];
-        if(hdr.e_entry >= s.vaddr && hdr.e_entry < s.vaddr + s.memsz)
-        {
-            *entry = cast(void*)(cast(ubyte*)s.mem + (hdr.e_entry - s.vaddr));
-            return 0;
-        }
-    }
-    return -1;
+    *entry = cast(void*)hdr.e_entry;
+    return 0;
 }
 

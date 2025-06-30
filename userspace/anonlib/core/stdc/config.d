@@ -52,4 +52,6 @@ alias  int_fast64_t   =  int64_t;
 alias uint_fast64_t   = uint64_t;
 
 alias wint_t  = wchar_t;
-alias fpos_t  = long; 
+alias fpos_t  = long;
+
+enum PPCUseIEEE128 = 0; 

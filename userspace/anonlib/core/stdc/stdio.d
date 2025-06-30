@@ -21,4 +21,6 @@ int snprintf(char*, size_t, const char*, ...);
 size_t fread(void*, size_t, size_t, FILE*);
 size_t fwrite(const void*, size_t, size_t, FILE*);
 
-int fflush(FILE*); 
+int fflush(FILE*);
+int fopen(const char*, const char*);
+int fclose(FILE*); 

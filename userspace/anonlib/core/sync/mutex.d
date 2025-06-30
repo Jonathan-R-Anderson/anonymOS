@@ -1,6 +1,6 @@
 module core.sync.mutex;
 
-class Mutex{
+struct Mutex{
     void lock(){}
     void unlock(){}
 } 

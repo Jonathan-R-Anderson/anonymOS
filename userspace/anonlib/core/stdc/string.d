@@ -50,4 +50,15 @@ extern(C) int strcmp(const char* a, const char* b)
         ++i;
     }
     return a[i] - b[i];
+}
+
+// Implementation of memset – required by druntime
+pure nothrow @nogc @trusted pragma(inline, true)
+extern(C) void* memset(void* dst, int c, size_t n)
+{
+    auto d = cast(ubyte*)dst;
+    auto val = cast(ubyte)c;
+    foreach(i; 0 .. n)
+        d[i] = val;
+    return dst;
 } 

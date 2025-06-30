@@ -6,4 +6,6 @@ enum ClockType { Monotonic, Realtime }
 
 struct Duration { long nsecs; }
 
-pure nothrow @nogc Duration durFromNsecs(long n) { return Duration(n); } 
+pure nothrow @nogc Duration durFromNsecs(long n) { return Duration(n); }
+
+pure nothrow @nogc Duration dur(long n) { return Duration(n); } 

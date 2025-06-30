@@ -33,9 +33,9 @@ ASFLAGS = --64 # Tell GNU AS to assemble for 64-bit mode. elf64 is usually infer
 	# Update DFLAGS for the new directory structure and D module conventions
 	# -I. allows `import kernel.core.module;`
 	# -Ikernel/include allows `import kernel.types;` for `kernel/include/kernel/types.d`
-MICROKERNEL_DIR := modules/microkernel
-HYPERVISOR_DIR  := modules/hypervisor
-OBJECT_TREE_DIR := modules/object-tree
+MICROKERNEL_DIR := kernel
+HYPERVISOR_DIR  := hypervisor
+OBJECT_TREE_DIR := object-tree
 
    DFLAGS := $(DFLAGS_BASE) $(DFLAGS_TARGET_64) -I. \
            -I$(MICROKERNEL_DIR) \
@@ -224,9 +224,9 @@ fetch_posix:
 
 fetch_modules:
 	@echo "Modules already present in modules/ directory"
-	@test -d modules/microkernel || { echo "Error: modules/microkernel not found"; exit 1; }
-	@test -d modules/hypervisor || { echo "Error: modules/hypervisor not found"; exit 1; }
-	@test -d modules/object-tree || { echo "Error: modules/object-tree not found"; exit 1; }
+	@test -d kernel || { echo "Error: kernel not found"; exit 1; }
+	@test -d hypervisor || { echo "Error: hypervisor not found"; exit 1; }
+	@test -d object-tree || { echo "Error: object-tree not found"; exit 1; }
 
 fetch_dmd:
 	       ./scripts/fetch_dmd.sh

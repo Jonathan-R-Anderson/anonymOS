@@ -23,9 +23,9 @@ fetch_repo() {
     fi
 }
 
-fetch_repo modules/microkernel https://github.com/Jonathan-R-Anderson/anonymos-microkernel.git
-fetch_repo modules/user-services https://github.com/Jonathan-R-Anderson/anonymos-user-services.git
-fetch_repo modules/hypervisor https://github.com/Jonathan-R-Anderson/anonymos-hypervisor.git
-fetch_repo modules/containers https://github.com/Jonathan-R-Anderson/anonymos-containers.git
-fetch_repo modules/object-tree https://github.com/Jonathan-R-Anderson/anonymos-object-tree.git
-fetch_repo modules/distributed-fs https://github.com/Jonathan-R-Anderson/distributedFS.git
+fetch_repo kernel https://github.com/Jonathan-R-Anderson/anonymos-microkernel.git
+fetch_repo user-services https://github.com/Jonathan-R-Anderson/anonymos-user-services.git
+fetch_repo hypervisor https://github.com/Jonathan-R-Anderson/anonymos-hypervisor.git
+fetch_repo containers https://github.com/Jonathan-R-Anderson/anonymos-containers.git
+fetch_repo object-tree https://github.com/Jonathan-R-Anderson/anonymos-object-tree.git
+fetch_repo distributed-fs https://github.com/Jonathan-R-Anderson/distributedFS.git

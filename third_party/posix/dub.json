@@ -1,0 +1,9 @@
+{
+    "name": "anonymos-posix",
+    "description": "POSIX syscall wrappers for internetcomputer",
+    "authors": ["Jonathan Anderson"],
+    "license": "MIT",
+    "targetType": "library",
+    "sourcePaths": ["src"],
+    "dflags": ["-betterC", "-mtriple=x86_64-unknown-elf"]
+}

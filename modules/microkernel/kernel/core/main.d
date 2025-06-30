@@ -9,7 +9,7 @@ import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
 import kernel.shell : sh_shell, build_d_compiler, build_shell, init_setup; // -sh shell and build helpers
-import kernel.lib.stdc.stdlib : system;
+import kernel.process_manager : process_create, scheduler_run;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
 import kernel.hardware.network : net_init;
@@ -202,7 +202,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
 
     // Start the builtin -sh shell for direct testing.
     log_message("Starting -sh shell...\n");
-    system("sh");
+    process_create(&sh_shell);
+    scheduler_run();
     clear_screen();
 
     log_register_state("Shell exited");

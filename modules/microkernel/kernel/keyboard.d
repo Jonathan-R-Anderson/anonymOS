@@ -1,10 +1,12 @@
 module kernel.keyboard;
 
 // Use kernel.terminal for output
-import kernel.terminal : terminal_writestring, terminal_putchar;
+import kernel.terminal : terminal_writestring, terminal_putchar, terminal_writestring_color;
 import kernel.lib.stdc.stdint; // Use local stdint stub
 import kernel.arch_interface.ports : inb, outb; // Direct port access
 import kernel.logger : log_message; // For debug logging
+import kernel.types : VGAColor;
+import kernel.serial : SERIAL_PORT; // allow access to COM1 base address
 
 // If needed for more direct keyboard controller interaction:
 // extern (C) {
@@ -20,32 +22,64 @@ __gshared size_t input_head = 0;
 __gshared size_t input_tail = 0;
 __gshared bool shift_state = false; // track whether shift is pressed
 
+// Debug counter for keyboard interrupts
+__gshared uint keyboard_interrupt_count = 0;
+
+__gshared bool suppress_ps2_duplicate = false;
+__gshared char last_serial_char;
+__gshared bool serial_input_mode = false; // prefer serial once we detect it
+
 char keyboard_getchar()
 {
-    while (input_head == input_tail) {
-        // Poll status port to see if data is available
-        ubyte status = inb(0x64);
-        if (status & 1) { // Output buffer full
-            ubyte sc = inb(0x60);
-            // Update shift state
-            if (sc == 0x2A || sc == 0x36) {
-                shift_state = true; // LSHIFT or RSHIFT press
-            } else if (sc == 0xAA || sc == 0xB6) {
-                shift_state = false; // release
-            } else if ((sc & 0x80) == 0) { // Key press
-                char ch = scancode_to_char(sc, shift_state);
-                if (ch != 0) {
-                    input_buffer[input_head] = ch;
-                    input_head = (input_head + 1) % INPUT_BUF_SIZE;
+    import kernel.arch_interface.ports : inb, outb;
+    // Always poll for input to avoid freezing when interrupts are not
+    // delivered (e.g., when running under `qemu -serial stdio` where PS/2
+    // IRQ1 might be disabled and serial IRQs are not enabled). We still give
+    // priority to any characters already queued by the interrupt handler.
+    while (true) {
+        // First consume any key that the IRQ handler might have queued.
+        if (input_head != input_tail) {
+            char queued = input_buffer[input_tail];
+            input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
+            return queued;
+        }
+
+        // --- Check serial port first so headless/stdio input works ---
+        ubyte lsr = inb(SERIAL_PORT + 5); // Line Status Register
+        if (lsr & 0x01) { // Data Ready
+            char s = cast(char) inb(SERIAL_PORT);
+            if (s == '\r') s = '\n'; // Normalize CR to LF
+
+            serial_input_mode = true; // from now on rely on serial only
+
+            // Drop any queued chars (clear PS/2 buffer)
+            input_head = input_tail; // flush existing buffer
+
+            return s;
+        }
+
+        // Poll PS/2 keyboard controller
+        if(serial_input_mode) {
+            // Skip PS/2 polling once serial mode engaged
+        } else {
+            ubyte status = inb(0x64);
+            if (status & 0x01) { // Data available
+                ubyte scancode = inb(0x60);
+                char c = scancode_to_char(scancode, shift_state);
+                if (c != 0) {
+                    return c;
+                }
+                // Handle shift keys in polling mode too
+                if (scancode == 0x2A || scancode == 0x36) {
+                    shift_state = true;
+                } else if (scancode == 0xAA || scancode == 0xB6) {
+                    shift_state = false;
                 }
             }
         }
-        asm { "hlt"; }
+        // Small delay to prevent overwhelming the I/O ports
+        for (int i = 0; i < 1000; i++) asm { "pause"; }
     }
-    char c = input_buffer[input_tail];
-    input_tail = (input_tail + 1) % INPUT_BUF_SIZE;
-
-    return c;
 }
 
 // Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.
@@ -136,23 +170,27 @@ void initialize_keyboard() {
 
 // This is called by the assembly IRQ1 handler (keyboard_handler_asm.s)
 extern (C) void keyboard_interrupt_handler(ubyte scancode) {
-    // Log to confirm IRQ1 firing
-    // Removed debug interrupt notification
+    if(serial_input_mode) return; // ignore PS/2 once serial mode active
 
+    keyboard_interrupt_count++; // Debug: track interrupt count
+    
     if (scancode == 0x2A || scancode == 0x36) {
         shift_state = true;
     } else if (scancode == 0xAA || scancode == 0xB6) {
         shift_state = false;
     } else if (!(scancode & 0x80)) {
         char c = scancode_to_char(scancode, shift_state);
+        // If we just received the same char from serial, suppress this duplicate
+        if (suppress_ps2_duplicate && c == last_serial_char) {
+            suppress_ps2_duplicate = false;
+            return; // discard duplicate
+        }
+        suppress_ps2_duplicate = false; // reset otherwise
         if (c != 0) {
             input_buffer[input_head] = c;
             input_head = (input_head + 1) % INPUT_BUF_SIZE;
-
-            // Disable echo here to avoid double characters
-            // terminal_putchar(c);
+            // Do not echo here - let the shell handle echoing
         }
     }
-
 }
 

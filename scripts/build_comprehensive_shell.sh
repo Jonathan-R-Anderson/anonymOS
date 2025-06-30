@@ -20,7 +20,7 @@ echo ">>> Compiling full /bin/sh interpreter (with druntime) …"
 SH_SOURCES=$(find "$SRC_DIR/src" -name '*.d' | tr '\n' ' ')
 POSIX_SOURCES=$(find "$POSIX_DIR/src" -name '*.d' | tr '\n' ' ' || true)
 
-ldc2 -O2 -release \
+ldc2 -O2 -release --d-version=Posix --d-version=GNU \
      -mtriple=x86_64-unknown-elf -mcpu=x86-64 \
      -I"$SRC_DIR" -I"$SRC_DIR/src" -I"$POSIX_DIR/src" \
      $SH_SOURCES $POSIX_SOURCES "$STUB" \

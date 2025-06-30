@@ -54,4 +54,6 @@ alias uint_fast64_t   = uint64_t;
 alias wint_t  = wchar_t;
 alias fpos_t  = long;
 
+alias ptrdiff_t = long;
+
 enum PPCUseIEEE128 = 0; 

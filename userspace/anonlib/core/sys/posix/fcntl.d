@@ -11,4 +11,6 @@ enum O_APPEND = 0x400;
 
 int open(const char* path, int flags, int mode=0) { return -1; }
 
-int fcntl(int fd, int cmd, ...) { return -1; } 
+int fcntl(int fd, int cmd, ...) { return -1; }
+
+int creat(const char* path, int mode) { return -1; } 

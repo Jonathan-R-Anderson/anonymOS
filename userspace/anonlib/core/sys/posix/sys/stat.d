@@ -30,9 +30,15 @@ enum S_IROTH = 0x4;
 enum S_IWOTH = 0x2;
 enum S_IXOTH = 0x1;
 
+alias stat_t = stat;
+
 pragma(mangle, "stat")  int _stat(const char* path, stat* buf) { return -1; }
 pragma(mangle, "lstat") int _lstat(const char* path, stat* buf) { return -1; }
 pragma(mangle, "fstat") int _fstat(int fd, stat* buf) { return -1; }
 
 int mkdir(const char* path, mode_t mode) { return 0; }
-int rmdir(const char* path) { return 0; } 
+int rmdir(const char* path) { return 0; }
+
+int chmod(const char* path, mode_t mode){ return 0; }
+int fchmod(int fd, mode_t mode){ return 0; }
+mode_t umask(mode_t m){ return 0; } 

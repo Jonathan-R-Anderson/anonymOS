@@ -129,9 +129,9 @@ run-debug: $(ISO_FILE)
 	$(QEMU) -cdrom $< $(QEMU_FLAGS) -S -s
 
 run-log-int: $(ISO_FILE)
-	$(QEMU) -cdrom $< $(QEMU_FLAGS) -m 512M -display curses -vga std \
-	   -d int,guest_errors,cpu_reset -D qemu.log -debugcon file:qemu.log \
-	   -serial file:qemu.log -M smm=off -no-reboot
+	$(QEMU) -cdrom $< $(QEMU_FLAGS) -m 512M -display none \
+	   -d int,guest_errors,cpu_reset -D qemu.log \
+	   -serial pty -monitor none -M smm=off -no-reboot
 
 # ─────────────── Shell binary ─────────────────
 SH_BIN := $(BUILD_DIR)/bin/sh

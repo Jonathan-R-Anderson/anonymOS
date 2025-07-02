@@ -7,28 +7,23 @@
 # Usage:  ./scripts/run_anonymos.sh [extra-qemu-args]
 # The script must be executed from the repository root
 # (it automatically resolves paths).
-set -euo pipefail
+set -e
 
-ISO_PATH="$(dirname "$0")/../build/anonymOS.iso"
+echo "Launching anonymOS in QEMU..."
+echo "The shell will appear in this terminal once booted."
+echo "Use Ctrl-C to exit."
+echo
 
-if [[ ! -f "$ISO_PATH" ]]; then
-  echo "[run_anonymos] ISO not found at $ISO_PATH" >&2
-  echo "Build the project first (make iso) or adjust the path." >&2
-  exit 1
-fi
+cd "$(dirname "$0")/.."
 
-# Recommended QEMU arguments
-ARGS=(
-  -cdrom "$ISO_PATH"      # boot our ISO image
-  -m 512                  # 512 MB RAM is plenty
-  -nographic              # redirect VGA and serial to this terminal
-  -monitor none           # prevent the QEMU monitor from stealing stdio
-  -serial stdio           # connect COM1 to stdin/stdout
-  -no-reboot              # stop instead of rebooting when the guest exits
-)
+# Add a slight delay before starting to ensure clean output
+sleep 1
 
-# Forward any extra parameters the user provided
-ARGS+=("$@")
-
-echo "Launching anonymOS…  (Ctrl-a c for QEMU console, Ctrl-a x to quit)" >&2
-exec qemu-system-x86_64 "${ARGS[@]}" 
+exec qemu-system-x86_64 \
+  -cdrom build/anonymOS.iso \
+  -m 512 \
+  -serial stdio \
+  -display none \
+  -monitor none \
+  -no-reboot \
+  -M smm=off

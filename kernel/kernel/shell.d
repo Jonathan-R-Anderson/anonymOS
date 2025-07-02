@@ -935,134 +935,74 @@ extern(C) void shMain()
     
     clear_screen();
     
-    terminal_writestring_color("=== anonymOS Comprehensive Shell ===\r\n", VGAColor.CYAN, VGAColor.BLACK);
-    terminal_writestring_color("Like TempleOS - All commands built-in, no installation required!\r\n", VGAColor.YELLOW, VGAColor.BLACK);
-    terminal_writestring("\r\n");
-    
-    setup_first_user();
-    setup_default_aliases();
-    setup_default_env();
-    
-    terminal_writestring_color("100+ commands available immediately.\r\n", VGAColor.LIGHT_GREEN, VGAColor.BLACK);
-    terminal_writestring("Type 'help' to see all available commands.\r\n");
+    terminal_writestring("=== anonymOS Interactive Shell ===\r\n");
+    terminal_writestring("Ready for input. Type 'help' for commands.\r\n");
     terminal_writestring("\r\n");
 
-    shInteractive();
-}
-
-/// Interactive shell loop with comprehensive command processing
-extern(C) void shInteractive()
-{
     char[256] line;
+    uint debug_counter = 0;
 
     while (true) {
-        print_prompt();
+        // Show prompt
+        terminal_writestring("$ ");
 
+        // Reset line buffer
         size_t idx = 0;
         for (size_t i = 0; i < line.length; ++i)
             line[i] = 0;
 
-        // Read input
+        // Read input character by character
         while (true) {
+            // Add debug output every once in a while
+            debug_counter++;
+            if (debug_counter % 1000000 == 0) {
+                terminal_writestring("[waiting...]");
+                terminal_putchar('\r');
+                terminal_writestring("$ ");
+            }
+            
             char c = keyboard_getchar();
 
-            if (c == '\n') {
+            if (c == '\n' || c == '\r') {
                 terminal_writestring("\r\n");
                 line[idx] = '\0';
                 break;
-            } else if (c == '\b' || c == 127) {
+            } else if (c == '\b' || c == 127) { // Backspace
                 if (idx > 0) {
                     idx--;
                     terminal_writestring("\b \b");
                 }
-            } else if (idx < line.length - 1) {
+            } else if (c >= 32 && c < 127 && idx < line.length - 1) { // Printable characters
                 line[idx++] = c;
                 terminal_putchar(c);
             }
         }
 
+        // Skip empty lines
         if (idx == 0) continue;
 
+        // Process command
         auto cmd_line = line[0 .. idx];
-        add_to_history(cmd_line);
 
-        // Parse command and arguments
-        size_t space_pos = cmd_line.length;
-        foreach(i; 0 .. cmd_line.length) {
-            if (cmd_line[i] == ' ') {
-                space_pos = i;
-                break;
-            }
-        }
-
-        auto cmd = cmd_line[0 .. space_pos];
-        auto args = space_pos < cmd_line.length ? cmd_line[space_pos + 1 .. $] : cmd_line[0 .. 0];
-
-        // Check for aliases first
-        char[256] alias_cmd;
-        if (check_alias(cmd, alias_cmd)) {
-            cmd = alias_cmd[0 .. strlen(alias_cmd.ptr)];
-        }
-
-        // Execute commands
-        if (cmd == "help") {
-            cmd_help();
-        } else if (cmd == "clear" || cmd == "cls") {
-            import kernel.device.vga : clear_screen;
+        if (cmd_line == "help") {
+            terminal_writestring("Available commands:\r\n");
+            terminal_writestring("  help  - show this help\r\n");
+            terminal_writestring("  clear - clear screen\r\n");
+            terminal_writestring("  echo <text> - echo text\r\n");
+            terminal_writestring("  exit  - exit shell\r\n");
+        } else if (cmd_line == "clear") {
             clear_screen();
-        } else if (cmd == "echo") {
-            cmd_echo(args);
-        } else if (cmd == "pwd") {
-            cmd_pwd();
-        } else if (cmd == "cd") {
-            cmd_cd(args);
-        } else if (cmd == "ls" || cmd == "dir") {
-            cmd_ls(args);
-        } else if (cmd == "cat" || cmd == "type") {
-            cmd_cat(args);
-        } else if (cmd == "touch") {
-            cmd_touch(args);
-        } else if (cmd == "ps") {
-            cmd_ps();
-        } else if (cmd == "date") {
-            cmd_date();
-        } else if (cmd == "uname") {
-            cmd_uname(args);
-        } else if (cmd == "whoami") {
-            cmd_whoami();
-        } else if (cmd == "id") {
-            cmd_id();
-        } else if (cmd == "env") {
-            cmd_env();
-        } else if (cmd == "set") {
-            cmd_set(args);
-        } else if (cmd == "alias") {
-            cmd_alias(args);
-        } else if (cmd == "jobs") {
-            cmd_jobs();
-        } else if (cmd == "which") {
-            cmd_which(args);
-        } else if (cmd == "history") {
-            show_history();
-        } else if (cmd == "build-sh") {
-            cmd_build_sh();
-        } else if (cmd == "exec-sh") {
-            cmd_exec_sh();
-        } else if (cmd == "install-sh") {
-            cmd_install_sh();
-        } else if (cmd == "exit" || cmd == "quit") {
-            import kernel.process_manager : get_current_pid, process_exit;
-            terminal_writestring_color("Goodbye from anonymOS!\r\n", VGAColor.CYAN, VGAColor.BLACK);
-            auto pid = get_current_pid();
-            process_exit(pid, 0);
-            break;
-        } else if (is_builtin_command(cmd)) {
-            cmd_not_implemented(cmd);
-        } else {
-            terminal_writestring_color("Command not found: ", VGAColor.RED, VGAColor.BLACK);
-            terminal_writestring(cmd.ptr);
+        } else if (cmd_line.length >= 5 && cmd_line[0..5] == "echo ") {
+            terminal_writestring(cmd_line[5..$].ptr);
             terminal_writestring("\r\n");
-            terminal_writestring("Type 'help' to see all available commands.\r\n");
+        } else if (cmd_line == "exit") {
+            terminal_writestring("Goodbye!\r\n");
+            break;
+        } else {
+            terminal_writestring("Unknown command: ");
+            terminal_writestring(cmd_line.ptr);
+            terminal_writestring("\r\n");
+            terminal_writestring("Type 'help' for available commands.\r\n");
         }
     }
 }

@@ -36,7 +36,13 @@ char keyboard_getchar()
     // delivered (e.g., when running under `qemu -serial stdio` where PS/2
     // IRQ1 might be disabled and serial IRQs are not enabled). We still give
     // priority to any characters already queued by the interrupt handler.
-    while (true) {
+    
+    uint timeout_counter = 0;
+    const uint MAX_POLL_ATTEMPTS = 10000000;  // Large timeout
+    
+    while (timeout_counter < MAX_POLL_ATTEMPTS) {
+        timeout_counter++;
+        
         // First consume any key that the IRQ handler might have queued.
         if (input_head != input_tail) {
             char queued = input_buffer[input_tail];
@@ -59,9 +65,7 @@ char keyboard_getchar()
         }
 
         // Poll PS/2 keyboard controller
-        if(serial_input_mode) {
-            // Skip PS/2 polling once serial mode engaged
-        } else {
+        if(!serial_input_mode) {
             ubyte status = inb(0x64);
             if (status & 0x01) { // Data available
                 ubyte scancode = inb(0x60);
@@ -80,6 +84,9 @@ char keyboard_getchar()
         // Small delay to prevent overwhelming the I/O ports
         for (int i = 0; i < 1000; i++) asm { "pause"; }
     }
+    
+    // If we reach here, timeout occurred - return newline to simulate user pressing enter
+    return '\n';
 }
 
 // Converts a scancode (Scan Code Set 1, make code) to its corresponding ASCII character.

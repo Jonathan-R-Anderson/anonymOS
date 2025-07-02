@@ -73,6 +73,10 @@ extern(C) void t_sanity() { run_sanity_checks(); thread_exit(); }
 // Kernel's main entry point
 // The 'multiboot_info_ptr' would be passed from your assembly _start routine
 extern (C) void kmain(void* multiboot_info_ptr) {
+    // Initialize serial port as the very first action.
+    // This ensures that logging is available immediately.
+    import kernel.serial : serial_init;
+    serial_init();
     ushort* pVGATest = cast(ushort*) VGA_ADDRESS;
     pVGATest[0] = vga_entry('K', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));
     pVGATest[1] = vga_entry('0', vga_entry_color(VGAColor.CYAN, VGAColor.BLACK));

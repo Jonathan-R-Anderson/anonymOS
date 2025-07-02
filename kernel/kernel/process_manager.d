@@ -95,6 +95,7 @@ extern(C) size_t process_create(EntryFunc entry)
 
 extern(C) void scheduler_run()
 {
+    auto caller_pid = current_pid;
     foreach(ref p; g_processes[0 .. g_process_count])
     {
         if(p.entry !is null && !p.started && !p.exited)
@@ -108,12 +109,13 @@ extern(C) void scheduler_run()
             log_hex(cast(ulong)p.entry);
             log_message(" ***\n");
             current_pid = p.pid;
-            
+
             p.entry();
-            
-            current_pid = size_t.max;
+
+            current_pid = caller_pid;
         }
     }
+    current_pid = caller_pid;
 }
 
 extern(C) void process_exit(size_t pid, int status)

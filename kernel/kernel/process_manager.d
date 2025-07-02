@@ -93,6 +93,21 @@ extern(C) size_t process_create(EntryFunc entry)
     return process_create_with_parent(entry, size_t.max);
 }
 
+/// Invoke `fn` with the stack allocated for the given process.
+/// Saves and restores the current stack pointer around the call.
+private extern(C) void call_on_process_stack(EntryFunc fn, ubyte* stack, size_t stackSize)
+{
+    ulong oldRsp;
+    // Save current stack pointer
+    asm { "mov %%rsp, %0" : "=r"(oldRsp); };
+    // Switch to the top of the provided stack
+    auto newRsp = cast(ulong)(stack + stackSize);
+    asm { "mov %0, %%rsp" : : "r"(newRsp); };
+    fn();
+    // Restore original stack pointer
+    asm { "mov %0, %%rsp" : : "r"(oldRsp); };
+}
+
 extern(C) void scheduler_run()
 {
     auto caller_pid = current_pid;
@@ -110,7 +125,7 @@ extern(C) void scheduler_run()
             log_message(" ***\n");
             current_pid = p.pid;
 
-            p.entry();
+            call_on_process_stack(p.entry, p.user_stack, p.stack_size);
 
             current_pid = caller_pid;
         }

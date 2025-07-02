@@ -1,0 +1,32 @@
+From 733f02d0bc7737cd967743990006069de1dfd728 Mon Sep 17 00:00:00 2001
+From: Dan Printzell <xwildn00bx@gmail.com>
+Date: Fri, 17 Jan 2020 01:50:08 +0100
+Subject: [PATCH 4/4] Added PowerNex notice to the version output
+
+Signed-off-by: Dan Printzell <xwildn00bx@gmail.com>
+---
+ src/dmd/globals.d | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/dmd/globals.d b/src/dmd/globals.d
+index 25d436f26..65130c1fb 100644
+--- a/src/dmd/globals.d
++++ b/src/dmd/globals.d
+@@ -274,12 +274,12 @@ extern (C++) struct Global
+     const(char)[] inifilename;
+ 
+     string copyright = "Copyright (C) 1999-2021 by The D Language Foundation, All Rights Reserved";
+-    string written = "written by Walter Bright";
++    string written = "written by Walter Bright\nPowerNex support by Dan Printzell";
+ 
+     Array!(const(char)*)* path;         // Array of char*'s which form the import lookup path
+     Array!(const(char)*)* filePath;     // Array of char*'s which form the file import lookup path
+ 
+-    private enum string _version = import("VERSION");
++    private enum string _version = import("VERSION") ~ "-PowerNex";
+     private enum uint _versionNumber = parseVersionNumber(_version);
+ 
+     const(char)[] vendor;    // Compiler backend name
+-- 
+2.32.0
+

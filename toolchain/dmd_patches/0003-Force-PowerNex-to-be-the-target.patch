@@ -1,0 +1,130 @@
+From e25571cccbeaa11027c80e277171532c9d92820e Mon Sep 17 00:00:00 2001
+From: Dan Printzell <xwildn00bx@gmail.com>
+Date: Fri, 17 Jan 2020 01:49:05 +0100
+Subject: [PATCH 3/4] Force PowerNex to be the target
+
+Signed-off-by: Dan Printzell <xwildn00bx@gmail.com>
+---
+ src/build.d                  | 8 ++++----
+ src/dmd/backend/backconfig.d | 4 ++--
+ src/dmd/cli.d                | 8 ++++----
+ src/dmd/dmsc.d               | 1 +
+ src/dmd/target.d             | 4 +++-
+ 5 files changed, 14 insertions(+), 11 deletions(-)
+
+diff --git a/src/build.d b/src/build.d
+index f6b1899b9..3b837a544 100755
+--- a/src/build.d
++++ b/src/build.d
+@@ -1430,7 +1430,7 @@ Returns: a string from `{windows, osx,linux,freebsd,openbsd,netbsd,dragonflybsd,
+ */
+ string detectOS()
+ {
+-    version(Windows)
++    /*version(Windows)
+         return "windows";
+     else version(OSX)
+         return "osx";
+@@ -1446,10 +1446,10 @@ string detectOS()
+         return "dragonflybsd";
+     else version(Solaris)
+         return "solaris";
+-    else version(PowerNex)
++    else version(PowerNex)*/
+         return "powernex";
+-    else
+-        static assert(0, "Unrecognized or unsupported OS.");
++    /*else
++        static assert(0, "Unrecognized or unsupported OS.");*/
+ }
+ 
+ /**
+diff --git a/src/dmd/backend/backconfig.d b/src/dmd/backend/backconfig.d
+index a3282444a..0ead417a8 100644
+--- a/src/dmd/backend/backconfig.d
++++ b/src/dmd/backend/backconfig.d
+@@ -123,7 +123,7 @@ if (config.exe & EX_windos)
+         config.wflags |= WFexe;         // EXE file only optimizations
+     config.flags4 |= CFG4underscore;
+ }
+-if (config.exe & (EX_LINUX | EX_LINUX64))
++if (config.exe & (EX_LINUX | EX_LINUX64 | EX_POWERNEX64))
+ {
+     config.fpxmmregs = true;
+     config.avx = avx;
+@@ -306,7 +306,7 @@ static if (0)
+     if (symdebug)
+     {
+         if (config.exe & (EX_LINUX | EX_LINUX64 | EX_OPENBSD | EX_OPENBSD64 | EX_FREEBSD | EX_FREEBSD64 | EX_DRAGONFLYBSD64 |
+-                          EX_SOLARIS | EX_SOLARIS64 | EX_OSX | EX_OSX64))
++                          EX_SOLARIS | EX_SOLARIS64 | EX_OSX | EX_OSX64 | EX_POWERNEX64))
+         {
+             configv.addlinenumbers = 1;
+             config.fulltypes = (symdebug == 1) ? CVDWARF_D : CVDWARF_C;
+diff --git a/src/dmd/cli.d b/src/dmd/cli.d
+index 82fb72077..0b87ec1b0 100644
+--- a/src/dmd/cli.d
++++ b/src/dmd/cli.d
+@@ -39,7 +39,7 @@ enum TargetOS : ubyte
+ }
+ 
+ // Detect the current TargetOS
+-version (linux)
++/*version (linux)
+ {
+     private enum targetOS = TargetOS.linux;
+ }
+@@ -68,13 +68,13 @@ else version(Solaris)
+     private enum targetOS = TargetOS.Solaris;
+ }
+ else version(PowerNex)
+-{
++{*/
+     private enum targetOS = TargetOS.PowerNex;
+-}
++/*}
+ else
+ {
+     private enum targetOS = TargetOS.all;
+-}
++}*/
+ 
+ /**
+ Checks whether `os` is the current $(LREF TargetOS).
+diff --git a/src/dmd/dmsc.d b/src/dmd/dmsc.d
+index dfdeab4f4..2a68d5035 100644
+--- a/src/dmd/dmsc.d
++++ b/src/dmd/dmsc.d
+@@ -85,6 +85,7 @@ void backend_init()
+         case Target.OS.OpenBSD: exfmt = target.is64bit ? EX_OPENBSD64 : EX_OPENBSD; break;
+         case Target.OS.Solaris: exfmt = target.is64bit ? EX_SOLARIS64 : EX_SOLARIS; break;
+         case Target.OS.DragonFlyBSD: exfmt = EX_DRAGONFLYBSD64; break;
++        case Target.OS.PowerNex: exfmt = EX_POWERNEX64; break;
+         default: assert(0);
+     }
+ 
+diff --git a/src/dmd/target.d b/src/dmd/target.d
+index d7f5d951d..ac871d378 100644
+--- a/src/dmd/target.d
++++ b/src/dmd/target.d
+@@ -84,6 +84,8 @@ Target.OS defaultTargetOS()
+         return Target.OS.Solaris;
+     else version (DragonFlyBSD)
+         return Target.OS.DragonFlyBSD;
++    else version (PowerNex)
++        return Target.OS.PowerNex;
+     else
+         static assert(0, "unknown TARGET");
+ }
+@@ -277,7 +279,7 @@ extern (C++) struct Target
+             dll_ext = "dll";
+             run_noext = false;
+         }
+-        else if (os & (Target.OS.linux | Target.OS.FreeBSD | Target.OS.OpenBSD | Target.OS.DragonFlyBSD | Target.OS.Solaris | Target.OS.OSX))
++        else if (os & (Target.OS.linux | Target.OS.FreeBSD | Target.OS.OpenBSD | Target.OS.DragonFlyBSD | Target.OS.Solaris | Target.OS.OSX | Target.OS.PowerNex))
+         {
+             obj_ext = "o";
+             lib_ext = "a";
+-- 
+2.32.0
+

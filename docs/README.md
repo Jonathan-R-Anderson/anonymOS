@@ -69,6 +69,16 @@ the system with:
 make build
 ```
 
+To fetch the external sources, build the D compiler, create the ISO and boot
+the system in one step, run:
+
+```bash
+make quickstart
+```
+
+This command launches QEMU with logging enabled using the same parameters as the
+`run-log-int` target.
+
 The resulting ISO image is written to `build/anonymOS.iso`.  Use `make run` to boot it in QEMU.
 For debugging, run `make debug` to build the system, launch QEMU in debug mode and automatically attach GDB.  QEMU
 uses a graphical window so the OS output appears separately from the GDB console.  If you prefer to start GDB

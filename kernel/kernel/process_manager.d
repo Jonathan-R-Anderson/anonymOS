@@ -100,22 +100,63 @@ extern(C) size_t process_create(EntryFunc entry, const(char)* name)
 /// Saves and restores the current stack pointer around the call.
 private extern(C) void call_on_process_stack(EntryFunc fn, const(char)* fnName, ubyte* stack, size_t stackSize)
 {
+    log_message("call_on_process_stack: fn=");
+    log_hex(cast(ulong)fn);
+    log_message(" stack=");
+    log_hex(cast(ulong)stack);
+    log_message(" stackSize=");
+    log_hex(stackSize);
+    log_message("\n");
+    
+    if(fn is null) {
+        log_message("call_on_process_stack: ERROR - null function pointer\n");
+        return;
+    }
+    
+    if(stack is null) {
+        log_message("call_on_process_stack: ERROR - null stack pointer\n");
+        return;
+    }
+    
+    if(stackSize < 1024) {
+        log_message("call_on_process_stack: ERROR - stack too small\n");
+        return;
+    }
+    
     ulong oldRsp;
     // Save current stack pointer
     asm { "mov %%rsp, %0" : "=r"(oldRsp); };
+    log_message("call_on_process_stack: saved RSP=");
+    log_hex(oldRsp);
+    log_message("\n");
+    
     // Switch to the top of the provided stack
     // Reserve a small red zone for the return address
     // and align the pointer down to 16 bytes as per SysV ABI
     auto newRsp = cast(ulong)(stack + stackSize);
     newRsp &= ~cast(ulong)0xF;
     newRsp -= 16;
+    
     log_message("Calling function: ");
     log_message(fnName);
     log_message("\n");
+    
+    log_message("call_on_process_stack: new RSP=");
+    log_hex(newRsp);
+    log_message("\n");
+    
+    // Validate new stack pointer is within bounds
+    if(newRsp < cast(ulong)stack || newRsp >= cast(ulong)(stack + stackSize)) {
+        log_message("call_on_process_stack: ERROR - calculated RSP out of bounds\n");
+        return;
+    }
+    
     asm { "mov %0, %%rsp" : : "r"(newRsp); };
     fn();
     // Restore original stack pointer
     asm { "mov %0, %%rsp" : : "r"(oldRsp); };
+    
+    log_message("call_on_process_stack: restored RSP, returning\n");
 }
 
 extern(C) void scheduler_run()

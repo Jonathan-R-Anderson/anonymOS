@@ -24,6 +24,7 @@ import kernel.lib.stdc.stdlib : free;
 import kernel.memory.virtmem : brk, seg_attach, seg_detach, seg_brk,
                               seg_free, seg_flush;
 import kernel.keyboard : keyboard_getchar;
+import kernel.logger : log_message, log_hex;
 
 public:
 
@@ -231,6 +232,19 @@ extern(C) long sys_rfork(ulong flags, ulong, ulong, ulong, ulong, ulong)
 
 extern(C) long sys_exec(ulong pathPtr, ulong argvPtr, ulong, ulong, ulong, ulong)
 {
+    log_message("sys_exec called with pathPtr=");
+    log_hex(pathPtr);
+    log_message("\n");
+    
+    // Validate the path pointer
+    if(pathPtr == 0 || pathPtr < 0x1000) {
+        log_message("sys_exec: invalid path pointer\n");
+        auto msg = "exec failed: invalid path";
+        foreach(j; 0 .. msg.length) g_errstr[j] = msg[j];
+        g_errstr[msg.length] = 0;
+        return -1;
+    }
+    
     auto path = cast(const(char)*)pathPtr;
     void* entry = null;
     if(load_elf(path, &entry) != 0 || entry is null)
@@ -451,6 +465,16 @@ extern(C) long sys_vmdestroy(ulong id, ulong, ulong, ulong, ulong, ulong)
 
 extern(C) long sys_container_start(ulong cfgPtr, ulong, ulong, ulong, ulong, ulong)
 {
+    log_message("sys_container_start called with cfgPtr=");
+    log_hex(cfgPtr);
+    log_message("\n");
+    
+    // Validate the config pointer
+    if(cfgPtr == 0 || cfgPtr < 0x1000) {
+        log_message("sys_container_start: invalid config pointer\n");
+        return -1;
+    }
+    
     start_container(cast(ContainerConfig*)cfgPtr);
     return 0;
 }

@@ -92,7 +92,6 @@ private bool aStarCycleSearch(Object* start)
     // Start search from neighbors of start to avoid zero-length path
     enqueueNeighbor(start.child, 0, start, open);
     enqueueNeighbor(start.sibling, 0, start, open);
-    enqueueNeighbor(start.parent, 0, start, open);
 
     while(!open.empty())
     {
@@ -110,7 +109,6 @@ private bool aStarCycleSearch(Object* start)
             c = c.sibling;
         }
         enqueueNeighbor(current.obj.sibling, current.g, start, open);
-        enqueueNeighbor(current.obj.parent, current.g, start, open);
     }
     return false;
 }

@@ -14,7 +14,7 @@ JOBS=${JOBS:-$(nproc)}
 "$SCRIPT_DIR/fetch_dmd.sh"
 
 mkdir -p "$BIN_DIR"
-make -C "$DMD_DIR" -f Makefile -j$JOBS HOST_DMD="$HOST_DMD" ENABLE_RELEASE=1
-cp "$DMD_DIR/generated/linux/release/64/dmd" "$BIN_DIR/dmd"
+make -C "$DMD_DIR" -f powernex.mak -j$JOBS HOST_DMD="$HOST_DMD" ENABLE_RELEASE=1
+cp "$DMD_DIR/generated/powernex/release/64/dmd" "$BIN_DIR/dmd"
 
 echo "DMD built and copied to $BIN_DIR/dmd"

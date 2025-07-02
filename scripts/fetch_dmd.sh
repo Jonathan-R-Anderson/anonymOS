@@ -20,11 +20,12 @@ else
     echo "Updating DMD repository..."
     git -C "$DMD_DIR" fetch origin
     git -C "$DMD_DIR" fetch --tags
-    git -C "$DMD_DIR" reset --hard origin/master
 fi
 
 if [ -n "$VERSION" ]; then
     git -C "$DMD_DIR" checkout "$VERSION"
+else
+    git -C "$DMD_DIR" reset --hard origin/master
 fi
 
 if [ -d "$PATCH_DIR" ]; then

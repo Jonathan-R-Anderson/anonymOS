@@ -5,6 +5,7 @@ module kernel.lib.stdc.stdlib;
 import kernel.types : memcpy, strlen, memcmp;
 import kernel.process_manager : process_create, scheduler_run;
 import kernel.shell : sh_shell;
+import kernel.logger : log_message, log_hex;
 
 // Minimal C standard library function implementations for -betterC builds.
 // The previous revision used a bump allocator that could only grow the heap.
@@ -14,6 +15,7 @@ import kernel.shell : sh_shell;
 struct BlockHeader {
     size_t size;          // Size of the user portion
     BlockHeader* next;    // Next block in free list when free
+    uint magic;           // Canary to detect heap corruption
 }
 
 enum HEAP_SIZE = 4 * 1024 * 1024; // 4 MiB heap for kernel allocations - increased from 1MB
@@ -22,6 +24,7 @@ __gshared BlockHeader* freeList;
 __gshared bool heapInit = false;
 
 private enum ALIGN = 8;
+private enum MAGIC = 0xDEADBEEF;
 
 private size_t alignUp(size_t n)
 {
@@ -35,6 +38,7 @@ private void heap_init()
         auto first = cast(BlockHeader*)heap.ptr;
         first.size = HEAP_SIZE - BlockHeader.sizeof;
         first.next = null;
+        first.magic = 0; // Not a valid block yet
         freeList = first;
         heapInit = true;
     }
@@ -55,6 +59,7 @@ extern(C) void* malloc(size_t size)
                 auto next = cast(BlockHeader*)((cast(ubyte*)(cur + 1)) + size);
                 next.size = remain - BlockHeader.sizeof;
                 next.next = cur.next;
+                next.magic = 0; // It's a free block, no magic
                 if(prev is null)
                     freeList = next;
                 else
@@ -68,6 +73,7 @@ extern(C) void* malloc(size_t size)
                 else
                     prev.next = cur.next;
             }
+            cur.magic = MAGIC;
             return cur + 1;
         }
     }
@@ -108,9 +114,25 @@ extern(C) void* realloc(void* ptr, size_t size)
 
 extern(C) void free(void* ptr)
 {
+    log_message("free(0x");
+    log_hex(cast(ulong)ptr);
+    log_message(")\n");
     if(ptr is null) return;
     heap_init();
     auto hdr = cast(BlockHeader*)ptr - 1;
+
+    if(hdr.magic != MAGIC)
+    {
+        log_message("!!! HEAP CORRUPTION DETECTED !!!\n");
+        log_message("Invalid magic in block at ");
+        log_hex(cast(ulong)hdr);
+        log_message(" for user ptr ");
+        log_hex(cast(ulong)ptr);
+        log_message("\n");
+        asm { "cli"; "hlt"; }
+    }
+    hdr.magic = 0; // Invalidate magic to catch double-frees
+
     BlockHeader* prev = null;
     auto cur = freeList;
     while(cur !is null && cur < hdr)

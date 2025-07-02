@@ -19,6 +19,6 @@ fi
 
 cd "$SRC_DIR"
 echo "Compiling DMD..."
-make -f posix.mak AUTO_BOOTSTRAP=1 MODEL=64 > /tmp/dmd_build.log 2>&1
-cp generated/linux/release/64/dmd "$OUT"
+make -f powernex.mak AUTO_BOOTSTRAP=1 MODEL=64 > /tmp/dmd_build.log 2>&1
+cp generated/powernex/release/64/dmd "$OUT"
 echo "DMD installed to $OUT"

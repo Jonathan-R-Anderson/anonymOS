@@ -217,7 +217,7 @@ enum RForkFlags : ulong { RFPROC = 1 }
 extern(C) long sys_rfork(ulong flags, ulong, ulong, ulong, ulong, ulong)
 {
     size_t pid = get_current_pid();
-    size_t child = process_create_with_parent(g_processes[pid].entry, pid);
+    size_t child = process_create_with_parent(g_processes[pid].entry, pid, g_processes[pid].name);
     if(child == size_t.max)
     {
         auto msg = "rfork failed";
@@ -241,7 +241,7 @@ extern(C) long sys_exec(ulong pathPtr, ulong argvPtr, ulong, ulong, ulong, ulong
         return -1;
     }
     size_t parent = get_current_pid();
-    auto child = process_create_with_parent(cast(EntryFunc)entry, parent);
+    auto child = process_create_with_parent(cast(EntryFunc)entry, parent, path);
     if(child == size_t.max)
     {
         auto msg = "exec failed";

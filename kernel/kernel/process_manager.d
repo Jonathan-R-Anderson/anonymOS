@@ -11,6 +11,7 @@ public:
 struct Process {
     size_t pid;
     extern(C) void function() entry;
+    const(char)* name;
     bool started;
     bool exited;
     int exit_status;
@@ -38,6 +39,7 @@ extern(C) void scheduler_init()
     {
         p.pid = size_t.max;
         p.entry = null;
+        p.name = null;
         p.started = false;
         p.exited = false;
         p.exit_status = 0;
@@ -50,7 +52,7 @@ extern(C) void scheduler_init()
     log_message("scheduler_init\n");
 }
 
-extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent)
+extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent, const(char)* name)
 {
     if(g_process_count >= g_processes.length)
         return size_t.max;
@@ -68,6 +70,7 @@ extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent)
     
     g_processes[pid].pid = pid;
     g_processes[pid].entry = entry;
+    g_processes[pid].name = name;
     g_processes[pid].started = false;
     g_processes[pid].exited = false;
     g_processes[pid].exit_status = 0;
@@ -88,14 +91,14 @@ extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent)
     return pid;
 }
 
-extern(C) size_t process_create(EntryFunc entry)
+extern(C) size_t process_create(EntryFunc entry, const(char)* name)
 {
-    return process_create_with_parent(entry, size_t.max);
+    return process_create_with_parent(entry, size_t.max, name);
 }
 
 /// Invoke `fn` with the stack allocated for the given process.
 /// Saves and restores the current stack pointer around the call.
-private extern(C) void call_on_process_stack(EntryFunc fn, ubyte* stack, size_t stackSize)
+private extern(C) void call_on_process_stack(EntryFunc fn, const(char)* fnName, ubyte* stack, size_t stackSize)
 {
     ulong oldRsp;
     // Save current stack pointer
@@ -106,6 +109,9 @@ private extern(C) void call_on_process_stack(EntryFunc fn, ubyte* stack, size_t 
     auto newRsp = cast(ulong)(stack + stackSize);
     newRsp &= ~cast(ulong)0xF;
     newRsp -= 16;
+    log_message("Calling function: ");
+    log_message(fnName);
+    log_message("\n");
     asm { "mov %0, %%rsp" : : "r"(newRsp); };
     fn();
     // Restore original stack pointer
@@ -129,7 +135,8 @@ extern(C) void scheduler_run()
             log_message(" ***\n");
             current_pid = p.pid;
 
-            call_on_process_stack(p.entry, p.user_stack, p.stack_size);
+            const(char)* n = (p.name is null) ? "unknown" : p.name;
+            call_on_process_stack(p.entry, n, p.user_stack, p.stack_size);
 
             current_pid = caller_pid;
         }
@@ -151,6 +158,7 @@ extern(C) void process_exit(size_t pid, int status)
     }
     
     g_processes[pid].entry = null;
+    g_processes[pid].name = null;
     g_processes[pid].started = false;
     g_processes[pid].exited = true;
     g_processes[pid].exit_status = status;
@@ -171,6 +179,7 @@ extern(C) size_t process_wait(size_t parent)
             }
             
             p.entry = null;
+            p.name = null;
             p.started = false;
             p.exited = false;
             p.stack_size = 0;
@@ -190,7 +199,7 @@ extern(C) long obj_pm_create_process(Object* obj, void** args, size_t nargs)
     if(nargs < 1 || args[0] is null)
         return -1;
     auto entry = cast(EntryFunc)args[0];
-    return cast(long)process_create(entry);
+    return cast(long)process_create(entry, null);
 }
 
 extern(C) long obj_pm_run(Object* obj, void** args, size_t nargs)

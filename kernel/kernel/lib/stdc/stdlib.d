@@ -189,7 +189,7 @@ extern(C) int system(const(char)* cmd)
     // launched via either "shell" or "sh".
     if(str_eq(cmd, "shell") || str_eq(cmd, "sh"))
     {
-        process_create(&sh_shell);
+        process_create(&sh_shell, "sh_shell");
         scheduler_run();
         return 0;
     }

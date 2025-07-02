@@ -1,32 +1,32 @@
-From 733f02d0bc7737cd967743990006069de1dfd728 Mon Sep 17 00:00:00 2001
-From: Dan Printzell <xwildn00bx@gmail.com>
-Date: Fri, 17 Jan 2020 01:50:08 +0100
-Subject: [PATCH 4/4] Added PowerNex notice to the version output
+From 1650ee7039d93dabe6d4f6cf01515975ff78d41b Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Wed, 2 Jul 2025 07:32:17 +0000
+Subject: [PATCH] Add PowerNex notice
 
-Signed-off-by: Dan Printzell <xwildn00bx@gmail.com>
 ---
  compiler/src/dmd/globals.d | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/compiler/src/dmd/globals.d b/compiler/src/dmd/globals.d
-index 25d436f26..65130c1fb 100644
+index 624738e4e4..7f92e6bb76 100644
 --- a/compiler/src/dmd/globals.d
 +++ b/compiler/src/dmd/globals.d
-@@ -274,12 +274,12 @@ extern (C++) struct Global
-     const(char)[] inifilename;
+@@ -294,13 +294,13 @@ extern (C++) struct Global
+     const(char)[] inifilename; /// filename of configuration file as given by `-conf=`, or default value
  
-     string copyright = "Copyright (C) 1999-2021 by The D Language Foundation, All Rights Reserved";
+     string copyright = "Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved";
 -    string written = "written by Walter Bright";
 +    string written = "written by Walter Bright\nPowerNex support by Dan Printzell";
  
-     Array!(const(char)*)* path;         // Array of char*'s which form the import lookup path
-     Array!(const(char)*)* filePath;     // Array of char*'s which form the file import lookup path
+     Array!(ImportPathInfo) path;       /// Array of path informations which form the import lookup path
+     Array!(const(char)*) importPaths;  /// Array of char*'s which form the import lookup path without metadata
+     Array!(const(char)*) filePath;     /// Array of char*'s which form the file import lookup path
  
 -    private enum string _version = import("VERSION");
 +    private enum string _version = import("VERSION") ~ "-PowerNex";
-     private enum uint _versionNumber = parseVersionNumber(_version);
+     char[26] datetime;      /// string returned by ctime()
+     CompileEnv compileEnv;
  
-     const(char)[] vendor;    // Compiler backend name
 -- 
-2.32.0
+2.43.0
 

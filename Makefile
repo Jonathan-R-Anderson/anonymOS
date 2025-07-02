@@ -28,7 +28,9 @@ DFLAGS           = $(DFLAGS_BASE) $(DFLAGS_TARGET_64) \
                    -I$(MICROKERNEL_DIR)/kernel \
                    -I$(MICROKERNEL_DIR)/kernel/include \
                    -I$(HYPERVISOR_DIR) \
-                   -I$(OBJECT_TREE_DIR)
+                   -I$(OBJECT_TREE_DIR) \
+                   -Ithird_party/sh \
+                   -Ithird_party/sh/src
 
 ASFLAGS  = --64
 LDFLAGS  = -nostdlib -no-pie

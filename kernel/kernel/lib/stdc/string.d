@@ -38,8 +38,8 @@ extern(C) int strcmp(const char* a, const char* b) {
 extern(C) int strcasecmp(const char* a, const char* b) {
     size_t i = 0;
     while (a[i] && b[i]) {
-        auto ca = a[i];
-        auto cb = b[i];
+        char ca = cast(char)a[i];
+        char cb = cast(char)b[i];
         // simple ASCII lowercase conversion
         if (ca >= 'A' && ca <= 'Z') ca += 32;
         if (cb >= 'A' && cb <= 'Z') cb += 32;

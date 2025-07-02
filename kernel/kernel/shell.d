@@ -1,3 +1,5 @@
+module kernel.shell;
+
 import mstd.stdio;
 import mstd.string;
 import mstd.array;

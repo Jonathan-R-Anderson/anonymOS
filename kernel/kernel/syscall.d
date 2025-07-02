@@ -23,6 +23,7 @@ import kernel.sync : rendezvous, sem_acquire, sem_release, semaphore_init;
 import kernel.lib.stdc.stdlib : free;
 import kernel.memory.virtmem : brk, seg_attach, seg_detach, seg_brk,
                               seg_free, seg_flush;
+import kernel.keyboard : keyboard_getchar;
 
 public:
 
@@ -71,6 +72,7 @@ enum SyscallID : ulong {
     VMRun       = 41,
     VMDestroy   = 42,
     ContainerStart = 43,
+    ReadChar    = 44,
 }
 
 alias SyscallHandler = extern(C) long function(ulong, ulong, ulong, ulong, ulong, ulong);
@@ -453,6 +455,12 @@ extern(C) long sys_container_start(ulong cfgPtr, ulong, ulong, ulong, ulong, ulo
     return 0;
 }
 
+extern(C) long sys_read_char(ulong, ulong, ulong, ulong, ulong, ulong)
+{
+    char c = keyboard_getchar();
+    return cast(long)c;
+}
+
 extern(C) long do_syscall(ulong id, ulong a1, ulong a2, ulong a3, ulong a4, ulong a5, ulong a6)
 {
     if(id < g_syscalls.length && g_syscalls[id] !is null)
@@ -508,5 +516,6 @@ extern(C) void syscall_init()
     g_syscalls[cast(size_t)SyscallID.VMRun]       = &sys_vmrun;
     g_syscalls[cast(size_t)SyscallID.VMDestroy]   = &sys_vmdestroy;
     g_syscalls[cast(size_t)SyscallID.ContainerStart] = &sys_container_start;
+    g_syscalls[cast(size_t)SyscallID.ReadChar] = &sys_read_char;
     semaphore_init();
 }

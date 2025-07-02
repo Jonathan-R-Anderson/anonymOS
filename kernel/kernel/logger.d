@@ -26,7 +26,6 @@ else
         // easier debugging when log files are unavailable.
         outb(DEBUG_PORT, cast(ubyte)c);
         serial_putchar(c);
-        terminal_putchar(c);
     }
 }
 

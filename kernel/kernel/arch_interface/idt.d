@@ -9,6 +9,7 @@ import kernel.arch_interface.ports;
 
 extern (C) void idt_load(IDTPtr* idt_p);         // from idt_loader.s
 extern (C) void irq1_handler();                  // from keyboard_handler_asm.s
+extern (C) void syscall_stub_asm();
 
 
 // Exception handlers
@@ -148,6 +149,7 @@ public void init_idt() {
     set_idt_entry(0x08, &isr8, 1);     // IST1
     set_idt_entry(0x0D, &isr13);  // #GP
     set_idt_entry(0x0E, &isr14);          // #PF
+    set_idt_entry(0x80, &syscall_stub_asm);
     terminal_writestring("Initializing IDT...\n");
 
     idt_ptr.limit = cast(ushort)(MAX_INTERRUPTS * IDTEntry.sizeof - 1);

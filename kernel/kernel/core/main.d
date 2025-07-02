@@ -17,6 +17,7 @@ import kernel.net.stack : net_stack_init, net_poll;
 import kernel.sanity : run_sanity_checks;
 import kernel.thread : thread_init, thread_create, thread_start, thread_yield, threads_active, thread_exit;
 import kernel.elf_loader : load_elf;
+import kernel.keyboard : initialize_keyboard;
 
 // kernel.interrupts is not directly called by kmain but its symbols are needed by IDT setup.
 // kernel.panic is used implicitly if needed.
@@ -99,8 +100,8 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_hex(idt_ptr.base);
     log_message("\n");
     initialize_pic(); // Remap and configure PIC
-    irq_clear_mask(0); // Timer
-    irq_clear_mask(1); // Keyboard
+    irq_clear_mask(0); // Unmask Timer IRQ
+    initialize_keyboard(); // Enable keyboard scanning; keep IRQ1 masked, rely on polling input
     asm { "sti"; } // Enable interrupts
     //log_register_state("After IDT Setup");
     pVGATest[5] = vga_entry('D', vga_entry_color(VGAColor.LIGHT_MAGENTA, VGAColor.BLACK)); // D for IDT Done
@@ -156,13 +157,14 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     // Phase 5: Other Drivers and Kernel Services (can be managed/loaded via Device Manager later)
     log_message("Initializing remaining Drivers & Kernel Services...\n");
     terminal_writestring("Starting drivers and services...\n");
-    init_keyboard_driver();   // Essential for interactive shell input!
-    init_pci_bus();           // For discovering other devices (e.g., network, storage)
-    net_init();               // Initialize NIC queues
-    ubyte[6] mac = [0x02,0x00,0x00,0x00,0x00,0x02];
-    uint ip = 0xC0A80064; // 192.168.0.100
-    net_stack_init(mac.ptr, ip);
-    net_poll();               // Process any early packets
+    // Drivers below currently cause unstable IRQs / reboot loops. Disable for now.
+    // init_keyboard_driver();   // Needs proper ISR ACK handling first
+    // init_pci_bus();           // PCI not required for early shell
+    // net_init();               // Network stack optional for early shell
+    // ubyte[6] mac = [0x02,0x00,0x00,0x00,0x00,0x02];
+    // uint ip = 0xC0A80064; // 192.168.0.100
+    // net_stack_init(mac.ptr, ip);
+    // net_poll();
     vmm_init();               // Initialize hypervisor
     init_scheduler();         // If Haskell RTS uses preemptive scheduling or needs timers
     init_syscall_interface(); // If the shell or Haskell programs need kernel services
@@ -174,49 +176,24 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_message("Initializing Filesystem (e.g., initrd)...\n");
     terminal_writestring("Mounting filesystem...\n");
     init_filesystem(multiboot_info_ptr); // To load files, e.g., shell resources or other programs
+    // --- Test userspace ELF ---
+    {
+        import kernel.elf_loader : load_elf;
+        import kernel.process_manager : EntryFunc;
+        void* entry;
+        if(load_elf("/bin/hello", &entry) == 0 && entry !is null)
+        {
+            (cast(EntryFunc)entry)();
+        }
+    }
     init_user_manager();
     log_message("Temporary user 'setup' created for initial account setup.\n");
     clear_screen();
 
-    log_message("All subsystems (stubs) initialized.\n");
-    log_register_state("Before Init Process");
-    log_message("Boot info snapshot:\n");
-    log_mem_dump(multiboot_info_ptr, 64);
-    clear_screen();
-
-    // Phase 7: Launch the first user-space process (PID 1 - /system/init)
-    // This process will then use the initialized managers to set up the user environment,
-    // load applications (snaps/recipes), etc., according to the declarative configuration.
-    log_message("Attempting to launch Init Process...\n");
-    terminal_writestring_color("Boot complete.\n", VGAColor.GREEN, VGAColor.BLACK);
-    // Run setup tasks sequentially instead of using the minimal
-    // cooperative thread system. This avoids the possibility of a
-    // misbehaving thread preventing the system from reaching the shell.
-    launch_init_process();
-    run_sanity_checks();
-
-    // All setup tasks completed
-    clear_screen();
-
-    // Attempt to load external -sh ELF located at /bin/sh
-    void* sh_entry;
-    if(load_elf("/bin/sh", &sh_entry) == 0 && sh_entry !is null)
-    {
-        log_message("Loaded /bin/sh ELF successfully – launching external shell...\n");
-        process_create(cast(EntryFunc)sh_entry);
-    }
-    else
-    {
-        log_message("/bin/sh not found or failed to load – falling back to built-in shell...\n");
-        process_create(&sh_shell);
-    }
-
+    log_message("All subsystems (stubs) initialized. Launching built-in shell early.\n");
+    process_create(&sh_shell);
     scheduler_run();
-
-    // This part should ideally not be reached if the shell takes over.
-    // If it is, it means the shell exited or failed to start.
-    log_message("Shell exited or failed to initialize.\n");
-    terminal_writestring_color("Shell exited or failed to initialize.\n", VGAColor.RED, VGAColor.BLACK);
-    clear_screen();
     loop_forever_hlt();
+
+    // The code below is unreachable in this configuration.
 }

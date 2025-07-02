@@ -6,6 +6,7 @@ IMG="$BUILD_DIR/fs.img"
 INTERP="$BUILD_DIR/bin/sh"
 
 mkdir -p "$BUILD_DIR"
+mkdir -p "$BUILD_DIR/bin"
 
 # create fs.img
 {
@@ -17,6 +18,12 @@ mkdir -p "$BUILD_DIR"
     size=$(stat -c%s "$INTERP")
     echo "F /bin/sh $size"
     cat "$INTERP"
+  fi
+  HELLO="$BUILD_DIR/bin/hello"
+  if [ -f "$HELLO" ]; then
+    size=$(stat -c%s "$HELLO")
+    echo "F /bin/hello $size"
+    cat "$HELLO"
   fi
 } > "$IMG"
 

@@ -195,7 +195,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     clear_screen();
 
     log_message("All subsystems (stubs) initialized. Launching built-in shell early.\n");
-    process_create(&sh_shell);
+    process_create(&sh_shell, "sh_shell");
     scheduler_run();
     loop_forever_hlt();
 

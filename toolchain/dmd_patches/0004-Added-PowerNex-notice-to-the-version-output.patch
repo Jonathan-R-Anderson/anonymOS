@@ -5,13 +5,13 @@ Subject: [PATCH 4/4] Added PowerNex notice to the version output
 
 Signed-off-by: Dan Printzell <xwildn00bx@gmail.com>
 ---
- src/dmd/globals.d | 4 ++--
+ compiler/src/dmd/globals.d | 4 ++--
  1 file changed, 2 insertions(+), 2 deletions(-)
 
-diff --git a/src/dmd/globals.d b/src/dmd/globals.d
+diff --git a/compiler/src/dmd/globals.d b/compiler/src/dmd/globals.d
 index 25d436f26..65130c1fb 100644
---- a/src/dmd/globals.d
-+++ b/src/dmd/globals.d
+--- a/compiler/src/dmd/globals.d
++++ b/compiler/src/dmd/globals.d
 @@ -274,12 +274,12 @@ extern (C++) struct Global
      const(char)[] inifilename;
  

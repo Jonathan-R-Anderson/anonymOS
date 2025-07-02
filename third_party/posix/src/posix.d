@@ -40,7 +40,7 @@ import core.sys.posix.signal : kill, sigaction, sigaction_t;
 import core.stdc.signal : signal, sigfn_t;
 import core.sys.posix.sys.wait : waitpid;
 import core.sys.posix.sys.ioctl : ioctl;
-import core.sys.posix.sys.mman : mmap, munmap, mprotect, c_posix_madvise = posix_madvise;
+import core.sys.posix.sys.mman : mmap, munmap, mprotect, posix_madvise as c_posix_madvise;
 import core.sys.posix.sys.time : gettimeofday, timeval;
 import core.sys.posix.time : clock_gettime, timespec;
 import core.stdc.config : c_ulong, ptrdiff_t;

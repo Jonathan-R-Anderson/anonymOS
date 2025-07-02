@@ -101,7 +101,11 @@ private extern(C) void call_on_process_stack(EntryFunc fn, ubyte* stack, size_t 
     // Save current stack pointer
     asm { "mov %%rsp, %0" : "=r"(oldRsp); };
     // Switch to the top of the provided stack
+    // Reserve a small red zone for the return address
+    // and align the pointer down to 16 bytes as per SysV ABI
     auto newRsp = cast(ulong)(stack + stackSize);
+    newRsp &= ~cast(ulong)0xF;
+    newRsp -= 16;
     asm { "mov %0, %%rsp" : : "r"(newRsp); };
     fn();
     // Restore original stack pointer

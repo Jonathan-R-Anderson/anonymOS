@@ -55,6 +55,9 @@ extern(C) size_t process_create_with_parent(EntryFunc entry, size_t parent)
     if(g_process_count >= g_processes.length)
         return size_t.max;
     size_t pid = g_process_count;
+
+    if(parent >= g_process_count)
+        parent = size_t.max;
     
     size_t stack_size = DEFAULT_STACK_SIZE;
     ubyte* user_stack = cast(ubyte*)malloc(stack_size);

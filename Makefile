@@ -72,7 +72,7 @@ ASM_OBJS := $(patsubst %.s,$(OBJ_DIR)/%.o,$(ASM_SOURCES))
 OBJS     := $(D_OBJS) $(ASM_OBJS)
 
 # ─────────────── Phony targets ─────────────────
-.PHONY: all iso build clean run run-debug run-log-int fsimg update-run
+.PHONY: all iso build clean run run-debug run-log-int fsimg update-run quickstart
 
 all: $(ISO_FILE)
 iso: all
@@ -145,6 +145,12 @@ $(SH_BIN): scripts/build_sh_bin.sh third_party/stub_shell.d third_party/sh/build
 # ─────────────── Convenience target ──────────
 update-run: $(ISO_FILE)
 	@echo "Build complete – QEMU run skipped in automated environment."
+
+# ─────────────── All-in-one helper ─────────────
+quickstart:
+	@bash scripts/setup_dev_env.sh
+	@bash scripts/build_dmd.sh
+	$(MAKE) run-log-int
 
 # ─────────────── House-keeping ──────────────────
 clean:

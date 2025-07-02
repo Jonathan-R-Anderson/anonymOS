@@ -1,5 +1,5 @@
 # Ignore build artifacts
-build/
+#build/
 #*.iso
 bin/
 dist-newstyle/

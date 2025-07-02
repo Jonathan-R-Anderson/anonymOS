@@ -131,7 +131,7 @@ run-debug: $(ISO_FILE)
 run-log-int: $(ISO_FILE)
 	$(QEMU) -cdrom $< $(QEMU_FLAGS) -m 512M -display none \
 	   -d int,guest_errors,cpu_reset -D qemu.log \
-	   -serial pty -monitor none -M smm=off -no-reboot
+	   -serial stdio -monitor none -M smm=off -no-reboot
 
 # ─────────────── Shell binary ─────────────────
 SH_BIN := $(BUILD_DIR)/bin/sh

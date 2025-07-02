@@ -1,6 +1,6 @@
 # Ignore build artifacts
 build/
-*.iso
+#*.iso
 bin/
 dist-newstyle/
 qemu.log

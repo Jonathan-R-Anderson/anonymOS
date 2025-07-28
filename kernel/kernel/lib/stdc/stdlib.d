@@ -3,7 +3,11 @@ module kernel.lib.stdc.stdlib;
 // Use our own minimal memcpy implementation to avoid
 // pulling in external C runtime dependencies.
 import kernel.types : memcpy, strlen, memcmp;
-import kernel.process_manager : process_create, scheduler_run;
+import kernel.process_manager :
+    process_create,
+    scheduler_run,
+    process_exit,
+    get_current_pid;
 import kernel.shell : sh_shell;
 import kernel.logger : log_message, log_hex;
 
@@ -196,5 +200,13 @@ extern(C) int system(const(char)* cmd)
 
     // Command not recognized
     return -1;
+}
+
+extern(C) @noreturn void exit(int status)
+{
+    auto pid = get_current_pid();
+    process_exit(pid, status);
+    scheduler_run();
+    while(true) asm { "hlt"; }
 }
 

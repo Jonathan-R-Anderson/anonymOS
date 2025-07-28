@@ -9,7 +9,7 @@ import mstd.range;
 import mstd.file : chdir, getcwd, dirEntries, SpanMode, readText,
     copy, rename, remove, mkdir, rmdir, exists;
 import mstd.process : environment;
-import core.stdc.stdlib : system;
+import kernel.lib.stdc.stdlib : system;
 version(Posix) import core.sys.posix.unistd : execvp;
 version(Posix) extern(C) int chroot(const char* path);
 import mstd.regex : regex, matchFirst;
@@ -797,7 +797,7 @@ void runCommand(string cmd, bool skipAlias=false, size_t callLine=0, string call
         }
         version(Posix) {
             import mstd.string : toStringz;
-            import core.stdc.stdlib : exit;
+            import kernel.lib.stdc.stdlib : exit;
             const(char)*[] args;
             foreach(t; tokens[1 .. $]) args ~= t.toStringz;
             args ~= null;
@@ -807,7 +807,7 @@ void runCommand(string cmd, bool skipAlias=false, size_t callLine=0, string call
         } else {
             auto sub = tokens[1 .. $].join(" ");
             auto rc = system(sub);
-            import core.stdc.stdlib : exit;
+            import kernel.lib.stdc.stdlib : exit;
             exit(rc);
         }
     } else if(op == "exit") {
@@ -819,12 +819,12 @@ void runCommand(string cmd, bool skipAlias=false, size_t callLine=0, string call
                 // ignore invalid argument
             }
         }
-        import core.stdc.stdlib : exit;
+        import kernel.lib.stdc.stdlib : exit;
         exit(code);
     } else if(op == "expand") {
         expand.expandCommand(tokens);
     } else if(op == "false") {
-        import core.stdc.stdlib : exit;
+        import kernel.lib.stdc.stdlib : exit;
         exit(1);
     } else if(op == "expr") {
         exprCommand(tokens);

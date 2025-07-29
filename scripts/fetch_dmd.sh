@@ -10,6 +10,10 @@ VERSION=""
 [ -f "$PATCH_DIR/DMD_VERSION" ] && VERSION=$(cat "$PATCH_DIR/DMD_VERSION")
 
 if [ ! -d "$DMD_DIR/.git" ]; then
+    # remove stale binary if present and clone sources
+    if [ -f "$DMD_DIR" ]; then
+        rm -f "$DMD_DIR"
+    fi
     mkdir -p "$PROJECT_ROOT/third_party"
     if [ -n "$VERSION" ]; then
         git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$DMD_DIR"
@@ -31,6 +35,9 @@ fi
 if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
     for patch in "$PATCH_DIR"/*.patch; do
         echo "Applying $(basename "$patch")"
-        git -C "$DMD_DIR" am "$patch"
+        if ! git -C "$DMD_DIR" am "$patch"; then
+            git -C "$DMD_DIR" am --abort
+            echo "Patch already applied, skipping"
+        fi
     done
 fi

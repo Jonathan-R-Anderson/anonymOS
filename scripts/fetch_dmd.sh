@@ -4,7 +4,7 @@ SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DMD_DIR="$PROJECT_ROOT/third_party/dmd"
 PATCH_DIR="$PROJECT_ROOT/toolchain/dmd_patches"
-REPO_URL="https://github.com/dlang/dmd.git"
+REPO_URL="https://github.com/Jonathan-R-Anderson/anonymos-dmd.git"
 
 VERSION=""
 [ -f "$PATCH_DIR/DMD_VERSION" ] && VERSION=$(cat "$PATCH_DIR/DMD_VERSION")
@@ -28,7 +28,7 @@ else
     git -C "$DMD_DIR" reset --hard origin/master
 fi
 
-if [ -d "$PATCH_DIR" ]; then
+if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch >/dev/null 2>&1; then
     for patch in "$PATCH_DIR"/*.patch; do
         echo "Applying $(basename "$patch")"
         git -C "$DMD_DIR" am "$patch"

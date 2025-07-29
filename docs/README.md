@@ -104,9 +104,9 @@ shell's prompt dynamically displays the logged-in user, namespace, current
 directory and CPU privilege level using the format
 `user@namespace:/path(permission)`.
 
-### DMD toolchain patches
+### DMD toolchain source
 
-The `toolchain/dmd_patches` directory vendors patches originally from the PowerNex project. `scripts/fetch_dmd.sh` clones the upstream `dlang/dmd` repository, checks out the version listed in `DMD_VERSION` and applies these patches automatically. This allows anonymOS to compile the full D compiler inside the guest environment.
+The D compiler is fetched from the [anonymos-dmd](https://github.com/Jonathan-R-Anderson/anonymos-dmd) repository which already contains the PowerNex/AnonymOS patches. `scripts/fetch_dmd.sh` simply clones the `master` branch so no additional patches are applied.
 
 
 ## Object Namespace Overview

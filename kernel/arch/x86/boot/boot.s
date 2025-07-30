@@ -149,7 +149,7 @@ setup_page_tables:
     movl $0, 4(%edi)
     addl $0x200000, %eax
     addl $8, %edi
-    incl %ecx
+    addl $1, %ecx
     cmpl $512, %ecx
     jne 1b
 

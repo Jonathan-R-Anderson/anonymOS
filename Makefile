@@ -60,7 +60,7 @@ ASM_SOURCES := \
   $(MICROKERNEL_DIR)/kernel/utils/debug_asm.s
 
 KERNEL_D_SOURCES := \
-  $(shell find $(MICROKERNEL_DIR) -name '*.d') \
+  $(filter-out $(MICROKERNEL_DIR)/kernel/shell.d $(MICROKERNEL_DIR)/kernel/lib/stdc/string.d,$(shell find $(MICROKERNEL_DIR) -name '*.d')) \
   $(HYPERVISOR_DIR)/kernel/hypervisor.d \
   $(OBJECT_TREE_DIR)/kernel/object_namespace.d \
   $(OBJECT_TREE_DIR)/kernel/object_validator.d

@@ -75,7 +75,7 @@ ASM_OBJS := $(patsubst %.s,$(OBJ_DIR)/%.o,$(ASM_SOURCES))
 OBJS     := $(D_OBJS) $(ASM_OBJS)
 
 # ─────────────── Phony targets ─────────────────
-.PHONY: all iso build clean run run-debug run-log-int fsimg update-run quickstart
+.PHONY: all iso build clean run run-debug run-log-int fsimg update-run quickstart boot-only run-boot-only
 
 all: $(ISO_FILE)
 iso: all
@@ -135,6 +135,22 @@ run-log-int: $(ISO_FILE)
 	$(QEMU) -cdrom $< -m 512M -serial stdio -display none \
 	   -d int,guest_errors,cpu_reset -D qemu.log \
 	   -monitor none -M smm=off -no-reboot
+
+.PHONY: boot-only run-boot-only
+
+BOOT_S := kernel/arch/x86/boot/boot.s
+
+# Only use boot.o, avoid depending on full OBJS or D_OBJS
+$(BUILD_DIR)/boot-only.bin: $(BOOT_S) $(LINKER_SCRIPT) | $(BUILD_DIR)
+	@mkdir -p $(BUILD_DIR)
+	$(AS) --32 $(BOOT_S) -o $(BUILD_DIR)/boot.o
+	$(LD) -m elf_i386 -T $(LINKER_SCRIPT) -o $@ $(BUILD_DIR)/boot.o
+
+run-boot-only:
+	@mkdir -p build
+	as --64 kernel/arch/x86/boot/boot.s -o build/boot.o
+	ld.lld -nostdlib -no-pie -T kernel/arch/x86/linker.ld -o build/boot-only.bin build/boot.o
+	qemu-system-x86_64 -kernel build/boot-only.bin -d int,guest_errors,cpu_reset -no-reboot -no-shutdown -nographic
 
 # ─────────────── Shell binary ─────────────────
 SH_BIN := $(BUILD_DIR)/bin/sh

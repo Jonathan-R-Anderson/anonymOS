@@ -8,7 +8,8 @@ import kernel.device.vga : clear_screen;
 import kernel.arch_interface.gdt : init_gdt; // Updated import path
 import kernel.arch_interface.idt : init_idt, idt_ptr; // Updated import path
 import kernel.device.pic : initialize_pic, irq_clear_mask; // PIC initialization and PIC setup
-import kernel.shell : sh_shell; // Comprehensive shell with 100+ built-in commands
+// Built-in shell disabled for bootstrap build
+// import kernel.shell : sh_shell; // Comprehensive shell with 100+ built-in commands
 import kernel.process_manager : process_create, scheduler_run, EntryFunc;
 import kernel.logger : logger_init, log_message, log_register_state, log_hex, log_mem_dump, log_test; // New logging utilities
 import kernel.arch_interface.gdt : gdt_ptr;
@@ -194,9 +195,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
     log_message("Temporary user 'setup' created for initial account setup.\n");
     clear_screen();
 
-    log_message("All subsystems (stubs) initialized. Launching built-in shell early.\n");
-    process_create(&sh_shell, "sh_shell");
-    scheduler_run();
+    log_message("All subsystems (stubs) initialized.\n");
     loop_forever_hlt();
 
     // The code below is unreachable in this configuration.

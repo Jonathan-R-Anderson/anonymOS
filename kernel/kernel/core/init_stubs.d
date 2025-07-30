@@ -38,9 +38,7 @@ extern(C) void init_syscall_interface()
     import kernel.syscall : syscall_init;
     syscall_init();
 }
+// Launching an init process is skipped in this minimal build
 extern(C) void launch_init_process()
 {
-    import kernel.shell : init_setup;
-
-    init_setup();
 }

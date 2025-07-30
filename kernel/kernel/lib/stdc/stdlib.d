@@ -8,7 +8,8 @@ import kernel.process_manager :
     scheduler_run,
     process_exit,
     get_current_pid;
-import kernel.shell : sh_shell;
+// Built-in shell disabled for bootstrap build
+// import kernel.shell : sh_shell;
 import kernel.logger : log_message, log_hex;
 
 // Minimal C standard library function implementations for -betterC builds.
@@ -191,12 +192,7 @@ extern(C) int system(const(char)* cmd)
     // Very small command mapping to demonstrate integration with
     // the kernel's process manager. The built-in shell can be
     // launched via either "shell" or "sh".
-    if(str_eq(cmd, "shell") || str_eq(cmd, "sh"))
-    {
-        process_create(&sh_shell, "sh_shell");
-        scheduler_run();
-        return 0;
-    }
+    // Built-in shell is disabled in this configuration
 
     // Command not recognized
     return -1;

@@ -11,11 +11,11 @@ multiboot2_header_start:
     .long 8
 multiboot2_header_end:
 
-.section .bss
+.section .data
 .align 16
 stack:
     .space 16384
-stack_top:
+stack_top = stack + 16384
 
 .section .data
 .align 4096
@@ -32,7 +32,7 @@ pd_table:
 .align 8
 gdt_start:
     .quad 0x0
-    .quad 0x00af9a000000ffff
+    .quad 0x00af9a000000ffff    # 64-bit code segment
     .quad 0x00cf92000000ffff
 gdt_end:
 
@@ -85,6 +85,11 @@ setup_page_tables:
     movl $pdpt_table, %eax
     orl $0x3, %eax
     movl $pml4_table, %edi
+    movl %eax, (%edi)
+    movl $0, 4(%edi)
+
+    # Map higher-half kernel at 0xFFFF800000000000
+    movl $pml4_table + 8*256, %edi
     movl %eax, (%edi)
     movl $0, 4(%edi)
     ret

@@ -98,13 +98,15 @@ setup_page_tables:
 
     movl $pd_table, %eax
     orl $0x3, %eax
-    movl %eax, pdpt_table
-    movl $0, pdpt_table+4
+    movl $pdpt_table, %edi
+    movl %eax, (%edi)
+    movl $0, 4(%edi)
 
     movl $pdpt_table, %eax
     orl $0x3, %eax
-    movl %eax, pml4_table
-    movl $0, pml4_table+4
+    movl $pml4_table, %edi
+    movl %eax, (%edi)
+    movl $0, 4(%edi)
 
     ret
 
@@ -117,6 +119,16 @@ long_mode_start:
     movw %ax, %ss
     movw %ax, %fs
     movw %ax, %gs
+
+    # Enable SSE (set CR0 and CR4 bits)
+    movq %cr0, %rax
+    orq $0x22, %rax           # Set MP (bit 1) and NE (bit 5)
+    andq $~0x4, %rax          # Clear EM (bit 2)
+    movq %rax, %cr0
+
+    movq %cr4, %rax
+    orq $0x600, %rax          # Set OSFXSR (bit 9) and OSXMMEXCPT (bit 10)
+    movq %rax, %cr4
 
     # Clear BSS
     lea _bss_start(%rip), %rdi

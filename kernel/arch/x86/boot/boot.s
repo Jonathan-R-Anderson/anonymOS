@@ -79,12 +79,17 @@ _start:
     # Long mode jump
     ljmp $0x08, $long_mode_start
 
-# setup_page_tables - simplified, maps 0–2MiB
+# setup_page_tables - simplified, maps 0–4MiB
 setup_page_tables:
     movl $pd_table, %edi
     movl $0x00000083, %eax     # 2MiB page
     movl %eax, (%edi)
     movl $0, 4(%edi)
+
+    # map 2–4MiB as well in case the kernel crosses 2MiB boundary
+    movl $0x00200083, %eax     # second 2MiB page
+    movl %eax, 8(%edi)
+    movl $0, 12(%edi)
 
     movl $pd_table, %eax
     orl $0x3, %eax

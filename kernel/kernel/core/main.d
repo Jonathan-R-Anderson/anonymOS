@@ -186,7 +186,7 @@ extern (C) void kmain(void* multiboot_info_ptr) {
         import kernel.elf_loader : load_elf;
         import kernel.process_manager : EntryFunc;
         void* entry;
-        if(load_elf("/bin/hello", &entry) == 0 && entry !is null)
+        if(load_elf("/bin/sh", &entry) == 0 && entry !is null)
         {
             (cast(EntryFunc)entry)();
         }

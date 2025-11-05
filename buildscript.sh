@@ -13,6 +13,7 @@ BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 
 # Your kernel sources / outputs
 KERNEL_D="${KERNEL_D:-src/kernel.d}"
+
 STARTUP_SRC="${STARTUP_SRC:-arch/x86/boot/startup.s}"
 LINKER_SCRIPT="${LINKER_SCRIPT:-linker.ld}"
 OUT_DIR="${OUT_DIR:-build}"
@@ -50,6 +51,7 @@ mkdir -p "$SYSROOT/usr/lib" "$SYSROOT/usr/include" "$BUILD_DIR" "$OUT_DIR"
 
 GEN="Ninja"; command -v ninja >/dev/null 2>&1 || GEN="Unix Makefiles"
 rm -rf "$BUILD_DIR"
+echo $KERNEL_D
 
 cmake -S "$SRC_DIR" -B "$BUILD_DIR" -G "$GEN" \
   -DCMAKE_C_COMPILER=clang \

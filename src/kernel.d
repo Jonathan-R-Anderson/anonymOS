@@ -1,7 +1,7 @@
 module minimal_os.main;
 
 extern(C):
-@nothrow:
+nothrow:
 @nogc:
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

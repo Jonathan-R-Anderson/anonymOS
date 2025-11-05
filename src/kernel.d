@@ -25,6 +25,6 @@ void kmain(uint magic, uint info)
 
     // Prevent the compiler from optimising the loop away while we halt.
     for (;;) {
-        asm { hlt; }
+        asm @nogc nothrow { hlt; }
     }
 }

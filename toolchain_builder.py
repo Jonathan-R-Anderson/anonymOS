@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import re
 import shlex
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import List, Sequence
+from typing import Dict, List, Sequence
 
 try:  # Python 3.11+
     import tomllib  # type: ignore[attr-defined]
@@ -45,6 +47,8 @@ class BuildSettings:
     skip_patterns: List[str] = field(default_factory=list)
     include_dirs: List[Path] = field(default_factory=list)
     conf_file: Path | None = None
+    sysroot: Path | None = None
+    archiver: Path | None = None
     dry_run: bool = False
     force: bool = False
     keep_going: bool = False
@@ -136,15 +140,22 @@ class ToolchainBuilder:
             groups.append(BuildGroup(user_dir.name, user_root, include_dirs))
 
         all_objects: List[Path] = []
+        group_archives: Dict[str, Path] = {}
         for group in groups:
             self._log(f"\n=== Building {group.name} ===", console=True)
             objects = self._compile_group(group)
             all_objects.extend(objects)
+            if self.settings.sysroot:
+                archive = self._archive_group(group.name, objects)
+                if archive:
+                    group_archives[group.name] = archive
 
         if not all_objects:
             raise RuntimeError("No object files were produced; check your configuration")
 
         self._link(all_objects, include_dirs)
+        if self.settings.sysroot:
+            self._create_sysroot(groups, include_dirs, group_archives)
 
     def _compile_group(self, group: BuildGroup) -> List[Path]:
         sources = sorted(group.root.rglob("*.d"))
@@ -236,6 +247,155 @@ class ToolchainBuilder:
                 return
             raise
 
+    # Sysroot helpers --------------------------------------------------------
+    def _archive_group(self, name: str, objects: Sequence[Path]) -> Path | None:
+        if not objects:
+            self._log(f"No object files for {name}; skipping archive creation")
+            return None
+        archiver = self._archiver_path()
+        archive_dir = self.build_dir / "lib"
+        if not self.settings.dry_run:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+        archive_name = f"lib{self._sanitize_name(name)}.a"
+        archive_path = archive_dir / archive_name
+        cmd = [archiver, "rcs", str(archive_path)]
+        cmd.extend(str(obj) for obj in objects)
+        self._execute(cmd)
+        self._log(f"Created archive: {archive_path}")
+        return archive_path
+
+    def _archiver_path(self) -> str:
+        if self.settings.archiver:
+            return str(self.settings.archiver)
+        archiver = shutil.which("ar")
+        if archiver:
+            return archiver
+        raise RuntimeError("No archiver found; specify --archiver or ensure 'ar' is available")
+
+    def _create_sysroot(
+        self,
+        groups: Sequence[BuildGroup],
+        include_dirs: Sequence[Path],
+        group_archives: Dict[str, Path],
+    ) -> None:
+        sysroot = self.settings.sysroot
+        if sysroot is None:
+            return
+        include_root = sysroot / "include"
+        lib_root = sysroot / "lib"
+        if self.settings.dry_run:
+            self._log(f"DRY RUN: create sysroot directories {include_root} and {lib_root}", console=True)
+        else:
+            include_root.mkdir(parents=True, exist_ok=True)
+            lib_root.mkdir(parents=True, exist_ok=True)
+
+        used_names: set[str] = set()
+        copied_dirs: set[Path] = set()
+
+        for group in groups:
+            root = group.root.resolve()
+            if not root.exists():
+                self._log(f"Warning: include root {root} does not exist; skipping", console=True)
+                continue
+            name = self._unique_sysroot_name(root, group.name, used_names)
+            dest = include_root / name
+            self._copy_directory(root, dest)
+            copied_dirs.add(root)
+
+        for include in include_dirs:
+            inc = include.resolve()
+            if inc in copied_dirs or not inc.exists():
+                if not inc.exists():
+                    self._log(f"Warning: include directory {inc} missing; skipping", console=True)
+                continue
+            name = self._unique_sysroot_name(inc, inc.name, used_names)
+            dest = include_root / name
+            self._copy_directory(inc, dest)
+            copied_dirs.add(inc)
+
+        libs_to_copy: set[Path] = set()
+        for archive in group_archives.values():
+            libs_to_copy.add(archive)
+        for extra in self._discover_external_libs():
+            libs_to_copy.add(extra)
+
+        for lib in sorted(libs_to_copy):
+            if not lib.exists():
+                self._log(f"Warning: library {lib} missing; skipping", console=True)
+                continue
+            dest = lib_root / lib.name
+            self._copy_file(lib, dest)
+
+        self._log(f"Sysroot staged at {sysroot}", console=True)
+
+    def _discover_external_libs(self) -> List[Path]:
+        libs: List[Path] = []
+        seen: set[Path] = set()
+        patterns = ("*.a", "*.lib", "*.so", "*.dylib", "*.bc", "*.o")
+        for lib_dir in self.settings.lib_dirs:
+            if not lib_dir.exists():
+                self._log(f"Library directory {lib_dir} does not exist; skipping", console=True)
+                continue
+            for pattern in patterns:
+                for candidate in lib_dir.glob(pattern):
+                    path = candidate.resolve()
+                    if path in seen:
+                        continue
+                    libs.append(path)
+                    seen.add(path)
+        return libs
+
+    def _copy_directory(self, src: Path, dest: Path) -> None:
+        message = f"Copy directory {src} -> {dest}"
+        if self.settings.dry_run:
+            self._log(f"DRY RUN: {message}", console=True)
+            return
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(src, dest)
+        self._log(message)
+
+    def _copy_file(self, src: Path, dest: Path) -> None:
+        message = f"Copy file {src} -> {dest}"
+        if self.settings.dry_run:
+            self._log(f"DRY RUN: {message}", console=True)
+            return
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+        self._log(message)
+
+    def _unique_sysroot_name(self, path: Path, preferred: str, used: set[str]) -> str:
+        candidates = []
+        if preferred:
+            candidates.append(self._sanitize_name(preferred))
+        parts = [part for part in path.parts if part]
+        if len(parts) >= 2:
+            candidates.append(self._sanitize_name("-".join(parts[-2:])))
+        if parts:
+            candidates.append(self._sanitize_name(parts[-1]))
+        candidates.append("include")
+        for base in candidates:
+            name = self._ensure_unique(base or "component", used)
+            if name:
+                return name
+        return self._ensure_unique("component", used)
+
+    @staticmethod
+    def _sanitize_name(value: str) -> str:
+        sanitized = re.sub(r"[^A-Za-z0-9._-]+", "_", value)
+        return sanitized.strip("_")
+
+    @staticmethod
+    def _ensure_unique(base: str, used: set[str]) -> str:
+        base = base or "component"
+        candidate = base
+        counter = 2
+        while candidate in used:
+            candidate = f"{base}_{counter}"
+            counter += 1
+        used.add(candidate)
+        return candidate
+
 
 def resolve_source_root(path: Path) -> Path:
     path = path.expanduser().resolve()
@@ -312,6 +472,18 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
         help="Extra include/import directory",
     )
     parser.add_argument("--conf", dest="conf_file", type=Path, default=None, help="Path to dmd.conf equivalent")
+    parser.add_argument(
+        "--sysroot",
+        type=Path,
+        default=None,
+        help="Directory where libraries and headers will be staged",
+    )
+    parser.add_argument(
+        "--archiver",
+        type=Path,
+        default=None,
+        help="Archiver executable used to create static libraries (defaults to 'ar')",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print commands without executing them")
     parser.add_argument("--force", action="store_true", help="Recompile all files even if up to date")
     parser.add_argument(
@@ -362,6 +534,8 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
     extend_list("skip", args.skip_patterns)
     extend_list("include_dirs", args.include_dirs)
     set_path("conf", args.conf_file)
+    set_path("sysroot", args.sysroot)
+    set_path("archiver", args.archiver)
     if args.dry_run:
         merged["dry_run"] = True
     if args.force:
@@ -430,6 +604,8 @@ def build_settings_from_dict(data: dict) -> BuildSettings:
         skip_patterns=str_list("skip"),
         include_dirs=path_list("include_dirs"),
         conf_file=optional_path("conf"),
+        sysroot=optional_path("sysroot"),
+        archiver=optional_path("archiver"),
         dry_run=bool(data.get("dry_run", False)),
         force=bool(data.get("force", False)),
         keep_going=bool(data.get("keep_going", False)),

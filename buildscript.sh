@@ -21,6 +21,11 @@ OUT_DIR="${OUT_DIR:-build}"
 KERNEL_O="$OUT_DIR/kernel.o"
 STARTUP_O="$OUT_DIR/startup.o"
 KERNEL_ELF="$OUT_DIR/kernel.elf"
+ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
+ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
+ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
+ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
+: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}" 
 
 # Map TARGET -> builtins archive suffix used by compiler-rt
 case "$TARGET" in
@@ -49,6 +54,13 @@ need cmake
 need ldc2
 need ld.lld
 need ninja || true   # ok if missing; we’ll fall back to Makefiles
+need grub-mkrescue
+command -v xorriso >/dev/null 2>&1 || \
+  command -v mkisofs >/dev/null 2>&1 || \
+  command -v genisoimage >/dev/null 2>&1 || {
+    echo "Missing ISO creation tool (xorriso, mkisofs, or genisoimage)";
+    exit 1;
+  }
 
 # Prefer LLVM binutils if available
 AR_BIN="$(command -v llvm-ar || command -v ar)"
@@ -119,3 +131,44 @@ ld.lld -m "$LLD_MACH" -T "$LINKER_SCRIPT" -nostdlib \
        -o "$KERNEL_ELF"
 
 echo "[✓] Linked: $KERNEL_ELF"
+
+# ===================== GRUB staging & ISO =====================
+if [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
+  echo "Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist" >&2
+  exit 1
+fi
+
+rm -rf "$ISO_STAGING_DIR"
+mkdir -p "$ISO_STAGING_DIR/boot/grub"
+
+cp "$KERNEL_ELF" "$ISO_STAGING_DIR/boot/kernel.elf"
+
+cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
+set timeout=0
+set default=0
+
+menuentry "Toy OS" {
+    multiboot /boot/kernel.elf
+    boot
+}
+EOF
+
+SYSROOT_DEST="$ISO_STAGING_DIR/$ISO_SYSROOT_PATH"
+TOOLCHAIN_DEST="$ISO_STAGING_DIR/$ISO_TOOLCHAIN_PATH"
+
+rm -rf "$SYSROOT_DEST" "$TOOLCHAIN_DEST"
+mkdir -p "$SYSROOT_DEST" "$TOOLCHAIN_DEST"
+
+if [ -d "$SYSROOT" ]; then
+  cp -a "$SYSROOT"/. "$SYSROOT_DEST"/
+else
+  echo "Sysroot directory '$SYSROOT' does not exist" >&2
+  exit 1
+fi
+
+cp -a "$CROSS_TOOLCHAIN_DIR"/. "$TOOLCHAIN_DEST"/
+
+rm -f "$ISO_IMAGE"
+grub-mkrescue -o "$ISO_IMAGE" "$ISO_STAGING_DIR"
+
+echo "[✓] ISO image: $ISO_IMAGE"

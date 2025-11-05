@@ -8,7 +8,7 @@ SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 
 # Cross target + sysroot
-: "${TARGET:=i386-unknown-elf}"
+: "${TARGET:=x86_64-unknown-elf}"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
 # Your kernel sources / outputs
@@ -25,24 +25,16 @@ ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
 ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
-: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}" 
+: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}"
+TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
 # Map TARGET -> builtins archive suffix used by compiler-rt
 case "$TARGET" in
-  i?86-*-elf|i?86-unknown-elf)
-    LIBSUFFIX="i386"
-    LLD_MACH="elf_i386"
-    ;;
   x86_64-*-elf|x86_64-unknown-elf)
     LIBSUFFIX="x86_64"
-    LLD_MACH="elf_x86_64"
-    ;;
-  aarch64-*-elf|aarch64-unknown-elf)
-    LIBSUFFIX="aarch64"
-    LLD_MACH="elf_aarch64"
     ;;
   *)
-    echo "Unsupported TARGET '$TARGET' (edit LIBSUFFIX/LLD_MACH mapping)"
+    echo "Unsupported TARGET '$TARGET' — the toy linker only emits Linux x86_64 ELF binaries." >&2
     exit 1
     ;;
 esac
@@ -52,7 +44,6 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1"; exit 1; }
 need clang
 need cmake
 need ldc2
-need ld.lld
 need ninja || true   # ok if missing; we’ll fall back to Makefiles
 need grub-mkrescue
 command -v xorriso >/dev/null 2>&1 || \
@@ -65,6 +56,16 @@ command -v xorriso >/dev/null 2>&1 || \
 # Prefer LLVM binutils if available
 AR_BIN="$(command -v llvm-ar || command -v ar)"
 RANLIB_BIN="$(command -v llvm-ranlib || command -v ranlib)"
+
+if [ ! -x "$TOY_LD" ]; then
+  echo "Missing toy linker wrapper '$TOY_LD'" >&2
+  exit 1
+fi
+
+if ! command -v ld.lld >/dev/null 2>&1 && ! command -v ld >/dev/null 2>&1; then
+  echo "Missing linker backend (need ld.lld or ld)" >&2
+  exit 1
+fi
 
 # ===================== Get LLVM source if needed =====================
 if [ ! -d "$LLVM_DIR" ]; then
@@ -124,11 +125,11 @@ clang --target="$TARGET" -c "$STARTUP_SRC" -o "$STARTUP_O"
 LIBDIR="$SYSROOT/usr/lib"
 [ -f "$FLAT" ] || LIBDIR="$SYSROOT/usr/lib/generic"
 
-ld.lld -m "$LLD_MACH" -T "$LINKER_SCRIPT" -nostdlib \
-       "$STARTUP_O" "$KERNEL_O" \
-       -L"$LIBDIR" \
-       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
-       -o "$KERNEL_ELF"
+"$TOY_LD" -T "$LINKER_SCRIPT" -nostdlib \
+         "$STARTUP_O" "$KERNEL_O" \
+         -L"$LIBDIR" \
+         -l:libclang_rt.builtins-${LIBSUFFIX}.a \
+         -o "$KERNEL_ELF"
 
 echo "[✓] Linked: $KERNEL_ELF"
 

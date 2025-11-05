@@ -1,25 +1,19 @@
-#!/bin/bash
-set -euo pipefail
+export TARGET=x86_64-unknown-elf
+export SYSROOT=$HOME/sysroots/$TARGET
 
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-CONFIG_FILE="${CONFIG_FILE:-toolchain_config.toml}"
+cmake -S llvm-project/compiler-rt/builtins -B build-builtins -G Ninja \
+  -DCMAKE_C_COMPILER=clang \
+  -DCMAKE_ASM_COMPILER=clang \
+  -DCMAKE_AR=llvm-ar \
+  -DCMAKE_RANLIB=llvm-ranlib \
+  -DCMAKE_C_COMPILER_TARGET=$TARGET \
+  -DCMAKE_ASM_COMPILER_TARGET=$TARGET \
+  -DCMAKE_SYSTEM_NAME=Generic \
+  -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+  -DCOMPILER_RT_BAREMETAL_BUILD=ON \
+  -DCOMPILER_RT_BUILD_BUILTINS=ON \
+  -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON \
+  -DCMAKE_INSTALL_PREFIX=$SYSROOT/usr
 
-if [[ -f "$CONFIG_FILE" ]]; then
-    SELECTED_CONFIG="$CONFIG_FILE"
-elif [[ -f "$SCRIPT_DIR/$CONFIG_FILE" ]]; then
-    SELECTED_CONFIG="$SCRIPT_DIR/$CONFIG_FILE"
-else
-    SELECTED_CONFIG=""
-fi
-
-if [[ ! -x "$SCRIPT_DIR/toolchain_builder.py" ]]; then
-    chmod +x "$SCRIPT_DIR/toolchain_builder.py"
-fi
-
-if [[ -n "$SELECTED_CONFIG" ]]; then
-    echo "Using configuration file: $SELECTED_CONFIG"
-    exec "$SCRIPT_DIR/toolchain_builder.py" --config "$SELECTED_CONFIG" "$@"
-else
-    echo "No configuration file found (looked for $CONFIG_FILE); falling back to CLI arguments" >&2
-    exec "$SCRIPT_DIR/toolchain_builder.py" "$@"
-fi
+ninja -C build-builtins
+ninja -C build-builtins install

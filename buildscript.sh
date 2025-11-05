@@ -14,7 +14,8 @@ BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 # Your kernel sources / outputs
 KERNEL_D="${KERNEL_D:-src/kernel.d}"
 
-STARTUP_SRC="${STARTUP_SRC:-arch/x86/boot/startup.s}"
+# Startup assembly source (defaults to our local boot stub)
+STARTUP_SRC="${STARTUP_SRC:-src/boot.s}"
 LINKER_SCRIPT="${LINKER_SCRIPT:-linker.ld}"
 OUT_DIR="${OUT_DIR:-build}"
 KERNEL_O="$OUT_DIR/kernel.o"

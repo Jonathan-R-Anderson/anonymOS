@@ -7,35 +7,47 @@ LLVM_DIR="${LLVM_DIR:-$ROOT/llvm-project}"
 SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 
-# Cross target + sysroot
+# Cross target + sysroot (x86_64 only for this script)
 : "${TARGET:=x86_64-unknown-elf}"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
-# Your kernel sources / outputs
+# Kernel sources / outputs
 KERNEL_D="${KERNEL_D:-src/kernel.d}"
-
-# Startup assembly source (defaults to our local boot stub)
 STARTUP_SRC="${STARTUP_SRC:-src/boot.s}"
 LINKER_SCRIPT="${LINKER_SCRIPT:-linker.ld}"
 OUT_DIR="${OUT_DIR:-build}"
 KERNEL_O="$OUT_DIR/kernel.o"
 STARTUP_O="$OUT_DIR/startup.o"
 KERNEL_ELF="$OUT_DIR/kernel.elf"
-DEFAULT_CROSS_TOOLCHAIN_DIR="$HOME/x-tools/i386-unknown-elf"
-CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-$DEFAULT_CROSS_TOOLCHAIN_DIR}"
+
+# ISO packaging
 ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
 ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
+
+# Optional toolchain bundle inside ISO (set to a path to enable)
+CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
+
+# Optional toy linker wrapper (used if present), else we fall back to ld.lld
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
-# Map TARGET -> builtins archive suffix used by compiler-rt
+# Debug/Opt flags (DEBUG=1 default). Set DEBUG=0 for release-ish build.
+: "${DEBUG:=1}"
+
+# Optional QEMU autolaunch after ISO creation
+: "${QEMU_RUN:=0}"       # set to 1 to run QEMU
+: "${QEMU_GDB:=0}"       # set to 1 to add -s -S for GDB
+: "${QEMU_BIN:=qemu-system-x86_64}"
+
+# Map TARGET -> builtins suffix & LLD machine
 case "$TARGET" in
   x86_64-*-elf|x86_64-unknown-elf)
     LIBSUFFIX="x86_64"
+    LLD_MACH="elf_x86_64"
     ;;
   *)
-    echo "Unsupported TARGET '$TARGET' — the toy linker only emits Linux x86_64 ELF binaries." >&2
+    echo "Unsupported TARGET '$TARGET' — this script emits x86_64 ELF only." >&2
     exit 1
     ;;
 esac
@@ -45,27 +57,26 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1"; exit 1; }
 need clang
 need cmake
 need ldc2
-need ninja || true   # ok if missing; we’ll fall back to Makefiles
 need grub-mkrescue
-command -v xorriso >/dev/null 2>&1 || \
-  command -v mkisofs >/dev/null 2>&1 || \
-  command -v genisoimage >/dev/null 2>&1 || {
-    echo "Missing ISO creation tool (xorriso, mkisofs, or genisoimage)";
-    exit 1;
-  }
+command -v xorriso >/dev/null 2>&1 || command -v mkisofs >/dev/null 2>&1 || command -v genisoimage >/dev/null 2>&1 || {
+  echo "Missing ISO creation tool (xorriso, mkisofs, or genisoimage)"; exit 1; }
 
 # Prefer LLVM binutils if available
 AR_BIN="$(command -v llvm-ar || command -v ar)"
 RANLIB_BIN="$(command -v llvm-ranlib || command -v ranlib)"
 
-if [ ! -x "$TOY_LD" ]; then
-  echo "Missing toy linker wrapper '$TOY_LD'" >&2
-  exit 1
-fi
-
-if ! command -v ld.lld >/dev/null 2>&1 && ! command -v ld >/dev/null 2>&1; then
-  echo "Missing linker backend (need ld.lld or ld)" >&2
-  exit 1
+# Linker backend: use toy-ld if executable, else ld.lld (or ld as last resort)
+LINK_BACKEND=""
+if [ -x "$TOY_LD" ]; then
+  LINK_BACKEND="$TOY_LD"
+else
+  if command -v ld.lld >/dev/null 2>&1; then
+    LINK_BACKEND="ld.lld"
+  elif command -v ld >/dev/null 2>&1; then
+    LINK_BACKEND="ld"
+  else
+    echo "Missing linker backend (need toy-ld, ld.lld, or ld)" >&2; exit 1
+  fi
 fi
 
 # ===================== Get LLVM source if needed =====================
@@ -79,7 +90,6 @@ mkdir -p "$SYSROOT/usr/lib" "$SYSROOT/usr/include" "$BUILD_DIR" "$OUT_DIR"
 
 GEN="Ninja"; command -v ninja >/dev/null 2>&1 || GEN="Unix Makefiles"
 rm -rf "$BUILD_DIR"
-echo $KERNEL_D
 
 cmake -S "$SRC_DIR" -B "$BUILD_DIR" -G "$GEN" \
   -DCMAKE_C_COMPILER=clang \
@@ -114,35 +124,44 @@ echo "[✓] Builtins:"
 ls -l "$SYSROOT/usr/lib"/libclang_rt.builtins-*.a || true
 
 # ===================== Compile kernel (freestanding D) =====================
+mkdir -p "$OUT_DIR"
+
+if [ "$DEBUG" = "1" ]; then
+  DFLAGS="-g -O0"
+else
+  DFLAGS="-O3 -release"
+fi
+
 # D object
-ldc2 -mtriple="$TARGET" -betterC -O3 -release \
+ldc2 -I. -mtriple="$TARGET" -betterC $DFLAGS \
      -c "$KERNEL_D" -of="$KERNEL_O"
 
 # Startup (asm)
 clang --target="$TARGET" -c "$STARTUP_SRC" -o "$STARTUP_O"
 
 # ===================== Link kernel with builtins =====================
-# Prefer flat path; fall back to generic if needed
 LIBDIR="$SYSROOT/usr/lib"
 [ -f "$FLAT" ] || LIBDIR="$SYSROOT/usr/lib/generic"
 
-"$TOY_LD" -T "$LINKER_SCRIPT" -nostdlib \
-         "$STARTUP_O" "$KERNEL_O" \
-         -L"$LIBDIR" \
-         -l:libclang_rt.builtins-${LIBSUFFIX}.a \
-         -o "$KERNEL_ELF"
+if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
+  # Native linker path
+  "$LINK_BACKEND" ${LLD_MACH:+-m "$LLD_MACH"} -T "$LINKER_SCRIPT" -nostdlib \
+      "$STARTUP_O" "$KERNEL_O" \
+      -L"$LIBDIR" \
+      -l:libclang_rt.builtins-${LIBSUFFIX}.a \
+      -o "$KERNEL_ELF"
+else
+  # toy-ld wrapper
+  "$LINK_BACKEND" -T "$LINKER_SCRIPT" -nostdlib \
+      "$STARTUP_O" "$KERNEL_O" \
+      -L"$LIBDIR" \
+      -l:libclang_rt.builtins-${LIBSUFFIX}.a \
+      -o "$KERNEL_ELF"
+fi
 
 echo "[✓] Linked: $KERNEL_ELF"
 
 # ===================== GRUB staging & ISO =====================
-BUNDLE_TOOLCHAIN=1
-if [ -z "$CROSS_TOOLCHAIN_DIR" ]; then
-  BUNDLE_TOOLCHAIN=0
-elif [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
-  echo "[!] Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist; skipping toolchain bundling" >&2
-  BUNDLE_TOOLCHAIN=0
-fi
-
 rm -rf "$ISO_STAGING_DIR"
 mkdir -p "$ISO_STAGING_DIR/boot/grub"
 
@@ -158,26 +177,30 @@ menuentry "Toy OS" {
 }
 EOF
 
+# Copy sysroot (handy for inspection on a mounted ISO)
 SYSROOT_DEST="$ISO_STAGING_DIR/$ISO_SYSROOT_PATH"
-TOOLCHAIN_DEST="$ISO_STAGING_DIR/$ISO_TOOLCHAIN_PATH"
+rm -rf "$SYSROOT_DEST"
+mkdir -p "$SYSROOT_DEST"
+cp -a "$SYSROOT"/. "$SYSROOT_DEST"/
 
-rm -rf "$SYSROOT_DEST" "$TOOLCHAIN_DEST"
-mkdir -p "$SYSROOT_DEST" "$TOOLCHAIN_DEST"
-
-if [ -d "$SYSROOT" ]; then
-  cp -a "$SYSROOT"/. "$SYSROOT_DEST"/
-else
-  echo "Sysroot directory '$SYSROOT' does not exist" >&2
-  exit 1
-fi
-
-if [ "$BUNDLE_TOOLCHAIN" -eq 1 ]; then
+# Bundle toolchain only if provided and exists
+if [ -n "${CROSS_TOOLCHAIN_DIR}" ] && [ -d "${CROSS_TOOLCHAIN_DIR}" ]; then
+  TOOLCHAIN_DEST="$ISO_STAGING_DIR/$ISO_TOOLCHAIN_PATH"
+  rm -rf "$TOOLCHAIN_DEST"
+  mkdir -p "$TOOLCHAIN_DEST"
   cp -a "$CROSS_TOOLCHAIN_DIR"/. "$TOOLCHAIN_DEST"/
-else
-  rmdir "$TOOLCHAIN_DEST" 2>/dev/null || true
+  echo "[i] Bundled toolchain from: $CROSS_TOOLCHAIN_DIR"
 fi
 
 rm -f "$ISO_IMAGE"
 grub-mkrescue -o "$ISO_IMAGE" "$ISO_STAGING_DIR"
-
 echo "[✓] ISO image: $ISO_IMAGE"
+
+# ===================== Optional: QEMU autolaunch =====================
+if [ "$QEMU_RUN" = "1" ]; then
+  need "$QEMU_BIN"
+  QEMU_ARGS=(-cdrom "$ISO_IMAGE" -serial stdio)
+  [ "$QEMU_GDB" = "1" ] && QEMU_ARGS+=(-s -S)
+  echo "[→] Launching: $QEMU_BIN ${QEMU_ARGS[*]}"
+  exec "$QEMU_BIN" "${QEMU_ARGS[@]}"
+fi

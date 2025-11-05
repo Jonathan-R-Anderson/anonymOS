@@ -10,6 +10,8 @@ user = ["/path/to/your/project/src"]
 build_dir = "build"
 output = "build/interpreter"
 log_file = "build.log"
+sysroot = "build/sysroot"
+# archiver = "/usr/bin/llvm-ar"
 
 target_triple = "wasm32-unknown-unknown"
 # gcc = "/opt/wasi-sdk/bin/clang"

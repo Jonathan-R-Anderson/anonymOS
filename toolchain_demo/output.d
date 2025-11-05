@@ -1,6 +1,6 @@
 module toolchain_demo.output;
 
-extern(C) int printf(const char*, ...);
+extern(C) @nogc nothrow int printf(const char*, ...);
 
 private enum divider = "--------------------------------------------------";
 

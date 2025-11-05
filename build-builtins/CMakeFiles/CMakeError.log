@@ -1,0 +1,70 @@
+Testing compiler for supporting FLAGS-Wbuiltin-declaration-mismatch:
+Command: /usr/bin/clang;;;;-Wbuiltin-declaration-mismatch;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+warning: unknown warning option '-Wbuiltin-declaration-mismatch'; did you mean '-Wmissing-declarations'? [-Wunknown-warning-option]
+1 warning generated.
+
+0
+Testing compiler for supporting FLAGS/Zl:
+Command: /usr/bin/clang;;;;/Zl;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+clang: error: no such file or directory: '/Zl'
+
+1
+Testing compiler for supporting SOURCE
+asm(".arch armv8-a+lse")
+asm("cas w0, w1, [x2]")
+:
+Command: /usr/bin/clang;;;;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+<inline asm>:2:1: error: invalid instruction mnemonic 'cas'
+    2 | cas w0, w1, [x2]
+      | ^
+1 error generated.
+
+1
+Testing compiler for supporting SOURCE
+void foo(void)  __arm_streaming_compatible {
+  asm(".arch armv9-a+sme2\n"
+      "smstart\n"
+      "ldr zt0, [sp]")
+}
+:
+Command: /usr/bin/clang;;;;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c:2:17: error: '__arm_streaming_compatible' is not supported on this target
+    2 | void foo(void)  __arm_streaming_compatible {
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+
+1
+Testing compiler for supporting SOURCE
+void foo() {
+#ifndef __ARM_FEATURE_UNALIGNED
+#error "Unaligned accesses unsupported"
+#endif
+}
+:
+Command: /usr/bin/clang;;;;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c:4:2: error: "Unaligned accesses unsupported"
+    4 | #error "Unaligned accesses unsupported"
+      |  ^
+1 error generated.
+
+1
+Testing compiler for supporting SOURCE
+void foo() {
+#ifndef __ARM_FP
+#error "No floating-point support"
+#endif
+}
+:
+Command: /usr/bin/clang;;;;--target=x86_64-unknown-elf;-o;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/test.o;-c;/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c
+
+/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/src.c:4:2: error: "No floating-point support"
+    4 | #error "No floating-point support"
+      |  ^
+1 error generated.
+
+1

@@ -1,0 +1,1 @@
+/home/jonny/sysroots/x86_64-unknown-elf/usr/lib/generic/libclang_rt.builtins-x86_64.a

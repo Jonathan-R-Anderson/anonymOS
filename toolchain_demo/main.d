@@ -1,8 +1,8 @@
 module main;
 
-extern(C) int printf(const char*, ...);
+import toolchain_demo.pipeline : runToolchainDemo;
 
 extern(C) void main()
 {
-    printf("Hello from custom D toolchain!\n");
+    runToolchainDemo();
 }

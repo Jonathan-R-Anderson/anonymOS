@@ -50,14 +50,14 @@ void logStatus(
 }
 
 @nogc nothrow
-void logModuleCompilation(scope const(char)[] stage, scope const(char)[] module) @system
+void logModuleCompilation(scope const(char)[] stage, scope const(char)[] moduleName) @system
 {
     printf(
         "[%.*s] Compiling %.*s ... ok\n",
         cast(int)stage.length,
         stage.ptr,
-        cast(int)module.length,
-        module.ptr,
+        cast(int)moduleName.length,
+        moduleName.ptr,
     );
 }
 

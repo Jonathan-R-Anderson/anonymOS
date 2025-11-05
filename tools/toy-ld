@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Minimal x86_64 ELF linker wrapper for the toy operating system.
+
+The script behaves like a specialised linker that always produces Linux
+x86_64 ELF output.  It forwards all arguments to the selected backend
+linker (``ld.lld`` by default) after stripping any existing ``-m``
+options so that the emulation cannot accidentally diverge from what the
+kernel expects.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def _resolve_backend() -> str:
+    """Return the linker backend that should actually perform the work."""
+    candidate = os.environ.get("TOY_LD_BACKEND")
+    if candidate:
+        path = Path(candidate)
+        if path.is_file():
+            return str(path)
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+        raise SystemExit(f"Configured TOY_LD_BACKEND '{candidate}' was not found")
+
+    for name in ("ld.lld", "ld"):
+        resolved = shutil.which(name)
+        if resolved:
+            return resolved
+    raise SystemExit("Unable to locate an ld-compatible linker (looked for ld.lld and ld)")
+
+
+def _forward_args(argv: list[str]) -> list[str]:
+    """Filter out any existing -m options before forwarding the call."""
+    forwarded: list[str] = []
+    skip_next = False
+    for arg in argv:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "-m":
+            skip_next = True
+            continue
+        if arg.startswith("-m") and len(arg) > 2:
+            # Skip old emulation value such as -melf_i386
+            continue
+        forwarded.append(arg)
+
+    forwarded.extend(["-m", "elf_x86_64"])
+    return forwarded
+
+
+def main(argv: list[str]) -> int:
+    backend = _resolve_backend()
+    args = _forward_args(argv[1:])
+    cmd = [backend, *args]
+
+    if os.environ.get("TOY_LD_VERBOSE"):
+        print("[toy-ld] invoking:", " ".join(cmd))
+
+    completed = subprocess.run(cmd)
+    return completed.returncode
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
+    sys.exit(main(sys.argv))

@@ -1,0 +1,18 @@
+compiler = "/usr/bin/ldc2"
+runtime = "runtime/minimal"
+user = ["toolchain_demo"]
+
+build_dir = "build/toolchain"
+output = "build/toolchain/toolchain_demo.bin"
+log_file = "build/toolchain/build.log"
+sysroot = "build/toolchain/sysroot"
+
+target_triple = "x86_64-pc-linux-gnu"
+
+compile_flags = ["-betterC", "-O2"]
+link_flags = []
+
+include_dirs = ["runtime/minimal"]
+
+lib_dirs = ["/usr/lib/x86_64-linux-gnu"]
+libs = ["c"]

@@ -1,0 +1,28 @@
+# Example configuration for toolchain_builder.py
+# Copy to toolchain_config.toml and adjust paths for your environment.
+
+compiler = "/opt/dlang/ldc/bin/ldc2"
+runtime = "/opt/dlang/druntime"
+phobos = "/opt/dlang/phobos"
+# mstd = "/opt/custom/mstd"
+user = ["/path/to/your/project/src"]
+
+build_dir = "build"
+output = "build/interpreter"
+log_file = "build.log"
+
+target_triple = "wasm32-unknown-unknown"
+# gcc = "/opt/wasi-sdk/bin/clang"
+
+compile_flags = ["-Oz", "-betterC"]
+link_flags = ["-static"]
+lib_dirs = ["/opt/wasi-sdk/lib"]
+libs = ["wasi-emulated-mman"]
+
+skip = ["*/example.d"]
+include_dirs = ["/path/to/shared/includes"]
+
+# When true, commands are printed but not executed.
+dry_run = false
+force = false
+keep_going = false

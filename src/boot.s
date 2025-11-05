@@ -100,12 +100,12 @@ gdt64_descriptor:
 
 .align 4096
 pml4_table:
-    .quad pdpt_table | 0x03
+    .quad pdpt_table + 0x03
     .fill 511, 8, 0
 
 .align 4096
 pdpt_table:
-    .quad pd_table | 0x03
+    .quad pd_table + 0x03
     .fill 511, 8, 0
 
 .align 4096

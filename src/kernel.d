@@ -6,7 +6,7 @@ nothrow:
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Displays a short message in the VGA text buffer and halts the CPU.
-void kmain(uint magic, uint info)
+void kmain(ulong magic, ulong info)
 {
     // Parameters supplied by the multiboot loader; unused in this example.
     cast(void) magic;

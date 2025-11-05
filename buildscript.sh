@@ -8,7 +8,7 @@ SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 
 # Cross target + sysroot
-: "${TARGET:=x86_64-unknown-elf}"
+: "${TARGET:=i386-unknown-elf}"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
 # Your kernel sources / outputs
@@ -24,9 +24,22 @@ KERNEL_ELF="$OUT_DIR/kernel.elf"
 
 # Map TARGET -> builtins archive suffix used by compiler-rt
 case "$TARGET" in
-  x86_64-*-elf|x86_64-unknown-elf)  LIBSUFFIX="x86_64" ; LLD_MACH="elf_x86_64" ;;
-  aarch64-*-elf|aarch64-unknown-elf) LIBSUFFIX="aarch64"; LLD_MACH="elf_aarch64" ;;
-  *) echo "Unsupported TARGET '$TARGET' (edit LIBSUFFIX/LLD_MACH mapping)"; exit 1 ;;
+  i?86-*-elf|i?86-unknown-elf)
+    LIBSUFFIX="i386"
+    LLD_MACH="elf_i386"
+    ;;
+  x86_64-*-elf|x86_64-unknown-elf)
+    LIBSUFFIX="x86_64"
+    LLD_MACH="elf_x86_64"
+    ;;
+  aarch64-*-elf|aarch64-unknown-elf)
+    LIBSUFFIX="aarch64"
+    LLD_MACH="elf_aarch64"
+    ;;
+  *)
+    echo "Unsupported TARGET '$TARGET' (edit LIBSUFFIX/LLD_MACH mapping)"
+    exit 1
+    ;;
 esac
 
 # ===================== Tool checks =====================

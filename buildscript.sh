@@ -25,7 +25,12 @@ ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
 ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
-: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}" 
+: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}"
+
+if [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
+  echo "Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist" >&2
+  exit 1
+fi
 
 # Map TARGET -> builtins archive suffix used by compiler-rt
 case "$TARGET" in
@@ -133,11 +138,6 @@ ld.lld -m "$LLD_MACH" -T "$LINKER_SCRIPT" -nostdlib \
 echo "[✓] Linked: $KERNEL_ELF"
 
 # ===================== GRUB staging & ISO =====================
-if [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
-  echo "Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist" >&2
-  exit 1
-fi
-
 rm -rf "$ISO_STAGING_DIR"
 mkdir -p "$ISO_STAGING_DIR/boot/grub"
 

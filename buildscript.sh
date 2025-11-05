@@ -21,12 +21,12 @@ OUT_DIR="${OUT_DIR:-build}"
 KERNEL_O="$OUT_DIR/kernel.o"
 STARTUP_O="$OUT_DIR/startup.o"
 KERNEL_ELF="$OUT_DIR/kernel.elf"
-CROSS_TOOLCHAIN_DIR="$HOME/x-tools/i386-unknown-elf"
+DEFAULT_CROSS_TOOLCHAIN_DIR="$HOME/x-tools/i386-unknown-elf"
+CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-$DEFAULT_CROSS_TOOLCHAIN_DIR}"
 ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
 ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
-: "${CROSS_TOOLCHAIN_DIR:?Set CROSS_TOOLCHAIN_DIR to the root of the cross toolchain you want to bundle}"
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
 # Map TARGET -> builtins archive suffix used by compiler-rt
@@ -135,9 +135,12 @@ LIBDIR="$SYSROOT/usr/lib"
 echo "[✓] Linked: $KERNEL_ELF"
 
 # ===================== GRUB staging & ISO =====================
-if [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
-  echo "Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist" >&2
-  exit 1
+BUNDLE_TOOLCHAIN=1
+if [ -z "$CROSS_TOOLCHAIN_DIR" ]; then
+  BUNDLE_TOOLCHAIN=0
+elif [ ! -d "$CROSS_TOOLCHAIN_DIR" ]; then
+  echo "[!] Cross toolchain directory '$CROSS_TOOLCHAIN_DIR' does not exist; skipping toolchain bundling" >&2
+  BUNDLE_TOOLCHAIN=0
 fi
 
 rm -rf "$ISO_STAGING_DIR"
@@ -168,7 +171,11 @@ else
   exit 1
 fi
 
-cp -a "$CROSS_TOOLCHAIN_DIR"/. "$TOOLCHAIN_DEST"/
+if [ "$BUNDLE_TOOLCHAIN" -eq 1 ]; then
+  cp -a "$CROSS_TOOLCHAIN_DIR"/. "$TOOLCHAIN_DEST"/
+else
+  rmdir "$TOOLCHAIN_DEST" 2>/dev/null || true
+fi
 
 rm -f "$ISO_IMAGE"
 grub-mkrescue -o "$ISO_IMAGE" "$ISO_STAGING_DIR"

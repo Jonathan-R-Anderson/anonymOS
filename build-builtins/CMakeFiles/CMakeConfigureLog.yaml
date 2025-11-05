@@ -98,8 +98,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -109,17 +109,17 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_0626d
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf   -v -MD -MT CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -MF CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj.d -o CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+        Run Build Command(s): /usr/bin/ninja -v cmTC_76e6e
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf   -v -MD -MT CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -MF CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj.d -o CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
         Ubuntu clang version 18.1.3 (1ubuntu1)
         Target: x86_64-unknown-unknown-elf
         Thread model: posix
         InstalledDir: /usr/bin
         Found CUDA installation: /usr/lib/cuda, version 12.0
          (in-process)
-         "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-unknown-elf -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A -v -fcoverage-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj.d -MT CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -sys-header-deps -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
+         "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-unknown-elf -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH -v -fcoverage-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj.d -MT CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -sys-header-deps -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c
         clang -cc1 version 18.1.3 based upon LLVM 18.1.3 default target x86_64-pc-linux-gnu
         #include "..." search starts here:
         #include <...> search starts here:
@@ -127,7 +127,7 @@ events:
          /usr/lib/llvm-18/lib/clang/18/include
          /usr/include
         End of search list.
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_0626d.a && /usr/bin/llvm-ar qc libcmTC_0626d.a  CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj && /usr/bin/llvm-ranlib libcmTC_0626d.a && :
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_76e6e.a && /usr/bin/llvm-ar qc libcmTC_76e6e.a  CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj && /usr/bin/llvm-ranlib libcmTC_76e6e.a && :
         
       exitCode: 0
   -
@@ -159,17 +159,17 @@ events:
     message: |
       Parsed C implicit link information:
         link line regex: [^( *|.*[/\\])(ld\\.lld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
-        ignore line: [Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A']
+        ignore line: [Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH']
         ignore line: []
-        ignore line: [Run Build Command(s): /usr/bin/ninja -v cmTC_0626d]
-        ignore line: [[1/2] /usr/bin/clang --target=x86_64-unknown-elf   -v -MD -MT CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -MF CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj.d -o CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [Run Build Command(s): /usr/bin/ninja -v cmTC_76e6e]
+        ignore line: [[1/2] /usr/bin/clang --target=x86_64-unknown-elf   -v -MD -MT CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -MF CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj.d -o CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
         ignore line: [Ubuntu clang version 18.1.3 (1ubuntu1)]
         ignore line: [Target: x86_64-unknown-unknown-elf]
         ignore line: [Thread model: posix]
         ignore line: [InstalledDir: /usr/bin]
         ignore line: [Found CUDA installation: /usr/lib/cuda  version 12.0]
         ignore line: [ (in-process)]
-        ignore line: [ "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-unknown-elf -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A -v -fcoverage-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-YTHY5A -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj.d -MT CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -sys-header-deps -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
+        ignore line: [ "/usr/lib/llvm-18/bin/clang" -cc1 -triple x86_64-unknown-unknown-elf -emit-obj -mrelax-all -disable-free -clear-ast-before-backend -disable-llvm-verifier -discard-value-names -main-file-name CMakeCCompilerABI.c -mrelocation-model static -mframe-pointer=all -fmath-errno -ffp-contract=on -fno-rounding-math -mconstructor-aliases -funwind-tables=2 -target-cpu x86-64 -tune-cpu generic -debugger-tuning=gdb -fdebug-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH -v -fcoverage-compilation-dir=/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-RxnClH -resource-dir /usr/lib/llvm-18/lib/clang/18 -dependency-file CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj.d -MT CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -sys-header-deps -ferror-limit 19 -fgnuc-version=4.2.1 -fskip-odr-check-in-gmf -faddrsig -D__GCC_HAVE_DWARF2_CFI_ASM=1 -o CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj -x c /usr/share/cmake-3.28/Modules/CMakeCCompilerABI.c]
         ignore line: [clang -cc1 version 18.1.3 based upon LLVM 18.1.3 default target x86_64-pc-linux-gnu]
         ignore line: [#include "..." search starts here:]
         ignore line: [#include <...> search starts here:]
@@ -177,7 +177,7 @@ events:
         ignore line: [ /usr/lib/llvm-18/lib/clang/18/include]
         ignore line: [ /usr/include]
         ignore line: [End of search list.]
-        ignore line: [[2/2] : && /usr/bin/cmake -E rm -f libcmTC_0626d.a && /usr/bin/llvm-ar qc libcmTC_0626d.a  CMakeFiles/cmTC_0626d.dir/CMakeCCompilerABI.c.obj && /usr/bin/llvm-ranlib libcmTC_0626d.a && :]
+        ignore line: [[2/2] : && /usr/bin/cmake -E rm -f libcmTC_76e6e.a && /usr/bin/llvm-ar qc libcmTC_76e6e.a  CMakeFiles/cmTC_76e6e.dir/CMakeCCompilerABI.c.obj && /usr/bin/llvm-ranlib libcmTC_76e6e.a && :]
         ignore line: []
         ignore line: []
         implicit libs: []
@@ -195,8 +195,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-o64F2A"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-o64F2A"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-Dvu0lM"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-Dvu0lM"
     cmakeVariables:
       CMAKE_CXX_FLAGS: ""
       CMAKE_CXX_FLAGS_DEBUG: "-g"
@@ -206,10 +206,10 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-o64F2A'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-Dvu0lM'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_78c4a
-        [1/2] /usr/bin/c++   -v -o CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp
+        Run Build Command(s): /usr/bin/ninja -v cmTC_8ecf6
+        [1/2] /usr/bin/c++   -v -o CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp
         Using built-in specs.
         COLLECT_GCC=/usr/bin/c++
         OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa
@@ -219,8 +219,8 @@ events:
         Thread model: posix
         Supported LTO compression algorithms: zlib zstd
         gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04) 
-        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/'
-         /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_78c4a.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/ccMK80Br.s
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/'
+         /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_8ecf6.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/ccNC0CJR.s
         GNU C++17 (Ubuntu 13.3.0-6ubuntu2~24.04) version 13.3.0 (x86_64-linux-gnu)
         	compiled by GNU C version 13.3.0, GMP version 6.3.0, MPFR version 4.2.1, MPC version 1.3.1, isl version isl-0.26-GMP
         
@@ -241,13 +241,13 @@ events:
          /usr/include
         End of search list.
         Compiler executable checksum: c81c05345ce537099dafd5580045814a
-        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/'
-         as -v --64 -o CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj /tmp/ccMK80Br.s
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/'
+         as -v --64 -o CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj /tmp/ccNC0CJR.s
         GNU assembler version 2.42 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.42
         COMPILER_PATH=/usr/libexec/gcc/x86_64-linux-gnu/13/:/usr/libexec/gcc/x86_64-linux-gnu/13/:/usr/libexec/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/gcc/x86_64-linux-gnu/
         LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../:/lib/:/usr/lib/
-        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.'
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_78c4a.a && /usr/bin/llvm-ar qc libcmTC_78c4a.a  CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj && /usr/bin/llvm-ranlib libcmTC_78c4a.a && :
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.'
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_8ecf6.a && /usr/bin/llvm-ar qc libcmTC_8ecf6.a  CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj && /usr/bin/llvm-ranlib libcmTC_8ecf6.a && :
         
       exitCode: 0
   -
@@ -287,10 +287,10 @@ events:
     message: |
       Parsed CXX implicit link information:
         link line regex: [^( *|.*[/\\])(ld\\.lld|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
-        ignore line: [Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-o64F2A']
+        ignore line: [Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-Dvu0lM']
         ignore line: []
-        ignore line: [Run Build Command(s): /usr/bin/ninja -v cmTC_78c4a]
-        ignore line: [[1/2] /usr/bin/c++   -v -o CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp]
+        ignore line: [Run Build Command(s): /usr/bin/ninja -v cmTC_8ecf6]
+        ignore line: [[1/2] /usr/bin/c++   -v -o CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj -c /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp]
         ignore line: [Using built-in specs.]
         ignore line: [COLLECT_GCC=/usr/bin/c++]
         ignore line: [OFFLOAD_TARGET_NAMES=nvptx-none:amdgcn-amdhsa]
@@ -300,8 +300,8 @@ events:
         ignore line: [Thread model: posix]
         ignore line: [Supported LTO compression algorithms: zlib zstd]
         ignore line: [gcc version 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04) ]
-        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/']
-        ignore line: [ /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_78c4a.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/ccMK80Br.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/']
+        ignore line: [ /usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -D_GNU_SOURCE /usr/share/cmake-3.28/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_8ecf6.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -fasynchronous-unwind-tables -fstack-protector-strong -Wformat -Wformat-security -fstack-clash-protection -fcf-protection -o /tmp/ccNC0CJR.s]
         ignore line: [GNU C++17 (Ubuntu 13.3.0-6ubuntu2~24.04) version 13.3.0 (x86_64-linux-gnu)]
         ignore line: [	compiled by GNU C version 13.3.0  GMP version 6.3.0  MPFR version 4.2.1  MPC version 1.3.1  isl version isl-0.26-GMP]
         ignore line: []
@@ -322,13 +322,13 @@ events:
         ignore line: [ /usr/include]
         ignore line: [End of search list.]
         ignore line: [Compiler executable checksum: c81c05345ce537099dafd5580045814a]
-        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/']
-        ignore line: [ as -v --64 -o CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj /tmp/ccMK80Br.s]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/']
+        ignore line: [ as -v --64 -o CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj /tmp/ccNC0CJR.s]
         ignore line: [GNU assembler version 2.42 (x86_64-linux-gnu) using BFD version (GNU Binutils for Ubuntu) 2.42]
         ignore line: [COMPILER_PATH=/usr/libexec/gcc/x86_64-linux-gnu/13/:/usr/libexec/gcc/x86_64-linux-gnu/13/:/usr/libexec/gcc/x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/gcc/x86_64-linux-gnu/]
         ignore line: [LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../x86_64-linux-gnu/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../../lib/:/lib/x86_64-linux-gnu/:/lib/../lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/../lib/:/usr/lib/gcc/x86_64-linux-gnu/13/../../../:/lib/:/usr/lib/]
-        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.']
-        ignore line: [[2/2] : && /usr/bin/cmake -E rm -f libcmTC_78c4a.a && /usr/bin/llvm-ar qc libcmTC_78c4a.a  CMakeFiles/cmTC_78c4a.dir/CMakeCXXCompilerABI.cpp.obj && /usr/bin/llvm-ranlib libcmTC_78c4a.a && :]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.']
+        ignore line: [[2/2] : && /usr/bin/cmake -E rm -f libcmTC_8ecf6.a && /usr/bin/llvm-ar qc libcmTC_8ecf6.a  CMakeFiles/cmTC_8ecf6.dir/CMakeCXXCompilerABI.cpp.obj && /usr/bin/llvm-ranlib libcmTC_8ecf6.a && :]
         ignore line: []
         ignore line: []
         implicit libs: []
@@ -346,8 +346,8 @@ events:
     checks:
       - "Looking for unwind.h"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-ayg5YE"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-ayg5YE"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-5K3Vto"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-5K3Vto"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -358,11 +358,11 @@ events:
       variable: "HAVE_UNWIND_H"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-ayg5YE'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-5K3Vto'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_8587f
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_8587f.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_8587f.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_8587f.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-ayg5YE/CheckIncludeFile.c
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_8587f.a && /usr/bin/llvm-ar qc libcmTC_8587f.a  CMakeFiles/cmTC_8587f.dir/CheckIncludeFile.c.obj && /usr/bin/llvm-ranlib libcmTC_8587f.a && :
+        Run Build Command(s): /usr/bin/ninja -v cmTC_a8df2
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_a8df2.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_a8df2.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_a8df2.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-5K3Vto/CheckIncludeFile.c
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_a8df2.a && /usr/bin/llvm-ar qc libcmTC_a8df2.a  CMakeFiles/cmTC_a8df2.dir/CheckIncludeFile.c.obj && /usr/bin/llvm-ranlib libcmTC_a8df2.a && :
         
       exitCode: 0
   -
@@ -374,8 +374,8 @@ events:
     checks:
       - "Looking for rpc/xdr.h"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -386,13 +386,13 @@ events:
       variable: "HAVE_RPC_XDR_H"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_12635
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda/CheckIncludeFile.c
-        FAILED: CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj 
-        /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_12635.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda/CheckIncludeFile.c
-        /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-9AiCda/CheckIncludeFile.c:1:10: fatal error: 'rpc/xdr.h' file not found
+        Run Build Command(s): /usr/bin/ninja -v cmTC_0d949
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf/CheckIncludeFile.c
+        FAILED: CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj 
+        /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj -MF CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj.d -o CMakeFiles/cmTC_0d949.dir/CheckIncludeFile.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf/CheckIncludeFile.c
+        /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-NY5rkf/CheckIncludeFile.c:1:10: fatal error: 'rpc/xdr.h' file not found
             1 | #include <rpc/xdr.h>
               |          ^~~~~~~~~~~
         1 error generated.
@@ -408,8 +408,8 @@ events:
     checks:
       - "Looking for include file sys/auxv.h"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-W7Z8Gp"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-W7Z8Gp"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-fHfviU"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-fHfviU"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -420,11 +420,11 @@ events:
       variable: "COMPILER_RT_HAS_AUXV"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-W7Z8Gp'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-fHfviU'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_78b39
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_78b39.dir/COMPILER_RT_HAS_AUXV.c.obj -MF CMakeFiles/cmTC_78b39.dir/COMPILER_RT_HAS_AUXV.c.obj.d -o CMakeFiles/cmTC_78b39.dir/COMPILER_RT_HAS_AUXV.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-W7Z8Gp/COMPILER_RT_HAS_AUXV.c
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_78b39.a && /usr/bin/llvm-ar qc libcmTC_78b39.a  CMakeFiles/cmTC_78b39.dir/COMPILER_RT_HAS_AUXV.c.obj && /usr/bin/llvm-ranlib libcmTC_78b39.a && :
+        Run Build Command(s): /usr/bin/ninja -v cmTC_abd7d
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf    -MD -MT CMakeFiles/cmTC_abd7d.dir/COMPILER_RT_HAS_AUXV.c.obj -MF CMakeFiles/cmTC_abd7d.dir/COMPILER_RT_HAS_AUXV.c.obj.d -o CMakeFiles/cmTC_abd7d.dir/COMPILER_RT_HAS_AUXV.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-fHfviU/COMPILER_RT_HAS_AUXV.c
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_abd7d.a && /usr/bin/llvm-ar qc libcmTC_abd7d.a  CMakeFiles/cmTC_abd7d.dir/COMPILER_RT_HAS_AUXV.c.obj && /usr/bin/llvm-ranlib libcmTC_abd7d.a && :
         
       exitCode: 0
   -
@@ -436,8 +436,8 @@ events:
     checks:
       - "Performing Test COMPILER_RT_HAS_x86_64_FLOAT16"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-1zehW6"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-1zehW6"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-17KAig"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-17KAig"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -448,11 +448,11 @@ events:
       variable: "COMPILER_RT_HAS_x86_64_FLOAT16"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-1zehW6'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-17KAig'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_ce609
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf -DCOMPILER_RT_HAS_x86_64_FLOAT16  -nostdinc++ -fPIC -fno-builtin -fvisibility=hidden -fomit-frame-pointer -MD -MT CMakeFiles/cmTC_ce609.dir/src.c.obj -MF CMakeFiles/cmTC_ce609.dir/src.c.obj.d -o CMakeFiles/cmTC_ce609.dir/src.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-1zehW6/src.c
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_ce609.a && /usr/bin/llvm-ar qc libcmTC_ce609.a  CMakeFiles/cmTC_ce609.dir/src.c.obj && /usr/bin/llvm-ranlib libcmTC_ce609.a && :
+        Run Build Command(s): /usr/bin/ninja -v cmTC_d6b64
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf -DCOMPILER_RT_HAS_x86_64_FLOAT16  -nostdinc++ -fPIC -fno-builtin -fvisibility=hidden -fomit-frame-pointer -MD -MT CMakeFiles/cmTC_d6b64.dir/src.c.obj -MF CMakeFiles/cmTC_d6b64.dir/src.c.obj.d -o CMakeFiles/cmTC_d6b64.dir/src.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-17KAig/src.c
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_d6b64.a && /usr/bin/llvm-ar qc libcmTC_d6b64.a  CMakeFiles/cmTC_d6b64.dir/src.c.obj && /usr/bin/llvm-ranlib libcmTC_d6b64.a && :
         
       exitCode: 0
   -
@@ -464,8 +464,8 @@ events:
     checks:
       - "Performing Test COMPILER_RT_HAS_x86_64_BFLOAT16"
     directories:
-      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-0ty7n5"
-      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-0ty7n5"
+      source: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-guMaP5"
+      binary: "/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-guMaP5"
     cmakeVariables:
       CMAKE_C_COMPILER_TARGET: "x86_64-unknown-elf"
       CMAKE_C_FLAGS: ""
@@ -476,11 +476,11 @@ events:
       variable: "COMPILER_RT_HAS_x86_64_BFLOAT16"
       cached: true
       stdout: |
-        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-0ty7n5'
+        Change Dir: '/home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-guMaP5'
         
-        Run Build Command(s): /usr/bin/ninja -v cmTC_e7fe4
-        [1/2] /usr/bin/clang --target=x86_64-unknown-elf -DCOMPILER_RT_HAS_x86_64_BFLOAT16  -nostdinc++ -fPIC -fno-builtin -fvisibility=hidden -fomit-frame-pointer -MD -MT CMakeFiles/cmTC_e7fe4.dir/src.c.obj -MF CMakeFiles/cmTC_e7fe4.dir/src.c.obj.d -o CMakeFiles/cmTC_e7fe4.dir/src.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-0ty7n5/src.c
-        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_e7fe4.a && /usr/bin/llvm-ar qc libcmTC_e7fe4.a  CMakeFiles/cmTC_e7fe4.dir/src.c.obj && /usr/bin/llvm-ranlib libcmTC_e7fe4.a && :
+        Run Build Command(s): /usr/bin/ninja -v cmTC_f0f93
+        [1/2] /usr/bin/clang --target=x86_64-unknown-elf -DCOMPILER_RT_HAS_x86_64_BFLOAT16  -nostdinc++ -fPIC -fno-builtin -fvisibility=hidden -fomit-frame-pointer -MD -MT CMakeFiles/cmTC_f0f93.dir/src.c.obj -MF CMakeFiles/cmTC_f0f93.dir/src.c.obj.d -o CMakeFiles/cmTC_f0f93.dir/src.c.obj -c /home/jonny/Documents/internetcomputer/build-builtins/CMakeFiles/CMakeScratch/TryCompile-guMaP5/src.c
+        [2/2] : && /usr/bin/cmake -E rm -f libcmTC_f0f93.a && /usr/bin/llvm-ar qc libcmTC_f0f93.a  CMakeFiles/cmTC_f0f93.dir/src.c.obj && /usr/bin/llvm-ranlib libcmTC_f0f93.a && :
         
       exitCode: 0
 ...

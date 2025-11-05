@@ -551,6 +551,39 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
 
 
 def build_settings_from_dict(data: dict) -> BuildSettings:
+    def resolve_executable(key: str) -> Path:
+        value = data.get(key)
+        if value is None:
+            raise ValueError(f"Missing required configuration value: {key}")
+
+        raw_path = Path(str(value)).expanduser()
+
+        direct_candidates: list[Path] = [raw_path]
+        if not raw_path.is_absolute():
+            direct_candidates.append(Path.cwd() / raw_path)
+
+        for candidate in direct_candidates:
+            if candidate.exists():
+                return candidate.resolve()
+
+        search_terms: list[str] = []
+        string_value = str(value)
+        if string_value:
+            search_terms.append(string_value)
+        name = raw_path.name
+        if name and name not in search_terms:
+            search_terms.append(name)
+
+        for term in search_terms:
+            found = shutil.which(term)
+            if found:
+                return Path(found).resolve()
+
+        raise ValueError(
+            f"Executable specified for '{key}' was not found: {value}. "
+            "Update the configuration or ensure it is available on PATH."
+        )
+
     def require_path(key: str) -> Path:
         value = data.get(key)
         if value is None:
@@ -586,8 +619,10 @@ def build_settings_from_dict(data: dict) -> BuildSettings:
     build_dir = optional_path("build_dir") or Path("build").resolve()
     log_file = optional_path("log_file") or Path("build.log").resolve()
 
+    compiler = resolve_executable("compiler")
+
     return BuildSettings(
-        compiler=require_path("compiler"),
+        compiler=compiler,
         runtime=require_path("runtime"),
         phobos=optional_path("phobos"),
         mstd=optional_path("mstd"),

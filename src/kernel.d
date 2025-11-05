@@ -470,7 +470,7 @@ extern(C) int memcmp(const void* left, const void* right, size_t count)
     return 0;
 }
 
-extern(C) void __assert(const(char)* file, size_t line, const(char)* message)
+extern(C) void __assert(const(char)* file, const(char)* message, int line)
 {
     printLine("Assertion failed");
 
@@ -489,7 +489,7 @@ extern(C) void __assert(const(char)* file, size_t line, const(char)* message)
     }
 
     print("  line: ");
-    printUnsigned(line);
+    printUnsigned(cast(size_t)line);
     putChar('\n');
 
     for (;;) {}

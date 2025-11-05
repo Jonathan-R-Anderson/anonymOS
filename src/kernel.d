@@ -63,7 +63,6 @@ private immutable char[128] scancodeMap = [
     0x39: ' ',
 ];
 
-extern(C):
 nothrow:
 @nogc:
 
@@ -342,6 +341,7 @@ private void runCompilerBuilder()
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
+extern(C)
 void kmain(ulong magic, ulong info)
 {
     cast(void) magic;

@@ -12,7 +12,12 @@ target_triple = "x86_64-pc-linux-gnu"
 compile_flags = ["-betterC", "-O2"]
 link_flags = []
 
-include_dirs = ["runtime/minimal"]
+include_dirs = [
+    "runtime/minimal",
+    "toolchain_demo/mock_dmd_sources/dmd/compiler/src",
+    "toolchain_demo/mock_dmd_sources/dmd/druntime/src",
+    "toolchain_demo/mock_dmd_sources/dmd/phobos",
+]
 
 lib_dirs = ["/usr/lib/x86_64-linux-gnu"]
 libs = ["c"]

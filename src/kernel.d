@@ -92,7 +92,13 @@ private struct ToolchainConfiguration
     bool cacheManifestGenerated;
 }
 
-private __gshared ToolchainConfiguration toolchainConfiguration;
+private __gshared ToolchainConfiguration toolchainConfiguration = ToolchainConfiguration(
+    "x86_64-unknown-elf",
+    "wasm32-unknown-unknown",
+    "druntime bare-metal",
+    false,
+    false,
+);
 
 private struct LinkArtifacts
 {
@@ -379,19 +385,15 @@ private void buildModuleGroup(immutable(char)[] stage, immutable(char)[][] modul
 
 private void configureToolchain()
 {
-    toolchainConfiguration = ToolchainConfiguration(
-        "x86_64-unknown-elf",
-        "wasm32-unknown-unknown",
-        "druntime bare-metal",
-        true,
-        true,
-    );
-
     printStageHeader("Configure host + target");
     printStatus("[config] Host triple      : ", toolchainConfiguration.hostTriple, "");
     printStatus("[config] Target triple    : ", toolchainConfiguration.targetTriple, "");
     printStatus("[config] Runtime variant  : ", toolchainConfiguration.runtimeVariant, "");
+
+    toolchainConfiguration.crossCompilationSupport = true;
     printLine("[config] Enabling LDC cross-compilation support");
+
+    toolchainConfiguration.cacheManifestGenerated = true;
     printLine("[config] Generating cache manifest ... ok");
 }
 

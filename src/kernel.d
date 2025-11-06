@@ -1,5 +1,68 @@
 module minimal_os.main;
 
+
+extern(C) @nogc nothrow void runCompilerBuilder()
+{
+    printLine("========================================");
+    printLine("   Cross Compiler Build Orchestrator");
+    printLine("   Target: Full D language toolchain");
+    printLine("========================================");
+
+    configureToolchain();
+
+    {
+        printStageHeader("Compile front-end");
+        static immutable(char)[][] modules = [
+            "dmd/lexer.d",
+            "dmd/parser.d",
+            "dmd/semantic.d",
+            "dmd/types.d",
+            "dmd/dsymbol.d",
+            "dmd/expressionsem.d",
+            "dmd/template.d",
+            "dmd/backend/astdumper.d",
+        ];
+        buildModuleGroup("front-end", modules);
+        printLine("[front-end] Generating module map ... ok");
+    }
+
+    {
+        printStageHeader("Build optimizer + codegen");
+        static immutable(char)[][] modules = [
+            "dmd/backend/ir.d",
+            "dmd/backend/abi.d",
+            "dmd/backend/optimize.d",
+            "dmd/backend/eliminate.d",
+            "dmd/backend/target.d",
+            "dmd/backend/codegen.d",
+        ];
+        buildModuleGroup("optimizer", modules);
+        printLine("[optimizer] Wiring up LLVM passes ... ok");
+        printLine("[optimizer] Emitting position independent code ... ok");
+    }
+
+    {
+        printStageHeader("Assemble runtime libraries");
+        static immutable(char)[][] runtimeModules = [
+            "druntime/core/memory.d",
+            "druntime/core/thread.d",
+            "druntime/object.d",
+            "phobos/std/algorithm.d",
+            "phobos/std/array.d",
+            "phobos/std/io.d",
+        ];
+        buildModuleGroup("runtime", runtimeModules);
+        printLine("[runtime] Archiving libdruntime-cross.a ... ok");
+        printLine("[runtime] Archiving libphobos-cross.a ... ok");
+    }
+
+    linkCompiler();
+    packageArtifacts();
+
+    printLine("");
+    printLine("[done] D language cross compiler ready.");
+}
+
 private enum VGA_WIDTH = 80;
 private enum VGA_HEIGHT = 25;
 private enum DEFAULT_COLOUR = 0x0F;
@@ -272,79 +335,6 @@ private void packageArtifacts()
     printLine("[pkg] Cross compiler image ready for deployment");
 }
 
-extern(C) export void runCompilerBuilder()
-{
-    printLine("========================================");
-    printLine("   Cross Compiler Build Orchestrator");
-    printLine("   Target: Full D language toolchain");
-    printLine("========================================");
-
-    configureToolchain();
-
-    {
-        printStageHeader("Compile front-end");
-        immutable(char)[][] modules = [
-            "dmd/lexer.d",
-            "dmd/parser.d",
-            "dmd/semantic.d",
-            "dmd/types.d",
-            "dmd/dsymbol.d",
-            "dmd/expressionsem.d",
-            "dmd/template.d",
-            "dmd/backend/astdumper.d",
-        ];
-        buildModuleGroup("front-end", modules);
-        printLine("[front-end] Generating module map ... ok");
-    }
-
-    {
-        printStageHeader("Build optimizer + codegen");
-        immutable(char)[][] modules = [
-            "dmd/backend/ir.d",
-            "dmd/backend/abi.d",
-            "dmd/backend/optimize.d",
-            "dmd/backend/eliminate.d",
-            "dmd/backend/target.d",
-            "dmd/backend/codegen.d",
-        ];
-        buildModuleGroup("optimizer", modules);
-        printLine("[optimizer] Wiring up LLVM passes ... ok");
-        printLine("[optimizer] Emitting position independent code ... ok");
-    }
-
-    {
-        printStageHeader("Assemble runtime libraries");
-        immutable(char)[][] runtimeModules = [
-            "druntime/core/memory.d",
-            "druntime/core/thread.d",
-            "druntime/object.d",
-            "phobos/std/algorithm.d",
-            "phobos/std/array.d",
-            "phobos/std/io.d",
-        ];
-        buildModuleGroup("runtime", runtimeModules);
-        printLine("[runtime] Archiving libdruntime-cross.a ... ok");
-        printLine("[runtime] Archiving libphobos-cross.a ... ok");
-    }
-
-    linkCompiler();
-    packageArtifacts();
-
-    printLine("");
-    printLine("[done] D language cross compiler ready.");
-}
-
-/// Entry point invoked from boot.s once the CPU is ready to run D code.
-/// Initialises the VGA output and runs the compiler build program.
-extern(C)
-void kmain(ulong magic, ulong info)
-{
-    cast(void) magic;
-    cast(void) info;
-
-    clearScreen();
-    runCompilerBuilder();
-}
 
 extern(C) void* memset(void* destination, int value, size_t count)
 {
@@ -440,4 +430,15 @@ extern(C) void __assert(const(char)* file, const(char)* message, int line)
     putChar('\n');
 
     for (;;) {}
+}
+
+/// Entry point invoked from boot.s once the CPU is ready to run D code.
+/// Initialises the VGA output and runs the compiler build program.
+extern(C) void kmain(ulong magic, ulong info)
+{
+    cast(void) magic;
+    cast(void) info;
+
+    clearScreen();
+    runCompilerBuilder();
 }

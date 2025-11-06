@@ -29,13 +29,20 @@ ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
 # Optional toolchain bundle inside ISO (set to a path to enable)
 CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
 
-# Optional path to a DMD source tree to copy into the ISO image.  When the
-# sources are missing at runtime, the in-guest toolchain demo can hang while it
-# waits for the modules it expects to process.  We default to a conventional
-# layout under the repository root but allow callers to override it.
-DMD_SOURCE_DIR="${DMD_SOURCE_DIR:-$ROOT/compiler/src}"
+# Optional path to a DMD source tree to copy into the ISO image.  The kernel
+# demo expects to find the sources under opt/toolchain/dmd when verifying the
+# toolchain build.  Default to the real tree at $ROOT/dmd when present, and fall
+# back to the bundled mock sources otherwise.  Callers can still override this
+# via the DMD_SOURCE_DIR environment variable.
+if [ -z "${DMD_SOURCE_DIR:-}" ]; then
+  if [ -d "$ROOT/dmd" ]; then
+    DMD_SOURCE_DIR="$ROOT/dmd"
+  else
+    DMD_SOURCE_DIR="$ROOT/toolchain_demo/mock_dmd_sources/dmd"
+  fi
+fi
 # Destination within the ISO for the DMD sources (relative to the staging dir).
-DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/compiler/src}"
+DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/dmd}"
 
 # Optional toy linker wrapper (used if present), else we fall back to ld.lld
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"

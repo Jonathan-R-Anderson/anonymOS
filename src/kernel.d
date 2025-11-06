@@ -11,7 +11,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     configureToolchain();
 
-    void verifyFiles(const(char)[][] files)
+    void verifyFiles(string[] files)
     {
         foreach (f; files)
         {

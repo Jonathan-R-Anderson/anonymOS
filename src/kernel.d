@@ -254,55 +254,6 @@ private void configureToolchain()
     printLine("[config] Generating cache manifest ... ok");
 }
 
-private void buildFrontEnd()
-{
-    printStageHeader("Compile front-end");
-    immutable(char)[][] modules = [
-        "dmd/lexer.d",
-        "dmd/parser.d",
-        "dmd/semantic.d",
-        "dmd/types.d",
-        "dmd/dsymbol.d",
-        "dmd/expressionsem.d",
-        "dmd/template.d",
-        "dmd/backend/astdumper.d",
-    ];
-    buildModuleGroup("front-end", modules);
-    printLine("[front-end] Generating module map ... ok");
-}
-
-private void buildOptimizer()
-{
-    printStageHeader("Build optimizer + codegen");
-    immutable(char)[][] modules = [
-        "dmd/backend/ir.d",
-        "dmd/backend/abi.d",
-        "dmd/backend/optimize.d",
-        "dmd/backend/eliminate.d",
-        "dmd/backend/target.d",
-        "dmd/backend/codegen.d",
-    ];
-    buildModuleGroup("optimizer", modules);
-    printLine("[optimizer] Wiring up LLVM passes ... ok");
-    printLine("[optimizer] Emitting position independent code ... ok");
-}
-
-private void buildRuntime()
-{
-    printStageHeader("Assemble runtime libraries");
-    immutable(char)[][] runtimeModules = [
-        "druntime/core/memory.d",
-        "druntime/core/thread.d",
-        "druntime/object.d",
-        "phobos/std/algorithm.d",
-        "phobos/std/array.d",
-        "phobos/std/io.d",
-    ];
-    buildModuleGroup("runtime", runtimeModules);
-    printLine("[runtime] Archiving libdruntime-cross.a ... ok");
-    printLine("[runtime] Archiving libphobos-cross.a ... ok");
-}
-
 private void linkCompiler()
 {
     printStageHeader("Link cross compiler executable");
@@ -329,9 +280,53 @@ private void runCompilerBuilder()
     printLine("========================================");
 
     configureToolchain();
-    buildFrontEnd();
-    buildOptimizer();
-    buildRuntime();
+
+    {
+        printStageHeader("Compile front-end");
+        immutable(char)[][] modules = [
+            "dmd/lexer.d",
+            "dmd/parser.d",
+            "dmd/semantic.d",
+            "dmd/types.d",
+            "dmd/dsymbol.d",
+            "dmd/expressionsem.d",
+            "dmd/template.d",
+            "dmd/backend/astdumper.d",
+        ];
+        buildModuleGroup("front-end", modules);
+        printLine("[front-end] Generating module map ... ok");
+    }
+
+    {
+        printStageHeader("Build optimizer + codegen");
+        immutable(char)[][] modules = [
+            "dmd/backend/ir.d",
+            "dmd/backend/abi.d",
+            "dmd/backend/optimize.d",
+            "dmd/backend/eliminate.d",
+            "dmd/backend/target.d",
+            "dmd/backend/codegen.d",
+        ];
+        buildModuleGroup("optimizer", modules);
+        printLine("[optimizer] Wiring up LLVM passes ... ok");
+        printLine("[optimizer] Emitting position independent code ... ok");
+    }
+
+    {
+        printStageHeader("Assemble runtime libraries");
+        immutable(char)[][] runtimeModules = [
+            "druntime/core/memory.d",
+            "druntime/core/thread.d",
+            "druntime/object.d",
+            "phobos/std/algorithm.d",
+            "phobos/std/array.d",
+            "phobos/std/io.d",
+        ];
+        buildModuleGroup("runtime", runtimeModules);
+        printLine("[runtime] Archiving libdruntime-cross.a ... ok");
+        printLine("[runtime] Archiving libphobos-cross.a ... ok");
+    }
+
     linkCompiler();
     packageArtifacts();
 

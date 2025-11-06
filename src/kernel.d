@@ -13,14 +13,14 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Compile front-end");
         static immutable(char)[][] modules = [
-            "compiler/src/dmd/lexer.d",
-            "compiler/src/dmd/parser.d",
-            "compiler/src/dmd/semantic.d",
-            "compiler/src/dmd/dmodule.d",
-            "compiler/src/dmd/dsymbol.d",
-            "compiler/src/dmd/dsymbolsem.d",
-            "compiler/src/dmd/expressionsem.d",
-            "compiler/src/dmd/template.d",
+            "dmd/compiler/src/dmd/lexer.d",
+            "dmd/compiler/src/dmd/parser.d",
+            "dmd/compiler/src/dmd/semantic.d",
+            "dmd/compiler/src/dmd/dmodule.d",
+            "dmd/compiler/src/dmd/dsymbol.d",
+            "dmd/compiler/src/dmd/dsymbolsem.d",
+            "dmd/compiler/src/dmd/expressionsem.d",
+            "dmd/compiler/src/dmd/template.d",
         ];
         buildModuleGroup("front-end", modules);
         printLine("[front-end] Generating module map ... ok");
@@ -29,12 +29,12 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Build optimizer + codegen");
         static immutable(char)[][] modules = [
-            "compiler/src/dmd/backend/blockopt.d",
-            "compiler/src/dmd/backend/optimize.d",
-            "compiler/src/dmd/backend/cgcod.d",
-            "compiler/src/dmd/backend/code.d",
-            "compiler/src/dmd/backend/irstate.d",
-            "compiler/src/dmd/backend/target.d",
+            "dmd/compiler/src/dmd/backend/blockopt.d",
+            "dmd/compiler/src/dmd/backend/optimize.d",
+            "dmd/compiler/src/dmd/backend/cgcod.d",
+            "dmd/compiler/src/dmd/backend/code.d",
+            "dmd/compiler/src/dmd/backend/irstate.d",
+            "dmd/compiler/src/dmd/backend/target.d",
         ];
         buildModuleGroup("optimizer", modules);
         printLine("[optimizer] Wiring up LLVM passes ... ok");
@@ -44,12 +44,12 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Assemble runtime libraries");
         static immutable(char)[][] runtimeModules = [
-            "druntime/src/core/memory.d",
-            "druntime/src/core/thread.d",
-            "druntime/src/object.d",
-            "phobos/std/algorithm.d",
-            "phobos/std/array.d",
-            "phobos/std/io.d",
+            "dmd/druntime/src/core/memory.d",
+            "dmd/druntime/src/core/thread.d",
+            "dmd/druntime/src/object.d",
+            "dmd/phobos/std/algorithm.d",
+            "dmd/phobos/std/array.d",
+            "dmd/phobos/std/io.d",
         ];
         buildModuleGroup("runtime", runtimeModules);
         printLine("[runtime] Archiving libdruntime-cross.a ... ok");

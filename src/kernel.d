@@ -272,7 +272,7 @@ private void packageArtifacts()
     printLine("[pkg] Cross compiler image ready for deployment");
 }
 
-extern(C) void runCompilerBuilder()
+extern(C) export void runCompilerBuilder()
 {
     printLine("========================================");
     printLine("   Cross Compiler Build Orchestrator");

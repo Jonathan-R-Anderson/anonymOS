@@ -11,7 +11,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     configureToolchain();
 
-    void verifyFiles(string[] files)
+    void verifyFiles(immutable(char)[][] files)
     {
         foreach (f; files)
         {

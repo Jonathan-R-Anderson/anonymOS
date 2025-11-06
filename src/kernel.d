@@ -290,9 +290,14 @@ private void backspace()
 
 private void print(const(char)[] text)
 {
-    foreach (immutable c; text)
+    if (text is null)
     {
-        putChar(c);
+        return;
+    }
+
+    for (size_t index = 0; index < text.length; ++index)
+    {
+        putChar(text[index]);
     }
 }
 

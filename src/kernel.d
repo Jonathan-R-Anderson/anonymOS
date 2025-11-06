@@ -1,8 +1,6 @@
 module minimal_os.main;
 
 
-import std.file : exists;
-import std.stdio : writefln;
 
 extern(C) @nogc nothrow void runCompilerBuilder()
 {
@@ -17,10 +15,8 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         foreach (f; files)
         {
-            if (exists(f))
-                writefln("[ok] Found: %s", f);
-            else
-                writefln("[missing] %s", f);
+            print("[ok] Known module: ");
+            printLine(f);
         }
     }
 

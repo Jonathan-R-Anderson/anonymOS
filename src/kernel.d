@@ -1,6 +1,9 @@
 module minimal_os.main;
 
 
+import std.file : exists;
+import std.stdio : writefln;
+
 extern(C) @nogc nothrow void runCompilerBuilder()
 {
     printLine("========================================");
@@ -9,6 +12,17 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     printLine("========================================");
 
     configureToolchain();
+
+    void verifyFiles(const(char)[][] files)
+    {
+        foreach (f; files)
+        {
+            if (exists(f))
+                writefln("[ok] Found: %s", f);
+            else
+                writefln("[missing] %s", f);
+        }
+    }
 
     {
         printStageHeader("Compile front-end");
@@ -22,6 +36,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
             "dmd/compiler/src/dmd/expressionsem.d",
             "dmd/compiler/src/dmd/template.d",
         ];
+        verifyFiles(modules);
         buildModuleGroup("front-end", modules);
         printLine("[front-end] Generating module map ... ok");
     }
@@ -36,6 +51,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
             "dmd/compiler/src/dmd/backend/irstate.d",
             "dmd/compiler/src/dmd/backend/target.d",
         ];
+        verifyFiles(modules);
         buildModuleGroup("optimizer", modules);
         printLine("[optimizer] Wiring up LLVM passes ... ok");
         printLine("[optimizer] Emitting position independent code ... ok");
@@ -51,6 +67,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
             "dmd/phobos/std/array.d",
             "dmd/phobos/std/io.d",
         ];
+        verifyFiles(runtimeModules);
         buildModuleGroup("runtime", runtimeModules);
         printLine("[runtime] Archiving libdruntime-cross.a ... ok");
         printLine("[runtime] Archiving libphobos-cross.a ... ok");
@@ -63,6 +80,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     printLine("");
     printLine("[done] D language cross compiler ready.");
 }
+
 
 private enum VGA_WIDTH = 80;
 private enum VGA_HEIGHT = 25;

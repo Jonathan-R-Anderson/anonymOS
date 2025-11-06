@@ -29,6 +29,14 @@ ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
 # Optional toolchain bundle inside ISO (set to a path to enable)
 CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
 
+# Optional path to a DMD source tree to copy into the ISO image.  When the
+# sources are missing at runtime, the in-guest toolchain demo can hang while it
+# waits for the modules it expects to process.  We default to a conventional
+# layout under the repository root but allow callers to override it.
+DMD_SOURCE_DIR="${DMD_SOURCE_DIR:-$ROOT/compiler/src}"
+# Destination within the ISO for the DMD sources (relative to the staging dir).
+DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/compiler/src}"
+
 # Optional toy linker wrapper (used if present), else we fall back to ld.lld
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
@@ -190,6 +198,17 @@ if [ -n "${CROSS_TOOLCHAIN_DIR}" ] && [ -d "${CROSS_TOOLCHAIN_DIR}" ]; then
   mkdir -p "$TOOLCHAIN_DEST"
   cp -a "$CROSS_TOOLCHAIN_DIR"/. "$TOOLCHAIN_DEST"/
   echo "[i] Bundled toolchain from: $CROSS_TOOLCHAIN_DIR"
+fi
+
+# Copy DMD sources into the ISO so the demo has the modules it expects.
+if [ -d "${DMD_SOURCE_DIR}" ]; then
+  DMD_DEST="$ISO_STAGING_DIR/$DMD_ISO_DEST"
+  rm -rf "$DMD_DEST"
+  mkdir -p "$DMD_DEST"
+  cp -a "$DMD_SOURCE_DIR"/. "$DMD_DEST"/
+  echo "[i] Copied DMD sources from: $DMD_SOURCE_DIR"
+else
+  echo "[!] DMD sources directory not found, skipping copy: $DMD_SOURCE_DIR" >&2
 fi
 
 rm -f "$ISO_IMAGE"

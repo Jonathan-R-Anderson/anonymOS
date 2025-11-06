@@ -13,14 +13,14 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Compile front-end");
         static immutable(char)[][] modules = [
-            "dmd/lexer.d",
-            "dmd/parser.d",
-            "dmd/semantic.d",
-            "dmd/types.d",
-            "dmd/dsymbol.d",
-            "dmd/expressionsem.d",
-            "dmd/template.d",
-            "dmd/backend/astdumper.d",
+            "compiler/src/dmd/lexer.d",
+            "compiler/src/dmd/parser.d",
+            "compiler/src/dmd/semantic.d",
+            "compiler/src/dmd/dmodule.d",
+            "compiler/src/dmd/dsymbol.d",
+            "compiler/src/dmd/dsymbolsem.d",
+            "compiler/src/dmd/expressionsem.d",
+            "compiler/src/dmd/template.d",
         ];
         buildModuleGroup("front-end", modules);
         printLine("[front-end] Generating module map ... ok");
@@ -29,12 +29,12 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Build optimizer + codegen");
         static immutable(char)[][] modules = [
-            "dmd/backend/ir.d",
-            "dmd/backend/abi.d",
-            "dmd/backend/optimize.d",
-            "dmd/backend/eliminate.d",
-            "dmd/backend/target.d",
-            "dmd/backend/codegen.d",
+            "compiler/src/dmd/backend/blockopt.d",
+            "compiler/src/dmd/backend/optimize.d",
+            "compiler/src/dmd/backend/cgcod.d",
+            "compiler/src/dmd/backend/code.d",
+            "compiler/src/dmd/backend/irstate.d",
+            "compiler/src/dmd/backend/target.d",
         ];
         buildModuleGroup("optimizer", modules);
         printLine("[optimizer] Wiring up LLVM passes ... ok");
@@ -44,9 +44,9 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     {
         printStageHeader("Assemble runtime libraries");
         static immutable(char)[][] runtimeModules = [
-            "druntime/core/memory.d",
-            "druntime/core/thread.d",
-            "druntime/object.d",
+            "druntime/src/core/memory.d",
+            "druntime/src/core/thread.d",
+            "druntime/src/object.d",
             "phobos/std/algorithm.d",
             "phobos/std/array.d",
             "phobos/std/io.d",

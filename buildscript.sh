@@ -30,16 +30,11 @@ ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
 CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
 
 # Optional path to a DMD source tree to copy into the ISO image.  The kernel
-# demo expects to find the sources under opt/toolchain/dmd when verifying the
-# toolchain build.  Default to the real tree at $ROOT/dmd when present, and fall
-# back to the bundled mock sources otherwise.  Callers can still override this
-# via the DMD_SOURCE_DIR environment variable.
-if [ -z "${DMD_SOURCE_DIR:-}" ]; then
-  if [ -d "$ROOT/dmd" ]; then
-    DMD_SOURCE_DIR="$ROOT/dmd"
-  else
-    DMD_SOURCE_DIR="$ROOT/toolchain_demo/mock_dmd_sources/dmd"
-  fi
+# build expects to find the sources under opt/toolchain/dmd when verifying the
+# toolchain build.  Default to the real tree at $ROOT/dmd when present.  Callers
+# can still override this via the DMD_SOURCE_DIR environment variable.
+if [ -z "${DMD_SOURCE_DIR:-}" ] && [ -d "$ROOT/dmd" ]; then
+  DMD_SOURCE_DIR="$ROOT/dmd"
 fi
 # Destination within the ISO for the DMD sources (relative to the staging dir).
 DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/dmd}"
@@ -207,14 +202,14 @@ if [ -n "${CROSS_TOOLCHAIN_DIR}" ] && [ -d "${CROSS_TOOLCHAIN_DIR}" ]; then
   echo "[i] Bundled toolchain from: $CROSS_TOOLCHAIN_DIR"
 fi
 
-# Copy DMD sources into the ISO so the demo has the modules it expects.
-if [ -d "${DMD_SOURCE_DIR}" ]; then
+# Copy DMD sources into the ISO so the kernel can inspect the toolchain build.
+if [ -n "${DMD_SOURCE_DIR:-}" ] && [ -d "${DMD_SOURCE_DIR}" ]; then
   DMD_DEST="$ISO_STAGING_DIR/$DMD_ISO_DEST"
   rm -rf "$DMD_DEST"
   mkdir -p "$DMD_DEST"
   cp -a "$DMD_SOURCE_DIR"/. "$DMD_DEST"/
   echo "[i] Copied DMD sources from: $DMD_SOURCE_DIR"
-else
+elif [ -n "${DMD_SOURCE_DIR:-}" ]; then
   echo "[!] DMD sources directory not found, skipping copy: $DMD_SOURCE_DIR" >&2
 fi
 

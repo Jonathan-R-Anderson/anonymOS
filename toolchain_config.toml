@@ -1,9 +1,9 @@
 compiler = "/usr/bin/ldc2"
 runtime = "runtime/minimal"
-user = ["toolchain_demo"]
+user = []
 
 build_dir = "build/toolchain"
-output = "build/toolchain/toolchain_demo.bin"
+output = "build/toolchain/internetcomputer.bin"
 log_file = "build/toolchain/build.log"
 sysroot = "build/toolchain/sysroot"
 
@@ -14,9 +14,6 @@ link_flags = []
 
 include_dirs = [
     "runtime/minimal",
-    "toolchain_demo/mock_dmd_sources/dmd/compiler/src",
-    "toolchain_demo/mock_dmd_sources/dmd/druntime/src",
-    "toolchain_demo/mock_dmd_sources/dmd/phobos",
 ]
 
 lib_dirs = ["/usr/lib/x86_64-linux-gnu"]

@@ -58,6 +58,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     linkCompiler();
     packageArtifacts();
+    printBuildSummary();
 
     printLine("");
     printLine("[done] D language cross compiler ready.");
@@ -70,6 +71,48 @@ private enum DEFAULT_COLOUR = 0x0F;
 private __gshared ushort* vgaBuffer = cast(ushort*)0xB8000;
 private __gshared size_t cursorRow = 0;
 private __gshared size_t cursorCol = 0;
+
+private struct StageSummary
+{
+    immutable(char)[] title;
+    size_t moduleCount;
+    size_t statusCount;
+}
+
+private __gshared StageSummary[16] stageSummaries;
+private __gshared size_t stageSummaryCount = 0;
+private __gshared StageSummary* activeStage = null;
+
+private struct ToolchainConfiguration
+{
+    immutable(char)[] hostTriple;
+    immutable(char)[] targetTriple;
+    immutable(char)[] runtimeVariant;
+    bool crossCompilationSupport;
+    bool cacheManifestGenerated;
+}
+
+private __gshared ToolchainConfiguration toolchainConfiguration;
+
+private struct LinkArtifacts
+{
+    immutable(char)[] targetName;
+    bool bootstrapEmbedded;
+    bool debugSymbols;
+}
+
+private __gshared LinkArtifacts linkArtifacts;
+
+private struct PackageManifest
+{
+    immutable(char)[] archiveName;
+    immutable(char)[] headersPath;
+    immutable(char)[] libraryPath;
+    immutable(char)[] manifestName;
+    bool readyForDeployment;
+}
+
+private __gshared PackageManifest packageManifest;
 
 private immutable char[128] scancodeMap = [
     0x01: '\x1B', // escape
@@ -276,13 +319,30 @@ private void printLine(const(char)[] text)
 
 private void printDivider()
 {
-    printLine("--------------------------------------------------");
+    char[VGA_WIDTH] divider;
+    foreach (index; 0 .. divider.length)
+    {
+        divider[index] = '-';
+    }
+    printLine(divider[]);
 }
 
 private void printStageHeader(immutable(char)[] title)
 {
     printLine("");
     printDivider();
+
+    if (stageSummaryCount < stageSummaries.length)
+    {
+        stageSummaries[stageSummaryCount] = StageSummary(title, 0, 0);
+        activeStage = &stageSummaries[stageSummaryCount];
+        ++stageSummaryCount;
+    }
+    else
+    {
+        activeStage = null;
+    }
+
     print("Stage: ");
     printLine(title);
     printDivider();
@@ -293,6 +353,11 @@ private void printStatus(immutable(char)[] prefix, immutable(char)[] name, immut
     print(prefix);
     print(name);
     printLine(suffix);
+
+    if (activeStage !is null)
+    {
+        ++activeStage.statusCount;
+    }
 }
 
 private void buildModuleGroup(immutable(char)[] stage, immutable(char)[][] modules)
@@ -304,35 +369,189 @@ private void buildModuleGroup(immutable(char)[] stage, immutable(char)[][] modul
         print("] Compiling ");
         print(moduleName);
         printLine(" ... ok");
+
+        if (activeStage !is null)
+        {
+            ++activeStage.moduleCount;
+        }
     }
 }
 
 private void configureToolchain()
 {
+    toolchainConfiguration = ToolchainConfiguration(
+        "x86_64-unknown-elf",
+        "wasm32-unknown-unknown",
+        "druntime bare-metal",
+        true,
+        true,
+    );
+
     printStageHeader("Configure host + target");
-    printLine("[config] Host triple      : x86_64-unknown-elf");
-    printLine("[config] Target triple    : wasm32-unknown-unknown");
-    printLine("[config] Runtime variant  : druntime bare-metal");
+    printStatus("[config] Host triple      : ", toolchainConfiguration.hostTriple, "");
+    printStatus("[config] Target triple    : ", toolchainConfiguration.targetTriple, "");
+    printStatus("[config] Runtime variant  : ", toolchainConfiguration.runtimeVariant, "");
     printLine("[config] Enabling LDC cross-compilation support");
     printLine("[config] Generating cache manifest ... ok");
 }
 
 private void linkCompiler()
 {
+    linkArtifacts = LinkArtifacts("ldc-cross", true, true);
+
     printStageHeader("Link cross compiler executable");
-    printStatus("[link] Linking target ", "ldc-cross", " ... ok");
-    printLine("[link] Embedding druntime bootstrap ... ok");
-    printLine("[link] Producing debug symbols ... ok");
+    printStatus("[link] Linking target ", linkArtifacts.targetName, " ... ok");
+
+    if (linkArtifacts.bootstrapEmbedded)
+    {
+        printLine("[link] Embedding druntime bootstrap ... ok");
+    }
+    else
+    {
+        printLine("[link] Embedding druntime bootstrap ... skipped");
+    }
+
+    if (linkArtifacts.debugSymbols)
+    {
+        printLine("[link] Producing debug symbols ... ok");
+    }
+    else
+    {
+        printLine("[link] Producing debug symbols ... skipped");
+    }
 }
 
 private void packageArtifacts()
 {
+    packageManifest = PackageManifest(
+        "ldc-cross.tar",
+        "include/dlang",
+        "lib/libphobos-cross.a",
+        "manifest.toml",
+        true,
+    );
+
     printStageHeader("Package distribution");
-    printStatus("[pkg] Creating archive       ", "ldc-cross.tar", " ... ok");
-    printStatus("[pkg] Installing headers     ", "include/dlang", " ... ok");
-    printStatus("[pkg] Installing libraries   ", "lib/libphobos-cross.a", " ... ok");
-    printStatus("[pkg] Writing tool manifest  ", "manifest.toml", " ... ok");
-    printLine("[pkg] Cross compiler image ready for deployment");
+    printStatus("[pkg] Creating archive       ", packageManifest.archiveName, " ... ok");
+    printStatus("[pkg] Installing headers     ", packageManifest.headersPath, " ... ok");
+    printStatus("[pkg] Installing libraries   ", packageManifest.libraryPath, " ... ok");
+    printStatus("[pkg] Writing tool manifest  ", packageManifest.manifestName, " ... ok");
+
+    if (packageManifest.readyForDeployment)
+    {
+        printLine("[pkg] Cross compiler image ready for deployment");
+    }
+    else
+    {
+        printLine("[pkg] Cross compiler image requires attention");
+    }
+}
+
+private void printBuildSummary()
+{
+    activeStage = null;
+
+    size_t totalModules = 0;
+    size_t totalStatuses = 0;
+
+    foreach (index; 0 .. stageSummaryCount)
+    {
+        totalModules += stageSummaries[index].moduleCount;
+        totalStatuses += stageSummaries[index].statusCount;
+    }
+
+    printLine("");
+    printDivider();
+    printLine("Build summary");
+    printDivider();
+
+    print(" Host triple      : ");
+    printLine(toolchainConfiguration.hostTriple);
+
+    print(" Target triple    : ");
+    printLine(toolchainConfiguration.targetTriple);
+
+    print(" Runtime variant  : ");
+    printLine(toolchainConfiguration.runtimeVariant);
+
+    print(" Cross support    : ");
+    if (toolchainConfiguration.crossCompilationSupport)
+    {
+        printLine("enabled");
+    }
+    else
+    {
+        printLine("disabled");
+    }
+
+    print(" Cache manifest   : ");
+    if (toolchainConfiguration.cacheManifestGenerated)
+    {
+        printLine("generated");
+    }
+    else
+    {
+        printLine("missing");
+    }
+
+    print(" Link target      : ");
+    printLine(linkArtifacts.targetName);
+
+    print(" Bootstrap stage  : ");
+    if (linkArtifacts.bootstrapEmbedded)
+    {
+        printLine("embedded");
+    }
+    else
+    {
+        printLine("not embedded");
+    }
+
+    print(" Debug symbols    : ");
+    if (linkArtifacts.debugSymbols)
+    {
+        printLine("produced");
+    }
+    else
+    {
+        printLine("not produced");
+    }
+
+    print(" Package archive  : ");
+    printLine(packageManifest.archiveName);
+
+    print(" Headers path     : ");
+    printLine(packageManifest.headersPath);
+
+    print(" Library path     : ");
+    printLine(packageManifest.libraryPath);
+
+    print(" Manifest file    : ");
+    printLine(packageManifest.manifestName);
+
+    print(" Deployment ready : ");
+    if (packageManifest.readyForDeployment)
+    {
+        printLine("yes");
+    }
+    else
+    {
+        printLine("no");
+    }
+
+    print(" Stage count      : ");
+    printUnsigned(stageSummaryCount);
+    putChar('\n');
+
+    print(" Total statuses   : ");
+    printUnsigned(totalStatuses);
+    putChar('\n');
+
+    print(" Modules compiled : ");
+    printUnsigned(totalModules);
+    putChar('\n');
+
+    printDivider();
 }
 
 

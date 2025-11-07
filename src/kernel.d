@@ -399,6 +399,34 @@ private void printUnsigned(size_t value)
     }
 }
 
+private void printHex(size_t value, uint digits = size_t.sizeof * 2)
+{
+    enum hexDigits = "0123456789ABCDEF";
+    char[16] buffer;
+
+    if (digits == 0)
+    {
+        return;
+    }
+
+    if (digits > buffer.length)
+    {
+        digits = cast(uint)buffer.length;
+    }
+
+    foreach (index; 0 .. digits)
+    {
+        const shift = (digits - 1 - index) * 4;
+        const nibble = (value >> shift) & 0xF;
+        buffer[index] = hexDigits[nibble];
+    }
+
+    foreach (index; 0 .. digits)
+    {
+        putChar(buffer[index]);
+    }
+}
+
 private void printLine(const(char)[] text)
 {
     print(text);
@@ -457,6 +485,128 @@ private void printStatusValue(immutable(char)[] prefix, long value)
     if (activeStage !is null)
     {
         ++activeStage.statusCount;
+    }
+}
+
+extern(C) struct InterruptRegisters
+{
+    size_t rax;
+    size_t rbx;
+    size_t rcx;
+    size_t rdx;
+    size_t rbp;
+    size_t rsi;
+    size_t rdi;
+    size_t r8;
+    size_t r9;
+    size_t r10;
+    size_t r11;
+    size_t r12;
+    size_t r13;
+    size_t r14;
+    size_t r15;
+}
+
+private struct IDTEntry
+{
+    ushort offsetLow;
+    ushort selector;
+    ubyte ist;
+    ubyte typeAttributes;
+    ushort offsetMid;
+    uint offsetHigh;
+    uint reserved;
+}
+
+private struct IDTPointer
+{
+    ushort limit;
+    size_t base;
+}
+
+private __gshared IDTEntry[256] interruptDescriptorTable;
+
+extern(C) void invalidOpcodeStub();
+extern(C) void loadIDT(const IDTPointer* descriptor);
+
+private void setIDTEntry(size_t vector, extern(C) void function() handler)
+{
+    const size_t handlerAddress = cast(size_t)handler;
+
+    auto entry = IDTEntry(
+        cast(ushort)(handlerAddress & 0xFFFF),
+        0x08,
+        0,
+        0x8E,
+        cast(ushort)((handlerAddress >> 16) & 0xFFFF),
+        cast(uint)((handlerAddress >> 32) & 0xFFFFFFFF),
+        0,
+    );
+
+    interruptDescriptorTable[vector] = entry;
+}
+
+private void initializeInterrupts()
+{
+    interruptDescriptorTable[] = IDTEntry.init;
+
+    setIDTEntry(6, &invalidOpcodeStub);
+
+    IDTPointer descriptor;
+    descriptor.limit = cast(ushort)(interruptDescriptorTable.length * IDTEntry.sizeof - 1);
+    descriptor.base = cast(size_t)interruptDescriptorTable.ptr;
+
+    loadIDT(&descriptor);
+}
+
+extern(C) @nogc nothrow void handleInvalidOpcode(
+    InterruptRegisters* registers,
+    size_t vector,
+    size_t errorCode,
+    size_t rip,
+    size_t cs,
+    size_t rflags,
+)
+{
+    printLine("");
+    printLine("[interrupt] Invalid opcode (#UD)");
+
+    print("  vector: 0x");
+    printHex(vector, 2);
+    putChar('\n');
+
+    print("  error: 0x");
+    printHex(errorCode, 4);
+    putChar('\n');
+
+    print("  RIP:   0x");
+    printHex(rip);
+    putChar('\n');
+
+    print("  CS:    0x");
+    printHex(cs, 4);
+    putChar('\n');
+
+    print("  RFLAGS:0x");
+    printHex(rflags);
+    putChar('\n');
+
+    if (registers !is null)
+    {
+        print("  RAX:   0x");
+        printHex(registers.rax);
+        putChar('\n');
+
+        print("  RBX:   0x");
+        printHex(registers.rbx);
+        putChar('\n');
+    }
+
+    printLine("System halted.");
+
+    for (;;)
+    {
+        // spin forever
     }
 }
 
@@ -1500,5 +1650,6 @@ extern(C) void kmain(ulong magic, ulong info)
     cast(void) info;
 
     clearScreen();
+    initializeInterrupts();
     runCompilerBuilder();
 }

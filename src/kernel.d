@@ -1729,10 +1729,10 @@ version (Posix)
         return access(path, F_OK) == 0;
     }
 
-    private bool spawnAndWait(const char* program, char* const* argv)
+    private bool spawnAndWait(const(char)* program, char** argv)
     {
         int pid = 0;
-        const int spawnResult = posix_spawnp(&pid, program, null, null, cast(char* const*)argv, environ);
+        const int spawnResult = posix_spawnp(&pid, program, null, null, argv, environ);
         if (spawnResult != 0)
         {
             return false;

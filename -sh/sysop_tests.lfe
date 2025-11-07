@@ -1,0 +1,50 @@
+(defmodule sysop-tests
+  "Deterministic behaviour checks for sysop user creation."
+  (export (run 0)
+          (test-windows 0)
+          (test-linux 0)
+          (test-unix 0)))
+
+(defun run ()
+  (list (tuple 'windows (test-windows))
+        (tuple 'linux (test-linux))
+        (tuple 'unix (test-unix))))
+
+(defun test-windows ()
+  (let* ((plan (plan-for "windows"))
+         (artifacts (sysop-schemas:creation-plan-security-artifacts plan)))
+    (list (tuple 'deterministic (deterministic? "windows"))
+          (tuple 'system (artifact-value artifacts "system"))
+          (tuple 'has-sddl (lists:keymember "sddl" 1 artifacts))
+          (tuple 'aces-count (length (artifact-value artifacts "aces"))))))
+
+(defun test-linux ()
+  (let* ((plan (plan-for "linux"))
+         (artifacts (sysop-schemas:creation-plan-security-artifacts plan)))
+    (list (tuple 'deterministic (deterministic? "linux"))
+          (tuple 'system (artifact-value artifacts "system"))
+          (tuple 'has-selinux (lists:keymember "selinux_stub" 1 artifacts))
+          (tuple 'acl-count (length (artifact-value artifacts "acls"))))))
+
+(defun test-unix ()
+  (let* ((plan (plan-for "unix"))
+         (artifacts (sysop-schemas:creation-plan-security-artifacts plan)))
+    (list (tuple 'deterministic (deterministic? "unix"))
+          (tuple 'system (artifact-value artifacts "system"))
+          (tuple 'has-selinux (lists:keymember "selinux_stub" 1 artifacts))
+          (tuple 'acl-count (length (artifact-value artifacts "acls"))))))
+
+(defun deterministic? (profile)
+  (let* ((request (sysop-schemas:build-create-user-request "alice" profile))
+         (plan1 (sysop-users:create_user request))
+         (plan2 (sysop-users:create_user request)))
+    (=:= plan1 plan2)))
+
+(defun plan-for (profile)
+  (let ((request (sysop-schemas:build-create-user-request "alice" profile)))
+    (sysop-users:create_user request)))
+
+(defun artifact-value (artifacts key)
+  (case (lists:keyfind key 1 artifacts)
+    ((tuple _ value) value)
+    (_ 'undefined)))

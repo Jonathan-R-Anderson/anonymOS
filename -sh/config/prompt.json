@@ -1,0 +1,12 @@
+{
+  "promptTemplate": "⟢ {username}@{namespace} ⟜ {path} ⟟ {permission} $ ",
+  "namespace": "system",
+  "permission": "superuser",
+  "colours": {
+    "username": "1;96",
+    "namespace": "1;94",
+    "path": "1;92",
+    "permission": "1;95",
+    "text": "0"
+  }
+}

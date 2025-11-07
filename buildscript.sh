@@ -185,6 +185,9 @@ if [ -d "$SH_ROOT/src" ]; then
   if [ -f "$SHELL_BINARY" ]; then
     mkdir -p "$OUT_DIR/shell"
     cp "$SHELL_BINARY" "$OUT_DIR/shell/"
+    if [ -d "$SH_ROOT/config" ]; then
+      cp -a "$SH_ROOT/config/." "$OUT_DIR/shell/"
+    fi
   else
     echo "[!] Built shell binary not found at $SHELL_BINARY" >&2
   fi
@@ -202,6 +205,9 @@ if [ -f "$SHELL_BINARY" ]; then
   SHELL_DEST="$ISO_STAGING_DIR/$ISO_SHELL_PATH"
   mkdir -p "$SHELL_DEST"
   cp "$SHELL_BINARY" "$SHELL_DEST/"
+  if [ -d "$SH_ROOT/config" ]; then
+    cp -a "$SH_ROOT/config/." "$SHELL_DEST/"
+  fi
 fi
 
 cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'

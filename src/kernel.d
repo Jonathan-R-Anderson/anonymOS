@@ -2045,6 +2045,101 @@ private void shellPrintLfeObjectDocs() @nogc nothrow
     }
 }
 
+private enum LfeNodeKind
+{
+    Symbol,
+    Number,
+    String,
+    List
+}
+
+private struct LfeNode
+{
+    LfeNodeKind kind;
+    string symbolValue;
+    long numberValue;
+    string stringValue;
+    LfeNode[] elements;
+}
+
+private enum LfeValueKind
+{
+    Nil,
+    Number,
+    String,
+    Symbol,
+    List,
+    Builtin,
+    Function
+}
+
+private enum LfeBuiltin
+{
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Equal,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+    Print,
+    List,
+    Cons,
+    Car,
+    Cdr,
+    Exit,
+    Format
+}
+
+private struct LfeFunction
+{
+    string name;
+    string[] parameters;
+    LfeNode[] body;
+    LfeEnvironment environment;
+}
+
+private struct LfeValue
+{
+    LfeValueKind kind = LfeValueKind.Nil;
+    long numberValue;
+    string stringValue;
+    string symbolValue;
+    LfeValue[] listValue;
+    LfeBuiltin builtinValue;
+    LfeFunction functionValue;
+}
+
+private struct LfeBinding
+{
+    string name;
+    LfeValue value;
+}
+
+private class LfeEnvironment
+{
+    LfeEnvironment parent;
+    LfeBinding[] bindings;
+
+    this(LfeEnvironment parent)
+    {
+        this.parent = parent;
+    }
+}
+
+private struct LfeParser
+{
+    const(char)[] source;
+    size_t index;
+    string errorMessage;
+    bool failed;
+}
+
+private void shellInitialiseLfe(ref ShellContext context);
+private bool shellDispatchLfe(ref ShellContext context, const(char)[] line);
+
 private struct ShellContext
 {
     bool running;
@@ -2057,6 +2152,7 @@ private struct ShellContext
     ShellHistoryEntry[SHELL_HISTORY_CAPACITY] history;
     size_t historyCount;
     size_t historyStart;
+    LfeEnvironment lfeEnvironment;
 }
 
 private size_t trimWhitespaceStart(const(char)[] text)
@@ -2133,6 +2229,8 @@ private void shellInitialiseContext(ref ShellContext context)
     }
 
     shellSetEnv(context, "TARGET", linkArtifacts.targetName);
+
+    shellInitialiseLfe(context);
 }
 
 private bool shellSetEnv(ref ShellContext context, const(char)[] name, const(char)[] value)
@@ -2177,6 +2275,1323 @@ private bool shellSetEnv(ref ShellContext context, const(char)[] name, const(cha
         {
             --context.promptLength;
         }
+    }
+
+    return true;
+}
+
+private void lfeEnvironmentBind(LfeEnvironment environment, string name, LfeValue value)
+{
+    if (environment is null)
+    {
+        return;
+    }
+
+    foreach (index, binding; environment.bindings)
+    {
+        if (binding.name == name)
+        {
+            environment.bindings[index].value = value;
+            return;
+        }
+    }
+
+    LfeBinding entry;
+    entry.name = name.idup;
+    entry.value = value;
+    environment.bindings ~= entry;
+}
+
+private bool lfeEnvironmentAssign(LfeEnvironment environment, string name, LfeValue value)
+{
+    auto current = environment;
+    while (current !is null)
+    {
+        foreach (index, binding; current.bindings)
+        {
+            if (binding.name == name)
+            {
+                current.bindings[index].value = value;
+                return true;
+            }
+        }
+        current = current.parent;
+    }
+
+    return false;
+}
+
+private bool lfeEnvironmentLookup(LfeEnvironment environment, string name, ref LfeValue value)
+{
+    auto current = environment;
+    while (current !is null)
+    {
+        foreach (binding; current.bindings)
+        {
+            if (binding.name == name)
+            {
+                value = binding.value;
+                return true;
+            }
+        }
+        current = current.parent;
+    }
+
+    return false;
+}
+
+private LfeValue lfeMakeNumber(long value)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.Number;
+    result.numberValue = value;
+    return result;
+}
+
+private LfeValue lfeMakeString(string value)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.String;
+    result.stringValue = value.idup;
+    return result;
+}
+
+private LfeValue lfeMakeSymbol(string value)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.Symbol;
+    result.symbolValue = value.idup;
+    return result;
+}
+
+private LfeValue lfeMakeList(LfeValue[] values)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.List;
+    result.listValue = values;
+    return result;
+}
+
+private LfeValue lfeMakeBuiltin(LfeBuiltin builtin)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.Builtin;
+    result.builtinValue = builtin;
+    return result;
+}
+
+private LfeValue lfeMakeFunction(LfeFunction functionValue)
+{
+    LfeValue result;
+    result.kind = LfeValueKind.Function;
+    result.functionValue = functionValue;
+    return result;
+}
+
+private void lfeRegisterBuiltin(LfeEnvironment environment, string name, LfeBuiltin builtin)
+{
+    const auto value = lfeMakeBuiltin(builtin);
+    lfeEnvironmentBind(environment, name, value);
+}
+
+private void shellInitialiseLfe(ref ShellContext context)
+{
+    context.lfeEnvironment = new LfeEnvironment(null);
+    auto env = context.lfeEnvironment;
+
+    lfeRegisterBuiltin(env, "+", LfeBuiltin.Add);
+    lfeRegisterBuiltin(env, "-", LfeBuiltin.Subtract);
+    lfeRegisterBuiltin(env, "*", LfeBuiltin.Multiply);
+    lfeRegisterBuiltin(env, "/", LfeBuiltin.Divide);
+    lfeRegisterBuiltin(env, "=", LfeBuiltin.Equal);
+    lfeRegisterBuiltin(env, ">", LfeBuiltin.Greater);
+    lfeRegisterBuiltin(env, ">=", LfeBuiltin.GreaterEqual);
+    lfeRegisterBuiltin(env, "<", LfeBuiltin.Less);
+    lfeRegisterBuiltin(env, "<=", LfeBuiltin.LessEqual);
+    lfeRegisterBuiltin(env, "print", LfeBuiltin.Print);
+    lfeRegisterBuiltin(env, "list", LfeBuiltin.List);
+    lfeRegisterBuiltin(env, "cons", LfeBuiltin.Cons);
+    lfeRegisterBuiltin(env, "car", LfeBuiltin.Car);
+    lfeRegisterBuiltin(env, "cdr", LfeBuiltin.Cdr);
+    lfeRegisterBuiltin(env, "exit", LfeBuiltin.Exit);
+    lfeRegisterBuiltin(env, "lfe_io:format", LfeBuiltin.Format);
+}
+
+private bool lfeAtEnd(const LfeParser parser)
+{
+    return parser.index >= parser.source.length;
+}
+
+private void lfeSkipWhitespace(ref LfeParser parser)
+{
+    while (!lfeAtEnd(parser))
+    {
+        const char ch = parser.source[parser.index];
+        if (ch == ';')
+        {
+            while (!lfeAtEnd(parser) && parser.source[parser.index] != '\n')
+            {
+                ++parser.index;
+            }
+            continue;
+        }
+
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r')
+        {
+            ++parser.index;
+            continue;
+        }
+
+        break;
+    }
+}
+
+private bool lfeParseNumberLiteral(const(char)[] token, ref long value)
+{
+    if (token.length == 0)
+    {
+        return false;
+    }
+
+    size_t index = 0;
+    bool negative = false;
+    if (token[index] == '+' || token[index] == '-')
+    {
+        negative = token[index] == '-';
+        ++index;
+    }
+
+    if (index >= token.length)
+    {
+        return false;
+    }
+
+    long result = 0;
+    for (; index < token.length; ++index)
+    {
+        const char ch = token[index];
+        if (ch < '0' || ch > '9')
+        {
+            return false;
+        }
+        result = result * 10 + (ch - '0');
+    }
+
+    value = negative ? -result : result;
+    return true;
+}
+
+private bool lfeParseQuote(ref LfeParser parser, ref LfeNode node, string symbol)
+{
+    LfeNode quoted;
+    if (!lfeParseNode(parser, quoted))
+    {
+        if (!parser.failed)
+        {
+            parser.failed = true;
+            parser.errorMessage = "expected form after quote";
+        }
+        return false;
+    }
+
+    LfeNode symbolNode;
+    symbolNode.kind = LfeNodeKind.Symbol;
+    symbolNode.symbolValue = symbol.idup;
+
+    node.kind = LfeNodeKind.List;
+    node.elements ~= symbolNode;
+    node.elements ~= quoted;
+    return true;
+}
+
+private bool lfeParseString(ref LfeParser parser, ref LfeNode node)
+{
+    ++parser.index; // skip opening quote
+    char[] buffer;
+
+    while (!lfeAtEnd(parser))
+    {
+        char ch = parser.source[parser.index];
+        if (ch == '\"')
+        {
+            ++parser.index;
+            node.kind = LfeNodeKind.String;
+            node.stringValue = buffer.idup;
+            return true;
+        }
+
+        if (ch == '\\')
+        {
+            ++parser.index;
+            if (lfeAtEnd(parser))
+            {
+                parser.failed = true;
+                parser.errorMessage = "unterminated string";
+                return false;
+            }
+            ch = parser.source[parser.index];
+            switch (ch)
+            {
+                case 'n':
+                    buffer ~= '\n';
+                    break;
+                case 't':
+                    buffer ~= '\t';
+                    break;
+                case 'r':
+                    buffer ~= '\r';
+                    break;
+                case '\\':
+                    buffer ~= '\\';
+                    break;
+                case '\"':
+                    buffer ~= '\"';
+                    break;
+                default:
+                    buffer ~= ch;
+                    break;
+            }
+            ++parser.index;
+            continue;
+        }
+
+        buffer ~= ch;
+        ++parser.index;
+    }
+
+    parser.failed = true;
+    parser.errorMessage = "unterminated string";
+    return false;
+}
+
+private bool lfeParseList(ref LfeParser parser, ref LfeNode node)
+{
+    ++parser.index; // skip '('
+    LfeNode[] items;
+
+    while (true)
+    {
+        lfeSkipWhitespace(parser);
+
+        if (lfeAtEnd(parser))
+        {
+            parser.failed = true;
+            parser.errorMessage = "unterminated list";
+            return false;
+        }
+
+        if (parser.source[parser.index] == ')')
+        {
+            ++parser.index;
+            node.kind = LfeNodeKind.List;
+            node.elements = items;
+            return true;
+        }
+
+        LfeNode element;
+        if (!lfeParseNode(parser, element))
+        {
+            return false;
+        }
+
+        items ~= element;
+    }
+}
+
+private bool lfeParseSymbolOrNumber(ref LfeParser parser, ref LfeNode node)
+{
+    const size_t start = parser.index;
+
+    while (!lfeAtEnd(parser))
+    {
+        const char ch = parser.source[parser.index];
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '(' || ch == ')' || ch == ';' || ch == '\'' || ch == '`' || ch == ',')
+        {
+            break;
+        }
+        ++parser.index;
+    }
+
+    const size_t end = parser.index;
+    const auto token = parser.source[start .. end];
+
+    if (token.length == 0)
+    {
+        parser.failed = true;
+        parser.errorMessage = "unexpected token";
+        return false;
+    }
+
+    long numericValue = 0;
+    if (lfeParseNumberLiteral(token, numericValue))
+    {
+        node.kind = LfeNodeKind.Number;
+        node.numberValue = numericValue;
+    }
+    else
+    {
+        node.kind = LfeNodeKind.Symbol;
+        node.symbolValue = token.idup;
+    }
+
+    return true;
+}
+
+private bool lfeParseNode(ref LfeParser parser, ref LfeNode node)
+{
+    lfeSkipWhitespace(parser);
+
+    if (lfeAtEnd(parser))
+    {
+        return false;
+    }
+
+    const char ch = parser.source[parser.index];
+
+    if (ch == '(')
+    {
+        return lfeParseList(parser, node);
+    }
+
+    if (ch == ')')
+    {
+        parser.failed = true;
+        parser.errorMessage = "unexpected ')'";
+        ++parser.index;
+        return false;
+    }
+
+    if (ch == '\'')
+    {
+        ++parser.index;
+        return lfeParseQuote(parser, node, "quote");
+    }
+
+    if (ch == '`')
+    {
+        ++parser.index;
+        return lfeParseQuote(parser, node, "quasiquote");
+    }
+
+    if (ch == ',')
+    {
+        ++parser.index;
+        if (!lfeAtEnd(parser) && parser.source[parser.index] == '@')
+        {
+            ++parser.index;
+            return lfeParseQuote(parser, node, "unquote-splicing");
+        }
+        return lfeParseQuote(parser, node, "unquote");
+    }
+
+    if (ch == '\"')
+    {
+        return lfeParseString(parser, node);
+    }
+
+    return lfeParseSymbolOrNumber(parser, node);
+}
+
+private string lfeNumberToString(long value)
+{
+    char[32] temp;
+    size_t length = 0;
+    bool negative = value < 0;
+    ulong magnitude = negative ? cast(ulong)(-value) : cast(ulong)value;
+
+    do
+    {
+        const char digit = cast(char)('0' + (magnitude % 10));
+        temp[length] = digit;
+        ++length;
+        magnitude /= 10;
+    }
+    while (magnitude != 0);
+
+    char[] buffer;
+
+    if (negative)
+    {
+        buffer ~= '-';
+    }
+
+    while (length != 0)
+    {
+        --length;
+        buffer ~= temp[length];
+    }
+
+    return buffer.idup;
+}
+
+private void lfeAppendValueString(ref char[] buffer, const LfeValue value)
+{
+    final switch (value.kind)
+    {
+        case LfeValueKind.Nil:
+            buffer ~= "()";
+            break;
+        case LfeValueKind.Number:
+            buffer ~= lfeNumberToString(value.numberValue);
+            break;
+        case LfeValueKind.String:
+            buffer ~= '\"';
+            buffer ~= value.stringValue;
+            buffer ~= '\"';
+            break;
+        case LfeValueKind.Symbol:
+            buffer ~= value.symbolValue;
+            break;
+        case LfeValueKind.List:
+        {
+            buffer ~= '(';
+            foreach (index, element; value.listValue)
+            {
+                if (index != 0)
+                {
+                    buffer ~= ' ';
+                }
+                lfeAppendValueString(buffer, element);
+            }
+            buffer ~= ')';
+            break;
+        }
+        case LfeValueKind.Builtin:
+            buffer ~= "#<builtin>";
+            break;
+        case LfeValueKind.Function:
+            buffer ~= "#<function";
+            if (value.functionValue.name.length != 0)
+            {
+                buffer ~= ' ';
+                buffer ~= value.functionValue.name;
+            }
+            buffer ~= '>';
+            break;
+    }
+}
+
+private string lfeValueToString(const LfeValue value)
+{
+    char[] buffer;
+    lfeAppendValueString(buffer, value);
+    return buffer.idup;
+}
+
+private void lfeWriteValue(const LfeValue value)
+{
+    final switch (value.kind)
+    {
+        case LfeValueKind.Nil:
+            print("()");
+            break;
+        case LfeValueKind.Number:
+            printSigned(value.numberValue);
+            break;
+        case LfeValueKind.String:
+            putChar('\"');
+            print(value.stringValue);
+            putChar('\"');
+            break;
+        case LfeValueKind.Symbol:
+            print(value.symbolValue);
+            break;
+        case LfeValueKind.List:
+        {
+            putChar('(');
+            foreach (index, element; value.listValue)
+            {
+                if (index != 0)
+                {
+                    putChar(' ');
+                }
+                lfeWriteValue(element);
+            }
+            putChar(')');
+            break;
+        }
+        case LfeValueKind.Builtin:
+            print("#<builtin>");
+            break;
+        case LfeValueKind.Function:
+            print("#<function ");
+            if (value.functionValue.name.length != 0)
+            {
+                print(value.functionValue.name);
+            }
+            else
+            {
+                print("lambda");
+            }
+            print(">");
+            break;
+    }
+}
+
+private bool lfeValueIsTruthy(const LfeValue value)
+{
+    if (value.kind == LfeValueKind.Nil)
+    {
+        return false;
+    }
+
+    if (value.kind == LfeValueKind.Symbol)
+    {
+        if (value.symbolValue == "false" || value.symbolValue == "nil")
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private LfeValue lfeEvaluateSequence(ref ShellContext context, LfeEnvironment environment, LfeNode[] nodes, ref bool ok)
+{
+    LfeValue result;
+    foreach (node; nodes)
+    {
+        result = lfeEvaluateNode(context, environment, node, ok);
+        if (!ok)
+        {
+            return result;
+        }
+    }
+    return result;
+}
+
+private LfeValue lfeConvertLiteral(const LfeNode node, ref bool ok)
+{
+    ok = true;
+
+    final switch (node.kind)
+    {
+        case LfeNodeKind.Number:
+            return lfeMakeNumber(node.numberValue);
+        case LfeNodeKind.String:
+            return lfeMakeString(node.stringValue);
+        case LfeNodeKind.Symbol:
+            return lfeMakeSymbol(node.symbolValue);
+        case LfeNodeKind.List:
+        {
+            LfeValue[] values;
+            foreach (element; node.elements)
+            {
+                auto value = lfeConvertLiteral(element, ok);
+                if (!ok)
+                {
+                    return LfeValue.init;
+                }
+                values ~= value;
+            }
+            return lfeMakeList(values);
+        }
+    }
+
+    ok = false;
+    return LfeValue.init;
+}
+
+private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellContext context, ref bool ok)
+{
+    switch (builtin)
+    {
+        case LfeBuiltin.Add:
+        {
+            long sum = 0;
+            foreach (arg; args)
+            {
+                if (arg.kind != LfeValueKind.Number)
+                {
+                    printLine("lfe: '+' expects numeric arguments");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                sum += arg.numberValue;
+            }
+            return lfeMakeNumber(sum);
+        }
+        case LfeBuiltin.Subtract:
+        {
+            if (args.length == 0)
+            {
+                return lfeMakeNumber(0);
+            }
+
+            if (args[0].kind != LfeValueKind.Number)
+            {
+                printLine("lfe: '-' expects numeric arguments");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            long value = args[0].numberValue;
+            if (args.length == 1)
+            {
+                return lfeMakeNumber(-value);
+            }
+
+            foreach (index; 1 .. args.length)
+            {
+                if (args[index].kind != LfeValueKind.Number)
+                {
+                    printLine("lfe: '-' expects numeric arguments");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                value -= args[index].numberValue;
+            }
+            return lfeMakeNumber(value);
+        }
+        case LfeBuiltin.Multiply:
+        {
+            long product = 1;
+            foreach (arg; args)
+            {
+                if (arg.kind != LfeValueKind.Number)
+                {
+                    printLine("lfe: '*' expects numeric arguments");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                product *= arg.numberValue;
+            }
+            return lfeMakeNumber(product);
+        }
+        case LfeBuiltin.Divide:
+        {
+            if (args.length == 0)
+            {
+                printLine("lfe: '/' expects arguments");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            if (args[0].kind != LfeValueKind.Number)
+            {
+                printLine("lfe: '/' expects numeric arguments");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            long value = args[0].numberValue;
+            foreach (index; 1 .. args.length)
+            {
+                if (args[index].kind != LfeValueKind.Number)
+                {
+                    printLine("lfe: '/' expects numeric arguments");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                if (args[index].numberValue == 0)
+                {
+                    printLine("lfe: division by zero");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                value /= args[index].numberValue;
+            }
+            return lfeMakeNumber(value);
+        }
+        case LfeBuiltin.Equal:
+        {
+            if (args.length < 2)
+            {
+                return lfeMakeSymbol("true");
+            }
+
+            const auto first = args[0];
+            foreach (index; 1 .. args.length)
+            {
+                const auto next = args[index];
+                bool equal = false;
+                if (first.kind == LfeValueKind.Number && next.kind == LfeValueKind.Number)
+                {
+                    equal = first.numberValue == next.numberValue;
+                }
+                else if (first.kind == LfeValueKind.String && next.kind == LfeValueKind.String)
+                {
+                    equal = first.stringValue == next.stringValue;
+                }
+                else if (first.kind == LfeValueKind.Symbol && next.kind == LfeValueKind.Symbol)
+                {
+                    equal = first.symbolValue == next.symbolValue;
+                }
+
+                if (!equal)
+                {
+                    return lfeMakeSymbol("false");
+                }
+            }
+
+            return lfeMakeSymbol("true");
+        }
+        case LfeBuiltin.Greater, LfeBuiltin.GreaterEqual, LfeBuiltin.Less, LfeBuiltin.LessEqual:
+        {
+            if (args.length < 2)
+            {
+                return lfeMakeSymbol("true");
+            }
+
+            foreach (index; 1 .. args.length)
+            {
+                if (args[index - 1].kind != LfeValueKind.Number || args[index].kind != LfeValueKind.Number)
+                {
+                    printLine("lfe: comparison expects numeric arguments");
+                    ok = false;
+                    return LfeValue.init;
+                }
+
+                const long lhs = args[index - 1].numberValue;
+                const long rhs = args[index].numberValue;
+
+                bool result = false;
+                final switch (builtin)
+                {
+                    case LfeBuiltin.Greater:
+                        result = lhs > rhs;
+                        break;
+                    case LfeBuiltin.GreaterEqual:
+                        result = lhs >= rhs;
+                        break;
+                    case LfeBuiltin.Less:
+                        result = lhs < rhs;
+                        break;
+                    case LfeBuiltin.LessEqual:
+                        result = lhs <= rhs;
+                        break;
+                    default:
+                        break;
+                }
+
+                if (!result)
+                {
+                    return lfeMakeSymbol("false");
+                }
+            }
+
+            return lfeMakeSymbol("true");
+        }
+        case LfeBuiltin.Print:
+        {
+            foreach (index, arg; args)
+            {
+                if (index != 0)
+                {
+                    putChar(' ');
+                }
+                lfeWriteValue(arg);
+            }
+            putChar('\n');
+            return LfeValue.init;
+        }
+        case LfeBuiltin.List:
+            return lfeMakeList(args.dup);
+        case LfeBuiltin.Cons:
+        {
+            if (args.length != 2)
+            {
+                printLine("lfe: cons expects two arguments");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            LfeValue[] listValues;
+            listValues ~= args[0];
+
+            if (args[1].kind == LfeValueKind.List)
+            {
+                listValues ~= args[1].listValue;
+            }
+            else if (args[1].kind != LfeValueKind.Nil)
+            {
+                printLine("lfe: cons requires list as second argument");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            return lfeMakeList(listValues);
+        }
+        case LfeBuiltin.Car:
+        {
+            if (args.length != 1 || args[0].kind != LfeValueKind.List)
+            {
+                printLine("lfe: car expects a list");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            if (args[0].listValue.length == 0)
+            {
+                return LfeValue.init;
+            }
+
+            return args[0].listValue[0];
+        }
+        case LfeBuiltin.Cdr:
+        {
+            if (args.length != 1 || args[0].kind != LfeValueKind.List)
+            {
+                printLine("lfe: cdr expects a list");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            if (args[0].listValue.length <= 1)
+            {
+                return LfeValue.init;
+            }
+
+            return lfeMakeList(args[0].listValue[1 .. args[0].listValue.length]);
+        }
+        case LfeBuiltin.Exit:
+            context.running = false;
+            printLine("Exiting shell.");
+            return LfeValue.init;
+        case LfeBuiltin.Format:
+        {
+            if (args.length == 0 || args[0].kind != LfeValueKind.String)
+            {
+                printLine("lfe: lfe_io:format requires a format string");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            const string template = args[0].stringValue;
+            size_t templateIndex = 0;
+            size_t valueIndex = 1;
+            char[] rendered;
+
+            while (templateIndex < template.length)
+            {
+                const char ch = template[templateIndex];
+                if (ch == '~' && templateIndex + 1 < template.length)
+                {
+                    const char code = template[templateIndex + 1];
+                    if (code == 'p' && valueIndex < args.length)
+                    {
+                        rendered ~= lfeValueToString(args[valueIndex]);
+                        ++valueIndex;
+                        templateIndex += 2;
+                        continue;
+                    }
+                    if (code == 'n')
+                    {
+                        rendered ~= '\n';
+                        templateIndex += 2;
+                        continue;
+                    }
+                }
+
+                rendered ~= ch;
+                ++templateIndex;
+            }
+
+            const string text = rendered.idup;
+            print(text);
+            return lfeMakeString(text);
+        }
+    }
+
+    ok = false;
+    printLine("lfe: unknown builtin");
+    return LfeValue.init;
+}
+
+private LfeValue lfeApplyFunction(ref ShellContext context, LfeFunction functionValue, LfeValue[] args, ref bool ok)
+{
+    if (args.length != functionValue.parameters.length)
+    {
+        printLine("lfe: argument count mismatch");
+        ok = false;
+        return LfeValue.init;
+    }
+
+    auto local = new LfeEnvironment(functionValue.environment is null ? context.lfeEnvironment : functionValue.environment);
+
+    foreach (index, name; functionValue.parameters)
+    {
+        lfeEnvironmentBind(local, name, args[index]);
+    }
+
+    return lfeEvaluateSequence(context, local, functionValue.body, ok);
+}
+
+private LfeValue lfeEvaluateList(ref ShellContext context, LfeEnvironment environment, const LfeNode node, ref bool ok)
+{
+    if (node.elements.length == 0)
+    {
+        return LfeValue.init;
+    }
+
+    const auto head = node.elements[0];
+
+    if (head.kind == LfeNodeKind.Symbol)
+    {
+        const string name = head.symbolValue;
+
+        if (name == "quote" || name == "quasiquote")
+        {
+            if (node.elements.length < 2)
+            {
+                printLine("lfe: quote requires an argument");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            bool literalOk = true;
+            auto literal = lfeConvertLiteral(node.elements[1], literalOk);
+            if (!literalOk)
+            {
+                ok = false;
+                return LfeValue.init;
+            }
+            return literal;
+        }
+
+        if (name == "set")
+        {
+            if (node.elements.length != 3)
+            {
+                printLine("lfe: set requires name and value");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            const auto target = node.elements[1];
+            if (target.kind != LfeNodeKind.Symbol)
+            {
+                printLine("lfe: set expects symbol name");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            auto value = lfeEvaluateNode(context, environment, node.elements[2], ok);
+            if (!ok)
+            {
+                return value;
+            }
+
+            if (!lfeEnvironmentAssign(context.lfeEnvironment, target.symbolValue, value))
+            {
+                lfeEnvironmentBind(context.lfeEnvironment, target.symbolValue, value);
+            }
+
+            return value;
+        }
+
+        if (name == "let")
+        {
+            if (node.elements.length < 3)
+            {
+                printLine("lfe: let requires bindings and body");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            const auto bindingsNode = node.elements[1];
+            if (bindingsNode.kind != LfeNodeKind.List)
+            {
+                printLine("lfe: let bindings must be a list");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            auto local = new LfeEnvironment(environment);
+
+            foreach (binding; bindingsNode.elements)
+            {
+                if (binding.kind != LfeNodeKind.List || binding.elements.length != 2 || binding.elements[0].kind != LfeNodeKind.Symbol)
+                {
+                    printLine("lfe: invalid let binding");
+                    ok = false;
+                    return LfeValue.init;
+                }
+
+                auto value = lfeEvaluateNode(context, environment, binding.elements[1], ok);
+                if (!ok)
+                {
+                    return value;
+                }
+
+                lfeEnvironmentBind(local, binding.elements[0].symbolValue, value);
+            }
+
+            return lfeEvaluateSequence(context, local, node.elements[2 .. node.elements.length], ok);
+        }
+
+        if (name == "defun")
+        {
+            if (node.elements.length < 4 || node.elements[1].kind != LfeNodeKind.Symbol || node.elements[2].kind != LfeNodeKind.List)
+            {
+                printLine("lfe: defun expects name, parameters and body");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            LfeFunction functionValue;
+            functionValue.name = node.elements[1].symbolValue.idup;
+
+            foreach (parameter; node.elements[2].elements)
+            {
+                if (parameter.kind != LfeNodeKind.Symbol)
+                {
+                    printLine("lfe: defun parameters must be symbols");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                functionValue.parameters ~= parameter.symbolValue.idup;
+            }
+
+            functionValue.body = node.elements[3 .. node.elements.length].dup;
+            functionValue.environment = environment;
+
+            const auto value = lfeMakeFunction(functionValue);
+            lfeEnvironmentBind(context.lfeEnvironment, functionValue.name, value);
+            return value;
+        }
+
+        if (name == "lambda")
+        {
+            if (node.elements.length < 3 || node.elements[1].kind != LfeNodeKind.List)
+            {
+                printLine("lfe: lambda expects parameter list and body");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            LfeFunction functionValue;
+            functionValue.name = null;
+            foreach (parameter; node.elements[1].elements)
+            {
+                if (parameter.kind != LfeNodeKind.Symbol)
+                {
+                    printLine("lfe: lambda parameters must be symbols");
+                    ok = false;
+                    return LfeValue.init;
+                }
+                functionValue.parameters ~= parameter.symbolValue.idup;
+            }
+
+            functionValue.body = node.elements[2 .. node.elements.length].dup;
+            functionValue.environment = environment;
+            return lfeMakeFunction(functionValue);
+        }
+
+        if (name == "if")
+        {
+            if (node.elements.length < 3)
+            {
+                printLine("lfe: if requires test and branch");
+                ok = false;
+                return LfeValue.init;
+            }
+
+            auto condition = lfeEvaluateNode(context, environment, node.elements[1], ok);
+            if (!ok)
+            {
+                return condition;
+            }
+
+            if (lfeValueIsTruthy(condition))
+            {
+                return lfeEvaluateNode(context, environment, node.elements[2], ok);
+            }
+
+            if (node.elements.length >= 4)
+            {
+                return lfeEvaluateNode(context, environment, node.elements[3], ok);
+            }
+
+            return LfeValue.init;
+        }
+
+        if (name == "progn" || name == "begin")
+        {
+            return lfeEvaluateSequence(context, environment, node.elements[1 .. node.elements.length], ok);
+        }
+
+        if (name == "cond")
+        {
+            foreach (clause; node.elements[1 .. node.elements.length])
+            {
+                if (clause.kind != LfeNodeKind.List || clause.elements.length == 0)
+                {
+                    continue;
+                }
+
+                bool conditionOk = true;
+                auto test = lfeEvaluateNode(context, environment, clause.elements[0], conditionOk);
+                if (!conditionOk)
+                {
+                    ok = false;
+                    return test;
+                }
+
+                if (lfeValueIsTruthy(test))
+                {
+                    if (clause.elements.length == 1)
+                    {
+                        return test;
+                    }
+                    return lfeEvaluateSequence(context, environment, clause.elements[1 .. clause.elements.length], ok);
+                }
+            }
+
+            return LfeValue.init;
+        }
+    }
+
+    auto callable = lfeEvaluateNode(context, environment, head, ok);
+    if (!ok)
+    {
+        return callable;
+    }
+
+    LfeValue[] arguments;
+    foreach (argumentNode; node.elements[1 .. node.elements.length])
+    {
+        auto value = lfeEvaluateNode(context, environment, argumentNode, ok);
+        if (!ok)
+        {
+            return value;
+        }
+        arguments ~= value;
+    }
+
+    if (callable.kind == LfeValueKind.Builtin)
+    {
+        return lfeApplyBuiltin(callable.builtinValue, arguments, context, ok);
+    }
+
+    if (callable.kind == LfeValueKind.Function)
+    {
+        return lfeApplyFunction(context, callable.functionValue, arguments, ok);
+    }
+
+    printLine("lfe: value is not callable");
+    ok = false;
+    return LfeValue.init;
+}
+
+private LfeValue lfeEvaluateNode(ref ShellContext context, LfeEnvironment environment, const LfeNode node, ref bool ok)
+{
+    ok = true;
+
+    final switch (node.kind)
+    {
+        case LfeNodeKind.Number:
+            return lfeMakeNumber(node.numberValue);
+        case LfeNodeKind.String:
+            return lfeMakeString(node.stringValue);
+        case LfeNodeKind.Symbol:
+        {
+            LfeValue value;
+            if (lfeEnvironmentLookup(environment, node.symbolValue, value))
+            {
+                return value;
+            }
+
+            print("lfe: undefined symbol: ");
+            printLine(node.symbolValue);
+            ok = false;
+            return LfeValue.init;
+        }
+        case LfeNodeKind.List:
+            return lfeEvaluateList(context, environment, node, ok);
+    }
+
+    ok = false;
+    printLine("lfe: unsupported expression");
+    return LfeValue.init;
+}
+
+private bool shellDispatchLfe(ref ShellContext context, const(char)[] line)
+{
+    size_t start = trimWhitespaceStart(line);
+    if (start >= line.length)
+    {
+        return false;
+    }
+
+    bool forced = false;
+    if (line.length - start >= 4 && line[start .. start + 4] == ":lfe")
+    {
+        forced = true;
+        start += 4;
+    }
+
+    const(char)[] payload = line[start .. line.length];
+    start = trimWhitespaceStart(payload);
+    payload = payload[start .. payload.length];
+
+    if (payload.length == 0)
+    {
+        return forced ? true : false;
+    }
+
+    const char head = payload[0];
+    if (!forced && head != '(' && head != '\'' && head != '`')
+    {
+        return false;
+    }
+
+    LfeParser parser;
+    parser.source = payload;
+    parser.index = 0;
+    parser.errorMessage = null;
+    parser.failed = false;
+
+    bool evaluated = false;
+
+    while (true)
+    {
+        lfeSkipWhitespace(parser);
+        if (lfeAtEnd(parser))
+        {
+            break;
+        }
+
+        LfeNode node;
+        if (!lfeParseNode(parser, node))
+        {
+            print("lfe: parse error: ");
+            if (parser.errorMessage.length == 0)
+            {
+                printLine("syntax error");
+            }
+            else
+            {
+                printLine(parser.errorMessage);
+            }
+            return true;
+        }
+
+        bool ok = true;
+        auto value = lfeEvaluateNode(context, context.lfeEnvironment, node, ok);
+        evaluated = true;
+        if (!ok)
+        {
+            return true;
+        }
+
+        lfeWriteValue(value);
+        putChar('\n');
+
+        if (!context.running)
+        {
+            return true;
+        }
+    }
+
+    if (!evaluated)
+    {
+        if (forced)
+        {
+            printLine("lfe: no forms provided");
+            return true;
+        }
+        return false;
     }
 
     return true;
@@ -2524,7 +3939,7 @@ private immutable ShellBuiltin[] shellBuiltins = [
     ShellBuiltin("lfe-objects", &shellBuiltinLfeObjects, "Enumerate object system commands"),
 ];
 
-private bool shellDispatchCommand(ref ShellContext context, ShellToken[] args)
+private bool shellDispatchCommand(ref ShellContext context, const(char)[] line, ShellToken[] args)
 {
     const(char)[] command = args[0].slice();
 
@@ -2534,6 +3949,11 @@ private bool shellDispatchCommand(ref ShellContext context, ShellToken[] args)
         {
             return builtin.handler(context, args);
         }
+    }
+
+    if (shellDispatchLfe(context, line))
+    {
+        return true;
     }
 
     print("lfe-sh: command not found: ");
@@ -2554,7 +3974,7 @@ private bool shellExecute(ref ShellContext context, const(char)[] line)
 
     auto args = storage[0 .. tokenCount];
     shellExpandTokens(context, args);
-    return shellDispatchCommand(context, args);
+    return shellDispatchCommand(context, line, args);
 }
 
 private void shellListModules()

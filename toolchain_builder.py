@@ -17,6 +17,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -243,9 +244,31 @@ class ToolchainBuilder:
         except subprocess.CalledProcessError as exc:
             message = f"Command failed with exit code {exc.returncode}: {shlex.join(cmd)}"
             self._log(message, console=True)
+            self._print_log_excerpt()
             if self.settings.keep_going:
                 return
             raise
+
+    def _print_log_excerpt(self, max_lines: int = 20) -> None:
+        if self.log_file.closed:
+            self.log_path.touch(exist_ok=True)
+        else:
+            self.log_file.flush()
+        lines = self._log_tail(max_lines)
+        if not lines:
+            print(f"No build log output available at {self.log_path}", file=sys.stderr)
+            return
+        print(f"Last {len(lines)} lines from {self.log_path}:", file=sys.stderr)
+        for line in lines:
+            print(line.rstrip(), file=sys.stderr)
+
+    def _log_tail(self, max_lines: int) -> list[str]:
+        try:
+            with self.log_path.open("r", encoding="utf-8", errors="replace") as handle:
+                tail = deque(handle, maxlen=max_lines)
+        except OSError:
+            return []
+        return list(tail)
 
     # Sysroot helpers --------------------------------------------------------
     def _archive_group(self, name: str, objects: Sequence[Path]) -> Path | None:

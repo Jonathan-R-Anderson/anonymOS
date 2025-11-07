@@ -6,6 +6,9 @@ ROOT="${ROOT:-$PWD}"
 LLVM_DIR="${LLVM_DIR:-$ROOT/llvm-project}"
 SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
+SH_ROOT="${SH_ROOT:-$ROOT/-sh}"
+SH_TARGET="${SH_TARGET:-lfe-sh}"
+SHELL_DC="${SHELL_DC:-ldc2}"
 
 # Cross target + sysroot (x86_64 only for this script)
 : "${TARGET:=x86_64-unknown-elf}"
@@ -25,6 +28,7 @@ ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
 ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
+ISO_SHELL_PATH="${ISO_SHELL_PATH:-opt/shell}"
 
 # Optional toolchain bundle inside ISO (set to a path to enable)
 CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
@@ -66,6 +70,7 @@ esac
 need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing tool: $1"; exit 1; }; }
 need clang
 need cmake
+need make
 need ldc2
 need grub-mkrescue
 command -v xorriso >/dev/null 2>&1 || command -v mkisofs >/dev/null 2>&1 || command -v genisoimage >/dev/null 2>&1 || {
@@ -171,11 +176,33 @@ fi
 
 echo "[✓] Linked: $KERNEL_ELF"
 
+# ===================== Build packaged shell (-sh) =====================
+SHELL_BINARY="$SH_ROOT/$SH_TARGET"
+
+if [ -d "$SH_ROOT/src" ]; then
+  echo "[*] Building -sh shell from $SH_ROOT"
+  make -C "$SH_ROOT" DC="$SHELL_DC" "$SH_TARGET"
+  if [ -f "$SHELL_BINARY" ]; then
+    mkdir -p "$OUT_DIR/shell"
+    cp "$SHELL_BINARY" "$OUT_DIR/shell/"
+  else
+    echo "[!] Built shell binary not found at $SHELL_BINARY" >&2
+  fi
+else
+  echo "[!] Skipping shell build: $SH_ROOT/src missing" >&2
+fi
+
 # ===================== GRUB staging & ISO =====================
 rm -rf "$ISO_STAGING_DIR"
 mkdir -p "$ISO_STAGING_DIR/boot/grub"
 
 cp "$KERNEL_ELF" "$ISO_STAGING_DIR/boot/kernel.elf"
+
+if [ -f "$SHELL_BINARY" ]; then
+  SHELL_DEST="$ISO_STAGING_DIR/$ISO_SHELL_PATH"
+  mkdir -p "$SHELL_DEST"
+  cp "$SHELL_BINARY" "$SHELL_DEST/"
+fi
 
 cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
 set timeout=0

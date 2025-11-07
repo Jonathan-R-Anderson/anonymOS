@@ -1,8 +1,8 @@
 module shell.config;
 
-import std.file : exists, readText, thisExePath, getcwd, dirName, mkdirRecurse;
+import std.file : exists, readText, thisExePath, getcwd, mkdirRecurse;
 import std.json : JSONValue, parseJSON, JSON_TYPE;
-import std.path : buildPath;
+import std.path : buildPath, dirName;
 import std.process : environment;
 import std.string : replace, startsWith;
 

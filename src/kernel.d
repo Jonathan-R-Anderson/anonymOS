@@ -2097,7 +2097,7 @@ private struct LfeFunction
 {
     string name;
     string[] parameters;
-    LfeNode[] body;
+    const(LfeNode)[] body;
     LfeEnvironment environment;
 }
 
@@ -2118,15 +2118,27 @@ private struct LfeBinding
     LfeValue value;
 }
 
-private class LfeEnvironment
+private struct LfeEnvironmentImpl
 {
     LfeEnvironment parent;
     LfeBinding[] bindings;
+}
 
-    this(LfeEnvironment parent)
+private alias LfeEnvironment = LfeEnvironmentImpl*;
+
+private LfeEnvironment lfeCreateEnvironment(LfeEnvironment parent) @nogc nothrow
+{
+    import core.stdc.stdlib : malloc;
+
+    auto memory = cast(LfeEnvironment)malloc(LfeEnvironmentImpl.sizeof);
+    if (memory is null)
     {
-        this.parent = parent;
+        return null;
     }
+
+    memory.parent = parent;
+    memory.bindings = null;
+    return memory;
 }
 
 private struct LfeParser
@@ -2390,14 +2402,19 @@ private LfeValue lfeMakeFunction(LfeFunction functionValue)
 
 private void lfeRegisterBuiltin(LfeEnvironment environment, string name, LfeBuiltin builtin)
 {
-    const auto value = lfeMakeBuiltin(builtin);
+    auto value = lfeMakeBuiltin(builtin);
     lfeEnvironmentBind(environment, name, value);
 }
 
 private void shellInitialiseLfe(ref ShellContext context)
 {
-    context.lfeEnvironment = new LfeEnvironment(null);
+    context.lfeEnvironment = lfeCreateEnvironment(null);
     auto env = context.lfeEnvironment;
+
+    if (env is null)
+    {
+        return;
+    }
 
     lfeRegisterBuiltin(env, "+", LfeBuiltin.Add);
     lfeRegisterBuiltin(env, "-", LfeBuiltin.Subtract);
@@ -2846,7 +2863,7 @@ private bool lfeValueIsTruthy(const LfeValue value)
     return true;
 }
 
-private LfeValue lfeEvaluateSequence(ref ShellContext context, LfeEnvironment environment, LfeNode[] nodes, ref bool ok)
+private LfeValue lfeEvaluateSequence(ref ShellContext context, LfeEnvironment environment, const(LfeNode)[] nodes, ref bool ok)
 {
     LfeValue result;
     foreach (node; nodes)
@@ -3060,8 +3077,6 @@ private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellC
                     case LfeBuiltin.LessEqual:
                         result = lhs <= rhs;
                         break;
-                    default:
-                        break;
                 }
 
                 if (!result)
@@ -3207,7 +3222,13 @@ private LfeValue lfeApplyFunction(ref ShellContext context, LfeFunction function
         return LfeValue.init;
     }
 
-    auto local = new LfeEnvironment(functionValue.environment is null ? context.lfeEnvironment : functionValue.environment);
+    auto local = lfeCreateEnvironment(functionValue.environment is null ? context.lfeEnvironment : functionValue.environment);
+    if (local is null)
+    {
+        printLine("lfe: unable to allocate environment");
+        ok = false;
+        return LfeValue.init;
+    }
 
     foreach (index, name; functionValue.parameters)
     {
@@ -3297,7 +3318,13 @@ private LfeValue lfeEvaluateList(ref ShellContext context, LfeEnvironment enviro
                 return LfeValue.init;
             }
 
-            auto local = new LfeEnvironment(environment);
+            auto local = lfeCreateEnvironment(environment);
+            if (local is null)
+            {
+                printLine("lfe: unable to allocate environment");
+                ok = false;
+                return LfeValue.init;
+            }
 
             foreach (binding; bindingsNode.elements)
             {
@@ -3343,10 +3370,10 @@ private LfeValue lfeEvaluateList(ref ShellContext context, LfeEnvironment enviro
                 functionValue.parameters ~= parameter.symbolValue.idup;
             }
 
-            functionValue.body = node.elements[3 .. node.elements.length].dup;
+            functionValue.body = node.elements[3 .. node.elements.length];
             functionValue.environment = environment;
 
-            const auto value = lfeMakeFunction(functionValue);
+            auto value = lfeMakeFunction(functionValue);
             lfeEnvironmentBind(context.lfeEnvironment, functionValue.name, value);
             return value;
         }
@@ -3373,7 +3400,7 @@ private LfeValue lfeEvaluateList(ref ShellContext context, LfeEnvironment enviro
                 functionValue.parameters ~= parameter.symbolValue.idup;
             }
 
-            functionValue.body = node.elements[2 .. node.elements.length].dup;
+            functionValue.body = node.elements[2 .. node.elements.length];
             functionValue.environment = environment;
             return lfeMakeFunction(functionValue);
         }

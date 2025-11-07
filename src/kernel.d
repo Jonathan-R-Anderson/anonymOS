@@ -131,14 +131,14 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     printLine("[done] D language cross compiler ready.");
     if (shellState.shellActivated)
     {
-        printLine("[done] '-sh' interactive shell ready.");
+        printLine("[done] 'lfe-sh' interactive shell ready.");
         printLine("");
-        printLine("Booting '-sh' interactive shell...");
+        printLine("Booting 'lfe-sh' interactive shell...");
         launchInteractiveShell();
     }
     else
     {
-        print("[warn] '-sh' shell unavailable: ");
+        print("[warn] 'lfe-sh' shell unavailable: ");
         if (shellState.failureReason !is null)
         {
             printLine(shellState.failureReason);
@@ -232,7 +232,7 @@ private struct ShellState
 private __gshared ShellState shellState = ShellState(
     "https://github.com/Jonathan-R-Anderson/-sh",
     "uninitialised",
-    "-sh",
+    "lfe-sh",
     0,
     false,
     false,
@@ -1621,7 +1621,7 @@ private void packageArtifacts()
 
 private void integrateShell()
 {
-    printStageHeader("Integrate '-sh' shell environment");
+    printStageHeader("Integrate 'lfe-sh' shell environment");
 
     fetchShellSnapshot();
     updateShellBinaryMetrics();
@@ -1634,7 +1634,7 @@ private void fetchShellSnapshot()
 {
     shellState.repositoryFetched = true;
     shellState.revision = "vendored-snapshot";
-    shellState.binaryName = "-sh";
+    shellState.binaryName = "lfe-sh";
     shellState.failureReason = null;
 
     printStatus("[shell] Source repository : ", shellState.repository, "");
@@ -1931,7 +1931,7 @@ private void shellInitialiseContext(ref ShellContext context)
     context.variableCount = 0;
     context.historyCount = 0;
     context.historyStart = 0;
-    context.promptLength = copyToFixedBuffer("-sh> ", context.prompt[]);
+    context.promptLength = copyToFixedBuffer("lfe-sh> ", context.prompt[]);
 
     foreach (index; 0 .. context.currentDirectory.length)
     {
@@ -1943,7 +1943,7 @@ private void shellInitialiseContext(ref ShellContext context)
     char[32] numberBuffer;
     size_t numberLength;
 
-    shellSetEnv(context, "SHELL", "-sh");
+    shellSetEnv(context, "SHELL", "lfe-sh");
     shellSetEnv(context, "PROMPT", context.prompt[0 .. context.promptLength]);
     shellSetEnv(context, "PWD", context.currentDirectory[0 .. context.currentDirectoryLength]);
 
@@ -2339,7 +2339,7 @@ private bool shellDispatchCommand(ref ShellContext context, ShellToken[] args)
         }
     }
 
-    print("-sh: command not found: ");
+    print("lfe-sh: command not found: ");
     print(command);
     putChar('\n');
     return true;

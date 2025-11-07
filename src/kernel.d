@@ -236,7 +236,7 @@ private struct ShellState
 }
 
 private __gshared ShellState shellState = ShellState(
-    "https://github.com/Jonathan-R-Anderson/-sh",
+    "/-sh",
     "uninitialised",
     "lfe-sh",
     0,

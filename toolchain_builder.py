@@ -141,6 +141,8 @@ class ToolchainBuilder:
             groups.append(BuildGroup(user_dir.name, user_root, include_dirs))
 
         all_objects: List[Path] = []
+        user_roots = {resolve_source_root(path) for path in self.settings.user_dirs}
+        has_user_sources = False
         group_archives: Dict[str, Path] = {}
         for group in groups:
             self._log(f"\n=== Building {group.name} ===", console=True)
@@ -150,11 +152,19 @@ class ToolchainBuilder:
                 archive = self._archive_group(group.name, objects)
                 if archive:
                     group_archives[group.name] = archive
+            if not has_user_sources and group.root in user_roots and objects:
+                has_user_sources = True
 
         if not all_objects:
             raise RuntimeError("No object files were produced; check your configuration")
 
-        self._link(all_objects, include_dirs)
+        if has_user_sources:
+            self._link(all_objects, include_dirs)
+        else:
+            self._log(
+                "Skipping final link step: no user source directories were provided",
+                console=True,
+            )
         if self.settings.sysroot:
             self._create_sysroot(groups, include_dirs, group_archives)
 

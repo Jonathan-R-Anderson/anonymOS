@@ -3157,17 +3157,17 @@ private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellC
                 return LfeValue.init;
             }
 
-            const string template = args[0].stringValue;
+            const string formatTemplate = args[0].stringValue;
             size_t templateIndex = 0;
             size_t valueIndex = 1;
             char[] rendered;
 
-            while (templateIndex < template.length)
+            while (templateIndex < formatTemplate.length)
             {
-                const char ch = template[templateIndex];
-                if (ch == '~' && templateIndex + 1 < template.length)
+                const char ch = formatTemplate[templateIndex];
+                if (ch == '~' && templateIndex + 1 < formatTemplate.length)
                 {
-                    const char code = template[templateIndex + 1];
+                    const char code = formatTemplate[templateIndex + 1];
                     if (code == 'p' && valueIndex < args.length)
                     {
                         rendered ~= lfeValueToString(args[valueIndex]);

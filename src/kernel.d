@@ -38,7 +38,7 @@ private struct Parser
     immutable(char)[] errorDetail;
 }
 
-private immutable ModuleSource[] frontEndSources = [
+private immutable ModuleSource[4] frontEndSourcesData = [
     ModuleSource(
         "front_end.lexer",
         "module front_end.lexer;\n" ~
@@ -66,7 +66,7 @@ private immutable ModuleSource[] frontEndSources = [
     ),
 ];
 
-private immutable ModuleSource[] optimizerSources = [
+private immutable ModuleSource[3] optimizerSourcesData = [
     ModuleSource(
         "optimizer.ir",
         "module optimizer.ir;\n" ~
@@ -87,7 +87,7 @@ private immutable ModuleSource[] optimizerSources = [
     ),
 ];
 
-private immutable ModuleSource[] runtimeSources = [
+private immutable ModuleSource[3] runtimeSourcesData = [
     ModuleSource(
         "runtime.memory",
         "module runtime.memory;\n" ~
@@ -119,9 +119,9 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     configureToolchain();
 
-    compileStage("Compile front-end", "front-end", frontEndSources);
-    compileStage("Build optimizer + codegen", "optimizer", optimizerSources);
-    compileStage("Assemble runtime libraries", "runtime", runtimeSources);
+    compileStage("Compile front-end", "front-end", frontEndSourcesData[]);
+    compileStage("Build optimizer + codegen", "optimizer", optimizerSourcesData[]);
+    compileStage("Assemble runtime libraries", "runtime", runtimeSourcesData[]);
 
     linkCompiler();
     packageArtifacts();

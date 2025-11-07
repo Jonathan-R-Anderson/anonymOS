@@ -27,6 +27,7 @@ stack_top:
 .global _start
 .type _start, @function
 .extern kmain
+.extern handleInvalidOpcode
 _start:
     cli
     movl %eax, saved_magic
@@ -68,6 +69,14 @@ long_mode_entry:
     leaq stack_top(%rip), %rsp
     xor %rbp, %rbp
 
+    mov %cr0, %rax
+    or $0x22, %rax
+    mov %rax, %cr0
+
+    mov %cr4, %rax
+    or $0x600, %rax
+    mov %rax, %cr4
+
     movl saved_magic(%rip), %edi
     movl saved_info(%rip), %esi
 
@@ -78,6 +87,63 @@ long_mode_entry:
     jmp .hang
 
 .size long_mode_entry, . - long_mode_entry
+
+.global invalidOpcodeStub
+.type invalidOpcodeStub, @function
+invalidOpcodeStub:
+    pushq %r15
+    pushq %r14
+    pushq %r13
+    pushq %r12
+    pushq %r11
+    pushq %r10
+    pushq %r9
+    pushq %r8
+    pushq %rdi
+    pushq %rsi
+    pushq %rbp
+    pushq %rdx
+    pushq %rcx
+    pushq %rbx
+    pushq %rax
+
+    mov %rsp, %rdi
+    mov 120(%rsp), %rcx
+    mov 128(%rsp), %r8
+    mov 136(%rsp), %r9
+    mov $6, %rsi
+    xor %rdx, %rdx
+
+    pushq $0
+    call handleInvalidOpcode
+    add $8, %rsp
+
+    popq %rax
+    popq %rbx
+    popq %rcx
+    popq %rdx
+    popq %rbp
+    popq %rsi
+    popq %rdi
+    popq %r8
+    popq %r9
+    popq %r10
+    popq %r11
+    popq %r12
+    popq %r13
+    popq %r14
+    popq %r15
+    iretq
+
+.size invalidOpcodeStub, . - invalidOpcodeStub
+
+.global loadIDT
+.type loadIDT, @function
+loadIDT:
+    lidt (%rdi)
+    ret
+
+.size loadIDT, . - loadIDT
 .global stack_top
 
 .section .data

@@ -1606,10 +1606,258 @@ private void finalizeShellActivation()
     }
 }
 
-private void launchInteractiveShell()
+version (Posix)
 {
-    printLine("-sh is available as a separate userland binary.");
-    printLine("Use the packaged copy or rebuild it from /-sh.");
+    private enum PATH_BUFFER_SIZE = 512;
+    private enum F_OK = 0;
+
+    extern(C) int posix_spawnp(int* pid, const char* file, const void* fileActions, const void* attrp, char* const argv[], char* const envp[]);
+    extern(C) int waitpid(int pid, int* status, int options);
+    extern(C) int access(const char* pathname, int mode);
+    extern(C) char* getenv(const char* name);
+    extern(C) __gshared char** environ;
+
+    private bool copyCString(const char* source, char* buffer, size_t bufferLength, out size_t length)
+    {
+        if (source is null)
+        {
+            length = 0;
+            return false;
+        }
+
+        size_t index = 0;
+        while (source[index] != '\0')
+        {
+            if (index + 1 >= bufferLength)
+            {
+                length = 0;
+                return false;
+            }
+
+            buffer[index] = source[index];
+            ++index;
+        }
+
+        if (index == 0)
+        {
+            length = 0;
+            return false;
+        }
+
+        buffer[index] = '\0';
+        length = index;
+        return true;
+    }
+
+    private bool copyDString(immutable(char)[] source, char* buffer, size_t bufferLength, out size_t length)
+    {
+        if (source.length == 0)
+        {
+            length = 0;
+            return false;
+        }
+
+        if (source.length >= bufferLength)
+        {
+            length = 0;
+            return false;
+        }
+
+        foreach (i; 0 .. source.length)
+        {
+            buffer[i] = cast(char)source[i];
+        }
+
+        length = source.length;
+        buffer[length] = '\0';
+        return true;
+    }
+
+    private bool appendBinaryName(const char* root, size_t rootLength, char* buffer, size_t bufferLength, out size_t resultLength)
+    {
+        if (rootLength == 0 || rootLength >= bufferLength)
+        {
+            resultLength = 0;
+            return false;
+        }
+
+        size_t index = 0;
+        while (index < rootLength)
+        {
+            buffer[index] = root[index];
+            ++index;
+        }
+
+        if (buffer[index - 1] != '/')
+        {
+            if (index + 1 >= bufferLength)
+            {
+                resultLength = 0;
+                return false;
+            }
+
+            buffer[index] = '/';
+            ++index;
+        }
+
+        foreach (i; 0 .. shellState.binaryName.length)
+        {
+            if (index + 1 >= bufferLength)
+            {
+                resultLength = 0;
+                return false;
+            }
+
+            buffer[index] = cast(char)shellState.binaryName[i];
+            ++index;
+        }
+
+        buffer[index] = '\0';
+        resultLength = index;
+        return true;
+    }
+
+    private bool fileExists(const char* path)
+    {
+        return access(path, F_OK) == 0;
+    }
+
+    private bool spawnAndWait(const char* program, char* const* argv)
+    {
+        int pid = 0;
+        const int spawnResult = posix_spawnp(&pid, program, null, null, cast(char* const*)argv, environ);
+        if (spawnResult != 0)
+        {
+            return false;
+        }
+
+        int status = 0;
+        if (waitpid(pid, &status, 0) < 0)
+        {
+            return false;
+        }
+
+        if ((status & 0x7F) != 0)
+        {
+            return false;
+        }
+
+        const int exitCode = (status >> 8) & 0xFF;
+        return exitCode == 0;
+    }
+
+    private bool ensureShellBuilt(const char* rootPath)
+    {
+        printLine("[shell] Building 'lfe-sh' binary ...");
+
+        char*[4] args;
+        args[0] = cast(char*)"make";
+        args[1] = cast(char*)"-C";
+        args[2] = cast(char*)rootPath;
+        args[3] = null;
+
+        return spawnAndWait("make", args.ptr);
+    }
+
+    private bool launchShellProcess(const char* binaryPath)
+    {
+        printLine("[shell] Launching interactive session ...");
+
+        char*[2] args;
+        args[0] = cast(char*)binaryPath;
+        args[1] = null;
+
+        if (spawnAndWait(binaryPath, args.ptr))
+        {
+            printLine("[shell] Shell session ended.");
+            return true;
+        }
+
+        printLine("[shell] Failed to execute 'lfe-sh'.");
+        return false;
+    }
+
+    private bool tryLaunchFromRoot(char* rootBuffer, size_t rootLength, ref bool buildCompleted)
+    {
+        char[PATH_BUFFER_SIZE] binaryBuffer;
+        size_t binaryLength = 0;
+        if (!appendBinaryName(rootBuffer, rootLength, binaryBuffer.ptr, binaryBuffer.length, binaryLength))
+        {
+            return false;
+        }
+
+        if (!fileExists(binaryBuffer.ptr))
+        {
+            if (!buildCompleted)
+            {
+                if (ensureShellBuilt(rootBuffer))
+                {
+                    buildCompleted = true;
+                }
+                else
+                {
+                    printLine("[shell] Build invocation failed.");
+                    return false;
+                }
+            }
+
+            if (!fileExists(binaryBuffer.ptr))
+            {
+                return false;
+            }
+        }
+
+        print("[shell] Using binary at     : ");
+        printLine(binaryBuffer[0 .. binaryLength]);
+
+        return launchShellProcess(binaryBuffer.ptr);
+    }
+
+    private void launchInteractiveShell()
+    {
+        char[PATH_BUFFER_SIZE] rootBuffer;
+        size_t rootLength = 0;
+        bool buildCompleted = false;
+
+        if (copyCString(getenv("SH_ROOT"), rootBuffer.ptr, rootBuffer.length, rootLength))
+        {
+            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted))
+            {
+                return;
+            }
+        }
+
+        immutable(char)[][] candidateRoots = [
+            shellState.repository,
+            "/workspace/internetcomputer/-sh",
+            "/workspace/-sh",
+            "/-sh",
+            "./-sh",
+            "-sh",
+        ];
+
+        foreach (candidate; candidateRoots)
+        {
+            if (!copyDString(candidate, rootBuffer.ptr, rootBuffer.length, rootLength))
+            {
+                continue;
+            }
+
+            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted))
+            {
+                return;
+            }
+        }
+
+        printLine("[shell] Unable to locate an executable 'lfe-sh' binary.");
+    }
+}
+else
+{
+    private void launchInteractiveShell()
+    {
+        printLine("[shell] Interactive shell launch unsupported on this target.");
+    }
 }
 
 private void printBuildSummary()

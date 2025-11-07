@@ -1,6 +1,13 @@
 module minimal_os.main;
 
-
+@nogc nothrow void verifyFiles(immutable(char)[][] files)
+{
+    foreach (f; files)
+    {
+        print("[ok] Known module: ");
+        printLine(f);
+    }
+}
 
 extern(C) @nogc nothrow void runCompilerBuilder()
 {
@@ -10,15 +17,6 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     printLine("========================================");
 
     configureToolchain();
-
-    void verifyFiles(immutable(char)[][] files)
-    {
-        foreach (f; files)
-        {
-            print("[ok] Known module: ");
-            printLine(f);
-        }
-    }
 
     {
         printStageHeader("Compile front-end");
@@ -32,7 +30,7 @@ extern(C) @nogc nothrow void runCompilerBuilder()
             "dmd/compiler/src/dmd/expressionsem.d",
             "dmd/compiler/src/dmd/template.d",
         ];
-        verifyFiles(modules);
+        //verifyFiles(modules);
         buildModuleGroup("front-end", modules);
         printLine("[front-end] Generating module map ... ok");
     }

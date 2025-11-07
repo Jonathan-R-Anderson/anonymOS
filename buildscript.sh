@@ -143,7 +143,7 @@ else
 fi
 
 # D object
-ldc2 -I. -mtriple="$TARGET" -betterC $DFLAGS \
+ldc2 -I. -Isrc -mtriple="$TARGET" -betterC $DFLAGS \
      -c "$KERNEL_D" -of="$KERNEL_O"
 
 # Startup (asm)

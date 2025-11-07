@@ -1606,6 +1606,249 @@ private void finalizeShellActivation()
     }
 }
 
+/*******************************************************
+ * POSIX-in-Kernel Shim (minimal, freestanding, D)
+ * Drop-in: implements basic types, errno, proc table,
+ *          fork/execve/waitpid/exit/getpid/kill/sleep,
+ *          and stubs for open/read/write/close.
+ *******************************************************/
+mixin template PosixKernelShim()
+{
+    // ---- Basic types (avoid druntime) ----
+    alias pid_t   = int;
+    alias uid_t   = uint;
+    alias gid_t   = uint;
+    alias ssize_t = long;
+    alias size_t  = ulong;
+    alias time_t  = long;
+
+    struct timespec { time_t tv_sec; long tv_nsec; }
+
+    // ---- errno ----
+    enum Errno : int {
+        EPERM=1, ENOENT=2, ESRCH=3, EINTR=4, EIO=5, ENXIO=6, E2BIG=7, ENOEXEC=8, EBADF=9,
+        ECHILD=10, EAGAIN=11, ENOMEM=12, EACCES=13, EFAULT=14, EBUSY=16, EEXIST=17,
+        EXDEV=18, ENODEV=19, ENOTDIR=20, EISDIR=21, EINVAL=22, ENFILE=23, EMFILE=24,
+        ENOSPC=28, EPIPE=32, EDOM=33, ERANGE=34, ENOSYS=38
+    }
+    private __gshared int _errno;
+    @nogc nothrow @safe ref int errnoRef() { return _errno; }
+    @nogc nothrow @safe int  setErrno(Errno e){ _errno = e; return -cast(int)e; }
+
+    // ---- Signals (minimal) ----
+    enum SIG : int { NONE=0, TERM=15, KILL=9, CHLD=17 }
+    alias SigSet = uint;
+
+    // ---- File descriptor stub ----
+    enum MAX_FD = 32;
+    enum FDFlags : uint { NONE=0 }
+    struct FD { int num = -1; FDFlags flags = FDFlags.NONE; }
+
+    // ---- Process table ----
+    enum MAX_PROC = 64;
+
+    enum ProcState : ubyte { UNUSED, EMBRYO, READY, RUNNING, SLEEPING, ZOMBIE }
+    struct Proc {
+        pid_t     pid;
+        pid_t     ppid;
+        ProcState state;
+        int       exitCode;
+        SigSet    sigmask;
+        FD[MAX_FD] fds;
+        // Entry point for "execve" (kernel-side loader hands off here)
+        extern(C) void function(const char** argv, const char** envp) entry;
+        // Arch context pointer (opaque to this shim)
+        void*     ctx;
+        // Optional kernel stack pointer
+        void*     kstack;
+        // Simple name
+        char[16]  name;
+    }
+
+    private __gshared Proc[MAX_PROC] g_ptable;
+    private __gshared pid_t          g_nextPid    = 1;
+    private __gshared Proc*          g_current    = null;
+    private __gshared bool           g_initialized = false;
+
+    // ---- Simple spinlock (stub; replace with real lock in SMP) ----
+    private struct Spin { int v; }
+    private __gshared Spin g_plock;
+    @nogc nothrow private void lock(Spin* s){ /* stub: assume UP */ }
+    @nogc nothrow private void unlock(Spin* s){}
+
+    // ---- Arch switch hooks (provide real ones elsewhere if you have them) ----
+    extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/);
+    extern(C) @nogc nothrow void arch_context_switch(Proc* a, Proc* b) { /* no-op fallback */ }
+
+    // ---- Utility ----
+    @nogc nothrow private Proc* findByPid(pid_t pid){
+        foreach(ref p; g_ptable) if(p.state!=ProcState.UNUSED && p.pid==pid) return &p;
+        return null;
+    }
+    @nogc nothrow private Proc* allocProc(){
+        foreach(ref p; g_ptable){
+            if(p.state==ProcState.UNUSED){
+                p = Proc.init;
+                p.state = ProcState.EMBRYO;
+                p.pid   = g_nextPid++;
+                return &p;
+            }
+        }
+        return null;
+    }
+
+    // ---- Very small round-robin scheduler ----
+    @nogc nothrow void schedYield(){
+        if(!g_initialized) return;
+        if(g_current is null) {
+            // pick first READY/ZOMBIE to start
+            foreach(ref p; g_ptable){
+                if(p.state==ProcState.READY){ g_current = &p; p.state=ProcState.RUNNING; break; }
+            }
+            return;
+        }
+        lock(&g_plock);
+        Proc* oldp = g_current;
+        // If still running, mark READY and look for next runnable
+        if(oldp.state==ProcState.RUNNING) oldp.state = ProcState.READY;
+
+        size_t idx=0;
+        foreach(i, ref p; g_ptable) if((&p) is oldp){ idx=i; break; }
+        Proc* next = null;
+        foreach(j; 1..MAX_PROC+1){
+            auto k = (idx + j) % MAX_PROC;
+            if(g_ptable[k].state==ProcState.READY){ next = &g_ptable[k]; break; }
+        }
+        if(next is null) { // nothing else, resume old if not zombie
+            if(oldp.state!=ProcState.ZOMBIE){ oldp.state=ProcState.RUNNING; unlock(&g_plock); return; }
+            // else fall through to pick any READY later
+            foreach(ref p; g_ptable){
+                if(p.state==ProcState.READY){ next=&p; break; }
+            }
+        }
+        if(next !is null){
+            next.state = ProcState.RUNNING;
+            g_current  = next;
+            arch_context_switch(oldp, next);
+        }
+        unlock(&g_plock);
+    }
+
+    // ---- POSIX core syscalls (kernel-side) ----
+    // getpid
+    @nogc nothrow pid_t sys_getpid(){
+        return (g_current is null) ? 0 : g_current.pid;
+    }
+
+    // fork (copy-on-write not implemented; this duplicates PCB only; address space handling is arch-specific and omitted)
+    @nogc nothrow pid_t sys_fork(){
+        lock(&g_plock);
+        auto np = allocProc();
+        if(np is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
+        // In a real kernel you would clone address space, FDs, ctx, etc.
+        *np = Proc.init;
+        np.pid    = g_nextPid++;
+        np.ppid   = (g_current ? g_current.pid : 0);
+        np.state  = ProcState.READY;
+        np.sigmask= 0;
+        np.entry  = (g_current ? g_current.entry : null);
+        np.name[] = 0;
+        if(g_current) np.name[0..g_current.name.length] = g_current.name[];
+        unlock(&g_plock);
+        // Parent gets child's pid; child will later see 0 from fork in userland shim if you plumb it there.
+        return np.pid;
+    }
+
+    // execve: set a new entry function; real loader should be plugged here
+    @nogc nothrow int sys_execve(const char* /*path*/, const char** argv, const char** envp){
+        if(g_current is null) return setErrno(Errno.ESRCH);
+        if(g_current.entry is null) return setErrno(Errno.ENOEXEC);
+        // In a real system: replace address space; here we just call the entry next time we "run"
+        // For a cooperative handoff, mark READY and immediately jump to entry.
+        auto cur = g_current;
+        unlock(&g_plock); // ensure unlocked before calling into entry
+        cur.entry(argv, envp);
+        // If entry returns, treat as exit(0)
+        sys__exit(0);
+        return 0; // unreachable
+    }
+
+    // waitpid (very simple: only observes ZOMBIE and reclaims)
+    @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
+        // poll style; in a real kernel you'd block
+        foreach(ref p; g_ptable){
+            if(p.state==ProcState.ZOMBIE && (wpid<=0 || p.pid==wpid) && p.ppid==(g_current?g_current.pid:0)){
+                if(status) *status = p.exitCode;
+                auto pid = p.pid;
+                p = Proc.init; // reclaim
+                return pid;
+            }
+        }
+        return setErrno(Errno.ECHILD);
+    }
+
+    // _exit
+    @nogc nothrow void sys__exit(int code){
+        if(g_current is null) return;
+        g_current.exitCode = code;
+        g_current.state    = ProcState.ZOMBIE;
+        // wake parent by scheduling; parent might poll waitpid
+        schedYield();
+        // If we come back, just spin
+        for(;;){}
+    }
+
+    // kill (only TERM/KILL are recognized; this stub flips state to ZOMBIE)
+    @nogc nothrow int sys_kill(pid_t pid, int sig){
+        auto p = findByPid(pid);
+        if(p is null) return setErrno(Errno.ESRCH);
+        final switch(sig){
+            case SIG.KILL, SIG.TERM:
+                p.exitCode = 128 + sig;
+                p.state    = ProcState.ZOMBIE;
+                return 0;
+            default:
+                return setErrno(Errno.ENOSYS);
+        }
+    }
+
+    // sleep(seconds) — naive: N calls to schedYield; replace with timer integration
+    @nogc nothrow unsigned sys_sleep(uint seconds){
+        // TODO: wire to timer ticks and block current
+        foreach(_; 0 .. seconds * 100) { schedYield(); }
+        return 0;
+    }
+
+    // ---- FD/IO syscalls (stubs; return ENOSYS unless you wire them) ----
+    @nogc nothrow int     sys_open (const char* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
+    @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
+    @nogc nothrow ssize_t sys_read (int /*fd*/, void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
+    @nogc nothrow ssize_t sys_write(int /*fd*/, const void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
+
+    // ---- C ABI glue (handy if you expose these as syscalls or link tiny libc) ----
+    extern(C):
+    @nogc nothrow pid_t getpid(){ return sys_getpid(); }
+    @nogc nothrow pid_t fork(){   return sys_fork();   }
+    @nogc nothrow int   execve(const char* p, const char** a, const char** e){ return sys_execve(p,a,e); }
+    @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
+    @nogc nothrow void  _exit(int c){ sys__exit(c); }
+    @nogc nothrow int   kill(pid_t p, int s){ return sys_kill(p,s); }
+    @nogc nothrow unsigned sleep(unsigned s){ return sys_sleep(s); }
+
+    // Provide weak environ/argv symbols if you need them for linkage
+    __gshared const char** environ;
+    __gshared const char** __argv;
+    __gshared int          __argc;
+
+    // ---- Init hook: call once during kernel boot ----
+    @nogc nothrow void posixInit(){
+        if(g_initialized) return;
+        foreach(ref p; g_ptable) p = Proc.init;
+        g_initialized = true;
+    }
+}
+
+
 version (Posix)
 {
     private enum PATH_BUFFER_SIZE = 512;
@@ -2127,5 +2370,7 @@ extern(C) void kmain(ulong magic, ulong info)
 
     clearScreen();
     initializeInterrupts();
+    mixin PosixKernelShim;
+    posixInit();
     runCompilerBuilder();
 }

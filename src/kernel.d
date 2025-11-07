@@ -1632,8 +1632,10 @@ mixin template PosixKernelShim()
         ENOSPC=28, EPIPE=32, EDOM=33, ERANGE=34, ENOSYS=38
     }
     private __gshared int _errno;
-    @nogc nothrow @safe ref int errnoRef() { return _errno; }
-    @nogc nothrow @safe int  setErrno(Errno e){ _errno = e; return -cast(int)e; }
+
+    // NOTE: remove @safe; accessing __gshared is not @safe
+    @nogc nothrow ref int errnoRef() { return _errno; }
+    @nogc nothrow int  setErrno(Errno e){ _errno = e; return -cast(int)e; }
 
     // ---- Signals (minimal) ----
     enum SIG : int { NONE=0, TERM=15, KILL=9, CHLD=17 }
@@ -1655,13 +1657,10 @@ mixin template PosixKernelShim()
         int       exitCode;
         SigSet    sigmask;
         FD[MAX_FD] fds;
-        // Entry point for "execve" (kernel-side loader hands off here)
-        extern(C) void function(const char** argv, const char** envp) entry;
-        // Arch context pointer (opaque to this shim)
-        void*     ctx;
-        // Optional kernel stack pointer
-        void*     kstack;
-        // Simple name
+        // Make entry @nogc so sys_execve (also @nogc) can call it
+        extern(C) @nogc nothrow void function(const char** argv, const char** envp) entry;
+        void*     ctx;    // arch context (opaque to shim)
+        void*     kstack; // optional kernel stack
         char[16]  name;
     }
 
@@ -1673,12 +1672,11 @@ mixin template PosixKernelShim()
     // ---- Simple spinlock (stub; replace with real lock in SMP) ----
     private struct Spin { int v; }
     private __gshared Spin g_plock;
-    @nogc nothrow private void lock(Spin* s){ /* stub: assume UP */ }
-    @nogc nothrow private void unlock(Spin* s){}
+    @nogc nothrow private void lock(Spin* /*s*/){ /* UP stub */ }
+    @nogc nothrow private void unlock(Spin* /*s*/){}
 
-    // ---- Arch switch hooks (provide real ones elsewhere if you have them) ----
-    extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/);
-    extern(C) @nogc nothrow void arch_context_switch(Proc* a, Proc* b) { /* no-op fallback */ }
+    // ---- Arch switch hook (single no-op stub; replace in your arch code)
+    extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/) { /* no-op */ }
 
     // ---- Utility ----
     @nogc nothrow private Proc* findByPid(pid_t pid){
@@ -1701,7 +1699,6 @@ mixin template PosixKernelShim()
     @nogc nothrow void schedYield(){
         if(!g_initialized) return;
         if(g_current is null) {
-            // pick first READY/ZOMBIE to start
             foreach(ref p; g_ptable){
                 if(p.state==ProcState.READY){ g_current = &p; p.state=ProcState.RUNNING; break; }
             }
@@ -1709,7 +1706,6 @@ mixin template PosixKernelShim()
         }
         lock(&g_plock);
         Proc* oldp = g_current;
-        // If still running, mark READY and look for next runnable
         if(oldp.state==ProcState.RUNNING) oldp.state = ProcState.READY;
 
         size_t idx=0;
@@ -1719,9 +1715,8 @@ mixin template PosixKernelShim()
             auto k = (idx + j) % MAX_PROC;
             if(g_ptable[k].state==ProcState.READY){ next = &g_ptable[k]; break; }
         }
-        if(next is null) { // nothing else, resume old if not zombie
+        if(next is null) {
             if(oldp.state!=ProcState.ZOMBIE){ oldp.state=ProcState.RUNNING; unlock(&g_plock); return; }
-            // else fall through to pick any READY later
             foreach(ref p; g_ptable){
                 if(p.state==ProcState.READY){ next=&p; break; }
             }
@@ -1735,47 +1730,47 @@ mixin template PosixKernelShim()
     }
 
     // ---- POSIX core syscalls (kernel-side) ----
-    // getpid
     @nogc nothrow pid_t sys_getpid(){
         return (g_current is null) ? 0 : g_current.pid;
     }
 
-    // fork (copy-on-write not implemented; this duplicates PCB only; address space handling is arch-specific and omitted)
     @nogc nothrow pid_t sys_fork(){
         lock(&g_plock);
         auto np = allocProc();
         if(np is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
-        // In a real kernel you would clone address space, FDs, ctx, etc.
+
+        // Duplicate minimal PCB
         *np = Proc.init;
         np.pid    = g_nextPid++;
         np.ppid   = (g_current ? g_current.pid : 0);
         np.state  = ProcState.READY;
         np.sigmask= 0;
         np.entry  = (g_current ? g_current.entry : null);
-        np.name[] = 0;
-        if(g_current) np.name[0..g_current.name.length] = g_current.name[];
+        // copy name best-effort
+        foreach(i; 0 .. np.name.length) np.name[i] = 0;
+        if(g_current) {
+            import core.stdc.string : strncpy;
+            // Not all kernels have C lib; if not, leave zeros or copy manually
+            // Manual copy:
+            foreach(i; 0 .. np.name.length) {
+                if(i < g_current.name.length) np.name[i] = g_current.name[i];
+            }
+        }
         unlock(&g_plock);
-        // Parent gets child's pid; child will later see 0 from fork in userland shim if you plumb it there.
-        return np.pid;
+        return np.pid; // parent gets child's pid
     }
 
-    // execve: set a new entry function; real loader should be plugged here
     @nogc nothrow int sys_execve(const char* /*path*/, const char** argv, const char** envp){
         if(g_current is null) return setErrno(Errno.ESRCH);
         if(g_current.entry is null) return setErrno(Errno.ENOEXEC);
-        // In a real system: replace address space; here we just call the entry next time we "run"
-        // For a cooperative handoff, mark READY and immediately jump to entry.
         auto cur = g_current;
-        unlock(&g_plock); // ensure unlocked before calling into entry
-        cur.entry(argv, envp);
-        // If entry returns, treat as exit(0)
-        sys__exit(0);
-        return 0; // unreachable
+        // handoff to entry
+        cur.entry(argv, envp); // @nogc nothrow
+        sys__exit(0);          // if returns
+        return 0;              // unreachable
     }
 
-    // waitpid (very simple: only observes ZOMBIE and reclaims)
     @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
-        // poll style; in a real kernel you'd block
         foreach(ref p; g_ptable){
             if(p.state==ProcState.ZOMBIE && (wpid<=0 || p.pid==wpid) && p.ppid==(g_current?g_current.pid:0)){
                 if(status) *status = p.exitCode;
@@ -1787,22 +1782,19 @@ mixin template PosixKernelShim()
         return setErrno(Errno.ECHILD);
     }
 
-    // _exit
     @nogc nothrow void sys__exit(int code){
         if(g_current is null) return;
         g_current.exitCode = code;
         g_current.state    = ProcState.ZOMBIE;
-        // wake parent by scheduling; parent might poll waitpid
         schedYield();
-        // If we come back, just spin
-        for(;;){}
+        for(;;){} // shouldn't resume
     }
 
-    // kill (only TERM/KILL are recognized; this stub flips state to ZOMBIE)
     @nogc nothrow int sys_kill(pid_t pid, int sig){
         auto p = findByPid(pid);
         if(p is null) return setErrno(Errno.ESRCH);
-        final switch(sig){
+        // non-final switch to avoid covering all enum members
+        switch(sig){
             case SIG.KILL, SIG.TERM:
                 p.exitCode = 128 + sig;
                 p.state    = ProcState.ZOMBIE;
@@ -1812,20 +1804,19 @@ mixin template PosixKernelShim()
         }
     }
 
-    // sleep(seconds) — naive: N calls to schedYield; replace with timer integration
-    @nogc nothrow unsigned sys_sleep(uint seconds){
-        // TODO: wire to timer ticks and block current
+    // Naive sleep: cooperatively yield
+    @nogc nothrow uint sys_sleep(uint seconds){
         foreach(_; 0 .. seconds * 100) { schedYield(); }
         return 0;
     }
 
-    // ---- FD/IO syscalls (stubs; return ENOSYS unless you wire them) ----
+    // ---- FD/IO syscalls (stubs) ----
     @nogc nothrow int     sys_open (const char* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow ssize_t sys_read (int /*fd*/, void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow ssize_t sys_write(int /*fd*/, const void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
 
-    // ---- C ABI glue (handy if you expose these as syscalls or link tiny libc) ----
+    // ---- C ABI glue ----
     extern(C):
     @nogc nothrow pid_t getpid(){ return sys_getpid(); }
     @nogc nothrow pid_t fork(){   return sys_fork();   }
@@ -1833,20 +1824,21 @@ mixin template PosixKernelShim()
     @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
     @nogc nothrow void  _exit(int c){ sys__exit(c); }
     @nogc nothrow int   kill(pid_t p, int s){ return sys_kill(p,s); }
-    @nogc nothrow unsigned sleep(unsigned s){ return sys_sleep(s); }
+    @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
 
-    // Provide weak environ/argv symbols if you need them for linkage
+    // Optional weak-ish symbols for linkage expectations
     __gshared const char** environ;
     __gshared const char** __argv;
     __gshared int          __argc;
 
-    // ---- Init hook: call once during kernel boot ----
+    // ---- Init hook ----
     @nogc nothrow void posixInit(){
         if(g_initialized) return;
         foreach(ref p; g_ptable) p = Proc.init;
         g_initialized = true;
     }
 }
+
 
 
 version (Posix)

@@ -149,7 +149,6 @@ fi
 
 # D object
 ldc2 -I. -Isrc -mtriple="$TARGET" -betterC $DFLAGS \
-     -version Posix \
      -c "$KERNEL_D" -of="$KERNEL_O"
 
 # Startup (asm)

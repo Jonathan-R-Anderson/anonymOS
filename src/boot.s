@@ -7,6 +7,7 @@
 .set CODE_SEG,   0x08
 .set DATA_SEG,   0x10
 .set IA32_EFER,  0xC0000080
+.set IA32_FS_BASE, 0xC0000100
 .set CR0_PG,     0x80000000
 .set CR4_PAE,    0x00000020
 
@@ -68,6 +69,16 @@ long_mode_entry:
 
     leaq stack_top(%rip), %rsp
     xor %rbp, %rbp
+
+    /* Set up the bootstrap thread's TLS block and FS base. */
+    leaq __initial_tcb(%rip), %rax
+    mov %rax, %rdi
+    mov %rdi, (%rdi)
+    mov $IA32_FS_BASE, %ecx
+    mov %rdi, %rax
+    mov %rax, %rdx
+    shr $32, %rdx
+    wrmsr
 
     mov %cr0, %rax
     or $0x22, %rax

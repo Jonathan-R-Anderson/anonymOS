@@ -529,7 +529,9 @@ private __gshared IDTEntry[256] interruptDescriptorTable;
 extern(C) void invalidOpcodeStub();
 extern(C) void loadIDT(const IDTPointer* descriptor);
 
-private void setIDTEntry(size_t vector, extern(C) void function() handler)
+alias InterruptHandler = extern(C) void function();
+
+private void setIDTEntry(size_t vector, InterruptHandler handler)
 {
     const size_t handlerAddress = cast(size_t)handler;
 

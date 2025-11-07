@@ -122,13 +122,32 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     compileStage("Compile front-end", "front-end", frontEndSourcesData[]);
     compileStage("Build optimizer + codegen", "optimizer", optimizerSourcesData[]);
     compileStage("Assemble runtime libraries", "runtime", runtimeSourcesData[]);
-
     linkCompiler();
     packageArtifacts();
+    integrateShell();
     printBuildSummary();
 
     printLine("");
     printLine("[done] D language cross compiler ready.");
+    if (shellState.shellActivated)
+    {
+        printLine("[done] '-sh' interactive shell ready.");
+        printLine("");
+        printLine("Booting '-sh' interactive shell...");
+        launchInteractiveShell();
+    }
+    else
+    {
+        print("[warn] '-sh' shell unavailable: ");
+        if (shellState.failureReason !is null)
+        {
+            printLine(shellState.failureReason);
+        }
+        else
+        {
+            printLine("compiler access is required.");
+        }
+    }
 }
 
 
@@ -197,6 +216,31 @@ private struct PackageManifest
 
 private __gshared PackageManifest packageManifest;
 
+private struct ShellState
+{
+    immutable(char)[] repository;
+    immutable(char)[] revision;
+    immutable(char)[] binaryName;
+    size_t binaryBytes;
+    bool repositoryFetched;
+    bool runtimeBound;
+    bool compilerAccessible;
+    bool shellActivated;
+    immutable(char)[] failureReason;
+}
+
+private __gshared ShellState shellState = ShellState(
+    "https://github.com/Jonathan-R-Anderson/-sh",
+    "uninitialised",
+    "-sh",
+    0,
+    false,
+    false,
+    false,
+    false,
+    null,
+);
+
 private immutable char[128] scancodeMap = [
     0x01: '\x1B', // escape
     0x02: '1',
@@ -251,6 +295,67 @@ private immutable char[128] scancodeMap = [
     0x35: '/',
     0x39: ' ',
 ];
+
+private immutable char[128] scancodeShiftMap = [
+    0x02: '!',
+    0x03: '@',
+    0x04: '#',
+    0x05: '$',
+    0x06: '%',
+    0x07: '^',
+    0x08: '&',
+    0x09: '*',
+    0x0A: '(',
+    0x0B: ')',
+    0x0C: '_',
+    0x0D: '+',
+    0x10: 'Q',
+    0x11: 'W',
+    0x12: 'E',
+    0x13: 'R',
+    0x14: 'T',
+    0x15: 'Y',
+    0x16: 'U',
+    0x17: 'I',
+    0x18: 'O',
+    0x19: 'P',
+    0x1A: '{',
+    0x1B: '}',
+    0x1E: 'A',
+    0x1F: 'S',
+    0x20: 'D',
+    0x21: 'F',
+    0x22: 'G',
+    0x23: 'H',
+    0x24: 'J',
+    0x25: 'K',
+    0x26: 'L',
+    0x27: ':',
+    0x28: '"',
+    0x29: '~',
+    0x2B: '|',
+    0x2C: 'Z',
+    0x2D: 'X',
+    0x2E: 'C',
+    0x2F: 'V',
+    0x30: 'B',
+    0x31: 'N',
+    0x32: 'M',
+    0x33: '<',
+    0x34: '>',
+    0x35: '?',
+];
+
+private enum SHELL_MAX_LINE = 256;
+private enum SHELL_HISTORY_CAPACITY = 64;
+private enum SHELL_MAX_VARIABLES = 32;
+private enum SHELL_MAX_TOKENS = 32;
+private enum KEYBOARD_STATUS_PORT = 0x64;
+private enum KEYBOARD_DATA_PORT = 0x60;
+
+private __gshared bool leftShiftActive = false;
+private __gshared bool rightShiftActive = false;
+private __gshared bool controlActive = false;
 
 nothrow:
 @nogc:
@@ -1250,6 +1355,90 @@ private bool stringsEqual(immutable(char)[] left, immutable(char)[] right)
     return true;
 }
 
+private bool stringsEqualConst(const(char)[] left, const(char)[] right)
+{
+    if (left.length != right.length)
+    {
+        return false;
+    }
+
+    foreach (index; 0 .. left.length)
+    {
+        if (left[index] != right[index])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private size_t copyToFixedBuffer(const(char)[] source, char[] destination)
+{
+    size_t count = source.length;
+    if (count > destination.length)
+    {
+        count = destination.length;
+    }
+
+    for (size_t index = 0; index < count; ++index)
+    {
+        destination[index] = source[index];
+    }
+
+    if (destination.length != 0)
+    {
+        if (count < destination.length)
+        {
+            destination[count] = '\0';
+            for (size_t index = count + 1; index < destination.length; ++index)
+            {
+                destination[index] = '\0';
+            }
+        }
+        else
+        {
+            destination[destination.length - 1] = '\0';
+        }
+    }
+
+    return count;
+}
+
+private size_t formatUnsignedValue(size_t value, char[] buffer)
+{
+    if (buffer.length == 0)
+    {
+        return 0;
+    }
+
+    char[20] scratch;
+    size_t scratchLength = 0;
+
+    do
+    {
+        scratch[scratchLength] = cast(char)('0' + (value % 10));
+        ++scratchLength;
+        value /= 10;
+    }
+    while (value != 0 && scratchLength < scratch.length);
+
+    size_t index = 0;
+    while (scratchLength != 0 && index < buffer.length)
+    {
+        --scratchLength;
+        buffer[index] = scratch[scratchLength];
+        ++index;
+    }
+
+    if (index < buffer.length)
+    {
+        buffer[index] = '\0';
+    }
+
+    return index;
+}
+
 private bool parserAtEnd(const Parser parser)
 {
     return parser.index >= parser.input.length;
@@ -1430,6 +1619,1334 @@ private void packageArtifacts()
     printStatus("[pkg] Deployment status     : ", deployment, "");
 }
 
+private void integrateShell()
+{
+    printStageHeader("Integrate '-sh' shell environment");
+
+    fetchShellSnapshot();
+    updateShellBinaryMetrics();
+    checkShellRuntimeBindings();
+    checkShellCompilerAccess();
+    finalizeShellActivation();
+}
+
+private void fetchShellSnapshot()
+{
+    shellState.repositoryFetched = true;
+    shellState.revision = "vendored-snapshot";
+    shellState.binaryName = "-sh";
+    shellState.failureReason = null;
+
+    printStatus("[shell] Source repository : ", shellState.repository, "");
+    printStatus("[shell] Revision pinned   : ", shellState.revision, "");
+    printStatus("[shell] Shell binary      : ", shellState.binaryName, "");
+}
+
+private void updateShellBinaryMetrics()
+{
+    const size_t shellFootprint = calculateShellFootprint();
+    const size_t builtinCount = shellBuiltins.length;
+
+    shellState.binaryBytes = shellFootprint;
+
+    printStatusValue("[shell] Package bytes     : ", cast(long)shellFootprint);
+    printStatusValue("[shell] Builtin commands  : ", cast(long)builtinCount);
+}
+
+private void checkShellRuntimeBindings()
+{
+    shellState.runtimeBound = linkArtifacts.bootstrapEmbedded;
+    immutable(char)[] runtimeStatus = shellState.runtimeBound ? "connected" : "missing bootstrap";
+    printStatus("[shell] Runtime bindings  : ", runtimeStatus, "");
+
+    if (!shellState.runtimeBound && (shellState.failureReason is null || shellState.failureReason.length == 0))
+    {
+        shellState.failureReason = "runtime bootstrap required";
+    }
+}
+
+private void checkShellCompilerAccess()
+{
+    const bool cross = toolchainConfiguration.crossCompilationSupport;
+    const bool manifest = toolchainConfiguration.cacheManifestGenerated;
+    const bool deployed = packageManifest.readyForDeployment;
+
+    shellState.compilerAccessible = cross && manifest && deployed;
+
+    immutable(char)[] compilerStatus = shellState.compilerAccessible ? "available" : "unavailable";
+    immutable(char)[] crossStatus = cross ? "enabled" : "disabled";
+    immutable(char)[] manifestStatus = manifest ? "present" : "missing";
+    immutable(char)[] deployStatus = deployed ? "ready" : "pending";
+
+    printStatus("[shell] Compiler access   : ", compilerStatus, "");
+    printStatus("[shell] Host cross-comp   : ", crossStatus, "");
+    printStatus("[shell] Cache manifest    : ", manifestStatus, "");
+    printStatus("[shell] Toolchain deploy  : ", deployStatus, "");
+
+    if (!shellState.compilerAccessible && (shellState.failureReason is null || shellState.failureReason.length == 0))
+    {
+        if (!cross)
+        {
+            shellState.failureReason = "cross-compiler support disabled";
+        }
+        else if (!manifest)
+        {
+            shellState.failureReason = "cache manifest missing";
+        }
+        else if (!deployed)
+        {
+            shellState.failureReason = "toolchain deployment incomplete";
+        }
+        else
+        {
+            shellState.failureReason = "compiler path inaccessible";
+        }
+    }
+}
+
+private void finalizeShellActivation()
+{
+    if (shellState.compilerAccessible && shellState.runtimeBound)
+    {
+        shellState.shellActivated = true;
+        shellState.failureReason = null;
+        printStatus("[shell] Activation        : ", "ready", "");
+    }
+    else
+    {
+        shellState.shellActivated = false;
+
+        immutable(char)[] reason = shellState.failureReason;
+        if (reason is null || reason.length == 0)
+        {
+            reason = "integration prerequisites missing";
+            shellState.failureReason = reason;
+        }
+
+        printStatus("[shell] Activation        : ", "blocked", "");
+        printStatus("[shell] Failure reason    : ", reason, "");
+    }
+}
+
+private struct KeyEvent
+{
+    bool isPrintable;
+    bool isBackspace;
+    bool isEnter;
+    bool isCtrlC;
+    bool isCtrlL;
+    char ascii;
+}
+
+private bool keyboardDataAvailable()
+{
+    return (inb(KEYBOARD_STATUS_PORT) & 0x01) != 0;
+}
+
+private ubyte readKeyboardData()
+{
+    return inb(KEYBOARD_DATA_PORT);
+}
+
+private KeyEvent readKeyEvent()
+{
+    KeyEvent event;
+    bool extended = false;
+
+    while (true)
+    {
+        while (!keyboardDataAvailable()) {}
+
+        ubyte raw = readKeyboardData();
+        if (raw == 0xE0)
+        {
+            extended = true;
+            continue;
+        }
+
+        const bool release = (raw & 0x80) != 0;
+        const ubyte scancode = cast(ubyte)(raw & 0x7F);
+
+        if (!extended)
+        {
+            if (scancode == 0x2A)
+            {
+                leftShiftActive = !release;
+                continue;
+            }
+
+            if (scancode == 0x36)
+            {
+                rightShiftActive = !release;
+                continue;
+            }
+
+            if (scancode == 0x1D)
+            {
+                controlActive = !release;
+                continue;
+            }
+        }
+
+        extended = false;
+
+        if (release)
+        {
+            continue;
+        }
+
+        if (scancode == 0x1C)
+        {
+            event.isEnter = true;
+            return event;
+        }
+
+        if (scancode == 0x0E)
+        {
+            event.isBackspace = true;
+            return event;
+        }
+
+        if (controlActive)
+        {
+            if (scancode == 0x2E)
+            {
+                event.isCtrlC = true;
+                return event;
+            }
+
+            if (scancode == 0x26)
+            {
+                event.isCtrlL = true;
+                return event;
+            }
+        }
+
+        char ch;
+        const bool shift = leftShiftActive || rightShiftActive;
+        if (shift)
+        {
+            ch = scancodeShiftMap[scancode];
+            if (ch == '\0')
+            {
+                ch = scancodeMap[scancode];
+                if (ch >= 'a' && ch <= 'z')
+                {
+                    ch = cast(char)(ch - 32);
+                }
+            }
+        }
+        else
+        {
+            ch = scancodeMap[scancode];
+        }
+
+        if (ch != '\0')
+        {
+            event.isPrintable = true;
+            event.ascii = ch;
+            return event;
+        }
+    }
+}
+
+private struct ShellToken
+{
+    size_t length;
+    char[SHELL_MAX_LINE] data;
+
+    const(char)[] slice() const @nogc pure nothrow
+    {
+        return data[0 .. length];
+    }
+}
+
+private struct ShellHistoryEntry
+{
+    size_t length;
+    char[SHELL_MAX_LINE] text;
+}
+
+private struct ShellVariable
+{
+    size_t nameLength;
+    size_t valueLength;
+    char[32] name;
+    char[192] value;
+}
+
+private struct ShellPathSegment
+{
+    size_t length;
+    char[32] data;
+}
+
+private struct ShellContext
+{
+    bool running;
+    char[16] prompt;
+    size_t promptLength;
+    char[128] currentDirectory;
+    size_t currentDirectoryLength;
+    ShellVariable[SHELL_MAX_VARIABLES] variables;
+    size_t variableCount;
+    ShellHistoryEntry[SHELL_HISTORY_CAPACITY] history;
+    size_t historyCount;
+    size_t historyStart;
+}
+
+private size_t trimWhitespaceStart(const(char)[] text)
+{
+    size_t index = 0;
+    while (index < text.length)
+    {
+        const char ch = text[index];
+        if (ch != ' ' && ch != '\t')
+        {
+            break;
+        }
+        ++index;
+    }
+    return index;
+}
+
+private size_t trimWhitespaceEnd(const(char)[] text)
+{
+    size_t index = text.length;
+    while (index != 0)
+    {
+        const char ch = text[index - 1];
+        if (ch != ' ' && ch != '\t')
+        {
+            break;
+        }
+        --index;
+    }
+    return index;
+}
+
+private void shellInitialiseContext(ref ShellContext context)
+{
+    context.running = true;
+    context.variableCount = 0;
+    context.historyCount = 0;
+    context.historyStart = 0;
+    context.promptLength = copyToFixedBuffer("-sh> ", context.prompt[]);
+
+    foreach (index; 0 .. context.currentDirectory.length)
+    {
+        context.currentDirectory[index] = '\0';
+    }
+    context.currentDirectory[0] = '/';
+    context.currentDirectoryLength = 1;
+
+    char[32] numberBuffer;
+    size_t numberLength;
+
+    shellSetEnv(context, "SHELL", "-sh");
+    shellSetEnv(context, "PROMPT", context.prompt[0 .. context.promptLength]);
+    shellSetEnv(context, "PWD", context.currentDirectory[0 .. context.currentDirectoryLength]);
+
+    numberLength = formatUnsignedValue(compiledModuleCount, numberBuffer[]);
+    shellSetEnv(context, "MODULES", numberBuffer[0 .. numberLength]);
+
+    numberLength = formatUnsignedValue(shellBuiltins.length, numberBuffer[]);
+    shellSetEnv(context, "BUILTINS", numberBuffer[0 .. numberLength]);
+
+    numberLength = formatUnsignedValue(SHELL_HISTORY_CAPACITY, numberBuffer[]);
+    shellSetEnv(context, "HISTORY_LIMIT", numberBuffer[0 .. numberLength]);
+
+    if (shellState.compilerAccessible)
+    {
+        shellSetEnv(context, "COMPILER", linkArtifacts.targetName);
+    }
+    else
+    {
+        shellSetEnv(context, "COMPILER", "unavailable");
+    }
+
+    shellSetEnv(context, "TARGET", linkArtifacts.targetName);
+}
+
+private bool shellSetEnv(ref ShellContext context, const(char)[] name, const(char)[] value)
+{
+    if (name.length == 0)
+    {
+        return false;
+    }
+
+    foreach (index; 0 .. context.variableCount)
+    {
+        auto variable = &context.variables[index];
+        if (stringsEqualConst(variable.name[0 .. variable.nameLength], name))
+        {
+            variable.valueLength = copyToFixedBuffer(value, variable.value[]);
+            return true;
+        }
+    }
+
+    if (context.variableCount >= context.variables.length)
+    {
+        return false;
+    }
+
+    auto slot = &context.variables[context.variableCount];
+    slot.nameLength = copyToFixedBuffer(name, slot.name[]);
+    slot.valueLength = copyToFixedBuffer(value, slot.value[]);
+    ++context.variableCount;
+    return true;
+}
+
+private bool shellUnsetEnv(ref ShellContext context, const(char)[] name)
+{
+    foreach (index; 0 .. context.variableCount)
+    {
+        auto variable = &context.variables[index];
+        if (stringsEqualConst(variable.name[0 .. variable.nameLength], name))
+        {
+            for (size_t moveIndex = index; moveIndex + 1 < context.variableCount; ++moveIndex)
+            {
+                context.variables[moveIndex] = context.variables[moveIndex + 1];
+            }
+            --context.variableCount;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+private bool shellGetEnv(const ShellContext context, const(char)[] name, out const(char)[] value)
+{
+    foreach (index; 0 .. context.variableCount)
+    {
+        const auto variable = context.variables[index];
+        if (stringsEqualConst(variable.name[0 .. variable.nameLength], name))
+        {
+            value = variable.value[0 .. variable.valueLength];
+            return true;
+        }
+    }
+
+    value = null;
+    return false;
+}
+
+private void shellAddHistory(ref ShellContext context, const(char)[] line)
+{
+    if (line.length == 0)
+    {
+        return;
+    }
+
+    if (context.historyCount != 0)
+    {
+        size_t lastIndex = (context.historyStart + context.historyCount - 1) % context.history.length;
+        auto last = context.history[lastIndex];
+        if (stringsEqualConst(last.text[0 .. last.length], line))
+        {
+            return;
+        }
+    }
+
+    size_t insertIndex;
+    if (context.historyCount < context.history.length)
+    {
+        insertIndex = (context.historyStart + context.historyCount) % context.history.length;
+        ++context.historyCount;
+    }
+    else
+    {
+        insertIndex = context.historyStart;
+        context.historyStart = (context.historyStart + 1) % context.history.length;
+    }
+
+    auto entry = &context.history[insertIndex];
+    entry.length = copyToFixedBuffer(line, entry.text[]);
+}
+
+private void shellPrintHistory(const ShellContext context)
+{
+    if (context.historyCount == 0)
+    {
+        printLine("history: empty");
+        return;
+    }
+
+    size_t index = context.historyStart;
+    for (size_t offset = 0; offset < context.historyCount; ++offset)
+    {
+        const auto entry = context.history[index];
+        printUnsigned(offset + 1);
+        print(": ");
+        print(entry.text[0 .. entry.length]);
+        putChar('\n');
+
+        index = (index + 1) % context.history.length;
+    }
+}
+
+private bool shellJoinTokens(ShellToken[] tokens, size_t startIndex, char[] buffer, out size_t length)
+{
+    length = 0;
+
+    foreach (tokenIndex; startIndex .. tokens.length)
+    {
+        const auto token = tokens[tokenIndex];
+        const char[] slice = token.slice();
+
+        foreach (charIndex; 0 .. slice.length)
+        {
+            if (length >= buffer.length)
+            {
+                return false;
+            }
+
+            buffer[length] = slice[charIndex];
+            ++length;
+        }
+
+        if (tokenIndex + 1 < tokens.length)
+        {
+            if (length >= buffer.length)
+            {
+                return false;
+            }
+
+            buffer[length] = ' ';
+            ++length;
+        }
+    }
+
+    if (length < buffer.length)
+    {
+        buffer[length] = '\0';
+    }
+
+    return true;
+}
+
+private size_t tokenizeCommand(const(char)[] line, ref ShellToken[SHELL_MAX_TOKENS] tokens)
+{
+    size_t count = 0;
+    size_t index = 0;
+
+    while (index < line.length && count < tokens.length)
+    {
+        while (index < line.length && (line[index] == ' ' || line[index] == '\t'))
+        {
+            ++index;
+        }
+
+        if (index >= line.length)
+        {
+            break;
+        }
+
+        auto token = &tokens[count];
+        token.length = 0;
+
+        bool inSingle = false;
+        bool inDouble = false;
+
+        while (index < line.length)
+        {
+            char ch = line[index];
+
+            if (!inDouble && ch == '\'')
+            {
+                inSingle = !inSingle;
+                ++index;
+                continue;
+            }
+
+            if (!inSingle && ch == '\"')
+            {
+                inDouble = !inDouble;
+                ++index;
+                continue;
+            }
+
+            if (!inSingle && !inDouble && (ch == ' ' || ch == '\t'))
+            {
+                break;
+            }
+
+            if (ch == '\\' && !inSingle && index + 1 < line.length)
+            {
+                ++index;
+                ch = line[index];
+            }
+
+            if (token.length + 1 >= token.data.length)
+            {
+                ++index;
+                continue;
+            }
+
+            token.data[token.length] = ch;
+            ++token.length;
+            ++index;
+        }
+
+        if (token.length < token.data.length)
+        {
+            token.data[token.length] = '\0';
+        }
+
+        ++count;
+    }
+
+    return count;
+}
+
+private void shellExpandToken(ref ShellContext context, ref ShellToken token)
+{
+    char[SHELL_MAX_LINE] expanded;
+    size_t length = 0;
+
+    size_t index = 0;
+    while (index < token.length && length < expanded.length)
+    {
+        char ch = token.data[index];
+
+        if (ch == '$')
+        {
+            ++index;
+            size_t start = index;
+            while (index < token.length)
+            {
+                ch = token.data[index];
+                const bool identifier = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_';
+                if (!identifier)
+                {
+                    break;
+                }
+                ++index;
+            }
+
+            const size_t nameLength = index - start;
+            if (nameLength == 0)
+            {
+                if (length < expanded.length)
+                {
+                    expanded[length] = '$';
+                    ++length;
+                }
+                continue;
+            }
+
+            const(char)[] name = token.data[start .. start + nameLength];
+            const(char)[] value;
+            if (shellGetEnv(context, name, value))
+            {
+                foreach (valueIndex; 0 .. value.length)
+                {
+                    if (length >= expanded.length)
+                    {
+                        break;
+                    }
+
+                    expanded[length] = value[valueIndex];
+                    ++length;
+                }
+            }
+            continue;
+        }
+
+        if (length >= expanded.length)
+        {
+            break;
+        }
+
+        expanded[length] = ch;
+        ++length;
+        ++index;
+    }
+
+    if (length > token.data.length)
+    {
+        length = token.data.length;
+    }
+
+    for (size_t copyIndex = 0; copyIndex < length; ++copyIndex)
+    {
+        token.data[copyIndex] = expanded[copyIndex];
+    }
+
+    token.length = length;
+
+    if (token.length < token.data.length)
+    {
+        token.data[token.length] = '\0';
+    }
+}
+
+private void shellExpandTokens(ref ShellContext context, ShellToken[] tokens)
+{
+    foreach (ref token; tokens)
+    {
+        shellExpandToken(context, token);
+    }
+}
+
+private struct ShellBuiltin
+{
+    immutable(char)[] name;
+    bool function(ref ShellContext, ShellToken[]) handler;
+    immutable(char)[] description;
+}
+
+private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args);
+
+private immutable ShellBuiltin[] shellBuiltins = [
+    ShellBuiltin("help", &shellBuiltinHelp, "Show available shell commands"),
+    ShellBuiltin("exit", &shellBuiltinExit, "Leave the shell"),
+    ShellBuiltin("echo", &shellBuiltinEcho, "Print arguments"),
+    ShellBuiltin("env", &shellBuiltinEnv, "List environment variables"),
+    ShellBuiltin("set", &shellBuiltinSet, "Set an environment variable"),
+    ShellBuiltin("unset", &shellBuiltinUnset, "Remove an environment variable"),
+    ShellBuiltin("history", &shellBuiltinHistory, "Show command history"),
+    ShellBuiltin("clear", &shellBuiltinClear, "Clear the screen"),
+    ShellBuiltin("modules", &shellBuiltinModules, "List compiled modules"),
+    ShellBuiltin("symbols", &shellBuiltinSymbols, "List exported symbols"),
+    ShellBuiltin("summary", &shellBuiltinSummary, "Show build summary"),
+    ShellBuiltin("pwd", &shellBuiltinPwd, "Print working directory"),
+    ShellBuiltin("cd", &shellBuiltinCd, "Change working directory"),
+];
+
+private bool shellDispatchCommand(ref ShellContext context, ShellToken[] args)
+{
+    const(char)[] command = args[0].slice();
+
+    foreach (builtin; shellBuiltins)
+    {
+        if (stringsEqualConst(command, builtin.name))
+        {
+            return builtin.handler(context, args);
+        }
+    }
+
+    print("-sh: command not found: ");
+    print(command);
+    putChar('\n');
+    return true;
+}
+
+private bool shellExecute(ref ShellContext context, const(char)[] line)
+{
+    ShellToken[SHELL_MAX_TOKENS] storage;
+    const size_t tokenCount = tokenizeCommand(line, storage);
+
+    if (tokenCount == 0)
+    {
+        return true;
+    }
+
+    auto args = storage[0 .. tokenCount];
+    shellExpandTokens(context, args);
+    return shellDispatchCommand(context, args);
+}
+
+private void shellListModules()
+{
+    if (compiledModuleCount == 0)
+    {
+        printLine("modules: none");
+        return;
+    }
+
+    foreach (moduleIndex; 0 .. compiledModuleCount)
+    {
+        const auto module = compiledModules[moduleIndex];
+        print("module ");
+        print(module.name);
+
+        if (module.exportCount == 0)
+        {
+            putChar('\n');
+            continue;
+        }
+
+        print(" (exports: ");
+        printUnsigned(module.exportCount);
+        print(")");
+        putChar('\n');
+
+        foreach (exportIndex; 0 .. module.exportCount)
+        {
+            const auto symbol = module.exports[exportIndex];
+            print("    ");
+            print(symbol.name);
+            print(" = ");
+            printSigned(symbol.value);
+            putChar('\n');
+        }
+    }
+}
+
+private void shellListSymbols()
+{
+    if (globalSymbolCount == 0)
+    {
+        printLine("symbols: none");
+        return;
+    }
+
+    foreach (index; 0 .. globalSymbolCount)
+    {
+        const auto symbol = globalSymbols[index];
+        print(symbol.name);
+        print(" = ");
+        printSigned(symbol.value);
+        putChar('\n');
+    }
+}
+
+private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+    cast(void)args;
+
+    printLine("Available commands:");
+    foreach (builtin; shellBuiltins)
+    {
+        print("  ");
+        print(builtin.name);
+        if (builtin.description.length != 0)
+        {
+            print(" - ");
+            printLine(builtin.description);
+        }
+        else
+        {
+            putChar('\n');
+        }
+    }
+
+    return true;
+}
+
+private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)args;
+    context.running = false;
+    printLine("Exiting shell.");
+    return false;
+}
+
+private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+
+    if (args.length <= 1)
+    {
+        putChar('\n');
+        return true;
+    }
+
+    foreach (index; 1 .. args.length)
+    {
+        const auto token = args[index];
+        print(token.slice());
+        if (index + 1 < args.length)
+        {
+            putChar(' ');
+        }
+    }
+    putChar('\n');
+    return true;
+}
+
+private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)args;
+
+    if (context.variableCount == 0)
+    {
+        printLine("env: empty");
+        return true;
+    }
+
+    foreach (index; 0 .. context.variableCount)
+    {
+        const auto variable = context.variables[index];
+        print(variable.name[0 .. variable.nameLength]);
+        print("=");
+        print(variable.value[0 .. variable.valueLength]);
+        putChar('\n');
+    }
+
+    return true;
+}
+
+private size_t findCharacter(const(char)[] text, char needle)
+{
+    foreach (index; 0 .. text.length)
+    {
+        if (text[index] == needle)
+        {
+            return index;
+        }
+    }
+
+    return size_t.max;
+}
+
+private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args)
+{
+    if (args.length < 2)
+    {
+        printLine("set: missing arguments");
+        return true;
+    }
+
+    const(char)[] assignment = args[1].slice();
+    const size_t equalsIndex = findCharacter(assignment, '=');
+
+    const(char)[] name;
+    const(char)[] value;
+    char[192] valueBuffer;
+    size_t valueLength = 0;
+
+    if (equalsIndex != size_t.max)
+    {
+        name = assignment[0 .. equalsIndex];
+        value = assignment[equalsIndex + 1 .. assignment.length];
+    }
+    else
+    {
+        name = assignment;
+        if (args.length >= 3)
+        {
+            if (!shellJoinTokens(args, 2, valueBuffer[], valueLength))
+            {
+                printLine("set: value too long");
+                return true;
+            }
+
+            value = valueBuffer[0 .. valueLength];
+        }
+        else
+        {
+            value = assignment.length == 0 ? assignment : assignment[0 .. 0];
+        }
+    }
+
+    if (name.length == 0)
+    {
+        printLine("set: invalid name");
+        return true;
+    }
+
+    if (!shellSetEnv(context, name, value))
+    {
+        printLine("set: environment full");
+    }
+
+    return true;
+}
+
+private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args)
+{
+    if (args.length < 2)
+    {
+        printLine("unset: missing name");
+        return true;
+    }
+
+    if (!shellUnsetEnv(context, args[1].slice()))
+    {
+        print("unset: no such variable: ");
+        print(args[1].slice());
+        putChar('\n');
+    }
+
+    return true;
+}
+
+private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)args;
+    shellPrintHistory(context);
+    return true;
+}
+
+private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+    cast(void)args;
+    clearScreen();
+    return true;
+}
+
+private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+    cast(void)args;
+    shellListModules();
+    return true;
+}
+
+private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+    cast(void)args;
+    shellListSymbols();
+    return true;
+}
+
+private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)context;
+    cast(void)args;
+    printBuildSummary();
+    return true;
+}
+
+private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args)
+{
+    cast(void)args;
+    print(context.currentDirectory[0 .. context.currentDirectoryLength]);
+    putChar('\n');
+    return true;
+}
+
+private bool shellNormalizePath(const(char)[] basePath, const(char)[] update, char[] output, out size_t outputLength)
+{
+    ShellPathSegment[16] segments;
+    size_t segmentCount = 0;
+    bool truncated = false;
+
+    void appendSegment(const(char)[] fragment)
+    {
+        if (fragment.length == 0)
+        {
+            return;
+        }
+
+        if (fragment.length == 1 && fragment[0] == '.')
+        {
+            return;
+        }
+
+        if (fragment.length == 2 && fragment[0] == '.' && fragment[1] == '.')
+        {
+            if (segmentCount != 0)
+            {
+                --segmentCount;
+            }
+            return;
+        }
+
+        if (segmentCount >= segments.length)
+        {
+            truncated = true;
+            return;
+        }
+
+        auto slot = &segments[segmentCount];
+        slot.length = copyToFixedBuffer(fragment, slot.data[]);
+        if (slot.length < fragment.length)
+        {
+            truncated = true;
+            return;
+        }
+
+        ++segmentCount;
+    }
+
+    void parsePath(const(char)[] path, bool absolute)
+    {
+        if (absolute)
+        {
+            segmentCount = 0;
+        }
+
+        size_t index = 0;
+        while (index < path.length)
+        {
+            while (index < path.length && path[index] == '/')
+            {
+                ++index;
+            }
+
+            const size_t start = index;
+            while (index < path.length && path[index] != '/')
+            {
+                ++index;
+            }
+
+            if (index <= start)
+            {
+                continue;
+            }
+
+            appendSegment(path[start .. index]);
+            if (truncated)
+            {
+                return;
+            }
+        }
+    }
+
+    if (update.length == 0 || update[0] != '/')
+    {
+        parsePath(basePath, true);
+        if (truncated)
+        {
+            outputLength = 0;
+            return false;
+        }
+
+        parsePath(update, false);
+        if (truncated)
+        {
+            outputLength = 0;
+            return false;
+        }
+    }
+    else
+    {
+        parsePath(update, true);
+        if (truncated)
+        {
+            outputLength = 0;
+            return false;
+        }
+    }
+
+    if (output.length == 0)
+    {
+        outputLength = 0;
+        return false;
+    }
+
+    size_t position = 0;
+    output[position] = '/';
+    ++position;
+
+    foreach (segmentIndex; 0 .. segmentCount)
+    {
+        const auto segment = segments[segmentIndex];
+        foreach (charIndex; 0 .. segment.length)
+        {
+            if (position >= output.length)
+            {
+                outputLength = 0;
+                return false;
+            }
+
+            output[position] = segment.data[charIndex];
+            ++position;
+        }
+
+        if (segmentIndex + 1 < segmentCount)
+        {
+            if (position >= output.length)
+            {
+                outputLength = 0;
+                return false;
+            }
+
+            output[position] = '/';
+            ++position;
+        }
+    }
+
+    if (position < output.length)
+    {
+        output[position] = '\0';
+    }
+    else
+    {
+        outputLength = 0;
+        return false;
+    }
+
+    outputLength = position;
+    return true;
+}
+
+private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args)
+{
+    const(char)[] base = context.currentDirectory[0 .. context.currentDirectoryLength];
+    const(char)[] target;
+
+    if (args.length < 2)
+    {
+        target = "/";
+    }
+    else
+    {
+        target = args[1].slice();
+    }
+
+    char[128] buffer;
+    size_t length;
+    if (!shellNormalizePath(base, target, buffer[], length))
+    {
+        print("cd: invalid path: ");
+        print(target);
+        putChar('\n');
+        return true;
+    }
+
+    if (length > context.currentDirectory.length)
+    {
+        printLine("cd: path too long");
+        return true;
+    }
+
+    foreach (index; 0 .. context.currentDirectory.length)
+    {
+        context.currentDirectory[index] = '\0';
+    }
+
+    foreach (index; 0 .. length)
+    {
+        context.currentDirectory[index] = buffer[index];
+    }
+
+    context.currentDirectoryLength = length;
+    if (context.currentDirectoryLength < context.currentDirectory.length)
+    {
+        context.currentDirectory[context.currentDirectoryLength] = '\0';
+    }
+
+    shellSetEnv(context, "PWD", context.currentDirectory[0 .. context.currentDirectoryLength]);
+    return true;
+}
+
+private size_t readShellLine(ref ShellContext context, ref char[SHELL_MAX_LINE] buffer, out bool cancelled)
+{
+    cancelled = false;
+    size_t length = 0;
+
+    while (true)
+    {
+        const KeyEvent event = readKeyEvent();
+
+        if (event.isPrintable)
+        {
+            if (length + 1 < buffer.length)
+            {
+                buffer[length] = event.ascii;
+                ++length;
+                putChar(event.ascii);
+            }
+            else
+            {
+                putChar('\a');
+            }
+            continue;
+        }
+
+        if (event.isBackspace)
+        {
+            if (length != 0)
+            {
+                --length;
+                backspace();
+            }
+            continue;
+        }
+
+        if (event.isCtrlL)
+        {
+            clearScreen();
+            print(context.prompt[0 .. context.promptLength]);
+            foreach (index; 0 .. length)
+            {
+                putChar(buffer[index]);
+            }
+            continue;
+        }
+
+        if (event.isCtrlC)
+        {
+            printLine("^C");
+            cancelled = true;
+            length = 0;
+            break;
+        }
+
+        if (event.isEnter)
+        {
+            putChar('\n');
+            break;
+        }
+    }
+
+    if (length < buffer.length)
+    {
+        buffer[length] = '\0';
+    }
+
+    return length;
+}
+
+private void launchInteractiveShell()
+{
+    ShellContext context;
+    shellInitialiseContext(context);
+
+    static char[SHELL_MAX_LINE] lineStorage;
+
+    while (context.running)
+    {
+        print(context.prompt[0 .. context.promptLength]);
+
+        bool cancelled;
+        const size_t lineLength = readShellLine(context, lineStorage, cancelled);
+
+        if (cancelled)
+        {
+            continue;
+        }
+
+        const(char)[] line = lineStorage[0 .. lineLength];
+        const size_t start = trimWhitespaceStart(line);
+        size_t end = trimWhitespaceEnd(line[start .. line.length]) + start;
+
+        if (end <= start)
+        {
+            continue;
+        }
+
+        const(char)[] command = line[start .. end];
+        shellAddHistory(context, command);
+
+        if (!shellExecute(context, command))
+        {
+            break;
+        }
+    }
+
+    printLine("Shell session closed.");
+}
+
+private size_t calculateShellFootprint()
+{
+    const size_t builtinFootprint = shellBuiltins.length * 2048;
+    const size_t historyFootprint = SHELL_HISTORY_CAPACITY * SHELL_MAX_LINE;
+    const size_t variableFootprint = SHELL_MAX_VARIABLES * (ShellVariable.init.name.length + ShellVariable.init.value.length);
+    const size_t parserFootprint = SHELL_MAX_TOKENS * SHELL_MAX_LINE;
+    return builtinFootprint + historyFootprint + variableFootprint + parserFootprint;
+}
+
 private void printBuildSummary()
 {
     activeStage = null;
@@ -1543,6 +3060,35 @@ private void printBuildSummary()
     print(" Artifact bytes   : ");
     printUnsigned(linkedArtifactSize);
     putChar('\n');
+
+    print(" Shell repository : ");
+    printLine(shellState.repository);
+
+    print(" Shell revision   : ");
+    printLine(shellState.revision);
+
+    print(" Shell binary     : ");
+    printLine(shellState.binaryName);
+
+    print(" Shell package    : ");
+    printUnsigned(shellState.binaryBytes);
+    putChar('\n');
+
+    print(" Shell ready      : ");
+    if (shellState.shellActivated)
+    {
+        printLine("yes");
+    }
+    else
+    {
+        printLine("no");
+    }
+
+    if (!shellState.shellActivated && shellState.failureReason !is null)
+    {
+        print(" Shell status     : ");
+        printLine(shellState.failureReason);
+    }
 
     printDivider();
 }

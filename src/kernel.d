@@ -1881,6 +1881,8 @@ private struct ShellPathSegment
     char[32] data;
 }
 
+private enum DEFAULT_PROMPT = "lfe-sh> ";
+
 private struct ShellContext
 {
     bool running;
@@ -1931,7 +1933,7 @@ private void shellInitialiseContext(ref ShellContext context)
     context.variableCount = 0;
     context.historyCount = 0;
     context.historyStart = 0;
-    context.promptLength = copyToFixedBuffer("lfe-sh> ", context.prompt[]);
+    context.promptLength = copyToFixedBuffer(DEFAULT_PROMPT, context.prompt[]);
 
     foreach (index; 0 .. context.currentDirectory.length)
     {
@@ -1975,25 +1977,43 @@ private bool shellSetEnv(ref ShellContext context, const(char)[] name, const(cha
         return false;
     }
 
+    ShellVariable* variable = null;
+
     foreach (index; 0 .. context.variableCount)
     {
-        auto variable = &context.variables[index];
-        if (stringsEqualConst(variable.name[0 .. variable.nameLength], name))
+        auto candidate = &context.variables[index];
+        if (stringsEqualConst(candidate.name[0 .. candidate.nameLength], name))
         {
-            variable.valueLength = copyToFixedBuffer(value, variable.value[]);
-            return true;
+            variable = candidate;
+            break;
         }
     }
 
-    if (context.variableCount >= context.variables.length)
+    if (variable is null)
     {
-        return false;
+        if (context.variableCount >= context.variables.length)
+        {
+            return false;
+        }
+
+        variable = &context.variables[context.variableCount];
+        variable.nameLength = copyToFixedBuffer(name, variable.name[]);
+        ++context.variableCount;
     }
 
-    auto slot = &context.variables[context.variableCount];
-    slot.nameLength = copyToFixedBuffer(name, slot.name[]);
-    slot.valueLength = copyToFixedBuffer(value, slot.value[]);
-    ++context.variableCount;
+    variable.valueLength = copyToFixedBuffer(value, variable.value[]);
+
+    const(char)[] effectiveValue = variable.value[0 .. variable.valueLength];
+
+    if (stringsEqualConst(name, "PROMPT"))
+    {
+        context.promptLength = copyToFixedBuffer(effectiveValue, context.prompt[]);
+        if (context.promptLength != 0 && context.prompt[context.promptLength - 1] == '\0')
+        {
+            --context.promptLength;
+        }
+    }
+
     return true;
 }
 
@@ -2009,6 +2029,10 @@ private bool shellUnsetEnv(ref ShellContext context, const(char)[] name)
                 context.variables[moveIndex] = context.variables[moveIndex + 1];
             }
             --context.variableCount;
+            if (stringsEqualConst(name, "PROMPT"))
+            {
+                context.promptLength = copyToFixedBuffer(DEFAULT_PROMPT, context.prompt[]);
+            }
             return true;
         }
     }

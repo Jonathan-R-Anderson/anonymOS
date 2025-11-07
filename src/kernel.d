@@ -1663,12 +1663,27 @@ mixin template PosixKernelShim()
         void*     ctx;    // arch context (opaque to shim)
         void*     kstack; // optional kernel stack
         char[16]  name;
+        const(char)** pendingArgv;
+        const(char)** pendingEnvp;
+        bool      pendingExec;
     }
 
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
     private __gshared bool           g_initialized = false;
+
+    // ---- Executable registration ----
+    private enum MAX_EXECUTABLES = 32;
+    private enum EXEC_PATH_LENGTH = 64;
+    private struct ExecutableSlot
+    {
+        bool used;
+        char[EXEC_PATH_LENGTH] path;
+        extern(C) @nogc nothrow void function(const char** argv, const char** envp) entry;
+    }
+
+    private __gshared ExecutableSlot[MAX_EXECUTABLES] g_execTable;
 
     // ---- Simple spinlock (stub; replace with real lock in SMP) ----
     private struct Spin { int v; }
@@ -1678,6 +1693,151 @@ mixin template PosixKernelShim()
 
     // ---- Arch switch hook (single no-op stub; replace in your arch code)
     extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/) { /* no-op */ }
+
+    // ---- Helpers ----
+    @nogc nothrow private size_t cStringLength(const char* str)
+    {
+        if (str is null)
+        {
+            return 0;
+        }
+
+        size_t length = 0;
+        while (str[length] != 0)
+        {
+            ++length;
+        }
+
+        return length;
+    }
+
+    @nogc nothrow private bool cStringEquals(const char* lhs, const char* rhs)
+    {
+        if (lhs is null || rhs is null)
+        {
+            return false;
+        }
+
+        size_t index = 0;
+        for (;;)
+        {
+            const char a = lhs[index];
+            const char b = rhs[index];
+            if (a != b)
+            {
+                return false;
+            }
+
+            if (a == 0)
+            {
+                return true;
+            }
+
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void clearName(ref char[16] name)
+    {
+        foreach (i; 0 .. name.length)
+        {
+            name[i] = 0;
+        }
+    }
+
+    @nogc nothrow private void setNameFromCString(ref char[16] name, const char* source)
+    {
+        size_t index = 0;
+
+        if (source !is null)
+        {
+            while (index < name.length - 1)
+            {
+                const char value = source[index];
+                name[index] = value;
+                ++index;
+
+                if (value == 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        if (index >= name.length)
+        {
+            index = name.length - 1;
+        }
+
+        if (name[index] != 0)
+        {
+            name[index] = 0;
+            ++index;
+        }
+
+        while (index < name.length)
+        {
+            name[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void setNameFromLiteral(ref char[16] name, immutable(char)[] literal)
+    {
+        size_t index = 0;
+        immutable size_t limit = name.length - 1;
+
+        foreach (ch; literal)
+        {
+            if (index >= limit)
+            {
+                break;
+            }
+
+            name[index] = cast(char)ch;
+            ++index;
+        }
+
+        if (index <= limit)
+        {
+            name[index] = 0;
+            ++index;
+        }
+
+        while (index < name.length)
+        {
+            name[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private ExecutableSlot* findExecutableSlot(const char* path)
+    {
+        if (path is null)
+        {
+            return null;
+        }
+
+        foreach (ref slot; g_execTable)
+        {
+            if (slot.used && cStringEquals(slot.path.ptr, path))
+            {
+                return &slot;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private int encodeExitStatus(int code)
+    {
+        return (code & 0xFF) << 8;
+    }
+
+    @nogc nothrow private int encodeSignalStatus(int sig)
+    {
+        return (sig & 0x7F) | 0x80;
+    }
 
     // ---- Utility ----
     @nogc nothrow private Proc* findByPid(pid_t pid){
@@ -1747,6 +1907,16 @@ mixin template PosixKernelShim()
         np.state  = ProcState.READY;
         np.sigmask= 0;
         np.entry  = (g_current ? g_current.entry : null);
+        if (g_current)
+        {
+            foreach (i; 0 .. np.fds.length)
+            {
+                np.fds[i] = g_current.fds[i];
+            }
+            np.pendingArgv = g_current.pendingArgv;
+            np.pendingEnvp = g_current.pendingEnvp;
+            np.pendingExec = g_current.pendingExec;
+        }
         // copy name best-effort
         foreach(i; 0 .. np.name.length) np.name[i] = 0;
         if(g_current) {
@@ -1763,9 +1933,30 @@ mixin template PosixKernelShim()
 
     @nogc nothrow int sys_execve(const char* /*path*/, const char** argv, const char** envp){
         if(g_current is null) return setErrno(Errno.ESRCH);
-        if(g_current.entry is null) return setErrno(Errno.ENOEXEC);
+
+        auto resolved = findExecutableSlot(path);
+        if(resolved is null && argv !is null && argv[0] !is null)
+        {
+            resolved = findExecutableSlot(argv[0]);
+            if(resolved !is null)
+            {
+                path = argv[0];
+            }
+        }
+
+        if(resolved is null)
+        {
+            return setErrno(Errno.ENOENT);
+        }
+
         auto cur = g_current;
-        // handoff to entry
+        cur.entry = resolved.entry;
+        setNameFromCString(cur.name, path);
+        if(cur.entry is null)
+        {
+            return setErrno(Errno.ENOEXEC);
+        }
+
         cur.entry(argv, envp); // @nogc nothrow
         sys__exit(0);          // if returns
         return 0;              // unreachable
@@ -1785,7 +1976,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow void sys__exit(int code){
         if(g_current is null) return;
-        g_current.exitCode = code;
+        g_current.exitCode = encodeExitStatus(code);
         g_current.state    = ProcState.ZOMBIE;
         schedYield();
         for(;;){} // shouldn't resume
@@ -1797,7 +1988,7 @@ mixin template PosixKernelShim()
         // non-final switch to avoid covering all enum members
         switch(sig){
             case SIG.KILL, SIG.TERM:
-                p.exitCode = 128 + sig;
+                p.exitCode = encodeSignalStatus(sig);
                 p.state    = ProcState.ZOMBIE;
                 return 0;
             default:
@@ -1832,10 +2023,156 @@ mixin template PosixKernelShim()
     __gshared const char** __argv;
     __gshared int          __argc;
 
+    struct ProcessInfo
+    {
+        pid_t pid;
+        pid_t ppid;
+        ubyte state;
+        char[16] name;
+    }
+
+    alias ProcessEntry = extern(C) @nogc nothrow void function(const char** argv, const char** envp);
+
+    @nogc nothrow int registerProcessExecutable(const char* path, ProcessEntry entry)
+    {
+        if(path is null || entry is null)
+        {
+            return setErrno(Errno.EINVAL);
+        }
+
+        const size_t length = cStringLength(path);
+        if(length == 0 || length >= EXEC_PATH_LENGTH)
+        {
+            return setErrno(Errno.E2BIG);
+        }
+
+        auto existing = findExecutableSlot(path);
+        if(existing !is null)
+        {
+            existing.entry = entry;
+            return 0;
+        }
+
+        foreach(ref slot; g_execTable)
+        {
+            if(!slot.used)
+            {
+                slot = ExecutableSlot.init;
+                slot.used = true;
+                foreach(i; 0 .. slot.path.length) slot.path[i] = 0;
+                foreach(i; 0 .. length)
+                {
+                    slot.path[i] = path[i];
+                }
+                slot.path[length] = '\0';
+                slot.entry = entry;
+                return 0;
+            }
+        }
+
+        return setErrno(Errno.ENFILE);
+    }
+
+    @nogc nothrow pid_t spawnRegisteredProcess(const char* path, const char** argv, const char** envp)
+    {
+        auto slot = findExecutableSlot(path);
+        if(slot is null)
+        {
+            return setErrno(Errno.ENOENT);
+        }
+
+        lock(&g_plock);
+        auto proc = allocProc();
+        if(proc is null)
+        {
+            unlock(&g_plock);
+            return setErrno(Errno.EAGAIN);
+        }
+
+        proc.ppid   = (g_current ? g_current.pid : 0);
+        proc.state  = ProcState.READY;
+        proc.entry  = slot.entry;
+        proc.pendingArgv = argv;
+        proc.pendingEnvp = envp;
+        proc.pendingExec = true;
+        setNameFromCString(proc.name, path);
+        unlock(&g_plock);
+        return proc.pid;
+    }
+
+    @nogc nothrow int completeProcess(pid_t pid, int exitCode)
+    {
+        auto proc = findByPid(pid);
+        if(proc is null)
+        {
+            return setErrno(Errno.ESRCH);
+        }
+
+        if(proc.state==ProcState.UNUSED || proc.state==ProcState.ZOMBIE)
+        {
+            return setErrno(Errno.EINVAL);
+        }
+
+        proc.exitCode = encodeExitStatus(exitCode);
+        proc.state    = ProcState.ZOMBIE;
+        proc.pendingArgv = null;
+        proc.pendingEnvp = null;
+        proc.pendingExec = false;
+        return 0;
+    }
+
+    @nogc nothrow size_t listProcesses(ProcessInfo* buffer, size_t capacity)
+    {
+        if(buffer is null || capacity == 0)
+        {
+            return 0;
+        }
+
+        size_t count = 0;
+        foreach(ref proc; g_ptable)
+        {
+            if(proc.state == ProcState.UNUSED)
+            {
+                continue;
+            }
+
+            if(count >= capacity)
+            {
+                break;
+            }
+
+            buffer[count].pid   = proc.pid;
+            buffer[count].ppid  = proc.ppid;
+            buffer[count].state = cast(ubyte)proc.state;
+            foreach(i; 0 .. buffer[count].name.length)
+            {
+                buffer[count].name[i] = proc.name[i];
+            }
+
+            ++count;
+        }
+
+        return count;
+    }
+
     // ---- Init hook ----
     @nogc nothrow void posixInit(){
         if(g_initialized) return;
         foreach(ref p; g_ptable) p = Proc.init;
+        foreach(ref slot; g_execTable) slot = ExecutableSlot.init;
+        g_nextPid = 1;
+        g_current = null;
+        auto initProc = allocProc();
+        if(initProc !is null)
+        {
+            initProc.ppid  = 0;
+            initProc.state = ProcState.RUNNING;
+            setNameFromLiteral(initProc.name, "kernel");
+            initProc.pendingArgv = null;
+            initProc.pendingEnvp = null;
+            initProc.pendingExec = false;
+            g_current = initProc;
+        }
         g_initialized = true;
     }
 }

@@ -2774,7 +2774,7 @@ private LfeValue lfeConvertLiteral(const LfeNode node, ref bool ok)
 
 private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellContext context, ref bool ok)
 {
-    final switch (builtin)
+    switch (builtin)
     {
         case LfeBuiltin.Add:
         {
@@ -2937,7 +2937,7 @@ private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellC
                     case LfeBuiltin.Less:
                         result = lhs < rhs;
                         break;
-                    case LfeBuiltin.LessEqual:
+                   default:
                         result = lhs <= rhs;
                         break;
                 }
@@ -4131,54 +4131,6 @@ private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args) @n
     cast(void)args;
     printBuildSummary();
     return true;
-}
-
-private void shellPrintLfeFeatureList() @nogc
-{
-    foreach (feature; lfeFeatureCatalogue)
-    {
-        print("  - ");
-        print(feature.title);
-        if (feature.detail.length)
-        {
-            print(": ");
-            print(feature.detail);
-        }
-        putChar('\n');
-    }
-}
-
-private void shellPrintLfeTranscripts() @nogc
-{
-    foreach (transcript; lfeTranscriptCatalogue)
-    {
-        print("  * ");
-        printLine(transcript.title);
-        foreach (line; transcript.lines)
-        {
-            print("    ");
-            printLine(line);
-        }
-        if (transcript.lines.length)
-        {
-            putChar('\n');
-        }
-    }
-}
-
-private void shellPrintLfeObjectDocs() @nogc
-{
-    foreach (doc; lfeObjectCommandDocs)
-    {
-        print("  - ");
-        print(doc.command);
-        if (doc.description.length)
-        {
-            print(": ");
-            print(doc.description);
-        }
-        putChar('\n');
-    }
 }
 
 private bool shellBuiltinLfe(ref ShellContext context, ShellToken[] args) @nogc nothrow

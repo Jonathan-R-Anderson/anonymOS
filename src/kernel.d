@@ -2926,7 +2926,7 @@ private LfeValue lfeApplyBuiltin(LfeBuiltin builtin, LfeValue[] args, ref ShellC
                 const long rhs = args[index].numberValue;
 
                 bool result = false;
-                final switch (builtin)
+                switch (builtin)
                 {
                     case LfeBuiltin.Greater:
                         result = lhs > rhs;

@@ -1,16 +1,117 @@
 module minimal_os.main;
 
-@nogc nothrow void verifyFiles(immutable(char)[][] files)
+private enum MAX_MODULES = 16;
+private enum MAX_EXPORTS_PER_MODULE = 8;
+private enum MAX_SYMBOLS = 128;
+
+private struct ModuleSource
 {
-    foreach (f; files)
-    {
-        print("[ok] Known module: ");
-        printLine(f);
-    }
+    immutable(char)[] expectedName;
+    immutable(char)[] source;
 }
+
+private struct ExportSymbol
+{
+    immutable(char)[] name;
+    long value;
+}
+
+private struct CompiledModule
+{
+    immutable(char)[] name;
+    ExportSymbol[MAX_EXPORTS_PER_MODULE] exports;
+    size_t exportCount;
+}
+
+private struct Symbol
+{
+    immutable(char)[] name;
+    long value;
+}
+
+private struct Parser
+{
+    immutable(char)[] input;
+    size_t index;
+    bool failed;
+    immutable(char)[] errorMessage;
+    immutable(char)[] errorDetail;
+}
+
+private immutable ModuleSource[] frontEndSources = [
+    ModuleSource(
+        "front_end.lexer",
+        q"MODULE(module front_end.lexer;
+export lexer_token_kinds = 128;
+export lexer_state_machine_cells = lexer_token_kinds * 12;
+export lexer_error_codes = 32;
+)MODULE"),
+    ModuleSource(
+        "front_end.parser",
+        q"MODULE(module front_end.parser;
+export parser_rule_count = lexer_token_kinds * 2 + 64;
+export parser_ast_nodes = parser_rule_count * 5;
+)MODULE"),
+    ModuleSource(
+        "front_end.semantic",
+        q"MODULE(module front_end.semantic;
+export semantic_checks = parser_rule_count * 3;
+export semantic_issues_detected = semantic_checks / 48;
+)MODULE"),
+    ModuleSource(
+        "front_end.templates",
+        q"MODULE(module front_end.templates;
+export template_instances = semantic_checks / 2 + 24;
+export template_cache_entries = template_instances * 3 + lexer_error_codes;
+)MODULE"),
+];
+
+private immutable ModuleSource[] optimizerSources = [
+    ModuleSource(
+        "optimizer.ir",
+        q"MODULE(module optimizer.ir;
+export optimizer_ir_nodes = parser_ast_nodes + semantic_checks;
+export optimizer_liveness_sets = optimizer_ir_nodes / 2 + 12;
+)MODULE"),
+    ModuleSource(
+        "optimizer.ssa",
+        q"MODULE(module optimizer.ssa;
+export optimizer_ssa_versions = optimizer_ir_nodes * 3;
+export optimizer_pruned_blocks = optimizer_ssa_versions / 16;
+)MODULE"),
+    ModuleSource(
+        "optimizer.codegen",
+        q"MODULE(module optimizer.codegen;
+export optimizer_codegen_units = optimizer_ir_nodes / 4 + template_instances;
+export optimizer_machine_blocks = optimizer_codegen_units * 2 + optimizer_pruned_blocks;
+)MODULE"),
+];
+
+private immutable ModuleSource[] runtimeSources = [
+    ModuleSource(
+        "runtime.memory",
+        q"MODULE(module runtime.memory;
+export runtime_heap_segments = optimizer_machine_blocks / 8 + 4;
+export runtime_gc_traces = runtime_heap_segments * 3;
+)MODULE"),
+    ModuleSource(
+        "runtime.scheduler",
+        q"MODULE(module runtime.scheduler;
+export runtime_thread_count = runtime_heap_segments + optimizer_pruned_blocks / 2;
+export runtime_stack_slots = runtime_thread_count * 64;
+)MODULE"),
+    ModuleSource(
+        "runtime.io",
+        q"MODULE(module runtime.io;
+export runtime_io_channels = runtime_thread_count / 2 + 6;
+export runtime_device_drivers = runtime_io_channels / 3 + runtime_gc_traces / 6;
+)MODULE"),
+];
 
 extern(C) @nogc nothrow void runCompilerBuilder()
 {
+    resetBuilderState();
+
     printLine("========================================");
     printLine("   Cross Compiler Build Orchestrator");
     printLine("   Target: Full D language toolchain");
@@ -18,54 +119,9 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     configureToolchain();
 
-    {
-        printStageHeader("Compile front-end");
-        static immutable(char)[][] modules = [
-            "dmd/compiler/src/dmd/lexer.d",
-            "dmd/compiler/src/dmd/parser.d",
-            "dmd/compiler/src/dmd/semantic.d",
-            "dmd/compiler/src/dmd/dmodule.d",
-            "dmd/compiler/src/dmd/dsymbol.d",
-            "dmd/compiler/src/dmd/dsymbolsem.d",
-            "dmd/compiler/src/dmd/expressionsem.d",
-            "dmd/compiler/src/dmd/template.d",
-        ];
-        //verifyFiles(modules);
-        buildModuleGroup("front-end", modules);
-        printLine("[front-end] Generating module map ... ok");
-    }
-
-    {
-        printStageHeader("Build optimizer + codegen");
-        static immutable(char)[][] modules = [
-            "dmd/compiler/src/dmd/backend/blockopt.d",
-            "dmd/compiler/src/dmd/backend/optimize.d",
-            "dmd/compiler/src/dmd/backend/cgcod.d",
-            "dmd/compiler/src/dmd/backend/code.d",
-            "dmd/compiler/src/dmd/backend/irstate.d",
-            "dmd/compiler/src/dmd/backend/target.d",
-        ];
-        verifyFiles(modules);
-        buildModuleGroup("optimizer", modules);
-        printLine("[optimizer] Wiring up LLVM passes ... ok");
-        printLine("[optimizer] Emitting position independent code ... ok");
-    }
-
-    {
-        printStageHeader("Assemble runtime libraries");
-        static immutable(char)[][] runtimeModules = [
-            "dmd/druntime/src/core/memory.d",
-            "dmd/druntime/src/core/thread.d",
-            "dmd/druntime/src/object.d",
-            "dmd/phobos/std/algorithm.d",
-            "dmd/phobos/std/array.d",
-            "dmd/phobos/std/io.d",
-        ];
-        verifyFiles(runtimeModules);
-        buildModuleGroup("runtime", runtimeModules);
-        printLine("[runtime] Archiving libdruntime-cross.a ... ok");
-        printLine("[runtime] Archiving libphobos-cross.a ... ok");
-    }
+    compileStage("Compile front-end", "front-end", frontEndSources);
+    compileStage("Build optimizer + codegen", "optimizer", optimizerSources);
+    compileStage("Assemble runtime libraries", "runtime", runtimeSources);
 
     linkCompiler();
     packageArtifacts();
@@ -89,11 +145,18 @@ private struct StageSummary
     immutable(char)[] title;
     size_t moduleCount;
     size_t statusCount;
+    size_t exportCount;
 }
 
 private __gshared StageSummary[16] stageSummaries;
 private __gshared size_t stageSummaryCount = 0;
 private __gshared StageSummary* activeStage = null;
+
+private __gshared CompiledModule[MAX_MODULES] compiledModules;
+private __gshared size_t compiledModuleCount = 0;
+
+private __gshared Symbol[MAX_SYMBOLS] globalSymbols;
+private __gshared size_t globalSymbolCount = 0;
 
 private struct ToolchainConfiguration
 {
@@ -120,6 +183,8 @@ private struct LinkArtifacts
 }
 
 private __gshared LinkArtifacts linkArtifacts;
+private __gshared ubyte[512] linkedArtifactImage;
+private __gshared size_t linkedArtifactSize = 0;
 
 private struct PackageManifest
 {
@@ -357,7 +422,7 @@ private void printStageHeader(immutable(char)[] title)
 
     if (stageSummaryCount < stageSummaries.length)
     {
-        stageSummaries[stageSummaryCount] = StageSummary(title, 0, 0);
+        stageSummaries[stageSummaryCount] = StageSummary(title, 0, 0, 0);
         activeStage = &stageSummaries[stageSummaryCount];
         ++stageSummaryCount;
     }
@@ -383,20 +448,668 @@ private void printStatus(immutable(char)[] prefix, immutable(char)[] name, immut
     }
 }
 
-private void buildModuleGroup(immutable(char)[] stage, immutable(char)[][] modules)
+private void printStatusValue(immutable(char)[] prefix, long value)
 {
-    foreach (moduleName; modules)
-    {
-        print("[");
-        print(stage);
-        print("] Compiling ");
-        print(moduleName);
-        printLine(" ... ok");
+    print(prefix);
+    printSigned(value);
+    putChar('\n');
 
-        if (activeStage !is null)
+    if (activeStage !is null)
+    {
+        ++activeStage.statusCount;
+    }
+}
+
+private void resetBuilderState()
+{
+    compiledModuleCount = 0;
+    globalSymbolCount = 0;
+    stageSummaryCount = 0;
+    activeStage = null;
+    linkedArtifactSize = 0;
+
+    storeGlobalSymbol("builder", "bootstrap", "word_size", 8);
+    storeGlobalSymbol("builder", "bootstrap", "pointer_size", 8);
+    storeGlobalSymbol("builder", "bootstrap", "vector_alignment", 16);
+}
+
+private void compileStage(immutable(char)[] title, immutable(char)[] stageLabel, const ModuleSource[] sources)
+{
+    printStageHeader(title);
+
+    foreach (module; sources)
+    {
+        compileModule(stageLabel, module);
+    }
+}
+
+private void compileModule(immutable(char)[] stageLabel, const ModuleSource source)
+{
+    Parser parser;
+    parser.input = source.source;
+    parser.index = 0;
+    parser.failed = false;
+    parser.errorMessage = null;
+    parser.errorDetail = null;
+
+    immutable(char)[] moduleName;
+    if (!parseModuleHeader(parser, moduleName))
+    {
+        compilerAbort(stageLabel, source.expectedName, parser);
+    }
+
+    if (!stringsEqual(moduleName, source.expectedName))
+    {
+        parser.failed = true;
+        parser.errorMessage = "module name mismatch";
+        parser.errorDetail = source.expectedName;
+        compilerAbort(stageLabel, moduleName, parser);
+    }
+
+    CompiledModule module;
+    module.name = moduleName;
+    module.exportCount = 0;
+
+    while (true)
+    {
+        skipWhitespace(parser);
+        if (parserAtEnd(parser))
         {
-            ++activeStage.moduleCount;
+            break;
         }
+
+        if (!parseExport(parser, stageLabel, module))
+        {
+            compilerAbort(stageLabel, module.name, parser);
+        }
+    }
+
+    addCompiledModule(stageLabel, module);
+    logModuleCompilation(stageLabel, module.name);
+}
+
+private bool parseModuleHeader(ref Parser parser, out immutable(char)[] moduleName)
+{
+    if (!consumeKeyword(parser, "module"))
+    {
+        parserError(parser, "expected 'module' declaration");
+        return false;
+    }
+
+    if (!parseQualifiedIdentifier(parser, moduleName))
+    {
+        parserError(parser, "expected module name");
+        return false;
+    }
+
+    if (!expectChar(parser, ';'))
+    {
+        parserError(parser, "expected ';' after module declaration");
+        return false;
+    }
+
+    return true;
+}
+
+private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref CompiledModule module)
+{
+    if (!consumeKeyword(parser, "export"))
+    {
+        parserError(parser, "expected 'export' declaration");
+        return false;
+    }
+
+    immutable(char)[] exportName;
+    if (!parseIdentifier(parser, exportName))
+    {
+        parserError(parser, "expected symbol name");
+        return false;
+    }
+
+    if (!expectChar(parser, '='))
+    {
+        parserError(parser, "expected '=' after export name");
+        return false;
+    }
+
+    const long value = parseExpression(parser, &module);
+    if (parser.failed)
+    {
+        return false;
+    }
+
+    if (!expectChar(parser, ';'))
+    {
+        parserError(parser, "expected ';' after export expression");
+        return false;
+    }
+
+    addModuleExport(stageLabel, module, exportName, value);
+    storeGlobalSymbol(stageLabel, module.name, exportName, value);
+    logExportValue(stageLabel, exportName, value);
+    return true;
+}
+
+private void addModuleExport(immutable(char)[] stageLabel, ref CompiledModule module, immutable(char)[] name, long value)
+{
+    foreach (index; 0 .. module.exportCount)
+    {
+        if (stringsEqual(module.exports[index].name, name))
+        {
+            module.exports[index].value = value;
+            return;
+        }
+    }
+
+    if (module.exportCount >= module.exports.length)
+    {
+        builderFatal(stageLabel, module.name, "module export table exhausted", name);
+    }
+
+    module.exports[module.exportCount].name = name;
+    module.exports[module.exportCount].value = value;
+    ++module.exportCount;
+}
+
+private void storeGlobalSymbol(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] name, long value)
+{
+    foreach (index; 0 .. globalSymbolCount)
+    {
+        if (stringsEqual(globalSymbols[index].name, name))
+        {
+            globalSymbols[index].value = value;
+            return;
+        }
+    }
+
+    if (globalSymbolCount >= globalSymbols.length)
+    {
+        builderFatal(stageLabel, unitName, "global symbol table exhausted", name);
+    }
+
+    globalSymbols[globalSymbolCount].name = name;
+    globalSymbols[globalSymbolCount].value = value;
+    ++globalSymbolCount;
+}
+
+private void addCompiledModule(immutable(char)[] stageLabel, ref CompiledModule module)
+{
+    if (compiledModuleCount >= compiledModules.length)
+    {
+        builderFatal(stageLabel, module.name, "compiled module buffer exhausted", module.name);
+    }
+
+    compiledModules[compiledModuleCount] = module;
+    ++compiledModuleCount;
+}
+
+private void logModuleCompilation(immutable(char)[] stageLabel, immutable(char)[] moduleName)
+{
+    print("[");
+    print(stageLabel);
+    print("] Compiled ");
+    print(moduleName);
+    printLine(" ... ok");
+
+    if (activeStage !is null)
+    {
+        ++activeStage.moduleCount;
+        ++activeStage.statusCount;
+    }
+}
+
+private void logExportValue(immutable(char)[] stageLabel, immutable(char)[] name, long value)
+{
+    print("[");
+    print(stageLabel);
+    print("]   ");
+    print(name);
+    print(" = ");
+    printSigned(value);
+    putChar('\n');
+
+    if (activeStage !is null)
+    {
+        ++activeStage.statusCount;
+        ++activeStage.exportCount;
+    }
+}
+
+private void printSigned(long value)
+{
+    if (value < 0)
+    {
+        putChar('-');
+        value = -value;
+    }
+
+    printUnsigned(cast(size_t)value);
+}
+
+private void builderFatal(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
+{
+    printLine("");
+    printDivider();
+    printLine("[builder] fatal error");
+    printDivider();
+    print(" Stage : ");
+    printLine(stageLabel);
+    print(" Unit  : ");
+    printLine(unitName);
+    print(" Error : ");
+    printLine(message);
+
+    if (detail !is null && detail.length != 0)
+    {
+        print(" Detail: ");
+        printLine(detail);
+    }
+
+    printDivider();
+
+    for (;;)
+    {
+    }
+}
+
+private void compilerAbort(immutable(char)[] stageLabel, immutable(char)[] unitName, Parser parser)
+{
+    immutable(char)[] message = parser.errorMessage;
+    if (message is null || message.length == 0)
+    {
+        message = "parser failure";
+    }
+
+    builderFatal(stageLabel, unitName, message, parser.errorDetail);
+}
+
+private void compilerAbort(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message)
+{
+    builderFatal(stageLabel, unitName, message, null);
+}
+
+private void skipWhitespace(ref Parser parser)
+{
+    while (!parserAtEnd(parser))
+    {
+        const char ch = parser.input[parser.index];
+        if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
+        {
+            ++parser.index;
+            continue;
+        }
+
+        if (ch == '/' && parser.index + 1 < parser.input.length && parser.input[parser.index + 1] == '/')
+        {
+            parser.index += 2;
+            while (!parserAtEnd(parser) && parser.input[parser.index] != '\n')
+            {
+                ++parser.index;
+            }
+            continue;
+        }
+
+        break;
+    }
+}
+
+private bool consumeKeyword(ref Parser parser, immutable(char)[] keyword)
+{
+    skipWhitespace(parser);
+
+    const size_t start = parser.index;
+    foreach (index; 0 .. keyword.length)
+    {
+        if (parserAtEnd(parser) || parser.input[parser.index] != keyword[index])
+        {
+            parser.index = start;
+            return false;
+        }
+
+        ++parser.index;
+    }
+
+    if (!parserAtEnd(parser))
+    {
+        const char tail = parser.input[parser.index];
+        if (isIdentifierChar(tail))
+        {
+            parser.index = start;
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private bool parseQualifiedIdentifier(ref Parser parser, out immutable(char)[] name)
+{
+    skipWhitespace(parser);
+
+    const size_t start = parser.index;
+    if (!parseIdentifierCore(parser))
+    {
+        parser.index = start;
+        return false;
+    }
+
+    while (!parserAtEnd(parser) && parser.input[parser.index] == '.')
+    {
+        ++parser.index;
+        if (!parseIdentifierCore(parser))
+        {
+            parser.index = start;
+            return false;
+        }
+    }
+
+    const size_t end = parser.index;
+    name = parser.input[start .. end];
+    return true;
+}
+
+private bool parseIdentifier(ref Parser parser, out immutable(char)[] name)
+{
+    skipWhitespace(parser);
+
+    const size_t start = parser.index;
+    if (!parseIdentifierCore(parser))
+    {
+        parser.index = start;
+        return false;
+    }
+
+    name = parser.input[start .. parser.index];
+    return true;
+}
+
+private bool parseIdentifierCore(ref Parser parser)
+{
+    if (parserAtEnd(parser))
+    {
+        return false;
+    }
+
+    char ch = parser.input[parser.index];
+    if (!isIdentifierStart(ch))
+    {
+        return false;
+    }
+
+    ++parser.index;
+
+    while (!parserAtEnd(parser))
+    {
+        ch = parser.input[parser.index];
+        if (!isIdentifierChar(ch))
+        {
+            break;
+        }
+
+        ++parser.index;
+    }
+
+    return true;
+}
+
+private bool isIdentifierStart(char ch)
+{
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_';
+}
+
+private bool isIdentifierChar(char ch)
+{
+    return isIdentifierStart(ch) || (ch >= '0' && ch <= '9');
+}
+
+private bool expectChar(ref Parser parser, char expected)
+{
+    skipWhitespace(parser);
+
+    if (parserAtEnd(parser) || parser.input[parser.index] != expected)
+    {
+        return false;
+    }
+
+    ++parser.index;
+    return true;
+}
+
+private long parseExpression(ref Parser parser, CompiledModule* module)
+{
+    long value = parseTerm(parser, module);
+
+    while (!parser.failed)
+    {
+        skipWhitespace(parser);
+        if (parserAtEnd(parser))
+        {
+            break;
+        }
+
+        const char op = parser.input[parser.index];
+        if (op != '+' && op != '-')
+        {
+            break;
+        }
+
+        ++parser.index;
+        const long rhs = parseTerm(parser, module);
+        if (parser.failed)
+        {
+            return 0;
+        }
+
+        if (op == '+')
+        {
+            value += rhs;
+        }
+        else
+        {
+            value -= rhs;
+        }
+    }
+
+    return value;
+}
+
+private long parseTerm(ref Parser parser, CompiledModule* module)
+{
+    long value = parseFactor(parser, module);
+
+    while (!parser.failed)
+    {
+        skipWhitespace(parser);
+        if (parserAtEnd(parser))
+        {
+            break;
+        }
+
+        const char op = parser.input[parser.index];
+        if (op != '*' && op != '/')
+        {
+            break;
+        }
+
+        ++parser.index;
+        const long rhs = parseFactor(parser, module);
+        if (parser.failed)
+        {
+            return 0;
+        }
+
+        if (op == '*')
+        {
+            value *= rhs;
+        }
+        else
+        {
+            if (rhs == 0)
+            {
+                parserError(parser, "division by zero");
+                return 0;
+            }
+
+            value /= rhs;
+        }
+    }
+
+    return value;
+}
+
+private long parseFactor(ref Parser parser, CompiledModule* module)
+{
+    skipWhitespace(parser);
+
+    if (parserAtEnd(parser))
+    {
+        parserError(parser, "unexpected end of input");
+        return 0;
+    }
+
+    const char ch = parser.input[parser.index];
+
+    if (ch == '(')
+    {
+        ++parser.index;
+        const long value = parseExpression(parser, module);
+        if (parser.failed)
+        {
+            return 0;
+        }
+
+        if (!expectChar(parser, ')'))
+        {
+            parserError(parser, "expected ')' after expression");
+            return 0;
+        }
+
+        return value;
+    }
+
+    if (ch >= '0' && ch <= '9')
+    {
+        long value;
+        if (!parseNumber(parser, value))
+        {
+            parserError(parser, "invalid numeric literal");
+            return 0;
+        }
+
+        return value;
+    }
+
+    if (isIdentifierStart(ch))
+    {
+        immutable(char)[] identifier;
+        if (!parseIdentifier(parser, identifier))
+        {
+            parserError(parser, "invalid identifier");
+            return 0;
+        }
+
+        long resolved;
+        if (lookupModuleSymbol(module, identifier, resolved))
+        {
+            return resolved;
+        }
+
+        if (lookupGlobalSymbol(identifier, resolved))
+        {
+            return resolved;
+        }
+
+        parserError(parser, "unknown identifier");
+        parser.errorDetail = identifier;
+        return 0;
+    }
+
+    parserError(parser, "unexpected token");
+    return 0;
+}
+
+private bool parseNumber(ref Parser parser, out long value)
+{
+    long result = 0;
+    bool foundDigit = false;
+
+    while (!parserAtEnd(parser))
+    {
+        const char ch = parser.input[parser.index];
+        if (ch < '0' || ch > '9')
+        {
+            break;
+        }
+
+        result = result * 10 + (ch - '0');
+        ++parser.index;
+        foundDigit = true;
+    }
+
+    value = result;
+    return foundDigit;
+}
+
+private bool lookupModuleSymbol(const CompiledModule* module, immutable(char)[] name, out long value)
+{
+    foreach (index; 0 .. module.exportCount)
+    {
+        if (stringsEqual(module.exports[index].name, name))
+        {
+            value = module.exports[index].value;
+            return true;
+        }
+    }
+
+    value = 0;
+    return false;
+}
+
+private bool lookupGlobalSymbol(immutable(char)[] name, out long value)
+{
+    foreach (index; 0 .. globalSymbolCount)
+    {
+        if (stringsEqual(globalSymbols[index].name, name))
+        {
+            value = globalSymbols[index].value;
+            return true;
+        }
+    }
+
+    value = 0;
+    return false;
+}
+
+private bool stringsEqual(immutable(char)[] left, immutable(char)[] right)
+{
+    if (left.length != right.length)
+    {
+        return false;
+    }
+
+    foreach (index; 0 .. left.length)
+    {
+        if (left[index] != right[index])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+private bool parserAtEnd(const Parser parser)
+{
+    return parser.index >= parser.input.length;
+}
+
+private void parserError(ref Parser parser, immutable(char)[] message)
+{
+    if (!parser.failed)
+    {
+        parser.failed = true;
+        parser.errorMessage = message;
+        parser.errorDetail = null;
     }
 }
 
@@ -407,37 +1120,130 @@ private void configureToolchain()
     printStatus("[config] Target triple    : ", toolchainConfiguration.targetTriple, "");
     printStatus("[config] Runtime variant  : ", toolchainConfiguration.runtimeVariant, "");
 
-    toolchainConfiguration.crossCompilationSupport = true;
-    printLine("[config] Enabling LDC cross-compilation support");
+    long pointerSize;
+    if (!lookupGlobalSymbol("pointer_size", pointerSize))
+    {
+        pointerSize = 0;
+    }
+    printStatusValue("[config] Pointer bytes    : ", pointerSize);
 
-    toolchainConfiguration.cacheManifestGenerated = true;
-    printLine("[config] Generating cache manifest ... ok");
+    long vectorAlignment;
+    if (!lookupGlobalSymbol("vector_alignment", vectorAlignment))
+    {
+        vectorAlignment = 0;
+    }
+    printStatusValue("[config] Vector alignment : ", vectorAlignment);
+
+    toolchainConfiguration.crossCompilationSupport = (pointerSize >= 8) && (vectorAlignment % (pointerSize == 0 ? 1 : pointerSize) == 0);
+    immutable(char)[] crossStatus = toolchainConfiguration.crossCompilationSupport ? "enabled" : "disabled";
+    printStatus("[config] Cross-compilation : ", crossStatus, "");
+
+    toolchainConfiguration.cacheManifestGenerated = vectorAlignment >= 16;
+    immutable(char)[] manifestStatus = toolchainConfiguration.cacheManifestGenerated ? "generated" : "pending";
+    printStatus("[config] Cache manifest   : ", manifestStatus, "");
 }
 
 private void linkCompiler()
 {
-    linkArtifacts = LinkArtifacts("ldc-cross", true, true);
-
     printStageHeader("Link cross compiler executable");
+
+    long codegenUnits;
+    if (!lookupGlobalSymbol("optimizer_codegen_units", codegenUnits))
+    {
+        codegenUnits = 0;
+    }
+
+    long machineBlocks;
+    if (!lookupGlobalSymbol("optimizer_machine_blocks", machineBlocks))
+    {
+        machineBlocks = 0;
+    }
+
+    long runtimeSegments;
+    if (!lookupGlobalSymbol("runtime_heap_segments", runtimeSegments))
+    {
+        runtimeSegments = 0;
+    }
+
+    long semanticIssues;
+    if (!lookupGlobalSymbol("semantic_issues_detected", semanticIssues))
+    {
+        semanticIssues = 0;
+    }
+
+    linkArtifacts.targetName = "ldc-cross";
+    linkArtifacts.bootstrapEmbedded = runtimeSegments > 8;
+    linkArtifacts.debugSymbols = semanticIssues <= 2;
+
+    linkedArtifactSize = 0;
+
+    immutable(char)[] stageLabel = "link";
+    immutable(char)[] unitName = linkArtifacts.targetName;
+
+    void appendByte(ubyte value)
+    {
+        if (linkedArtifactSize >= linkedArtifactImage.length)
+        {
+            builderFatal(stageLabel, unitName, "linked image buffer exhausted", null);
+        }
+
+        linkedArtifactImage[linkedArtifactSize] = value;
+        ++linkedArtifactSize;
+    }
+
+    void appendWord(ulong value)
+    {
+        foreach (shift; 0 .. 8)
+        {
+            appendByte(cast(ubyte)((value >> (shift * 8)) & 0xFF));
+        }
+    }
+
+    void appendString(immutable(char)[] text)
+    {
+        foreach (ch; text)
+        {
+            appendByte(cast(ubyte)ch);
+        }
+    }
+
+    appendString("ICLD");
+    appendWord(cast(ulong)codegenUnits);
+    appendWord(cast(ulong)machineBlocks);
+    appendWord(cast(ulong)globalSymbolCount);
+
+    foreach (moduleIndex; 0 .. compiledModuleCount)
+    {
+        auto module = compiledModules[moduleIndex];
+        size_t nameLength = module.name.length;
+        if (nameLength > 255)
+        {
+            nameLength = 255;
+        }
+
+        appendByte(cast(ubyte)nameLength);
+        foreach (ch; module.name[0 .. nameLength])
+        {
+            appendByte(cast(ubyte)ch);
+        }
+
+        appendByte(cast(ubyte)module.exportCount);
+        foreach (exportIndex; 0 .. module.exportCount)
+        {
+            appendWord(cast(ulong)module.exports[exportIndex].value);
+        }
+    }
+
     printStatus("[link] Linking target ", linkArtifacts.targetName, " ... ok");
+    printStatusValue("[link] Units linked     : ", codegenUnits);
+    printStatusValue("[link] Machine blocks   : ", machineBlocks);
+    printStatusValue("[link] Artifact bytes   : ", cast(long)linkedArtifactSize);
 
-    if (linkArtifacts.bootstrapEmbedded)
-    {
-        printLine("[link] Embedding druntime bootstrap ... ok");
-    }
-    else
-    {
-        printLine("[link] Embedding druntime bootstrap ... skipped");
-    }
+    immutable(char)[] bootstrap = linkArtifacts.bootstrapEmbedded ? "embedded" : "skipped";
+    printStatus("[link] Bootstrap stage   : ", bootstrap, "");
 
-    if (linkArtifacts.debugSymbols)
-    {
-        printLine("[link] Producing debug symbols ... ok");
-    }
-    else
-    {
-        printLine("[link] Producing debug symbols ... skipped");
-    }
+    immutable(char)[] debugStatus = linkArtifacts.debugSymbols ? "generated" : "skipped";
+    printStatus("[link] Debug symbols     : ", debugStatus, "");
 }
 
 private void packageArtifacts()
@@ -447,7 +1253,7 @@ private void packageArtifacts()
         "include/dlang",
         "lib/libphobos-cross.a",
         "manifest.toml",
-        true,
+        false,
     );
 
     printStageHeader("Package distribution");
@@ -456,14 +1262,20 @@ private void packageArtifacts()
     printStatus("[pkg] Installing libraries   ", packageManifest.libraryPath, " ... ok");
     printStatus("[pkg] Writing tool manifest  ", packageManifest.manifestName, " ... ok");
 
-    if (packageManifest.readyForDeployment)
+    printStatusValue("[pkg] Module count         : ", compiledModuleCount);
+    printStatusValue("[pkg] Exported symbols     : ", globalSymbolCount);
+    printStatusValue("[pkg] Artifact bytes       : ", cast(long)linkedArtifactSize);
+
+    long runtimeDrivers;
+    if (!lookupGlobalSymbol("runtime_device_drivers", runtimeDrivers))
     {
-        printLine("[pkg] Cross compiler image ready for deployment");
+        runtimeDrivers = 0;
     }
-    else
-    {
-        printLine("[pkg] Cross compiler image requires attention");
-    }
+    printStatusValue("[pkg] Runtime drivers      : ", runtimeDrivers);
+
+    packageManifest.readyForDeployment = (linkedArtifactSize >= 64) && (runtimeDrivers >= 6);
+    immutable(char)[] deployment = packageManifest.readyForDeployment ? "ready" : "needs review";
+    printStatus("[pkg] Deployment status     : ", deployment, "");
 }
 
 private void printBuildSummary()
@@ -472,11 +1284,13 @@ private void printBuildSummary()
 
     size_t totalModules = 0;
     size_t totalStatuses = 0;
+    size_t totalExports = 0;
 
     foreach (index; 0 .. stageSummaryCount)
     {
         totalModules += stageSummaries[index].moduleCount;
         totalStatuses += stageSummaries[index].statusCount;
+        totalExports += stageSummaries[index].exportCount;
     }
 
     printLine("");
@@ -568,6 +1382,14 @@ private void printBuildSummary()
 
     print(" Modules compiled : ");
     printUnsigned(totalModules);
+    putChar('\n');
+
+    print(" Exported symbols : ");
+    printUnsigned(totalExports);
+    putChar('\n');
+
+    print(" Artifact bytes   : ");
+    printUnsigned(linkedArtifactSize);
     putChar('\n');
 
     printDivider();

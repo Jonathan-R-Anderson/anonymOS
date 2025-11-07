@@ -477,9 +477,9 @@ private void compileStage(immutable(char)[] title, immutable(char)[] stageLabel,
 {
     printStageHeader(title);
 
-    foreach (module; sources)
+    foreach (moduleSource; sources)
     {
-        compileModule(stageLabel, module);
+        compileModule(stageLabel, moduleSource);
     }
 }
 
@@ -506,9 +506,9 @@ private void compileModule(immutable(char)[] stageLabel, const ModuleSource sour
         compilerAbort(stageLabel, moduleName, parser);
     }
 
-    CompiledModule module;
-    module.name = moduleName;
-    module.exportCount = 0;
+    CompiledModule compiledModule;
+    compiledModule.name = moduleName;
+    compiledModule.exportCount = 0;
 
     while (true)
     {
@@ -518,14 +518,14 @@ private void compileModule(immutable(char)[] stageLabel, const ModuleSource sour
             break;
         }
 
-        if (!parseExport(parser, stageLabel, module))
+        if (!parseExport(parser, stageLabel, compiledModule))
         {
-            compilerAbort(stageLabel, module.name, parser);
+            compilerAbort(stageLabel, compiledModule.name, parser);
         }
     }
 
-    addCompiledModule(stageLabel, module);
-    logModuleCompilation(stageLabel, module.name);
+    addCompiledModule(stageLabel, compiledModule);
+    logModuleCompilation(stageLabel, compiledModule.name);
 }
 
 private bool parseModuleHeader(ref Parser parser, out immutable(char)[] moduleName)
@@ -551,7 +551,7 @@ private bool parseModuleHeader(ref Parser parser, out immutable(char)[] moduleNa
     return true;
 }
 
-private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref CompiledModule module)
+private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref CompiledModule compiledModule)
 {
     if (!consumeKeyword(parser, "export"))
     {
@@ -572,7 +572,7 @@ private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref Co
         return false;
     }
 
-    const long value = parseExpression(parser, &module);
+    const long value = parseExpression(parser, &compiledModule);
     if (parser.failed)
     {
         return false;
@@ -584,31 +584,31 @@ private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref Co
         return false;
     }
 
-    addModuleExport(stageLabel, module, exportName, value);
-    storeGlobalSymbol(stageLabel, module.name, exportName, value);
+    addModuleExport(stageLabel, compiledModule, exportName, value);
+    storeGlobalSymbol(stageLabel, compiledModule.name, exportName, value);
     logExportValue(stageLabel, exportName, value);
     return true;
 }
 
-private void addModuleExport(immutable(char)[] stageLabel, ref CompiledModule module, immutable(char)[] name, long value)
+private void addModuleExport(immutable(char)[] stageLabel, ref CompiledModule compiledModule, immutable(char)[] name, long value)
 {
-    foreach (index; 0 .. module.exportCount)
+    foreach (index; 0 .. compiledModule.exportCount)
     {
-        if (stringsEqual(module.exports[index].name, name))
+        if (stringsEqual(compiledModule.exports[index].name, name))
         {
-            module.exports[index].value = value;
+            compiledModule.exports[index].value = value;
             return;
         }
     }
 
-    if (module.exportCount >= module.exports.length)
+    if (compiledModule.exportCount >= compiledModule.exports.length)
     {
-        builderFatal(stageLabel, module.name, "module export table exhausted", name);
+        builderFatal(stageLabel, compiledModule.name, "module export table exhausted", name);
     }
 
-    module.exports[module.exportCount].name = name;
-    module.exports[module.exportCount].value = value;
-    ++module.exportCount;
+    compiledModule.exports[compiledModule.exportCount].name = name;
+    compiledModule.exports[compiledModule.exportCount].value = value;
+    ++compiledModule.exportCount;
 }
 
 private void storeGlobalSymbol(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] name, long value)
@@ -632,14 +632,14 @@ private void storeGlobalSymbol(immutable(char)[] stageLabel, immutable(char)[] u
     ++globalSymbolCount;
 }
 
-private void addCompiledModule(immutable(char)[] stageLabel, ref CompiledModule module)
+private void addCompiledModule(immutable(char)[] stageLabel, ref CompiledModule compiledModule)
 {
     if (compiledModuleCount >= compiledModules.length)
     {
-        builderFatal(stageLabel, module.name, "compiled module buffer exhausted", module.name);
+        builderFatal(stageLabel, compiledModule.name, "compiled module buffer exhausted", compiledModule.name);
     }
 
-    compiledModules[compiledModuleCount] = module;
+    compiledModules[compiledModuleCount] = compiledModule;
     ++compiledModuleCount;
 }
 
@@ -875,9 +875,9 @@ private bool expectChar(ref Parser parser, char expected)
     return true;
 }
 
-private long parseExpression(ref Parser parser, CompiledModule* module)
+private long parseExpression(ref Parser parser, CompiledModule* compiledModule)
 {
-    long value = parseTerm(parser, module);
+    long value = parseTerm(parser, compiledModule);
 
     while (!parser.failed)
     {
@@ -894,7 +894,7 @@ private long parseExpression(ref Parser parser, CompiledModule* module)
         }
 
         ++parser.index;
-        const long rhs = parseTerm(parser, module);
+        const long rhs = parseTerm(parser, compiledModule);
         if (parser.failed)
         {
             return 0;
@@ -913,9 +913,9 @@ private long parseExpression(ref Parser parser, CompiledModule* module)
     return value;
 }
 
-private long parseTerm(ref Parser parser, CompiledModule* module)
+private long parseTerm(ref Parser parser, CompiledModule* compiledModule)
 {
-    long value = parseFactor(parser, module);
+    long value = parseFactor(parser, compiledModule);
 
     while (!parser.failed)
     {
@@ -932,7 +932,7 @@ private long parseTerm(ref Parser parser, CompiledModule* module)
         }
 
         ++parser.index;
-        const long rhs = parseFactor(parser, module);
+        const long rhs = parseFactor(parser, compiledModule);
         if (parser.failed)
         {
             return 0;
@@ -957,7 +957,7 @@ private long parseTerm(ref Parser parser, CompiledModule* module)
     return value;
 }
 
-private long parseFactor(ref Parser parser, CompiledModule* module)
+private long parseFactor(ref Parser parser, CompiledModule* compiledModule)
 {
     skipWhitespace(parser);
 
@@ -972,7 +972,7 @@ private long parseFactor(ref Parser parser, CompiledModule* module)
     if (ch == '(')
     {
         ++parser.index;
-        const long value = parseExpression(parser, module);
+        const long value = parseExpression(parser, compiledModule);
         if (parser.failed)
         {
             return 0;
@@ -1009,7 +1009,7 @@ private long parseFactor(ref Parser parser, CompiledModule* module)
         }
 
         long resolved;
-        if (lookupModuleSymbol(module, identifier, resolved))
+        if (lookupModuleSymbol(compiledModule, identifier, resolved))
         {
             return resolved;
         }
@@ -1050,13 +1050,13 @@ private bool parseNumber(ref Parser parser, out long value)
     return foundDigit;
 }
 
-private bool lookupModuleSymbol(const CompiledModule* module, immutable(char)[] name, out long value)
+private bool lookupModuleSymbol(const CompiledModule* compiledModule, immutable(char)[] name, out long value)
 {
-    foreach (index; 0 .. module.exportCount)
+    foreach (index; 0 .. compiledModule.exportCount)
     {
-        if (stringsEqual(module.exports[index].name, name))
+        if (stringsEqual(compiledModule.exports[index].name, name))
         {
-            value = module.exports[index].value;
+            value = compiledModule.exports[index].value;
             return true;
         }
     }
@@ -1214,23 +1214,23 @@ private void linkCompiler()
 
     foreach (moduleIndex; 0 .. compiledModuleCount)
     {
-        auto module = compiledModules[moduleIndex];
-        size_t nameLength = module.name.length;
+        auto moduleInfo = compiledModules[moduleIndex];
+        size_t nameLength = moduleInfo.name.length;
         if (nameLength > 255)
         {
             nameLength = 255;
         }
 
         appendByte(cast(ubyte)nameLength);
-        foreach (ch; module.name[0 .. nameLength])
+        foreach (ch; moduleInfo.name[0 .. nameLength])
         {
             appendByte(cast(ubyte)ch);
         }
 
-        appendByte(cast(ubyte)module.exportCount);
-        foreach (exportIndex; 0 .. module.exportCount)
+        appendByte(cast(ubyte)moduleInfo.exportCount);
+        foreach (exportIndex; 0 .. moduleInfo.exportCount)
         {
-            appendWord(cast(ulong)module.exports[exportIndex].value);
+            appendWord(cast(ulong)moduleInfo.exports[exportIndex].value);
         }
     }
 

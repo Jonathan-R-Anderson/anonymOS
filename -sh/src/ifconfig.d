@@ -1,0 +1,15 @@
+module ifconfig;
+
+import std.stdio;
+import std.string : join;
+import syswrap : system;
+
+/// Execute the system ifconfig command with the provided arguments.
+void ifconfigCommand(string[] tokens)
+{
+    string args = tokens.length > 1 ? tokens[1 .. $].join(" ") : "";
+    string cmd = "ifconfig" ~ (args.length ? " " ~ args : "");
+    auto rc = system(cmd);
+    if(rc != 0)
+        writeln("ifconfig failed with code ", rc);
+}

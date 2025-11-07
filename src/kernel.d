@@ -2370,24 +2370,24 @@ private void shellListModules()
 
     foreach (moduleIndex; 0 .. compiledModuleCount)
     {
-        const auto module = compiledModules[moduleIndex];
+        const auto moduleInfo = compiledModules[moduleIndex];
         print("module ");
-        print(module.name);
+        print(moduleInfo.name);
 
-        if (module.exportCount == 0)
+        if (moduleInfo.exportCount == 0)
         {
             putChar('\n');
             continue;
         }
 
         print(" (exports: ");
-        printUnsigned(module.exportCount);
+        printUnsigned(moduleInfo.exportCount);
         print(")");
         putChar('\n');
 
-        foreach (exportIndex; 0 .. module.exportCount)
+        foreach (exportIndex; 0 .. moduleInfo.exportCount)
         {
-            const auto symbol = module.exports[exportIndex];
+            const auto symbol = moduleInfo.exports[exportIndex];
             print("    ");
             print(symbol.name);
             print(" = ");

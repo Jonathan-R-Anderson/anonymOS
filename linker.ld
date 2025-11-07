@@ -16,6 +16,33 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    /* Thread-local storage image for the bootstrap thread. */
+    . = ALIGN(16);
+    __tls_start = .;
+    .tdata ALIGN(16) :
+    {
+        *(.tdata .tdata.*)
+        *(.gnu.linkonce.td.*)
+    }
+    __tdata_end = .;
+
+    .tbss ALIGN(16) :
+    {
+        *(.tbss .tbss.*)
+        *(.gnu.linkonce.tb.*)
+        . = ALIGN(16);
+    }
+    __tls_end = .;
+
+    /* Reserve space for the initial thread control block (TCB). */
+    .tcb (NOLOAD) :
+    {
+        __initial_tcb = .;
+        . += 16;
+        __initial_tcb_end = .;
+    }
+
+    . = ALIGN(4K);
     .data ALIGN(4K) :
     {
         *(.data .data.*)

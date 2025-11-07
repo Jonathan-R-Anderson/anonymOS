@@ -8,6 +8,7 @@ import lferepl;
 import shell.executor : execute, initializeShell;
 import shell.parser : parseShellCommand;
 import shell.ast : Node;
+import shell.config : ShellPromptConfig, loadShellConfig, renderPrompt, resolveHistoryFile, ensureHistoryDirectory;
 
 // D bindings for GNU Readline
 extern (C) {
@@ -39,9 +40,21 @@ void processLine(string line) {
 }
 
 // The main interactive shell loop
-void runInteractiveShell() {
+void runInteractiveShell(const ShellPromptConfig config) {
+    auto historyPath = resolveHistoryFile(config);
+    if (historyPath.length) {
+        ensureHistoryDirectory(historyPath);
+        read_history(historyPath.toStringz());
+    }
+
     char* line_read;
-    while ((line_read = readline("lfe-sh> ")) !is null) {
+    while (true) {
+        auto prompt = renderPrompt(config);
+        line_read = readline(prompt.toStringz());
+        if (line_read is null) {
+            break;
+        }
+
         if (line_read[0] != '\0') {
             add_history(line_read);
         }
@@ -55,14 +68,21 @@ void runInteractiveShell() {
 
         processLine(line);
     }
+
+    if (historyPath.length) {
+        write_history(historyPath.toStringz());
+    }
+
     writeln("\nexit");
 }
 
 // Main entry point for the shell
 void main(string[] args) {
+    auto promptConfig = loadShellConfig();
+
     if (isatty(STDIN_FILENO)) {
         initializeShell();
-        runInteractiveShell();
+        runInteractiveShell(promptConfig);
     } else {
         // Non-interactive mode (e.g., from a pipe)
         string line;

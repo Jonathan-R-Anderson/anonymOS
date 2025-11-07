@@ -67,7 +67,13 @@ The shell now supports a broader set of commands:
 - `exit` to terminate the shell with an optional status code
 
 Running `lfe-sh` with no command argument starts an interactive shell.
-You can customize the prompt text using the `PS1` environment variable and its color with `PS_COLOR` (e.g. `PS_COLOR=green`).
+The prompt is configured via a JSON file so it can be shared between
+machines. By default the shell looks for `prompt.json` beside the binary,
+`$HOME/.lfe-sh/config.json`, `$HOME/.config/lfe-sh/config.json`, or
+`/etc/lfe-sh/prompt.json`. You can override the search path with the
+`LFE_SH_CONFIG` environment variable. A sample configuration is provided
+in `config/prompt.json` and supports placeholders for username, current
+directory, namespace, and permission level along with ANSI colour codes.
 The shell now provides interactive line editing with GNU Readline, so
 you can navigate command history with the Up and Down arrow keys.
 Type `exit` to leave the shell. Command history can also be viewed with

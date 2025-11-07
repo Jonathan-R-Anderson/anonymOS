@@ -1611,7 +1611,14 @@ version (Posix)
     private enum PATH_BUFFER_SIZE = 512;
     private enum F_OK = 0;
 
-    extern(C) int posix_spawnp(int* pid, const char* file, const void* fileActions, const void* attrp, char* const argv[], char* const envp[]);
+    extern(C) int posix_spawnp(
+        int* pid,
+        const char* file,
+        const void* file_actions,
+        const void* attrp,
+        char* const argv[],
+        char* const envp[]
+    );
     extern(C) int waitpid(int pid, int* status, int options);
     extern(C) int access(const char* pathname, int mode);
     extern(C) char* getenv(const char* name);

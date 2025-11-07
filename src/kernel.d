@@ -5,6 +5,7 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 private enum MAX_MODULES = 16;
 private enum MAX_EXPORTS_PER_MODULE = 8;
 private enum MAX_SYMBOLS = 128;
+mixin PosixKernelShim;
 
 private struct ModuleSource
 {
@@ -2362,7 +2363,7 @@ extern(C) void kmain(ulong magic, ulong info)
 
     clearScreen();
     initializeInterrupts();
-    mixin PosixKernelShim;
+    
     posixInit();
     runCompilerBuilder();
 }

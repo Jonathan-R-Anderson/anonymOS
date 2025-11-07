@@ -41,71 +41,71 @@ private struct Parser
 private immutable ModuleSource[] frontEndSources = [
     ModuleSource(
         "front_end.lexer",
-        q"MODULE(module front_end.lexer;
-export lexer_token_kinds = 128;
-export lexer_state_machine_cells = lexer_token_kinds * 12;
-export lexer_error_codes = 32;
-)MODULE"),
+        "module front_end.lexer;\n"
+        "export lexer_token_kinds = 128;\n"
+        "export lexer_state_machine_cells = lexer_token_kinds * 12;\n"
+        "export lexer_error_codes = 32;\n"
+    ),
     ModuleSource(
         "front_end.parser",
-        q"MODULE(module front_end.parser;
-export parser_rule_count = lexer_token_kinds * 2 + 64;
-export parser_ast_nodes = parser_rule_count * 5;
-)MODULE"),
+        "module front_end.parser;\n"
+        "export parser_rule_count = lexer_token_kinds * 2 + 64;\n"
+        "export parser_ast_nodes = parser_rule_count * 5;\n"
+    ),
     ModuleSource(
         "front_end.semantic",
-        q"MODULE(module front_end.semantic;
-export semantic_checks = parser_rule_count * 3;
-export semantic_issues_detected = semantic_checks / 48;
-)MODULE"),
+        "module front_end.semantic;\n"
+        "export semantic_checks = parser_rule_count * 3;\n"
+        "export semantic_issues_detected = semantic_checks / 48;\n"
+    ),
     ModuleSource(
         "front_end.templates",
-        q"MODULE(module front_end.templates;
-export template_instances = semantic_checks / 2 + 24;
-export template_cache_entries = template_instances * 3 + lexer_error_codes;
-)MODULE"),
+        "module front_end.templates;\n"
+        "export template_instances = semantic_checks / 2 + 24;\n"
+        "export template_cache_entries = template_instances * 3 + lexer_error_codes;\n"
+    ),
 ];
 
 private immutable ModuleSource[] optimizerSources = [
     ModuleSource(
         "optimizer.ir",
-        q"MODULE(module optimizer.ir;
-export optimizer_ir_nodes = parser_ast_nodes + semantic_checks;
-export optimizer_liveness_sets = optimizer_ir_nodes / 2 + 12;
-)MODULE"),
+        "module optimizer.ir;\n"
+        "export optimizer_ir_nodes = parser_ast_nodes + semantic_checks;\n"
+        "export optimizer_liveness_sets = optimizer_ir_nodes / 2 + 12;\n"
+    ),
     ModuleSource(
         "optimizer.ssa",
-        q"MODULE(module optimizer.ssa;
-export optimizer_ssa_versions = optimizer_ir_nodes * 3;
-export optimizer_pruned_blocks = optimizer_ssa_versions / 16;
-)MODULE"),
+        "module optimizer.ssa;\n"
+        "export optimizer_ssa_versions = optimizer_ir_nodes * 3;\n"
+        "export optimizer_pruned_blocks = optimizer_ssa_versions / 16;\n"
+    ),
     ModuleSource(
         "optimizer.codegen",
-        q"MODULE(module optimizer.codegen;
-export optimizer_codegen_units = optimizer_ir_nodes / 4 + template_instances;
-export optimizer_machine_blocks = optimizer_codegen_units * 2 + optimizer_pruned_blocks;
-)MODULE"),
+        "module optimizer.codegen;\n"
+        "export optimizer_codegen_units = optimizer_ir_nodes / 4 + template_instances;\n"
+        "export optimizer_machine_blocks = optimizer_codegen_units * 2 + optimizer_pruned_blocks;\n"
+    ),
 ];
 
 private immutable ModuleSource[] runtimeSources = [
     ModuleSource(
         "runtime.memory",
-        q"MODULE(module runtime.memory;
-export runtime_heap_segments = optimizer_machine_blocks / 8 + 4;
-export runtime_gc_traces = runtime_heap_segments * 3;
-)MODULE"),
+        "module runtime.memory;\n"
+        "export runtime_heap_segments = optimizer_machine_blocks / 8 + 4;\n"
+        "export runtime_gc_traces = runtime_heap_segments * 3;\n"
+    ),
     ModuleSource(
         "runtime.scheduler",
-        q"MODULE(module runtime.scheduler;
-export runtime_thread_count = runtime_heap_segments + optimizer_pruned_blocks / 2;
-export runtime_stack_slots = runtime_thread_count * 64;
-)MODULE"),
+        "module runtime.scheduler;\n"
+        "export runtime_thread_count = runtime_heap_segments + optimizer_pruned_blocks / 2;\n"
+        "export runtime_stack_slots = runtime_thread_count * 64;\n"
+    ),
     ModuleSource(
         "runtime.io",
-        q"MODULE(module runtime.io;
-export runtime_io_channels = runtime_thread_count / 2 + 6;
-export runtime_device_drivers = runtime_io_channels / 3 + runtime_gc_traces / 6;
-)MODULE"),
+        "module runtime.io;\n"
+        "export runtime_io_channels = runtime_thread_count / 2 + 6;\n"
+        "export runtime_device_drivers = runtime_io_channels / 3 + runtime_gc_traces / 6;\n"
+    ),
 ];
 
 extern(C) @nogc nothrow void runCompilerBuilder()

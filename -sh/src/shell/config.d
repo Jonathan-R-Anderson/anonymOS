@@ -262,12 +262,12 @@ string renderPrompt(const ShellPromptConfig config)
         path = "?";
     }
 
-    auto prompt = config.promptTemplate;
-    prompt = replace(prompt, "{username}", applyColour(user, config.colours.username, config.colours.text));
-    prompt = replace(prompt, "{path}", applyColour(path, config.colours.path, config.colours.text));
-    prompt = replace(prompt, "{namespace}", applyColour(nsValue, config.colours.namespaceId, config.colours.text));
-    prompt = replace(prompt, "{permission}", applyColour(permValue, config.colours.permissionLevel, config.colours.text));
-
+    string prompt = config.promptTemplate.idup;
+    prompt = replace(prompt ~ "", "{username}",  applyColour(user,     config.colours.username,       config.colours.text));
+    prompt = replace(prompt ~ "", "{path}",      applyColour(path,     config.colours.path,           config.colours.text));
+    prompt = replace(prompt ~ "", "{namespace}", applyColour(nsValue,  config.colours.namespaceId,    config.colours.text));
+    prompt = replace(prompt ~ "", "{permission}",applyColour(permValue,config.colours.permissionLevel,config.colours.text));
+ 
     return prompt;
 }
 

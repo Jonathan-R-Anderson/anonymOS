@@ -1663,8 +1663,8 @@ mixin template PosixKernelShim()
         void*     ctx;    // arch context (opaque to shim)
         void*     kstack; // optional kernel stack
         char[16]  name;
-        const(char)** pendingArgv;
-        const(char)** pendingEnvp;
+        const(char** ) pendingArgv;  // note: const applies to the char** as a whole
+        const(char** ) pendingEnvp;
         bool      pendingExec;
     }
 
@@ -1931,7 +1931,7 @@ mixin template PosixKernelShim()
         return np.pid; // parent gets child's pid
     }
 
-    @nogc nothrow int sys_execve(const char* /*path*/, const char** argv, const char** envp){
+    @nogc nothrow int sys_execve(const char* path, const char** argv, const char** envp){
         if(g_current is null) return setErrno(Errno.ESRCH);
 
         auto resolved = findExecutableSlot(path);

@@ -2900,7 +2900,10 @@ private size_t readShellLine(ref ShellContext context, ref char[SHELL_MAX_LINE] 
 
 private void launchInteractiveShell()
 {
-    ShellContext context;
+    // ShellContext contains sizable history and environment buffers. Keep it in
+    // static storage so the kernel stack (16 KiB) is not exhausted when the
+    // interactive shell boots.
+    static ShellContext context;
     shellInitialiseContext(context);
 
     static char[SHELL_MAX_LINE] lineStorage;

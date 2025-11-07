@@ -2293,23 +2293,23 @@ private void shellExpandTokens(ref ShellContext context, ShellToken[] tokens)
 private struct ShellBuiltin
 {
     immutable(char)[] name;
-    bool function(ref ShellContext, ShellToken[]) handler;
+    bool function(ref ShellContext, ShellToken[]) @nogc handler;
     immutable(char)[] description;
 }
 
-private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args);
-private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args);
+private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args) @nogc;
+private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args) @nogc;
 
 private immutable ShellBuiltin[] shellBuiltins = [
     ShellBuiltin("help", &shellBuiltinHelp, "Show available shell commands"),
@@ -2415,7 +2415,7 @@ private void shellListSymbols()
     }
 }
 
-private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
     cast(void)args;
@@ -2439,7 +2439,7 @@ private bool shellBuiltinHelp(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)args;
     context.running = false;
@@ -2447,7 +2447,7 @@ private bool shellBuiltinExit(ref ShellContext context, ShellToken[] args)
     return false;
 }
 
-private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
 
@@ -2470,7 +2470,7 @@ private bool shellBuiltinEcho(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinEnv(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)args;
 
@@ -2505,7 +2505,7 @@ private size_t findCharacter(const(char)[] text, char needle)
     return size_t.max;
 }
 
-private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args) @nogc
 {
     if (args.length < 2)
     {
@@ -2559,7 +2559,7 @@ private bool shellBuiltinSet(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args) @nogc
 {
     if (args.length < 2)
     {
@@ -2577,14 +2577,14 @@ private bool shellBuiltinUnset(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinHistory(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)args;
     shellPrintHistory(context);
     return true;
 }
 
-private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
     cast(void)args;
@@ -2592,7 +2592,7 @@ private bool shellBuiltinClear(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
     cast(void)args;
@@ -2600,7 +2600,7 @@ private bool shellBuiltinModules(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
     cast(void)args;
@@ -2608,7 +2608,7 @@ private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)context;
     cast(void)args;
@@ -2616,7 +2616,7 @@ private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args)
     return true;
 }
 
-private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args) @nogc
 {
     cast(void)args;
     print(context.currentDirectory[0 .. context.currentDirectoryLength]);
@@ -2780,7 +2780,7 @@ private bool shellNormalizePath(const(char)[] basePath, const(char)[] update, ch
     return true;
 }
 
-private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args)
+private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args) @nogc
 {
     const(char)[] base = context.currentDirectory[0 .. context.currentDirectoryLength];
     const(char)[] target;

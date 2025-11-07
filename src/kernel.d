@@ -1646,11 +1646,13 @@ private void updateShellBinaryMetrics()
 {
     const size_t shellFootprint = calculateShellFootprint();
     const size_t builtinCount = shellBuiltins.length;
+    const size_t lfeFeatureCount = lfeFeatureCatalogue.length;
 
     shellState.binaryBytes = shellFootprint;
 
     printStatusValue("[shell] Package bytes     : ", cast(long)shellFootprint);
     printStatusValue("[shell] Builtin commands  : ", cast(long)builtinCount);
+    printStatusValue("[shell] LFE feature docs  : ", cast(long)lfeFeatureCount);
 }
 
 private void checkShellRuntimeBindings()
@@ -1883,6 +1885,166 @@ private struct ShellPathSegment
 
 private enum DEFAULT_PROMPT = "lfe-sh> ";
 
+private struct LfeFeature
+{
+    immutable(char)[] title;
+    immutable(char)[] detail;
+}
+
+private struct LfeTranscript
+{
+    immutable(char)[] title;
+    immutable(char)[][] lines;
+}
+
+private struct LfeCommandDoc
+{
+    immutable(char)[] command;
+    immutable(char)[] description;
+}
+
+private immutable LfeFeature[] lfeFeatureCatalogue = [
+    LfeFeature("LFE REPL", "Evaluate prefix arithmetic, assign variables, define functions and exit with (exit)."),
+    LfeFeature("Module loading", "Compile modules with (c \"file.lfe\") and call module:function exports."),
+    LfeFeature("Data types", "Work with numbers, atoms, tuples, lists and maps including map updates."),
+    LfeFeature("Quoting", "Use quote, backquote, comma and comma-at for constructing code values."),
+    LfeFeature("Bindings", "Bind values via (set ...) and scoped (let ...) constructs."),
+    LfeFeature("Pattern matching", "Use case, cond and multi-clause defun with guards."),
+    LfeFeature("Records", "Define records through defrecord with generated accessors and setters."),
+    LfeFeature("Macros", "Create macros using defmacro and inspect with (macroexpand ...)."),
+    LfeFeature("Modules", "Structure code with defmodule and reload implementations on demand."),
+    LfeFeature("I/O utilities", "Call lfe_io:format and helpers like proplists:get_value for formatted output."),
+    LfeFeature("File operations", "Manipulate the filesystem using helpers such as (cp source dest)."),
+    LfeFeature("Concurrency", "Spawn processes, link, send messages with ! and receive mailboxes."),
+    LfeFeature("Loops", "Demonstrate iterative flows like tut25:demo showcasing continue semantics."),
+    LfeFeature("Object system", "Inspect and manipulate objects through resolve, bind, clone and related APIs."),
+];
+
+private immutable LfeTranscript[] lfeTranscriptCatalogue = [
+    LfeTranscript(
+        "REPL basics",
+        [
+            "lfe> (* 2 (+ 1 2 3 4 5 6))",
+            "42",
+            "lfe> (set multiplier 2)",
+            "2",
+            "lfe> (* multiplier (+ 1 2 3 4 5 6))",
+            "42",
+            "lfe> (defun double (x) (* 2 x))",
+            "0",
+            "lfe> (double 21)",
+            "42",
+            "lfe> (exit)",
+        ],
+    ),
+    LfeTranscript(
+        "Macros and quoting",
+        [
+            "lfe> (defmacro unless (test body)",
+            "      `(if (not ,test) ,body))",
+            "0",
+            "lfe> (unless (> 3 4) 'yes)",
+            "yes",
+            "lfe> '(1 2 3)",
+            "(1 2 3)",
+            "lfe> `(a ,(+ 1 1) c)",
+            "(a 2 c)",
+        ],
+    ),
+    LfeTranscript(
+        "Modules and records",
+        [
+            "lfe> (c \"tut24.lfe\")",
+            "#(module tut24)",
+            "lfe> (defrecord person name age)",
+            "#(record person)",
+            "lfe> (tut24:demo)",
+            "to fred: hello",
+            "\"goodbye\"",
+        ],
+    ),
+    LfeTranscript(
+        "Concurrency demo",
+        [
+            "lfe> (c \"tut19.lfe\")",
+            "#(module tut19)",
+            "lfe> (tut19:start)",
+            "Pong received ping",
+            "Ping received pong",
+            "Ping finished",
+            "Pong finished",
+        ],
+    ),
+];
+
+private immutable LfeCommandDoc[] lfeObjectCommandDocs = [
+    LfeCommandDoc("(resolve path)", "Locate an object by path."),
+    LfeCommandDoc("(bind src dst)", "Bind an existing object reference to a new path."),
+    LfeCommandDoc("(clone obj)", "Duplicate an object instance."),
+    LfeCommandDoc("(delete obj)", "Remove an object from the hierarchy."),
+    LfeCommandDoc("(list obj)", "Enumerate child object names."),
+    LfeCommandDoc("(introspect obj)", "Return a descriptive string of object details."),
+    LfeCommandDoc("(rename obj new)", "Rename an object."),
+    LfeCommandDoc("(getType obj)", "Retrieve the object's type string."),
+    LfeCommandDoc("(getProp obj key)", "Fetch a property value."),
+    LfeCommandDoc("(setProp obj key val)", "Assign a property value."),
+    LfeCommandDoc("(listProps obj)", "List property keys."),
+    LfeCommandDoc("(delProp obj key)", "Delete a property."),
+    LfeCommandDoc("(listMethods obj)", "List exposed method names."),
+    LfeCommandDoc("(call obj method args..)", "Invoke a method (placeholder)."),
+    LfeCommandDoc("(describeMethod obj m)", "Describe a specific method."),
+    LfeCommandDoc("(createObject type)", "Create a new object of a type."),
+    LfeCommandDoc("(instantiate classPath)", "Alias for createObject."),
+    LfeCommandDoc("(defineClass path def)", "Stub entry for class definitions."),
+    LfeCommandDoc("(attach parent child alias)", "Attach a child object."),
+    LfeCommandDoc("(detach parent name)", "Detach a named child."),
+    LfeCommandDoc("(getParent obj)", "Return parent reference."),
+    LfeCommandDoc("(getChildren obj)", "Return child identifiers."),
+    LfeCommandDoc("(sandbox obj)", "Place object into sandbox mode."),
+    LfeCommandDoc("(isIsolated obj)", "Check isolation flag."),
+    LfeCommandDoc("(seal obj)", "Seal object against modification."),
+    LfeCommandDoc("(verify obj)", "Verify object integrity."),
+];
+
+private void shellPrintLfeFeatureList() @nogc nothrow
+{
+    foreach (index, feature; lfeFeatureCatalogue)
+    {
+        print("  ");
+        printUnsigned(index + 1);
+        print(". ");
+        print(feature.title);
+        print(": ");
+        printLine(feature.detail);
+    }
+}
+
+private void shellPrintLfeTranscripts() @nogc nothrow
+{
+    foreach (transcript; lfeTranscriptCatalogue)
+    {
+        printLine("");
+        print(transcript.title);
+        printLine(":");
+        foreach (line; transcript.lines)
+        {
+            print("    ");
+            printLine(line);
+        }
+    }
+}
+
+private void shellPrintLfeObjectDocs() @nogc nothrow
+{
+    foreach (doc; lfeObjectCommandDocs)
+    {
+        print("  ");
+        print(doc.command);
+        print(" - ");
+        printLine(doc.description);
+    }
+}
+
 private struct ShellContext
 {
     bool running;
@@ -1957,6 +2119,9 @@ private void shellInitialiseContext(ref ShellContext context)
 
     numberLength = formatUnsignedValue(SHELL_HISTORY_CAPACITY, numberBuffer[]);
     shellSetEnv(context, "HISTORY_LIMIT", numberBuffer[0 .. numberLength]);
+
+    numberLength = formatUnsignedValue(lfeFeatureCatalogue.length, numberBuffer[]);
+    shellSetEnv(context, "LFE_FEATURES", numberBuffer[0 .. numberLength]);
 
     if (shellState.compilerAccessible)
     {
@@ -2334,6 +2499,10 @@ private bool shellBuiltinSymbols(ref ShellContext context, ShellToken[] args) @n
 private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args) @nogc nothrow;
 private bool shellBuiltinPwd(ref ShellContext context, ShellToken[] args) @nogc nothrow;
 private bool shellBuiltinCd(ref ShellContext context, ShellToken[] args) @nogc nothrow;
+private bool shellBuiltinLfe(ref ShellContext context, ShellToken[] args) @nogc nothrow;
+private bool shellBuiltinLfeFeatures(ref ShellContext context, ShellToken[] args) @nogc nothrow;
+private bool shellBuiltinLfeDemo(ref ShellContext context, ShellToken[] args) @nogc nothrow;
+private bool shellBuiltinLfeObjects(ref ShellContext context, ShellToken[] args) @nogc nothrow;
 
 private immutable ShellBuiltin[] shellBuiltins = [
     ShellBuiltin("help", &shellBuiltinHelp, "Show available shell commands"),
@@ -2349,6 +2518,10 @@ private immutable ShellBuiltin[] shellBuiltins = [
     ShellBuiltin("summary", &shellBuiltinSummary, "Show build summary"),
     ShellBuiltin("pwd", &shellBuiltinPwd, "Print working directory"),
     ShellBuiltin("cd", &shellBuiltinCd, "Change working directory"),
+    ShellBuiltin("lfe", &shellBuiltinLfe, "Summarise available LFE functionality"),
+    ShellBuiltin("lfe-features", &shellBuiltinLfeFeatures, "List LFE feature catalogue"),
+    ShellBuiltin("lfe-demo", &shellBuiltinLfeDemo, "Showcase example LFE sessions"),
+    ShellBuiltin("lfe-objects", &shellBuiltinLfeObjects, "Enumerate object system commands"),
 ];
 
 private bool shellDispatchCommand(ref ShellContext context, ShellToken[] args)
@@ -2637,6 +2810,59 @@ private bool shellBuiltinSummary(ref ShellContext context, ShellToken[] args) @n
     cast(void)context;
     cast(void)args;
     printBuildSummary();
+    return true;
+}
+
+private bool shellBuiltinLfe(ref ShellContext context, ShellToken[] args) @nogc nothrow
+{
+    cast(void)context;
+
+    if (args.length > 1 && (stringsEqualConst(args[1].slice(), "--help") || stringsEqualConst(args[1].slice(), "help")))
+    {
+        printLine("Usage: lfe [--help]");
+        printLine("Summarise the integrated LFE shell capabilities.");
+        printLine("");
+        printLine("Additional commands:");
+        printLine("  lfe-features  - list catalogue entries");
+        printLine("  lfe-demo      - show sample transcripts");
+        printLine("  lfe-objects   - enumerate object system helpers");
+        return true;
+    }
+
+    printLine("LFE integration provides the following capabilities:");
+    shellPrintLfeFeatureList();
+    printLine("");
+    printLine("Use 'lfe-features' for the catalogue, 'lfe-demo' for sessions and 'lfe-objects' for object APIs.");
+    return true;
+}
+
+private bool shellBuiltinLfeFeatures(ref ShellContext context, ShellToken[] args) @nogc nothrow
+{
+    cast(void)context;
+    cast(void)args;
+
+    printLine("LFE feature catalogue:");
+    shellPrintLfeFeatureList();
+    return true;
+}
+
+private bool shellBuiltinLfeDemo(ref ShellContext context, ShellToken[] args) @nogc nothrow
+{
+    cast(void)context;
+    cast(void)args;
+
+    printLine("LFE session examples:");
+    shellPrintLfeTranscripts();
+    return true;
+}
+
+private bool shellBuiltinLfeObjects(ref ShellContext context, ShellToken[] args) @nogc nothrow
+{
+    cast(void)context;
+    cast(void)args;
+
+    printLine("LFE object system commands:");
+    shellPrintLfeObjectDocs();
     return true;
 }
 

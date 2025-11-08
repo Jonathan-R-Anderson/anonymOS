@@ -149,7 +149,7 @@ private void compressOne(const(char)* inPath, const(char)* outPath, int bits)
 
     while (true) {
         auto n = ifp.rawRead(buf[]);
-        if (n == 0) break;
+        if (n.length == 0) break;
         auto wn = compress_zwrite(zfp, buf.ptr, n);
         if (wn != n) { cwarn("%s", outPath); return; }
     }
@@ -233,16 +233,13 @@ private void decompressOne(const(char)* inPath, const(char)* outPath, int bits)
     try { ofp = File(fromStringz(outPath), "w"); }
     catch (Exception) { cwarn("%s", outPath); return; }
 
-    if (n0 != 0) {
-        auto wn0 = ofp.rawWrite(buf[0 .. n0]);
-        if (wn0 != n0) { cwarn("%s", outPath); return; }
-    }
+    if (n0 != 0)
+        ofp.rawWrite(buf[0..n0]); // throws on error
 
     while (true) {
         auto n = compress_zread(zfp, buf.ptr, BUFSZ);
         if (n == 0) break;
-        auto wn = ofp.rawWrite(buf[0 .. n]);
-        if (wn != n) { cwarn("%s", outPath); return; }
+        ofp.rawWrite(buf[0..n]);  // throws on error
     }
 
     if (compress_zclose(zfp) != 0) { zfp = null; cwarn("%s", inPath); return; }

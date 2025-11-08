@@ -13,7 +13,7 @@
 
 module zopen_d;
 
-import core.stdc.stddef : size_t;
+import core.stdc.config : size_t;
 import core.stdc.stdint : uint32_t, uint16_t, int32_t;
 import core.stdc.stdlib : calloc, free;
 import core.stdc.string : memcmp, memset, strncpy, strlen;

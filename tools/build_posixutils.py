@@ -129,11 +129,24 @@ def parse_flag_list(value: str | None, dc: str) -> List[str]:
     return flags
 
 
+def adjust_flags_for_compiler(flags: Sequence[str], dc: str) -> List[str]:
+    """Normalise compiler-specific flag spellings."""
+
+    compiler = Path(dc).name
+    adjusted: List[str] = []
+    for flag in flags:
+        if flag.startswith("-version=") and compiler.startswith("ldc"):
+            adjusted.append(flag.replace("-version=", "-d-version=", 1))
+        else:
+            adjusted.append(flag)
+    return adjusted
+
+
 def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     cmd: List[str] = [dc]
     cmd.extend(str(src) for src in sources)
-    cmd.extend(flags)
+    cmd.extend(adjust_flags_for_compiler(flags, dc))
     cmd.append(f"-of={output}")
     subprocess.run(cmd, check=True)
     try:

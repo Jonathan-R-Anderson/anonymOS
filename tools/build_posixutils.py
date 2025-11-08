@@ -44,8 +44,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--flags",
-        default=os.environ.get("POSIXUTILS_DC_FLAGS"),
-        help="Additional flags passed to the D compiler (default depends on compiler)",
+        default=[],
+        help="Additional flags passed to the D compiler (default depends on compiler)", 
+        nargs="*", 
     )
     parser.add_argument(
         "--output",
@@ -107,14 +108,25 @@ def ensure_compiler_available(dc: str) -> None:
 def default_flags_for(dc: str) -> List[str]:
     compiler = Path(dc).name
     if compiler.startswith("dmd"):
-        return ["-O", "-release", "-betterC"]
-    return ["-O2", "-betterC"]
+        return ["-O", "-release"]
+    return ["-O2", "-release"]
 
 
 def parse_flag_list(value: str | None, dc: str) -> List[str]:
+    """
+    Accept None | str | List[str]; remove -betterC/--betterC defensively.
+    """
     if value is None:
-        return default_flags_for(dc)
-    return shlex.split(value)
+        flags = default_flags_for(dc)
+    elif isinstance(value, list):
+        flags = value or default_flags_for(dc)
+    elif isinstance(value, str):
+        flags = shlex.split(value)
+    else:
+        flags = default_flags_for(dc)
+    # POSIX utils rely on Phobos; -betterC breaks that. Strip it if present.
+    flags = [f for f in flags if f not in ("-betterC", "--betterC")]
+    return flags
 
 
 def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], output: Path) -> None:

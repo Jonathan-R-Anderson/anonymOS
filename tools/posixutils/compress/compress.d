@@ -39,11 +39,13 @@ import std.math         : isFinite;
 
 // ---- zopen.h bindings -------------------------------------------------------
 
-extern(C):
+extern(C)
+{
 void*  compress_zopen(const char* path, const char* mode, int bits);
 size_t compress_zread(void* zfp, void* buf, size_t n);
 size_t compress_zwrite(void* zfp, const void* buf, size_t n);
 int    compress_zclose(void* zfp);
+}
 
 // ---- globals ---------------------------------------------------------------
 

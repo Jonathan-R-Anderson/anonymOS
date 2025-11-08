@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -43,8 +44,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--flags",
-        default=os.environ.get("POSIXUTILS_DC_FLAGS", "-O2"),
-        help="Additional flags passed to the D compiler",
+        default=os.environ.get("POSIXUTILS_DC_FLAGS"),
+        help="Additional flags passed to the D compiler (default depends on compiler)",
     )
     parser.add_argument(
         "--output",
@@ -101,6 +102,19 @@ def is_d_source(path: Path) -> bool:
 def ensure_compiler_available(dc: str) -> None:
     if shutil.which(dc) is None:
         raise SystemExit(f"D compiler '{dc}' not found in PATH")
+
+
+def default_flags_for(dc: str) -> List[str]:
+    compiler = Path(dc).name
+    if compiler.startswith("dmd"):
+        return ["-O", "-release", "-betterC"]
+    return ["-O2", "-betterC"]
+
+
+def parse_flag_list(value: str | None, dc: str) -> List[str]:
+    if value is None:
+        return default_flags_for(dc)
+    return shlex.split(value)
 
 
 def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], output: Path) -> None:
@@ -161,7 +175,7 @@ def main() -> None:
     output_dir = args.output or (root / "build" / "posixutils" / "bin")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    flags = args.flags.split()
+    flags = parse_flag_list(args.flags, args.dc)
     results = build_all(args.dc, flags, source_root, output_dir)
     if not results:
         print("[warn] No POSIX utilities were built; nothing to do")

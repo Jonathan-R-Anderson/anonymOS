@@ -154,12 +154,26 @@ def discover_commands(source_root: Path) -> Iterable[tuple[str, List[Path]]]:
         yield entry.name, sources
 
 
+COMMAND_FLAG_OVERRIDES: dict[str, Sequence[str]] = {
+    # expr.d expects to be linked with a Bison-generated parser that
+    # defines yyparse.  Until that port lands in the tree, build the D
+    # lexer with the provided stub implementation instead so that the
+    # build keeps moving.  (The stub prints an explanatory error when
+    # invoked.)
+    "expr": ("-version=NoBison",),
+}
+
+
 def build_all(dc: str, flags: Sequence[str], source_root: Path, output_dir: Path) -> List[BuildResult]:
     results: List[BuildResult] = []
     for name, sources in discover_commands(source_root):
         output = output_dir / name
         print(f"[build] {name}")
-        compile_command(dc, flags, sources, output)
+        extra_flags = COMMAND_FLAG_OVERRIDES.get(name, ())
+        effective_flags = list(flags)
+        if extra_flags:
+            effective_flags.extend(extra_flags)
+        compile_command(dc, effective_flags, sources, output)
         results.append(BuildResult(name, tuple(sources), output))
     return results
 

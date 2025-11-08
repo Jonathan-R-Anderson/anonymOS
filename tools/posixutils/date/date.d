@@ -1,27 +1,28 @@
 // date.d — D translation of the provided C/C++ source
 module date;
 
-extern (C) nothrow @nogc:
-    // C interop: time / tm / strftime / localtime / mktime / getenv / setenv
-    import core.stdc.time : time_t = time_t, time = time, tm = tm, localtime = localtime,
-                            mktime = mktime, strftime = strftime;
-    import core.stdc.string : memcpy, strlen;
-    import core.stdc.stdlib : getenv, setenv;
+// ------------------------------
+// C / POSIX interop imports
+// ------------------------------
+import core.stdc.time   : time_t = time_t, time = time, tm = tm, localtime = localtime,
+                          mktime = mktime, strftime = strftime;
+import core.stdc.string : memcpy, strlen;
+import core.stdc.stdlib : getenv;                // POSIX setenv is not here
+version (Posix) import core.sys.posix.stdlib : setenv, unsetenv;
 
-    // POSIX settimeofday
-    import core.sys.posix.sys.time : timeval, settimeofday;
+// Portable POSIX clock setting
+import core.sys.posix.time : clock_settime, timespec, CLOCK_REALTIME;
 
-extern (C):
-// (end of @nogc block for the C bits)
-
-pure @safe:
-import std.stdio : writeln, writefln, stderr;
-import std.string : fromStringz, toStringz;
-import std.exception : enforce;
-import std.getopt : getopt, defaultGetoptPrinter;
-import std.conv : to;
-import std.typecons : Nullable;
+// ------------------------------
+// D imports
+// ------------------------------
+import std.stdio     : writeln, writefln, stderr;
+import std.string    : fromStringz, toStringz;
+import std.getopt    : getopt, defaultGetoptPrinter, config;
+import std.typecons  : Nullable;
 import std.algorithm : min;
+import std.exception : enforce;
+import std.ascii     : isDigit;
 
 // ------------------------------
 // Globals / options
@@ -31,12 +32,9 @@ __gshared int optUTC = 0;
 // ------------------------------
 // Helpers
 // ------------------------------
-@nogc nothrow
 private tm* fetchLocalTime()
 {
-    time_t t;
-    // time(&t) — time returns (time_t)-1 on error
-    t = time(null);
+    time_t t = time(null); // returns (time_t)-1 on error
     if (t == cast(time_t) -1)
         return null;
 
@@ -47,24 +45,29 @@ private tm* fetchLocalTime()
     return l;
 }
 
-@nogc nothrow
 private void prFormatted(const tm* ptm, const char* fmt)
 {
-    // Match original: large buffer, print a single line
     enum BUFSZ = 4096;
     char[BUFSZ] buf;
-    // strftime returns number of bytes placed in the array (not including the trailing '\0')
+    // strftime returns number of bytes written (excluding NUL)
     size_t n = strftime(buf.ptr, buf.length, fmt, ptm);
-    // Ensure NUL-termination (strftime already does if any output)
     if (n >= buf.length) n = buf.length - 1;
     buf[n] = 0;
-    // Write line
     writeln(fromStringz(buf.ptr));
+}
+
+// Set the system wall clock to the given seconds since epoch.
+// Returns true on success, false on failure.
+private bool setSystemTimeSeconds(long sec)
+{
+    timespec ts;
+    ts.tv_sec  = cast(typeof(ts.tv_sec)) sec;
+    ts.tv_nsec = 0;
+    return clock_settime(CLOCK_REALTIME, &ts) == 0;
 }
 
 private int outputDefault()
 {
-    // "%a %b %e %H:%M:%S %Z %Y"
     enum defaultFmt = "%a %b %e %H:%M:%S %Z %Y";
     auto l = fetchLocalTime();
     if (l is null) {
@@ -77,7 +80,6 @@ private int outputDefault()
 
 private int outputFormat(const(char)* argZ)
 {
-    // arg is like "+%Y-%m-%d ..."
     auto l = fetchLocalTime();
     if (l is null) {
         stderr.writeln("time/localtime failed");
@@ -92,28 +94,23 @@ private int outputFormat(const(char)* argZ)
 
 private int inputDate(const(char)* dateStrZ)
 {
-    // Behavior mirrors the original:
-    // parse MM DD hh mm [YY] [YY] (two optional year chunks; if only one YY: map <=68 -> 2000+, else 1900+)
+    // Parse: MM DD hh mm [YY] [YY]
     tm tmbuf;
     auto l = fetchLocalTime();
     if (l is null) {
         stderr.writeln("time/localtime failed");
         return 1;
     }
-    // Copy the whole tm so fields like tm_isdst carry over
+    // Copy whole tm so fields like tm_isdst carry over
     memcpy(&tmbuf, l, tm.sizeof);
 
-    // Manual sscanf-like parsing (fixed-width 2 digits each)
-    // We accept strings containing at least 8 digits (MMDDhhmm) and optionally 2 or 4 more digits (YYYY).
-    // Stop at first non-digit beyond what we consume (to behave close to the original).
-    import std.ascii : isDigit;
-
     auto s = dateStrZ;
-    int parsed[6]; // mon, mday, hour, min, y1, y2
-    size_t need = 4; // minimum groups required
+    int[6] parsed; // mon, mday, hour, min, y1, y2
+    size_t need = 4; // minimum required groups
     size_t got = 0;
 
-    int read2Digits(const(char)* p, ref size_t advance) @trusted {
+    int read2Digits(const(char)* p, ref size_t advance)
+    {
         if (!(isDigit(p[0]) && isDigit(p[1]))) return -1;
         advance = 2;
         return (p[0] - '0') * 10 + (p[1] - '0');
@@ -127,7 +124,7 @@ private int inputDate(const(char)* dateStrZ)
         if (v < 0) break;
         parsed[got] = v;
         off += adv;
-        if (got + 1 == need) break; // ensure at least 4 groups
+        if (got + 1 == need) break; // ensure at least 4 groups (MMDDhhmm)
     }
 
     if (got + 1 < need) {
@@ -144,15 +141,14 @@ private int inputDate(const(char)* dateStrZ)
         off += adv;
     }
 
-    // Assign: (keep the original program’s off-by-one behavior for tm_mon)
+    // Assign (keep the original program’s off-by-one behavior for tm_mon)
     tmbuf.tm_mon  = parsed[0]; // NOTE: original code did not subtract 1
     tmbuf.tm_mday = parsed[1];
     tmbuf.tm_hour = parsed[2];
     tmbuf.tm_min  = parsed[3];
 
     if (got == 4) {
-        // only MMDDhhmm
-        // keep tm_year from localtime()
+        // only MMDDhhmm => keep current year
     } else if (got == 5) {
         int y1 = parsed[4];
         if (y1 <= 68) y1 += 2000; else y1 += 1900;
@@ -162,22 +158,17 @@ private int inputDate(const(char)* dateStrZ)
         tmbuf.tm_year = y - 1900;
     }
 
-    // mktime
+    // Normalize
     auto tt = mktime(&tmbuf);
     if (tt == cast(time_t) -1) {
         stderr.writeln("mktime failed");
         return 1;
     }
 
-    // settimeofday
-    timeval tv;
-    tv.tv_sec  = tt;
-    tv.tv_usec = 0;
-    if (settimeofday(&tv, null) < 0) {
-        // perror-like message; we can’t easily pull errno string portably w/o extra imports,
-        // so keep it simple and clear:
+    // Set system time
+    if (!setSystemTimeSeconds(cast(long) tt)) {
         stderr.writeln("cannot set date (requires privileges)");
-        // still print the resulting default output like the original
+        // Like the original, still print the resulting default output
         auto rc1 = outputDefault();
         return 1 | rc1;
     }
@@ -189,6 +180,7 @@ private int inputDate(const(char)* dateStrZ)
 // ------------------------------
 // Main
 // ------------------------------
+extern(D)
 int main(string[] args)
 {
     // Options: --utc / -u
@@ -196,18 +188,22 @@ int main(string[] args)
     //   +FORMAT  -> custom format
     //   DATESTR  -> set date
     string fmtOrDate;
+
     try {
-        auto help = getopt(args,
-            std.getopt.config.passThrough, // gather remaining as positional
+        auto res = getopt(args,
+            config.passThrough, // allow positionals to remain in args
             "utc|u", &optUTC
         );
-        // Remaining positional (after options) live in help.args
-        if (help.args.length >= 2) {
-            defaultGetoptPrinter("Too many positional arguments.", help.options);
+
+        // Remaining positionals are in args[1 .. $] (program name is args[0])
+        string[] positionals = (args.length > 1) ? args[1 .. $] : [];
+
+        if (positionals.length >= 2) {
+            defaultGetoptPrinter("Too many positional arguments.", res.options);
             return 2;
         }
-        if (help.args.length == 1) {
-            fmtOrDate = help.args[0];
+        if (positionals.length == 1) {
+            fmtOrDate = positionals[0];
         }
     } catch (Exception e) {
         stderr.writeln(e.msg);
@@ -219,21 +215,29 @@ int main(string[] args)
     if (optUTC != 0) {
         auto tz = getenv("TZ");
         if (tz !is null)
-            oldTZ = fromStringz(tz);
+            oldTZ = fromStringz(tz).idup; // immutable string for Nullable!string
         // setenv("TZ","UTC0",1)
-        if (setenv("TZ", "UTC0".ptr, 1) < 0) {
-            stderr.writeln("setenv failed");
+        version (Posix) {
+            if (setenv("TZ", "UTC0".ptr, 1) < 0) {
+                stderr.writeln("setenv failed");
+                return 1;
+            }
+        } else {
+            stderr.writeln("--utc not supported on this platform");
             return 1;
         }
     }
 
-    int rc = 0;
     scope(exit) {
-        if (!oldTZ.isNull) {
-            setenv("TZ", oldTZ.get.toStringz, 1);
+        // restore TZ if we changed it
+        version (Posix) {
+            if (!oldTZ.isNull) {
+                setenv("TZ", oldTZ.get.toStringz, 1);
+            }
         }
     }
 
+    int rc = 0;
     if (fmtOrDate.length == 0) {
         rc = outputDefault();
     } else if (fmtOrDate[0] == '+') {
@@ -241,6 +245,5 @@ int main(string[] args)
     } else {
         rc = inputDate(fmtOrDate.toStringz);
     }
-
     return rc;
 }

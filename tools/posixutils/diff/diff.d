@@ -10,10 +10,11 @@ import std.array : array;
 import std.typecons : Nullable;
 
 // C stdio for fopen/fgets/fclose/ferror parity
-extern (C) @system:
-    import core.stdc.stdio : FILE, fopen, fclose, fgets, ferror, perror;
-    import core.stdc.errno : errno;
-    import core.stdc.string : strlen;
+import core.stdc.stdio : FILE, fopen, fclose, fgets, ferror, perror;
+import core.stdc.errno : errno;
+import core.stdc.string : strlen;
+import core.stdc.stdlib : EXIT_FAILURE; // for EXIT_FAILURE/EXIT_SUCCESS if you use them
+
 
 // -------------------- Constants & enums --------------------
 enum N_DIFFS = 2;
@@ -59,7 +60,7 @@ final class AutoFile
     }
 
     bool isOpen() const @safe @nogc { return fp !is null; }
-    bool haveError() const @nogc { return (fp is null) ? true : (ferror(fp) != 0); }
+    bool haveError() @nogc { return (fp is null) ? true : (ferror(fp) != 0); }
 }
 
 // -------------------- Diff structs --------------------
@@ -141,9 +142,8 @@ int main(string[] args)
 
     try
     {
-        auto help = getopt(
+        getopt(
             args,
-            // flags
             "b", &optBlanksEquiv,
             "c", { optMode = OptModeType.MODE_CONTEXT; optCtxtLines = 3; },
             "C", (string n){ optMode = OptModeType.MODE_CONTEXT; optCtxtLines = n.to!uint; },
@@ -151,7 +151,8 @@ int main(string[] args)
             "f", { optMode = OptModeType.MODE_REVERSE_ED; },
             "r", &optRecurse
         );
-        positionals = help.args;
+        // remaining positionals live in args[1..$]
+        positionals = args[1 .. $];
     }
     catch (Exception e)
     {

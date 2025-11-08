@@ -248,6 +248,13 @@ private __gshared ShellState shellState = ShellState(
     null,
 );
 
+private __gshared bool g_consoleAvailable = false;
+private __gshared bool g_shellRegistered = false;
+private __gshared const(char*)[2] g_shellDefaultArgv = [cast(const char*)"/bin/sh\0".ptr, null];
+private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
+
+extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp);
+
 nothrow:
 @nogc:
 
@@ -1602,7 +1609,10 @@ private void checkShellCompilerAccess()
 
 private void finalizeShellActivation()
 {
-    if (shellState.compilerAccessible && shellState.runtimeBound)
+    const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound;
+    const bool consoleReady = g_consoleAvailable && g_shellRegistered;
+
+    if (prerequisitesMet && consoleReady)
     {
         shellState.shellActivated = true;
         shellState.failureReason = null;
@@ -1615,7 +1625,23 @@ private void finalizeShellActivation()
         immutable(char)[] reason = shellState.failureReason;
         if (reason is null || reason.length == 0)
         {
-            reason = "integration prerequisites missing";
+            if (!prerequisitesMet)
+            {
+                reason = "integration prerequisites missing";
+            }
+            else if (!g_consoleAvailable)
+            {
+                reason = "console unavailable";
+            }
+            else if (!g_shellRegistered)
+            {
+                reason = "shell executable not registered";
+            }
+            else
+            {
+                reason = "shell activation blocked";
+            }
+
             shellState.failureReason = reason;
         }
 
@@ -1701,6 +1727,61 @@ mixin template PosixKernelShim()
     }
 
     private __gshared ExecutableSlot[MAX_EXECUTABLES] g_execTable;
+
+    private enum STDIN_FILENO  = 0;
+    private enum STDOUT_FILENO = 1;
+    private enum STDERR_FILENO = 2;
+
+    @nogc nothrow private bool resolveHostFd(int fd, out int hostFd)
+    {
+        hostFd = -1;
+
+        if (fd < 0 || fd >= MAX_FD)
+        {
+            return false;
+        }
+
+        auto current = g_current;
+        if (current is null)
+        {
+            return false;
+        }
+
+        const int resolved = current.fds[fd].num;
+        if (resolved < 0)
+        {
+            return false;
+        }
+
+        hostFd = resolved;
+        return true;
+    }
+
+    @nogc nothrow private void configureConsoleFor(ref Proc proc)
+    {
+        foreach (fd; 0 .. 3)
+        {
+            if (fd >= proc.fds.length)
+            {
+                break;
+            }
+
+            proc.fds[fd].num = fd;
+            proc.fds[fd].flags = FDFlags.NONE;
+        }
+    }
+
+    @nogc nothrow private bool detectConsoleAvailability()
+    {
+        version (Posix)
+        {
+            return isatty(STDIN_FILENO) != 0;
+        }
+        else
+        {
+            return false;
+        }
+    }
 
     // ---- Simple spinlock (stub; replace with real lock in SMP) ----
     private struct Spin { int v; }
@@ -2019,8 +2100,55 @@ mixin template PosixKernelShim()
     // ---- FD/IO syscalls (stubs) ----
     @nogc nothrow int     sys_open (const char* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
-    @nogc nothrow ssize_t sys_read (int /*fd*/, void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
-    @nogc nothrow ssize_t sys_write(int /*fd*/, const void* /*buf*/, size_t /*len*/){ return setErrno(Errno.ENOSYS); }
+    @nogc nothrow ssize_t sys_read (int fd, void* buffer, size_t length)
+    {
+        int hostFd = -1;
+        if (!resolveHostFd(fd, hostFd))
+        {
+            return cast(ssize_t)setErrno(Errno.EBADF);
+        }
+
+        version (Posix)
+        {
+            auto result = read(hostFd, buffer, length);
+            if (result < 0)
+            {
+                _errno = errno;
+                return -1;
+            }
+
+            return cast(ssize_t)result;
+        }
+        else
+        {
+            return cast(ssize_t)setErrno(Errno.ENOSYS);
+        }
+    }
+
+    @nogc nothrow ssize_t sys_write(int fd, const void* buffer, size_t length)
+    {
+        int hostFd = -1;
+        if (!resolveHostFd(fd, hostFd))
+        {
+            return cast(ssize_t)setErrno(Errno.EBADF);
+        }
+
+        version (Posix)
+        {
+            auto result = write(hostFd, buffer, length);
+            if (result < 0)
+            {
+                _errno = errno;
+                return -1;
+            }
+
+            return cast(ssize_t)result;
+        }
+        else
+        {
+            return cast(ssize_t)setErrno(Errno.ENOSYS);
+        }
+    }
 
     // ---- C ABI glue ----
     extern(C):
@@ -2186,6 +2314,19 @@ mixin template PosixKernelShim()
             initProc.pendingEnvp = null;
             initProc.pendingExec = false;
             g_current = initProc;
+            g_consoleAvailable = detectConsoleAvailability();
+            configureConsoleFor(*initProc);
+        }
+        else
+        {
+            g_consoleAvailable = detectConsoleAvailability();
+        }
+
+        g_shellRegistered = false;
+        if (g_consoleAvailable)
+        {
+            const int registration = registerProcessExecutable("/bin/sh", &shellExecEntry);
+            g_shellRegistered = (registration == 0);
         }
         g_initialized = true;
     }
@@ -2210,6 +2351,10 @@ version (Posix)
     extern(C) int access(const char* pathname, int mode);
     extern(C) char* getenv(const char* name);
     extern(C) __gshared char** environ;
+    extern(C) int isatty(int fd);
+    extern(C) long read(int fd, void* buffer, size_t length);
+    extern(C) long write(int fd, const void* buffer, size_t length);
+    extern(C) __gshared int errno;
 
     private bool copyCString(const char* source, char* buffer, size_t bufferLength, out size_t length)
     {
@@ -2316,10 +2461,11 @@ version (Posix)
         return access(path, F_OK) == 0;
     }
 
-    private bool spawnAndWait(const(char)* program, char** argv)
+    private bool spawnAndWait(const(char)* program, char** argv, char** envp)
     {
         int pid = 0;
-        const int spawnResult = posix_spawnp(&pid, program, null, null, argv, environ);
+        auto environment = (envp !is null) ? envp : environ;
+        const int spawnResult = posix_spawnp(&pid, program, null, null, argv, environment);
         if (spawnResult != 0)
         {
             return false;
@@ -2350,18 +2496,43 @@ version (Posix)
         args[2] = cast(char*)rootPath;
         args[3] = null;
 
-        return spawnAndWait("make", args.ptr);
+        return spawnAndWait("make", args.ptr, environ);
     }
 
-    private bool launchShellProcess(const char* binaryPath)
+    private bool launchShellProcess(const char* binaryPath, const(char*)* argv, const(char*)* envp)
     {
         printLine("[shell] Launching interactive session ...");
 
-        char*[2] args;
-        args[0] = cast(char*)binaryPath;
-        args[1] = null;
+        enum size_t MAX_ARGS = 16;
+        char*[MAX_ARGS] args;
+        size_t count = 0;
 
-        if (spawnAndWait(binaryPath, args.ptr))
+        if (argv !is null)
+        {
+            while (argv[count] !is null && count + 1 < args.length)
+            {
+                args[count] = cast(char*)argv[count];
+                ++count;
+            }
+        }
+
+        if (count == 0)
+        {
+            count = 1;
+        }
+
+        args[0] = cast(char*)binaryPath;
+
+        if (count >= args.length)
+        {
+            count = args.length - 1;
+        }
+
+        args[count] = null;
+
+        auto environment = (envp !is null) ? cast(char**)envp : environ;
+
+        if (spawnAndWait(binaryPath, args.ptr, environment))
         {
             printLine("[shell] Shell session ended.");
             return true;
@@ -2371,7 +2542,7 @@ version (Posix)
         return false;
     }
 
-    private bool tryLaunchFromRoot(char* rootBuffer, size_t rootLength, ref bool buildCompleted)
+    private bool tryLaunchFromRoot(char* rootBuffer, size_t rootLength, ref bool buildCompleted, const(char*)* argv, const(char*)* envp)
     {
         char[PATH_BUFFER_SIZE] binaryBuffer;
         size_t binaryLength = 0;
@@ -2404,10 +2575,10 @@ version (Posix)
         print("[shell] Using binary at     : ");
         printLine(binaryBuffer[0 .. binaryLength]);
 
-        return launchShellProcess(binaryBuffer.ptr);
+        return launchShellProcess(binaryBuffer.ptr, argv, envp);
     }
 
-    private void launchInteractiveShell()
+    private bool runHostShellSession(const(char*)* argv, const(char*)* envp)
     {
         char[PATH_BUFFER_SIZE] rootBuffer;
         size_t rootLength = 0;
@@ -2415,9 +2586,9 @@ version (Posix)
 
         if (copyCString(getenv("SH_ROOT"), rootBuffer.ptr, rootBuffer.length, rootLength))
         {
-            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted))
+            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted, argv, envp))
             {
-                return;
+                return true;
             }
         }
 
@@ -2437,20 +2608,62 @@ version (Posix)
                 continue;
             }
 
-            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted))
+            if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted, argv, envp))
             {
-                return;
+                return true;
             }
         }
 
         printLine("[shell] Unable to locate an executable 'lfe-sh' binary.");
+        return false;
+    }
+
+    extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp)
+    {
+        runHostShellSession(argv, envp);
+    }
+
+    private void launchInteractiveShell()
+    {
+        if (!g_consoleAvailable)
+        {
+            printLine("[shell] Interactive console not detected; skipping shell launch.");
+            return;
+        }
+
+        if (!g_shellRegistered)
+        {
+            printLine("[shell] Shell executable not registered; cannot launch.");
+            return;
+        }
+
+        const int execResult = sys_execve("/bin/sh", g_shellDefaultArgv.ptr, g_shellDefaultEnvp.ptr);
+        if (execResult < 0)
+        {
+            const int errValue = errnoRef();
+            print("[shell] execve('/bin/sh') failed (errno = ");
+            printUnsigned(cast(size_t)errValue);
+            printLine(")");
+            shellState.shellActivated = false;
+            shellState.failureReason = "execve(/bin/sh) failed";
+        }
     }
 }
 else
 {
+    private bool runHostShellSession(const(char*)* /*argv*/, const(char*)* /*envp*/)
+    {
+        return false;
+    }
+
+    extern(C) @nogc nothrow void shellExecEntry(const char** /*argv*/, const char** /*envp*/)
+    {
+        printLine("[shell] Interactive shell unavailable: host console support missing.");
+    }
+
     private void launchInteractiveShell()
     {
-        printLine("[shell] Interactive shell launch unsupported on this target.");
+        printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 }
 

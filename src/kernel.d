@@ -1609,6 +1609,26 @@ private void checkShellCompilerAccess()
 
 private void finalizeShellActivation()
 {
+    const bool detectedConsole = detectConsoleAvailability();
+    if (detectedConsole)
+    {
+        if (!g_consoleAvailable)
+        {
+            g_consoleAvailable = true;
+        }
+
+        if (!g_shellRegistered)
+        {
+            const int registration = registerProcessExecutable("/bin/sh", &shellExecEntry);
+            g_shellRegistered = (registration == 0);
+        }
+    }
+    else
+    {
+        g_consoleAvailable = false;
+        g_shellRegistered = false;
+    }
+
     const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound;
     const bool consoleReady = g_consoleAvailable && g_shellRegistered;
 

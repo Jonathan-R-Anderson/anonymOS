@@ -281,24 +281,37 @@ int main(string[] args)
     else { stderr.writeln("unknown program name"); return 1; }
 
     int bits = 0;
+    bool flagDecompress = false;
+    bool flagForce = false;
+    bool flagVerbose = false;
 
     // getopt parsing (bundling allows -cfv)
-    auto opt = getopt(args, config.bundling,
-        "b", "bits", (string v) {
-            try {
-                bits = to!int(v);
-            } catch (ConvException) {
-                stderr.writefln("illegal bit count -- %s", v);
-                exit(1);
-            }
-        },
-        "c", "cat to stdout", (ref bool _) { cat = true; },
-        "d", "decompress",    (ref bool _) { style = Mode.DECOMPRESS; },
-        "f", "force",         (ref bool _) { force_ = 1; },
-        "v", "verbose",       (ref bool _) { verbose_ = 1; }
-    );
+    try {
+        getopt(args, config.bundling,
+            "b", "bits", (string v) {
+                try {
+                    bits = to!int(v);
+                } catch (ConvException) {
+                    stderr.writefln("illegal bit count -- %s", v);
+                    exit(1);
+                }
+            },
+            "c", "cat to stdout", &cat,
+            "d", "decompress",    &flagDecompress,
+            "f", "force",         &flagForce,
+            "v", "verbose",       &flagVerbose
+        );
+    } catch (Exception e) {
+        stderr.writeln(e.msg);
+        return 1;
+    }
 
-    auto rest = args[opt.optind .. $];
+    if (flagDecompress)
+        style = Mode.DECOMPRESS;
+    force_   = flagForce ? 1 : 0;
+    verbose_ = flagVerbose ? 1 : 0;
+
+    auto rest = args[1 .. $];
 
     if (rest.length == 0) {
         // stdin → stdout

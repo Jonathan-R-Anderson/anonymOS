@@ -250,6 +250,7 @@ private __gshared ShellState shellState = ShellState(
 
 private __gshared bool g_consoleAvailable = false;
 private __gshared bool g_shellRegistered = false;
+private __gshared bool g_posixConfigured = false;
 private __gshared const(char*)[2] g_shellDefaultArgv = [cast(const char*)"/bin/sh\0".ptr, null];
 private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
@@ -2364,7 +2365,7 @@ mixin template PosixKernelShim()
 
 version (Posix)
 {
-    private enum PATH_BUFFER_SIZE = 512;
+    private enum PATH_BUFFER_SIZE = 1024;
     private enum F_OK = 0;
 
     extern(C) int posix_spawnp(
@@ -2383,6 +2384,7 @@ version (Posix)
     extern(C) long read(int fd, void* buffer, size_t length);
     extern(C) long write(int fd, const void* buffer, size_t length);
     extern(C) __gshared int errno;
+    extern(C) int setenv(const char* name, const char* value, int overwrite);
 
     private bool copyCString(const char* source, char* buffer, size_t bufferLength, out size_t length)
     {
@@ -2489,6 +2491,257 @@ version (Posix)
         return access(path, F_OK) == 0;
     }
 
+    @nogc nothrow private bool ensurePathIncludes(const char* candidate)
+    {
+        if (candidate is null)
+        {
+            return false;
+        }
+
+        const size_t candidateLength = cStringLength(candidate);
+        if (candidateLength == 0)
+        {
+            return false;
+        }
+
+        auto existing = getenv("PATH");
+        if (existing is null || existing[0] == '\0')
+        {
+            return setenv("PATH", candidate, 1) == 0;
+        }
+
+        size_t index = 0;
+        for (;;)
+        {
+            size_t start = index;
+            while (existing[index] != ':' && existing[index] != '\0')
+            {
+                ++index;
+            }
+
+            const size_t segmentLength = index - start;
+            if (segmentLength == candidateLength)
+            {
+                bool matches = true;
+                foreach (i; 0 .. segmentLength)
+                {
+                    if (existing[start + i] != candidate[i])
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    return true;
+                }
+            }
+
+            if (existing[index] == '\0')
+            {
+                break;
+            }
+
+            ++index;
+        }
+
+        char[PATH_BUFFER_SIZE * 2] combined;
+        size_t writeIndex = 0;
+
+        if (candidateLength >= combined.length)
+        {
+            return false;
+        }
+
+        foreach (i; 0 .. candidateLength)
+        {
+            combined[writeIndex] = candidate[i];
+            ++writeIndex;
+        }
+
+        if (writeIndex + 1 >= combined.length)
+        {
+            return false;
+        }
+
+        combined[writeIndex] = ':';
+        ++writeIndex;
+
+        const size_t existingLength = cStringLength(existing);
+        if (writeIndex + existingLength >= combined.length)
+        {
+            return false;
+        }
+
+        foreach (i; 0 .. existingLength)
+        {
+            combined[writeIndex + i] = existing[i];
+        }
+
+        writeIndex += existingLength;
+        combined[writeIndex] = '\0';
+
+        return setenv("PATH", combined.ptr, 1) == 0;
+    }
+
+    @nogc nothrow private bool buildSiblingPath(
+        const char* root,
+        size_t rootLength,
+        immutable(char)[] suffix,
+        char* buffer,
+        size_t bufferLength,
+        out size_t resultLength)
+    {
+        if (root is null || buffer is null || bufferLength == 0)
+        {
+            resultLength = 0;
+            return false;
+        }
+
+        size_t length = 0;
+        while (length < rootLength && root[length] != '\0')
+        {
+            if (length + 1 >= bufferLength)
+            {
+                resultLength = 0;
+                return false;
+            }
+
+            buffer[length] = root[length];
+            ++length;
+        }
+
+        if (length == 0)
+        {
+            resultLength = 0;
+            return false;
+        }
+
+        while (length > 1 && buffer[length - 1] == '/')
+        {
+            --length;
+        }
+
+        bool foundSlash = false;
+        while (length > 0)
+        {
+            if (buffer[length - 1] == '/')
+            {
+                foundSlash = true;
+                break;
+            }
+
+            --length;
+        }
+
+        if (!foundSlash)
+        {
+            resultLength = 0;
+            return false;
+        }
+
+        size_t suffixIndex = 0;
+        if (length > 0 && buffer[length - 1] == '/')
+        {
+            while (suffixIndex < suffix.length && suffix[suffixIndex] == '/')
+            {
+                ++suffixIndex;
+            }
+        }
+        else if (suffix.length > 0 && suffix[0] != '/')
+        {
+            if (length + 1 >= bufferLength)
+            {
+                resultLength = 0;
+                return false;
+            }
+
+            buffer[length] = '/';
+            ++length;
+        }
+
+        while (suffixIndex < suffix.length)
+        {
+            if (length + 1 >= bufferLength)
+            {
+                resultLength = 0;
+                return false;
+            }
+
+            buffer[length] = cast(char)suffix[suffixIndex];
+            ++length;
+            ++suffixIndex;
+        }
+
+        if (length >= bufferLength)
+        {
+            resultLength = 0;
+            return false;
+        }
+
+        buffer[length] = '\0';
+        resultLength = length;
+        return true;
+    }
+
+    @nogc nothrow private bool configurePosixUtilities(const char* shellRoot, size_t shellLength)
+    {
+        if (g_posixConfigured)
+        {
+            return true;
+        }
+
+        auto overridePath = getenv("POSIXUTILS_ROOT");
+        if (overridePath !is null && overridePath[0] != '\0')
+        {
+            setenv("POSIXUTILS_ROOT", overridePath, 1);
+            if (access(overridePath, F_OK) == 0 && ensurePathIncludes(overridePath))
+            {
+                g_posixConfigured = true;
+                print("[shell] POSIX utilities path : ");
+                printCString(overridePath);
+                putChar('\n');
+                return true;
+            }
+        }
+
+        immutable(char)[][] suffixes = [
+            "/build/posixutils/bin",
+            "/tools/posixutils/bin",
+            "/posix/bin",
+        ];
+
+        char[PATH_BUFFER_SIZE] candidateBuffer;
+        size_t candidateLength = 0;
+
+        foreach (suffix; suffixes)
+        {
+            if (!buildSiblingPath(shellRoot, shellLength, suffix, candidateBuffer.ptr, candidateBuffer.length, candidateLength))
+            {
+                continue;
+            }
+
+            if (access(candidateBuffer.ptr, F_OK) != 0)
+            {
+                continue;
+            }
+
+            setenv("POSIXUTILS_ROOT", candidateBuffer.ptr, 1);
+            if (!ensurePathIncludes(candidateBuffer.ptr))
+            {
+                continue;
+            }
+
+            g_posixConfigured = true;
+            print("[shell] POSIX utilities path : ");
+            printLine(candidateBuffer[0 .. candidateLength]);
+            return true;
+        }
+
+        return false;
+    }
+
     private bool spawnAndWait(const(char)* program, char** argv, char** envp)
     {
         int pid = 0;
@@ -2572,6 +2825,11 @@ version (Posix)
 
     private bool tryLaunchFromRoot(char* rootBuffer, size_t rootLength, ref bool buildCompleted, const(char*)* argv, const(char*)* envp)
     {
+        if (!g_posixConfigured)
+        {
+            configurePosixUtilities(rootBuffer, rootLength);
+        }
+
         char[PATH_BUFFER_SIZE] binaryBuffer;
         size_t binaryLength = 0;
         if (!appendBinaryName(rootBuffer, rootLength, binaryBuffer.ptr, binaryBuffer.length, binaryLength))

@@ -13,7 +13,6 @@
 
 module zopen_d;
 
-import core.stdc.config : size_t;
 import core.stdc.stdint : uint32_t, uint16_t, int32_t;
 import core.stdc.stdlib : calloc, free;
 import core.stdc.string : memcmp, memset, strncpy, strlen;
@@ -155,7 +154,7 @@ static int  cl_block(ZState* zs);
 static void cl_hash (ZState* zs, count_int cl_hsize);
 static int  output  (ZState* zs, code_int ocode);
 static code_int getcode(ZState* zs);
-
+char* endptr = null;
 // ------------------------------ Writer API ----------------------------------
 
 // Return size_t to match compress.d; on error, set errno and return 0.

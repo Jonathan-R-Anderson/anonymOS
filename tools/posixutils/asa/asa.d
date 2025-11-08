@@ -13,7 +13,7 @@
  * - If no files are given, read stdin. A lone "-" means stdin too.
  */
 
-import std.stdio : File, stdin, stdout, stderr, write, writef, writefln, writeln;
+import std.stdio : File, stdin, stdout, stderr, write, writef, writefln, writeln, KeepTerminator;
 import std.getopt : getopt, defaultGetoptPrinter;
 import std.string : chomp, stripRight;
 import std.algorithm : any;
@@ -24,7 +24,7 @@ private int processStream(File f, string srcName)
 {
     // Read line-by-line, preserving the newline so we can trim exactly like the C tool.
     // byLine!string with KeepTerminator.yes preserves '\n'.
-    foreach (rawLine; f.byLine!string(Yes.keepTerminator))
+    foreach (rawLine; f.byLine!string(KeepTerminator.yes))
     {
         // Each line must be at least 1 char (the control char). The C code also
         // expected the newline to be present, but we just require >= 1.

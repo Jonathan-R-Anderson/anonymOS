@@ -1775,7 +1775,15 @@ mixin template PosixKernelShim()
     {
         version (Posix)
         {
-            return isatty(STDIN_FILENO) != 0;
+            // Treat the console as available if any of the standard streams are
+            // attached to a TTY.  When the ISO is booted under some hypervisors
+            // (for example QEMU with `-serial stdio`), the host may only expose a
+            // writable TTY on stdout/stderr while stdin is reported as a pipe.
+            // Checking all three descriptors avoids spuriously disabling the
+            // interactive shell in those environments.
+            return (isatty(STDIN_FILENO) != 0)
+                || (isatty(STDOUT_FILENO) != 0)
+                || (isatty(STDERR_FILENO) != 0);
         }
         else
         {

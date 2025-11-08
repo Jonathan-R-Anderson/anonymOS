@@ -545,6 +545,23 @@ private void initializeInterrupts()
     loadIDT(&descriptor);
 }
 
+@nogc nothrow private void resetProc(ref Proc p)
+{
+    p.pid = 0;
+    p.ppid = 0;
+    p.state = ProcState.UNUSED;
+    p.exitCode = 0;
+    p.sigmask = 0;
+    foreach (i; 0 .. p.fds.length) p.fds[i] = FD.init;
+    p.entry = null;
+    p.ctx = null;
+    p.kstack = null;
+    clearName(p.name);
+    p.pendingArgv = null;
+    p.pendingEnvp = null;
+    p.pendingExec = false;
+}
+
 extern(C) @nogc nothrow void handleInvalidOpcode(
     InterruptRegisters* registers,
     size_t vector,
@@ -1659,13 +1676,13 @@ mixin template PosixKernelShim()
         SigSet    sigmask;
         FD[MAX_FD] fds;
         // Make entry @nogc so sys_execve (also @nogc) can call it
-        extern(C) @nogc nothrow void function(const char** argv, const char** envp) entry;
+        extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp) entry;
         void*     ctx;    // arch context (opaque to shim)
         void*     kstack; // optional kernel stack
         char[16]  name;
-        const(char** ) pendingArgv;  // note: const applies to the char** as a whole
-        const(char** ) pendingEnvp;
-        bool      pendingExec;
+        const(char*)* pendingArgv; // pointer to array of const char*
+        const(char*)* pendingEnvp;
+        bool          pendingExec;
     }
 
     private __gshared Proc[MAX_PROC] g_ptable;
@@ -1845,11 +1862,11 @@ mixin template PosixKernelShim()
         return null;
     }
     @nogc nothrow private Proc* allocProc(){
-        foreach(ref p; g_ptable){
-            if(p.state==ProcState.UNUSED){
-                p = Proc.init;
+        foreach (ref p; g_ptable) {
+            if (p.state == ProcState.UNUSED) {
+                resetProc(p);
                 p.state = ProcState.EMBRYO;
-                p.pid   = g_nextPid++;
+                p.pid = g_nextPid++;
                 return &p;
             }
         }
@@ -1901,7 +1918,6 @@ mixin template PosixKernelShim()
         if(np is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
         // Duplicate minimal PCB
-        *np = Proc.init;
         np.pid    = g_nextPid++;
         np.ppid   = (g_current ? g_current.pid : 0);
         np.state  = ProcState.READY;
@@ -1931,43 +1947,41 @@ mixin template PosixKernelShim()
         return np.pid; // parent gets child's pid
     }
 
-    @nogc nothrow int sys_execve(const char* path, const char** argv, const char** envp){
-        if(g_current is null) return setErrno(Errno.ESRCH);
+    @nogc nothrow int sys_execve(const char* path, const(char*)* argv, const(char*)* envp)
+    {
+        // require a current process
+        if (g_current is null) return setErrno(Errno.ESRCH);
 
-        auto resolved = findExecutableSlot(path);
-        if(resolved is null && argv !is null && argv[0] !is null)
-        {
+        // work on a local we can change instead of reassigning the parameter
+        const(char)* execPath = path;
+
+        // resolve by path, or fall back to argv[0]
+        auto resolved = findExecutableSlot(execPath);
+        if (resolved is null && argv !is null && argv[0] !is null) {
             resolved = findExecutableSlot(argv[0]);
-            if(resolved !is null)
-            {
-                path = argv[0];
-            }
+            if (resolved !is null) execPath = argv[0];
         }
+        if (resolved is null) return setErrno(Errno.ENOENT);
+        if (resolved.entry is null) return setErrno(Errno.ENOEXEC);
 
-        if(resolved is null)
-        {
-            return setErrno(Errno.ENOENT);
-        }
+        // set up current proc and run
+        auto cur = g_current;                // pointer to Proc
+        (*cur).entry = resolved.entry;
+        setNameFromCString((*cur).name, execPath);
 
-        auto cur = g_current;
-        cur.entry = resolved.entry;
-        setNameFromCString(cur.name, path);
-        if(cur.entry is null)
-        {
-            return setErrno(Errno.ENOEXEC);
-        }
-
-        cur.entry(argv, envp); // @nogc nothrow
-        sys__exit(0);          // if returns
-        return 0;              // unreachable
+        (*cur).entry(argv, envp);            // @nogc nothrow
+        sys__exit(0);                        // if it ever returns
+        return 0;                            // unreachable
     }
+
+
 
     @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
         foreach(ref p; g_ptable){
             if(p.state==ProcState.ZOMBIE && (wpid<=0 || p.pid==wpid) && p.ppid==(g_current?g_current.pid:0)){
                 if(status) *status = p.exitCode;
                 auto pid = p.pid;
-                p = Proc.init; // reclaim
+                resetProc(p);
                 return pid;
             }
         }
@@ -2158,7 +2172,7 @@ mixin template PosixKernelShim()
     // ---- Init hook ----
     @nogc nothrow void posixInit(){
         if(g_initialized) return;
-        foreach(ref p; g_ptable) p = Proc.init;
+        foreach(ref p; g_ptable) resetProc(p);
         foreach(ref slot; g_execTable) slot = ExecutableSlot.init;
         g_nextPid = 1;
         g_current = null;

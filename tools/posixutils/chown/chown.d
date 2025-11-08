@@ -21,23 +21,23 @@
 
 module chown_d;
 
-import core.sys.posix.unistd : chown, lchown, readlink, getpid;
-import core.sys.posix.sys.stat : stat, lstat, S_ISDIR, S_ISLNK;
+import core.sys.posix.unistd : chown, lchown;
+import core.sys.posix.sys.stat : stat, lstat, stat_t, S_ISDIR, S_ISLNK;
 import core.sys.posix.dirent : DIR, dirent, opendir, readdir, closedir;
 import core.sys.posix.pwd : passwd, getpwnam;
 import core.sys.posix.grp : group, getgrnam;
+import core.sys.posix.sys.types : uid_t, gid_t;
 import core.stdc.errno : errno;
 import core.stdc.string : strerror;
+
 import std.stdio : writeln, stderr, writefln;
-import std.file : isDir, exists;
-import std.path : baseName, dirName, buildPath;
+import std.file : exists;
+import std.path : baseName, buildPath;
 import std.string : fromStringz, indexOf;
 import std.conv : to, ConvException;
-import std.algorithm.searching : endsWith;
-import std.meta : AliasSeq;
-import std.typecons : Flag, Yes, No;
 
 enum FollowMode { H, L, P }
+
 struct Opts {
     bool changeLinkSelfArg = false; // -h
     FollowMode follow = FollowMode.P;
@@ -107,7 +107,7 @@ private bool setOwnerGroup(ref Opts o, string ownerGroup, bool chgrpMode)
     }
 }
 
-private bool needChown(ref Opts o, ref core.sys.posix.sys.stat.stat st)
+private bool needChown(ref Opts o, ref stat_t st)
 {
     if (o.uid != -1 && st.st_uid != o.uid) return true;
     if (o.gid != -1 && st.st_gid != o.gid) return true;
@@ -116,23 +116,23 @@ private bool needChown(ref Opts o, ref core.sys.posix.sys.stat.stat st)
 
 private int doChown(string path, bool linkItself, ref Opts o)
 {
-    // Choose uid/gid parameters
-    auto uid = (o.uid == -1) ? cast(int)-1 : cast(int)o.uid;
-    auto gid = (o.gid == -1) ? cast(int)-1 : cast(int)o.gid;
+    // Choose uid/gid parameters; POSIX sentinel is (uid_t)-1 / (gid_t)-1.
+    uid_t uidParam = (o.uid == -1) ? cast(uid_t)-1 : cast(uid_t)o.uid;
+    gid_t gidParam = (o.gid == -1) ? cast(gid_t)-1 : cast(gid_t)o.gid;
 
-    int rc = linkItself ? lchown(path.ptr, uid, gid)
-                        :  chown (path.ptr, uid, gid);
+    int rc = linkItself ? lchown(path.ptr, uidParam, gidParam)
+                        :  chown (path.ptr, uidParam, gidParam);
     if (rc < 0) { perr("chown", path); return 1; }
     return 0;
 }
 
-private bool lstatOK(string path, out core.sys.posix.sys.stat.stat st)
+private bool lstatOK(string path, out stat_t st)
 {
-    import core.sys.posix.sys.stat : lstat;
     if (lstat(path.ptr, &st) < 0) return false;
     return true;
 }
-private bool statOK(string path, out core.sys.posix.sys.stat.stat st)
+
+private bool statOK(string path, out stat_t st)
 {
     if (stat(path.ptr, &st) < 0) return false;
     return true;
@@ -170,7 +170,7 @@ private int processSymlink(string path, ref Opts o, bool isCmdline)
     if (!o.recurse) return status;
 
     // Decide if we should follow the link into a directory
-    core.sys.posix.sys.stat.stat st;
+    stat_t st;
     const followThis =
         (o.follow == FollowMode.L) ||
         (o.follow == FollowMode.H && isCmdline);
@@ -185,7 +185,7 @@ private int processSymlink(string path, ref Opts o, bool isCmdline)
     return status;
 }
 
-private int processNonLink(string path, ref Opts o, ref core.sys.posix.sys.stat.stat lst, bool isCmdline)
+private int processNonLink(string path, ref Opts o, ref stat_t lst, bool /*isCmdline*/)
 {
     int status = 0;
 
@@ -202,7 +202,7 @@ private int processNonLink(string path, ref Opts o, ref core.sys.posix.sys.stat.
 
 private int processEntry(string path, ref Opts o, bool isCmdline)
 {
-    core.sys.posix.sys.stat.stat lst;
+    stat_t lst;
     if (!lstatOK(path, lst)) { perr("lstat", path); return 1; }
 
     if (S_ISLNK(lst.st_mode))
@@ -230,12 +230,13 @@ int main(string[] argv)
         if (!endOpts && a.length && a[0] == '-')
         {
             if (a == "--") { endOpts = true; continue; }
-            if (a == "-")  { files ~= a; continue; } // treat "-" as filename (stdin-equivalent not meaningful for chown but accepted)
+            if (a == "-")  { files ~= a; continue; } // treat "-" as filename (accepted)
 
             // short options cluster
             foreach (ch; a[1 .. $])
             {
-                final switch (ch)
+                // Use a normal switch (not final), so we can have a default branch.
+                switch (ch)
                 {
                     case 'h': o.changeLinkSelfArg = true; break;
                     case 'H': o.follow = FollowMode.H; break;

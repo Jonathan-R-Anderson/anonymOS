@@ -47,10 +47,11 @@ __gshared int    gIdx = 1; // start at argv[1]
 // ----------------------
 // tiny helpers (no Phobos)
 // ----------------------
-@nogc nothrow:
 
+@nogc nothrow
 static bool isDigit(const char c) { return c >= '0' && c <= '9'; }
 
+@nogc nothrow
 static bool isIntStr(const char* s)
 {
     if (s is null || *s == 0) return false;
@@ -60,6 +61,7 @@ static bool isIntStr(const char* s)
     return true;
 }
 
+@nogc nothrow
 static int parseToken(const char* s)
 {
     // single-char tokens

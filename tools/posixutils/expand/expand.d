@@ -1,175 +1,281 @@
-// expand.d — D translation of the provided C++ "expand" tool
 module expand_d;
 
-import std.stdio : File, stdin, stdout, stderr, write, writefln, writeln;
-import std.getopt : getopt;
-import std.string : split, strip, indexOf, toStringz;
-import std.algorithm : any, map;
-import std.conv : to;
-import std.exception : enforce;
-import std.array : array;
+import core.stdc.stdio;   // FILE, stdin, stdout, stderr, fopen, fclose, fgetc, fputc, fprintf, EOF
+import core.stdc.string;  // strlen, memcpy
+import core.stdc.stdlib;  // malloc, free
 
-/// ExpandApp: processes files/stdin and expands tabs to spaces.
-final class ExpandApp {
-    // If >0: fixed repeated tab width. If 0: use explicit tab list.
-    uint repeatedTab = 8;
-    uint lastTab = 0;            // largest explicit tab stop (if any)
-    bool[] tabMap;               // tab stops: tabMap[col] == true (1-based index)
+// ---------------- minimal helpers (no Phobos, no foreach) ----------------
 
-    this() {}
+bool isDigit(char c) { return c >= '0' && c <= '9'; }
 
-    // Parse -t argument (either a single positive integer, or a list)
-    // List may be comma-separated or blank-separated; requires ascending, unique, positive integers.
+string trimLeft(string s) {
+    size_t i = 0;
+    while (i < s.length && (s[i] == ' ' || s[i] == '\t')) ++i;
+    return s[i .. s.length];
+}
+
+string trimRight(string s) {
+    size_t j = s.length;
+    while (j > 0 && (s[j - 1] == ' ' || s[j - 1] == '\t')) --j;
+    return s[0 .. j];
+}
+
+string trim(string s) { return trimRight(trimLeft(s)); }
+
+// returns -1 on error
+long parseInt(string s) {
+    if (s.length == 0) return -1;
+    long v = 0;
+    for (size_t i = 0; i < s.length; ++i) {
+        char c = s[i];
+        if (!isDigit(c)) return -1;
+        v = v * 10 + (c - '0');
+        if (v < 0) return -1; // crude overflow guard
+    }
+    return v;
+}
+
+// Duplicate a C string into an immutable D string
+string dupCStr(char* p) {
+    size_t n = strlen(p);
+    auto buf = new char[](n);
+    if (n != 0) memcpy(buf.ptr, p, n);
+    return cast(string) buf; // immutable(char)[]
+}
+
+// ---------------- expand implementation ----------------
+
+struct ExpandApp {
+    // When repeatedTab > 0, we use uniform stops every repeatedTab columns.
+    // When repeatedTab == 0, we use explicit stops from stops[].
+    uint repeatedTab;
+    enum MAX_STOPS = 512;
+    uint[MAX_STOPS] stops; // sorted, increasing
+    uint nStops;
+
+    void initDefaults() {
+        repeatedTab = 8;
+        nStops = 0;
+    }
+
+    // Parse -t ARG. Supports:
+    //  - a single integer N
+    //  - a comma-separated list: "4,8,12"
+    //  - a whitespace-separated list: "4 8 12"
     bool setTablist(string liststr) {
-        auto s = liststr.strip;
+        string s = trim(liststr);
         if (s.length == 0) return false;
 
-        // Single positive integer?
-        if (isAllDigits(s)) {
-            auto tmp = s.to!long;
-            if (tmp < 1) return false;
-            lastTab = cast(uint) tmp;
-            repeatedTab = cast(uint) tmp;
-            tabMap = null;
+        long single = parseInt(s);
+        if (single > 0) {
+            repeatedTab = cast(uint) single;
+            nStops = 0;
             return true;
         }
 
-        // Otherwise: comma-separated if it contains ',', else split on blanks
-        string[] parts;
-        if (s.indexOf(',') >= 0) parts = s.split(',').map!(a => a.strip).array;
-        else                     parts = s.split; // whitespace
+        // Explicit list mode
+        repeatedTab = 0;
+        nStops = 0;
 
-        if (parts.length < 2) return false;
-
-        uint last = 0;
-        // Build a bitmap sized to the largest stop
-        uint maxStop = 0;
-        foreach (p; parts) {
-            if (!isAllDigits(p)) return false;
-            auto curL = p.to!long;
-            if (curL < 1) return false;
-            auto cur = cast(uint) curL;
-            if (cur <= last) return false; // strictly increasing
-            last = cur;
-            if (cur > maxStop) maxStop = cur;
+        // detect if commas are present
+        bool hasComma = false;
+        for (size_t i = 0; i < s.length; ++i) {
+            if (s[i] == ',') { hasComma = true; break; }
         }
 
-        tabMap = new bool[maxStop + 1]; // 1-based
-        foreach (p; parts) {
-            auto cur = cast(uint) p.to!long;
-            tabMap[cur] = true;
-            lastTab = cur;
+        size_t i = 0;
+        uint prev = 0;
+        while (i < s.length) {
+            // skip separators
+            if (hasComma) {
+                while (i < s.length && (s[i] == ' ' || s[i] == '\t' || s[i] == ',')) ++i;
+            } else {
+                while (i < s.length && (s[i] == ' ' || s[i] == '\t')) ++i;
+            }
+            if (i >= s.length) break;
+
+            // parse number token
+            size_t start = i;
+            while (i < s.length) {
+                char c = s[i];
+                bool sep = hasComma ? (c == ',') : (c == ' ' || c == '\t');
+                if (sep) break;
+                ++i;
+            }
+            string tok = trim(s[start .. i]);
+            long v = parseInt(tok);
+            if (v < 1) return false;
+
+            uint u = cast(uint) v;
+            if (u <= prev) return false;
+            if (nStops >= MAX_STOPS) return false;
+            stops[nStops++] = u;
+            prev = u;
+
+            // if comma-separated, skip the comma (already skipped above by sep loop)
         }
 
-        repeatedTab = 0; // disable repeated tabs when explicit list provided
+        if (nStops < 2) return false; // need at least two explicit stops for usefulness
         return true;
     }
 
-    int run(string[] files) {
-        if (files.length == 0) {
-            return processFile(stdin);
+    static void outChar(char c) {
+        fputc(c, stdout);
+    }
+
+    static void outSpace(ref uint col) {
+        fputc(' ', stdout);
+        ++col;
+    }
+
+    void advanceRTab(ref uint col) {
+        uint W = repeatedTab;
+        uint modv = (col - 1) % W;
+        uint spaces = (W == 0) ? 1u : (W - modv);
+        for (uint k = 0; k < spaces; ++k) outSpace(col);
+    }
+
+    void advanceTabList(ref uint col) {
+        if (nStops == 0) { outSpace(col); return; }
+        // Find first stop >= col
+        uint target = 0;
+        for (uint idx = 0; idx < nStops; ++idx) {
+            uint stop = stops[idx];
+            if (stop >= col) { target = stop; break; }
         }
+        if (target == 0) { outSpace(col); return; }
+        while (col <= target) outSpace(col);
+    }
+
+    int processFP(FILE* fp) {
+        uint col = 1;
+        for (;;) {
+            int ich = fgetc(fp);
+            if (ich == EOF) break;
+            char ch = cast(char) ich;
+
+            // avoid final switch; use normal switch
+            switch (ch) {
+                case '\b':
+                    outChar(ch);
+                    if (col > 1) --col;
+                    break;
+
+                case '\r':
+                case '\n':
+                    outChar(ch);
+                    col = 1;
+                    break;
+
+                case '\t':
+                    if (repeatedTab != 0) advanceRTab(col);
+                    else                  advanceTabList(col);
+                    break;
+
+                default:
+                    outChar(ch);
+                    ++col;
+                    break;
+            }
+        }
+        return 0;
+    }
+
+    // files: empty → stdin; "-" → stdin; else fopen(path,"rb")
+    int run(string[] files) {
+        if (files.length == 0) return processFP(stdin);
 
         int rc = 0;
-        foreach (path; files) {
-            if (path == "-" ) { rc |= processFile(stdin); continue; }
-            File f;
-            try {
-                f = File(path, "rb");
-            } catch (Throwable) {
-                stderr.writefln("%s: cannot open", path);
+        for (size_t i = 0; i < files.length; ++i) {
+            string path = files[i];
+            if (path.length == 1 && path[0] == '-') { rc |= processFP(stdin); continue; }
+            FILE* fp = fopen(path.ptr, "rb"); // D strings are 0-terminated
+            if (fp is null) {
+                fprintf(stderr, "%.*s: cannot open\n", cast(int) path.length, path.ptr);
                 rc |= 1;
                 continue;
             }
-            rc |= processFile(f);
+            rc |= processFP(fp);
+            fclose(fp);
         }
         return rc;
     }
+}
 
-private:
-    static bool isAllDigits(string s) {
-        foreach (c; s) if (c < '0' || c > '9') return false;
-        return s.length > 0;
-    }
+// ---------------- argument parsing (plain loops) ----------------
 
-    // Output one space and advance column (1-based)
-    static void outSpace(ref uint column) {
-        stdout.putc(' ');
-        ++column;
-    }
+// Parses -tN, -t N, --tabs=N ; writes tabArg and files
+void parseArgs(ref string[] args, ref string tabArg, ref string[] files) {
+    tabArg = "";
+    files = null;
 
-    // Expand a tab using repeated-tab width (like original)
-    void advanceRTab(ref uint column) {
-        while ((column % repeatedTab) != 0)
-            outSpace(column);
-        outSpace(column); // move past the stop (matches original logic)
-    }
+    size_t i = 1; // skip program name
+    for (;;) {
+        if (i >= args.length) break;
+        string a = args[i];
 
-    // Expand a tab using explicit tab stops
-    void advanceTabList(ref uint column) {
-        if (column >= lastTab) {
-            outSpace(column);
-            return;
+        // "-tN" or "-t"
+        if (a.length >= 2 && a[0] == '-' && a[1] == 't') {
+            if (a.length > 2) {
+                tabArg = a[2 .. a.length]; // "-tN"
+                ++i;
+            } else {
+                if (i + 1 < args.length) {
+                    tabArg = args[i + 1];
+                    i += 2;
+                } else {
+                    ++i; // missing arg; continue
+                }
+            }
+            continue;
         }
-        while (column < lastTab) {
-            outSpace(column);
-            if (column < tabMap.length && tabMap[column])
-                break;
-        }
-        outSpace(column); // one more after reaching the stop (matches original)
-    }
 
-    int processFile(ref File f) {
-        uint column = 1; // columns are 1-based
-        while (!f.eof) {
-            // File.getc returns int (or -1 at EOF)
-            auto ch = f.getc();
-            if (ch == -1) break;
-
-            final switch (cast(char) ch) {
-                case '\b':
-                    stdout.putc(cast(char) ch);
-                    if (column > 1) --column;
-                    break;
-                case '\r':
-                case '\n':
-                    stdout.putc(cast(char) ch);
-                    column = 1;
-                    break;
-                case '\t':
-                    if (repeatedTab != 0) advanceRTab(column);
-                    else                  advanceTabList(column);
-                    break;
-                default:
-                    stdout.putc(cast(char) ch);
-                    ++column;
-                    break;
+        // "--tabs=N" manual prefix check
+        char[] pref = "--tabs=".dup;
+        bool hasPref = false;
+        if (a.length > pref.length) {
+            hasPref = true;
+            for (size_t k = 0; k < pref.length; ++k) {
+                if (a[k] != pref[k]) { hasPref = false; break; }
             }
         }
-        // std.stdio doesn't expose ferror directly; assume OK if we got here
-        return 0;
+        if (hasPref) {
+            tabArg = a[pref.length .. a.length];
+            ++i;
+            continue;
+        }
+
+        // "--" ends options
+        if (a.length == 2 && a[0] == '-' && a[1] == '-') { ++i; break; }
+
+        // first non-option → files
+        break;
+    }
+
+    if (i < args.length) {
+        // slice remainder
+        files = args[i .. args.length];
     }
 }
 
-int main(string[] args) {
-    auto app = new ExpandApp();
+extern(C) int main(int argc, char** argv) {
+    // convert argv → D string[]
+    string[] args;
+    args.length = cast(size_t) argc;
+    for (int i = 0; i < argc; ++i) {
+        args[i] = dupCStr(argv[i]);
+    }
+
+    ExpandApp app;
+    app.initDefaults();
 
     string tabArg;
     string[] files;
+    parseArgs(args, tabArg, files);
 
-    try {
-        auto help = getopt(args,
-            "t|tabs", &tabArg
-        );
-        files = help.args; // remaining are files (or "-" for stdin)
-    } catch (Exception e) {
-        stderr.writeln(e.msg);
-        return 2;
-    }
-
-    if (tabArg.length) {
+    if (tabArg.length != 0) {
         if (!app.setTablist(tabArg)) {
-            stderr.writeln("expand: invalid tab list");
+            fprintf(stderr, "expand: invalid tab list\n");
             return 1;
         }
     }

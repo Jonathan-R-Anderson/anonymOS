@@ -1,286 +1,166 @@
-// df.d — D translation of the provided C/C++ "df" source
 module df;
 
-import std.stdio : stdout, stderr, write, writef, writefln, writeln;
-import std.string : fromStringz, toStringz;
-import std.getopt : getopt, defaultGetoptPrinter;
-import std.conv : to;
-import std.typecons : Nullable;
-import std.algorithm : max;
-import std.array : array;
+import std.stdio : writefln, writeln, stderr;
+import std.string : split, strip, toStringz, replace, startsWith;
+import std.getopt : getopt, config;
+import std.file : readText;
 
-// ---- C/POSIX interop ----
-extern (C) @system:
+version (linux) {} else
+    static assert(0, "This df.d targets Linux only.");
 
-version (linux)
-{
-    import core.sys.linux.mntent : setmntent, getmntent, endmntent, mntent;
-    import core.sys.linux.sys.statfs : statfs, statfs as c_statfs; // alias name clash guard
-    import core.sys.posix.sys.stat : stat, stat as c_stat, lstat as c_lstat;
-    import core.sys.posix.sys.types : dev_t;
-    import core.stdc.stdio : FILE, perror, fopen, fclose;
-    enum char* MOUNT_PATH = "/proc/mounts".ptr;
-}
-else version (OSX)
-{
-    import core.sys.darwin.sys.mount : getmntinfo, statfs, MNT_WAIT;
-    import core.sys.posix.sys.stat : stat, stat as c_stat, lstat as c_lstat;
-    import core.sys.posix.sys.types : dev_t;
-    import core.stdc.stdio : perror;
-}
+// ---- Minimal Linux statvfs binding (no druntime dependency) ----
+extern(C) @system nothrow {
+    struct StatVFS {
+        ulong  f_bsize;
+        ulong  f_frsize;
+        ulong  f_blocks;
+        ulong  f_bfree;
+        ulong  f_bavail;
+        ulong  f_files;
+        ulong  f_ffree;
+        ulong  f_favail;
+        ulong  f_fsid;
+        ulong  f_flag;
+        ulong  f_namemax;
+        ulong[6] __f_spare; // padding
+    }
 
-extern (C) @system nothrow:
-version (linux)
-{
-    // statfs function
-    int statfs(const(char)* path, statfs* buf);
-}
-else version (OSX)
-{
-    // statfs exists in darwin mount.h as well
-    int statfs(const(char)* path, statfs* buf);
+    // Expose as c_statvfs in D, but link to libc's "statvfs".
+    pragma(mangle, "statvfs")
+    int c_statvfs(const char* path, StatVFS* buf);
 }
 
-extern (C) @system:
-int stat(const(char)* path, stat* buf);
-
-// ---- D side ----
-@safe:
-
-final class FSListEnt
-{
+// ---- State ----
+final class FS {
     string devname;
     string dir;
-    dev_t  dev;
-    bool   masked;
+    bool   selected;
 }
 
-__gshared ulong   optBlockSize = 512;
-__gshared bool    optPortable = false;
-__gshared bool    optTotalAlloc = false; // parsed but (like original) not used in output
-__gshared bool    fslistMasked = false;
+__gshared ulong optBlockSize = 512;
+__gshared bool  optPortable  = false;
+__gshared bool  optTotalFlag = false;
 
-__gshared FSListEnt[] fslist;
+__gshared FS[] mounts;
 
-// ---- Helpers ----
-
-private void pushMount(string devname, string dir)
-@system
-{
-    // Determine device id to match paths: prefer stat(devname).st_rdev,
-    // else stat(dir).st_dev, else -1
-    stat st;
-    dev_t dv = cast(dev_t) -1;
-
-    if (c_stat(devname.toStringz, &st) == 0)
-        dv = st.st_rdev;
-    else if (c_stat(dir.toStringz, &st) == 0)
-        dv = st.st_dev;
-
-    auto ent = new FSListEnt;
-    ent.devname = devname;
-    ent.dir = dir;
-    ent.dev = dv;
-    ent.masked = false;
-    fslist ~= ent;
+// /proc/self/mounts escapes spaces as \040 etc.
+@system string decodeTok(string s) {
+    // backtick literals avoid D escape processing
+    return s.replace(`\040`, " ")
+            .replace(`\011`, "\t")
+            .replace(`\012`, "\n")
+            .replace(`\134`, `\`);
 }
 
-version (linux)
-private int readMountList()
-@system
-{
-    auto f = setmntent(MOUNT_PATH, "r");
-    if (f is null)
-    {
-        perror(MOUNT_PATH);
+@system int loadMounts() {
+    string txt;
+    try { txt = readText("/proc/self/mounts"); }
+    catch (Exception e) {
+        stderr.writeln("df: failed to read /proc/self/mounts: ", e.msg);
         return 1;
     }
 
-    scope(exit) endmntent(f);
-
-    mntent* me;
-    while ((me = getmntent(f)) !is null)
-    {
-        auto dev = fromStringz(me.mnt_fsname);
-        auto dir = fromStringz(me.mnt_dir);
-        pushMount(dev, dir);
-    }
-    return 0;
-}
-else version (OSX)
-private int readMountList()
-@system
-{
-    statfs* mounts = null;
-    auto n = getmntinfo(&mounts, MNT_WAIT);
-    if (n < 0)
-    {
-        perror("getmntinfo");
-        return 1;
-    }
-    foreach (i; 0 .. n)
-    {
-        auto dev = fromStringz(mounts[i].f_mntfromname);
-        auto dir = fromStringz(mounts[i].f_mntonname);
-        pushMount(dev, dir);
+    foreach (line; txt.split('\n')) {
+        auto L = line.strip;
+        if (!L.length) continue;
+        auto cols = L.split(" ");
+        if (cols.length < 2) continue;
+        auto dev = decodeTok(cols[0]);
+        auto dir = decodeTok(cols[1]);
+        auto f = new FS;
+        f.devname = dev;
+        f.dir = dir;
+        f.selected = false;
+        mounts ~= f;
     }
     return 0;
 }
 
-private void maskAll()
-@safe
-{
-    foreach (ref e; fslist) e.masked = true;
+@system bool statOne(string path, out ulong total, out ulong used, out ulong avail) {
+    StatVFS s;
+    if (c_statvfs(path.toStringz, &s) != 0) return false;
+
+    // Prefer f_frsize if nonzero, else f_bsize
+    ulong blksz = s.f_frsize != 0 ? s.f_frsize : s.f_bsize;
+
+    // Convert blocks to requested units
+    auto toUnits = (ulong blocks) => (blocks * blksz) / optBlockSize;
+
+    total = toUnits(s.f_blocks);
+    auto free_ = toUnits(s.f_bfree);
+    avail = toUnits(s.f_bavail);
+    used  = total >= free_ ? total - free_ : 0;
+    return true;
 }
 
-private int maskFromPath(string path)
-@system
-{
-    // Mark filesystems whose st_dev matches stat(path).st_dev as masked=true
-    stat st;
-    if (c_stat(path.toStringz, &st) != 0)
-    {
-        perror(path.toStringz);
-        return 1;
-    }
-
-    fslistMasked = true;
-    foreach (ref e; fslist)
-    {
-        if (e.dev == st.st_dev)
-            e.masked = true;
-    }
-    return 0;
-}
-
-version (linux)
-private int outputOne(FSListEnt e)
-@system
-{
-    statfs sf;
-    if (statfs(e.dir.toStringz, &sf) < 0)
-    {
-        perror(e.dir.toStringz);
-        return 1;
-    }
-
-    ulong blksz = cast(ulong) sf.f_bsize;
-
-    // totals in chosen block size
-    auto total = cast(ulong) sf.f_blocks * blksz / optBlockSize;
-    auto avail = cast(ulong) sf.f_bavail * blksz / optBlockSize;
-    auto free_ = cast(ulong) sf.f_bfree  * blksz / optBlockSize;
-
-    if (total == 0) return 0;
-
-    auto used = total - free_;
-    auto pct  = ((total - avail) * 100) / total;
-
-    if (optPortable)
-        writefln("%-20s %9s %9s %9s %7s%% %s",
-                 e.devname, total, used, avail, pct, e.dir);
-    else
-        writefln("%-20s %9s %9s %9s %3s%% %s",
-                 e.devname, total, used, avail, pct, e.dir);
-    return 0;
-}
-else version (OSX)
-private int outputOne(FSListEnt e)
-@system
-{
-    statfs sf;
-    if (statfs(e.dir.toStringz, &sf) < 0)
-    {
-        perror(e.dir.toStringz);
-        return 1;
-    }
-
-    ulong blksz = cast(ulong) sf.f_bsize;
-
-    auto total = cast(ulong) sf.f_blocks * blksz / optBlockSize;
-    auto avail = cast(ulong) sf.f_bavail * blksz / optBlockSize;
-    auto free_ = cast(ulong) sf.f_bfree  * blksz / optBlockSize;
-
-    if (total == 0) return 0;
-
-    auto used = total - free_;
-    auto pct  = ((total - avail) * 100) / total;
-
-    if (optPortable)
-        writefln("%-20s %9s %9s %9s %7s%% %s",
-                 e.devname, total, used, avail, pct, e.dir);
-    else
-        writefln("%-20s %9s %9s %9s %3s%% %s",
-                 e.devname, total, used, avail, pct, e.dir);
-    return 0;
-}
-
-private int outputList()
-@safe
-{
-    int rc = 0;
-
+@system void header() {
     if (optPortable)
         writefln("Filesystem         %4s-blocks      Used Available Capacity Mounted on", optBlockSize);
     else
         writefln("Filesystem         %4s-blocks      Used Available Use%% Mounted on", optBlockSize);
-
-    foreach (e; fslist)
-        if (e.masked)
-            rc |= outputOne(e);
-
-    return rc;
 }
 
-// ---- Main ----
-int main(string[] args)
-{
-    // Flags: -k, -P, -t (parsing 't' for parity with original; output matches original behavior)
+@system int printFS(const FS e) {
+    ulong total, used, avail;
+    if (!statOne(e.dir, total, used, avail)) {
+        stderr.writeln("df: ", e.dir, ": statvfs failed");
+        return 1;
+    }
+    if (total == 0) return 0;
+
+    auto pct = ((total - avail) * 100) / total;
+
+    if (optPortable)
+        writefln("%-20s %9s %9s %9s %7s%% %s",
+                 e.devname, total, used, avail, pct, e.dir);
+    else
+        writefln("%-20s %9s %9s %9s %3s%% %s",
+                 e.devname, total, used, avail, pct, e.dir);
+    return 0;
+}
+
+@system void selectAll() { foreach (ref m; mounts) m.selected = true; }
+
+@system void selectByPaths(string[] paths) {
+    foreach (ref m; mounts) m.selected = false;
+
+    foreach (p; paths) {
+        size_t best = size_t.max, bestLen = 0;
+        foreach (i, m; mounts) {
+            if (p.length >= m.dir.length && p.startsWith(m.dir)) {
+                if (m.dir.length > bestLen) { best = i; bestLen = m.dir.length; }
+            }
+        }
+        if (best != size_t.max) mounts[best].selected = true;
+    }
+
+    bool any = false; foreach (m; mounts) if (m.selected) { any = true; break; }
+    if (!any) selectAll();
+}
+
+@system int main(string[] args) {
     bool kFlag = false, pFlag = false, tFlag = false;
 
-    string[] paths; // positional args
+    auto opt = getopt(args,
+        config.passThrough,
+        "k", &kFlag,
+        "P|portability", &pFlag,
+        "t", &tFlag
+    );
+    auto paths = args;
 
-    try
-    {
-        auto help = getopt(args,
-            std.getopt.config.passThrough,
-            "k", &kFlag,
-            "P|portability", &pFlag,
-            "t", &tFlag
-        );
-
-        // Gather remaining positionals
-        paths = help.args.dup;
-    }
-    catch (Exception e)
-    {
-        stderr.writeln(e.msg);
-        return 2;
-    }
 
     if (kFlag) optBlockSize = 1024;
-    optPortable = pFlag;
-    optTotalAlloc = tFlag; // retained (not used), to mirror original CLI
+    optPortable  = pFlag;
+    optTotalFlag = tFlag; // kept for CLI parity
 
-    // Pre-walk: read mount list
-    if (auto r = readMountList())
-        return r;
+    if (auto rc = loadMounts()) return rc;
 
+    if (paths.length == 0) selectAll();
+    else                   selectByPaths(paths);
+
+    header();
     int rc = 0;
-
-    if (paths.length == 0)
-    {
-        // No args: mask all (original df does this if no path matched)
-        maskAll();
-    }
-    else
-    {
-        foreach (p; paths)
-            rc |= maskFromPath(p);
-        if (!fslistMasked)
-            maskAll();
-    }
-
-    rc |= outputList();
+    foreach (m; mounts) if (m.selected) rc |= printFS(m);
     return rc;
 }

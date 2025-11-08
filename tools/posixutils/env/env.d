@@ -2,20 +2,19 @@
 module env_tool;
 
 import std.stdio : stderr, writef, writeln;
-import std.getopt : getopt, defaultGetoptPrinter;
+import std.getopt : getopt;
 import std.string : indexOf, toStringz;
 import std.conv : to;
+import core.stdc.string : strerror;
+import core.stdc.errno  : errno;
 
 // ---------- POSIX interop ----------
-extern (C):
+extern (C) {
     __gshared char** environ; // current process environment
 
     // execve(path, argv, envp)
     int execve(const(char)*, const(char*)* /*argv*/, const(char*)* /*envp*/);
-
-    // strerror / errno for error reporting on exec failure
-    import core.stdc.string : strerror;
-    import core.stdc.errno  : errno;
+}
 
 // ---------- Globals / options ----------
 __gshared bool optNoInherit = false;
@@ -32,13 +31,14 @@ bool isEnvKV(string s)
     return pos > 0 && pos < s.length - 1;
 }
 
-bool envListed(string key, in string[] envList)
+bool envListed(in const(char)[] key, in string[] envList)
 {
     foreach (kv; envList)
     {
         auto pos = kv.indexOf('=');
         if (pos <= 0) continue;
-        if (kv[0 .. pos] == key) return true;
+        if (kv[0 .. pos] == key)    // compares const(char)[] with string fine
+            return true;
     }
     return false;
 }
@@ -52,18 +52,17 @@ int countEnv()
 
 int doEnv(ref Lists L)
 {
-    // Build argv for execve (null-terminated)
+    // must have a utility to exec
     if (L.argList.length == 0)
         return 127;
 
-    auto argc = L.argList.length;
-    auto argv = new const(char)*[argc + 1];
+    // Build argv for execve (null-terminated)
+    const argc = cast(int)L.argList.length;
+    auto argv = new const(char)*[argc + 1]; // +1 for null
     foreach (i, a; L.argList) argv[i] = a.toStringz;
-    argv[$ - 1] = null; // last element before null
-    argv[$]      = null; // explicit terminator
+    argv[$ - 1] = null; // single terminator
 
     // Build envp (null-terminated)
-    // Start with provided pairs
     size_t nEnv = L.envList.length + 1; // +1 for terminator
     if (!optNoInherit) nEnv += countEnv();
 
@@ -75,10 +74,9 @@ int doEnv(ref Lists L)
 
     if (!optNoInherit)
     {
+        import std.string : fromStringz;
         for (int i = 0; environ !is null && environ[i] !is null; ++i)
         {
-            // Keep inherited env only if not overridden by L.envList
-            import std.string : fromStringz;
             auto kv = fromStringz(environ[i]);
             auto pos = kv.indexOf('=');
             if (pos <= 0) continue;
@@ -100,20 +98,16 @@ int doEnv(ref Lists L)
 
 int main(string[] args)
 {
-    // Parse: -i, then a sequence of name=value pairs
-    // until the first non-env (or "=..."), then utility + its args.
     Lists L;
     bool parsingEnv = true;
 
     try
     {
-        auto help = getopt(
-            args,
-            "i", &optNoInherit
-        );
+        auto res = getopt(args, "i", &optNoInherit);
 
-        // Remaining positionals:
-        foreach (arg; help.args)
+        // After getopt, remaining positionals are left in args.
+        // args[0] is program name; positionals start at 1
+        foreach (arg; args[1 .. $])
         {
             if (parsingEnv && (!isEnvKV(arg) || arg[0] == '='))
                 parsingEnv = false;
@@ -130,17 +124,10 @@ int main(string[] args)
         return 2;
     }
 
-    // Validate like original:
-    // if -i and no env pairs provided, usage;
-    // if no utility provided, usage.
-    if (optNoInherit && L.envList.length == 0)
-    {
-        stderr.writef("Usage: %s [name=value]... utility [args]...\n", args[0]);
-        return 1;
-    }
+    // Basic usage checks
     if (L.argList.length == 0)
     {
-        stderr.writef("Usage: %s [name=value]... utility [args]...\n", args[0]);
+        stderr.writef("Usage: %s [-i] [name=value]... utility [args]...\n", args[0]);
         return 1;
     }
 

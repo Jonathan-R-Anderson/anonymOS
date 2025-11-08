@@ -5,7 +5,6 @@ extern (C) {
     // From the Bison-generated parser (expr_parse.c / .o)
     int  yyparse();
     __gshared long yylval;          // must match YYSTYPE long long
-    void yyerror(const char* s);
 }
 
 import core.stdc.stdio  : fprintf, stderr;

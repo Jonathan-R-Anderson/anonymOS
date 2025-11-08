@@ -9,6 +9,8 @@ BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
 SH_ROOT="${SH_ROOT:-$ROOT/-sh}"
 SH_TARGET="${SH_TARGET:-lfe-sh}"
 SHELL_DC="${SHELL_DC:-ldc2}"
+POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/tools/posixutils}"
+POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
 
 # Cross target + sysroot (x86_64 only for this script)
 : "${TARGET:=x86_64-unknown-elf}"
@@ -22,6 +24,8 @@ OUT_DIR="${OUT_DIR:-build}"
 KERNEL_O="$OUT_DIR/kernel.o"
 STARTUP_O="$OUT_DIR/startup.o"
 KERNEL_ELF="$OUT_DIR/kernel.elf"
+POSIXUTILS_OUT="${POSIXUTILS_OUT:-$OUT_DIR/posixutils}"
+POSIXUTILS_BIN_DIR="$POSIXUTILS_OUT/bin"
 
 # ISO packaging
 ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
@@ -73,6 +77,7 @@ need cmake
 need make
 need ldc2
 need grub-mkrescue
+command -v python3 >/dev/null 2>&1 || { echo "Missing tool: python3"; exit 1; }
 command -v xorriso >/dev/null 2>&1 || command -v mkisofs >/dev/null 2>&1 || command -v genisoimage >/dev/null 2>&1 || {
   echo "Missing ISO creation tool (xorriso, mkisofs, or genisoimage)"; exit 1; }
 
@@ -195,6 +200,22 @@ else
   echo "[!] Skipping shell build: $SH_ROOT/src missing" >&2
 fi
 
+# ===================== Build POSIX utilities =====================
+if [ -d "$POSIXUTILS_ROOT" ]; then
+  echo "[*] Building POSIX utilities from $POSIXUTILS_ROOT"
+  POSIX_ARGS=("$ROOT/tools/build_posixutils.py" --dc "$POSIXUTILS_DC" --output "$POSIXUTILS_BIN_DIR")
+  if [ -n "${POSIXUTILS_FLAGS:-}" ]; then
+    POSIX_ARGS+=(--flags "$POSIXUTILS_FLAGS")
+  fi
+  python3 "${POSIX_ARGS[@]}"
+  if [ -d "$POSIXUTILS_BIN_DIR" ]; then
+    mkdir -p "$OUT_DIR/shell/bin"
+    cp -a "$POSIXUTILS_BIN_DIR/." "$OUT_DIR/shell/bin/"
+  fi
+else
+  echo "[!] POSIX utilities source directory not found: $POSIXUTILS_ROOT" >&2
+fi
+
 # ===================== GRUB staging & ISO =====================
 rm -rf "$ISO_STAGING_DIR"
 mkdir -p "$ISO_STAGING_DIR/boot/grub"
@@ -207,6 +228,10 @@ if [ -f "$SHELL_BINARY" ]; then
   cp "$SHELL_BINARY" "$SHELL_DEST/"
   if [ -d "$SH_ROOT/config" ]; then
     cp -a "$SH_ROOT/config/." "$SHELL_DEST/"
+  fi
+  if [ -d "$POSIXUTILS_BIN_DIR" ]; then
+    mkdir -p "$SHELL_DEST/bin"
+    cp -a "$POSIXUTILS_BIN_DIR/." "$SHELL_DEST/bin/"
   fi
 fi
 

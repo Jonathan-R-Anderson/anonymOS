@@ -94,7 +94,7 @@ struct ZState {
 }
 
 // Accessors (keep original style; ref to allow assignments like maxbits(z)=…)
-private @property FILE*       fp(ZState* z)            { return z.fp; }
+private @property ref FILE*   fp(ZState* z)            { return z.fp; }
 private @property ref uint    n_bits(ZState* z)        { return z.n_bits; }
 private @property ref uint    maxbits(ZState* z)       { return z.maxbits; }
 private @property ref code_int maxcode(ZState* z)      { return z.maxcode; }
@@ -154,7 +154,6 @@ static int  cl_block(ZState* zs);
 static void cl_hash (ZState* zs, count_int cl_hsize);
 static int  output  (ZState* zs, code_int ocode);
 static code_int getcode(ZState* zs);
-char* endptr = null;
 // ------------------------------ Writer API ----------------------------------
 
 // Return size_t to match compress.d; on error, set errno and return 0.
@@ -165,72 +164,78 @@ extern(C) size_t compress_zwrite(void* cookie, const void* wbp, size_t num)
   size_t count = num;
   auto bp = cast(const(char_type)*)wbp;
 
-  if (zs.state == ZStateTag.S_MIDDLE) goto middle;
-  zs.state = ZStateTag.S_MIDDLE;
+  if (zs.state != ZStateTag.S_MIDDLE) {
+    zs.state = ZStateTag.S_MIDDLE;
 
-  maxmaxcode(zs) = cast(code_int)1 << maxbits(zs);
-  // write magic header
-  if (fwrite(MAGIC.ptr, 1, MAGIC.length, fp(zs)) != MAGIC.length) {
-    errno = EINVAL; return 0;
+    maxmaxcode(zs) = cast(code_int)1 << maxbits(zs);
+    // write magic header
+    if (fwrite(MAGIC.ptr, 1, MAGIC.length, fp(zs)) != MAGIC.length) {
+      errno = EINVAL; return 0;
+    }
+
+    // third header byte: (maxbits | block_compress)
+    char_type tmp = cast(char_type)(maxbits(zs) | block_compress(zs));
+    if (fwrite(&tmp, 1, 1, fp(zs)) != 1) { errno = EINVAL; return 0; }
+
+    offset(zs)     = 0;
+    bytes_out(zs)  = 3; // header bytes count
+    out_count(zs)  = 0;
+    clear_flg(zs)  = 0;
+    ratio(zs)      = 0;
+    in_count(zs)   = 1;
+    checkpoint(zs) = CHECK_GAP;
+    maxcode(zs)    = MAXCODE(n_bits(zs) = INIT_BITS);
+    free_ent(zs)   = (block_compress(zs) != 0) ? FIRST : 256;
+
+    ent(zs) = *bp++;
+    --count;
+
+    hshift(zs) = 0;
+    for (fcode(zs) = cast(long)hsize(zs); fcode(zs) < 65536; fcode(zs) *= 2)
+      hshift(zs)++;
+    hshift(zs) = 8 - hshift(zs);
+
+    hsize_reg(zs) = hsize(zs);
+    cl_hash(zs, cast(count_int)hsize_reg(zs)); // clear hash
   }
 
-  // third header byte: (maxbits | block_compress)
-  char_type tmp = cast(char_type)((maxbits(zs)) | block_compress(zs));
-  if (fwrite(&tmp, 1, 1, fp(zs)) != 1) { errno = EINVAL; return 0; }
-
-  offset(zs)     = 0;
-  bytes_out(zs)  = 3; // header bytes count
-  out_count(zs)  = 0;
-  clear_flg(zs)  = 0;
-  ratio(zs)      = 0;
-  in_count(zs)   = 1;
-  checkpoint(zs) = CHECK_GAP;
-  maxcode(zs)    = MAXCODE(n_bits(zs) = INIT_BITS);
-  free_ent(zs)   = (block_compress(zs) != 0) ? FIRST : 256;
-
-  ent(zs) = *bp++;
-  --count;
-
-  hshift(zs) = 0;
-  for (fcode(zs) = cast(long)hsize(zs); fcode(zs) < 65536; fcode(zs) *= 2)
-    hshift(zs)++;
-  hshift(zs) = 8 - hshift(zs);
-
-  hsize_reg(zs) = hsize(zs);
-  cl_hash(zs, cast(count_int)hsize_reg(zs)); // clear hash
-
-middle:
-  for (code_int i = 0; count--; )
-  {
+  while (count != 0) {
+    count--;
     int c = *bp++;
     in_count(zs)++;
     fcode(zs) = ((cast(long)c) << maxbits(zs)) + ent(zs);
-    i = ((c << hshift(zs)) ^ ent(zs)); // xor hashing
+    auto slot = ((c << hshift(zs)) ^ ent(zs)); // xor hashing
+    int disp = 0;
+    bool matched = false;
 
-    if (htab(zs)[i] == fcode(zs)) {
-      ent(zs) = codetab(zs)[i];
-      continue;
-    } else if (htab(zs)[i] < 0) {
-      // empty slot
-      goto nomatch;
+    while (true) {
+      auto entry = htab(zs)[slot];
+      if (entry == fcode(zs)) {
+        ent(zs) = codetab(zs)[slot];
+        matched = true;
+        break;
+      }
+      if (entry < 0) {
+        break;
+      }
+      if (disp == 0) {
+        disp = cast(int)hsize_reg(zs) - cast(int)slot;
+        if (slot == 0) disp = 1;
+      }
+      slot -= disp;
+      if (slot < 0) slot += hsize_reg(zs);
     }
-    int disp = cast(int)hsize_reg(zs) - cast(int)i;
-    if (i == 0) disp = 1;
-probe:
-    if ((i -= disp) < 0) i += hsize_reg(zs);
-    if (htab(zs)[i] == fcode(zs)) {
-      ent(zs) = codetab(zs)[i];
-      continue;
-    }
-    if (htab(zs)[i] >= 0) goto probe;
 
-nomatch:
+    if (matched) {
+      continue;
+    }
+
     if (output(zs, ent(zs)) == -1) { errno = EINVAL; return 0; }
     out_count(zs)++;
     ent(zs) = c;
     if (free_ent(zs) < maxmaxcode(zs)) {
-      codetab(zs)[i] = cast(ushort)free_ent(zs)++;
-      htab(zs)[i]    = fcode(zs);
+      codetab(zs)[slot] = cast(ushort)free_ent(zs)++;
+      htab(zs)[slot]    = fcode(zs);
     } else if (cast(count_int)in_count(zs) >= checkpoint(zs) && block_compress(zs)) {
       if (cl_block(zs) == -1) { errno = EINVAL; return 0; }
     }
@@ -383,77 +388,109 @@ extern(C) size_t compress_zread(void* cookie, void* rbp, size_t num)
   size_t count = num;
   auto bp = cast(char_type*)rbp;
 
-  final switch (zs.state) {
-    case ZStateTag.S_START: zs.state = ZStateTag.S_MIDDLE; break;
-    case ZStateTag.S_MIDDLE: goto middle;
-    case ZStateTag.S_EOF: goto eof;
+  if (zs.state == ZStateTag.S_EOF) {
+    return num - count;
   }
 
-  // read & check header
-  char_type[3] hdr;
-  if (fread(hdr.ptr, 1, hdr.length, fp(zs)) != hdr.length ||
-      memcmp(hdr.ptr, MAGIC.ptr, MAGIC.length) != 0) {
-    errno = EINVAL;
-    return 0;
+  if (zs.state == ZStateTag.S_START) {
+    zs.state = ZStateTag.S_MIDDLE;
+
+    char_type[3] hdr;
+    if (fread(hdr.ptr, 1, hdr.length, fp(zs)) != hdr.length ||
+        memcmp(hdr.ptr, MAGIC.ptr, MAGIC.length) != 0) {
+      errno = EINVAL;
+      return 0;
+    }
+    maxbits(zs)        = hdr[2];
+    block_compress(zs) = (maxbits(zs) & BLOCK_MASK);
+    maxbits(zs)       &= BIT_MASK;
+    maxmaxcode(zs)     = cast(code_int)1 << maxbits(zs);
+    if (maxbits(zs) > BITS) { errno = EINVAL; return 0; }
+
+    maxcode(zs) = MAXCODE(n_bits(zs) = INIT_BITS);
+    for (code_int initCode = 255; initCode >= 0; initCode--) {
+      codetab(zs)[initCode] = 0; // prefix
+      set_tab_suffix(zs, initCode, cast(char_type)initCode); // suffix
+    }
+    free_ent(zs) = (block_compress(zs) != 0) ? FIRST : 256;
+
+    auto firstCode = getcode(zs);
+    if (firstCode == -1) {
+      return 0; // EOF early
+    }
+    oldcode(zs) = firstCode;
+    finchar(zs) = cast(int)firstCode;
+
+    *bp++ = cast(char_type)finchar(zs);
+    count--;
+    stackp(zs) = de_stack(zs);
   }
-  maxbits(zs)        = hdr[2];
-  block_compress(zs) = (maxbits(zs) & BLOCK_MASK);
-  maxbits(zs)       &= BIT_MASK;
-  maxmaxcode(zs)     = cast(code_int)1 << maxbits(zs);
-  if (maxbits(zs) > BITS) { errno = EINVAL; return 0; }
 
-  maxcode(zs) = MAXCODE(n_bits(zs) = INIT_BITS);
-  for (code(zs) = 255; code(zs) >= 0; code(zs)--) {
-    codetab(zs)[code(zs)] = 0; // prefix
-    set_tab_suffix(zs, code(zs), cast(char_type)code(zs)); // suffix
+  auto stackBase = de_stack(zs);
+  if (stackp(zs) > stackBase) {
+    while (stackp(zs) > stackBase) {
+      if (count == 0) {
+        return num - count;
+      }
+      count--;
+      stackp(zs)--;
+      *bp++ = *stackp(zs);
+    }
+    stackp(zs) = stackBase;
   }
-  free_ent(zs) = (block_compress(zs) != 0) ? FIRST : 256;
 
-  finchar(zs) = oldcode(zs) = getcode(zs);
-  if (oldcode(zs) == -1) return 0; // EOF early
+  while (true) {
+    auto nextCode = getcode(zs);
+    if (nextCode < 0) {
+      zs.state = ZStateTag.S_EOF;
+      break;
+    }
 
-  *bp++ = cast(char_type)finchar(zs);
-  count--;
-  stackp(zs) = de_stack(zs);
-
-  while ((code(zs) = getcode(zs)) > -1) {
-    if ((code(zs) == CLEAR) && block_compress(zs)) {
-      for (code(zs) = 255; code(zs) >= 0; code(zs)--)
-        codetab(zs)[code(zs)] = 0; // reset prefix
+    if ((nextCode == CLEAR) && block_compress(zs)) {
+      for (code_int reset = 255; reset >= 0; reset--)
+        codetab(zs)[reset] = 0; // reset prefix
       clear_flg(zs) = 1;
       free_ent(zs)  = FIRST - 1;
-      if ((code(zs) = getcode(zs)) == -1) break;
+      nextCode = getcode(zs);
+      if (nextCode < 0) {
+        zs.state = ZStateTag.S_EOF;
+        break;
+      }
     }
 
-    incode(zs) = code(zs);
+    incode(zs) = nextCode;
 
-    if (code(zs) >= free_ent(zs)) {
+    auto codeValue = nextCode;
+    if (codeValue >= free_ent(zs)) {
       *stackp(zs)++ = cast(char_type)finchar(zs);
-      code(zs) = oldcode(zs);
+      codeValue = oldcode(zs);
     }
 
-    while (code(zs) >= 256) {
-      *stackp(zs)++ = get_tab_suffix(zs, code(zs));
-      code(zs) = codetab(zs)[code(zs)];
+    while (codeValue >= 256) {
+      *stackp(zs)++ = get_tab_suffix(zs, codeValue);
+      codeValue = codetab(zs)[codeValue];
     }
-    *stackp(zs)++ = finchar(zs) = get_tab_suffix(zs, code(zs));
+    finchar(zs) = get_tab_suffix(zs, codeValue);
+    *stackp(zs)++ = cast(char_type)finchar(zs);
 
-middle:
-    do {
-      if (count-- == 0) return num;
-      *bp++ = *--stackp(zs);
-    } while (stackp(zs) > de_stack(zs));
+    while (stackp(zs) > de_stack(zs)) {
+      if (count == 0) {
+        return num - count;
+      }
+      count--;
+      stackp(zs)--;
+      *bp++ = *stackp(zs);
+    }
 
-    if ((code(zs) = free_ent(zs)) < maxmaxcode(zs)) {
-      codetab(zs)[code(zs)] = cast(ushort)oldcode(zs);
-      set_tab_suffix(zs, code(zs), cast(char_type)finchar(zs));
-      free_ent(zs) = code(zs) + 1;
+    auto freeSlot = free_ent(zs);
+    if (freeSlot < maxmaxcode(zs)) {
+      codetab(zs)[freeSlot] = cast(ushort)oldcode(zs);
+      set_tab_suffix(zs, freeSlot, cast(char_type)finchar(zs));
+      free_ent(zs) = freeSlot + 1;
     }
     oldcode(zs) = incode(zs);
   }
 
-  zs.state = ZStateTag.S_EOF;
-eof:
   return num - count;
 }
 

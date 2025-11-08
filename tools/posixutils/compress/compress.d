@@ -14,28 +14,28 @@
  *   "zcat"       => decompress to stdout (implies -c)
  *
  * Requires a lib that provides "zopen.h" API:
- *   void* compress_zopen(const char* path, const char* mode, int bits);
+ *   void*  compress_zopen(const char* path, const char* mode, int bits);
  *   size_t compress_zread(void* zfp, void* buf, size_t n);
  *   size_t compress_zwrite(void* zfp, const void* buf, size_t n);
- *   int compress_zclose(void* zfp);
+ *   int    compress_zclose(void* zfp);
  */
 
 module compress_d;
 
-import core.stdc.stdlib : exit, strtol;
-import core.stdc.string : strcmp, strlen, memmove, strrchr;
-import core.stdc.errno : errno, EPERM, EOPNOTSUPP;
-import core.sys.posix.sys.stat : stat, stat_t = stat, fstat, S_ISREG, chmod, chown, S_ISUID, S_ISGID,
-                                 S_IRWXU, S_IRWXG, S_IRWXO;
-import core.sys.posix.utime : utimbuf, utime;
-import core.sys.posix.unistd : unlink, isatty;
-import std.stdio : File, stdin, stdout, stderr;
-import std.getopt : getopt, config;
-import std.string : toStringz, fromStringz;
-import std.path : baseName;
-import std.conv : to;
-import std.algorithm : min;
-import std.math : isFinite;
+import core.stdc.stdlib  : exit, strtol;
+import core.stdc.string  : strcmp, strlen, memmove, strrchr;
+import core.stdc.errno   : errno, EPERM, EOPNOTSUPP;
+import core.sys.posix.sys.stat : stat_t, stat, fstat, S_ISREG, chmod,
+                                 S_ISUID, S_ISGID, S_IRWXU, S_IRWXG, S_IRWXO;
+import core.sys.posix.utime    : utimbuf, utime;
+import core.sys.posix.unistd   : unlink, isatty, chown;
+import std.stdio        : File, stdin, stdout, stderr, writef, writefln, writeln;
+import std.getopt       : getopt, config;
+import std.string       : toStringz, fromStringz, replace;
+import std.path         : baseName;
+import std.conv         : to;
+import std.algorithm    : min;
+import std.math         : isFinite;
 
 // ---- zopen.h bindings -------------------------------------------------------
 
@@ -47,7 +47,7 @@ int    compress_zclose(void* zfp);
 
 // ---- globals ---------------------------------------------------------------
 
-int eval_;     // exit code accumulator (set to 1 on warnings)
+int eval_;     // exit code accumulator (set to 1 on warnings, 2 if would-grow)
 int force_;    // -f
 int verbose_;  // -v
 
@@ -55,7 +55,6 @@ int verbose_;  // -v
 
 private void cwarnx(const(char)* fmt, const(char)* a = null)
 {
-    import std.stdio : writefln;
     if (a is null)
         stderr.writeln(fromStringz(fmt));
     else
@@ -65,7 +64,6 @@ private void cwarnx(const(char)* fmt, const(char)* a = null)
 
 private void cwarn(const(char)* fmt, const(char)* a = null)
 {
-    import std.stdio : writefln;
     import core.stdc.string : strerror;
     auto emsg = fromStringz(strerror(errno));
     if (a is null)
@@ -98,9 +96,9 @@ private void setfile(const(char)* name, stat_t* fs)
 
 private int permission(const(char)* fname)
 {
+    import core.stdc.stdio : getchar; // only need getchar from C stdio
     // Only prompt if stderr is a TTY and not forced
-    import core.stdc.stdio : getchar, fileno, stderr;
-    if (!isatty(fileno(stderr)))
+    if (!isatty(stderr.fileno))
         return 0;
     stderr.writefln("overwrite %s? ", fromStringz(fname));
     auto first = getchar();
@@ -111,13 +109,13 @@ private int permission(const(char)* fname)
 
 // ---- I/O cores -------------------------------------------------------------
 
-private void compressOne(const(char)* in, const(char)* out, int bits)
+private void compressOne(const(char)* inPath, const(char)* outPath, int bits)
 {
     enum BUFSZ = 1024;
     ubyte[BUFSZ] buf;
 
-    stat_t osb; bool exists = (stat(out, &osb) == 0);
-    if (!force_ && exists && S_ISREG(osb.st_mode) && !permission(out))
+    stat_t osb; bool exists = (stat(outPath, &osb) == 0);
+    if (!force_ && exists && S_ISREG(osb.st_mode) && !permission(outPath))
         return;
     bool oreg = !exists || S_ISREG(osb.st_mode);
     bool isreg = oreg;
@@ -127,58 +125,58 @@ private void compressOne(const(char)* in, const(char)* out, int bits)
     scope(exit)
     {
         if (zfp !is null) {
-            if (oreg) unlink(out);
+            if (oreg) unlink(outPath);
             compress_zclose(zfp);
         }
-        if (!ifp.isNull) ifp.close();
+        if (ifp.isOpen) ifp.close();
     }
 
     // Open input (text "r" matches original; binary vs text irrelevant on POSIX)
-    try { ifp = File(fromStringz(in), "r"); }
-    catch (Exception) { cwarn("%s", in); return; }
+    try { ifp = File(fromStringz(inPath), "r"); }
+    catch (Exception) { cwarn("%s", inPath); return; }
 
     stat_t isb;
-    if (stat(in, &isb) != 0) { // don't fstat
-        cwarn("%s", in);
+    if (stat(inPath, &isb) != 0) { // don't fstat
+        cwarn("%s", inPath);
         return;
     }
     if (!S_ISREG(isb.st_mode)) isreg = false;
 
-    zfp = compress_zopen(out, "w", bits);
-    if (zfp is null) { cwarn("%s", out); return; }
+    zfp = compress_zopen(outPath, "w", bits);
+    if (zfp is null) { cwarn("%s", outPath); return; }
 
     while (true) {
-        auto n = ifp.rawRead(buf[]).length;
+        auto n = ifp.rawRead(buf[]);
         if (n == 0) break;
         auto wn = compress_zwrite(zfp, buf.ptr, n);
-        if (wn != n) { cwarn("%s", out); return; }
+        if (wn != n) { cwarn("%s", outPath); return; }
     }
 
     // Close input first
     try { ifp.close(); ifp = File.init; }
-    catch (Exception) { cwarn("%s", in); return; }
+    catch (Exception) { cwarn("%s", inPath); return; }
 
-    if (compress_zclose(zfp) != 0) { zfp = null; cwarn("%s", out); return; }
+    if (compress_zclose(zfp) != 0) { zfp = null; cwarn("%s", outPath); return; }
     zfp = null;
 
     if (isreg) {
         stat_t sb;
-        if (stat(out, &sb) != 0) { cwarn("%s", out); return; }
+        if (stat(outPath, &sb) != 0) { cwarn("%s", outPath); return; }
 
         if (!force_ && sb.st_size >= isb.st_size) {
             if (verbose_)
-                stderr.writefln("%s: file would grow; left unmodified", fromStringz(in));
+                stderr.writefln("%s: file would grow; left unmodified", fromStringz(inPath));
             eval_ = 2;
-            unlink(out);
+            unlink(outPath);
             return;
         }
 
-        setfile(out, &isb);
-        if (unlink(in) != 0)
-            cwarn("%s", in);
+        setfile(outPath, &isb);
+        if (unlink(inPath) != 0)
+            cwarn("%s", inPath);
 
         if (verbose_) {
-            stderr.writef("%s: ", fromStringz(out));
+            stderr.writef("%s: ", fromStringz(outPath));
             // Print compression/expansion percent like original
             if (isb.st_size > 0 && sb.st_size > 0) {
                 auto ratio = (isb.st_size > sb.st_size)
@@ -194,13 +192,13 @@ private void compressOne(const(char)* in, const(char)* out, int bits)
     }
 }
 
-private void decompressOne(const(char)* in, const(char)* out, int bits)
+private void decompressOne(const(char)* inPath, const(char)* outPath, int bits)
 {
     enum BUFSZ = 1024;
     ubyte[BUFSZ] buf;
 
-    stat_t osb; bool exists = (stat(out, &osb) == 0);
-    if (!force_ && exists && S_ISREG(osb.st_mode) && !permission(out))
+    stat_t osb; bool exists = (stat(outPath, &osb) == 0);
+    if (!force_ && exists && S_ISREG(osb.st_mode) && !permission(outPath))
         return;
     bool oreg = !exists || S_ISREG(osb.st_mode);
     bool isreg = oreg;
@@ -209,58 +207,58 @@ private void decompressOne(const(char)* in, const(char)* out, int bits)
     File ofp;
     scope(exit)
     {
-        if (!ofp.isNull) {
-            if (oreg) unlink(out);
+        if (ofp.isOpen) {
+            if (oreg) unlink(outPath);
             ofp.close();
         }
         if (zfp !is null) compress_zclose(zfp);
     }
 
-    zfp = compress_zopen(in, "r", bits);
-    if (zfp is null) { cwarn("%s", in); return; }
+    zfp = compress_zopen(inPath, "r", bits);
+    if (zfp is null) { cwarn("%s", inPath); return; }
 
     stat_t isb;
-    if (stat(in, &isb) != 0) { cwarn("%s", in); return; }
+    if (stat(inPath, &isb) != 0) { cwarn("%s", inPath); return; }
     if (!S_ISREG(isb.st_mode)) isreg = false;
 
     // Read some bytes before truncating destination
     auto n0 = compress_zread(zfp, buf.ptr, BUFSZ);
     if (n0 == 0) {
-        cwarn("%s", in);
+        cwarn("%s", inPath);
         return;
     }
 
-    try { ofp = File(fromStringz(out), "w"); }
-    catch (Exception) { cwarn("%s", out); return; }
+    try { ofp = File(fromStringz(outPath), "w"); }
+    catch (Exception) { cwarn("%s", outPath); return; }
 
     if (n0 != 0) {
-        auto wn = ofp.rawWrite(buf[0 .. n0]);
-        if (wn.length != n0) { cwarn("%s", out); return; }
+        auto wn0 = ofp.rawWrite(buf[0 .. n0]);
+        if (wn0 != n0) { cwarn("%s", outPath); return; }
     }
 
     while (true) {
         auto n = compress_zread(zfp, buf.ptr, BUFSZ);
         if (n == 0) break;
-        auto wn = ofp.rawWrite(buf[0 .. n]).length;
-        if (wn != n) { cwarn("%s", out); return; }
+        auto wn = ofp.rawWrite(buf[0 .. n]);
+        if (wn != n) { cwarn("%s", outPath); return; }
     }
 
-    if (compress_zclose(zfp) != 0) { zfp = null; cwarn("%s", in); return; }
+    if (compress_zclose(zfp) != 0) { zfp = null; cwarn("%s", inPath); return; }
     zfp = null;
 
     try { ofp.close(); ofp = File.init; }
-    catch (Exception) { cwarn("%s", out); return; }
+    catch (Exception) { cwarn("%s", outPath); return; }
 
     if (isreg) {
-        setfile(out, &isb);
-        if (unlink(in) != 0)
-            cwarn("%s", in);
+        setfile(outPath, &isb);
+        if (unlink(inPath) != 0)
+            cwarn("%s", inPath);
     }
 }
 
 // ---- usage -----------------------------------------------------------------
 
-private noreturn void usage(bool iscompress)
+private void usage(bool iscompress)
 {
     if (iscompress)
         stderr.writeln("usage: compress [-cfv] [-b bits] [file ...]");
@@ -299,13 +297,13 @@ int main(string[] args)
         "v", "verbose",       (ref bool _) { verbose_ = 1; }
     );
 
-    auto rest = args[opt.index .. $];
+    auto rest = args[opt.optind .. $];
 
     if (rest.length == 0) {
         // stdin → stdout
         final switch (style) {
-            case Mode.COMPRESS:   compressOne("/dev/stdin".ptr,  "/dev/stdout".ptr, bits); break;
-            case Mode.DECOMPRESS: decompressOne("/dev/stdin".ptr, "/dev/stdout".ptr, bits); break;
+            case Mode.COMPRESS:   compressOne(toStringz("/dev/stdin"),  toStringz("/dev/stdout"), bits); break;
+            case Mode.DECOMPRESS: decompressOne(toStringz("/dev/stdin"), toStringz("/dev/stdout"), bits); break;
         }
         return eval_;
     }
@@ -315,17 +313,17 @@ int main(string[] args)
         return 1;
     }
 
-    char[MAX_PATH] newnameBuf;
+    char[4096] newnameBuf;
     foreach (arg; rest) {
         auto a = arg;
 
         final switch (style) {
         case Mode.COMPRESS:
             if (a == "-") {
-                compressOne("/dev/stdin".ptr, "/dev/stdout".ptr, bits);
+                compressOne(toStringz("/dev/stdin"), toStringz("/dev/stdout"), bits);
                 break;
             } else if (cat) {
-                compressOne(a.toStringz, "/dev/stdout".ptr, bits);
+                compressOne(a.toStringz, toStringz("/dev/stdout"), bits);
                 break;
             }
             // already ends with .Z ?
@@ -351,7 +349,7 @@ int main(string[] args)
 
         case Mode.DECOMPRESS:
             if (a == "-") {
-                decompressOne("/dev/stdin".ptr, "/dev/stdout".ptr, bits);
+                decompressOne(toStringz("/dev/stdin"), toStringz("/dev/stdout"), bits);
                 break;
             }
             // if no .Z suffix present, try "<name>.Z" -> (cat ? stdout : name)
@@ -365,7 +363,7 @@ int main(string[] args)
                 newnameBuf[a.length]   = '.';
                 newnameBuf[a.length+1] = 'Z';
                 newnameBuf[a.length+2] = '\0';
-                decompressOne(newnameBuf.ptr, cat ? "/dev/stdout".ptr : a.toStringz, bits);
+                decompressOne(newnameBuf.ptr, cat ? toStringz("/dev/stdout") : a.toStringz, bits);
             } else {
                 // strip ".Z"
                 auto baseLen = a.length - 2;
@@ -376,7 +374,7 @@ int main(string[] args)
                 import core.stdc.string : memcpy;
                 memcpy(newnameBuf.ptr, a.toStringz, baseLen);
                 newnameBuf[baseLen] = '\0';
-                decompressOne(a.toStringz, cat ? "/dev/stdout".ptr : newnameBuf.ptr, bits);
+                decompressOne(a.toStringz, cat ? toStringz("/dev/stdout") : newnameBuf.ptr, bits);
             }
             break;
         }

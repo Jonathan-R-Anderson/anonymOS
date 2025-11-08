@@ -1,27 +1,25 @@
 /**
  * D port of BSD compress_zopen.c
  *
- * Provides a FILE-like stream interface (via cookie/state) for
- * LZW "compress(1)" format with 3-byte header 0x1f 0x9d and flags.
+ * Provides a FILE-like stream interface for LZW "compress(1)" format
+ * with header 0x1f 0x9d and flags.
  *
  * Exports (C ABI):
- *   void* compress_zopen(const char* fname, const char* mode, int bits);
- *   int    compress_zread(void* cookie, void* rbp, int num);
- *   int    compress_zwrite(void* cookie, const void* wbp, int num);
+ *   void*  compress_zopen (const char* fname, const char* mode, int bits);
+ *   size_t compress_zread (void* cookie, void* rbp, size_t num);
+ *   size_t compress_zwrite(void* cookie, const void* wbp, size_t num);
  *   int    compress_zclose(void* cookie);
  */
 
 module zopen_d;
 
-extern (C):
-
+import core.stdc.stddef : size_t;
+import core.stdc.stdint : uint32_t, uint16_t, int32_t;
 import core.stdc.stdlib : calloc, free;
-import core.stdc.string : memcmp, memset;
+import core.stdc.string : memcmp, memset, strncpy, strlen;
 import core.stdc.errno : errno, EINVAL;
 import core.stdc.stdio : FILE, fopen, fread, fwrite, fclose;
 import core.sys.posix.sys.stat : stat, stat_t = stat;
-import core.stdc.string : strncpy, strlen;
-import core.stdc.stdint : uint32_t, uint16_t, int32_t;
 import core.stdc.ctype : isspace;
 
 // -------------------- Constants & types (match original) --------------------
@@ -29,7 +27,7 @@ import core.stdc.ctype : isspace;
 enum BITS  = 16;
 enum HSIZE = 69001; // 95% occupancy
 
-alias code_int  = long;
+alias code_int  = long;   // matches original signed usage
 alias count_int = long;
 alias char_type = ubyte;
 
@@ -40,7 +38,12 @@ enum BIT_MASK   = 0x1f;
 enum BLOCK_MASK = 0x80;
 enum INIT_BITS  = 9;
 
-static inline code_int MAXCODE(uint n_bits) { return (cast(code_int)1 << n_bits) - 1; }
+// MAXCODE macro -> D function (not C ABI)
+@safe pure nothrow @nogc
+code_int MAXCODE(uint n_bits)
+{
+  return (cast(code_int)1 << n_bits) - 1;
+}
 
 enum CHECK_GAP = 10000;
 enum FIRST = 257;
@@ -91,7 +94,7 @@ struct ZState {
   char_type[BITS] gbuf;
 }
 
-// Convenient aliases like original #defines
+// Accessors (keep original style; ref to allow assignments like maxbits(z)=…)
 private @property FILE*       fp(ZState* z)            { return z.fp; }
 private @property ref uint    n_bits(ZState* z)        { return z.n_bits; }
 private @property ref uint    maxbits(ZState* z)       { return z.maxbits; }
@@ -125,25 +128,10 @@ private @property ref int roffset(ZState* z)           { return z.roffset; }
 private @property ref int size(ZState* z)              { return z.size; }
 private @property ref char_type[BITS] gbuf(ZState* z)  { return z.gbuf; }
 
-private alias tab_prefixof = codetabOf;
-private alias tab_suffixof = htabAsSuffix;
-
-private ref ushort codetabOf(ZState* z, size_t i) { return z.codetab[i]; }
-private ref char_type htabAsSuffix(ZState* z, size_t i)
-{
-  // reinterpret z.htab as byte array for suffix table
-  // z.htab length = HSIZE of count_int; suffix needs up to 1<<BITS (65536) bytes.
-  // We’ll cast the base pointer to ubyte* and index into it.
-  import core.stdc.string : memcpy;
-  // Safe view: treat start of htab as ubyte[]
-  return (*cast(char_type*)(&z.htab[0] + i)); // formal ref; we won't actually use ref set here
-}
-
-// But for safe writes, we’ll define helpers:
+// Suffix table views and helpers
 private void set_tab_suffix(ZState* z, size_t i, char_type v)
 {
-  // &z.htab[0] is count_int*, convert to ubyte* and index i
-  auto base = cast(char_type*)(&z.htab[0]);
+  auto base = cast(char_type*)(&z.htab[0]); // view htab storage as bytes
   base[i] = v;
 }
 private char_type get_tab_suffix(ZState* z, size_t i)
@@ -151,11 +139,8 @@ private char_type get_tab_suffix(ZState* z, size_t i)
   auto base = cast(char_type*)(&z.htab[0]);
   return base[i];
 }
-
 private char_type* de_stack(ZState* z)
 {
-  // stack lives after suffix area; use the remaining htab as scratch
-  // The C code does: (char_type *)&tab_suffixof(1 << BITS)
   auto base = cast(char_type*)(&z.htab[0]);
   return base + (1 << BITS);
 }
@@ -173,11 +158,12 @@ static code_int getcode(ZState* zs);
 
 // ------------------------------ Writer API ----------------------------------
 
-int compress_zwrite(void* cookie, const void* wbp, int num)
+// Return size_t to match compress.d; on error, set errno and return 0.
+extern(C) size_t compress_zwrite(void* cookie, const void* wbp, size_t num)
 {
   if (num == 0) return 0;
   auto zs = cast(ZState*)cookie;
-  int count = num;
+  size_t count = num;
   auto bp = cast(const(char_type)*)wbp;
 
   if (zs.state == ZStateTag.S_MIDDLE) goto middle;
@@ -185,16 +171,16 @@ int compress_zwrite(void* cookie, const void* wbp, int num)
 
   maxmaxcode(zs) = cast(code_int)1 << maxbits(zs);
   // write magic header
-  if (fwrite(MAGIC.ptr, char.sizeof, MAGIC.length, fp(zs)) != MAGIC.length)
-    return -1;
+  if (fwrite(MAGIC.ptr, 1, MAGIC.length, fp(zs)) != MAGIC.length) {
+    errno = EINVAL; return 0;
+  }
 
   // third header byte: (maxbits | block_compress)
   char_type tmp = cast(char_type)((maxbits(zs)) | block_compress(zs));
-  if (fwrite(&tmp, char.sizeof, 1, fp(zs)) != 1)
-    return -1;
+  if (fwrite(&tmp, 1, 1, fp(zs)) != 1) { errno = EINVAL; return 0; }
 
   offset(zs)     = 0;
-  bytes_out(zs)  = 3; // header bytes count (like original)
+  bytes_out(zs)  = 3; // header bytes count
   out_count(zs)  = 0;
   clear_flg(zs)  = 0;
   ratio(zs)      = 0;
@@ -240,23 +226,23 @@ probe:
     if (htab(zs)[i] >= 0) goto probe;
 
 nomatch:
-    if (output(zs, ent(zs)) == -1) return -1;
+    if (output(zs, ent(zs)) == -1) { errno = EINVAL; return 0; }
     out_count(zs)++;
     ent(zs) = c;
     if (free_ent(zs) < maxmaxcode(zs)) {
       codetab(zs)[i] = cast(ushort)free_ent(zs)++;
       htab(zs)[i]    = fcode(zs);
     } else if (cast(count_int)in_count(zs) >= checkpoint(zs) && block_compress(zs)) {
-      if (cl_block(zs) == -1) return -1;
+      if (cl_block(zs) == -1) { errno = EINVAL; return 0; }
     }
   }
   return num;
 }
 
-int compress_zclose(void* cookie)
+extern(C) int compress_zclose(void* cookie)
 {
   auto zs = cast(ZState*)cookie;
-  int rval;
+  if (zs is null) return 0;
 
   if (zs.zmode == 'w') {
     if (output(zs, ent(zs)) == -1) {
@@ -272,9 +258,9 @@ int compress_zclose(void* cookie)
     }
   }
 
-  rval = (fclose(fp(zs)) == EOF) ? -1 : 0;
+  auto rc = fclose(fp(zs));
   free(zs);
-  return rval;
+  return (rc != 0) ? -1 : 0;
 }
 
 // Pack and flush codes to file
@@ -307,7 +293,7 @@ static int output(ZState* zs, code_int ocode)
       bp   = &buf(zs)[0];
       bits = n_bits(zs);
       bytes_out(zs) += bits;
-      if (fwrite(bp, char.sizeof, bits, fp(zs)) != bits)
+      if (fwrite(bp, 1, bits, fp(zs)) != bits)
         return -1;
       bp      += bits;
       bits     = 0;
@@ -390,11 +376,12 @@ static void cl_hash(ZState* zs, count_int cl_hsize)
 
 // ------------------------------ Reader API ----------------------------------
 
-int compress_zread(void* cookie, void* rbp, int num)
+// Return size_t to match compress.d; on error, set errno and return 0.
+extern(C) size_t compress_zread(void* cookie, void* rbp, size_t num)
 {
   if (num == 0) return 0;
   auto zs = cast(ZState*)cookie;
-  uint count = cast(uint)num;
+  size_t count = num;
   auto bp = cast(char_type*)rbp;
 
   final switch (zs.state) {
@@ -405,20 +392,19 @@ int compress_zread(void* cookie, void* rbp, int num)
 
   // read & check header
   char_type[3] hdr;
-  if (fread(hdr.ptr, char.sizeof, hdr.length, fp(zs)) != hdr.length ||
+  if (fread(hdr.ptr, 1, hdr.length, fp(zs)) != hdr.length ||
       memcmp(hdr.ptr, MAGIC.ptr, MAGIC.length) != 0) {
     errno = EINVAL;
-    return -1;
+    return 0;
   }
   maxbits(zs)        = hdr[2];
   block_compress(zs) = (maxbits(zs) & BLOCK_MASK);
   maxbits(zs)       &= BIT_MASK;
   maxmaxcode(zs)     = cast(code_int)1 << maxbits(zs);
-  if (maxbits(zs) > BITS) { errno = EINVAL; return -1; }
+  if (maxbits(zs) > BITS) { errno = EINVAL; return 0; }
 
   maxcode(zs) = MAXCODE(n_bits(zs) = INIT_BITS);
   for (code(zs) = 255; code(zs) >= 0; code(zs)--) {
-    // tab_prefixof(code) = 0
     codetab(zs)[code(zs)] = 0; // prefix
     set_tab_suffix(zs, code(zs), cast(char_type)code(zs)); // suffix
   }
@@ -469,7 +455,7 @@ middle:
 
   zs.state = ZStateTag.S_EOF;
 eof:
-  return num - cast(int)count;
+  return num - count;
 }
 
 static code_int getcode(ZState* zs)
@@ -519,7 +505,7 @@ static code_int getcode(ZState* zs)
 
 // ------------------------------ Open/Close ----------------------------------
 
-void* compress_zopen(const char* fname, const char* mode, int bits)
+extern(C) void* compress_zopen(const char* fname, const char* mode, int bits)
 {
   if ((mode[0] != 'r' && mode[0] != 'w') || mode[1] != '\0' ||
       bits < 0 || bits > BITS) {

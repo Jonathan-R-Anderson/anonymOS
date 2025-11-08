@@ -39,20 +39,20 @@ int main(string[] args)
 {
     Opts opt;
     // Parse options
-    auto help = getopt(
+    auto res = getopt(
         args,
         config.bundling, // allow -ls style
         "l|verbose", "Write the byte number and differing bytes (octal) for each difference.", &opt.verbose,
         "s|silent",  "Write nothing; return status only.", &opt.silent
     );
     // Remaining args should be exactly two pathnames
-    if (args.length - help.index != 3) {
+    if (args.length != 3) {
         stderr.writeln("cmp: two pathnames required for comparison");
         return 2;
     }
 
-    auto file1 = args[help.index + 1];
-    auto file2 = args[help.index + 2];
+    auto file1 = args[1];
+    auto file2 = args[2];
 
     // Open files (text vs binary does not matter on POSIX; use "rb" for portability)
     File f1, f2;

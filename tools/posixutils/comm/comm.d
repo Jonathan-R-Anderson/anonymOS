@@ -1,24 +1,8 @@
-/**
- * D port of:
- *   comm - compare two sorted files line by line
- *
- * Usage:
- *   comm_d [-1] [-2] [-3] file1 file2
- *   # a lone "-" means stdin (only one of file1/file2 may be "-")
- *
- * Columns (unless suppressed):
- *   1: lines unique to file1
- *   2: lines unique to file2   (prefixed by one tab if col1 shown)
- *   3: lines common to both    (prefixed by one or two tabs depending on cols 1/2)
- */
-
 module comm_d;
 
-import std.stdio : File, stdin, stdout, stderr, write, writeln;
+import std.stdio : File, stdin, stdout, stderr, write, writeln, readln;
 import std.getopt : getopt, config;
-import std.algorithm : min;
 import std.string : toStringz;
-import std.exception : ErrnoException;
 import core.stdc.string : strcoll;
 import core.stdc.locale : setlocale, LC_ALL;
 
@@ -46,17 +30,15 @@ private void lineOut(int ltype, const char[] line, ref Options opt)
 {
     if (ltype & opt.outmask) return;
 
-    final switch (ltype) {
+    // regular switch (not final) so having a default is fine
+    switch (ltype) {
         case OPT_FILE1:
-            // column 1: no leading tabs
             write(line);
             break;
         case OPT_FILE2:
-            // column 2: one leading tab unless col1 suppressed
             write(leadF2, line);
             break;
         case OPT_DUP:
-            // column 3: tabs depend on which columns are shown
             write(leadDup, line);
             break;
         default:
@@ -66,16 +48,14 @@ private void lineOut(int ltype, const char[] line, ref Options opt)
 
 private bool readLine(ref File f, ref string outLine)
 {
-    // readln allocates and includes '\n' if present; returns empty on EOF
-    import std.stdio : readln;
     try {
-        auto s = f.readln();
-        if (s.length == 0) return false; // EOF
+        auto s = f.readln();              // includes '\n' if present
+        if (s.length == 0) return false;  // EOF
         outLine = s;
         return true;
-    } catch (Exception) {
-        // Propagate up by rethrowing; caller will print perror-like message
-        throw;
+    } catch (Exception e) {
+        // Explicit rethrow keeps older toolchains happy
+        throw e;
     }
 }
 
@@ -122,19 +102,15 @@ private int openInputs(string a, string b, ref Inputs inps)
 
 private int compareFiles(ref Inputs inps, ref Options opt)
 {
-    // Compute prefixes like the C version:
-    //   leadF2: "\t" unless col1 suppressed (then "")
-    //   leadDup: "\t\t" if neither col1 nor col2 suppressed,
-    //            ""     if both col1 and col2 suppressed,
-    //            "\t"   otherwise
+    // prefixes depending on suppressed columns
     leadF2 = (opt.outmask & OPT_FILE1) ? "" : "\t";
-    if ((opt.outmask & (OPT_FILE1 | OPT_FILE2)) == 0)         leadDup = "\t\t";
+    if ((opt.outmask & (OPT_FILE1 | OPT_FILE2)) == 0)                       leadDup = "\t\t";
     else if ((opt.outmask & (OPT_FILE1 | OPT_FILE2)) == (OPT_FILE1 | OPT_FILE2)) leadDup = "";
-    else                                                      leadDup = "\t";
+    else                                                                      leadDup = "\t";
 
     string l1, l2;
     bool have1 = false, have2 = false;
-    bool want1 = true, want2 = true;
+    bool want1 = true,  want2 = true;
 
     int rc = 0;
 
@@ -145,8 +121,7 @@ private int compareFiles(ref Inputs inps, ref Options opt)
                 if (!have1) want1 = false;
             } catch (Exception e) {
                 stderr.writeln(inps.name1, ": ", e.msg);
-                rc = 1;
-                break;
+                rc = 1; break;
             }
         }
         if (want2 && !have2) {
@@ -155,8 +130,7 @@ private int compareFiles(ref Inputs inps, ref Options opt)
                 if (!have2) want2 = false;
             } catch (Exception e) {
                 stderr.writeln(inps.name2, ": ", e.msg);
-                rc = 1;
-                break;
+                rc = 1; break;
             }
         }
 
@@ -171,8 +145,7 @@ private int compareFiles(ref Inputs inps, ref Options opt)
             have1 = false;
             continue;
         } else {
-            // Locale-aware comparison with strcoll (like the original)
-            // Note: compares including the newline, as in the C version.
+            // locale-aware compare (includes trailing '\n', matching POSIX comm)
             auto cmp = strcoll(l1.toStringz, l2.toStringz);
             if (cmp < 0) {
                 lineOut(OPT_FILE1, l1, opt);
@@ -192,24 +165,30 @@ private int compareFiles(ref Inputs inps, ref Options opt)
 
 int main(string[] args)
 {
-    // Respect environment locale for strcoll
     setlocale(LC_ALL, "");
 
     Options opt;
-    auto res = getopt(args, config.bundling,
-        "1", "Suppress lines unique to file1.", (ref bool _) { opt.outmask |= OPT_FILE1; },
-        "2", "Suppress lines unique to file2.", (ref bool _) { opt.outmask |= OPT_FILE2; },
-        "3", "Suppress lines common to both.",  (ref bool _) { opt.outmask |= OPT_DUP;   }
+    bool sup1 = false, sup2 = false, sup3 = false;
+
+    // getopt mutates args in place; keep it simple
+    getopt(args, config.bundling,
+        "1", &sup1,
+        "2", &sup2,
+        "3", &sup3
     );
 
-    // Need exactly two path arguments
-    if (args.length - res.index != 3) {
+    if (sup1) opt.outmask |= OPT_FILE1;
+    if (sup2) opt.outmask |= OPT_FILE2;
+    if (sup3) opt.outmask |= OPT_DUP;
+
+    // After getopt: args[1].. are positional
+    if (args.length != 3) {
         stderr.writeln("Usage: comm_d [-1] [-2] [-3] file1 file2");
         return 1;
     }
 
-    auto file1 = args[res.index + 1];
-    auto file2 = args[res.index + 2];
+    auto file1 = args[1];
+    auto file2 = args[2];
 
     Inputs inps;
     auto orc = openInputs(file1, file2, inps);

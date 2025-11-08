@@ -22,7 +22,7 @@
 
 module compress_d;
 
-import core.stdc.stdlib  : exit, strtol;
+import core.stdc.stdlib  : exit;
 import core.stdc.string  : strcmp, strlen, memmove, strrchr;
 import core.stdc.errno   : errno, EPERM, EOPNOTSUPP;
 import core.sys.posix.sys.stat : stat_t, stat, fstat, S_ISREG, chmod,
@@ -33,7 +33,7 @@ import std.stdio        : File, stdin, stdout, stderr, writef, writefln, writeln
 import std.getopt       : getopt, config;
 import std.string       : toStringz, fromStringz, replace;
 import std.path         : baseName;
-import std.conv         : to;
+import std.conv         : to, ConvException;
 import std.algorithm    : min;
 import std.math         : isFinite;
 
@@ -148,10 +148,10 @@ private void compressOne(const(char)* inPath, const(char)* outPath, int bits)
     if (zfp is null) { cwarn("%s", outPath); return; }
 
     while (true) {
-        auto n = ifp.rawRead(buf[]);
-        if (n.length == 0) break;
-        auto wn = compress_zwrite(zfp, buf.ptr, n);
-        if (wn != n) { cwarn("%s", outPath); return; }
+        auto chunk = ifp.rawRead(buf[]);
+        if (chunk.length == 0) break;
+        auto wn = compress_zwrite(zfp, buf.ptr, chunk.length);
+        if (wn != chunk.length) { cwarn("%s", outPath); return; }
     }
 
     // Close input first
@@ -285,10 +285,12 @@ int main(string[] args)
     // getopt parsing (bundling allows -cfv)
     auto opt = getopt(args, config.bundling,
         "b", "bits", (string v) {
-            char* endptr;
-            bits = cast(int)strtol(v.toStringz, &endptr, 10);
-            if (*endptr != '\0')
-                { stderr.writefln("illegal bit count -- %s", v); exit(1); }
+            try {
+                bits = to!int(v);
+            } catch (ConvException) {
+                stderr.writefln("illegal bit count -- %s", v);
+                exit(1);
+            }
         },
         "c", "cat to stdout", (ref bool _) { cat = true; },
         "d", "decompress",    (ref bool _) { style = Mode.DECOMPRESS; },

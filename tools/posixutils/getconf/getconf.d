@@ -69,7 +69,8 @@ string[] splitWhitespace(string line) pure nothrow @safe
 
 string generateMapLiteral(string data) pure @safe
 {
-    string[] entries;
+    string result = "(() {\n    int[string] m;\n";
+
     size_t pos;
     while (pos < data.length)
     {
@@ -102,16 +103,10 @@ string generateMapLiteral(string data) pure @safe
         auto name = tokens[0];
         auto value = tokens[1];
 
-        entries ~= "\"" ~ name ~ "\": " ~ value;
+        result ~= "    static if (__traits(compiles, " ~ value ~ ")) m[\"" ~ name ~ "\"] = " ~ value ~ ";\n";
     }
 
-    string result = "[";
-    foreach (idx, entry; entries)
-    {
-        if (idx) result ~= ", ";
-        result ~= entry;
-    }
-    result ~= "]";
+    result ~= "    return m;\n}())";
     return result;
 }
 

@@ -5,16 +5,12 @@ version (OSX) {} // allow building on macOS
 
 import std.stdio : File, stdin, stdout, stderr, writeln, write, writef, writefln, readln;
 import std.getopt : getopt, config, defaultGetoptPrinter;
-import std.string : indexOf, toStringz, fromStringz, splitLines, strip, split, endsWith;
+import std.string : indexOf, icmp, CaseSensitive, splitLines, strip, split, endsWith;
 import std.conv : to;
 import std.algorithm : min;
 import std.array : array;
 import std.regex : regex, Regex, matchFirst; // <-- use D regex
 
-// --------- C string helpers for fixed-string path ------------
-import core.stdc.string : strcmp, strstr;
-import core.sys.posix.string : strcasecmp;
-extern(C) char* strcasestr(const char* s, const char* find);
 
 // --------- CLI state / enums (mirroring original) ------------
 enum MatchType { BRE, ERE, STRING }  // BRE=default, ERE with -E, fixed strings with -F
@@ -46,7 +42,7 @@ __gshared Pattern[] patterns;
 __gshared ulong nMatches = 0;
 __gshared ulong nTotalMatches = 0;
 __gshared ulong nLines = 0;
-__gshared int   nFiles = 0;
+__gshared size_t nFiles = 0;
 
 // -------------- Helpers for patterns -------------------------
 void addPattern(string s) {
@@ -96,7 +92,7 @@ void compilePatterns() {
         // D's std.regex is closer to ERE. If user explicitly asked for BRE,
         // we still compile as-is; most common patterns work identically.
         try {
-            p.rx = regex!char(pat, rxFlags);
+            p.rx = regex(pat, rxFlags);
             p.hasRx = true;
         } catch (Exception e) {
             stderr.writefln("invalid pattern '%s': %s", p.pat, e.msg);
@@ -107,22 +103,25 @@ void compilePatterns() {
 }
 
 // -------------- Matching ------------------------------
-bool matchString(const(char)* lineZ) {
+bool matchStringD(string line) {
+    // -x: full line equality vs any pattern
     if (optWholeLine) {
         foreach (p; patterns) {
-            auto rc = optIgnoreCase
-                ? strcasecmp(lineZ, p.pat.toStringz)
-                : strcmp(lineZ, p.pat.toStringz);
-            if (rc == 0) return true;
+            if (optIgnoreCase) {
+                if (icmp(line, p.pat) == 0) return true;
+            } else {
+                if (line == p.pat) return true;
+            }
         }
         return false;
     }
-
+    // substring search
     foreach (p; patterns) {
-        const(char)* found = optIgnoreCase
-            ? strcasestr(lineZ, p.pat.toStringz)
-            : strstr(lineZ, p.pat.toStringz);
-        if (found !is null) return true;
+        if (optIgnoreCase) {
+            if (indexOf(line, p.pat, CaseSensitive.no) != -1) return true;
+        } else {
+            if (indexOf(line, p.pat) != -1) return true;
+        }
     }
     return false;
 }
@@ -137,15 +136,20 @@ bool matchRegex(const(char)* lineZ) {
     return false;
 }
 
+bool matchRegexD(string line) {
+    foreach (p; patterns)
+        if (p.hasRx && !line.matchFirst(p.rx).empty)
+            return true;
+    return false;
+}
+
 // -------------- Per-line processing --------------------
 enum STOP_LOOP = 1 << 30;
 
 int grepLine(string fn, string line) {
-    auto lineZ = (line ~ "\0").ptr;
-
     bool matched = (optMatch == MatchType.STRING)
-        ? matchString(lineZ)
-        : matchRegex(lineZ);
+        ? matchStringD(line)
+        : matchRegexD(line);
 
     if (optInvert) matched = !matched;
 
@@ -251,7 +255,7 @@ int main(string[] args)
             "v|invert-match",         { cli.setInvert = true; },
             "x|line-regexp",          { cli.setLineRegexp = true; }
         );
-        cli.positionals = help.args.dup;
+        cli.positionals = args[1 .. $].dup;
     } catch (Exception e) {
         stderr.writeln(e.msg);
         return 2;

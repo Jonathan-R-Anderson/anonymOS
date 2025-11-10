@@ -19,7 +19,7 @@ extern (C):
     import core.sys.posix.sys.ipc : key_t;
     import core.sys.posix.sys.msg : msqid_ds, msginfo, msgctl;
     import core.sys.posix.sys.shm : shmid_ds, shminfo, shmctl;
-    import core.sys.posix.sys.sem : semid_ds, seminfo, semctl;
+    import ipcs.sem_compat : semid_ds, seminfo, semctl;
 
 // --- GNU extensions (command constants) ---
 enum int MSG_INFO = 12;

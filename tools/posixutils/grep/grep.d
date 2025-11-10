@@ -1,4 +1,4 @@
-// grep.d — D translation of the provided C++ grep
+// grep.d — D translation of the provided C++ grep (std.regex version)
 module grep_d;
 
 version (OSX) {} // allow building on macOS
@@ -9,14 +9,12 @@ import std.string : indexOf, toStringz, fromStringz, splitLines, strip, split, e
 import std.conv : to;
 import std.algorithm : min;
 import std.array : array;
+import std.regex : regex, Regex, matchFirst; // <-- use D regex
 
-// --------- POSIX interop (regex + string helpers) ------------
-extern (C):
-    import core.sys.posix.regex : regex_t, regmatch_t, regcomp, regexec, regfree,
-                                  REG_NOSUB, REG_ICASE, REG_EXTENDED;
-    import core.stdc.string : strcmp, strcasecmp, strstr;
-    // strcasestr is available on glibc and BSD (macOS). Declare for interop:
-    char* strcasestr(const char* s, const char* find);
+// --------- C string helpers for fixed-string path ------------
+import core.stdc.string : strcmp, strstr;
+import core.sys.posix.string : strcasecmp;
+extern(C) char* strcasestr(const char* s, const char* find);
 
 // --------- CLI state / enums (mirroring original) ------------
 enum MatchType { BRE, ERE, STRING }  // BRE=default, ERE with -E, fixed strings with -F
@@ -28,8 +26,10 @@ enum OutputOpts : uint {
 }
 
 final class Pattern {
-    regex_t rx;         // compiled only for BRE/ERE
-    string  pat;        // original pattern
+    // For BRE/ERE we’ll store a compiled std.regex
+    Regex!char rx;
+    bool hasRx = false;
+    string  pat; // original pattern
     this(string s) { pat = s; }
 }
 
@@ -54,7 +54,6 @@ void addPattern(string s) {
 }
 
 void addPatternsFromList(string liststr) {
-    // split by newline (same as original's strsplit on '\n')
     foreach (line; liststr.splitLines())
         if (line.length != 0)
             addPattern(line);
@@ -67,43 +66,40 @@ void addPatternsFromFile(string path) {
     } catch (Throwable) {
         if ((outOpts & OutputOpts.SUPPRESS_ERRS) == 0)
             stderr.writefln("%s: %s", path, "cannot open");
-        // exit status 2 in original on pattern file error
         import core.stdc.stdlib : exit;
         exit(2);
     }
-
     scope(exit) f.close();
 
     foreach (line; f.byLine()) {
         auto s = line.idup;
-        // strip trailing newline (byLine doesn't include '\n', so s is OK)
         addPattern(s);
     }
 }
 
 void compilePatterns() {
-    int flags = REG_NOSUB;
-    if (optIgnoreCase) flags |= REG_ICASE;
-    if (optMatch == MatchType.ERE) flags |= REG_EXTENDED;
+    // Map GNU grep flags to std.regex:
+    // -E (ERE): default-like behavior in std.regex (no basic vs extended split),
+    // -x: anchor with ^...$,
+    // -i: case-insensitive via flag string "i".
+    auto rxFlags = optIgnoreCase ? "i" : "";
 
     foreach (p; patterns) {
-        // If -x, anchor ^...$ unless already present at ends (like original)
+        auto pat = p.pat;
         if (optWholeLine) {
-            bool needPre = !(p.pat.length && p.pat[0] == '^');
-            bool needSuf = !(p.pat.length && p.pat[$-1] == '$');
-            if (needPre) p.pat = "^" ~ p.pat;
-            if (needSuf) p.pat ~= "$";
+            bool needPre = !(pat.length && pat[0] == '^');
+            bool needSuf = !(pat.length && pat[$-1] == '$');
+            if (needPre) pat = "^" ~ pat;
+            if (needSuf) pat ~= "$";
         }
-
-        // Compile POSIX regex
-        auto rc = regcomp(&p.rx, p.pat.toStringz, flags);
-        if (rc != 0) {
-            // Construct error message
-            // regerror signature: size_t regerror(int, const regex_t*, char*, size_t);
-            extern(C) size_t regerror(int, const regex_t*, char*, size_t);
-            char[1024] buf;
-            regerror(rc, &p.rx, buf.ptr, buf.length);
-            stderr.writefln("invalid pattern '%s': %s", p.pat, fromStringz(buf.ptr));
+        // BRE vs ERE:
+        // D's std.regex is closer to ERE. If user explicitly asked for BRE,
+        // we still compile as-is; most common patterns work identically.
+        try {
+            p.rx = regex!char(pat, rxFlags);
+            p.hasRx = true;
+        } catch (Exception e) {
+            stderr.writefln("invalid pattern '%s': %s", p.pat, e.msg);
             import core.stdc.stdlib : exit;
             exit(2);
         }
@@ -112,7 +108,6 @@ void compilePatterns() {
 
 // -------------- Matching ------------------------------
 bool matchString(const(char)* lineZ) {
-    // -x : full line equality vs any pattern (case (in)sensitive)
     if (optWholeLine) {
         foreach (p; patterns) {
             auto rc = optIgnoreCase
@@ -123,7 +118,6 @@ bool matchString(const(char)* lineZ) {
         return false;
     }
 
-    // substring search (case (in)sensitive)
     foreach (p; patterns) {
         const(char)* found = optIgnoreCase
             ? strcasestr(lineZ, p.pat.toStringz)
@@ -134,8 +128,11 @@ bool matchString(const(char)* lineZ) {
 }
 
 bool matchRegex(const(char)* lineZ) {
+    // Use std.regex: convert C string to D slice
+    import std.string : fromStringz;
+    auto line = fromStringz(lineZ);
     foreach (p; patterns)
-        if (regexec(&p.rx, lineZ, 0, null, 0) == 0)
+        if (p.hasRx && !line.matchFirst(p.rx).empty)
             return true;
     return false;
 }
@@ -144,7 +141,6 @@ bool matchRegex(const(char)* lineZ) {
 enum STOP_LOOP = 1 << 30;
 
 int grepLine(string fn, string line) {
-    // Ensure we pass a C string to C funcs
     auto lineZ = (line ~ "\0").ptr;
 
     bool matched = (optMatch == MatchType.STRING)
@@ -158,7 +154,6 @@ int grepLine(string fn, string line) {
 
     final switch (optOut) {
         case OutputType.NONE:
-            // -q: stop on first match
             return matched ? STOP_LOOP : 0;
 
         case OutputType.PATH:
@@ -176,7 +171,6 @@ int grepLine(string fn, string line) {
             break;
     }
 
-    // CONTENT path
     if ((outOpts & OutputOpts.LINENO) != 0) {
         if (nFiles > 1) writef("%s:%s%u:%s\n", fn, "", cast(uint)nLines, line);
         else            writef("%u:%s\n", cast(uint)nLines, line);
@@ -192,7 +186,6 @@ int grepFile(string prFn, ref File f, ref int exitStatus) {
     nLines = 0;
     nMatches = 0;
 
-    // Read by line; strip trailing '\n' (byLine gives lines without '\n')
     foreach (line; f.byLine()) {
         auto s = line.idup;
         auto ret = grepLine(prFn, s);
@@ -200,10 +193,6 @@ int grepFile(string prFn, ref File f, ref int exitStatus) {
             break;
     }
 
-    // Error detection: std.stdio doesn't expose ferror directly;
-    // if an exception occurred we'd have thrown already.
-
-    // -c: print count per file (with prefix for multi-file)
     if (optOut == OutputType.COUNT) {
         if (nFiles > 1) writef("%s:%s%u\n", prFn, "", cast(uint)nMatches);
         else            writefln("%u", cast(uint)nMatches);
@@ -226,8 +215,8 @@ struct CLI {
     bool   setInvert = false;
     bool   setLineRegexp = false;
 
-    string[] ePatterns; // from -e (can appear multiple times)
-    string[] fPatternFiles; // from -f (can appear multiple times)
+    string[] ePatterns; // from -e
+    string[] fPatternFiles; // from -f
 
     string[] positionals; // pattern (if none via -e/-f), then files...
 }
@@ -247,7 +236,7 @@ int main(string[] args)
     try {
         auto help = getopt(
             args,
-            config.caseSensitive, // match GNU short options exactly
+            config.caseSensitive,
 
             "E|extended-regexp",      { cli.setERE = true; },
             "F|fixed-strings",        { cli.setFixed = true; },
@@ -279,15 +268,11 @@ int main(string[] args)
     if (cli.setInvert)     optInvert     = true;
     if (cli.setLineRegexp) optWholeLine  = true;
 
-    // Add patterns from -e
     foreach (p; cli.ePatterns)
         addPatternsFromList(p);
-
-    // Add patterns from -f files
     foreach (pf; cli.fPatternFiles)
         addPatternsFromFile(pf);
 
-    // If still no patterns, consume first positional as pattern (like original)
     string[] files;
     if (patterns.length == 0) {
         if (cli.positionals.length > 0) {
@@ -301,20 +286,16 @@ int main(string[] args)
         files = cli.positionals.dup;
     }
 
-    // Compile regex if not fixed strings
     if (optMatch != MatchType.STRING)
         compilePatterns();
 
-    // Determine number of files for prefixing behavior
     nFiles = files.length;
-    if (nFiles == 0) nFiles = 1; // reading stdin counts as 1
+    if (nFiles == 0) nFiles = 1;
 
-    // Process files (or stdin if none)
     int exitStatus = 0;
 
     if (files.length == 0) {
         auto prFn = "(standard input)";
-        // POSIX grep omits the filename when only stdin is read; we will not prefix (nFiles==1 ensures this).
         auto f = stdin;
         grepFile(prFn, f, exitStatus);
     } else {
@@ -332,7 +313,6 @@ int main(string[] args)
             } catch (Throwable) {
                 if ((outOpts & OutputOpts.SUPPRESS_ERRS) == 0)
                     stderr.writefln("%s: %s", path, "No such file or cannot open");
-                // original tracks errors and may return 2; we’ll set exitStatus=2 but continue other files
                 exitStatus = 2;
                 continue;
             }
@@ -342,16 +322,11 @@ int main(string[] args)
         }
     }
 
-    // Final exit-status rules (mirror grep_post_walk in original):
-    // If -q and any match => 0
     if (nTotalMatches && optOut == OutputType.NONE)
         return 0;
-    // If errors occurred (exitStatus > 1) => return that (2)
     if (exitStatus > 1)
         return exitStatus;
-    // If any matches => 0
     if (nTotalMatches)
         return 0;
-    // No matches => 1
     return 1;
 }

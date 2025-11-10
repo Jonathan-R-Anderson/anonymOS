@@ -3,22 +3,32 @@ module mv_d;
 
 version (Posix) {} else static assert(0, "This utility requires a POSIX system.");
 
-import std.stdio       : writeln, writefln, stderr, readln, stdin;
-import std.getopt      : getopt, defaultGetoptPrinter, GetoptResult;
-import std.string      : toStringz, strip, format;
-import std.path        : baseName;
-import std.conv        : to;
-import std.algorithm   : min;
-import core.stdc.errno : errno, EXDEV, EEXIST;
-import core.stdc.string: strerror;
-import core.stdc.stdio : perror;
-import core.sys.posix.unistd : access, W_OK, F_OK, isatty, STDIN_FILENO, unlink, rename;
+import std.stdio        : writeln, writefln, stderr, readln;
+import std.getopt       : getopt, defaultGetoptPrinter, GetoptResult;
+import std.string       : toStringz, strip, format;
+import std.path         : baseName;
+import std.conv         : to;
+import std.algorithm    : min;
+import std.uni          : toLower;
+
+import core.stdc.errno  : errno, EXDEV, EEXIST;
+import core.stdc.string : strerror;
+import core.stdc.stdio  : perror, rename; // rename is from stdio.h
+
+import core.sys.posix.unistd :
+    access, W_OK, F_OK, isatty, STDIN_FILENO,
+    unlink, read, write, close,
+    fchown;
+
 import core.sys.posix.fcntl  : open, O_RDONLY, O_CREAT, O_TRUNC, O_WRONLY;
 import core.sys.posix.sys.types : ssize_t, off_t, uid_t, gid_t, mode_t;
-import core.sys.posix.sys.stat : stat_t = stat, stat, lstat, fstat, fchmod, fchown,
-                                 S_ISDIR, S_ISREG, S_ISUID, S_ISGID;
+import core.sys.posix.sys.stat :
+    stat_t,    // struct type
+    stat, lstat, fstat, fchmod,
+    S_ISDIR, S_ISREG, S_ISUID, S_ISGID;
+
 import core.sys.posix.utime : utimbuf, utime;
-import core.stdc.stdlib : exit;
+import core.stdc.stdlib     : exit;
 
 enum PFX = "mv: ";
 
@@ -27,7 +37,7 @@ struct Options {
     bool interactive;
 }
 
-noreturn void usage(string prog) {
+void usage(string prog) {
     stderr.writefln("Usage: %s [-f|--force] [-i|--interactive] SRC... DEST", prog);
     exit(1);
 }
@@ -37,17 +47,17 @@ bool pathExists(string p) {
 }
 
 bool shouldAsk(string dest) {
-    // match the C logic: ask only if stdin is a tty and dest is NOT writable
+    // Ask only if stdin is a tty AND dest is not writable
     if (isatty(STDIN_FILENO) == 0) return false;
     if (access(dest.toStringz, W_OK) == 0) return false;
     return true;
 }
 
-bool askOverwrite(string src, string dest) {
+bool askOverwrite(string /*src*/, string dest) {
     // "overwrite 'dest'? " with y/n prompt (default 'n')
     while (true) {
         stderr.writefln("%soverwrite '%s'? ", PFX, dest);
-        auto line = readln(stdin);
+        auto line = readln();               // read from stdin
         if (line is null) return false;
         auto s = line.strip().toLower();
         if (s.length == 0) return false;
@@ -59,7 +69,7 @@ bool askOverwrite(string src, string dest) {
 ssize_t copyFD(string destLabel, int outfd, string srcLabel, int infd) {
     ubyte[1 << 16] buf; // 64 KiB
     for (;;) {
-        auto r = core.sys.posix.unistd.read(infd, buf.ptr, buf.length);
+        auto r = read(infd, buf.ptr, buf.length);
         if (r < 0) {
             perror(srcLabel.toStringz);
             return -1;
@@ -68,7 +78,7 @@ ssize_t copyFD(string destLabel, int outfd, string srcLabel, int infd) {
         ubyte* p = buf.ptr;
         ssize_t left = r;
         while (left > 0) {
-            auto w = core.sys.posix.unistd.write(outfd, p, left);
+            auto w = write(outfd, p, left);
             if (w <= 0) {
                 perror(destLabel.toStringz);
                 return -1;
@@ -104,29 +114,35 @@ int copyAttributes(string fn, int destfd, ref stat_t st, int haveErr) {
 }
 
 int copyRegularFile(string src, ref stat_t st, string dest) {
-    import core.sys.posix.unistd : close;
-
-    int infd = -1, outfd = -1;
     int rc = 0;
-    int attrRC = 0;
 
-    infd = open(src.toStringz, O_RDONLY);
+    // open src
+    int infd = open(src.toStringz, O_RDONLY);
     if (infd < 0) { perror(src.toStringz); return 1; }
+    scope(exit) {
+        if (infd >= 0)
+            if (close(infd) != 0)
+                perror(src.toStringz);
+    }
 
     // refresh stat via fstat
     stat_t stNow;
     if (fstat(infd, &stNow) != 0) {
         perror(src.toStringz);
-        rc = 1;
-        goto out;
+        return 1;
     }
     st = stNow;
 
-    outfd = open(dest.toStringz, O_CREAT | O_TRUNC | O_WRONLY, cast(mode_t)0o666);
+    // open dest with 0666 perms (438 decimal)
+    int outfd = open(dest.toStringz, O_CREAT | O_TRUNC | O_WRONLY, cast(mode_t)438);
     if (outfd < 0) {
         perror(dest.toStringz);
-        rc = 1;
-        goto out;
+        return 1;
+    }
+    scope(exit) {
+        if (outfd >= 0)
+            if (close(outfd) != 0)
+                perror(dest.toStringz);
     }
 
     if (copyFD(dest, outfd, src, infd) < 0)
@@ -138,25 +154,15 @@ int copyRegularFile(string src, ref stat_t st, string dest) {
     utb.modtime = st.st_mtime;
     if (utime(dest.toStringz, &utb) != 0) {
         perror(dest.toStringz);
-        attrRC = rc = 1;
+        rc = 1;
     }
 
-    rc |= copyAttributes(dest, outfd, st, attrRC);
-
-out:
-    if (infd >= 0)
-        if (close(infd) != 0)
-            perror(src.toStringz);
-    if (outfd >= 0)
-        if (close(outfd) != 0)
-            perror(dest.toStringz);
+    rc |= copyAttributes(dest, outfd, st, rc);
     return rc;
 }
 
-int copySpecial(string src, ref stat_t st, string dest) {
+int copySpecial(string src, ref stat_t /*st*/, string /*dest*/) {
     // Not implemented (matches your TODO)
-    // You could add mknod/symlink copy, device nodes, etc. here.
-    // For now, behave like the C placeholder: return error.
     stderr.writefln("%sunsupported file type for '%s'", PFX, src);
     return 1;
 }
@@ -174,7 +180,7 @@ int copyFile(string src, string dest, bool recurse) {
         return 1;
     }
 
-    // If destination exists, remove it (to emulate the unlink step before copy)
+    // If destination exists, remove it (unlink before copy)
     if (pathExists(dest)) {
         if (unlink(dest.toStringz) != 0) {
             perror(dest.toStringz);
@@ -199,7 +205,7 @@ int moveOne(string src, string dest, ref Options opt, bool recurseForDirCopy) {
     if (!opt.force && pathExists(dest) &&
         (opt.interactive || shouldAsk(dest))) {
         if (!askOverwrite(src, dest))
-            return 0; // skip is not an error in traditional mv; but C returned 1
+            return 0; // skipping isn't an error for mv
     }
 
     // Try rename first
@@ -245,13 +251,14 @@ extern(C) int main(int argc, char** argv) {
         return 0;
     }
 
-    auto rest = go.args;
-    if (rest.length < 3) usage(args[0]); // prog + at least 2 operands
+    // After getopt, remaining operands are in 'args'
+    auto rest = args;
+    if (rest.length < 3) usage(rest.length > 0 ? rest[0] : "mv"); // prog + at least 2 operands
 
     // Drop program name
-    auto ops = rest[1 .. $];
-    auto dest = ops[$-1];
-    auto srcs = ops[0 .. $-1];
+    auto ops  = rest[1 .. $];
+    auto dest = ops[$ - 1];
+    auto srcs = ops[0 .. $ - 1];
 
     // Determine if DEST is a directory
     stat_t st;
@@ -262,7 +269,7 @@ extern(C) int main(int argc, char** argv) {
     if (!destIsDir) {
         // Two-arg form: exactly 1 src and 1 dest required
         if (srcs.length != 1) {
-            stderr.writeln("mv: too many arguments, when target is not directory");
+            stderr.writeln("mv: too many arguments when target is not a directory");
             return 1;
         }
         status |= moveOne(srcs[0], dest, opt, /*recurseForDirCopy*/ false);
@@ -272,10 +279,9 @@ extern(C) int main(int argc, char** argv) {
     // N → directory form
     foreach (src; srcs) {
         auto base = baseName(src);
-        auto out  = dest ~ "/" ~ base;
+        auto outPath  = dest ~ "/" ~ base;
         // For dir→dir across filesystems, original code intended recursion but left TODO.
-        // We pass recurse=true so the error explains recursion is not implemented.
-        status |= moveOne(src, out, opt, /*recurseForDirCopy*/ true);
+        status |= moveOne(src, outPath, opt, /*recurseForDirCopy*/ true);
     }
 
     return status ? 1 : 0;

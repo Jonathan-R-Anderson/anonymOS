@@ -6,14 +6,8 @@ import core.stdc.stdio : fprintf, perror, stderr;
 import core.stdc.string : strlen;
 import core.stdc.errno : errno;
 import core.sys.posix.unistd : pathconf, _PC_PATH_MAX, _PC_NAME_MAX;
-import core.sys.posix.sys.stat : stat, lstat;
-import core.sys.posix.limits : PATH_MAX, NAME_MAX;
-import std.string : toStringz, split, startsWith, endsWith;
-import std.algorithm : min;
-import std.file : isDir;
-import std.conv : to;
-import std.array : array;
-import std.meta;
+import core.sys.posix.sys.stat : stat_t, lstat; // <- use stat_t (type) and lstat (func)
+import std.string : toStringz, startsWith, endsWith;
 
 // POSIX minimums for "portable" mode (per POSIX)
 enum size_t POSIX_PATH_MAX_MIN = 256;
@@ -21,9 +15,10 @@ enum size_t POSIX_NAME_MAX_MIN = 14;
 
 enum int PATHCHK_ERR = 1;
 
-__gshared bool optPortable = false;
-__gshared size_t gPathMax = PATH_MAX; // will be replaced by pathconf or POSIX minima
-__gshared size_t gNameMax = NAME_MAX;
+__gshared bool   optPortable = false;
+// Start with POSIX minima; overwrite with pathconf() when not in -p mode.
+__gshared size_t gPathMax = POSIX_PATH_MAX_MIN;
+__gshared size_t gNameMax = POSIX_NAME_MAX_MIN;
 
 // -------- Portable filename character set (POSIX) --------
 // upper/lower letters, digits, period, underscore, hyphen
@@ -50,22 +45,30 @@ PathElem pathSplit(string path)
     if (p == "/") return PathElem("/", "/");
 
     // Find last '/'
-    auto idx = cast(ptrdiff_t) p.lastIndexOf('/');
+    long idx = -1;
+    for (long i = cast(long)p.length - 1; i >= 0; --i)
+    {
+        if (p[cast(size_t)i] == '/')
+        {
+            idx = i;
+            break;
+        }
+    }
+
     if (idx < 0) {
         return PathElem(".", p); // no slash
     }
 
-    auto d = p[0 .. idx]; // up to but not including '/'
-    // collapse empty dirname to "/"
+    auto d = p[0 .. cast(size_t)idx]; // up to but not including '/'
     if (d.length == 0) d = "/";
-    auto b = p[idx + 1 .. $];
+    auto b = p[cast(size_t)idx + 1 .. $];
     return PathElem(d, b);
 }
 
 // Recursively find a filesystem handle that exists (like original find_fshandle)
 string findFSHandle(string path)
 {
-    stat stbuf;
+    stat_t stbuf; // <- stat_t, not stat
     if (lstat(path.toStringz, &stbuf) == 0 || path == "/" || path == ".")
         return path;
 
@@ -76,7 +79,7 @@ string findFSHandle(string path)
 // Check a single path component name
 int checkComponent(string basen)
 {
-    auto blen = basen.length; // bytes (UTF-8); matches length() in C here
+    auto blen = basen.length; // bytes (UTF-8)
     if (blen > gNameMax) {
         fprintf(stderr, "component %s: length %zu exceeds limit %zu\n".toStringz,
                 basen.toStringz, blen, gNameMax);
@@ -155,7 +158,6 @@ int main(string[] args)
         auto a = args[i];
         if (a == "--") { ++i; break; }
         if (a.length >= 2 && a[0] == '-' && a != "-") {
-            // handle options
             if (a == "-p") {
                 optPortable = true;
                 continue;

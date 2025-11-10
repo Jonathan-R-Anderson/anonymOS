@@ -3,18 +3,20 @@ module rm;
 
 version (OSX) {} // parity with DARWIN guards
 
-import core.stdc.stdio : printf, fprintf, perror, stderr, getchar, EOF, fflush;
+import core.stdc.stdio : printf, fprintf, perror, stderr, stdout, getchar, EOF, fflush;
 import core.stdc.stdlib : exit;
 import core.stdc.string : strerror;
 import core.stdc.errno : errno;
 import core.sys.posix.sys.stat : stat, lstat, fstat, S_ISDIR;
-import core.sys.posix.unistd : unlink, rmdir, isatty, fchdir, open as c_open, close,
-                               STDIN_FILENO, geteuid, getegid;
+import core.sys.posix.unistd : unlink, rmdir, isatty, fchdir, close,
+                               STDIN_FILENO, geteuid, getegid, open;
 import core.sys.posix.dirent : DIR, fdopendir, readdir, closedir, dirent;
 import core.sys.posix.fcntl : O_RDONLY, O_DIRECTORY;
 import core.sys.posix.sys.types : uid_t, gid_t;
-import std.string : toStringz, lastIndexOf;
+import std.string : toStringz, fromStringz;
 import std.algorithm : max;
+
+alias c_open = open;
 
 // ----- constants / flags -----
 enum PFX = "rm: ";
@@ -23,10 +25,24 @@ __gshared int opt_force       = 0;
 __gshared int opt_recurse     = 0;
 __gshared int opt_interactive = 0;
 
+// permission bit masks (octal 0002, 0020, 0200)
+enum S_IWOTH = 0x02u;  // 0002
+enum S_IWGRP = 0x10u;  // 0020
+enum S_IWUSR = 0x80u;  // 0200
+
 // ----- small helpers equivalent to libpu pieces -----
 bool have_dots(string s) @safe @nogc nothrow { return s == "." || s == ".."; }
 
 struct PathElem { string dirn; string basen; }
+
+// simple last '/' finder
+private long lastSlash(string p) @safe @nogc nothrow {
+    long idx = -1;
+    foreach (i; 0 .. p.length) {
+        if (p[i] == '/') idx = i;
+    }
+    return idx;
+}
 
 PathElem path_split(string path) {
     auto p = path;
@@ -34,12 +50,12 @@ PathElem path_split(string path) {
     while (p.length > 1 && p[$-1] == '/') p = p[0 .. $-1];
     if (p == "/") return PathElem("/", "/");
 
-    auto idx = cast(ptrdiff_t) p.lastIndexOf('/');
+    auto idx = lastSlash(p);
     if (idx < 0) return PathElem(".", p);
 
-    auto d = p[0 .. idx];
+    auto d = p[0 .. cast(size_t)idx];
     if (d.length == 0) d = "/";
-    auto b = p[idx + 1 .. $];
+    auto b = p[cast(size_t)idx + 1 .. $];
     return PathElem(d, b);
 }
 
@@ -64,10 +80,6 @@ bool ask_question(string prefix, const(char)* fmt, const(char)* name) {
 
 // ----- permissions (matches original simplified logic) -----
 int can_write(ref const(stat) st) {
-    enum S_IWOTH = 0o002;
-    enum S_IWGRP = 0o020;
-    enum S_IWUSR = 0o200;
-
     if ((st.st_mode & S_IWOTH) != 0) return 1;
 
     uid_t uid = geteuid();
@@ -90,7 +102,7 @@ int rmEntry(int dirfd, string dirn, string basen);
 
 int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force) {
     // save cwd
-    int oldCwd = c_open(".", O_DIRECTORY);
+    int oldCwd = c_open(".".toStringz, O_DIRECTORY);
     if (oldCwd < 0) { if (!force) perror(".".toStringz); return 1; }
 
     // open child directory
@@ -109,7 +121,7 @@ int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force
         return 1;
     }
     if (!S_ISDIR(stNow.st_mode)) {
-        if (!force) fprintf(stderr, PFX ~ "'%s' is no longer a directory\n".toStringz,
+        if (!force) fprintf(stderr, (PFX ~ "'%s' is no longer a directory\n").toStringz,
                             strpathcat(parentDir, basen).toStringz);
         close(dfd); close(oldCwd);
         return 1;
@@ -164,17 +176,17 @@ int rmEntry(int dirfd, string dirn, string basen) {
         return 1;
     }
 
-    const bool isdir = S_ISDIR(st.st_mode) != 0;
+    const bool isdir = (S_ISDIR(st.st_mode) != 0);
 
     if (isdir) {
         if (!opt_recurse) {
-            fprintf(stderr, PFX ~ "ignoring directory '%s'\n".toStringz, fn.toStringz);
+            fprintf(stderr, (PFX ~ "ignoring directory '%s'\n").toStringz, fn.toStringz);
             return 1;
         }
 
         if (!opt_force && should_prompt(st) != 0) {
             const(char)* msg = "%srecurse into '%s'?  ";
-            if (!ask_question(PFX, msg, fn.toStringz)) goto out;
+            if (!ask_question(PFX, msg, fn.toStringz)) goto cleanup;
         }
 
         rc = iterateDirectory(dirfd, dirn, basen, opt_force != 0);
@@ -186,7 +198,7 @@ int rmEntry(int dirfd, string dirn, string basen) {
     } else {
         if (!opt_force && should_prompt(st) != 0) {
             const(char)* msg = "%sremove '%s'?  ";
-            if (!ask_question(PFX, msg, fn.toStringz)) goto out;
+            if (!ask_question(PFX, msg, fn.toStringz)) goto cleanup;
         }
 
         if (unlink(basen.toStringz) < 0) {
@@ -195,7 +207,7 @@ int rmEntry(int dirfd, string dirn, string basen) {
         }
     }
 
-out:
+cleanup:
     return rc;
 }
 
@@ -206,7 +218,7 @@ int rm_fn_actor(string fn) {
     auto pe = path_split(fn);
     if (have_dots(pe.basen)) return 1;
 
-    int old_dirfd = c_open(".", O_DIRECTORY);
+    int old_dirfd = c_open(".".toStringz, O_DIRECTORY);
     if (old_dirfd < 0) { perror(".".toStringz); return 1; }
 
     int dirfd = c_open(pe.dirn.toStringz, O_DIRECTORY);
@@ -239,13 +251,14 @@ void parse_options(ref size_t idx, string[] args) {
         if (a == "--") { ++idx; break; }
         if (a.length >= 2 && a[0] == '-' && a != "-") {
             foreach (ch; a[1 .. $]) {
-                final switch (ch) {
+                // not 'final switch' — we need a default for arbitrary chars
+                switch (ch) {
                     case 'f': opt_force = 1; break;
                     case 'i': opt_interactive = 1; break;
                     case 'r': opt_recurse = 1; break;
                     case 'R': opt_recurse = 1; break;
                     default:
-                        fprintf(stderr, PFX ~ "unknown option -%c\n".toStringz, ch);
+                        fprintf(stderr, (PFX ~ "unknown option -%c\n").toStringz, ch);
                         exit(2);
                 }
             }
@@ -266,7 +279,7 @@ int main(string[] args) {
     parse_options(idx, args);
 
     if (idx >= args.length) {
-        fprintf(stderr, PFX ~ "missing operand\n".toStringz);
+        fprintf(stderr, (PFX ~ "missing operand\n").toStringz);
         return 2;
     }
 

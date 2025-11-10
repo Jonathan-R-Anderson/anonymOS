@@ -4,6 +4,8 @@ import std.stdio  : stderr, writeln, writefln;
 import std.getopt : getopt;
 import std.string : toStringz, fromStringz;
 
+import core.sys.posix.unistd;
+
 // ---------- POSIX interop ----------
 extern (C) {
     long   sysconf(int name);
@@ -12,15 +14,127 @@ extern (C) {
 
     import core.stdc.errno  : errno;
     import core.stdc.stdio  : perror;
-
-    struct strmap; // opaque C type
-    int map_lookup(const strmap* map, const(char)* key);
-
-    // Provided by your C objs/libs (pointers, not by-value)
-    __gshared const(strmap)* pathvar_map;
-    __gshared const(strmap)* sysvar_map;
-    __gshared const(strmap)* confstr_map;
 }
+
+// ---------- Compile-time data ingestion ----------
+private:
+
+enum string pathVarData   = import("getconf-path.data");
+enum string sysVarData    = import("getconf-system.data");
+enum string confstrData   = import("getconf-confstr.data");
+
+bool isWhitespace(char ch) pure nothrow @safe @nogc
+{
+    return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f' || ch == '\v';
+}
+
+string stripLine(string line) pure nothrow @safe
+{
+    size_t start;
+    while (start < line.length && isWhitespace(line[start]))
+        ++start;
+    size_t end = line.length;
+    while (end > start && isWhitespace(line[end - 1]))
+        --end;
+    return line[start .. end];
+}
+
+int indexOfChar(string line, char ch) pure nothrow @safe
+{
+    foreach (idx, c; line)
+    {
+        if (c == ch)
+            return cast(int) idx;
+    }
+    return -1;
+}
+
+string[] splitWhitespace(string line) pure nothrow @safe
+{
+    string[] tokens;
+    size_t i;
+    while (i < line.length)
+    {
+        while (i < line.length && isWhitespace(line[i]))
+            ++i;
+        if (i >= line.length)
+            break;
+        const start = i;
+        while (i < line.length && !isWhitespace(line[i]))
+            ++i;
+        tokens ~= line[start .. i];
+    }
+    return tokens;
+}
+
+string generateMapLiteral(string data) pure @safe
+{
+    string[] entries;
+    size_t pos;
+    while (pos < data.length)
+    {
+        size_t lineEnd = pos;
+        while (lineEnd < data.length && data[lineEnd] != '\n' && data[lineEnd] != '\r')
+            ++lineEnd;
+        auto line = data[pos .. lineEnd];
+
+        size_t next = lineEnd;
+        while (next < data.length && (data[next] == '\n' || data[next] == '\r'))
+            ++next;
+        pos = next;
+
+        auto trimmed = stripLine(line);
+        if (!trimmed.length)
+            continue;
+        if (trimmed[0] == '#')
+            continue;
+
+        const hash = indexOfChar(trimmed, '#');
+        if (hash >= 0)
+        {
+            trimmed = stripLine(trimmed[0 .. hash]);
+            if (!trimmed.length)
+                continue;
+        }
+
+        auto tokens = splitWhitespace(trimmed);
+        if (tokens.length < 2)
+            continue;
+
+        auto name = tokens[0];
+        auto value = tokens[1];
+        enum code = "enum __tmp = " ~ value ~ ";";
+        static if (!__traits(compiles, mixin(code)))
+            continue;
+        entries ~= "\"" ~ name ~ "\": " ~ value;
+    }
+
+    string result = "[";
+    foreach (idx, entry; entries)
+    {
+        if (idx)
+            result ~= ", ";
+        result ~= entry;
+    }
+    result ~= "]";
+    return result;
+}
+
+enum string pathVarLiteral = generateMapLiteral(pathVarData);
+enum string sysVarLiteral = generateMapLiteral(sysVarData);
+enum string confstrLiteral = generateMapLiteral(confstrData);
+
+immutable int[string] pathvar_map = mixin(pathVarLiteral);
+immutable int[string] sysvar_map = mixin(sysVarLiteral);
+immutable int[string] confstr_map = mixin(confstrLiteral);
+
+int map_lookup(in int[string] map, string key) @safe pure nothrow
+{
+    const valuePtr = key in map;
+    return valuePtr is null ? -1 : *valuePtr;
+}
+
+public:
 
 extern (D):
 
@@ -31,9 +145,9 @@ string optSpec; // -v (unused, just for parity)
 
 // ---------- Helpers ----------
 @system
-int doVar(const strmap* mapptr, bool pathvar)
+int doVar(in int[string] map, bool pathvar)
 {
-    const val = map_lookup(mapptr, optVar.toStringz);
+    const val = map_lookup(map, optVar);
     if (val < 0)
     {
         if (pathvar) stderr.writefln("invalid path variable %s", optVar);
@@ -96,7 +210,7 @@ int main(string[] args)
     if (optPathname.length)
         return doVar(pathvar_map, true);
 
-    const csVal = map_lookup(confstr_map, optVar.toStringz);
+    const csVal = map_lookup(confstr_map, optVar);
     if (csVal >= 0)
         return doConfstr(csVal);
 

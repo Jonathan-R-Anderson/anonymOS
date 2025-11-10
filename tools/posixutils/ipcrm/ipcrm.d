@@ -1,25 +1,32 @@
-// ipcrm.d — D port of the provided C++ ipcrm
+// ipcrm.d — D port of the provided C/C++ ipcrm
 module ipcrm_d;
 
-import std.stdio : stderr, writefln, writeln;
-import std.getopt : getopt;
-import std.string : toStringz;
-import std.conv   : to;
-import std.typecons : Flag, Yes, No;
+import std.stdio   : stderr, writefln, writeln;
+import std.getopt  : getopt;
+import std.string  : toStringz, fromStringz;
 
-extern (C):
+// ---------------- C / POSIX bindings ----------------
+extern (C)
+{
     // errno / strerror
     import core.stdc.errno  : errno;
     import core.stdc.string : strerror;
 
-    // strtoul like original (base=0 for keys)
-    import core.stdc.stdlib : strtoul;
+    // Provide our own binding for strtoul that accepts const(char)* and char**.
+    // This matches glibc's C signature and sidesteps druntime's inout qualifiers.
+    pragma(mangle, "strtoul")
+    ulong c_strtoul(const(char)* nptr, char** endptr, int base);
 
-    // SysV IPC
-    import core.sys.posix.sys.ipc : key_t, IPC_PRIVATE;
-    import core.sys.posix.sys.msg : msgget, msgctl, IPC_RMID;
+    // SysV IPC common pieces
+    import core.sys.posix.sys.ipc : key_t, IPC_PRIVATE, IPC_RMID;
+    import core.sys.posix.sys.msg : msgget, msgctl;
     import core.sys.posix.sys.shm : shmget, shmctl;
-    import core.sys.posix.sys.sem : semget, semctl;
+
+    // Some druntime packages don't ship a SysV sem header module.
+    // Declare the two functions we need explicitly.
+    int  semget(key_t key, int nsems, int semflg);
+    int  semctl(int semid, int semnum, int cmd, ...);
+}
 
 // ---------------- Masks (same bit layout as the C version) ----------------
 enum OPT_MSG = 1 << 0;
@@ -28,7 +35,7 @@ enum OPT_SEM = 1 << 2;
 enum OPT_KEY = 1 << 3;
 
 struct ArgEnt {
-    int mask;
+    int   mask;
     ulong arg; // id or key
 }
 
@@ -57,12 +64,14 @@ void pushOpt(int mask, ulong val)
 // For ID options  => base = 10.
 void pushArgOpt(int mask, string s)
 {
-    const base = ((mask & OPT_KEY) != 0) ? 0 : 10;
+    int baseVal = ((mask & OPT_KEY) != 0) ? 0 : 10;
     char* endptr = null;
-    auto val = strtoul(s.toStringz, &endptr, base);
 
-    const fullyParsed = (endptr !is null && *endptr == '\0');
-    const isBadKey = ((mask & OPT_KEY) != 0) && (val == IPC_PRIVATE);
+    // use our const-correct binding
+    auto val = c_strtoul(s.toStringz, &endptr, baseVal);
+
+    bool fullyParsed = (endptr !is null) && (*endptr == '\0');
+    bool isBadKey    = ((mask & OPT_KEY) != 0) && (val == IPC_PRIVATE);
 
     if (!fullyParsed || isBadKey)
     {
@@ -77,19 +86,17 @@ void pushArgOpt(int mask, string s)
     pushOpt(mask, cast(ulong) val);
 }
 
-void pinterr(const(char)* fmt, ulong l)
+void pinterr(ulong l)
 {
-    // print "<fmt>" with number and strerror(errno)
-    // fmt patterns from original: "key 0x%lx lookup failed: %s\n"
-    //                             "msgctl(0x%x): %s\n", etc.
-    stderr.writefln("%s", import std.format : format; format(fmt, l, strerror(errno)));
+    // "key 0x%x lookup failed: %s"
+    stderr.writefln("key 0x%x lookup failed: %s", l, fromStringz(strerror(errno)));
     exitStatus = 1;
 }
 
 void removeOne(const ArgEnt ae)
 {
     int id;
-    const(char)* errmsg = null;
+    string errmsg; // use D string for formatter
 
     if ((ae.mask & OPT_KEY) != 0)
     {
@@ -101,7 +108,7 @@ void removeOne(const ArgEnt ae)
         else { assert(0); }
 
         if (id < 0) {
-            pinterr("key 0x%lx lookup failed: %s\n", ae.arg);
+            pinterr(ae.arg);
             return;
         }
     }
@@ -117,13 +124,13 @@ void removeOne(const ArgEnt ae)
     else if ((ae.mask & OPT_SEM) != 0)
     {
         // semctl is variadic; Linux allows passing 0 for the union.
-        rc = semctl(id, 0, IPC_RMID);
+        rc = semctl(id, 0, IPC_RMID, 0);
         errmsg = "semctl(0x%x): %s\n";
     }
     else { assert(0); }
 
     if (rc < 0) {
-        stderr.writefln("%s", import std.format : format; format(errmsg, id, strerror(errno)));
+        stderr.writefln(errmsg, id, fromStringz(strerror(errno)));
         exitStatus = 1;
     }
 }

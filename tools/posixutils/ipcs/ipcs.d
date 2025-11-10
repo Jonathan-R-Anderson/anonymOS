@@ -21,9 +21,28 @@ import core.sys.posix.sys.msg : msqid_ds, msginfo, msgctl;
 import core.stdc.config : c_ulong;
 import ipcs.sem_compat : semid_ds, seminfo, semctl;
 
+// --- replace your platform-specific shm block with this ---
+import core.sys.posix.sys.shm : shmid_ds, shmctl;
+
+// Provide Linux-only fallbacks when druntime doesn't expose shminfo/CTLs.
 version (linux)
 {
-    import core.sys.linux.sys.shm : shmid_ds, shminfo, shmctl;
+    extern(C):
+    struct shminfo
+    {
+        c_ulong shmmax;
+        c_ulong shmmin;
+        c_ulong shmmni;
+        c_ulong shmseg;
+        c_ulong shmall;
+    }
+
+    // Only define if missing
+    static if (!__traits(compiles, { enum x = SHM_INFO; }))
+    {
+        enum int SHM_INFO = 14;
+        enum int SHM_STAT = 13;
+    }
 }
 else version (OSX)
 {

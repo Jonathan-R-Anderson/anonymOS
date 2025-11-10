@@ -1,4 +1,3 @@
-// id.d — D port of the provided C "id" tool
 module id_d;
 
 import std.stdio : stdout, stderr, writeln, writef, writefln;
@@ -6,17 +5,14 @@ import std.getopt : getopt;
 import std.string : toStringz, fromStringz;
 import std.conv   : to;
 
-extern (C):
-    // POSIX types and functions
-    import core.sys.posix.sys.types : uid_t, gid_t;
-    import core.sys.posix.unistd : getuid, geteuid, getgid, getegid;
-    import core.sys.posix.pwd : passwd, getpwnam, getpwuid;
-    import core.sys.posix.grp : group, getgrgid, getgrent, setgrent, endgrent;
-    import core.stdc.errno : errno;
-    import core.stdc.string : strcmp;
-    import core.stdc.stdio : perror;
+import core.sys.posix.sys.types : uid_t, gid_t;
+import core.sys.posix.unistd : getuid, geteuid, getgid, getegid;
+import core.sys.posix.pwd : passwd, getpwnam, getpwuid;
+import core.sys.posix.grp : group, getgrgid, getgrent, setgrent, endgrent;
+import core.stdc.errno : errno;
+import core.stdc.string : strcmp;
+import core.stdc.stdio : perror;
 
-// ---------------- Options / state ----------------
 enum OptMode { DEF, GRP_ALL, EGID, EUID }
 
 __gshared bool optName    = false; // -n
@@ -25,7 +21,6 @@ __gshared OptMode optMode = OptMode.DEF;
 
 __gshared string optUser;          // optional [user]
 
-// ---------------- Helpers ----------------
 bool userInGroup(const group* gr)
 {
     if (optUser.length == 0) return false;
@@ -62,10 +57,10 @@ bool matchGroups(gid_t gid, gid_t egid, ref GrpEnt[] outv)
 
         if (gr.gr_gid == gid || gr.gr_gid == egid || userInGroup(gr))
         {
-            outv ~= GrpEnt(gr.gr_gid, fromStringz(gr.gr_name));
+            // CHANGE: .idup so it's an immutable string
+            outv ~= GrpEnt(gr.gr_gid, fromStringz(gr.gr_name).idup);
         }
     }
-    // If errno was set inside loop, we already printed a perror; return false on error.
     return true;
 }
 
@@ -96,7 +91,7 @@ void prGID(gid_t gid, bool space, bool newline)
             perror("warning(getgrgid)");
         if (gr !is null)
         {
-            writef("%s%s%s", space ? " " : "", fromStringz(gr.pw_name is null ? gr.gr_name : gr.gr_name), newline ? "\n" : "");
+            writef("%s%s%s", space ? " " : "", fromStringz(gr.gr_name), newline ? "\n" : "");
             return;
         }
     }
@@ -110,21 +105,19 @@ int idGrpAll(ref GrpEnt[] grp, gid_t gid, gid_t egid)
         auto s = optName ? g.name : (cast(ulong)g.gid).to!string;
         writef("%s%s%s", (i == 0) ? "" : " ", s, (i == grp.length - 1) ? "\n" : "");
     }
-    if (grp.length == 0) writeln(); // match GNU coreutils behavior (empty line)
+    if (grp.length == 0) writeln();
     return 0;
 }
 
 int idDef(uid_t uid, uid_t euid, gid_t gid, gid_t egid, ref GrpEnt[] grp)
 {
-    // uid=
-    bool haveOptUser = (optUser.length != 0);
+    const haveOptUser = (optUser.length != 0);
     writef("uid=%llu%s%s%s",
            cast(ulong)uid,
            haveOptUser ? "(" : "",
            haveOptUser ? optUser : "",
            haveOptUser ? ")" : "");
 
-    // euid= (only if different)
     if (uid != euid)
     {
         auto pw = getpwuid(euid);
@@ -135,7 +128,6 @@ int idDef(uid_t uid, uid_t euid, gid_t gid, gid_t egid, ref GrpEnt[] grp)
                pw ? ")" : "");
     }
 
-    // gid=
     auto gr = getgrgid(gid);
     writef(" gid=%llu%s%s%s",
            cast(ulong)gid,
@@ -143,7 +135,6 @@ int idDef(uid_t uid, uid_t euid, gid_t gid, gid_t egid, ref GrpEnt[] grp)
            gr ? fromStringz(gr.gr_name) : "",
            gr ? ")" : "");
 
-    // egid= (only if different)
     if (gid != egid)
     {
         auto gr2 = getgrgid(egid);
@@ -154,7 +145,6 @@ int idDef(uid_t uid, uid_t euid, gid_t gid, gid_t egid, ref GrpEnt[] grp)
                gr2 ? ")" : "");
     }
 
-    // groups=
     if (grp.length)
     {
         writef(" groups=");
@@ -210,12 +200,13 @@ int doID()
         {
             auto pw = getpwuid(uid);
             if (pw !is null)
-                optUser = fromStringz(pw.pw_name);
+                // CHANGE: .idup so optUser is an immutable string
+                optUser = fromStringz(pw.pw_name).idup;
         }
     }
 
-    // Simple modes (-u, -g)
-    final switch (optMode)
+    // CHANGE: use plain switch (no 'final') so 'default' is allowed
+    switch (optMode)
     {
         case OptMode.EUID: prUID(euid, false, true); return 0;
         case OptMode.EGID: prGID(egid, false, true); return 0;
@@ -226,7 +217,8 @@ int doID()
     if (!matchGroups(gid, egid, grp))
         return 1;
 
-    final switch (optMode)
+    // CHANGE: use plain switch (no 'final')
+    switch (optMode)
     {
         case OptMode.GRP_ALL: return idGrpAll(grp, gid, egid);
         case OptMode.DEF:     return idDef(uid, euid, gid, egid, grp);
@@ -234,13 +226,11 @@ int doID()
     }
 }
 
-// ---------------- Main ----------------
 int main(string[] args)
 {
-    // Parse options: -g -G -n -r -u [user]
     try
     {
-        auto help = getopt(
+        auto res = getopt(
             args,
             "n", &optName,
             "r", &optRealID,
@@ -249,8 +239,7 @@ int main(string[] args)
             "u", { optMode = OptMode.EUID; }
         );
 
-        // positional: [user]
-        auto pos = help.args;
+        auto pos = args[1 .. $];
         if (pos.length > 1)
         {
             stderr.writefln("Usage: %s [user]", args[0]);

@@ -1,13 +1,12 @@
-// kill.d — D translation of the provided C program
+// kill.d — D translation of the provided C program (corrected)
 module kill_d;
 
 version (Posix) {} else static assert(0, "This program requires POSIX.");
 
 import std.stdio : writeln, writefln, stderr;
-import std.string : toUpper, startsWith, strip, format, cmp;
+import std.string : toUpper, startsWith, strip, format, cmp, fromStringz, toStringz;
 import std.conv : to;
 import std.algorithm : sort, map;
-import std.exception : errnoEnforce;
 import std.array : array;
 import core.stdc.stdlib : exit;
 import core.stdc.stdio : perror;
@@ -73,20 +72,20 @@ private immutable SigPair[] PLATFORM_EXTRAS = [];
 
 // Aliases (name -> canonical name)
 version (linux)
-private immutable string[][2] ALIASES = [
+private immutable string[2][] ALIASES = [
     ["IOT",  "ABRT"],
     ["POLL", "IO"],     // treat POLL as alias to IO (and vice-versa handled below)
     ["CLD",  "CHLD"],
 ];
 else version (OSX)
-private immutable string[][2] ALIASES = [
+private immutable string[2][] ALIASES = [
     ["IOT",  "ABRT"],
     ["EMT",  "TRAP"],
     ["CLD",  "CHLD"],
     ["INFO", "USR1"],   // macOS SIGINFO is 29; we keep minimal mapping behavior
 ];
 else
-private immutable string[][2] ALIASES = [];
+private immutable string[2][] ALIASES = [];
 
 //
 // ----- Utility: build maps -----
@@ -128,7 +127,7 @@ private Tables buildTables() {
 //
 // ----- CLI logic -----
 //
-private noreturn void usage(string prog) {
+private void usage(string prog) {
     stderr.writefln(
         "Usage:\n" ~
         "    %s -l [signal_number]\n" ~
@@ -138,6 +137,7 @@ private noreturn void usage(string prog) {
         prog, prog, prog, prog
     );
     exit(1);
+    assert(0);
 }
 
 private bool isDigits(string s) {
@@ -268,7 +268,7 @@ private int deliverSignals(string[] args, size_t pidPos, int signum) {
 
         if (kill(pid, signum) < 0) {
             // Mimic perror(argv[i])
-            perror(token~"".ptr);
+            perror(token.toStringz);
             retval = 1;
         }
     }
@@ -276,7 +276,12 @@ private int deliverSignals(string[] args, size_t pidPos, int signum) {
 }
 
 extern(C) int main(int argc, char** argv) {
-    auto args = [ for (size_t i = 0; i < cast(size_t)argc; ++i) argv[i].to!string ];
+    // Convert argv -> D string[]
+    string[] args;
+    args.length = cast(size_t)argc;
+    foreach (i; 0 .. cast(size_t)argc) {
+        args[i] = fromStringz(argv[i]);
+    }
 
     if (args.length < 2) usage(args[0]);
 

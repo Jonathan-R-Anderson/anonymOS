@@ -147,6 +147,9 @@ def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], outp
     cmd: List[str] = [dc]
     cmd.extend(str(src) for src in sources)
     cmd.extend(adjust_flags_for_compiler(flags, dc))
+    string_import_dirs = {src.parent for src in sources}
+    for import_dir in sorted(string_import_dirs):
+        cmd.append(f"-J{os.fspath(import_dir)}")
     cmd.append(f"-of={output}")
     subprocess.run(cmd, check=True)
     try:

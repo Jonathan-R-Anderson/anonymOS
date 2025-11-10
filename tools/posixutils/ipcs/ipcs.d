@@ -18,20 +18,21 @@ import core.stdc.string : strerror;
 // SysV IPC
 import core.sys.posix.sys.ipc : key_t;
 import core.sys.posix.sys.msg : msqid_ds, msginfo, msgctl;
-import core.sys.posix.sys.shm : shmid_ds, shmctl;
 import core.stdc.config : c_ulong;
 import ipcs.sem_compat : semid_ds, seminfo, semctl;
 
 version (linux)
 {
-    import core.sys.linux.sys.shm : shminfo;
+    import core.sys.linux.sys.shm : shmid_ds, shminfo, shmctl;
 }
 else version (OSX)
 {
-    import core.sys.darwin.sys.shm : shminfo;
+    import core.sys.darwin.sys.shm : shmid_ds, shminfo, shmctl;
 }
 else
 {
+    import core.sys.posix.sys.shm : shmid_ds, shmctl;
+
     // Fallback definition for platforms where shminfo is not exposed by druntime.
     struct shminfo
     {

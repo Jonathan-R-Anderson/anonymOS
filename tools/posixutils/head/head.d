@@ -72,10 +72,15 @@ int main(string[] args)
     string[] files;
 
     try {
-        auto help = getopt(args,
+        getopt(args,
             "n|lines", &nArg
         );
-        files = help.args.dup;
+        // getopt removes handled options from `args`, leaving the program name
+        // followed by the remaining positional parameters.
+        if (args.length > 1)
+            files = args[1 .. $].dup;
+        else
+            files = [];
     } catch (Exception e) {
         stderr.writeln(e.msg);
         return 2;

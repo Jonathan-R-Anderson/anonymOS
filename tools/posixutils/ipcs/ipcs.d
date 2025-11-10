@@ -6,20 +6,44 @@ import std.getopt : getopt;
 import std.string : toStringz, fromStringz;
 import std.conv   : to, octal;
 
-extern (C):
-    // uname
-    import core.sys.posix.sys.utsname : utsname, uname;
-    // time
-    import core.stdc.time : time_t, time, localtime_r, strftime, tm;
-    // errno/strerror
-    import core.stdc.errno : errno;
-    import core.stdc.string : strerror;
+// uname
+import core.sys.posix.sys.utsname : utsname, uname;
+// time
+import core.stdc.time : time_t, time, strftime, tm;
+import core.sys.posix.time : localtime_r;
+// errno/strerror
+import core.stdc.errno : errno;
+import core.stdc.string : strerror;
 
-    // SysV IPC
-    import core.sys.posix.sys.ipc : key_t;
-    import core.sys.posix.sys.msg : msqid_ds, msginfo, msgctl;
-    import core.sys.posix.sys.shm : shmid_ds, shminfo, shmctl;
-    import ipcs.sem_compat : semid_ds, seminfo, semctl;
+// SysV IPC
+import core.sys.posix.sys.ipc : key_t;
+import core.sys.posix.sys.msg : msqid_ds, msginfo, msgctl;
+import core.sys.posix.sys.shm : shmid_ds, shmctl;
+import core.stdc.config : c_ulong;
+import ipcs.sem_compat : semid_ds, seminfo, semctl;
+
+version (linux)
+{
+    import core.sys.linux.sys.shm : shminfo;
+}
+else version (OSX)
+{
+    import core.sys.darwin.sys.shm : shminfo;
+}
+else
+{
+    // Fallback definition for platforms where shminfo is not exposed by druntime.
+    struct shminfo
+    {
+        // These fields mirror the SysV IPC shminfo layout but are unused by the
+        // implementation; they exist solely to satisfy the shmctl interface.
+        c_ulong shmmax;
+        c_ulong shmmin;
+        c_ulong shmmni;
+        c_ulong shmseg;
+        c_ulong shmall;
+    }
+}
 
 // --- GNU extensions (command constants) ---
 enum int MSG_INFO = 12;

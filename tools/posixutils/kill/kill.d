@@ -7,7 +7,7 @@ import std.stdio : writeln, writefln, stderr;
 import std.string : toUpper, startsWith, strip, format, cmp, fromStringz, toStringz;
 import std.conv : to;
 import std.algorithm : sort, map;
-import std.array : array;
+import std.array : array, idup;
 import core.stdc.stdlib : exit;
 import core.stdc.stdio : perror;
 import core.stdc.errno : errno;
@@ -280,7 +280,7 @@ extern(C) int main(int argc, char** argv) {
     string[] args;
     args.length = cast(size_t)argc;
     foreach (i; 0 .. cast(size_t)argc) {
-        args[i] = fromStringz(argv[i]);
+        args[i] = fromStringz(argv[i]).idup;
     }
 
     if (args.length < 2) usage(args[0]);

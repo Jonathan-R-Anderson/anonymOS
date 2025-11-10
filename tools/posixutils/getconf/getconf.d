@@ -84,9 +84,7 @@ string generateMapLiteral(string data) pure @safe
         pos = next;
 
         auto trimmed = stripLine(line);
-        if (!trimmed.length)
-            continue;
-        if (trimmed[0] == '#')
+        if (!trimmed.length || trimmed[0] == '#')
             continue;
 
         const hash = indexOfChar(trimmed, '#');
@@ -103,17 +101,14 @@ string generateMapLiteral(string data) pure @safe
 
         auto name = tokens[0];
         auto value = tokens[1];
-        enum code = "enum __tmp = " ~ value ~ ";";
-        static if (!__traits(compiles, mixin(code)))
-            continue;
+
         entries ~= "\"" ~ name ~ "\": " ~ value;
     }
 
     string result = "[";
     foreach (idx, entry; entries)
     {
-        if (idx)
-            result ~= ", ";
+        if (idx) result ~= ", ";
         result ~= entry;
     }
     result ~= "]";

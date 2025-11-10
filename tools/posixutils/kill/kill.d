@@ -6,8 +6,8 @@ version (Posix) {} else static assert(0, "This program requires POSIX.");
 import std.stdio : writeln, writefln, stderr;
 import std.string : toUpper, startsWith, strip, format, cmp, fromStringz, toStringz;
 import std.conv : to;
-import std.algorithm : sort, map;
-import std.array : array, idup;
+import std.algorithm : sort;
+import std.array : array;
 import core.stdc.stdlib : exit;
 import core.stdc.stdio : perror;
 import core.stdc.errno : errno;
@@ -276,7 +276,7 @@ private int deliverSignals(string[] args, size_t pidPos, int signum) {
 }
 
 extern(C) int main(int argc, char** argv) {
-    // Convert argv -> D string[]
+    // Convert argv -> D string[] (immutable)
     string[] args;
     args.length = cast(size_t)argc;
     foreach (i; 0 .. cast(size_t)argc) {

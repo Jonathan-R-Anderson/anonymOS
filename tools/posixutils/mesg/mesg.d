@@ -10,7 +10,8 @@ import std.getopt       : getopt;
 import core.stdc.stdlib : EXIT_SUCCESS, EXIT_FAILURE;
 import core.stdc.stdio  : perror;
 import core.sys.posix.unistd : isatty, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO;
-import core.sys.posix.sys.stat : stat_t = stat, fstat, fchmod, S_IWGRP, S_IWOTH;
+// ⬇️ FIX: import the struct type stat_t (don’t alias it to the function `stat`)
+import core.sys.posix.sys.stat : stat_t, fstat, fchmod, S_IWGRP, S_IWOTH;
 
 enum PFX = "mesg: ";
 
@@ -21,7 +22,7 @@ immutable StdioFD[] stdioFds = [
     StdioFD(STDERR_FILENO, "stderr"),
 ];
 
-noreturn void usage(string prog) {
+void usage(string prog) {
     stderr.writefln("Usage: %s [y|n]", prog);
     import core.stdc.stdlib : exit;
     exit(2);
@@ -65,7 +66,7 @@ extern(C) int main(int argc, char** argv) {
         return 2;
     }
 
-    const bool writable = ( (st.st_mode & (S_IWGRP | S_IWOTH)) != 0 );
+    const bool writable = ((st.st_mode & (S_IWGRP | S_IWOTH)) != 0);
 
     // No argument: report current state and return 0 if y, 1 if n
     if (optYN.length == 0) {

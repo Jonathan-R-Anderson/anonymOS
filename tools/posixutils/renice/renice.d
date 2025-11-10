@@ -12,8 +12,8 @@ import core.sys.posix.sys.resource : getpriority, setpriority,
 import core.sys.posix.pwd : passwd, getpwnam;
 import std.string : toStringz;
 import std.conv : to, ConvException;
-import std.typecons : nullable;
-import std.algorithm : startsWith;
+// import std.typecons : nullable; // (unused)
+// import std.algorithm : startsWith; // (unused)
 
 // Not all platforms expose PRIO_MIN/PRIO_MAX via bindings; define sane defaults.
 enum PRIO_MIN = -20; // typical on Linux/Unix
@@ -168,7 +168,8 @@ int parseOptions(ref size_t idx, string[] args)
 
             // Single-letter flags can be grouped; handle each char after '-'
             foreach (ch; a[1 .. $]) {
-                final switch (ch) {
+                // NOTE: use regular switch, not final switch (exhaustiveness unknown for runtime char)
+                switch (ch) {
                     case 'p': niceMode = PRIO_PROCESS; break;
                     case 'g': niceMode = PRIO_PGRP;    break;
                     case 'u': niceMode = PRIO_USER;    break;

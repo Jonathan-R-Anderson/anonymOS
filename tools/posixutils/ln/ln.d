@@ -3,19 +3,16 @@ module ln_d;
 
 version (Posix) {} else static assert(0, "This utility requires a POSIX system.");
 
-import std.stdio          : writeln, writefln, stderr;
-import std.getopt         : getopt, defaultGetoptPrinter, GetoptResult;
-import std.path           : baseName, buildPath;
-import std.string         : toStringz;
-import std.conv           : to;
-import std.algorithm      : max;
-import std.array          : array;
-import core.stdc.string   : strerror;
-import core.stdc.errno    : errno;
+import std.stdio           : writeln, writefln, stderr;
+import std.getopt          : getopt, defaultGetoptPrinter, GetoptResult;
+import std.path            : baseName, buildPath;
+import std.string          : toStringz;
+import std.conv            : to;
+import std.algorithm       : max;
+import std.array           : array;
 import core.sys.posix.unistd : access, F_OK, unlink, symlink, readlink, link;
-import core.sys.posix.sys.stat : stat, lstat, S_ISDIR, S_ISLNK;
-import core.sys.posix.sys.types : mode_t;
-import core.stdc.stdlib   : exit;
+import core.sys.posix.sys.stat : stat, lstat, S_ISDIR, S_ISLNK, stat_t;
+import core.stdc.stdlib    : exit;
 
 enum PFX = "ln: ";
 
@@ -29,17 +26,15 @@ struct FS {
         return access(p.toStringz, F_OK) == 0;
     }
     static bool isDir(string p) {
-        import core.sys.posix.sys.stat : stat, stat_t;
         stat_t st;
         if (stat(p.toStringz, &st) != 0) return false;
         return S_ISDIR(st.st_mode);
     }
 }
 
-/// If doing a hard link and the source is a symlink, dereference once
-/// (mirror of the original program’s readlink() step).
+/// If doing a hard link and the source is a symlink, dereference once.
+/// Mirrors the original program’s readlink() step.
 string maybeDereferenceOnce(string src) {
-    import core.sys.posix.sys.stat : lstat, stat_t, S_ISLNK;
     stat_t st;
     if (lstat(src.toStringz, &st) != 0) {
         // If lstat fails, just return original; link(2) will error below.
@@ -47,8 +42,7 @@ string maybeDereferenceOnce(string src) {
     }
     if (!S_ISLNK(st.st_mode)) return src;
 
-    // Read the symlink target
-    // Use PATH_MAX-ish size; if too small, we’ll just error like the C version.
+    // Read the symlink target; use a reasonable buffer size.
     enum BUF = 4096;
     char[BUF] buf;
     auto n = readlink(src.toStringz, buf.ptr, buf.length);
@@ -72,9 +66,6 @@ int doLink(ref Options opt, string linkTarget, string linkName) {
             return 1;
         }
         if (unlink(linkName.toStringz) != 0) {
-            // perror(link_name)
-            stderr.writefln("%s%s", linkName, "");
-            // Above line just ensures non-null pointer for perror style; instead:
             import core.stdc.stdio : perror;
             perror(linkName.toStringz);
             return 1;
@@ -102,7 +93,7 @@ int doLink(ref Options opt, string linkTarget, string linkName) {
     return 0;
 }
 
-noreturn void usage(string prog) {
+void usage(string prog) {
     stderr.writefln(
         "ln - make links between files\n\n" ~
         "Usage:\n" ~
@@ -114,6 +105,8 @@ noreturn void usage(string prog) {
         prog
     );
     exit(1);
+    // Help function does not return:
+    assert(0);
 }
 
 extern(C) int main(int argc, char** argv) {
@@ -133,13 +126,15 @@ extern(C) int main(int argc, char** argv) {
 
     if (showHelp) {
         defaultGetoptPrinter("ln - make links between files", res.options);
-        writeln("\nUsage:\n  ", args[0], " [OPTIONS] file... TARGET");
+        writeln("\nUsage:\n  ", args.length ? args[0] : "ln", " [OPTIONS] file... TARGET");
         return 0;
     }
 
-    auto positional = res.args;
+    // After getopt, `args` now contains only the leftover positional arguments.
+    auto positional = args;
+
     if (positional.length < 2) {
-        usage(args[0]);
+        usage(args.length ? args[0] : "ln");
     }
 
     // TARGET is the last positional

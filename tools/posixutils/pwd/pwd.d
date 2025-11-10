@@ -6,9 +6,8 @@ import core.stdc.stdio : printf, fprintf, perror, stderr;
 import core.stdc.string : strlen;
 import core.stdc.errno : errno, ERANGE;
 import core.sys.posix.unistd : getcwd;
-import std.string : toStringz, startsWith, split;
+import std.string : toStringz, startsWith, split, lastIndexOf;
 import std.conv : to;
-import std.algorithm : canFind;
 
 // ----------------- Options / modes -----------------
 enum PwdMode : int { envLogical, physical }
@@ -26,7 +25,7 @@ PathElem pathSplit(string path)
     while (p.length > 1 && p[$-1] == '/') p = p[0 .. $-1];
     if (p == "/") return PathElem("/", "/");
 
-    auto idx = cast(ptrdiff_t)p.lastIndexOf('/');
+    auto idx = lastIndexOf(p, '/'); // returns ptrdiff_t, -1 if not found
     if (idx < 0) return PathElem(".", p);
     auto d = p[0 .. idx];
     if (d.length == 0) d = "/";
@@ -108,10 +107,11 @@ void parseOptions(ref size_t argi, string[] args)
         {
             foreach (i, ch; a[1 .. $])
             {
-                final switch (ch)
+                // Use regular switch here (not 'final switch') so default is allowed
+                switch (ch)
                 {
                     case 'L': optMode = PwdMode.envLogical; break;
-                    case 'P': optMode = PwdMode.physical; break;
+                    case 'P': optMode = PwdMode.physical;  break;
                     default:
                         fprintf(stderr,
                                 "pwd: unknown option -%c\n".toStringz, ch);

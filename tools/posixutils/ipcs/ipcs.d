@@ -4,7 +4,7 @@ module ipcs_d;
 import std.stdio : stdout, stderr, writefln, writeln, writef, writefln;
 import std.getopt : getopt;
 import std.string : toStringz, fromStringz;
-import std.conv   : to;
+import std.conv   : to, octal;
 
 extern (C):
     // uname
@@ -121,15 +121,15 @@ int printMsg()
         writef("m %d 0x%x --%c%c%c%c%c%c%c%c%c %d %d",
                mq,
                cast(uint) ipcKey(ds.msg_perm),
-               (ds.msg_perm.mode & 0400) ? 'r' : '-', // user read
-               (ds.msg_perm.mode & 0200) ? 'w' : '-', // user write
-               (ds.msg_perm.mode & 0200) ? 'a' : '-', // user alter
-               (ds.msg_perm.mode & 0040) ? 'r' : '-', // group read
-               (ds.msg_perm.mode & 0020) ? 'w' : '-', // group write
-               (ds.msg_perm.mode & 0020) ? 'a' : '-', // group alter
-               (ds.msg_perm.mode & 0004) ? 'r' : '-', // other read
-               (ds.msg_perm.mode & 0002) ? 'w' : '-', // other write
-               (ds.msg_perm.mode & 0002) ? 'a' : '-', // other alter
+               (ds.msg_perm.mode & octal!"400") ? 'r' : '-', // user read
+               (ds.msg_perm.mode & octal!"200") ? 'w' : '-', // user write
+               (ds.msg_perm.mode & octal!"200") ? 'a' : '-', // user alter
+               (ds.msg_perm.mode & octal!"40") ? 'r' : '-', // group read
+               (ds.msg_perm.mode & octal!"20") ? 'w' : '-', // group write
+               (ds.msg_perm.mode & octal!"20") ? 'a' : '-', // group alter
+               (ds.msg_perm.mode & octal!"4") ? 'r' : '-', // other read
+               (ds.msg_perm.mode & octal!"2") ? 'w' : '-', // other write
+               (ds.msg_perm.mode & octal!"2") ? 'a' : '-', // other alter
                ds.msg_perm.uid,
                ds.msg_perm.gid);
 
@@ -173,15 +173,15 @@ int printShm()
         writef("m %d 0x%x --%c%c%c%c%c%c%c%c%c %d %d",
                id,
                cast(uint) ipcKey(ds.shm_perm),
-               (ds.shm_perm.mode & 0400) ? 'r' : '-', // user read
-               (ds.shm_perm.mode & 0200) ? 'w' : '-', // user write
-               (ds.shm_perm.mode & 0200) ? 'a' : '-', // user alter
-               (ds.shm_perm.mode & 0040) ? 'r' : '-', // group read
-               (ds.shm_perm.mode & 0020) ? 'w' : '-', // group write
-               (ds.shm_perm.mode & 0020) ? 'a' : '-', // group alter
-               (ds.shm_perm.mode & 0004) ? 'r' : '-', // other read
-               (ds.shm_perm.mode & 0002) ? 'w' : '-', // other write
-               (ds.shm_perm.mode & 0002) ? 'a' : '-', // other alter
+               (ds.shm_perm.mode & octal!"400") ? 'r' : '-', // user read
+               (ds.shm_perm.mode & octal!"200") ? 'w' : '-', // user write
+               (ds.shm_perm.mode & octal!"200") ? 'a' : '-', // user alter
+               (ds.shm_perm.mode & octal!"40") ? 'r' : '-', // group read
+               (ds.shm_perm.mode & octal!"20") ? 'w' : '-', // group write
+               (ds.shm_perm.mode & octal!"20") ? 'a' : '-', // group alter
+               (ds.shm_perm.mode & octal!"4") ? 'r' : '-', // other read
+               (ds.shm_perm.mode & octal!"2") ? 'w' : '-', // other write
+               (ds.shm_perm.mode & octal!"2") ? 'a' : '-', // other alter
                ds.shm_perm.uid,
                ds.shm_perm.gid);
 
@@ -230,15 +230,15 @@ int printSem()
         writef("m %d 0x%x --%c%c%c%c%c%c%c%c%c %d %d",
                sid,
                cast(uint) ipcKey(ds.sem_perm),
-               (ds.sem_perm.mode & 0400) ? 'r' : '-', // user read
-               (ds.sem_perm.mode & 0200) ? 'w' : '-', // user write
-               (ds.sem_perm.mode & 0200) ? 'a' : '-', // user alter
-               (ds.sem_perm.mode & 0040) ? 'r' : '-', // group read
-               (ds.sem_perm.mode & 0020) ? 'w' : '-', // group write
-               (ds.sem_perm.mode & 0020) ? 'a' : '-', // group alter
-               (ds.sem_perm.mode & 0004) ? 'r' : '-', // other read
-               (ds.sem_perm.mode & 0002) ? 'w' : '-', // other write
-               (ds.sem_perm.mode & 0002) ? 'a' : '-', // other alter
+               (ds.sem_perm.mode & octal!"400") ? 'r' : '-', // user read
+               (ds.sem_perm.mode & octal!"200") ? 'w' : '-', // user write
+               (ds.sem_perm.mode & octal!"200") ? 'a' : '-', // user alter
+               (ds.sem_perm.mode & octal!"40") ? 'r' : '-', // group read
+               (ds.sem_perm.mode & octal!"20") ? 'w' : '-', // group write
+               (ds.sem_perm.mode & octal!"20") ? 'a' : '-', // group alter
+               (ds.sem_perm.mode & octal!"4") ? 'r' : '-', // other read
+               (ds.sem_perm.mode & octal!"2") ? 'w' : '-', // other write
+               (ds.sem_perm.mode & octal!"2") ? 'a' : '-', // other alter
                ds.sem_perm.uid,
                ds.sem_perm.gid);
 

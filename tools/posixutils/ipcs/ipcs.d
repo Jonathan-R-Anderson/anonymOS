@@ -137,7 +137,7 @@ int printMsg()
             writef(" %d %d", ds.msg_perm.cuid, ds.msg_perm.cgid);
 
         if ((optPrint & ROPT_OUTST) != 0)
-            writef(" %s %lu", (msgCbytes(ds)).to!string, ds.msg_qnum);
+            writef(" %lu %lu", msgCbytes(ds), ds.msg_qnum);
 
         if ((optPrint & ROPT_SIZE) != 0)
             writef(" %lu", ds.msg_qbytes);

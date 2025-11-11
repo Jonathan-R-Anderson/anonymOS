@@ -555,6 +555,11 @@ private void initializeInterrupts()
 
 @nogc nothrow private void resetProc(ref Proc p)
 {
+    if (g_objectRegistryReady && isProcessObject(p.objectId))
+    {
+        destroyProcessObject(p.objectId);
+    }
+
     p.pid = 0;
     p.ppid = 0;
     p.state = ProcState.UNUSED;
@@ -568,6 +573,7 @@ private void initializeInterrupts()
     p.pendingArgv = null;
     p.pendingEnvp = null;
     p.pendingExec = false;
+    p.objectId = INVALID_OBJECT_ID;
 }
 
 extern(C) @nogc nothrow void handleInvalidOpcode(
@@ -1730,12 +1736,664 @@ mixin template PosixKernelShim()
         const(char*)* pendingArgv; // pointer to array of const char*
         const(char*)* pendingEnvp;
         bool          pendingExec;
+        size_t        objectId;
     }
 
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
     private __gshared bool           g_initialized = false;
+
+    // ---- Object registry ----
+    enum KernelObjectKind : ubyte
+    {
+        Invalid,
+        Namespace,
+        Executable,
+        Process,
+        Device,
+        Channel,
+    }
+
+    private enum MAX_KERNEL_OBJECTS = 256;
+    private enum MAX_OBJECT_NAME    = 48;
+    private enum MAX_OBJECT_LABEL   = 64;
+    private enum MAX_OBJECT_CHILDREN = 8;
+    private enum size_t INVALID_OBJECT_ID = size_t.max;
+
+    private struct KernelObject
+    {
+        bool used;
+        KernelObjectKind kind;
+        size_t parent;
+        size_t childCount;
+        size_t[MAX_OBJECT_CHILDREN] children;
+        char[MAX_OBJECT_NAME] name;
+        char[MAX_OBJECT_NAME] type;
+        char[MAX_OBJECT_LABEL] label;
+        long primary;
+        long secondary;
+    }
+
+    private __gshared KernelObject[MAX_KERNEL_OBJECTS] g_objects;
+    private __gshared size_t g_objectCount = 0;
+    private __gshared bool   g_objectRegistryReady = false;
+    private __gshared size_t g_objectRoot = INVALID_OBJECT_ID;
+    private __gshared size_t g_objectProcNamespace = INVALID_OBJECT_ID;
+    private __gshared size_t g_objectBinNamespace  = INVALID_OBJECT_ID;
+    private __gshared size_t g_objectDevNamespace  = INVALID_OBJECT_ID;
+    private __gshared size_t g_consoleObject       = INVALID_OBJECT_ID;
+
+    @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
+    {
+        foreach (i; 0 .. buffer.length)
+        {
+            buffer[i] = 0;
+        }
+    }
+
+    @nogc nothrow private void clearLabel(ref char[MAX_OBJECT_LABEL] buffer)
+    {
+        foreach (i; 0 .. buffer.length)
+        {
+            buffer[i] = 0;
+        }
+    }
+
+    @nogc nothrow private void copyBuffer(ref char[MAX_OBJECT_NAME] dst, ref char[MAX_OBJECT_NAME] src)
+    {
+        foreach (i; 0 .. dst.length)
+        {
+            dst[i] = (i < src.length) ? src[i] : 0;
+        }
+    }
+
+    @nogc nothrow private void setBufferFromString(ref char[MAX_OBJECT_NAME] buffer, immutable(char)[] text)
+    {
+        size_t index = 0;
+        foreach (ch; text)
+        {
+            if (index + 1 >= buffer.length)
+            {
+                break;
+            }
+
+            buffer[index] = cast(char)ch;
+            ++index;
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void setLabelFromString(ref char[MAX_OBJECT_LABEL] buffer, immutable(char)[] text)
+    {
+        size_t index = 0;
+        foreach (ch; text)
+        {
+            if (index + 1 >= buffer.length)
+            {
+                break;
+            }
+
+            buffer[index] = cast(char)ch;
+            ++index;
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void setBufferFromCString(ref char[MAX_OBJECT_NAME] buffer, const char* text)
+    {
+        size_t index = 0;
+        if (text !is null)
+        {
+            while (text[index] != 0)
+            {
+                if (index + 1 >= buffer.length)
+                {
+                    break;
+                }
+
+                buffer[index] = text[index];
+                ++index;
+            }
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void setLabelFromCString(ref char[MAX_OBJECT_LABEL] buffer, const char* text)
+    {
+        size_t index = 0;
+        if (text !is null)
+        {
+            while (text[index] != 0)
+            {
+                if (index + 1 >= buffer.length)
+                {
+                    break;
+                }
+
+                buffer[index] = text[index];
+                ++index;
+            }
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private size_t bufferLength(ref char[MAX_OBJECT_NAME] buffer)
+    {
+        size_t index = 0;
+        while (index < buffer.length && buffer[index] != 0)
+        {
+            ++index;
+        }
+        return index;
+    }
+
+    @nogc nothrow private void appendUnsigned(ref char[MAX_OBJECT_NAME] buffer, size_t value)
+    {
+        char[20] digits;
+        size_t count = 0;
+        do
+        {
+            digits[count] = cast(char)('0' + (value % 10));
+            value /= 10;
+            ++count;
+        }
+        while (value != 0 && count < digits.length);
+
+        size_t index = bufferLength(buffer);
+        while (count > 0 && index + 1 < buffer.length)
+        {
+            --count;
+            buffer[index] = digits[count];
+            ++index;
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private size_t allocateObjectSlot()
+    {
+        foreach (i, ref objectRef; g_objects)
+        {
+            if (!objectRef.used)
+            {
+                return i;
+            }
+        }
+
+        return INVALID_OBJECT_ID;
+    }
+
+    @nogc nothrow private bool isValidObject(size_t index)
+    {
+        return index != INVALID_OBJECT_ID && index < g_objects.length && g_objects[index].used;
+    }
+
+    @nogc nothrow private bool isProcessObject(size_t index)
+    {
+        return isValidObject(index) && g_objects[index].kind == KernelObjectKind.Process;
+    }
+
+    @nogc nothrow private bool buffersEqual(ref char[MAX_OBJECT_NAME] lhs, ref char[MAX_OBJECT_NAME] rhs)
+    {
+        foreach (i; 0 .. lhs.length)
+        {
+            if (lhs[i] != rhs[i])
+            {
+                return false;
+            }
+
+            if (lhs[i] == 0)
+            {
+                return true;
+            }
+        }
+
+        return true;
+    }
+
+    @nogc nothrow private size_t createObjectFromBuffer(KernelObjectKind kind, ref char[MAX_OBJECT_NAME] name, immutable(char)[] type, size_t parent, long primary = 0, long secondary = 0)
+    {
+        const size_t slot = allocateObjectSlot();
+        if (slot == INVALID_OBJECT_ID)
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        auto obj = &g_objects[slot];
+        *obj = KernelObject.init;
+        obj.used = true;
+        obj.kind = kind;
+        obj.parent = parent;
+        obj.childCount = 0;
+        obj.primary = primary;
+        obj.secondary = secondary;
+        copyBuffer(obj.name, name);
+        setBufferFromString(obj.type, type);
+        clearLabel(obj.label);
+
+        if (isValidObject(parent))
+        {
+            auto parentObj = &g_objects[parent];
+            if (parentObj.childCount < parentObj.children.length)
+            {
+                parentObj.children[parentObj.childCount] = slot;
+                ++parentObj.childCount;
+            }
+        }
+
+        if (g_objectCount < size_t.max)
+        {
+            ++g_objectCount;
+        }
+
+        return slot;
+    }
+
+    @nogc nothrow private size_t createObjectLiteral(KernelObjectKind kind, immutable(char)[] name, immutable(char)[] type, size_t parent, long primary = 0, long secondary = 0)
+    {
+        char[MAX_OBJECT_NAME] buffer;
+        clearBuffer(buffer);
+        setBufferFromString(buffer, name);
+        return createObjectFromBuffer(kind, buffer, type, parent, primary, secondary);
+    }
+
+    @nogc nothrow private void detachChild(size_t parent, size_t child)
+    {
+        if (!isValidObject(parent))
+        {
+            return;
+        }
+
+        auto parentObj = &g_objects[parent];
+        foreach (i; 0 .. parentObj.childCount)
+        {
+            if (parentObj.children[i] == child)
+            {
+                size_t index = i;
+                while (index + 1 < parentObj.childCount)
+                {
+                    parentObj.children[index] = parentObj.children[index + 1];
+                    ++index;
+                }
+                if (parentObj.childCount > 0)
+                {
+                    --parentObj.childCount;
+                }
+                if (parentObj.childCount < parentObj.children.length)
+                {
+                    parentObj.children[parentObj.childCount] = INVALID_OBJECT_ID;
+                }
+                return;
+            }
+        }
+    }
+
+    @nogc nothrow private void destroyObject(size_t index)
+    {
+        if (!isValidObject(index))
+        {
+            return;
+        }
+
+        auto obj = &g_objects[index];
+        auto parent = obj.parent;
+        if (isValidObject(parent))
+        {
+            detachChild(parent, index);
+        }
+
+        *obj = KernelObject.init;
+        if (g_objectCount > 0)
+        {
+            --g_objectCount;
+        }
+    }
+
+    @nogc nothrow private void setObjectLabelLiteral(size_t objectId, immutable(char)[] label)
+    {
+        if (!isValidObject(objectId))
+        {
+            return;
+        }
+
+        setLabelFromString(g_objects[objectId].label, label);
+    }
+
+    @nogc nothrow private void setObjectLabelCString(size_t objectId, const char* label)
+    {
+        if (!isValidObject(objectId))
+        {
+            return;
+        }
+
+        setLabelFromCString(g_objects[objectId].label, label);
+    }
+
+    @nogc nothrow private size_t findChildByBuffer(size_t parent, ref char[MAX_OBJECT_NAME] name)
+    {
+        if (!isValidObject(parent))
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        auto parentObj = &g_objects[parent];
+        foreach (i; 0 .. parentObj.childCount)
+        {
+            size_t childIndex = parentObj.children[i];
+            if (!isValidObject(childIndex))
+            {
+                continue;
+            }
+
+            if (buffersEqual(g_objects[childIndex].name, name))
+            {
+                return childIndex;
+            }
+        }
+
+        return INVALID_OBJECT_ID;
+    }
+
+    @nogc nothrow private void setBufferFromSlice(ref char[MAX_OBJECT_NAME] buffer, const char* slice, size_t length)
+    {
+        size_t index = 0;
+        while (index < length && index + 1 < buffer.length)
+        {
+            buffer[index] = slice[index];
+            ++index;
+        }
+
+        if (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+
+        while (index < buffer.length)
+        {
+            buffer[index] = 0;
+            ++index;
+        }
+    }
+
+    @nogc nothrow private size_t ensureNamespaceChild(size_t parent, const char* name, size_t length)
+    {
+        char[MAX_OBJECT_NAME] segment;
+        clearBuffer(segment);
+        setBufferFromSlice(segment, name, length);
+
+        auto existing = findChildByBuffer(parent, segment);
+        if (existing != INVALID_OBJECT_ID)
+        {
+            return existing;
+        }
+
+        return createObjectFromBuffer(KernelObjectKind.Namespace, segment, "namespace", parent);
+    }
+
+    @nogc nothrow private size_t ensureExecutableObject(size_t parent, const char* name, size_t length, size_t slotIndex)
+    {
+        char[MAX_OBJECT_NAME] segment;
+        clearBuffer(segment);
+        setBufferFromSlice(segment, name, length);
+
+        auto existing = findChildByBuffer(parent, segment);
+        if (existing != INVALID_OBJECT_ID)
+        {
+            if (isValidObject(existing))
+            {
+                g_objects[existing].primary = cast(long)slotIndex;
+            }
+            return existing;
+        }
+
+        auto created = createObjectFromBuffer(KernelObjectKind.Executable, segment, "posix.utility", parent, cast(long)slotIndex);
+        if (isValidObject(created))
+        {
+            setObjectLabelCString(created, segment.ptr);
+        }
+        return created;
+    }
+
+    @nogc nothrow private size_t registerExecutableObject(const char* path, size_t slotIndex)
+    {
+        if (!g_objectRegistryReady || path is null || path[0] == 0)
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        size_t parent = g_objectRoot;
+        size_t index = 0;
+
+        while (path[index] != 0)
+        {
+            while (path[index] == '/')
+            {
+                ++index;
+            }
+
+            if (path[index] == 0)
+            {
+                break;
+            }
+
+            const size_t start = index;
+            while (path[index] != 0 && path[index] != '/')
+            {
+                ++index;
+            }
+
+            const size_t length = index - start;
+            if (length == 0)
+            {
+                continue;
+            }
+
+            const bool isLast = (path[index] == 0);
+            if (!isLast)
+            {
+                parent = ensureNamespaceChild(parent, path + start, length);
+            }
+            else
+            {
+                parent = ensureExecutableObject(parent, path + start, length, slotIndex);
+            }
+
+            if (parent == INVALID_OBJECT_ID)
+            {
+                break;
+            }
+        }
+
+        return parent;
+    }
+
+    @nogc nothrow private void initializeObjectRegistry()
+    {
+        if (g_objectRegistryReady)
+        {
+            return;
+        }
+
+        foreach (ref obj; g_objects)
+        {
+            obj = KernelObject.init;
+        }
+
+        g_objectCount = 0;
+        g_objectRoot = createObjectLiteral(KernelObjectKind.Namespace, "/", "namespace", INVALID_OBJECT_ID);
+        if (!isValidObject(g_objectRoot))
+        {
+            return;
+        }
+
+        g_objectProcNamespace = createObjectLiteral(KernelObjectKind.Namespace, "proc", "namespace", g_objectRoot);
+        g_objectBinNamespace  = createObjectLiteral(KernelObjectKind.Namespace, "bin", "namespace", g_objectRoot);
+        g_objectDevNamespace  = createObjectLiteral(KernelObjectKind.Namespace, "dev", "namespace", g_objectRoot);
+
+        if (isValidObject(g_objectDevNamespace))
+        {
+            g_consoleObject = createObjectLiteral(KernelObjectKind.Device, "console", "device.console", g_objectDevNamespace);
+            if (isValidObject(g_consoleObject))
+            {
+                setObjectLabelLiteral(g_consoleObject, "text-console");
+            }
+        }
+
+        g_objectRegistryReady = true;
+    }
+
+    @nogc nothrow private size_t createProcessObject(pid_t pid)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        char[MAX_OBJECT_NAME] name;
+        clearBuffer(name);
+        setBufferFromString(name, "process:");
+        appendUnsigned(name, cast(size_t)pid);
+
+        auto objectId = createObjectFromBuffer(KernelObjectKind.Process, name, "process", g_objectProcNamespace, cast(long)pid);
+        if (isValidObject(objectId))
+        {
+            setObjectLabelLiteral(objectId, "unnamed");
+        }
+
+        return objectId;
+    }
+
+    @nogc nothrow private size_t cloneProcessObject(pid_t pid, size_t sourceObject)
+    {
+        auto objectId = createProcessObject(pid);
+        if (isValidObject(objectId) && isValidObject(sourceObject))
+        {
+            setLabelFromCString(g_objects[objectId].label, g_objects[sourceObject].label.ptr);
+        }
+        return objectId;
+    }
+
+    @nogc nothrow private void destroyProcessObject(size_t objectId)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return;
+        }
+
+        if (!isProcessObject(objectId))
+        {
+            return;
+        }
+
+        destroyObject(objectId);
+    }
+
+    @nogc nothrow private void updateProcessObjectState(ref Proc proc)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return;
+        }
+
+        if (!isProcessObject(proc.objectId))
+        {
+            return;
+        }
+
+        g_objects[proc.objectId].secondary = cast(long)proc.state;
+    }
+
+    @nogc nothrow private void updateProcessObjectLabel(ref Proc proc, const char* label)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return;
+        }
+
+        if (!isProcessObject(proc.objectId))
+        {
+            return;
+        }
+
+        setObjectLabelCString(proc.objectId, label);
+    }
+
+    @nogc nothrow private void updateProcessObjectLabelLiteral(ref Proc proc, immutable(char)[] label)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return;
+        }
+
+        if (!isProcessObject(proc.objectId))
+        {
+            return;
+        }
+
+        setObjectLabelLiteral(proc.objectId, label);
+    }
+
+    @nogc nothrow private void assignProcessState(ref Proc proc, ProcState state)
+    {
+        proc.state = state;
+        updateProcessObjectState(proc);
+    }
 
     // ---- Executable registration ----
     private enum MAX_EXECUTABLES = 32;
@@ -1745,6 +2403,7 @@ mixin template PosixKernelShim()
         bool used;
         char[EXEC_PATH_LENGTH] path;
         extern(C) @nogc nothrow void function(const char** argv, const char** envp) entry;
+        size_t objectId;
     }
 
     private __gshared ExecutableSlot[MAX_EXECUTABLES] g_execTable;
@@ -1956,6 +2615,24 @@ mixin template PosixKernelShim()
         return null;
     }
 
+    @nogc nothrow private size_t indexOfExecutableSlot(ExecutableSlot* slot)
+    {
+        if (slot is null)
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        foreach (i, ref candidate; g_execTable)
+        {
+            if ((&candidate) is slot)
+            {
+                return i;
+            }
+        }
+
+        return INVALID_OBJECT_ID;
+    }
+
     @nogc nothrow private int encodeExitStatus(int code)
     {
         return (code & 0xFF) << 8;
@@ -1975,8 +2652,9 @@ mixin template PosixKernelShim()
         foreach (ref p; g_ptable) {
             if (p.state == ProcState.UNUSED) {
                 resetProc(p);
-                p.state = ProcState.EMBRYO;
                 p.pid = g_nextPid++;
+                p.objectId = createProcessObject(p.pid);
+                assignProcessState(p, ProcState.EMBRYO);
                 return &p;
             }
         }
@@ -1988,13 +2666,13 @@ mixin template PosixKernelShim()
         if(!g_initialized) return;
         if(g_current is null) {
             foreach(ref p; g_ptable){
-                if(p.state==ProcState.READY){ g_current = &p; p.state=ProcState.RUNNING; break; }
+                if(p.state==ProcState.READY){ g_current = &p; assignProcessState(p, ProcState.RUNNING); break; }
             }
             return;
         }
         lock(&g_plock);
         Proc* oldp = g_current;
-        if(oldp.state==ProcState.RUNNING) oldp.state = ProcState.READY;
+        if(oldp.state==ProcState.RUNNING) assignProcessState(*oldp, ProcState.READY);
 
         size_t idx=0;
         foreach(i, ref p; g_ptable) if((&p) is oldp){ idx=i; break; }
@@ -2004,13 +2682,13 @@ mixin template PosixKernelShim()
             if(g_ptable[k].state==ProcState.READY){ next = &g_ptable[k]; break; }
         }
         if(next is null) {
-            if(oldp.state!=ProcState.ZOMBIE){ oldp.state=ProcState.RUNNING; unlock(&g_plock); return; }
+            if(oldp.state!=ProcState.ZOMBIE){ assignProcessState(*oldp, ProcState.RUNNING); unlock(&g_plock); return; }
             foreach(ref p; g_ptable){
                 if(p.state==ProcState.READY){ next=&p; break; }
             }
         }
         if(next !is null){
-            next.state = ProcState.RUNNING;
+            assignProcessState(*next, ProcState.RUNNING);
             g_current  = next;
             arch_context_switch(oldp, next);
         }
@@ -2028,11 +2706,14 @@ mixin template PosixKernelShim()
         if(np is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
         // Duplicate minimal PCB
-        np.pid    = g_nextPid++;
         np.ppid   = (g_current ? g_current.pid : 0);
-        np.state  = ProcState.READY;
+        assignProcessState(*np, ProcState.READY);
         np.sigmask= 0;
         np.entry  = (g_current ? g_current.entry : null);
+        if (g_current && g_objectRegistryReady && isProcessObject(np.objectId) && isProcessObject(g_current.objectId))
+        {
+            setObjectLabelCString(np.objectId, g_objects[g_current.objectId].label.ptr);
+        }
         if (g_current)
         {
             foreach (i; 0 .. np.fds.length)
@@ -2078,6 +2759,7 @@ mixin template PosixKernelShim()
         auto cur = g_current;                // pointer to Proc
         (*cur).entry = resolved.entry;
         setNameFromCString((*cur).name, execPath);
+        updateProcessObjectLabel(*cur, execPath);
 
         (*cur).entry(argv, envp);            // @nogc nothrow
         sys__exit(0);                        // if it ever returns
@@ -2101,7 +2783,7 @@ mixin template PosixKernelShim()
     @nogc nothrow void sys__exit(int code){
         if(g_current is null) return;
         g_current.exitCode = encodeExitStatus(code);
-        g_current.state    = ProcState.ZOMBIE;
+        assignProcessState(*g_current, ProcState.ZOMBIE);
         schedYield();
         for(;;){} // shouldn't resume
     }
@@ -2113,7 +2795,7 @@ mixin template PosixKernelShim()
         switch(sig){
             case SIG.KILL, SIG.TERM:
                 p.exitCode = encodeSignalStatus(sig);
-                p.state    = ProcState.ZOMBIE;
+                assignProcessState(*p, ProcState.ZOMBIE);
                 return 0;
             default:
                 return setErrno(Errno.ENOSYS);
@@ -2221,22 +2903,43 @@ mixin template PosixKernelShim()
         if(existing !is null)
         {
             existing.entry = entry;
+            if (g_objectRegistryReady)
+            {
+                const size_t slotIndex = indexOfExecutableSlot(existing);
+                if (slotIndex != INVALID_OBJECT_ID)
+                {
+                    auto objectId = registerExecutableObject(existing.path.ptr, slotIndex);
+                    if (objectId != INVALID_OBJECT_ID)
+                    {
+                        existing.objectId = objectId;
+                    }
+                }
+            }
             return 0;
         }
 
-        foreach(ref slot; g_execTable)
+        foreach(slotIndex, ref slot; g_execTable)
         {
             if(!slot.used)
             {
                 slot = ExecutableSlot.init;
                 slot.used = true;
-                foreach(i; 0 .. slot.path.length) slot.path[i] = 0;
-                foreach(i; 0 .. length)
+                foreach(j; 0 .. slot.path.length) slot.path[j] = 0;
+                foreach(j; 0 .. length)
                 {
-                    slot.path[i] = path[i];
+                    slot.path[j] = path[j];
                 }
                 slot.path[length] = '\0';
                 slot.entry = entry;
+                slot.objectId = INVALID_OBJECT_ID;
+                if (g_objectRegistryReady)
+                {
+                    auto objectId = registerExecutableObject(slot.path.ptr, slotIndex);
+                    if (objectId != INVALID_OBJECT_ID)
+                    {
+                        slot.objectId = objectId;
+                    }
+                }
                 return 0;
             }
         }
@@ -2261,12 +2964,13 @@ mixin template PosixKernelShim()
         }
 
         proc.ppid   = (g_current ? g_current.pid : 0);
-        proc.state  = ProcState.READY;
+        assignProcessState(*proc, ProcState.READY);
         proc.entry  = slot.entry;
         proc.pendingArgv = argv;
         proc.pendingEnvp = envp;
         proc.pendingExec = true;
         setNameFromCString(proc.name, path);
+        updateProcessObjectLabel(*proc, path);
         unlock(&g_plock);
         return proc.pid;
     }
@@ -2285,7 +2989,7 @@ mixin template PosixKernelShim()
         }
 
         proc.exitCode = encodeExitStatus(exitCode);
-        proc.state    = ProcState.ZOMBIE;
+        assignProcessState(*proc, ProcState.ZOMBIE);
         proc.pendingArgv = null;
         proc.pendingEnvp = null;
         proc.pendingExec = false;
@@ -2329,16 +3033,22 @@ mixin template PosixKernelShim()
     // ---- Init hook ----
     @nogc nothrow void posixInit(){
         if(g_initialized) return;
+        initializeObjectRegistry();
         foreach(ref p; g_ptable) resetProc(p);
-        foreach(ref slot; g_execTable) slot = ExecutableSlot.init;
+        foreach(ref slot; g_execTable)
+        {
+            slot = ExecutableSlot.init;
+            slot.objectId = INVALID_OBJECT_ID;
+        }
         g_nextPid = 1;
         g_current = null;
         auto initProc = allocProc();
         if(initProc !is null)
         {
             initProc.ppid  = 0;
-            initProc.state = ProcState.RUNNING;
+            assignProcessState(*initProc, ProcState.RUNNING);
             setNameFromLiteral(initProc.name, "kernel");
+            updateProcessObjectLabelLiteral(*initProc, "kernel");
             initProc.pendingArgv = null;
             initProc.pendingEnvp = null;
             initProc.pendingExec = false;

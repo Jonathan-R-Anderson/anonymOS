@@ -2192,7 +2192,9 @@ mixin template PosixKernelShim()
         g_shellRegistered = false;
         if (g_consoleAvailable)
         {
-            const int registration = registerProcessExecutable("/bin/sh", &shellExecEntry);
+            const int registration =
+                registerProcessExecutable("/bin/sh",
+                    cast(ProcessEntry)&minimal_os.posix.shellExecEntry);
             g_shellRegistered = (registration == 0);
         }
         g_initialized = true;

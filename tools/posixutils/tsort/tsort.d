@@ -1,29 +1,25 @@
 // tsort.d — D port of posixutils "tsort"
 // Build (POSIX):
-//   ldc2 -O -release -betterC tsort.d
+//   ldc2 -O2 -release tsort.d
+//   # or: ldc2 -O2 -release -betterC tsort.d
 //
 // Run:
-//   ./a.out [file]
+//   ./tsort [file]
 // If no file is given, reads from stdin.
-//
-// Notes:
-// - No Phobos or druntime features are used (betterC-safe).
-// - Uses qsort + a recursive precedence check with a large guard like the C code.
-// - Keeps linear dictionary search and simple dynamic-array growth like the original intent.
 
 extern(C):
 version (Posix) {} else static assert(0, "POSIX required.");
 
-import core.stdc.config;
+import core.stdc.config;   // size_t, etc.
 import core.stdc.stdlib : malloc, free, realloc, exit, EXIT_FAILURE, EXIT_SUCCESS, qsort;
 import core.stdc.stdio  : fprintf, stderr, fopen, fclose, fgets, stdin, FILE, printf, perror;
-import core.stdc.string : strlen, strcmp, memcmp, memcpy;
+import core.stdc.string : strlen, memcmp, memcpy;
 import core.stdc.ctype  : isspace;
-import core.sys.posix.sys.types : size_t;
-import core.sys.posix.sys.utsname : utsname; // (unused, kept for parity)
-import core.sys.posix.limits : LINE_MAX;
 
-// ------------------ Small portability helpers ------------------
+// Keep it simple: fixed line buffer size (safe/default).
+enum size_t LINEBUF_SZ = 4096;
+
+// ------------------ Small helpers ------------------
 
 @nogc nothrow
 private char* my_strndup(const char* s, size_t n)
@@ -35,10 +31,7 @@ private char* my_strndup(const char* s, size_t n)
     return p;
 }
 
-enum size_t LINEBUF_SZ =
-    LINE_MAX > 0 ? (LINE_MAX + 1) : 4096; // Fallback if LINE_MAX not defined
-
-// ------------------ Structures and dynamic arrays ------------------
+// ------------------ Structures ------------------
 
 struct Order {
     char* pred;
@@ -61,16 +54,18 @@ struct OrderVec {
     size_t cap;
 }
 
-PtrVec dict;     // vector<char*>
+PtrVec   dict;   // vector<char*>
 OrderVec order;  // vector<Order>
+
+// ------------------ Vec utils ------------------
 
 @nogc nothrow
 private void reservePtrVec(ref PtrVec v, size_t need)
 {
     if (v.cap >= need) return;
     size_t ncap = v.cap ? v.cap : 8;
-    while (ncap < need) ncap *= 2;
-    auto nd = cast(char**) realloc(v.data, ncap * (char*).sizeof);
+    while (ncap < need) ncap <<= 1;
+    auto nd = cast(char**) realloc(v.data, ncap * (cast(char**)null).sizeof);
     if (nd is null) {
         fprintf(stderr, "tsort: out of memory\n");
         exit(EXIT_FAILURE);
@@ -91,7 +86,7 @@ private void reserveOrderVec(ref OrderVec v, size_t need)
 {
     if (v.cap >= need) return;
     size_t ncap = v.cap ? v.cap : 8;
-    while (ncap < need) ncap *= 2;
+    while (ncap < need) ncap <<= 1;
     auto nd = cast(Order*) realloc(v.data, ncap * Order.sizeof);
     if (nd is null) {
         fprintf(stderr, "tsort: out of memory\n");
@@ -108,7 +103,7 @@ private void pushOrderVec(ref OrderVec v, Order o)
     v.data[v.len++] = o;
 }
 
-// ------------------ Core logic (ported) ------------------
+// ------------------ Core logic ------------------
 
 @nogc nothrow
 static char* add_token(const char* buf, size_t buflen, bool ok_add)
@@ -162,10 +157,10 @@ static int process_line()
 
     while (*p) {
         // skip spaces
-        while (*p && isspace(*p)) ++p;
+        while (*p && isspace(cast(int)*p)) ++p;
 
         auto end = p;
-        while (*end && !isspace(*end)) ++end;
+        while (*end && !isspace(cast(int)*end)) ++end;
 
         size_t mlen = cast(size_t)(end - p);
         if (mlen > 0) {
@@ -184,7 +179,8 @@ __gshared int max_recurse;
 @nogc nothrow
 static bool item_precedes(const char* a, const char* b)
 {
-    max_recurse--; // crude guard like original
+    // crude guard like the original
+    max_recurse -= 1;
     if (max_recurse <= 0) {
         fprintf(stderr, "tsort: max recursion limit reached\n");
         exit(1);
@@ -201,14 +197,17 @@ static bool item_precedes(const char* a, const char* b)
 }
 
 extern(C) @nogc nothrow
-static int compare_items(const void* _a, const void* _b)
+static int compare_items(const void* ap, const void* bp)
 {
-    auto a = *cast(const(char*)*) _a;
-    auto b = *cast(const(char*)*) _b;
+    // Avoid complex casts in a single expression to keep parser happy.
+    auto pa = cast(const(char*)*) ap;
+    auto pb = cast(const(char*)*) bp;
+    auto a  = *pa;
+    auto b  = *pb;
 
     if (a == b) return 0;
 
-    max_recurse = 4_000_000; // crude hack like C version
+    max_recurse = 4000000; // big but finite guard
     if (item_precedes(a, b))
         return -1;
     return 1;
@@ -217,9 +216,8 @@ static int compare_items(const void* _a, const void* _b)
 @nogc nothrow
 static void sort_and_write_vals()
 {
-    // Build a temporary array of pointers
     auto n = dict.len;
-    auto out_vals = cast(char**) malloc((n + 1) * (char*).sizeof);
+    auto out_vals = cast(char**) malloc((n ? n : 1) * (cast(char**)null).sizeof);
     if (out_vals is null && n != 0) {
         fprintf(stderr, "tsort: out of memory\n");
         exit(EXIT_FAILURE);
@@ -227,7 +225,8 @@ static void sort_and_write_vals()
     for (size_t i = 0; i < n; ++i)
         out_vals[i] = dict.data[i];
 
-    qsort(out_vals, n, (char*).sizeof, &compare_items);
+    // element size = size of (char*)
+    qsort(out_vals, n, (cast(char**)null).sizeof, &compare_items);
 
     for (size_t i = 0; i < n; ++i)
         printf("%s\n", out_vals[i]);
@@ -239,7 +238,7 @@ static void sort_and_write_vals()
 
 int main(int argc, char** argv)
 {
-    // Simple CLI: zero or one positional filename, like your argp instance did.
+    // zero or one positional filename
     char* opt_filename = null;
     if (argc > 2) {
         fprintf(stderr, "tsort: too many arguments\n");
@@ -260,18 +259,15 @@ int main(int argc, char** argv)
     }
 
     // Read lines
-    while (fgets(linebuf.ptr, cast(int)linebuf.length, f) !is null) {
+    while (fgets(linebuf.ptr, cast(int) linebuf.length, f) !is null) {
         if (process_line() != 0) {
             if (f !is stdin) fclose(f);
             return EXIT_FAILURE;
         }
     }
-
     if (f !is stdin) fclose(f);
 
-    // If there was an odd dangling token, it’s a singleton—keep it in dict already.
-    // Now sort & print
+    // Sort & print
     sort_and_write_vals();
-
     return EXIT_SUCCESS;
 }

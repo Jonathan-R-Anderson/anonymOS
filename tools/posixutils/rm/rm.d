@@ -7,14 +7,13 @@ import core.stdc.stdio : printf, fprintf, perror, stderr, stdout, getchar, EOF, 
 import core.stdc.stdlib : exit;
 import core.stdc.string : strerror;
 import core.stdc.errno : errno;
-import core.sys.posix.sys.stat : stat, lstat, fstat, S_ISDIR;
+import core.sys.posix.sys.stat : stat, lstat, fstat, S_ISDIR, stat_t;
 import core.sys.posix.unistd : unlink, rmdir, isatty, fchdir, close,
-                               STDIN_FILENO, geteuid, getegid, open;
-import core.sys.posix.dirent : DIR, fdopendir, readdir, closedir, dirent;
-import core.sys.posix.fcntl : O_RDONLY, O_DIRECTORY;
+                               STDIN_FILENO, geteuid, getegid;
+import core.sys.posix.dirent : DIR, opendir, readdir, closedir, dirent;
+import core.sys.posix.fcntl : open, O_RDONLY, O_DIRECTORY;
 import core.sys.posix.sys.types : uid_t, gid_t;
 import std.string : toStringz, fromStringz;
-import std.algorithm : max;
 
 alias c_open = open;
 
@@ -38,9 +37,7 @@ struct PathElem { string dirn; string basen; }
 // simple last '/' finder
 private long lastSlash(string p) @safe @nogc nothrow {
     long idx = -1;
-    foreach (i; 0 .. p.length) {
-        if (p[i] == '/') idx = i;
-    }
+    foreach (i; 0 .. p.length) if (p[i] == '/') idx = i;
     return idx;
 }
 
@@ -79,7 +76,7 @@ bool ask_question(string prefix, const(char)* fmt, const(char)* name) {
 }
 
 // ----- permissions (matches original simplified logic) -----
-int can_write(ref const(stat) st) {
+int can_write(ref const(stat_t) st) {
     if ((st.st_mode & S_IWOTH) != 0) return 1;
 
     uid_t uid = geteuid();
@@ -91,7 +88,7 @@ int can_write(ref const(stat) st) {
     return 0;
 }
 
-int should_prompt(ref const(stat) st) {
+int should_prompt(ref const(stat_t) st) {
     if (opt_interactive) return 1;
     if (!can_write(st) && isatty(STDIN_FILENO) == 1) return 1;
     return 0;
@@ -114,7 +111,7 @@ int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force
     }
 
     // verify still a directory after open (mitigate symlink race)
-    stat stNow;
+    stat_t stNow;
     if (fstat(dfd, &stNow) < 0) {
         if (!force) perror(strpathcat(parentDir, basen).toStringz);
         close(dfd); close(oldCwd);
@@ -134,7 +131,9 @@ int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force
     }
 
     auto thisDir = strpathcat(parentDir, basen);
-    DIR* dirp = fdopendir(dfd);
+
+    // Use opendir(".") after fchdir into target dir (portable)
+    DIR* dirp = opendir(".".toStringz);
     if (dirp is null) {
         if (!force) perror(thisDir.toStringz);
         fchdir(oldCwd);
@@ -150,7 +149,11 @@ int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force
             if (errno != 0 && !force) perror(thisDir.toStringz);
             break;
         }
-        auto name = (cast(char*)dent.d_name).fromStringz;
+
+        // *** FIX: convert d_name -> string ***
+        auto nameRaw = fromStringz(cast(const(char)*)dent.d_name.ptr); // const(char)[]
+        string name   = nameRaw.idup;                                  // immutable(char)[]
+
         if (have_dots(name)) continue;
         rc |= rmEntry(dfd, thisDir, name);
     }
@@ -158,13 +161,14 @@ int iterateDirectory(int parentDirFd, string parentDir, string basen, bool force
     if (closedir(dirp) < 0 && !force) { perror(thisDir.toStringz); rc = 1; }
 
     if (fchdir(oldCwd) < 0) { perror(".".toStringz); rc = 1; }
+    if (close(dfd) < 0 && !force) { perror(thisDir.toStringz); rc = 1; }
     if (close(oldCwd) < 0 && !force) { perror(".".toStringz); rc = 1; }
 
     return rc;
 }
 
 int rmEntry(int dirfd, string dirn, string basen) {
-    stat st;
+    stat_t st;
     int rc = 0;
 
     if (have_dots(basen)) return 0;
@@ -251,7 +255,6 @@ void parse_options(ref size_t idx, string[] args) {
         if (a == "--") { ++idx; break; }
         if (a.length >= 2 && a[0] == '-' && a != "-") {
             foreach (ch; a[1 .. $]) {
-                // not 'final switch' — we need a default for arbitrary chars
                 switch (ch) {
                     case 'f': opt_force = 1; break;
                     case 'i': opt_interactive = 1; break;

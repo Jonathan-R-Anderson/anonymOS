@@ -1,19 +1,13 @@
 // sort.d — D translation of the provided POSIX utils "sort" skeleton
-module sort_d;
+module sort;
 
 import core.stdc.string : strcoll;
 import core.stdc.stdio  : perror;
-import std.stdio        : File, stdin, stdout, writeln, writef, writefln;
+import std.stdio        : File, stdin, stdout, writeln;
 import std.string       : toStringz;
-import std.algorithm    : sort, min;
-import std.conv         : to;
-import std.array        : Appender, array;
+import std.algorithm    : sort;
 import std.exception    : enforce;
-import std.typecons     : Tuple;
-import std.meta;
-import std.getopt;
-import std.range        : byLine, empty;
-import std.uni          : lineSep;
+import std.getopt       : getopt, GetoptResult, GetOptException;
 
 // ----------------------------- Data types -----------------------------
 
@@ -56,15 +50,10 @@ struct MergeFile {
         if (!ensureOpen()) return false;
         if (f.eof()) return false;
 
-        // Read a full line; std.stdio byLine strips the newline, so re-add it.
-        import std.algorithm : joiner;
-        import std.array : appender;
-
         string s;
-        // read a single line (without newline), then append '\n' if file had it
-        // Simpler approach: readln will include '\n' if present
+        // File.readln returns a line including the trailing '\n' when present
         try {
-            s = f.readln(); // includes trailing '\n' when present
+            s = f.readln();
         } catch (Exception) {
             return false;
         }
@@ -89,20 +78,20 @@ struct MergeFile {
 
 enum Mode { sortMode, mergeMode, checkMode }
 
-__gshared Mode   optMode        = Mode.sortMode;
-__gshared string optOutput      = "-";
-__gshared bool   optUnique      = false;
-__gshared bool   optAlphaNum    = false;
-__gshared bool   optForceUpper  = false;
-__gshared bool   optIgnoreNonPr = false;
-__gshared bool   optNumeric     = false;
-__gshared bool   optReverse     = false;
-__gshared bool   optIgnoreLBl   = false;
-__gshared int    optSeparator   = -1; // char code or -1
+__gshared Mode     optMode        = Mode.sortMode;
+__gshared string   optOutput      = "-";
+__gshared bool     optUnique      = false;
+__gshared bool     optAlphaNum    = false;
+__gshared bool     optForceUpper  = false;
+__gshared bool     optIgnoreNonPr = false;
+__gshared bool     optNumeric     = false;
+__gshared bool     optReverse     = false;
+__gshared bool     optIgnoreLBl   = false;
+__gshared int      optSeparator   = -1; // char code or -1
 __gshared string[] optKeydefs;
 
 // we keep all lines when sorting; in merge we stream
-SortLine[] lines;
+SortLine[]  lines;
 MergeFile[] mergeFiles;
 
 // ----------------------------- Compare -----------------------------
@@ -115,7 +104,7 @@ int rawCompare(in string A, in string B)
 }
 
 // std.sort comparator expects "a should come before b"
-bool lineLess(ref const SortLine a, ref const SortLine b)
+bool lineLess(ref const(SortLine) a, ref const(SortLine) b)
 {
     return rawCompare(a.line, b.line) < 0;
 }
@@ -127,7 +116,6 @@ size_t mergeNextIndex()
     size_t idx = 0;
     foreach (i; 1 .. mergeFiles.length)
     {
-        // pick the smaller (according to comparator)
         if (rawCompare(mergeFiles[i].line, mergeFiles[idx].line) < 0)
             idx = i;
     }
@@ -137,7 +125,7 @@ size_t mergeNextIndex()
 // ----------------------------- Merge helpers -----------------------------
 
 // pull a line into mf.haveLine if needed; return true if mf has a line to output
-bool mergeEnsure(MergeFile ref mf)
+bool mergeEnsure(ref MergeFile mf)
 {
     if (mf.haveLine) return true;
     return mf.nextLine();
@@ -146,7 +134,6 @@ bool mergeEnsure(MergeFile ref mf)
 // advance all files; drop those that are exhausted
 bool mergeFillMore()
 {
-    import std.algorithm : remove;
     size_t i = 0;
     while (i < mergeFiles.length)
     {
@@ -154,8 +141,7 @@ bool mergeFillMore()
         {
             // EOF or error: close and remove
             mergeFiles[i].close();
-            // remove by swapping back
-            mergeFiles = mergeFiles[0 .. i] ~ mergeFiles[i+1 .. $];
+            mergeFiles = mergeFiles[0 .. i] ~ mergeFiles[i + 1 .. $];
             continue;
         }
         ++i;
@@ -163,7 +149,7 @@ bool mergeFillMore()
     return true;
 }
 
-void mergeEmit(MergeFile ref mf, ref File outF)
+void mergeEmit(ref MergeFile mf, ref File outF)
 {
     enforce(mf.haveLine);
     outF.write(mf.line);
@@ -178,7 +164,7 @@ struct Checker {
     bool push(string s)
     {
         if (!havePrev) { prev = s; havePrev = true; return true; }
-        auto ok = (rawCompare(prev, s) <= 0);
+        const ok = (rawCompare(prev, s) <= 0);
         prev = s;
         return ok;
     }
@@ -209,9 +195,7 @@ void readAllIntoLines(ref File f, bool checking, ref Checker chk, ref int exitSt
 
         if (checking) {
             if (!chk.push(s)) {
-                exitStatus = 1; // like original: non-zero when out-of-order
-                // stop early to match original RC_STOP_WALK behavior
-                // But still consume remaining input to keep IO simple? We'll break.
+                exitStatus = 1; // non-zero when out-of-order
                 break;
             }
         } else {
@@ -224,42 +208,44 @@ void readAllIntoLines(ref File f, bool checking, ref Checker chk, ref int exitSt
 
 int main(string[] argv)
 {
-    // minimal usage text parity
     immutable usage = "sort - sort, merge, or sequence check text files\n"
                       ~ "usage: " ~ (argv.length ? argv[0] : "sort")
                       ~ " [-cmu df i n r b] [-t CHAR] [-k KEYDEF] [-o FILE] [FILE...]\n";
 
-    // parse options (keep flags even if not fully implemented, to mirror interface)
+    // parse options
     string fieldSepArg;
     string keyArg;
     bool wantCheck = false, wantMerge = false;
 
-    auto help = getopt(argv,
-        "c", &wantCheck,
-        "m", &wantMerge,
-        "o", &optOutput,
-        "u", &optUnique,
-        "d", &optAlphaNum,
-        "f", &optForceUpper,
-        "i", &optIgnoreNonPr,
-        "n", &optNumeric,
-        "r", &optReverse,
-        "b", &optIgnoreLBl,
-        "t", &fieldSepArg,
-        "k", &keyArg
-    );
+    GetoptResult res;
+    try
+    {
+        res = getopt(argv,
+            "c", &wantCheck,
+            "m", &wantMerge,
+            "o", &optOutput,
+            "u", &optUnique,
+            "d", &optAlphaNum,
+            "f", &optForceUpper,
+            "i", &optIgnoreNonPr,
+            "n", &optNumeric,
+            "r", &optReverse,
+            "b", &optIgnoreLBl,
+            "t", &fieldSepArg,
+            "k", &keyArg
+        );
+    }
+    catch (GetOptException e)
+    {
+        writeln(e.msg);
+        writeln(usage);
+        return 2;
+    }
 
-    if (help == GetoptResult.helpWanted)
+    if (res.helpWanted)
     {
         writeln(usage);
         return 0;
-    }
-
-    if (!help)
-    {
-        // getopt error prints its own message; show usage
-        writeln(usage);
-        return 2;
     }
 
     if (fieldSepArg.length)
@@ -275,15 +261,15 @@ int main(string[] argv)
 
     optMode = wantCheck ? Mode.checkMode : (wantMerge ? Mode.mergeMode : Mode.sortMode);
 
-    // Remaining argv are files; if none, use "-"
-    string[] files = argv[help.index .. $];
+    // After getopt, argv contains program name + remaining positionals.
+    string[] files = (argv.length > 1) ? argv[1 .. $] : ["-"];
     if (files.length == 0)
         files = ["-"];
 
     // Open output
     File outF;
     try outF = openOutput();
-    catch (Exception e) {
+    catch (Exception) {
         perror(optOutput.toStringz);
         return 2;
     }
@@ -293,11 +279,9 @@ int main(string[] argv)
     // Walk files
     if (optMode == Mode.mergeMode)
     {
-        // Prepare merge files
         foreach (fn; files)
             mergeFiles ~= MergeFile(fn);
 
-        // Merge drive
         while (true)
         {
             if (!mergeFillMore()) { exitStatus = 1; break; }
@@ -310,12 +294,10 @@ int main(string[] argv)
                 mergeEmit(mergeFiles[idx], outF);
             }
         }
-        // close any remaining
         foreach (ref mf; mergeFiles) mf.close();
     }
     else
     {
-        // SORT or CHECK
         Checker chk;
         foreach (fn; files)
         {
@@ -335,18 +317,15 @@ int main(string[] argv)
             if (needClose) f.close();
 
             if (optMode == Mode.checkMode && exitStatus != 0) {
-                // stop early like RC_STOP_WALK
                 break;
             }
         }
 
         if (optMode == Mode.sortMode)
         {
-            // Sort and output
             lines.sort!lineLess;
 
             if (optUnique) {
-                // simple unique on full lines (adjacent after sort)
                 SortLine[] uniqueLines;
                 uniqueLines.reserve(lines.length);
                 string last;
@@ -364,10 +343,8 @@ int main(string[] argv)
             foreach (ref sl; lines)
                 outF.write(sl.line);
         }
-        // MODE_CHECK just sets exitStatus accordingly
     }
 
-    // Flush output if it's a file
     try { outF.flush(); } catch (Exception) {}
 
     return exitStatus;

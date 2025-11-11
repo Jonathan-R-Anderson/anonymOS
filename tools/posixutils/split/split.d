@@ -9,12 +9,10 @@ import core.stdc.errno : errno;
 import core.sys.posix.unistd : write, close, STDIN_FILENO;
 import core.sys.posix.fcntl : open, O_WRONLY, O_CREAT, O_TRUNC;
 import core.sys.posix.sys.stat : mode_t;
-import std.stdio : File, stdin, readln, stdout;
-import std.getopt : getopt, GetoptResult;
+import std.stdio : File, stdin, readln, stdout, writeln;
+import std.getopt : getopt, GetoptResult, GetOptException;
 import std.string : toStringz, lastIndexOf;
-import std.conv : to, parse;
-import std.algorithm : clamp;
-import std.array : appender;
+import std.conv : to;
 import std.exception : enforce;
 
 // ----------------------------- Types & options -----------------------------
@@ -28,7 +26,7 @@ __gshared string     optPrefix     = "x";
 __gshared string     optInputFn;             // "" or "-" => stdin
 
 // runtime state
-__gshared string suffix;
+__gshared char[] suffix;                     // mutable for in-place increment
 __gshared ulong  outCount = 0;               // bytes written in current piece (byByte) or lines (byLine)
 __gshared int    outFd    = -1;
 __gshared string outFn;
@@ -74,7 +72,6 @@ int writeAll(int fd, const(void)* buf, size_t len, string fnForErr) {
 
 int incrSuffix() {
     if (suffix.length == 0) {
-        suffix = string.init ~ "";
         suffix.length = optSuffixLen;
         suffix[] = 'a';
         return 0;
@@ -95,10 +92,10 @@ int openOutput() {
     if (incrSuffix() != 0) return 1;
 
     enforce(outFn.length == 0);
-    outFn = optPrefix ~ suffix;
+    outFn = optPrefix ~ cast(string) suffix;
 
-    // 0666 (respect umask)
-    int fd = open(outFn.toStringz, O_WRONLY | O_CREAT | O_TRUNC, cast(mode_t)0o666);
+    // mode 0666 (respect umask) — use hex/decimal for broad compiler support
+    int fd = open(outFn.toStringz, O_WRONLY | O_CREAT | O_TRUNC, cast(mode_t)0x01B6); // 0666 = 0x01B6 = 438
     if (fd < 0) {
         perror(outFn.toStringz);
         return 1;
@@ -180,8 +177,7 @@ int splitLines(File f) {
         try {
             s = f.readln();
         } catch (Exception) {
-            // EOF or read error; if truly EOF we get empty + eof
-            if (f.eof) break;
+            if (f.eof) break; // EOF
             perror("(input)".toStringz);
             return 1;
         }
@@ -217,7 +213,7 @@ int executeSplit() {
         case PieceMode.byLine:
             rc = splitLines(inF);
             break;
-        default:
+        case PieceMode.none:
             rc = 1; // unreachable in normal use
             break;
     }
@@ -237,24 +233,25 @@ int executeSplit() {
 int main(string[] args) {
     // Usage: split [-a N] [-b N[km]] [-l N] [file [prefix]]
     string aArg, bArg, lArg;
+    bool showHelp = false;
 
-    auto r = getopt(args,
-        "a", &aArg,       // suffix length
-        "b", &bArg,       // bytes per piece (k/m suffix)
-        "l", &lArg        // lines per piece
-    );
+    try {
+        getopt(args,
+            "h|help", &showHelp, // our help flag
+            "a", &aArg,          // suffix length
+            "b", &bArg,          // bytes per piece (k/m suffix)
+            "l", &lArg           // lines per piece
+        );
+    } catch (GetOptException e) {
+        writeln(e.msg);
+        return 2;
+    }
 
-    if (r == GetoptResult.helpWanted) {
-        import std.stdio : writeln;
+    if (showHelp) {
         writeln("split - split a file into pieces");
         writeln("usage: ", (args.length ? args[0] : "split"),
                 " [-a N] [-b N[km]] [-l N] [file [prefix]]");
         return 0;
-    }
-    if (!r) {
-        import std.stdio : writeln;
-        writeln("invalid options");
-        return 2;
     }
 
     // -a N
@@ -268,23 +265,21 @@ int main(string[] args) {
     // -b N[km]
     if (bArg.length) {
         ulong base = 0;
-        char suffix = '\0';
+        char unit = '\0';
         // parse number and optional unit
-        // Accept forms like "1024", "10k", "5m"
         try {
-            // Split numeric prefix and optional unit char
-            // Find first non-digit
             size_t i = 0;
             while (i < bArg.length && bArg[i] >= '0' && bArg[i] <= '9') ++i;
             enforce(i > 0);
             base = bArg[0 .. i].to!ulong;
-            if (i < bArg.length) suffix = cast(char) bArg[i];
+            if (i < bArg.length) unit = cast(char) bArg[i];
         } catch (Exception) {
             return 2;
         }
 
         ulong mult = 1;
-        final switch (cast(char)(suffix | 0x20)) { // tolower
+        // normal switch (NOT final) — type is char, not an enum
+        switch (cast(char)(unit | 0x20)) { // tolower
             case 'k': mult = 1024; break;
             case 'm': mult = 1024UL * 1024UL; break;
             case '\0': mult = 1; break;
@@ -305,12 +300,11 @@ int main(string[] args) {
         optPieceSize = n;
     }
 
-    // Positional args: [file [prefix]]
-    auto pos = args[r.index .. $];
+    // Positional args: getopt mutates args; remaining positionals are in args[1..$]
+    auto pos = (args.length > 1) ? args[1 .. $] : [];
     if (pos.length >= 1) optInputFn = pos[0];
     if (pos.length >= 2) optPrefix  = pos[1];
     if (pos.length >  2) {
-        import std.stdio : writeln;
         writeln("too many arguments");
         return 2;
     }
@@ -318,7 +312,6 @@ int main(string[] args) {
     // prefix + suffix length must fit in NAME_MAX
     auto pe = pathSplit(optPrefix);
     if (pe.basen.length + optSuffixLen > NAME_MAX) {
-        import std.stdio : writeln;
         writeln("prefix + suffix too large");
         return 1;
     }

@@ -18,7 +18,7 @@ import core.stdc.stdlib : exit;
 import core.stdc.string : strlen;
 import core.sys.posix.unistd : read, write, close, STDIN_FILENO, STDOUT_FILENO;
 import core.sys.posix.fcntl  : fcntl, open, O_NONBLOCK, F_SETFL, O_WRONLY, O_CREAT, O_TRUNC, O_APPEND;
-import core.sys.posix.sys.types : ssize_t;
+import core.sys.posix.sys.types : ssize_t, mode_t;
 import core.sys.posix.sys.select : fd_set, FD_ZERO, FD_SET, select;
 import core.sys.posix.signal : signal, SIGINT, SIG_IGN;
 
@@ -127,9 +127,8 @@ int openTarget(string fn)
         ? (O_WRONLY | O_CREAT | O_APPEND)
         : (O_WRONLY | O_CREAT | O_TRUNC);
 
-    // 0666 masked by umask at runtime
-    enum mode_t = uint;
-    int fd = open(fn.ptr, flags, cast(mode_t)0o666);
+    // 0666 (rw-rw-rw-), masked by umask at runtime
+    int fd = open(fn.ptr, flags, cast(mode_t)0x1B6);
     if (fd < 0) {
         perror(fn.ptr);
         return -1;

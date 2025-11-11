@@ -1,119 +1,90 @@
-// tput.d — D port of posixutils "tput" (clear/init/reset)
-// Build examples (link against terminfo/ncurses):
-//   ldc2 -O -release tput.d -ltinfo
-//   # or, depending on your system:
-//   ldc2 -O -release tput.d -lncurses
-//
-// Without Phobos/GC:
-//   ldc2 -O -release -betterC tput.d -ltinfo
-//
-// Usage (mirrors the C tool’s handled subcommands):
-//   tput [-T type] clear
-//   tput [-T type] init
-//   tput [-T type] reset
+// tput.d — minimal D port of posixutils "tput" (clear/init/reset)
+// Build (link against terminfo/ncurses):
+//   ldc2 -O2 -release tput.d -ltinfo
+//   # or on some systems: -lncurses
 
-extern(C):
 version (Posix) {} else static assert(0, "POSIX required.");
 
-import core.stdc.config;
-import core.stdc.stdlib : exit, EXIT_FAILURE, EXIT_SUCCESS, system, getenv;
-import core.stdc.stdio  : fprintf, stderr, fopen, fclose, getc, EOF, putchar;
-import core.stdc.string : strcmp, strlen;
-import core.stdc.errno  : errno;
-import core.stdc.getopt : getopt, optarg, optind, opterr;
+import core.stdc.stdlib : EXIT_FAILURE, EXIT_SUCCESS, system;
+import core.stdc.stdio  : fprintf, stderr, fopen, fclose, getc, EOF;
+import core.stdc.string : strlen;
 import core.sys.posix.unistd : write;
-import core.sys.posix.sys.stat : stat_t, stat as c_stat;
+import std.string : toStringz, startsWith;
 
-// terminfo / curses APIs
-extern(C) int setupterm(const(char)* term, int fildes, int* errret);
-extern(C) int tputs(const(char)* str, int affcnt, int function (int));
-extern(C) const(char)* tigetstr(const(char)* capname);
-extern(C) int tigetnum(const(char)* capname);
+extern(C) {
+    // terminfo APIs
+    int setupterm(const(char)* term, int fildes, int* errret);
+    const(char)* tigetstr(const(char)* capname);
+    int tigetnum(const(char)* capname);
+}
 
 enum PFX = "tput: ";
 enum STDOUT_FILENO = 1;
 
-__gshared char* optTerm;
-
-//
-// Helpers to work with terminfo safely
-//
-@nogc nothrow
+// tigetstr returns (char*)-1 on error, null if missing
 static bool isValidStrCap(const(char)* p)
 {
-    // tigetstr returns (char*)-1 on error/canceled; 0 if missing.
-    return p !is null && cast(size_t)p != cast(size_t)(-1);
+    return p !is null && p != cast(const(char)*)-1;
 }
 
-extern(C) @nogc nothrow
-static int putc_cb(int ch)
+// Write a C string to stdout
+static void writeCString(const(char)* s)
 {
-    return putchar(ch);
+    if (s is null) return;
+    auto n = strlen(s);
+    if (n > 0) write(STDOUT_FILENO, s, n);
 }
 
-//
 // tput clear
-//
 static void tput_clear()
 {
-    const(char)* clearCap = tigetstr("clear"); // same as clear_screen var
-    if (!isValidStrCap(clearCap))
-        return;
-
-    int lines = tigetnum("lines");
-    if (lines <= 0) lines = 1;
-    tputs(clearCap, lines, &putc_cb);
+    const(char)* clearCap = tigetstr(toStringz("clear"));
+    if (!isValidStrCap(clearCap)) return;
+    writeCString(clearCap);
 }
 
-//
-// init/reset capability name lists
-//
-static __gshared const(char)* init_names[] = [
-    "iprog",
-    "is1",
-    "is2",
-    "if",
-    "is3",
+// init/reset capability name lists (D-style arrays)
+static __gshared string[] init_names = [
+    "iprog", // program to run
+    "is1",   // string 1
+    "is2",   // string 2
+    "if",    // file to cat
+    "is3",   // string 3
 ];
 
-static __gshared const(char)* reset_names[] = [
-    "rprog",
-    "rs1",
-    "rs2",
-    "rf",
-    "rs3",
+static __gshared string[] reset_names = [
+    "rprog", // program to run
+    "rs1",   // string 1
+    "rs2",   // string 2
+    "rf",    // file to cat
+    "rs3",   // string 3
 ];
 
-//
-// Emit init/reset sequences (mirrors your C logic):
-//  - *prog: run via system()
-//  - s1/s2/s3: write the string to stdout
-//  - f (if/rf): interpret as filename; dump its contents to stdout
-//
+// Emit init/reset sequences
 static void tput_reset(bool is_init)
 {
     auto caps = is_init ? init_names : reset_names;
 
-    // [0] *prog: run program
-    const(char)* val = tigetstr(caps[0]);
-    if (isValidStrCap(val))
-        system(val);
+    // [0] *prog: run program if present
+    const(char)* v0 = tigetstr(toStringz(caps[0]));
+    if (isValidStrCap(v0))
+        system(v0);
 
-    // [1] s1: write string
-    val = tigetstr(caps[1]);
-    if (isValidStrCap(val))
-        write(STDOUT_FILENO, val, strlen(val));
+    // [1] s1
+    const(char)* v1 = tigetstr(toStringz(caps[1]));
+    if (isValidStrCap(v1))
+        writeCString(v1);
 
-    // [2] s2: write string
-    val = tigetstr(caps[2]);
-    if (isValidStrCap(val))
-        write(STDOUT_FILENO, val, strlen(val));
+    // [2] s2
+    const(char)* v2 = tigetstr(toStringz(caps[2]));
+    if (isValidStrCap(v2))
+        writeCString(v2);
 
-    // [3] f: dump file contents if present
-    val = tigetstr(caps[3]);
-    if (isValidStrCap(val))
+    // [3] f: dump file contents
+    const(char)* vf = tigetstr(toStringz(caps[3]));
+    if (isValidStrCap(vf))
     {
-        auto f = fopen(val, "r");
+        auto f = fopen(vf, "r");
         if (f !is null)
         {
             for (;;)
@@ -127,81 +98,74 @@ static void tput_reset(bool is_init)
         }
     }
 
-    // [4] s3: write string
-    val = tigetstr(caps[4]);
-    if (isValidStrCap(val))
-        write(STDOUT_FILENO, val, strlen(val));
+    // [4] s3
+    const(char)* v3 = tigetstr(toStringz(caps[4]));
+    if (isValidStrCap(v3))
+        writeCString(v3);
 }
 
-//
 // Set up terminal based on -T or $TERM
-//
-static int pre_setup()
+static int pre_setup(const(char)* termPtr)
 {
     int err = 0;
-    const(char)* term = optTerm;
-    // If not specified with -T, let setupterm read $TERM (pass null).
-    if (setupterm(term, STDOUT_FILENO, &err) != 0)
+    if (setupterm(termPtr, STDOUT_FILENO, &err) != 0)
     {
-        fprintf(stderr, PFX ~ "setupterm failed\n");
+        fprintf(stderr, "%ssetupterm failed\n".ptr, PFX.ptr);
         return 1;
     }
     return 0;
 }
 
-int main(int argc, char** argv)
+int main(string[] args)
 {
-    opterr = 0;
-    optTerm = null;
+    // Parse args: supports -T xterm and -Txterm
+    string termOpt;
+    string[] cmds;
 
-    // Parse options (only -T type)
-    for (;;)
+    size_t i = 1;
+    while (i < args.length)
     {
-        int c = getopt(argc, argv, "T:");
-        if (c == -1) break;
-        final switch (c)
+        auto a = args[i];
+        if (a == "-T")
         {
-        case 'T':
-            optTerm = optarg;
-            break;
-        default:
-            fprintf(stderr, PFX ~ "invalid option\n");
-            return EXIT_FAILURE;
+            if (i + 1 >= args.length) {
+                fprintf(stderr, "%smissing argument to -T\n".ptr, PFX.ptr);
+                return EXIT_FAILURE;
+            }
+            termOpt = args[i + 1];
+            i += 2;
         }
-    }
-
-    // If no -T, try $TERM (setupterm with null uses env)
-    if (optTerm is null)
-    {
-        // nothing needed; setupterm(NULL, ...) uses TERM
-    }
-
-    if (pre_setup() != 0)
-        return EXIT_FAILURE;
-
-    if (optind >= argc)
-    {
-        // No subcommand provided; do nothing (like minimal tput),
-        // or you could print a small usage message.
-        return EXIT_SUCCESS;
-    }
-
-    int rc = 0;
-    for (int i = optind; i < argc; ++i)
-    {
-        auto cmd = argv[i];
-        if (strcmp(cmd, "clear") == 0)
-            tput_clear();
-        else if (strcmp(cmd, "init") == 0)
-            tput_reset(true);
-        else if (strcmp(cmd, "reset") == 0)
-            tput_reset(false);
+        else if (a.startsWith("-T") && a.length > 2)
+        {
+            termOpt = a[2 .. $];
+            ++i;
+        }
         else
         {
-            // Unrecognized token (original walker accepted only those three)
-            // Silently ignore (to match minimal behavior), or set rc = 1.
-            rc = 1;
+            // remaining tokens are subcommands
+            cmds = args[i .. $];
+            break;
         }
+    }
+
+    const(char)* termPtr = termOpt.length ? toStringz(termOpt) : null;
+    if (pre_setup(termPtr) != 0)
+        return EXIT_FAILURE;
+
+    if (cmds.length == 0)
+        return EXIT_SUCCESS; // nothing to do
+
+    int rc = 0;
+    foreach (cmd; cmds)
+    {
+        if (cmd == "clear")
+            tput_clear();
+        else if (cmd == "init")
+            tput_reset(true);
+        else if (cmd == "reset")
+            tput_reset(false);
+        else
+            rc = 1; // unknown token
     }
 
     return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

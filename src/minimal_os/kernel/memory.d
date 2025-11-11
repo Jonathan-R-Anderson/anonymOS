@@ -1,6 +1,6 @@
 module minimal_os.kernel.memory;
 
-import core.stdc.config : size_t;
+import core.stdc.stddef : size_t;
 import minimal_os.console : print, printLine, printCString, printUnsigned, putChar;
 
 extern(C) void* memset(void* destination, int value, size_t count)

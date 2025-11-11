@@ -1,6 +1,6 @@
 module minimal_os.kernel.posixbundle;
 
-import core.stdc.config : size_t;
+import core.stdc.stddef : size_t;
 import minimal_os.console : print, printLine, printCString, putChar, printStageHeader, printStatus, printStatusValue;
 
 enum string embeddedPosixUtilitiesRootPath = "/kernel/posixutils/bin";

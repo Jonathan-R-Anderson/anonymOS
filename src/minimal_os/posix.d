@@ -138,6 +138,15 @@ mixin template PosixKernelShim()
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
     private __gshared bool           g_initialized = false;
+    private __gshared bool           g_consoleAvailable = false;
+    private __gshared bool           g_shellRegistered   = false;
+    private __gshared bool           g_posixUtilitiesRegistered = false;
+    private __gshared size_t         g_posixUtilityCount = 0;
+    private __gshared bool           g_posixConfigured   = false;
+
+    private immutable char[8]        SHELL_PATH = "/bin/sh\0";
+    private __gshared const(char*)[2] g_shellDefaultArgv = [SHELL_PATH.ptr, null];
+    private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
     @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
     {
@@ -1707,6 +1716,23 @@ mixin template PosixKernelShim()
     }
 
     // ---- Utility ----
+    @nogc nothrow private void resetProc(ref Proc proc)
+    {
+        if (proc.environment !is null)
+        {
+            releaseEnvironmentTable(proc.environment);
+            proc.environment = null;
+        }
+
+        if (isValidObject(proc.objectId))
+        {
+            destroyProcessObject(proc.objectId);
+        }
+
+        proc = Proc.init;
+        proc.objectId = INVALID_OBJECT_ID;
+    }
+
     @nogc nothrow private Proc* findByPid(pid_t pid){
         foreach(ref p; g_ptable) if(p.state!=ProcState.UNUSED && p.pid==pid) return &p;
         return null;

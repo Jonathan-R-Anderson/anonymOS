@@ -42,32 +42,6 @@ mixin template PosixKernelShim()
 
     enum ProcState : ubyte { UNUSED, EMBRYO, READY, RUNNING, SLEEPING, ZOMBIE }
 
-    private struct EnvironmentTable;
-
-    struct Proc {
-        pid_t     pid;
-        pid_t     ppid;
-        ProcState state;
-        int       exitCode;
-        SigSet    sigmask;
-        FD[MAX_FD] fds;
-        // Make entry @nogc so sys_execve (also @nogc) can call it
-        extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp) entry;
-        void*     ctx;    // arch context (opaque to shim)
-        void*     kstack; // optional kernel stack
-        char[16]  name;
-        const(char*)* pendingArgv; // pointer to array of const char*
-        const(char*)* pendingEnvp;
-        bool          pendingExec;
-        size_t        objectId;
-        EnvironmentTable* environment;
-    }
-
-    private __gshared Proc[MAX_PROC] g_ptable;
-    private __gshared pid_t          g_nextPid    = 1;
-    private __gshared Proc*          g_current    = null;
-    private __gshared bool           g_initialized = false;
-
     // ---- Object registry ----
     enum KernelObjectKind : ubyte
     {
@@ -139,6 +113,31 @@ mixin template PosixKernelShim()
     }
 
     private __gshared EnvironmentTable[MAX_PROC] g_environmentTables;
+
+    struct Proc
+    {
+        pid_t     pid;
+        pid_t     ppid;
+        ProcState state;
+        int       exitCode;
+        SigSet    sigmask;
+        FD[MAX_FD] fds;
+        // Make entry @nogc so sys_execve (also @nogc) can call it
+        extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp) entry;
+        void*     ctx;    // arch context (opaque to shim)
+        void*     kstack; // optional kernel stack
+        char[16]  name;
+        const(char*)* pendingArgv; // pointer to array of const(char)*
+        const(char*)* pendingEnvp;
+        bool          pendingExec;
+        size_t        objectId;
+        EnvironmentTable* environment;
+    }
+
+    private __gshared Proc[MAX_PROC] g_ptable;
+    private __gshared pid_t          g_nextPid    = 1;
+    private __gshared Proc*          g_current    = null;
+    private __gshared bool           g_initialized = false;
 
     @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
     {
@@ -218,7 +217,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private void setBufferFromCString(ref char[MAX_OBJECT_NAME] buffer, const char* text)
+    @nogc nothrow private void setBufferFromCString(ref char[MAX_OBJECT_NAME] buffer, const(char)* text)
     {
         size_t index = 0;
         if (text !is null)
@@ -248,7 +247,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private void setLabelFromCString(ref char[MAX_OBJECT_LABEL] buffer, const char* text)
+    @nogc nothrow private void setLabelFromCString(ref char[MAX_OBJECT_LABEL] buffer, const(char)* text)
     {
         size_t index = 0;
         if (text !is null)
@@ -470,7 +469,7 @@ mixin template PosixKernelShim()
         setLabelFromString(g_objects[objectId].label, label);
     }
 
-    @nogc nothrow private void setObjectLabelCString(size_t objectId, const char* label)
+    @nogc nothrow private void setObjectLabelCString(size_t objectId, const(char)* label)
     {
         if (!isValidObject(objectId))
         {
@@ -505,7 +504,7 @@ mixin template PosixKernelShim()
         return INVALID_OBJECT_ID;
     }
 
-    @nogc nothrow private void setBufferFromSlice(ref char[MAX_OBJECT_NAME] buffer, const char* slice, size_t length)
+    @nogc nothrow private void setBufferFromSlice(ref char[MAX_OBJECT_NAME] buffer, const(char)* slice, size_t length)
     {
         size_t index = 0;
         while (index < length && index + 1 < buffer.length)
@@ -527,7 +526,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private size_t ensureNamespaceChild(size_t parent, const char* name, size_t length)
+    @nogc nothrow private size_t ensureNamespaceChild(size_t parent, const(char)* name, size_t length)
     {
         char[MAX_OBJECT_NAME] segment;
         clearBuffer(segment);
@@ -542,7 +541,7 @@ mixin template PosixKernelShim()
         return createObjectFromBuffer(KernelObjectKind.Namespace, segment, "namespace", parent);
     }
 
-    @nogc nothrow private size_t ensureExecutableObject(size_t parent, const char* name, size_t length, size_t slotIndex)
+    @nogc nothrow private size_t ensureExecutableObject(size_t parent, const(char)* name, size_t length, size_t slotIndex)
     {
         char[MAX_OBJECT_NAME] segment;
         clearBuffer(segment);
@@ -566,7 +565,7 @@ mixin template PosixKernelShim()
         return created;
     }
 
-    @nogc nothrow private size_t registerExecutableObject(const char* path, size_t slotIndex)
+    @nogc nothrow private size_t registerExecutableObject(const(char)* path, size_t slotIndex)
     {
         if (!g_objectRegistryReady || path is null || path[0] == 0)
         {
@@ -767,7 +766,7 @@ mixin template PosixKernelShim()
         table.pointerDirty = true;
     }
 
-    @nogc nothrow private EnvironmentEntry* findEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength)
+    @nogc nothrow private EnvironmentEntry* findEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength)
     {
         if (table is null || name is null || nameLength == 0)
         {
@@ -821,7 +820,7 @@ mixin template PosixKernelShim()
         return null;
     }
 
-    @nogc nothrow private bool setEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    @nogc nothrow private bool setEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength, const(char)* value, size_t valueLength, bool overwrite = true)
     {
         if (table is null || name is null)
         {
@@ -881,7 +880,7 @@ mixin template PosixKernelShim()
         return true;
     }
 
-    @nogc nothrow private bool unsetEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength)
+    @nogc nothrow private bool unsetEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength)
     {
         auto entry = findEnvironmentEntry(table, name, nameLength);
         if (entry is null)
@@ -947,7 +946,7 @@ mixin template PosixKernelShim()
         entry.dirty = false;
     }
 
-    @nogc nothrow private const char* environmentEntryPair(ref EnvironmentEntry entry)
+    @nogc nothrow private const(char)* environmentEntryPair(ref EnvironmentEntry entry)
     {
         if (!entry.used)
         {
@@ -1134,7 +1133,7 @@ mixin template PosixKernelShim()
                 continue;
             }
 
-            const char* valuePtr = kv + nameLength + 1;
+            const(char)* valuePtr = kv + nameLength + 1;
             size_t valueLength = 0;
             while (valuePtr[valueLength] != 0)
             {
@@ -1184,7 +1183,7 @@ mixin template PosixKernelShim()
                     continue;
                 }
 
-                const char* valuePtr = kv + nameLength + 1;
+                const(char)* valuePtr = kv + nameLength + 1;
                 size_t valueLength = 0;
                 while (valuePtr[valueLength] != 0)
                 {
@@ -1197,7 +1196,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private const char** getEnvironmentVector(Proc* proc)
+    @nogc nothrow private const(char*)* getEnvironmentVector(Proc* proc)
     {
         if (proc is null)
         {
@@ -1211,10 +1210,10 @@ mixin template PosixKernelShim()
         }
 
         rebuildEnvironmentPointers(table);
-        return cast(const char**)table.pointerCache.ptr;
+        return cast(const(char*)*)table.pointerCache.ptr;
     }
 
-    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const(char)* name, size_t nameLength, const(char)* value, size_t valueLength, bool overwrite = true)
     {
         if (proc is null)
         {
@@ -1230,7 +1229,7 @@ mixin template PosixKernelShim()
         return setEnvironmentEntry(table, name, nameLength, value, valueLength, overwrite);
     }
 
-    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const char* name, const char* value, bool overwrite = true)
+    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const(char)* name, const(char)* value, bool overwrite = true)
     {
         if (name is null)
         {
@@ -1242,7 +1241,7 @@ mixin template PosixKernelShim()
         return setEnvironmentValueForProcess(proc, name, nameLength, value, valueLength, overwrite);
     }
 
-    @nogc nothrow private const char* readEnvironmentValueFromProcess(Proc* proc, const char* name, size_t nameLength)
+    @nogc nothrow private const(char)* readEnvironmentValueFromProcess(Proc* proc, const(char)* name, size_t nameLength)
     {
         if (proc is null)
         {
@@ -1279,7 +1278,7 @@ mixin template PosixKernelShim()
         g_objects[proc.objectId].secondary = cast(long)proc.state;
     }
 
-    @nogc nothrow private void updateProcessObjectLabel(ref Proc proc, const char* label)
+    @nogc nothrow private void updateProcessObjectLabel(ref Proc proc, const(char)* label)
     {
         if (!g_objectRegistryReady)
         {
@@ -1322,7 +1321,7 @@ mixin template PosixKernelShim()
     {
         bool used;
         char[EXEC_PATH_LENGTH] path;
-        extern(C) @nogc nothrow void function(const char** argv, const char** envp) entry;
+        extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp) entry;
         size_t objectId;
     }
 
@@ -1388,7 +1387,7 @@ mixin template PosixKernelShim()
         return value;
     }
 
-    @nogc nothrow private bool cStringEqualsIgnoreCaseLiteral(const char* lhs, immutable(char)[] rhs)
+    @nogc nothrow private bool cStringEqualsIgnoreCaseLiteral(const(char)* lhs, immutable(char)[] rhs)
     {
         if (lhs is null)
         {
@@ -1398,7 +1397,7 @@ mixin template PosixKernelShim()
         size_t index = 0;
         for (; index < rhs.length; ++index)
         {
-            const char actual = lhs[index];
+            const(char) actual = lhs[index];
             if (actual == '\0')
             {
                 return false;
@@ -1413,7 +1412,7 @@ mixin template PosixKernelShim()
         return lhs[index] == '\0';
     }
 
-    @nogc nothrow private const(char)* readEnvironmentVariable(const char* name)
+    @nogc nothrow private const(char)* readEnvironmentVariable(const(char)* name)
     {
         version (Posix)
         {
@@ -1446,7 +1445,7 @@ mixin template PosixKernelShim()
             size_t index = 0;
             while (entries[index] !is null)
             {
-                const char* entry = entries[index];
+                const(char)* entry = entries[index];
                 size_t matchIndex = 0;
                 while (matchIndex < nameLength && entry[matchIndex] == name[matchIndex])
                 {
@@ -1469,7 +1468,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private EnvBool parseEnvBoolean(const char* value)
+    @nogc nothrow private EnvBool parseEnvBoolean(const(char)* value)
     {
         if (value is null)
         {
@@ -1545,7 +1544,7 @@ mixin template PosixKernelShim()
     extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/) { /* no-op */ }
 
     // ---- Helpers ----
-    @nogc nothrow private size_t cStringLength(const char* str)
+    @nogc nothrow private size_t cStringLength(const(char)* str)
     {
         if (str is null)
         {
@@ -1561,7 +1560,7 @@ mixin template PosixKernelShim()
         return length;
     }
 
-    @nogc nothrow private bool cStringEquals(const char* lhs, const char* rhs)
+    @nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
     {
         if (lhs is null || rhs is null)
         {
@@ -1571,8 +1570,8 @@ mixin template PosixKernelShim()
         size_t index = 0;
         for (;;)
         {
-            const char a = lhs[index];
-            const char b = rhs[index];
+            const(char) a = lhs[index];
+            const(char) b = rhs[index];
             if (a != b)
             {
                 return false;
@@ -1595,7 +1594,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private void setNameFromCString(ref char[16] name, const char* source)
+    @nogc nothrow private void setNameFromCString(ref char[16] name, const(char)* source)
     {
         size_t index = 0;
 
@@ -1603,7 +1602,7 @@ mixin template PosixKernelShim()
         {
             while (index < name.length - 1)
             {
-                const char value = source[index];
+            const(char) value = source[index];
                 name[index] = value;
                 ++index;
 
@@ -1661,7 +1660,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private ExecutableSlot* findExecutableSlot(const char* path)
+    @nogc nothrow private ExecutableSlot* findExecutableSlot(const(char)* path)
     {
         if (path is null)
         {
@@ -1817,7 +1816,7 @@ mixin template PosixKernelShim()
         return np.pid; // parent gets child's pid
     }
 
-    @nogc nothrow int sys_execve(const char* path, const(char*)* argv, const(char*)* envp)
+    @nogc nothrow int sys_execve(const(char)* path, const(char*)* argv, const(char*)* envp)
     {
         // require a current process
         if (g_current is null) return setErrno(Errno.ESRCH);
@@ -1897,7 +1896,7 @@ mixin template PosixKernelShim()
     }
 
     // ---- FD/IO syscalls (stubs) ----
-    @nogc nothrow int     sys_open (const char* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
+    @nogc nothrow int     sys_open (const(char)* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow ssize_t sys_read (int fd, void* buffer, size_t length)
     {
@@ -1953,15 +1952,15 @@ mixin template PosixKernelShim()
     extern(C):
     @nogc nothrow pid_t getpid(){ return sys_getpid(); }
     @nogc nothrow pid_t fork(){   return sys_fork();   }
-    @nogc nothrow int   execve(const char* p, const char** a, const char** e){ return sys_execve(p,a,e); }
+    @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
     @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
     @nogc nothrow void  _exit(int c){ sys__exit(c); }
     @nogc nothrow int   kill(pid_t p, int s){ return sys_kill(p,s); }
     @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
 
     // Optional weak-ish symbols for linkage expectations
-    __gshared const char** environ;
-    __gshared const char** __argv;
+    __gshared const(char*)* environ;
+    __gshared const(char*)* __argv;
     __gshared int          __argc;
 
     struct ProcessInfo
@@ -1972,9 +1971,9 @@ mixin template PosixKernelShim()
         char[16] name;
     }
 
-    alias ProcessEntry = extern(C) @nogc nothrow void function(const char** argv, const char** envp);
+    alias ProcessEntry = extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp);
 
-    @nogc nothrow int registerProcessExecutable(const char* path, ProcessEntry entry)
+    @nogc nothrow int registerProcessExecutable(const(char)* path, ProcessEntry entry)
     {
         if(path is null || entry is null)
         {
@@ -2035,7 +2034,7 @@ mixin template PosixKernelShim()
         return setErrno(Errno.ENFILE);
     }
 
-    @nogc nothrow pid_t spawnRegisteredProcess(const char* path, const char** argv, const char** envp)
+    @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
     {
         auto slot = findExecutableSlot(path);
         if(slot is null)
@@ -2119,6 +2118,11 @@ mixin template PosixKernelShim()
     }
 
     // ---- Init hook ----
+    @nogc nothrow void initializeInterrupts()
+    {
+        // Minimal OS build does not configure interrupts.
+    }
+
     @nogc nothrow void posixInit(){
         if(g_initialized) return;
         initializeObjectRegistry();
@@ -2182,14 +2186,14 @@ version (Posix)
         char** envp
     );
     extern(C) int waitpid(int pid, int* status, int options);
-    extern(C) int access(const char* pathname, int mode);
+    extern(C) int access(const(char)* pathname, int mode);
     extern(C) int isatty(int fd);
     extern(C) long read(int fd, void* buffer, size_t length);
     extern(C) long write(int fd, const void* buffer, size_t length);
     extern(C) __gshared int errno;
-    extern(C) int setenv(const char* name, const char* value, int overwrite);
+    extern(C) int setenv(const(char)* name, const(char)* value, int overwrite);
 
-    private bool applyEnvironmentUpdate(const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    private bool applyEnvironmentUpdate(const(char)* name, size_t nameLength, const(char)* value, size_t valueLength, bool overwrite = true)
     {
         if (name is null || nameLength == 0)
         {
@@ -2209,7 +2213,7 @@ version (Posix)
         return true;
     }
 
-    private bool applyEnvironmentUpdate(const char* name, const char* value, bool overwrite = true)
+    private bool applyEnvironmentUpdate(const(char)* name, const(char)* value, bool overwrite = true)
     {
         if (name is null)
         {
@@ -2221,7 +2225,7 @@ version (Posix)
         return applyEnvironmentUpdate(name, nameLength, value, valueLength, overwrite);
     }
 
-    private bool copyCString(const char* source, char* buffer, size_t bufferLength, out size_t length)
+    private bool copyCString(const(char)* source, char* buffer, size_t bufferLength, out size_t length)
     {
         if (source is null)
         {
@@ -2277,7 +2281,7 @@ version (Posix)
         return true;
     }
 
-    private bool appendBinaryName(const char* root, size_t rootLength, char* buffer, size_t bufferLength, out size_t resultLength)
+    private bool appendBinaryName(const(char)* root, size_t rootLength, char* buffer, size_t bufferLength, out size_t resultLength)
     {
         if (rootLength == 0 || rootLength >= bufferLength)
         {
@@ -2321,12 +2325,12 @@ version (Posix)
         return true;
     }
 
-    private bool fileExists(const char* path)
+    private bool fileExists(const(char)* path)
     {
         return access(path, F_OK) == 0;
     }
 
-    @nogc nothrow private bool ensurePathIncludes(const char* candidate)
+    @nogc nothrow private bool ensurePathIncludes(const(char)* candidate)
     {
         if (candidate is null)
         {
@@ -2423,7 +2427,7 @@ version (Posix)
     }
 
     @nogc nothrow private bool buildSiblingPath(
-        const char* root,
+        const(char)* root,
         size_t rootLength,
         immutable(char)[] suffix,
         char* buffer,
@@ -2522,7 +2526,7 @@ version (Posix)
         return true;
     }
 
-    @nogc nothrow private bool configurePosixUtilities(const char* shellRoot, size_t shellLength)
+    @nogc nothrow private bool configurePosixUtilities(const(char)* shellRoot, size_t shellLength)
     {
         if (g_posixConfigured)
         {
@@ -2667,7 +2671,7 @@ version (Posix)
         return g_posixUtilityCount;
     }
 
-    @nogc nothrow private const(char)* extractProgramName(const char* path, char* buffer, size_t bufferLength, out size_t nameLength)
+    @nogc nothrow private const(char)* extractProgramName(const(char)* path, char* buffer, size_t bufferLength, out size_t nameLength)
     {
         nameLength = 0;
         if (path is null || bufferLength == 0)
@@ -2785,7 +2789,7 @@ version (Posix)
         return exitCode == 0;
     }
 
-    private bool ensureShellBuilt(const char* rootPath)
+    private bool ensureShellBuilt(const(char)* rootPath)
     {
         printLine("[shell] Building 'lfe-sh' binary ...");
 
@@ -2798,7 +2802,7 @@ version (Posix)
         return spawnAndWait("make", args.ptr, environ);
     }
 
-    private bool launchShellProcess(const char* binaryPath, const(char*)* argv, const(char*)* envp)
+    private bool launchShellProcess(const(char)* binaryPath, const(char*)* argv, const(char*)* envp)
     {
         printLine("[shell] Launching interactive session ...");
 
@@ -2829,7 +2833,7 @@ version (Posix)
 
         args[count] = null;
 
-        const char** vector = null;
+        const(char*)* vector = null;
         if (envp !is null && envp[0] !is null)
         {
             vector = envp;
@@ -2932,9 +2936,9 @@ version (Posix)
         return false;
     }
 
-    extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp)
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)
     {
-        const char** vector = envp;
+        const(char*)* vector = envp;
         if ((vector is null || vector[0] is null) && g_current !is null)
         {
             vector = getEnvironmentVector(g_current);
@@ -2942,7 +2946,7 @@ version (Posix)
         runHostShellSession(argv, vector);
     }
 
-    extern(C) @nogc nothrow void posixUtilityExecEntry(const char** argv, const char** envp)
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp)
     {
         enum fallbackProgram = "sh\0";
 
@@ -2952,7 +2956,7 @@ version (Posix)
             sys__exit(127);
         }
 
-        const char* invoked = null;
+        const(char)* invoked = null;
         if (argv !is null && argv[0] !is null)
         {
             invoked = argv[0];
@@ -2997,7 +3001,7 @@ version (Posix)
         }
         args[argCount] = null;
 
-        const char** vector = null;
+        const(char*)* vector = null;
         if (envp !is null && envp[0] !is null)
         {
             vector = envp;
@@ -3052,12 +3056,12 @@ else
         return false;
     }
 
-    extern(C) @nogc nothrow void shellExecEntry(const char** /*argv*/, const char** /*envp*/)
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
     {
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 
-    extern(C) @nogc nothrow void posixUtilityExecEntry(const char** /*argv*/, const char** /*envp*/)
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
     {
         printLine("[shell] POSIX utilities unsupported on this target.");
     }

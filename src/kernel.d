@@ -251,10 +251,13 @@ private __gshared ShellState shellState = ShellState(
 private __gshared bool g_consoleAvailable = false;
 private __gshared bool g_shellRegistered = false;
 private __gshared bool g_posixConfigured = false;
+private __gshared bool g_posixUtilitiesRegistered = false;
+private __gshared size_t g_posixUtilityCount = 0;
 private __gshared const(char*)[2] g_shellDefaultArgv = [cast(const char*)"/bin/sh\0".ptr, null];
 private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
 extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp);
+extern(C) @nogc nothrow void posixUtilityExecEntry(const char** argv, const char** envp);
 extern(C) char* getenv(const char* name);
 
 nothrow:
@@ -1538,6 +1541,7 @@ private void integrateShell()
     updateShellBinaryMetrics();
     checkShellRuntimeBindings();
     checkShellCompilerAccess();
+    bindPosixUtilitiesToKernel();
     finalizeShellActivation();
 }
 
@@ -1615,6 +1619,39 @@ private void checkShellCompilerAccess()
     }
 }
 
+private void bindPosixUtilitiesToKernel()
+{
+    version (Posix)
+    {
+        if (!g_posixConfigured)
+        {
+            ensurePosixUtilitiesConfigured();
+        }
+
+        const size_t registered = registerPosixUtilities();
+
+        immutable(char)[] status = (registered > 0) ? "available" : "unavailable";
+        printStatus("[shell] POSIX utilities  : ", status, "");
+        printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
+
+        if (registered == 0 && (shellState.failureReason is null || shellState.failureReason.length == 0))
+        {
+            shellState.failureReason = "POSIX utilities unavailable";
+        }
+    }
+    else
+    {
+        printStatus("[shell] POSIX utilities  : ", "unsupported", "");
+        printStatusValue("[shell] POSIX execs    : ", 0);
+        g_posixUtilitiesRegistered = false;
+        g_posixUtilityCount = 0;
+        if (shellState.failureReason is null || shellState.failureReason.length == 0)
+        {
+            shellState.failureReason = "POSIX utilities unsupported";
+        }
+    }
+}
+
 private void finalizeShellActivation()
 {
     const bool detectedConsole = detectConsoleAvailability();
@@ -1637,7 +1674,8 @@ private void finalizeShellActivation()
         g_shellRegistered = false;
     }
 
-    const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound;
+    const bool posixReady = g_posixUtilitiesRegistered;
+    const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound && posixReady;
     const bool consoleReady = g_consoleAvailable && g_shellRegistered;
 
     if (prerequisitesMet && consoleReady)
@@ -1655,7 +1693,18 @@ private void finalizeShellActivation()
         {
             if (!prerequisitesMet)
             {
-                reason = "integration prerequisites missing";
+                if (!shellState.compilerAccessible || !shellState.runtimeBound)
+                {
+                    reason = "integration prerequisites missing";
+                }
+                else if (!posixReady)
+                {
+                    reason = "POSIX utilities unavailable";
+                }
+                else
+                {
+                    reason = "integration prerequisites missing";
+                }
             }
             else if (!g_consoleAvailable)
             {
@@ -2397,7 +2446,7 @@ mixin template PosixKernelShim()
     }
 
     // ---- Executable registration ----
-    private enum MAX_EXECUTABLES = 32;
+    private enum MAX_EXECUTABLES = 128;
     private enum EXEC_PATH_LENGTH = 64;
     private struct ExecutableSlot
     {
@@ -3131,6 +3180,8 @@ mixin template PosixKernelShim()
         }
         g_nextPid = 1;
         g_current = null;
+        g_posixUtilitiesRegistered = false;
+        g_posixUtilityCount = 0;
         auto initProc = allocProc();
         if(initProc !is null)
         {
@@ -3540,28 +3591,236 @@ version (Posix)
         return false;
     }
 
-    private bool spawnAndWait(const(char)* program, char** argv, char** envp)
+    private immutable string[] POSIX_UTILITY_PATHS = [
+        "/bin/asa\0",
+        "/bin/basename\0",
+        "/bin/cat\0",
+        "/bin/chown\0",
+        "/bin/cksum\0",
+        "/bin/cmp\0",
+        "/bin/comm\0",
+        "/bin/compress\0",
+        "/bin/date\0",
+        "/bin/df\0",
+        "/bin/diff\0",
+        "/bin/dirname\0",
+        "/bin/echo\0",
+        "/bin/env\0",
+        "/bin/expand\0",
+        "/bin/expr\0",
+        "/bin/false\0",
+        "/bin/getconf\0",
+        "/bin/grep\0",
+        "/bin/head\0",
+        "/bin/id\0",
+        "/bin/ipcrm\0",
+        "/bin/ipcs\0",
+        "/bin/kill\0",
+        "/bin/link\0",
+        "/bin/ln\0",
+        "/bin/logger\0",
+        "/bin/logname\0",
+        "/bin/mesg\0",
+        "/bin/mkdir\0",
+        "/bin/mkfifo\0",
+        "/bin/mv\0",
+        "/bin/nice\0",
+        "/bin/nohup\0",
+        "/bin/pathchk\0",
+        "/bin/pwd\0",
+        "/bin/renice\0",
+        "/bin/rm\0",
+        "/bin/rmdir\0",
+        "/bin/sleep\0",
+        "/bin/sort\0",
+        "/bin/split\0",
+        "/bin/strings\0",
+        "/bin/stty\0",
+        "/bin/tabs\0",
+        "/bin/tee\0",
+        "/bin/time\0",
+        "/bin/touch\0",
+        "/bin/true\0",
+        "/bin/tsort\0",
+        "/bin/tty\0",
+        "/bin/tput\0",
+        "/bin/uname\0",
+        "/bin/uniq\0",
+        "/bin/unlink\0",
+        "/bin/uuencode\0",
+        "/bin/wc\0",
+        "/bin/what\0",
+    ];
+
+    @nogc nothrow private bool ensurePosixUtilitiesConfigured()
+    {
+        if (g_posixConfigured)
+        {
+            return true;
+        }
+
+        char[PATH_BUFFER_SIZE] rootBuffer;
+        size_t rootLength = 0;
+
+        immutable(char)[][] roots = [
+            shellState.repository,
+            "/workspace/internetcomputer/-sh",
+            "/workspace/-sh",
+            "/-sh",
+            "./-sh",
+            "-sh",
+        ];
+
+        foreach (candidate; roots)
+        {
+            if (!copyDString(candidate, rootBuffer.ptr, rootBuffer.length, rootLength))
+            {
+                continue;
+            }
+
+            if (configurePosixUtilities(rootBuffer.ptr, rootLength))
+            {
+                return true;
+            }
+        }
+
+        return g_posixConfigured;
+    }
+
+    @nogc nothrow private size_t countRegisteredPosixUtilities()
+    {
+        size_t count = 0;
+        foreach (ref slot; g_execTable)
+        {
+            if (slot.used && slot.entry is &posixUtilityExecEntry)
+            {
+                ++count;
+            }
+        }
+
+        return count;
+    }
+
+    @nogc nothrow private size_t registerPosixUtilities()
+    {
+        if (!g_objectRegistryReady)
+        {
+            return g_posixUtilityCount;
+        }
+
+        foreach (path; POSIX_UTILITY_PATHS)
+        {
+            if (path.length == 0)
+            {
+                continue;
+            }
+
+            registerProcessExecutable(path.ptr, &posixUtilityExecEntry);
+        }
+
+        g_posixUtilityCount = countRegisteredPosixUtilities();
+        g_posixUtilitiesRegistered = (g_posixUtilityCount > 0);
+        return g_posixUtilityCount;
+    }
+
+    @nogc nothrow private const(char)* extractProgramName(const char* path, char* buffer, size_t bufferLength, out size_t nameLength)
+    {
+        nameLength = 0;
+        if (path is null || bufferLength == 0)
+        {
+            return null;
+        }
+
+        size_t totalLength = 0;
+        while (path[totalLength] != '\0')
+        {
+            ++totalLength;
+        }
+
+        if (totalLength == 0)
+        {
+            return null;
+        }
+
+        size_t end = totalLength;
+        while (end > 0 && path[end - 1] == '/')
+        {
+            --end;
+        }
+
+        if (end == 0)
+        {
+            return null;
+        }
+
+        size_t start = 0;
+        foreach (i; 0 .. end)
+        {
+            if (path[i] == '/')
+            {
+                start = i + 1;
+            }
+        }
+
+        if (end <= start)
+        {
+            return null;
+        }
+
+        nameLength = end - start;
+        if (nameLength + 1 > bufferLength)
+        {
+            nameLength = 0;
+            return null;
+        }
+
+        foreach (i; 0 .. nameLength)
+        {
+            buffer[i] = path[start + i];
+        }
+        buffer[nameLength] = '\0';
+
+        return buffer.ptr;
+    }
+
+    private bool spawnAndWait(const(char)* program, char** argv, char** envp, int* exitStatus = null)
     {
         int pid = 0;
         auto environment = (envp !is null) ? envp : environ;
         const int spawnResult = posix_spawnp(&pid, program, null, null, argv, environment);
         if (spawnResult != 0)
         {
+            if (exitStatus !is null)
+            {
+                *exitStatus = 127;
+            }
             return false;
         }
 
         int status = 0;
         if (waitpid(pid, &status, 0) < 0)
         {
+            if (exitStatus !is null)
+            {
+                *exitStatus = 127;
+            }
             return false;
         }
 
         if ((status & 0x7F) != 0)
         {
+            if (exitStatus !is null)
+            {
+                *exitStatus = 128 + (status & 0x7F);
+            }
             return false;
         }
 
         const int exitCode = (status >> 8) & 0xFF;
+        if (exitStatus !is null)
+        {
+            *exitStatus = exitCode;
+        }
         return exitCode == 0;
     }
 
@@ -3711,6 +3970,72 @@ version (Posix)
         runHostShellSession(argv, envp);
     }
 
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const char** argv, const char** envp)
+    {
+        enum fallbackProgram = "sh\0";
+
+        if (!ensurePosixUtilitiesConfigured())
+        {
+            printLine("[shell] POSIX utilities unavailable; cannot execute request.");
+            sys__exit(127);
+        }
+
+        const char* invoked = null;
+        if (argv !is null && argv[0] !is null)
+        {
+            invoked = argv[0];
+        }
+
+        char[PATH_BUFFER_SIZE] nameBuffer;
+        size_t nameLength = 0;
+        auto programName = extractProgramName(invoked, nameBuffer.ptr, nameBuffer.length, nameLength);
+        if (programName is null || nameLength == 0)
+        {
+            if (invoked !is null && invoked[0] != '\0')
+            {
+                programName = invoked;
+            }
+            else
+            {
+                programName = fallbackProgram.ptr;
+            }
+        }
+
+        enum size_t MAX_ARGS = 16;
+        char*[MAX_ARGS] args;
+        size_t argCount = 0;
+
+        args[argCount] = cast(char*)programName;
+        ++argCount;
+
+        if (argv !is null)
+        {
+            size_t index = (argv[0] !is null) ? 1 : 0;
+            while (argv[index] !is null && argCount + 1 < args.length)
+            {
+                args[argCount] = cast(char*)argv[index];
+                ++argCount;
+                ++index;
+            }
+        }
+
+        if (argCount >= args.length)
+        {
+            argCount = args.length - 1;
+        }
+        args[argCount] = null;
+
+        char** environment = null;
+        if (envp !is null && envp[0] !is null)
+        {
+            environment = cast(char**)envp;
+        }
+
+        int exitCode = 127;
+        spawnAndWait(programName, args.ptr, environment, &exitCode);
+        sys__exit(exitCode);
+    }
+
     private void launchInteractiveShell()
     {
         if (!g_consoleAvailable)
@@ -3747,6 +4072,11 @@ else
     extern(C) @nogc nothrow void shellExecEntry(const char** /*argv*/, const char** /*envp*/)
     {
         printLine("[shell] Interactive shell unavailable: host console support missing.");
+    }
+
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const char** /*argv*/, const char** /*envp*/)
+    {
+        printLine("[shell] POSIX utilities unsupported on this target.");
     }
 
     private void launchInteractiveShell()

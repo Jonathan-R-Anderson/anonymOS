@@ -260,6 +260,11 @@ extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp
 extern(C) @nogc nothrow void posixUtilityExecEntry(const char** argv, const char** envp);
 extern(C) char* getenv(const char* name);
 
+version (Posix)
+{
+    extern(C) __gshared char** environ;
+}
+
 nothrow:
 @nogc:
 
@@ -2543,6 +2548,53 @@ mixin template PosixKernelShim()
         return lhs[index] == '\0';
     }
 
+    @nogc nothrow private const(char)* readEnvironmentVariable(const char* name)
+    {
+        version (Posix)
+        {
+            if (name is null || name[0] == '\0')
+            {
+                return null;
+            }
+
+            const size_t nameLength = cStringLength(name);
+            if (nameLength == 0)
+            {
+                return null;
+            }
+
+            auto entries = environ;
+            if (entries is null)
+            {
+                return null;
+            }
+
+            size_t index = 0;
+            while (entries[index] !is null)
+            {
+                const char* entry = entries[index];
+                size_t matchIndex = 0;
+                while (matchIndex < nameLength && entry[matchIndex] == name[matchIndex])
+                {
+                    ++matchIndex;
+                }
+
+                if (matchIndex == nameLength && entry[matchIndex] == '=')
+                {
+                    return entry + nameLength + 1;
+                }
+
+                ++index;
+            }
+
+            return null;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
     @nogc nothrow private EnvBool parseEnvBoolean(const char* value)
     {
         if (value is null)
@@ -2575,7 +2627,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private bool detectConsoleAvailability()
     {
-        const EnvBool assumeConsole = parseEnvBoolean(getenv("SH_ASSUME_CONSOLE"));
+        const EnvBool assumeConsole = parseEnvBoolean(readEnvironmentVariable("SH_ASSUME_CONSOLE"));
         if (assumeConsole == EnvBool.truthy)
         {
             return true;
@@ -2585,7 +2637,7 @@ mixin template PosixKernelShim()
             return false;
         }
 
-        const EnvBool disableConsole = parseEnvBoolean(getenv("SH_DISABLE_CONSOLE"));
+        const EnvBool disableConsole = parseEnvBoolean(readEnvironmentVariable("SH_DISABLE_CONSOLE"));
         if (disableConsole == EnvBool.truthy)
         {
             return false;
@@ -3228,7 +3280,6 @@ version (Posix)
     );
     extern(C) int waitpid(int pid, int* status, int options);
     extern(C) int access(const char* pathname, int mode);
-    extern(C) __gshared char** environ;
     extern(C) int isatty(int fd);
     extern(C) long read(int fd, void* buffer, size_t length);
     extern(C) long write(int fd, const void* buffer, size_t length);
@@ -3353,7 +3404,7 @@ version (Posix)
             return false;
         }
 
-        auto existing = getenv("PATH");
+        auto existing = readEnvironmentVariable("PATH");
         if (existing is null || existing[0] == '\0')
         {
             return setenv("PATH", candidate, 1) == 0;
@@ -3541,7 +3592,7 @@ version (Posix)
             return true;
         }
 
-        auto overridePath = getenv("POSIXUTILS_ROOT");
+        auto overridePath = readEnvironmentVariable("POSIXUTILS_ROOT");
         if (overridePath !is null && overridePath[0] != '\0')
         {
             setenv("POSIXUTILS_ROOT", overridePath, 1);
@@ -3931,7 +3982,7 @@ version (Posix)
         size_t rootLength = 0;
         bool buildCompleted = false;
 
-        if (copyCString(getenv("SH_ROOT"), rootBuffer.ptr, rootBuffer.length, rootLength))
+        if (copyCString(readEnvironmentVariable("SH_ROOT"), rootBuffer.ptr, rootBuffer.length, rootLength))
         {
             if (tryLaunchFromRoot(rootBuffer.ptr, rootLength, buildCompleted, argv, envp))
             {

@@ -3,6 +3,9 @@ module minimal_os.posix;
 import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
     embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
 
+extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
+extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
+
 mixin template PosixKernelShim()
 {
     // ---- Basic types (avoid druntime) ----

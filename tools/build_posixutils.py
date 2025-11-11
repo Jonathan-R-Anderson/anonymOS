@@ -205,6 +205,22 @@ def write_manifest(manifest_dir: Path, results: Sequence[BuildResult], root: Pat
     print(f"[ok] Wrote manifest: {manifest_path}")
 
 
+def write_object_manifest(manifest_dir: Path, results: Sequence[BuildResult], root: Path) -> None:
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    object_manifest = manifest_dir / "objects.tsv"
+    lines: List[str] = []
+    for result in results:
+        object_id = f"object:posix:{result.name}"
+        object_path = f"/bin/{result.name}"
+        try:
+            binary_path = result.output.relative_to(root)
+        except ValueError:
+            binary_path = result.output
+        lines.append(f"{object_id}\t{object_path}\t{binary_path}\n")
+    object_manifest.write_text("".join(lines), encoding="utf-8")
+    print(f"[ok] Wrote object manifest: {object_manifest}")
+
+
 def main() -> None:
     args = parse_args()
     ensure_compiler_available(args.dc)
@@ -224,6 +240,7 @@ def main() -> None:
         return
 
     write_manifest(output_dir.parent, results, root)
+    write_object_manifest(output_dir.parent, results, root)
     print(f"[ok] Built {len(results)} POSIX utilities into {output_dir}")
 
 

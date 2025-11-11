@@ -564,6 +564,12 @@ private void initializeInterrupts()
 
 @nogc nothrow private void resetProc(ref Proc p)
 {
+    if (p.environment !is null)
+    {
+        releaseEnvironmentTable(p.environment);
+        p.environment = null;
+    }
+
     if (g_objectRegistryReady && isProcessObject(p.objectId))
     {
         destroyProcessObject(p.objectId);
@@ -583,6 +589,7 @@ private void initializeInterrupts()
     p.pendingEnvp = null;
     p.pendingExec = false;
     p.objectId = INVALID_OBJECT_ID;
+    p.environment = null;
 }
 
 extern(C) @nogc nothrow void handleInvalidOpcode(
@@ -1776,6 +1783,9 @@ mixin template PosixKernelShim()
     enum MAX_PROC = 64;
 
     enum ProcState : ubyte { UNUSED, EMBRYO, READY, RUNNING, SLEEPING, ZOMBIE }
+
+    private struct EnvironmentTable;
+
     struct Proc {
         pid_t     pid;
         pid_t     ppid;
@@ -1792,6 +1802,7 @@ mixin template PosixKernelShim()
         const(char*)* pendingEnvp;
         bool          pendingExec;
         size_t        objectId;
+        EnvironmentTable* environment;
     }
 
     private __gshared Proc[MAX_PROC] g_ptable;
@@ -1807,6 +1818,7 @@ mixin template PosixKernelShim()
         Executable,
         Process,
         Device,
+        Environment,
         Channel,
     }
 
@@ -1838,6 +1850,37 @@ mixin template PosixKernelShim()
     private __gshared size_t g_objectBinNamespace  = INVALID_OBJECT_ID;
     private __gshared size_t g_objectDevNamespace  = INVALID_OBJECT_ID;
     private __gshared size_t g_consoleObject       = INVALID_OBJECT_ID;
+
+    private enum MAX_ENV_ENTRIES        = 64;
+    private enum MAX_ENV_NAME_LENGTH    = 64;
+    private enum MAX_ENV_VALUE_LENGTH   = 256;
+    private enum MAX_ENV_COMBINED_LENGTH = MAX_ENV_NAME_LENGTH + 1 + MAX_ENV_VALUE_LENGTH;
+
+    private struct EnvironmentEntry
+    {
+        bool used;
+        size_t nameLength;
+        size_t valueLength;
+        size_t combinedLength;
+        bool dirty;
+        char[MAX_ENV_NAME_LENGTH] name;
+        char[MAX_ENV_VALUE_LENGTH] value;
+        char[MAX_ENV_COMBINED_LENGTH] combined;
+    }
+
+    private struct EnvironmentTable
+    {
+        bool used;
+        pid_t ownerPid;
+        size_t objectId;
+        size_t entryCount;
+        EnvironmentEntry[MAX_ENV_ENTRIES] entries;
+        char*[MAX_ENV_ENTRIES + 1] pointerCache;
+        size_t pointerCount;
+        bool pointerDirty;
+    }
+
+    private __gshared EnvironmentTable[MAX_PROC] g_environmentTables;
 
     @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
     {
@@ -2399,6 +2442,570 @@ mixin template PosixKernelShim()
         destroyObject(objectId);
     }
 
+    @nogc nothrow private bool isEnvironmentObject(size_t index)
+    {
+        return isValidObject(index) && g_objects[index].kind == KernelObjectKind.Environment;
+    }
+
+    @nogc nothrow private size_t createEnvironmentObject(size_t processObject)
+    {
+        if (!g_objectRegistryReady || !isProcessObject(processObject))
+        {
+            return INVALID_OBJECT_ID;
+        }
+
+        char[MAX_OBJECT_NAME] name;
+        clearBuffer(name);
+        setBufferFromString(name, "env");
+
+        auto objectId = createObjectFromBuffer(KernelObjectKind.Environment, name, "process.environment", processObject);
+        if (isValidObject(objectId))
+        {
+            setObjectLabelLiteral(objectId, "environment");
+        }
+
+        return objectId;
+    }
+
+    @nogc nothrow private void destroyEnvironmentObject(size_t objectId)
+    {
+        if (!g_objectRegistryReady)
+        {
+            return;
+        }
+
+        if (!isEnvironmentObject(objectId))
+        {
+            return;
+        }
+
+        destroyObject(objectId);
+    }
+
+    @nogc nothrow private void clearEnvironmentEntry(ref EnvironmentEntry entry)
+    {
+        entry = EnvironmentEntry.init;
+    }
+
+    @nogc nothrow private void clearEnvironmentTable(EnvironmentTable* table)
+    {
+        if (table is null)
+        {
+            return;
+        }
+
+        foreach (ref entry; table.entries)
+        {
+            entry = EnvironmentEntry.init;
+        }
+
+        foreach (i; 0 .. table.pointerCache.length)
+        {
+            table.pointerCache[i] = null;
+        }
+
+        table.entryCount = 0;
+        table.pointerCount = 0;
+        table.pointerDirty = true;
+    }
+
+    @nogc nothrow private EnvironmentEntry* findEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength)
+    {
+        if (table is null || name is null || nameLength == 0)
+        {
+            return null;
+        }
+
+        foreach (ref entry; table.entries)
+        {
+            if (!entry.used || entry.nameLength != nameLength)
+            {
+                continue;
+            }
+
+            size_t index = 0;
+            while (index < nameLength && entry.name[index] == name[index])
+            {
+                ++index;
+            }
+
+            if (index == nameLength)
+            {
+                return &entry;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private EnvironmentEntry* allocateEnvironmentEntry(EnvironmentTable* table)
+    {
+        if (table is null)
+        {
+            return null;
+        }
+
+        foreach (ref entry; table.entries)
+        {
+            if (!entry.used)
+            {
+                entry = EnvironmentEntry.init;
+                entry.used = true;
+                if (table.entryCount < size_t.max)
+                {
+                    ++table.entryCount;
+                }
+                table.pointerDirty = true;
+                return &entry;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private bool setEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    {
+        if (table is null || name is null)
+        {
+            return false;
+        }
+
+        if (nameLength == 0 || nameLength >= MAX_ENV_NAME_LENGTH)
+        {
+            return false;
+        }
+
+        if (valueLength >= MAX_ENV_VALUE_LENGTH)
+        {
+            return false;
+        }
+
+        auto entry = findEnvironmentEntry(table, name, nameLength);
+        if (entry is null)
+        {
+            entry = allocateEnvironmentEntry(table);
+        }
+        else
+        {
+            if (!overwrite)
+            {
+                return true;
+            }
+            table.pointerDirty = true;
+        }
+
+        if (entry is null)
+        {
+            return false;
+        }
+
+        entry.used = true;
+        entry.nameLength = nameLength;
+        entry.valueLength = valueLength;
+        entry.combinedLength = 0;
+        entry.dirty = true;
+
+        foreach (i; 0 .. entry.name.length)
+        {
+            entry.name[i] = (i < nameLength) ? name[i] : 0;
+        }
+
+        foreach (i; 0 .. entry.value.length)
+        {
+            entry.value[i] = (i < valueLength) ? value[i] : 0;
+        }
+
+        foreach (i; 0 .. entry.combined.length)
+        {
+            entry.combined[i] = 0;
+        }
+
+        return true;
+    }
+
+    @nogc nothrow private bool unsetEnvironmentEntry(EnvironmentTable* table, const char* name, size_t nameLength)
+    {
+        auto entry = findEnvironmentEntry(table, name, nameLength);
+        if (entry is null)
+        {
+            return false;
+        }
+
+        *entry = EnvironmentEntry.init;
+        if (table.entryCount > 0)
+        {
+            --table.entryCount;
+        }
+        table.pointerDirty = true;
+        return true;
+    }
+
+    @nogc nothrow private void refreshEnvironmentEntry(ref EnvironmentEntry entry)
+    {
+        if (!entry.used)
+        {
+            return;
+        }
+
+        size_t index = 0;
+        foreach (i; 0 .. entry.nameLength)
+        {
+            if (index + 1 >= entry.combined.length)
+            {
+                break;
+            }
+            entry.combined[index] = entry.name[i];
+            ++index;
+        }
+
+        if (index + 1 >= entry.combined.length)
+        {
+            entry.combined[entry.combined.length - 1] = 0;
+            entry.combinedLength = entry.combined.length - 1;
+            entry.dirty = false;
+            return;
+        }
+
+        entry.combined[index] = '=';
+        ++index;
+
+        foreach (i; 0 .. entry.valueLength)
+        {
+            if (index + 1 >= entry.combined.length)
+            {
+                break;
+            }
+            entry.combined[index] = entry.value[i];
+            ++index;
+        }
+
+        if (index >= entry.combined.length)
+        {
+            index = entry.combined.length - 1;
+        }
+
+        entry.combined[index] = 0;
+        entry.combinedLength = index;
+        entry.dirty = false;
+    }
+
+    @nogc nothrow private const char* environmentEntryPair(ref EnvironmentEntry entry)
+    {
+        if (!entry.used)
+        {
+            return null;
+        }
+
+        if (entry.dirty)
+        {
+            refreshEnvironmentEntry(entry);
+        }
+
+        return entry.combined.ptr;
+    }
+
+    @nogc nothrow private void rebuildEnvironmentPointers(EnvironmentTable* table)
+    {
+        if (table is null || !table.used)
+        {
+            return;
+        }
+
+        if (!table.pointerDirty)
+        {
+            return;
+        }
+
+        size_t index = 0;
+        foreach (ref entry; table.entries)
+        {
+            if (!entry.used)
+            {
+                continue;
+            }
+
+            auto pair = environmentEntryPair(entry);
+            if (pair is null)
+            {
+                continue;
+            }
+
+            if (index + 1 >= table.pointerCache.length)
+            {
+                break;
+            }
+
+            table.pointerCache[index] = cast(char*)pair;
+            ++index;
+        }
+
+        if (index < table.pointerCache.length)
+        {
+            table.pointerCache[index] = null;
+            ++index;
+        }
+
+        while (index < table.pointerCache.length)
+        {
+            table.pointerCache[index] = null;
+            ++index;
+        }
+
+        table.pointerCount = (index == 0) ? 0 : index - 1;
+        table.pointerDirty = false;
+    }
+
+    @nogc nothrow private EnvironmentTable* allocateEnvironmentTable(pid_t ownerPid, size_t processObject)
+    {
+        foreach (ref table; g_environmentTables)
+        {
+            if (!table.used)
+            {
+                table = EnvironmentTable.init;
+                table.used = true;
+                table.ownerPid = ownerPid;
+                table.objectId = INVALID_OBJECT_ID;
+                clearEnvironmentTable(&table);
+                if (g_objectRegistryReady && isProcessObject(processObject))
+                {
+                    table.objectId = createEnvironmentObject(processObject);
+                }
+                return &table;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private void ensureEnvironmentObject(EnvironmentTable* table, size_t processObject)
+    {
+        if (table is null)
+        {
+            return;
+        }
+
+        if (table.objectId != INVALID_OBJECT_ID)
+        {
+            return;
+        }
+
+        if (!g_objectRegistryReady || !isProcessObject(processObject))
+        {
+            return;
+        }
+
+        table.objectId = createEnvironmentObject(processObject);
+    }
+
+    @nogc nothrow private void releaseEnvironmentTable(EnvironmentTable* table)
+    {
+        if (table is null || !table.used)
+        {
+            return;
+        }
+
+        if (table.objectId != INVALID_OBJECT_ID)
+        {
+            destroyEnvironmentObject(table.objectId);
+        }
+
+        clearEnvironmentTable(table);
+        table.used = false;
+        table.ownerPid = 0;
+        table.objectId = INVALID_OBJECT_ID;
+    }
+
+    @nogc nothrow private void cloneEnvironmentTable(EnvironmentTable* destination, EnvironmentTable* source)
+    {
+        if (destination is null)
+        {
+            return;
+        }
+
+        clearEnvironmentTable(destination);
+
+        if (source is null || !source.used)
+        {
+            return;
+        }
+
+        foreach (ref entry; source.entries)
+        {
+            if (!entry.used)
+            {
+                continue;
+            }
+
+            setEnvironmentEntry(destination, entry.name.ptr, entry.nameLength, entry.value.ptr, entry.valueLength);
+        }
+    }
+
+    @nogc nothrow private void loadEnvironmentFromVector(EnvironmentTable* table, const(char*)* envp)
+    {
+        if (table is null)
+        {
+            return;
+        }
+
+        clearEnvironmentTable(table);
+
+        if (envp is null)
+        {
+            return;
+        }
+
+        size_t index = 0;
+        while (envp[index] !is null)
+        {
+            auto kv = envp[index];
+            if (kv is null)
+            {
+                ++index;
+                continue;
+            }
+
+            size_t nameLength = 0;
+            while (kv[nameLength] != 0 && kv[nameLength] != '=')
+            {
+                ++nameLength;
+            }
+
+            if (kv[nameLength] != '=' || nameLength == 0)
+            {
+                ++index;
+                continue;
+            }
+
+            const char* valuePtr = kv + nameLength + 1;
+            size_t valueLength = 0;
+            while (valuePtr[valueLength] != 0)
+            {
+                ++valueLength;
+            }
+
+            setEnvironmentEntry(table, kv, nameLength, valuePtr, valueLength);
+            ++index;
+        }
+    }
+
+    @nogc nothrow private void loadEnvironmentFromHost(EnvironmentTable* table)
+    {
+        if (table is null)
+        {
+            return;
+        }
+
+        clearEnvironmentTable(table);
+
+        version (Posix)
+        {
+            if (environ is null)
+            {
+                return;
+            }
+
+            int index = 0;
+            while (environ[index] !is null)
+            {
+                auto kv = environ[index];
+                if (kv is null)
+                {
+                    ++index;
+                    continue;
+                }
+
+                size_t nameLength = 0;
+                while (kv[nameLength] != 0 && kv[nameLength] != '=')
+                {
+                    ++nameLength;
+                }
+
+                if (kv[nameLength] != '=' || nameLength == 0)
+                {
+                    ++index;
+                    continue;
+                }
+
+                const char* valuePtr = kv + nameLength + 1;
+                size_t valueLength = 0;
+                while (valuePtr[valueLength] != 0)
+                {
+                    ++valueLength;
+                }
+
+                setEnvironmentEntry(table, kv, nameLength, valuePtr, valueLength);
+                ++index;
+            }
+        }
+    }
+
+    @nogc nothrow private const char** getEnvironmentVector(Proc* proc)
+    {
+        if (proc is null)
+        {
+            return null;
+        }
+
+        auto table = proc.environment;
+        if (table is null || !table.used)
+        {
+            return null;
+        }
+
+        rebuildEnvironmentPointers(table);
+        return cast(const char**)table.pointerCache.ptr;
+    }
+
+    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    {
+        if (proc is null)
+        {
+            return false;
+        }
+
+        auto table = proc.environment;
+        if (table is null || !table.used)
+        {
+            return false;
+        }
+
+        return setEnvironmentEntry(table, name, nameLength, value, valueLength, overwrite);
+    }
+
+    @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const char* name, const char* value, bool overwrite = true)
+    {
+        if (name is null)
+        {
+            return false;
+        }
+
+        const size_t nameLength = cStringLength(name);
+        const size_t valueLength = (value is null) ? 0 : cStringLength(value);
+        return setEnvironmentValueForProcess(proc, name, nameLength, value, valueLength, overwrite);
+    }
+
+    @nogc nothrow private const char* readEnvironmentValueFromProcess(Proc* proc, const char* name, size_t nameLength)
+    {
+        if (proc is null)
+        {
+            return null;
+        }
+
+        auto table = proc.environment;
+        if (table is null || !table.used)
+        {
+            return null;
+        }
+
+        auto entry = findEnvironmentEntry(table, name, nameLength);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        return entry.value.ptr;
+    }
+
     @nogc nothrow private void updateProcessObjectState(ref Proc proc)
     {
         if (!g_objectRegistryReady)
@@ -2561,6 +3168,15 @@ mixin template PosixKernelShim()
             if (nameLength == 0)
             {
                 return null;
+            }
+
+            if (g_current !is null)
+            {
+                auto processValue = readEnvironmentValueFromProcess(g_current, name, nameLength);
+                if (processValue !is null)
+                {
+                    return processValue;
+                }
             }
 
             auto entries = environ;
@@ -2844,6 +3460,11 @@ mixin template PosixKernelShim()
                 resetProc(p);
                 p.pid = g_nextPid++;
                 p.objectId = createProcessObject(p.pid);
+                p.environment = allocateEnvironmentTable(p.pid, p.objectId);
+                if (p.environment !is null)
+                {
+                    ensureEnvironmentObject(p.environment, p.objectId);
+                }
                 assignProcessState(p, ProcState.EMBRYO);
                 return &p;
             }
@@ -2913,6 +3534,16 @@ mixin template PosixKernelShim()
             np.pendingArgv = g_current.pendingArgv;
             np.pendingEnvp = g_current.pendingEnvp;
             np.pendingExec = g_current.pendingExec;
+            if (np.environment !is null)
+            {
+                cloneEnvironmentTable(np.environment, g_current.environment);
+                ensureEnvironmentObject(np.environment, np.objectId);
+            }
+        }
+        else if (np.environment !is null)
+        {
+            clearEnvironmentTable(np.environment);
+            ensureEnvironmentObject(np.environment, np.objectId);
         }
         // copy name best-effort
         foreach(i; 0 .. np.name.length) np.name[i] = 0;
@@ -2950,6 +3581,15 @@ mixin template PosixKernelShim()
         (*cur).entry = resolved.entry;
         setNameFromCString((*cur).name, execPath);
         updateProcessObjectLabel(*cur, execPath);
+
+        if (cur.environment !is null)
+        {
+            if (envp !is null)
+            {
+                loadEnvironmentFromVector(cur.environment, envp);
+            }
+            ensureEnvironmentObject(cur.environment, cur.objectId);
+        }
 
         (*cur).entry(argv, envp);            // @nogc nothrow
         sys__exit(0);                        // if it ever returns
@@ -3245,6 +3885,11 @@ mixin template PosixKernelShim()
             initProc.pendingEnvp = null;
             initProc.pendingExec = false;
             g_current = initProc;
+            if (initProc.environment !is null)
+            {
+                loadEnvironmentFromHost(initProc.environment);
+                ensureEnvironmentObject(initProc.environment, initProc.objectId);
+            }
             g_consoleAvailable = detectConsoleAvailability();
             configureConsoleFor(*initProc);
         }
@@ -3285,6 +3930,38 @@ version (Posix)
     extern(C) long write(int fd, const void* buffer, size_t length);
     extern(C) __gshared int errno;
     extern(C) int setenv(const char* name, const char* value, int overwrite);
+
+    private bool applyEnvironmentUpdate(const char* name, size_t nameLength, const char* value, size_t valueLength, bool overwrite = true)
+    {
+        if (name is null || nameLength == 0)
+        {
+            return false;
+        }
+
+        if (setenv(name, value, overwrite ? 1 : 0) != 0)
+        {
+            return false;
+        }
+
+        if (g_current !is null)
+        {
+            setEnvironmentValueForProcess(g_current, name, nameLength, value, valueLength, overwrite);
+        }
+
+        return true;
+    }
+
+    private bool applyEnvironmentUpdate(const char* name, const char* value, bool overwrite = true)
+    {
+        if (name is null)
+        {
+            return false;
+        }
+
+        const size_t nameLength = cStringLength(name);
+        const size_t valueLength = (value is null) ? 0 : cStringLength(value);
+        return applyEnvironmentUpdate(name, nameLength, value, valueLength, overwrite);
+    }
 
     private bool copyCString(const char* source, char* buffer, size_t bufferLength, out size_t length)
     {
@@ -3404,10 +4081,12 @@ version (Posix)
             return false;
         }
 
+        enum PATH_NAME = "PATH\0";
+
         auto existing = readEnvironmentVariable("PATH");
         if (existing is null || existing[0] == '\0')
         {
-            return setenv("PATH", candidate, 1) == 0;
+            return applyEnvironmentUpdate(PATH_NAME.ptr, PATH_NAME.length - 1, candidate, candidateLength, true);
         }
 
         size_t index = 0;
@@ -3482,7 +4161,7 @@ version (Posix)
         writeIndex += existingLength;
         combined[writeIndex] = '\0';
 
-        return setenv("PATH", combined.ptr, 1) == 0;
+        return applyEnvironmentUpdate(PATH_NAME.ptr, PATH_NAME.length - 1, combined.ptr, writeIndex, true);
     }
 
     @nogc nothrow private bool buildSiblingPath(
@@ -3592,10 +4271,13 @@ version (Posix)
             return true;
         }
 
+        enum POSIXUTILS_ROOT = "POSIXUTILS_ROOT\0";
+
         auto overridePath = readEnvironmentVariable("POSIXUTILS_ROOT");
         if (overridePath !is null && overridePath[0] != '\0')
         {
-            setenv("POSIXUTILS_ROOT", overridePath, 1);
+            const size_t overrideLength = cStringLength(overridePath);
+            applyEnvironmentUpdate(POSIXUTILS_ROOT.ptr, POSIXUTILS_ROOT.length - 1, overridePath, overrideLength, true);
             if (access(overridePath, F_OK) == 0 && ensurePathIncludes(overridePath))
             {
                 g_posixConfigured = true;
@@ -3627,7 +4309,7 @@ version (Posix)
                 continue;
             }
 
-            setenv("POSIXUTILS_ROOT", candidateBuffer.ptr, 1);
+            applyEnvironmentUpdate(POSIXUTILS_ROOT.ptr, POSIXUTILS_ROOT.length - 1, candidateBuffer.ptr, candidateLength, true);
             if (!ensurePathIncludes(candidateBuffer.ptr))
             {
                 continue;
@@ -3837,7 +4519,24 @@ version (Posix)
     private bool spawnAndWait(const(char)* program, char** argv, char** envp, int* exitStatus = null)
     {
         int pid = 0;
-        auto environment = (envp !is null) ? envp : environ;
+        char** environment = null;
+        if (envp !is null)
+        {
+            environment = cast(char**)envp;
+        }
+        else
+        {
+            auto vector = getEnvironmentVector(g_current);
+            if (vector !is null)
+            {
+                environment = cast(char**)vector;
+            }
+            else
+            {
+                environment = environ;
+            }
+        }
+
         const int spawnResult = posix_spawnp(&pid, program, null, null, argv, environment);
         if (spawnResult != 0)
         {
@@ -3919,11 +4618,17 @@ version (Posix)
 
         args[count] = null;
 
-        char** environment = null;
+        const char** vector = null;
         if (envp !is null && envp[0] !is null)
         {
-            environment = cast(char**)envp;
+            vector = envp;
         }
+        else
+        {
+            vector = getEnvironmentVector(g_current);
+        }
+
+        char** environment = (vector !is null) ? cast(char**)vector : null;
 
         if (spawnAndWait(binaryPath, args.ptr, environment))
         {
@@ -4018,7 +4723,12 @@ version (Posix)
 
     extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp)
     {
-        runHostShellSession(argv, envp);
+        const char** vector = envp;
+        if ((vector is null || vector[0] is null) && g_current !is null)
+        {
+            vector = getEnvironmentVector(g_current);
+        }
+        runHostShellSession(argv, vector);
     }
 
     extern(C) @nogc nothrow void posixUtilityExecEntry(const char** argv, const char** envp)
@@ -4076,11 +4786,17 @@ version (Posix)
         }
         args[argCount] = null;
 
-        char** environment = null;
+        const char** vector = null;
         if (envp !is null && envp[0] !is null)
         {
-            environment = cast(char**)envp;
+            vector = envp;
         }
+        else
+        {
+            vector = getEnvironmentVector(g_current);
+        }
+
+        char** environment = (vector !is null) ? cast(char**)vector : null;
 
         int exitCode = 127;
         spawnAndWait(programName, args.ptr, environment, &exitCode);

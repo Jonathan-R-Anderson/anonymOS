@@ -17,7 +17,7 @@ POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
 # Kernel sources / outputs
-KERNEL_D="${KERNEL_D:-src/kernel.d}"
+KERNEL_D="${KERNEL_D:-src/minimal_os/kernel/kernel.d}"
 STARTUP_SRC="${STARTUP_SRC:-src/boot.s}"
 LINKER_SCRIPT="${LINKER_SCRIPT:-linker.ld}"
 OUT_DIR="${OUT_DIR:-build}"

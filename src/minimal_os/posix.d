@@ -1,5 +1,8 @@
 module minimal_os.posix;
 
+import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
+    embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
+
 mixin template PosixKernelShim()
 {
     // ---- Basic types (avoid druntime) ----
@@ -2526,7 +2529,24 @@ version (Posix)
             return true;
         }
 
-        enum POSIXUTILS_ROOT = "POSIXUTILS_ROOT\0";
+    enum POSIXUTILS_ROOT = "POSIXUTILS_ROOT\0";
+
+        char[PATH_BUFFER_SIZE] candidateBuffer;
+        size_t candidateLength = 0;
+
+        if (embeddedPosixUtilitiesAvailable())
+        {
+            immutable(char)[] rootPath = embeddedPosixUtilitiesRoot();
+            if (rootPath.length != 0 && copyDString(rootPath, candidateBuffer.ptr, candidateBuffer.length, candidateLength))
+            {
+                applyEnvironmentUpdate(POSIXUTILS_ROOT.ptr, POSIXUTILS_ROOT.length - 1, candidateBuffer.ptr, candidateLength, true);
+                ensurePathIncludes(candidateBuffer.ptr);
+                g_posixConfigured = true;
+                print("[shell] POSIX utilities path : ");
+                printLine(candidateBuffer[0 .. candidateLength]);
+                return true;
+            }
+        }
 
         auto overridePath = readEnvironmentVariable("POSIXUTILS_ROOT");
         if (overridePath !is null && overridePath[0] != '\0')
@@ -2548,9 +2568,6 @@ version (Posix)
             "/tools/posixutils/bin",
             "/posix/bin",
         ];
-
-        char[PATH_BUFFER_SIZE] candidateBuffer;
-        size_t candidateLength = 0;
 
         foreach (suffix; suffixes)
         {
@@ -2578,67 +2595,6 @@ version (Posix)
 
         return false;
     }
-
-    private immutable string[] POSIX_UTILITY_PATHS = [
-        "/bin/asa\0",
-        "/bin/basename\0",
-        "/bin/cat\0",
-        "/bin/chown\0",
-        "/bin/cksum\0",
-        "/bin/cmp\0",
-        "/bin/comm\0",
-        "/bin/compress\0",
-        "/bin/date\0",
-        "/bin/df\0",
-        "/bin/diff\0",
-        "/bin/dirname\0",
-        "/bin/echo\0",
-        "/bin/env\0",
-        "/bin/expand\0",
-        "/bin/expr\0",
-        "/bin/false\0",
-        "/bin/getconf\0",
-        "/bin/grep\0",
-        "/bin/head\0",
-        "/bin/id\0",
-        "/bin/ipcrm\0",
-        "/bin/ipcs\0",
-        "/bin/kill\0",
-        "/bin/link\0",
-        "/bin/ln\0",
-        "/bin/logger\0",
-        "/bin/logname\0",
-        "/bin/mesg\0",
-        "/bin/mkdir\0",
-        "/bin/mkfifo\0",
-        "/bin/mv\0",
-        "/bin/nice\0",
-        "/bin/nohup\0",
-        "/bin/pathchk\0",
-        "/bin/pwd\0",
-        "/bin/renice\0",
-        "/bin/rm\0",
-        "/bin/rmdir\0",
-        "/bin/sleep\0",
-        "/bin/sort\0",
-        "/bin/split\0",
-        "/bin/strings\0",
-        "/bin/stty\0",
-        "/bin/tabs\0",
-        "/bin/tee\0",
-        "/bin/time\0",
-        "/bin/touch\0",
-        "/bin/true\0",
-        "/bin/tsort\0",
-        "/bin/tty\0",
-        "/bin/tput\0",
-        "/bin/uname\0",
-        "/bin/uniq\0",
-        "/bin/unlink\0",
-        "/bin/uuencode\0",
-        "/bin/wc\0",
-        "/bin/what\0",
-    ];
 
     @nogc nothrow private bool ensurePosixUtilitiesConfigured()
     {
@@ -2696,7 +2652,7 @@ version (Posix)
             return g_posixUtilityCount;
         }
 
-        foreach (path; POSIX_UTILITY_PATHS)
+        foreach (path; embeddedPosixUtilityPaths)
         {
             if (path.length == 0)
             {
@@ -3054,6 +3010,11 @@ version (Posix)
         char** environment = (vector !is null) ? cast(char**)vector : null;
 
         int exitCode = 127;
+        if (executeEmbeddedPosixUtility(programName, cast(const(char*)*)args.ptr, cast(const(char*)*)environment, exitCode))
+        {
+            sys__exit(exitCode);
+        }
+
         spawnAndWait(programName, args.ptr, environment, &exitCode);
         sys__exit(exitCode);
     }

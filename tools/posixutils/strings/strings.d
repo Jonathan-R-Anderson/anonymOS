@@ -1,4 +1,4 @@
-/+ 
+/+
   strings.d — D port of “strings - find printable strings in files”
   Original C: (c) 2004–2006 Jeff Garzik (GPL-2.0)
 +/
@@ -6,11 +6,11 @@ module strings;
 
 import std.stdio;
 import std.file;
-import std.getopt;
+import std.getopt : getopt, config;
 import std.conv;
 import std.exception;
 import std.string;
-import core.stdc.stdint : off_t = long;
+import core.sys.posix.sys.types : off_t;
 
 enum BUFLEN = 8192;
 
@@ -28,15 +28,16 @@ struct BufState {
 }
 
 static:
-uint optStrLen = 4;
-OptPrefix optPrefix = OptPrefix.none;
+uint      optStrLen  = 4;
+OptPrefix optPrefix  = OptPrefix.none;
 
 bool isPrintable(ubyte c) @nogc @safe pure nothrow {
     // ASCII printable (space through ~), like C’s isprint() for bytes
     return c >= 32 && c < 127;
 }
 
-ptrdiff_t findSep(ref const(ubyte)[] s) @safe nothrow {
+// Accept a const view (no ref needed so mutable slices can bind).
+ptrdiff_t findSep(const(ubyte)[] s) @safe nothrow {
     // return index of first '\n' or '\0', or -1 if none
     foreach (i, b; s) {
         if (b == 0 || b == '\n')
@@ -51,15 +52,15 @@ void printString(scope const(char)[] s, long startOffset) {
             writeln(s);
             break;
         case OptPrefix.decimal:
-            writef("%s", startOffset);
+            writef("%d ", startOffset);
             writeln(s);
             break;
         case OptPrefix.octal:
-            writef("%o", startOffset);
+            writef("%o ", startOffset);
             writeln(s);
             break;
         case OptPrefix.hex_:
-            writef("%x", startOffset);
+            writef("%x ", startOffset);
             writeln(s);
             break;
     }
@@ -67,31 +68,32 @@ void printString(scope const(char)[] s, long startOffset) {
 
 bool processBuffer(ref BufState st) {
     // Returns true to stop early (on write error), false to continue
-    size_t p = 0;               // current window start index within st.buf[0..used)
-    size_t len = st.used;       // remaining length from p
+    size_t p   = 0;          // current window start index within st.buf[0..used)
+    size_t len = st.used;    // remaining length from p
 
     while (true) {
         auto window = st.buf[p .. p + len];
         auto sepIdx = findSep(window);
         if (sepIdx < 0) {
-            // No separator in current window; if too big, slide forward by half
+            // No separator in current window.
             if (len > BUFLEN / 2) {
+                // If window is too big, slide it forward by half.
                 const diff = len - (BUFLEN / 2);
                 p   += diff;
                 len -= diff;
-            }
-            enforce(p != 0, "internal invariant violation (p should have advanced)");
 
-            // Slide buffer contents to front
-            // memmove equivalent
-            () @trusted { st.buf[0 .. len] = st.buf[p .. p + len]; }();
-            st.used   = len;
-            st.offset += cast(off_t)p;   // absolute offset advanced by p bytes
-            return false;                // need more data
+                // Slide buffer contents to front (memmove-equivalent)
+                () @trusted { st.buf[0 .. len] = st.buf[p .. p + len]; }();
+                st.used   = len;
+                st.offset += cast(off_t)p;   // absolute offset advanced by p bytes
+            }
+            // Need more data either way.
+            return false;
         }
 
         // “Terminate” segment at sep (temporarily treat as C-string)
-        const segmentLen = cast(size_t)sepIdx;                 // bytes until sep
+        const segmentLen = cast(size_t)sepIdx; // bytes until sep
+
         // Count trailing printable chars up to sep (walk backwards)
         size_t printableRun = 0;
         while (printableRun < segmentLen) {
@@ -104,13 +106,15 @@ bool processBuffer(ref BufState st) {
             // Slice the segment [p .. p+segmentLen)
             auto bytes = st.buf[p .. p + segmentLen];
 
-            // Convert bytes (ASCII) to string without interpretation beyond ASCII
-            // Unsafe cast is fine for ASCII range we print; avoid decoding errors.
+            // Convert bytes (ASCII) to string without UTF decoding
             auto s = () @trusted { return cast(string)bytes.idup; }();
-            // Print with actual start byte offset of this string
-            const startOff = st.offset + cast(off_t)p + cast(off_t)(segmentLen - printableRun);
-            // NOTE: The original C printed st.offset only; this is more accurate.
-            printString(s, startOff);
+
+            // Start byte offset of the detected printable run
+            const startOff = st.offset
+                           + cast(off_t)p
+                           + cast(off_t)(segmentLen - printableRun);
+
+            printString(s, cast(long)startOff);
         }
 
         // Advance past separator
@@ -137,7 +141,6 @@ int processFile(string path) {
         stderr.writeln(path ~ ": ", e.msg);
         return 1;
     }
-
     scope(exit) f.close();
 
     while (true) {
@@ -164,6 +167,9 @@ int processFile(string path) {
                 if (st.used < BUFLEN) {
                     st.buf[st.used] = '\n';
                     st.used += 1;
+                    if (processBuffer(st)) return 1;
+                } else {
+                    // Buffer full with no sep: process as-is (no extra byte available)
                     if (processBuffer(st)) return 1;
                 }
             }
@@ -200,15 +206,14 @@ Options:
 int main(string[] args) {
     string[] files;
 
-    string radix = null; // "d", "o", or "x"
-    bool allFlag = false; // compatibility only
-
-    auto helpWanted = false;
+    string radix = null;   // "d", "o", or "x"
+    bool allFlag = false;  // compatibility only
+    bool helpWanted = false;
 
     try {
         getopt(args,
-            config.passThrough, // keep non-options in args
-            "a",      &allFlag,  // ignored
+            config.passThrough,      // keep non-options in args
+            "a",       &allFlag,     // ignored
             "n|bytes", &optStrLen,
             "t|radix", &radix,
             "h|help",  &helpWanted,
@@ -221,7 +226,7 @@ int main(string[] args) {
     if (helpWanted) usageAndExit(0);
 
     if (radix !is null) {
-        final switch (radix) {
+        switch (radix) {
             case "d": optPrefix = OptPrefix.decimal; break;
             case "o": optPrefix = OptPrefix.octal;   break;
             case "x": optPrefix = OptPrefix.hex_;    break;

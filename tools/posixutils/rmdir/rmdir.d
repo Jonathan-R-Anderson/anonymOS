@@ -2,10 +2,8 @@
 module rmdir_d;
 
 import core.stdc.stdio : fprintf, stderr, perror;
-import core.stdc.string : strerror;
 import core.sys.posix.unistd : rmdir;
 import std.string : toStringz, lastIndexOf;
-import std.algorithm : max;
 
 // ----- options -----
 __gshared bool optParents = false;
@@ -31,7 +29,7 @@ string dirnameOnce(string p)
     while (p.length > 1 && p[$-1] == '/') p = p[0 .. $-1];
     if (p == "/") return "/";
 
-    auto idx = cast(ptrdiff_t)p.lastIndexOf('/');
+    auto idx = p.lastIndexOf('/');
     if (idx < 0) return "";          // no slash -> stop
     if (idx == 0) return "/";        // "/name" -> "/"
     return p[0 .. idx];              // "dir/base" -> "dir"
@@ -53,8 +51,10 @@ int main(string[] args)
         if (a == "--") { ++i; break; }
         if (a.length >= 2 && a[0] == '-' && a != "-") {
             foreach (ch; a[1 .. $]) {
-                final switch (ch) {
-                    case 'p': optParents = true; break;
+                switch (ch) {
+                    case 'p':
+                        optParents = true;
+                        break;
                     default:
                         fprintf(stderr, "rmdir: unknown option -%c\n", ch);
                         return 2;

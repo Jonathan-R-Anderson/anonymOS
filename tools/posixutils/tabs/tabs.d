@@ -9,7 +9,18 @@
 +/
 module tabs;
 
-version(Posix):
+version (Posix):
+
+// ----- link pragmas so the symbols resolve at link time -----
+version (linux) {
+    pragma(lib, "tinfo");     // setupterm(), tigetstr() on most distros
+    pragma(lib, "ncursesw");  // fallback if tinfo is split/aliased
+}
+version (FreeBSD)   pragma(lib, "tinfo");
+version (OpenBSD)   pragma(lib, "tinfo");
+version (NetBSD)    pragma(lib, "tinfo");
+version (OSX)       pragma(lib, "ncurses");
+version (Darwin)    pragma(lib, "ncurses");
 
 import std.stdio;
 import std.string;
@@ -20,16 +31,18 @@ import std.conv;
 import std.getopt;
 import std.process : environment;
 import core.stdc.stdlib : exit, atoi;
-import core.stdc.string : strlen, strcmp, strncpy;
+import core.stdc.string : strlen;
 import core.sys.posix.unistd : write, STDOUT_FILENO;
 
 // --- terminfo C bindings (ncurses/terminfo) ---
-extern(C):
-    int setupterm(const(char)* term, int fildes, int* errret);
+// Limit the C linkage strictly to these items.
+extern (C) {
+    int   setupterm(const(char)* term, int fildes, int* errret);
     char* tigetstr(const(char)* capname);
     // terminfo exposes these globals after setupterm()
     __gshared int columns; // number of columns
     __gshared int lines;   // (unused here)
+}
 
 // --------- constants / tables ----------
 enum tabs_outbuf_sz = 4096;
@@ -54,10 +67,11 @@ __gshared immutable int[] tabset_u  = [ 1,12,20,44 ];
 // --------- usage ----------
 void usageAndExit() {
     stderr.write(
-"Usage:\n"
-"tabs [ -n| -a| -a2| -c| -c2| -c3| -f| -p| -s| -u][+m[n]] [-T type]\n"
-"      or\n"
-"tabs [-T type][ +[n]] n1[,n2,...]\n");
+        "Usage:\n" ~
+        "tabs [ -n| -a| -a2| -c| -c2| -c3| -f| -p| -s| -u][+m[n]] [-T type]\n" ~
+        "      or\n" ~
+        "tabs [-T type][ +[n]] n1[,n2,...]\n"
+    );
     exit(1);
 }
 
@@ -70,11 +84,10 @@ void tabPush(int stop) {
     tabStop[nTabs++] = stop;
 }
 
-void tabStock(in int[] stops) {
+void tabStock(const(int)[] stops) {
     enforce(stops.length <= max_tab_stops);
     nTabs = cast(int)stops.length;
-    // copy
-    foreach (i, v; stops) tabStop[i] = v;
+    foreach (i, v; stops) tabStop[i] = v; // copy
 }
 
 void tabRepeating(int tabN) {
@@ -88,21 +101,20 @@ void tabRepeating(int tabN) {
 
 // --------- minimal tokenizer for spec lists (comma/space separated) ----------
 string[] splitSpecs(string s) {
-    // Split on commas or whitespace
     string cur;
-    string[] out;
+    string[] tokensOut;
     foreach (ch; s) {
         if (ch == ',' || ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\f') {
             if (cur.length) {
-                out ~= cur;
+                tokensOut ~= cur;
                 cur = "";
             }
         } else {
             cur ~= ch;
         }
     }
-    if (cur.length) out ~= cur;
-    return out;
+    if (cur.length) tokensOut ~= cur;
+    return tokensOut;
 }
 
 // --------- command line parsing (replicates C behavior) ----------
@@ -113,7 +125,7 @@ void parseCmdline(string[] argv) {
         if (a.length >= 2 && a[0..2] == "-T") {
             if (a.length == 2) {
                 if (i + 1 < argv.length) {
-                    optTerm = argv[i+1];
+                    optTerm = argv[i + 1];
                 }
             } else {
                 optTerm = a[2 .. $];
@@ -160,7 +172,7 @@ void parseCmdline(string[] argv) {
         char flag = a[1];
         string optarg = a.length > 2 ? a[2 .. $] : "";
 
-        final switch (flag) {
+        switch (flag) {
             case '0': nTabs = 0; changed = true; ++i; break;
             case '1','2','3','4','5','6','7','8','9':
                 tabRepeating(flag - '0'); changed = true; ++i; break;
@@ -169,7 +181,7 @@ void parseCmdline(string[] argv) {
                 changed = true;
                 if (optarg.length == 0)      tabStock(tabset_a);
                 else if (optarg == "2")      tabStock(tabset_a2);
-                else                          usageAndExit();
+                else                         usageAndExit();
                 ++i;
                 break;
 
@@ -178,7 +190,7 @@ void parseCmdline(string[] argv) {
                 if (optarg.length == 0)      tabStock(tabset_c);
                 else if (optarg == "2")      tabStock(tabset_c2);
                 else if (optarg == "3")      tabStock(tabset_c3);
-                else                          usageAndExit();
+                else                         usageAndExit();
                 ++i;
                 break;
 
@@ -246,7 +258,6 @@ bool pushStr(const(char)* val) {
 
     // Append C-strings into outbuf
     size_t curLen = strlen(outbuf.ptr);
-    // copy bytes
     import core.stdc.string : memcpy;
     memcpy(outbuf.ptr + curLen, val, valLen);
     outbuf[curLen + valLen] = 0;
@@ -255,7 +266,6 @@ bool pushStr(const(char)* val) {
 }
 
 bool pushLiteral(string s) {
-    // convenience for small literals
     if (outbufAvail < s.length) return false;
     size_t curLen = strlen(outbuf.ptr);
     import core.stdc.string : memcpy;
@@ -266,8 +276,7 @@ bool pushLiteral(string s) {
 }
 
 const(char)* tiGetStr(string cap) {
-    auto p = tigetstr(cap.ptr);
-    return p;
+    return tigetstr(cap.ptr);
 }
 
 void setHardwareTabs() {
@@ -303,13 +312,12 @@ void setHardwareTabs() {
     // Emit sequence at once
     auto len = strlen(outbuf.ptr);
     if (len > 0) {
-        // write raw control sequence to stdout
         write(STDOUT_FILENO, outbuf.ptr, len);
     }
 }
 
+// D-style main to avoid argv char* headaches.
 int main(string[] args) {
-    // Initialize output buffer to empty C-string
     outbuf[0] = 0;
     outbufAvail = tabs_outbuf_sz - 1;
 

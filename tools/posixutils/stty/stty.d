@@ -17,11 +17,19 @@ import std.conv;
 import std.exception;
 import std.getopt;
 import std.array;
+import std.format : formattedRead; // for formattedRead!"%u"
 import core.stdc.stdint;
 import core.stdc.stdlib : exit;
 import core.sys.posix.unistd;
 import core.sys.posix.termios;
 import core.sys.posix.sys.types;
+
+// Some libcs don't expose OFDEL; make it optional.
+static if (__traits(compiles, OFDEL)) {
+    enum OFDEL_FLAG = OFDEL;
+} else {
+    enum OFDEL_FLAG = cast(tcflag_t)0;
+}
 
 enum COMPACT_PFX = "PUSTTY1:";
 
@@ -75,7 +83,7 @@ static immutable SttyParam[] params = [
     {"onocr",  STTYParamType.ofl, ONOCR,  ONOCR},
     {"onlret", STTYParamType.ofl, ONLRET, ONLRET},
     {"ofill",  STTYParamType.ofl, OFILL,  OFILL},
-    {"ofdel",  STTYParamType.ofl, OFDEL,  OFDEL},
+    {"ofdel",  STTYParamType.ofl, OFDEL_FLAG, OFDEL_FLAG},
 
     {"cr0", STTYParamType.ofl, CR0, CRDLY},
     {"cr1", STTYParamType.ofl, CR1, CRDLY},
@@ -129,15 +137,18 @@ static const(SttyParam)* lastParam = null;
 
 int usage() {
     stderr.write(
-"stty [-a | -g]\n"
-"    or\n"
-"stty operands...\n");
+        "stty [-a | -g]\n"
+        ~ "    or\n"
+        ~ "stty operands...\n"
+    );
     return 1;
 }
 
+extern(C) void perror(const char*);
+
 int sttyPushTi() {
     if (tcsetattr(STDIN_FILENO, TCSANOW, &ti) != 0) {
-        perror("stty(tcsetattr)");
+        perror("stty(tcsetattr)".ptr);
         return 1;
     }
     return 0;
@@ -150,7 +161,7 @@ int sttyShow() {
 
 uint speedToBits(uint speed) {
     // Return cfset* constant (B9600 etc.) or 0xFFFFFFFF on error
-    final switch (speed) {
+    switch (speed) {
         case 0:       return B0;
         case 50:      return B50;
         case 75:      return B75;
@@ -167,26 +178,27 @@ uint speedToBits(uint speed) {
         case 9600:    return B9600;
         case 19200:   return B19200;
         case 38400:   return B38400;
-        // common higher rates
-        case 57600:   return B57600;
-        case 115200:  return B115200;
-        case 230400:  return B230400;
-        // Linux-extended rates (guarded at link-time if unavailable)
-        case 460800:  version(linux) return B460800; else break;
-        case 500000:  version(linux) return B500000; else break;
-        case 576000:  version(linux) return B576000; else break;
-        case 921600:  version(linux) return B921600; else break;
-        case 1000000: version(linux) return B1000000; else break;
-        case 1152000: version(linux) return B1152000; else break;
-        case 1500000: version(linux) return B1500000; else break;
-        case 2000000: version(linux) return B2000000; else break;
-        case 2500000: version(linux) return B2500000; else break;
-        case 3000000: version(linux) return B3000000; else break;
-        case 3500000: version(linux) return B3500000; else break;
-        case 4000000: version(linux) return B4000000; else break;
-        default: break;
+
+        // Optional higher rates (guarded per-constant)
+        static if (__traits(compiles, B57600))   { case 57600:   return B57600; }
+        static if (__traits(compiles, B115200))  { case 115200:  return B115200; }
+        static if (__traits(compiles, B230400))  { case 230400:  return B230400; }
+        static if (__traits(compiles, B460800))  { case 460800:  return B460800; }
+        static if (__traits(compiles, B500000))  { case 500000:  return B500000; }
+        static if (__traits(compiles, B576000))  { case 576000:  return B576000; }
+        static if (__traits(compiles, B921600))  { case 921600:  return B921600; }
+        static if (__traits(compiles, B1000000)) { case 1000000: return B1000000; }
+        static if (__traits(compiles, B1152000)) { case 1152000: return B1152000; }
+        static if (__traits(compiles, B1500000)) { case 1500000: return B1500000; }
+        static if (__traits(compiles, B2000000)) { case 2000000: return B2000000; }
+        static if (__traits(compiles, B2500000)) { case 2500000: return B2500000; }
+        static if (__traits(compiles, B3000000)) { case 3000000: return B3000000; }
+        static if (__traits(compiles, B3500000)) { case 3500000: return B3500000; }
+        static if (__traits(compiles, B4000000)) { case 4000000: return B4000000; }
+
+        default:
+            return 0xFFFF_FFFFu;
     }
-    return 0xFFFF_FFFFu;
 }
 
 int paramSpeed(uint speed, bool isInput) {
@@ -343,6 +355,7 @@ int sttySet(string setting) {
         auto param = lastParam;
         lastParam = null;
 
+        // Handle only the three "needs extra arg" cases; list all others to satisfy final switch
         final switch (param.ptype) {
             case STTYParamType.ispeed:
             {
@@ -360,7 +373,12 @@ int sttySet(string setting) {
             }
             case STTYParamType.cchar:
                 return paramCChar(*param, setting);
-            default:
+
+            // Explicitly listed (shouldn't occur here)
+            case STTYParamType.cfl:
+            case STTYParamType.ifl:
+            case STTYParamType.ofl:
+            case STTYParamType.lfl:
                 break;
         }
 
@@ -399,8 +417,6 @@ bool isHelpArg(string arg) {
     return arg == "-h" || arg == "--help" || arg == "-v" ||
            arg == "-V" || arg == "-H" || arg == "-?";
 }
-
-extern(C) void perror(const char*);
 
 int main(string[] args) {
     // Help-only path

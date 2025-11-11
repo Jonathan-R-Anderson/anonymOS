@@ -1,37 +1,30 @@
 // uniq.d - D translation of the provided C source
 // Features: -c/--count, --skip=N, src [dest]
 
-import std.stdio : File, stdin, stdout, stderr, writefln;
-import std.string : cmp, stripRight, toStringz;
-import std.getopt : getopt, defaultGetoptPrinter, GetoptResult;
-import std.conv : to;
-import std.exception : enforce;
+import std.stdio : File, stdin, stdout, stderr, writefln, KeepTerminator;
+import std.string : cmp, stripRight;
+import std.getopt : getopt;
+import std.exception : enforce, collectException;
 import core.stdc.stdlib : exit;
 
 struct Options {
-    bool count = false;
+    bool   count = false;
     size_t skip = 0;
     string src;
     string dest; // optional
 }
 
 struct UniqState {
-    string lastLine;       // stored *after* skip, to match the C code
-    size_t lastLen = 0;    // length of lastLine
+    string lastLine;       // stored *after* skip
+    size_t lastLen = 0;
     ulong  dups = 0;
     bool   haveLast = false;
 }
 
 private int writeLastLine(ref UniqState st, File outf, bool countFlag) {
-    // Match C: if -c prefix count and a space, else just the line
-    // st.lastLine already contains the trailing newline (we keep it from input)
-    // Return nonzero on error
     try {
         if (countFlag) {
-            // print: <count><space><line>
-            // Note: the C code uses "%lu %s" where %s includes the '\n' already.
             outf.writefln("%s %s", st.dups, st.lastLine.stripRight("\n"));
-            // writefln adds its own newline; stripRight to avoid double newlines
         } else {
             outf.write(st.lastLine);
         }
@@ -42,22 +35,11 @@ private int writeLastLine(ref UniqState st, File outf, bool countFlag) {
 }
 
 private int processLine(ref UniqState st, string line, size_t skip, File outf, bool countFlag) {
-    // Emulate the C logic:
-    // 1) If skip > line length, compare as empty string
-    // 2) Compare (lineAfterSkip) to last stored post-skip line
-    // 3) If different, flush last; then set last to current; dups=1
-    // 4) If same, just increment dups
-    string after;
-    if (skip > line.length) {
-        after = "";
-    } else {
-        after = line[skip .. $];
-    }
-
+    string after = (skip > line.length) ? "" : line[skip .. $];
     const bool match = (after.length == st.lastLen) && (cmp(after, st.lastLine) == 0);
 
     if (match) {
-        st.dups++;
+        ++st.dups;
         return 0;
     }
 
@@ -75,9 +57,8 @@ private int processLine(ref UniqState st, string line, size_t skip, File outf, b
 private int doUniq(string srcFn, string destFn, bool countFlag, size_t skip) {
     File inf;
     File outf;
-    bool err = false;
 
-    // open input
+    // Open input
     try {
         inf = File(srcFn, "r");
     } catch (Throwable) {
@@ -85,61 +66,59 @@ private int doUniq(string srcFn, string destFn, bool countFlag, size_t skip) {
         return 1;
     }
 
-    // open output (stdout if empty)
-    const useStdout = destFn.length == 0;
+    // Open output (stdout if empty)
+    const bool useStdout = destFn.length == 0;
     if (useStdout) {
         outf = stdout;
     } else {
         try {
             outf = File(destFn, "w");
         } catch (Throwable) {
+            collectException(inf.close());
             stderr.writefln("%s: failed to open", destFn);
             return 1;
         }
     }
 
     UniqState st;
+
     scope(exit) {
-        // flush/close
-        try { outf.flush(); } catch (Throwable) {}
-        if (!useStdout) {
-            try { outf.close(); } catch (Throwable) {}
-        }
-        try { inf.close(); } catch (Throwable) {}
+        collectException(outf.flush());
+        if (!useStdout) collectException(outf.close());
+        collectException(inf.close());
     }
 
-    // read line by line; keep newlines (like fgets)
+    // Read line by line; keep terminators (like fgets)
     foreach (line; inf.byLineCopy(KeepTerminator.yes)) {
         if (processLine(st, line, skip, outf, countFlag) != 0) {
-            err = true;
-            break;
+            return 1;
         }
     }
 
-    if (st.haveLast && !err) {
-        if (writeLastLine(st, outf, countFlag) != 0) err = true;
+    if (st.haveLast) {
+        if (writeLastLine(st, outf, countFlag) != 0) return 1;
     }
 
-    return err ? 1 : 0;
+    return 0;
 }
 
 private Options parseArgs(string[] args) {
     Options opt;
-    auto helpPrinter = (string msg, GetoptResult res) {
-        defaultGetoptPrinter(msg, res);
-    };
 
-    auto res = getopt(args,
-        "c|count",   &opt.count,
-        "skip",      &opt.skip,
-    , helpPrinter);
+    // Use ref-getopt pattern: argv is modified to contain only positionals
+    auto argv = args.dup;
+    auto res  = getopt(
+        argv,                // <-- ref overload chosen
+        "c|count", &opt.count,
+        "skip",    &opt.skip
+    );
 
-    // positional: src [dest]
-    auto rest = res.args;
-    enforce(rest.length >= 1, "uniq: missing source file\nUsage: uniq [-c|--count] [--skip=N] SRC [DEST]");
+    // Now argv == [SRC, DEST?]
+    enforce(argv.length >= 1,
+        "uniq: missing source file\nUsage: uniq [-c|--count] [--skip=N] SRC [DEST]");
 
-    opt.src = rest[0];
-    if (rest.length >= 2) opt.dest = rest[1];
+    opt.src = argv[0];
+    if (argv.length >= 2) opt.dest = argv[1];
     return opt;
 }
 

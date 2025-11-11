@@ -12,14 +12,11 @@
 //         <extracted text>
 //   - With -s/--short, quits after the first match per file.
 
-import std.stdio : File, stdin, stdout, stderr, write, writefln, writeln;
+import std.stdio : File, StdioException, stdin, stderr, writefln;
 import std.getopt : getopt;
-import std.string : indexOf, stripRight;
-import std.file : exists, isFile;
-import std.algorithm : min;
+import std.string : indexOf;
 
-enum LINE_MAX = 4096; // used only to mirror spirit; D can read arbitrarily
-enum PFX = "what: ";
+enum PFX  = "what: ";
 enum SCCS = "@(#)";
 
 struct Options {
@@ -65,12 +62,11 @@ void scanLineAndPrint(string filename, ref string line, bool shortMode, ref bool
 
 int processOne(string name, File f, bool shortMode)
 {
-    // setlinebuf equivalent isn't needed; std.stdio buffers reasonably.
     bool stopThisFile = false;
 
-    // Keep newline because original code’s fgets retained it; our
-    // terminator test treats '\n' as a hard stop anyway.
-    foreach (line; f.byLine(KeepTerminator.yes)) {
+    // Default byLine() does not include the newline; that's fine since '\n' is
+    // only used as a terminator and we don't need it present in the slice.
+    foreach (line; f.byLine()) {
         auto s = line.idup; // own a copy as string
         scanLineAndPrint(name, s, shortMode, stopThisFile);
         if (stopThisFile) break;
@@ -89,6 +85,7 @@ Options parseArgs(string[] args)
     getopt(args,
         "s|short", &opt.shortMode,
     );
+    // getopt removes parsed options from args; remaining are files
     if (args.length > 1)
         opt.files = args[1 .. $];
     return opt;
@@ -100,14 +97,17 @@ int main(string[] args)
 
     // If no files, read stdin once.
     if (opt.files.length == 0) {
-        auto f = stdin;
+        auto f = stdin; // already-open File handle
         return processOne("(standard input)", f, opt.shortMode);
     }
 
     int rc = 0;
     foreach (path; opt.files) {
         File f;
-        if (!f.open(path, "r")) {
+        // File.open returns void and throws on failure; use constructor or try/catch.
+        try {
+            f = File(path, "r");
+        } catch (StdioException) {
             stderr.writefln("%s%s: cannot open", PFX, path);
             rc = 1;
             continue;

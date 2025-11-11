@@ -4,11 +4,11 @@
 //
 // Returns 0 on success, non-zero on error.
 
-import std.stdio : writeln, stderr, writefln;
-import std.string : toStringz;
+import std.stdio  : stderr, writefln;
+import std.string : toStringz; // not using fromStringz to avoid const→immutable hiccup
 import core.sys.posix.unistd : unlink;
-import core.stdc.errno : errno;
-import core.stdc.string : strerror;
+import core.stdc.errno  : errno;
+import core.stdc.string : strerror, strlen;
 
 private void usage(string prog)
 {
@@ -25,15 +25,22 @@ int main(string[] args)
         return 1;
     }
 
-    auto path = args[1];
+    const path = args[1];
 
     // Call POSIX unlink(2)
     if (unlink(path.toStringz) < 0) {
         // Emulate perror(path)
-        auto msg = strerror(errno);
-        if (msg is null) msg = "unknown error".ptr;
-        // msg is a C string; writefln handles %s for char*
-        stderr.writefln("%s: %s", path, msg);
+        const(char)* cmsg = strerror(errno);
+
+        string errStr;
+        if (cmsg is null) {
+            errStr = "unknown error";
+        } else {
+            // Convert C NUL-terminated string → D string (immutable)
+            errStr = (cmsg[0 .. strlen(cmsg)]).idup;
+        }
+
+        stderr.writefln("%s: %s", path, errStr);
         return 1;
     }
 

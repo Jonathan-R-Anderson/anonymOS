@@ -2451,10 +2451,98 @@ mixin template PosixKernelShim()
         }
     }
 
+    private enum EnvBool : int
+    {
+        unspecified,
+        truthy,
+        falsy,
+    }
+
+    @nogc nothrow private char asciiToLower(char value)
+    {
+        if (value >= 'A' && value <= 'Z')
+        {
+            return cast(char)(value + ('a' - 'A'));
+        }
+
+        return value;
+    }
+
+    @nogc nothrow private bool cStringEqualsIgnoreCaseLiteral(const char* lhs, immutable(char)[] rhs)
+    {
+        if (lhs is null)
+        {
+            return false;
+        }
+
+        size_t index = 0;
+        for (; index < rhs.length; ++index)
+        {
+            const char actual = lhs[index];
+            if (actual == '\0')
+            {
+                return false;
+            }
+
+            if (asciiToLower(actual) != asciiToLower(rhs[index]))
+            {
+                return false;
+            }
+        }
+
+        return lhs[index] == '\0';
+    }
+
+    @nogc nothrow private EnvBool parseEnvBoolean(const char* value)
+    {
+        if (value is null)
+        {
+            return EnvBool.unspecified;
+        }
+
+        if (cStringEqualsIgnoreCaseLiteral(value, "1")
+            || cStringEqualsIgnoreCaseLiteral(value, "true")
+            || cStringEqualsIgnoreCaseLiteral(value, "yes")
+            || cStringEqualsIgnoreCaseLiteral(value, "on")
+            || cStringEqualsIgnoreCaseLiteral(value, "enable")
+            || cStringEqualsIgnoreCaseLiteral(value, "enabled"))
+        {
+            return EnvBool.truthy;
+        }
+
+        if (cStringEqualsIgnoreCaseLiteral(value, "0")
+            || cStringEqualsIgnoreCaseLiteral(value, "false")
+            || cStringEqualsIgnoreCaseLiteral(value, "no")
+            || cStringEqualsIgnoreCaseLiteral(value, "off")
+            || cStringEqualsIgnoreCaseLiteral(value, "disable")
+            || cStringEqualsIgnoreCaseLiteral(value, "disabled"))
+        {
+            return EnvBool.falsy;
+        }
+
+        return EnvBool.unspecified;
+    }
+
     @nogc nothrow private bool detectConsoleAvailability()
     {
         version (Posix)
         {
+            const EnvBool assumeConsole = parseEnvBoolean(getenv("SH_ASSUME_CONSOLE"));
+            if (assumeConsole == EnvBool.truthy)
+            {
+                return true;
+            }
+            else if (assumeConsole == EnvBool.falsy)
+            {
+                return false;
+            }
+
+            const EnvBool disableConsole = parseEnvBoolean(getenv("SH_DISABLE_CONSOLE"));
+            if (disableConsole == EnvBool.truthy)
+            {
+                return false;
+            }
+
             // Treat the console as available if any of the standard streams are
             // attached to a TTY.  When the ISO is booted under some hypervisors
             // (for example QEMU with `-serial stdio`), the host may only expose a

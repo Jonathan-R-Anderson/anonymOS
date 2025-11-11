@@ -19,7 +19,7 @@
 
 import core.sys.posix.unistd : read, write, close, STDIN_FILENO;
 import core.sys.posix.fcntl : open, O_RDONLY;
-import core.sys.posix.sys.stat : fstat, stat, S_IRWXU, S_IRWXG, S_IRWXO,
+import core.sys.posix.sys.stat : fstat, stat_t, S_IRWXU, S_IRWXG, S_IRWXO,
                                  S_IRUSR, S_IWUSR, S_IRGRP, S_IROTH;
 import core.stdc.string : memset, memcpy, strlen;
 import core.stdc.stdio : snprintf;
@@ -231,7 +231,7 @@ void pushBytes(const(ubyte)* buf, size_t len) {
 }
 
 void doHeader(int fd, const(char)* fnString) {
-    stat st;
+    stat_t st;
     if (fstat(fd, &st) == 0) {
         st.st_mode &= S_IXALL;
     } else {

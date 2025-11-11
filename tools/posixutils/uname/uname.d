@@ -3,10 +3,16 @@ import std.stdio : writeln, stderr, writefln;
 import std.getopt : getopt, defaultGetoptPrinter, GetoptResult;
 import std.array : Appender, join;
 import std.string : fromStringz;
-import core.sys.posix.utsname : utsname, uname;
+import core.sys.posix.sys.utsname : utsname, uname; // correct module path
 import core.stdc.errno : errno;
 
-private string z(const(char)* p) { return p ? fromStringz(p) : ""; }
+@trusted private string z(const(char)* p)
+{
+    if (p is null) return "";
+    // On some toolchains fromStringz returns const(char)[];
+    // .idup => immutable(char)[] which is `string`.
+    return fromStringz(p).idup;
+}
 
 int main(string[] args)
 {
@@ -26,7 +32,7 @@ int main(string[] args)
             "kernel-version|v", &optV
         );
     }
-    catch (Exception e)
+    catch (Exception)
     {
         defaultGetoptPrinter("uname - return system name", res.options);
         return 1;
@@ -49,13 +55,26 @@ int main(string[] args)
         return 1;
     }
 
-    // Build output in the POSIX order used by your C code: m n r s v
+    // Build output in POSIX-ish order: m n r s v (or just selected flags)
     auto parts = Appender!(string[])();
+    parts.reserve(5);
+
     if (optM) parts.put(z(&u.machine[0]));
     if (optN) parts.put(z(&u.nodename[0]));
     if (optR) parts.put(z(&u.release[0]));
     if (optS) parts.put(z(&u.sysname[0]));
-    if (optV) parts.put(z(&u.version[0]));
+
+    // Handle the `version` field safely (D reserves `version`)
+    static if (__traits(hasMember, utsname, "version_"))
+    {
+        if (optV) parts.put(z(&u.version_[0]));
+    }
+    else static if (__traits(hasMember, utsname, "version"))
+    {
+        // Access indirectly so the parser never sees `.version`
+        auto p = &(__traits(getMember, u, "version"))[0];
+        if (optV) parts.put(z(p));
+    }
 
     writeln(parts.data.join(" "));
     return 0;

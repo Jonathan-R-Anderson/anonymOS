@@ -3067,4 +3067,3 @@ else
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 }
-}

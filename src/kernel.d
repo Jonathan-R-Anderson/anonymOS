@@ -255,6 +255,7 @@ private __gshared const(char*)[2] g_shellDefaultArgv = [cast(const char*)"/bin/s
 private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
 extern(C) @nogc nothrow void shellExecEntry(const char** argv, const char** envp);
+extern(C) char* getenv(const char* name);
 
 nothrow:
 @nogc:
@@ -2525,24 +2526,24 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private bool detectConsoleAvailability()
     {
+        const EnvBool assumeConsole = parseEnvBoolean(getenv("SH_ASSUME_CONSOLE"));
+        if (assumeConsole == EnvBool.truthy)
+        {
+            return true;
+        }
+        else if (assumeConsole == EnvBool.falsy)
+        {
+            return false;
+        }
+
+        const EnvBool disableConsole = parseEnvBoolean(getenv("SH_DISABLE_CONSOLE"));
+        if (disableConsole == EnvBool.truthy)
+        {
+            return false;
+        }
+
         version (Posix)
         {
-            const EnvBool assumeConsole = parseEnvBoolean(getenv("SH_ASSUME_CONSOLE"));
-            if (assumeConsole == EnvBool.truthy)
-            {
-                return true;
-            }
-            else if (assumeConsole == EnvBool.falsy)
-            {
-                return false;
-            }
-
-            const EnvBool disableConsole = parseEnvBoolean(getenv("SH_DISABLE_CONSOLE"));
-            if (disableConsole == EnvBool.truthy)
-            {
-                return false;
-            }
-
             // Treat the console as available if any of the standard streams are
             // attached to a TTY.  When the ISO is booted under some hypervisors
             // (for example QEMU with `-serial stdio`), the host may only expose a
@@ -3176,7 +3177,6 @@ version (Posix)
     );
     extern(C) int waitpid(int pid, int* status, int options);
     extern(C) int access(const char* pathname, int mode);
-    extern(C) char* getenv(const char* name);
     extern(C) __gshared char** environ;
     extern(C) int isatty(int fd);
     extern(C) long read(int fd, void* buffer, size_t length);

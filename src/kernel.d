@@ -3521,7 +3521,11 @@ version (Posix)
 
         args[count] = null;
 
-        auto environment = (envp !is null) ? cast(char**)envp : environ;
+        char** environment = null;
+        if (envp !is null && envp[0] !is null)
+        {
+            environment = cast(char**)envp;
+        }
 
         if (spawnAndWait(binaryPath, args.ptr, environment))
         {

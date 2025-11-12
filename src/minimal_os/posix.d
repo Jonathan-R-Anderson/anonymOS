@@ -2332,17 +2332,17 @@ version (Posix)
 }
 else
 {
-    private bool runHostShellSession(const(char*)* /*argv*/, const(char*)* /*envp*/)
+    private bool runHostShellSession(const(char*)* , const(char*)*)
     {
         return false;
     }
 
-    extern(C) @nogc nothrow void shellExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* , const(char*)*)
     {
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 
-    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)*, const(char*)*)
     {
         printLine("[shell] POSIX utilities unsupported on this target.");
     }

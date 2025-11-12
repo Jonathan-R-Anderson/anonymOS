@@ -4,12 +4,15 @@ import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embedded
     embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
 static import minimal_os.posix;
 
-// Must be before PosixKernelShim so the template can see them
+// --- Forward decls so PosixKernelShim can see them ---
+extern(C) @nogc nothrow
+void shellExecEntry(const(char*)* argv, const(char*)* envp);
+
+extern(C) @nogc nothrow
+void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
+
 alias ProcessEntry = extern(C) @nogc nothrow
     void function(const(char*)* argv, const(char*)* envp);
-
-extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
-extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
 
 

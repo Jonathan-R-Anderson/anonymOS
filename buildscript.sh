@@ -152,9 +152,28 @@ else
   DFLAGS="-O3 -release"
 fi
 
-# D object
-ldc2 -I. -Isrc -mtriple="$TARGET" -betterC $DFLAGS \
-     -c "$KERNEL_D" -of="$KERNEL_O"
+# D objects (kernel + dependencies)
+KERNEL_SOURCES=(
+  "$KERNEL_D"
+  "src/minimal_os/kernel/memory.d"
+  "src/minimal_os/kernel/posixbundle.d"
+  "src/minimal_os/kernel/shell_integration.d"
+  "src/minimal_os/kernel/exceptions.d"
+  "src/minimal_os/console.d"
+  "src/minimal_os/compiler.d"
+  "src/minimal_os/posix.d"
+  "src/minimal_os/toolchain.d"
+  "src/sh_metadata.d"
+)
+
+KERNEL_OBJECTS=()
+for source in "${KERNEL_SOURCES[@]}"; do
+  base="$(basename "${source%.d}")"
+  obj="$OUT_DIR/${base}.o"
+  ldc2 -I. -Isrc -mtriple="$TARGET" -betterC $DFLAGS \
+       -c "$source" -of="$obj"
+  KERNEL_OBJECTS+=("$obj")
+done
 
 # Startup (asm)
 clang --target="$TARGET" -c "$STARTUP_SRC" -o "$STARTUP_O"
@@ -166,14 +185,14 @@ LIBDIR="$SYSROOT/usr/lib"
 if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
   # Native linker path
   "$LINK_BACKEND" ${LLD_MACH:+-m "$LLD_MACH"} -T "$LINKER_SCRIPT" -nostdlib \
-      "$STARTUP_O" "$KERNEL_O" \
+      "$STARTUP_O" "${KERNEL_OBJECTS[@]}" \
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       -o "$KERNEL_ELF"
 else
   # toy-ld wrapper
   "$LINK_BACKEND" -T "$LINKER_SCRIPT" -nostdlib \
-      "$STARTUP_O" "$KERNEL_O" \
+      "$STARTUP_O" "${KERNEL_OBJECTS[@]}" \
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       -o "$KERNEL_ELF"

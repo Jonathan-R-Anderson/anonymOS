@@ -180,15 +180,30 @@ COMMAND_FLAG_OVERRIDES: dict[str, Sequence[str]] = {
 }
 
 
+# Some utilities have external library dependencies beyond the D runtime
+# and Phobos.  Specify those here as linker flags so that they are only
+# applied to the relevant binaries.
+COMMAND_LINKER_FLAGS: dict[str, Sequence[str]] = {
+    # tput relies on the terminfo entry points provided by ncurses.
+    # tigetstr/setupterm live in libtinfo on most platforms, which can be
+    # linked via -ltinfo.  LDC forwards -L flags directly to the system
+    # linker, so reuse that mechanism here.
+    "tput": ("-L-ltinfo",),
+}
+
+
 def build_all(dc: str, flags: Sequence[str], source_root: Path, output_dir: Path) -> List[BuildResult]:
     results: List[BuildResult] = []
     for name, sources in discover_commands(source_root):
         output = output_dir / name
         print(f"[build] {name}")
-        extra_flags = COMMAND_FLAG_OVERRIDES.get(name, ())
         effective_flags = list(flags)
+        extra_flags = COMMAND_FLAG_OVERRIDES.get(name, ())
         if extra_flags:
             effective_flags.extend(extra_flags)
+        linker_flags = COMMAND_LINKER_FLAGS.get(name, ())
+        if linker_flags:
+            effective_flags.extend(linker_flags)
         compile_command(dc, effective_flags, sources, output)
         results.append(BuildResult(name, tuple(sources), output))
     return results

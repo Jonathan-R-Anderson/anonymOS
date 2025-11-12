@@ -9,6 +9,38 @@ import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompile
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 
+nothrow:
+@nogc:
+
+struct ShellIntegrationState
+{
+    bool repositoryFetched;
+    immutable(char)[] repository;
+    immutable(char)[] revision;
+    immutable(char)[] binaryName;
+    immutable(char)[] failureReason;
+    size_t binaryBytes;
+    size_t documentedCommandCount;
+    size_t sourceFileCount;
+    bool runtimeBound;
+    bool compilerAccessible;
+    bool shellActivated;
+}
+
+__gshared ShellIntegrationState shellState = ShellIntegrationState(
+    false,
+    shRepositoryPath,
+    shRevision,
+    shBinaryName,
+    null,
+    0,
+    0,
+    0,
+    false,
+    false,
+    false,
+);
+
 mixin PosixKernelShim;
 
 extern(C) @nogc nothrow void runCompilerBuilder()
@@ -69,6 +101,7 @@ private void integrateShell()
 private void fetchShellSnapshot()
 {
     shellState.repositoryFetched = true;
+    shellState.repository = shRepositoryPath;
     shellState.revision = shRevision;
     shellState.binaryName = shBinaryName;
     shellState.failureReason = null;

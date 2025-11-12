@@ -7,6 +7,8 @@ static import minimal_os.posix;
 extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
 extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
+
+
 mixin template PosixKernelShim()
 {
     // ---- Basic types (avoid druntime) ----
@@ -2195,11 +2197,10 @@ mixin template PosixKernelShim()
         {
             const int registration =
                 registerProcessExecutable("/bin/sh",
-                    cast(ProcessEntry)&shellExecEntry);
-
-
+                    cast(ProcessEntry)&shellExecEntry); // <— unqualified, matches the forward decl
             g_shellRegistered = (registration == 0);
         }
+
         g_initialized = true;
     }
 }

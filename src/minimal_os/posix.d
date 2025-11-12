@@ -1,5 +1,6 @@
 module minimal_os.posix;
 
+import minimal_os.console : print, printLine, printUnsigned;
 import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
     embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
 static import minimal_os.posix;

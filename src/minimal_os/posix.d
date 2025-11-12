@@ -2,6 +2,7 @@ module minimal_os.posix;
 
 import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
     embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
+static import minimal_os.posix;
 
 extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
 extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
@@ -2194,7 +2195,7 @@ mixin template PosixKernelShim()
         {
             const int registration =
                 registerProcessExecutable("/bin/sh",
-                    cast(ProcessEntry)&shellExecEntry);
+                     cast(ProcessEntry)&minimal_os.posix.shellExecEntry);
 
             g_shellRegistered = (registration == 0);
         }

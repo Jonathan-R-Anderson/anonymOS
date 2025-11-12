@@ -2200,13 +2200,16 @@ mixin template PosixKernelShim()
         }
 
         g_shellRegistered = false;
-        if (g_consoleAvailable)
+        version (Posix)
         {
-            const int registration =
-                registerProcessExecutable("/bin/sh",
-                    cast(ProcessEntry)&shellExecEntry);
+            if (g_consoleAvailable)
+            {
+                const int registration =
+                    registerProcessExecutable("/bin/sh",
+                        cast(ProcessEntry)&shellExecEntry);
 
-            g_shellRegistered = (registration == 0);
+                g_shellRegistered = (registration == 0);
+            }
         }
 
         g_initialized = true;

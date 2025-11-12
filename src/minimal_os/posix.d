@@ -2194,7 +2194,8 @@ mixin template PosixKernelShim()
         {
             const int registration =
                 registerProcessExecutable("/bin/sh",
-                    cast(ProcessEntry)&minimal_os.posix.shellExecEntry);
+                    cast(ProcessEntry)&shellExecEntry);
+
             g_shellRegistered = (registration == 0);
         }
         g_initialized = true;

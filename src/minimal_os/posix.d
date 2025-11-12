@@ -2213,7 +2213,7 @@ mixin template PosixKernelShim()
     }
 }
 
-
+/*
 
 version (Posix)
 {
@@ -2352,4 +2352,12 @@ else
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 }
+*/
 
+version (Posix) {
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp) { /* ... */ }
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp) { /* ... */ }
+} else {
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/) { /* ... */ }
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* /*argv*/, const(char*)* /*envp*/) { /* ... */ }
+}

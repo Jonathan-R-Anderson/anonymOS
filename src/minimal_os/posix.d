@@ -2306,7 +2306,7 @@ version (Posix)
         sys__exit(exitCode);
     }
 
-    package void launchInteractiveShell()
+    package @nogc nothrow void launchInteractiveShell()
     {
         if (!g_consoleAvailable)
         {
@@ -2349,7 +2349,7 @@ else
         printLine("[shell] POSIX utilities unsupported on this target.");
     }
 
-    package void launchInteractiveShell()
+    package @nogc nothrow void launchInteractiveShell()
     {
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }

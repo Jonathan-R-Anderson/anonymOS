@@ -2195,7 +2195,8 @@ mixin template PosixKernelShim()
         {
             const int registration =
                 registerProcessExecutable("/bin/sh",
-                     cast(ProcessEntry)&minimal_os.posix.shellExecEntry);
+                    cast(ProcessEntry)&shellExecEntry);
+
 
             g_shellRegistered = (registration == 0);
         }
@@ -2969,7 +2970,7 @@ version (Posix)
         return false;
     }
 
-    extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
     {
         const(char*)* vector = envp;
         if ((vector is null || vector[0] is null) && g_current !is null)

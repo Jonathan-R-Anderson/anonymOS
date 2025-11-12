@@ -4,6 +4,10 @@ import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embedded
     embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
 static import minimal_os.posix;
 
+// Must be before PosixKernelShim so the template can see them
+alias ProcessEntry = extern(C) @nogc nothrow
+    void function(const(char*)* argv, const(char*)* envp);
+
 extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp);
 extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
@@ -2197,7 +2201,8 @@ mixin template PosixKernelShim()
         {
             const int registration =
                 registerProcessExecutable("/bin/sh",
-                    cast(ProcessEntry)&shellExecEntry); // <— unqualified, matches the forward decl
+                    cast(ProcessEntry)&shellExecEntry);
+
             g_shellRegistered = (registration == 0);
         }
 

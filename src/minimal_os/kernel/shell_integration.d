@@ -4,7 +4,7 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 
 import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
 import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
-import minimal_os.posix : PosixKernelShim;
+import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry;
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;

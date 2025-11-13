@@ -205,19 +205,19 @@ extern(C) void builderFatalC(const(char)* stagePtr, size_t stageLength,
 
     if (stagePtr !is null && stageLength != 0)
     {
-        stageLabel = stagePtr[0 .. stageLength];
+        stageLabel = stagePtr[0 .. stageLength].idup;
     }
     if (unitPtr !is null && unitLength != 0)
     {
-        unitName = unitPtr[0 .. unitLength];
+        unitName = unitPtr[0 .. unitLength].idup;
     }
     if (messagePtr !is null && messageLength != 0)
     {
-        message = messagePtr[0 .. messageLength];
+        message = messagePtr[0 .. messageLength].idup;
     }
     if (detailPtr !is null && detailLength != 0)
     {
-        detail = detailPtr[0 .. detailLength];
+        detail = detailPtr[0 .. detailLength].idup;
     }
 
     builderFatalImpl(stageLabel, unitName, message, detail);

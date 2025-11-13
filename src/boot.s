@@ -187,5 +187,7 @@ pdpt_table:
 
 .align 4096
 pd_table:
+    /* Identity-map the first 4 MiB so the bootstrap stack is accessible. */
     .quad 0x0000000000000083
-    .fill 511, 8, 0
+    .quad 0x0000000000200083
+    .fill 510, 8, 0

@@ -166,7 +166,7 @@ void compileStage(immutable(char)[] title, immutable(char)[] stageLabel, const M
     }
 }
 
-private void builderFatalImpl(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
+private void builderFatalImpl(const(char)[] stageLabel, const(char)[] unitName, const(char)[] message, const(char)[] detail)
 {
     printLine("");
     printDivider();
@@ -198,32 +198,32 @@ extern(C) void builderFatalC(const(char)* stagePtr, size_t stageLength,
     const(char)* messagePtr, size_t messageLength,
     const(char)* detailPtr, size_t detailLength)
 {
-    immutable(char)[] stageLabel = null;
-    immutable(char)[] unitName = null;
-    immutable(char)[] message = null;
-    immutable(char)[] detail = null;
+    const(char)[] stageLabel = null;
+    const(char)[] unitName = null;
+    const(char)[] message = null;
+    const(char)[] detail = null;
 
     if (stagePtr !is null && stageLength != 0)
     {
-        stageLabel = stagePtr[0 .. stageLength].idup;
+        stageLabel = stagePtr[0 .. stageLength];
     }
     if (unitPtr !is null && unitLength != 0)
     {
-        unitName = unitPtr[0 .. unitLength].idup;
+        unitName = unitPtr[0 .. unitLength];
     }
     if (messagePtr !is null && messageLength != 0)
     {
-        message = messagePtr[0 .. messageLength].idup;
+        message = messagePtr[0 .. messageLength];
     }
     if (detailPtr !is null && detailLength != 0)
     {
-        detail = detailPtr[0 .. detailLength].idup;
+        detail = detailPtr[0 .. detailLength];
     }
 
     builderFatalImpl(stageLabel, unitName, message, detail);
 }
 
-void builderFatal(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
+void builderFatal(const(char)[] stageLabel, const(char)[] unitName, const(char)[] message, const(char)[] detail)
 {
     const(char)* detailPtr = null;
     size_t detailLength = 0;

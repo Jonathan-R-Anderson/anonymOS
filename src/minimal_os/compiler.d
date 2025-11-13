@@ -308,6 +308,8 @@ private bool parseModuleHeader(ref Parser parser, out immutable(char)[] moduleNa
         return false;
     }
 
+    skipWhitespace(parser);
+
     if (!parseQualifiedIdentifier(parser, moduleName))
     {
         parserError(parser, "expected module name");

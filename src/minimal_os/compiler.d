@@ -166,7 +166,7 @@ void compileStage(immutable(char)[] title, immutable(char)[] stageLabel, const M
     }
 }
 
-void builderFatal(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
+private void builderFatalImpl(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
 {
     printLine("");
     printDivider();
@@ -191,6 +191,53 @@ void builderFatal(immutable(char)[] stageLabel, immutable(char)[] unitName, immu
     {
         // spin forever
     }
+}
+
+extern(C) void builderFatalC(const(char)* stagePtr, size_t stageLength,
+    const(char)* unitPtr, size_t unitLength,
+    const(char)* messagePtr, size_t messageLength,
+    const(char)* detailPtr, size_t detailLength)
+{
+    immutable(char)[] stageLabel = null;
+    immutable(char)[] unitName = null;
+    immutable(char)[] message = null;
+    immutable(char)[] detail = null;
+
+    if (stagePtr !is null && stageLength != 0)
+    {
+        stageLabel = stagePtr[0 .. stageLength];
+    }
+    if (unitPtr !is null && unitLength != 0)
+    {
+        unitName = unitPtr[0 .. unitLength];
+    }
+    if (messagePtr !is null && messageLength != 0)
+    {
+        message = messagePtr[0 .. messageLength];
+    }
+    if (detailPtr !is null && detailLength != 0)
+    {
+        detail = detailPtr[0 .. detailLength];
+    }
+
+    builderFatalImpl(stageLabel, unitName, message, detail);
+}
+
+void builderFatal(immutable(char)[] stageLabel, immutable(char)[] unitName, immutable(char)[] message, immutable(char)[] detail)
+{
+    const(char)* detailPtr = null;
+    size_t detailLength = 0;
+
+    if (detail !is null && detail.length != 0)
+    {
+        detailPtr = detail.ptr;
+        detailLength = detail.length;
+    }
+
+    builderFatalC(stageLabel.ptr, stageLabel.length,
+        unitName.ptr, unitName.length,
+        message.ptr, message.length,
+        detailPtr, detailLength);
 }
 
 bool lookupGlobalSymbol(immutable(char)[] name, out long value)

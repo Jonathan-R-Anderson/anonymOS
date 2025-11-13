@@ -225,19 +225,7 @@ extern(C) void builderFatalC(const(char)* stagePtr, size_t stageLength,
 
 void builderFatal(const(char)[] stageLabel, const(char)[] unitName, const(char)[] message, const(char)[] detail)
 {
-    const(char)* detailPtr = null;
-    size_t detailLength = 0;
-
-    if (detail !is null && detail.length != 0)
-    {
-        detailPtr = detail.ptr;
-        detailLength = detail.length;
-    }
-
-    builderFatalC(stageLabel.ptr, stageLabel.length,
-        unitName.ptr, unitName.length,
-        message.ptr, message.length,
-        detailPtr, detailLength);
+    builderFatalImpl(stageLabel, unitName, message, detail);
 }
 
 bool lookupGlobalSymbol(immutable(char)[] name, out long value)

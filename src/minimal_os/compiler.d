@@ -321,6 +321,8 @@ private bool parseExport(ref Parser parser, immutable(char)[] stageLabel, ref Co
         return false;
     }
 
+    skipWhitespace(parser);
+
     immutable(char)[] exportName;
     if (!parseIdentifier(parser, exportName))
     {

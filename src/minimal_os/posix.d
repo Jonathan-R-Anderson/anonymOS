@@ -32,7 +32,6 @@ else
         return false;
     }
 }
-static import minimal_os.posix;
 
 // --- Forward decls so PosixKernelShim can see them ---
 extern(C) @nogc nothrow
@@ -2256,7 +2255,7 @@ mixin template PosixKernelShim()
         auto existing = findExecutableSlot(aliasName);
         const bool alreadyRegistered = (existing !is null) && (existing.entry !is null);
 
-        const int result = registerProcessExecutable(aliasName, &minimal_os.posix.posixUtilityExecEntry);
+        const int result = registerProcessExecutable(aliasName, &posixUtilityExecEntry);
         if (result != 0)
         {
             return false;
@@ -2302,12 +2301,12 @@ mixin template PosixKernelShim()
         g_posixUtilitiesRegistered = false;
         g_posixUtilityCount = 0;
 
-        if (!minimal_os.posix.embeddedPosixUtilitiesAvailable())
+        if (!embeddedPosixUtilitiesAvailable())
         {
             return;
         }
 
-        auto paths = minimal_os.posix.embeddedPosixUtilityPaths();
+        auto paths = embeddedPosixUtilityPaths();
         foreach (path; paths)
         {
             auto canonical = path.ptr;

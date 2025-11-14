@@ -3,7 +3,7 @@ module minimal_os.posix;
 import minimal_os.console : print, printLine, printUnsigned;
 
 // example: adjust the path to whatever your search in step 1 shows
-import minimal_os.posixutils.registry :
+public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 

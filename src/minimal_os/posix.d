@@ -2176,6 +2176,7 @@ mixin template PosixKernelShim()
         g_current = null;
         g_posixUtilitiesRegistered = false;
         g_posixUtilityCount = 0;
+        g_posixConfigured = false;
         auto initProc = allocProc();
         if(initProc !is null)
         {
@@ -2214,6 +2215,101 @@ mixin template PosixKernelShim()
         }
 
         g_initialized = true;
+    }
+
+    @nogc nothrow private bool registerPosixUtilityAlias(const(char)* alias, bool contributes)
+    {
+        if (alias is null || alias[0] == '\0')
+        {
+            return false;
+        }
+
+        auto existing = findExecutableSlot(alias);
+        const bool alreadyRegistered = (existing !is null) && (existing.entry !is null);
+
+        const int result = registerProcessExecutable(alias, &posixUtilityExecEntry);
+        if (result != 0)
+        {
+            return false;
+        }
+
+        if (!alreadyRegistered && contributes)
+        {
+            ++g_posixUtilityCount;
+        }
+
+        return true;
+    }
+
+    @nogc nothrow private const(char)* embeddedUtilityBaseName(const(char)* path)
+    {
+        if (path is null)
+        {
+            return null;
+        }
+
+        const(char)* current = path;
+        size_t index = 0;
+        while (path[index] != '\0')
+        {
+            if (path[index] == '/')
+            {
+                current = path + index + 1;
+            }
+            ++index;
+        }
+
+        return current;
+    }
+
+    @nogc nothrow private void configureEmbeddedPosixUtilities()
+    {
+        if (g_posixConfigured)
+        {
+            return;
+        }
+
+        g_posixConfigured = true;
+        g_posixUtilitiesRegistered = false;
+        g_posixUtilityCount = 0;
+
+        if (!embeddedPosixUtilitiesAvailable())
+        {
+            return;
+        }
+
+        foreach (path; embeddedPosixUtilityPaths)
+        {
+            auto canonical = path.ptr;
+            auto registered = registerPosixUtilityAlias(canonical, true);
+
+            auto base = embeddedUtilityBaseName(canonical);
+            if (base !is null && base[0] != '\0')
+            {
+                registerPosixUtilityAlias(base, false);
+            }
+
+            if (!g_posixUtilitiesRegistered && registered)
+            {
+                g_posixUtilitiesRegistered = true;
+            }
+        }
+    }
+
+    @nogc nothrow private bool ensurePosixUtilitiesConfigured()
+    {
+        configureEmbeddedPosixUtilities();
+        return g_posixUtilitiesRegistered;
+    }
+
+    @nogc nothrow size_t registerPosixUtilities()
+    {
+        if (!ensurePosixUtilitiesConfigured())
+        {
+            return 0;
+        }
+
+        return g_posixUtilityCount;
     }
 }
 
@@ -2345,9 +2441,39 @@ else
         printLine("[shell] Interactive shell unavailable: host console support missing.");
     }
 
-    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)*, const(char*)*)
+    extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp)
     {
-        printLine("[shell] POSIX utilities unsupported on this target.");
+        enum fallbackProgram = "sh\0";
+
+        if (!ensurePosixUtilitiesConfigured())
+        {
+            printLine("[shell] POSIX utilities unavailable; cannot execute request.");
+            sys__exit(127);
+        }
+
+        const(char)* invoked = fallbackProgram.ptr;
+        if (argv !is null && argv[0] !is null && argv[0][0] != '\0')
+        {
+            invoked = argv[0];
+        }
+
+        int exitCode = 127;
+        if (executeEmbeddedPosixUtility(invoked, argv, envp, exitCode))
+        {
+            sys__exit(exitCode);
+        }
+
+        print("[shell] POSIX utility unavailable: ");
+        if (invoked !is null)
+        {
+            printCString(invoked);
+        }
+        else
+        {
+            print("<null>");
+        }
+        putChar('\n');
+        sys__exit(exitCode);
     }
 
     package @nogc nothrow void launchInteractiveShell()

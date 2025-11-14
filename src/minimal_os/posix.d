@@ -2,7 +2,11 @@ module minimal_os.posix;
 
 import minimal_os.console : print, printLine, printUnsigned;
 
-static import minimal_os.posix;
+// example: adjust the path to whatever your search in step 1 shows
+import minimal_os.posixutils.registry :
+    posixUtilityExecEntry,
+    embeddedPosixUtilitiesAvailable,
+    embeddedPosixUtilityPaths;
 
 // ---------------------------
 // Host/Posix C API (guarded)
@@ -1382,7 +1386,7 @@ mixin template PosixKernelShim()
         // Use the canonical entry point defined in minimal_os.posix.
         const int result = registerProcessExecutable(
             aliasName,
-            cast(ProcessEntry)&minimal_os.posix.posixUtilityExecEntry);
+            cast(ProcessEntry)&posixUtilityExecEntry);
         if (result != 0) return false;
 
         if (!alreadyRegistered && contributes) ++g_posixUtilityCount;
@@ -1411,8 +1415,8 @@ mixin template PosixKernelShim()
         g_posixUtilityCount = 0;
 
         // Call the imported/stubbed functions directly
-        if (!minimal_os.posix.embeddedPosixUtilitiesAvailable()) return;
-        auto paths = minimal_os.posix.embeddedPosixUtilityPaths();
+        if (!embeddedPosixUtilitiesAvailable()) return;
+        auto paths = embeddedPosixUtilityPaths();
         foreach (path; paths)
         {
             auto canonical = path.ptr;

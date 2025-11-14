@@ -5,10 +5,8 @@ import minimal_os.console : print, printLine, printUnsigned;
 static if (__traits(compiles, {
         import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable;
     }))
-{
     import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
         embeddedPosixUtilityPaths, executeEmbeddedPosixUtility, spawnAndWait;
-}
 else
 {
     @nogc nothrow bool embeddedPosixUtilitiesAvailable()

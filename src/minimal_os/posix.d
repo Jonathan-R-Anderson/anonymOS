@@ -1,8 +1,34 @@
 module minimal_os.posix;
 
 import minimal_os.console : print, printLine, printUnsigned;
-import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
-    embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
+
+static if (__traits(compiles, {
+        import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable;
+    }))
+{
+    import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
+        embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
+}
+else
+{
+    @nogc nothrow bool embeddedPosixUtilitiesAvailable()
+    {
+        return false;
+    }
+
+    @nogc nothrow immutable(char)[] embeddedPosixUtilitiesRoot()
+    {
+        return null;
+    }
+
+    immutable immutable(char)[][] embeddedPosixUtilityPaths = [];
+
+    @nogc nothrow bool executeEmbeddedPosixUtility(const(char)*, const(char*)*, const(char*)*, out int exitCode)
+    {
+        exitCode = 127;
+        return false;
+    }
+}
 static import minimal_os.posix;
 
 // --- Forward decls so PosixKernelShim can see them ---

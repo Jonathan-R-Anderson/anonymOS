@@ -39,8 +39,11 @@ void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
     int* exitCode);
 
 // Single canonical typedef for process entrypoints (C ABI, @nogc, nothrow)
-alias ProcessEntry = extern(C) @nogc nothrow
+alias PosixProcessEntry = extern(C) @nogc nothrow
     void function(const(char*)* argv, const(char*)* envp);
+
+// Backwards-compatible alias
+alias ProcessEntry = PosixProcessEntry;
 
 
 // ----------------------------------------------
@@ -98,8 +101,8 @@ else
 // ------------------------------
 mixin template PosixKernelShim()
 {
-    // Re-export the module-scope alias into the template's lexical scope
-    alias ProcessEntry = .ProcessEntry;
+    // Use the canonical process entry alias defined at module scope
+    alias ProcessEntry = PosixProcessEntry;
 
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;

@@ -2256,7 +2256,7 @@ mixin template PosixKernelShim()
         auto existing = findExecutableSlot(aliasName);
         const bool alreadyRegistered = (existing !is null) && (existing.entry !is null);
 
-        const int result = registerProcessExecutable(aliasName, &posixUtilityExecEntry);
+        const int result = registerProcessExecutable(aliasName, &minimal_os.posix.posixUtilityExecEntry);
         if (result != 0)
         {
             return false;
@@ -2302,12 +2302,12 @@ mixin template PosixKernelShim()
         g_posixUtilitiesRegistered = false;
         g_posixUtilityCount = 0;
 
-        if (!embeddedPosixUtilitiesAvailable())
+        if (!minimal_os.posix.embeddedPosixUtilitiesAvailable())
         {
             return;
         }
 
-        auto paths = embeddedPosixUtilityPaths();
+        auto paths = minimal_os.posix.embeddedPosixUtilityPaths();
         foreach (path; paths)
         {
             auto canonical = path.ptr;

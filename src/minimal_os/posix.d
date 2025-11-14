@@ -7,7 +7,7 @@ static if (__traits(compiles, {
     }))
 {
     import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable, embeddedPosixUtilitiesRoot,
-        embeddedPosixUtilityPaths, executeEmbeddedPosixUtility;
+        embeddedPosixUtilityPaths, executeEmbeddedPosixUtility, spawnAndWait;
 }
 else
 {
@@ -21,7 +21,10 @@ else
         return null;
     }
 
-    immutable immutable(char)[][] embeddedPosixUtilityPaths = [];
+    immutable immutable(char)[][] embeddedPosixUtilityPaths()
+    {
+        return [];
+    }
 
     @nogc nothrow bool executeEmbeddedPosixUtility(const(char)*, const(char*)*, const(char*)*, out int exitCode)
     {
@@ -2304,7 +2307,8 @@ mixin template PosixKernelShim()
             return;
         }
 
-        foreach (path; embeddedPosixUtilityPaths)
+        auto paths = embeddedPosixUtilityPaths();
+        foreach (path; paths)
         {
             auto canonical = path.ptr;
             auto registered = registerPosixUtilityAlias(canonical, true);

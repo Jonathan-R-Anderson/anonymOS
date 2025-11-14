@@ -17,9 +17,9 @@ private __gshared size_t g_embeddedPosixUtilityCount = 0;
 private __gshared bool   g_manifestLoaded = false;
 private __gshared bool   g_manifestAttempted = false;
 
-private __gshared char[MAX_CANONICAL_LENGTH] g_canonicalStorage[MAX_EMBEDDED_POSIX_UTILITIES];
-private __gshared char[MAX_CANONICAL_LENGTH] g_baseStorage[MAX_EMBEDDED_POSIX_UTILITIES];
-private __gshared char[MAX_HOST_PATH_LENGTH] g_hostStorage[MAX_EMBEDDED_POSIX_UTILITIES];
+private __gshared char[MAX_CANONICAL_LENGTH][MAX_EMBEDDED_POSIX_UTILITIES] g_canonicalStorage;
+private __gshared char[MAX_CANONICAL_LENGTH][MAX_EMBEDDED_POSIX_UTILITIES] g_baseStorage;
+private __gshared char[MAX_HOST_PATH_LENGTH][MAX_EMBEDDED_POSIX_UTILITIES] g_hostStorage;
 
 private __gshared immutable(char)[][MAX_EMBEDDED_POSIX_UTILITIES] g_canonicalSlices;
 private __gshared immutable(char)[][MAX_EMBEDDED_POSIX_UTILITIES] g_baseSlices;

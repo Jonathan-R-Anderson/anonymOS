@@ -160,13 +160,15 @@ private void bindPosixUtilitiesToKernel()
     }
     else
     {
-        printStatus("[shell] POSIX utilities  : ", "unsupported", "");
-        printStatusValue("[shell] POSIX execs    : ", 0);
-        g_posixUtilitiesRegistered = false;
-        g_posixUtilityCount = 0;
-        if (shellState.failureReason is null || shellState.failureReason.length == 0)
+        const size_t registered = registerPosixUtilities();
+
+        immutable(char)[] status = (registered > 0) ? "available" : "unavailable";
+        printStatus("[shell] POSIX utilities  : ", status, "");
+        printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
+
+        if (registered == 0 && (shellState.failureReason is null || shellState.failureReason.length == 0))
         {
-            shellState.failureReason = "POSIX utilities unsupported";
+            shellState.failureReason = "POSIX utilities unavailable";
         }
     }
 }

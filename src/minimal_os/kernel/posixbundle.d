@@ -335,7 +335,7 @@ private alias ManifestHandle = void*;
     g_rootLength = length;
 }
 
-@nogc nothrow private size_t cStringLength(const char* text, size_t limit)
+@nogc nothrow private size_t cStringLength(const(char)* text, size_t limit)
 {
     if (text is null || limit == 0)
     {
@@ -540,12 +540,12 @@ version (Posix)
     extern(C) @nogc nothrow
     {
         pid_t fork();
-        int execve(const char*, char* const*, char* const*);
+        int execve(const(char)*, char**, char**);
         pid_t waitpid(pid_t, int*, int);
         void _exit(int);
-        int access(const char*, int);
+        int access(const(char)*, int);
         __gshared char** environ;
-        void* fopen(const char*, const char*);
+        void* fopen(const(char)*, const(char)*);
         int fclose(void*);
         char* fgets(char*, int, void*);
         char* getcwd(char*, size_t);

@@ -6,87 +6,461 @@ static if (!__traits(compiles, { size_t dummy; }))
 }
 import minimal_os.console : print, printLine, printCString, putChar, printStageHeader, printStatus, printStatusValue;
 
-enum string embeddedPosixUtilitiesRootPath = "/kernel/posixutils/bin";
+enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
+enum string posixUtilityManifestPath = "build/posixutils/objects.tsv";
 
-immutable immutable(char)[][] embeddedPosixUtilityPaths = [
-    "/bin/asa\0",
-    "/bin/basename\0",
-    "/bin/cat\0",
-    "/bin/chown\0",
-    "/bin/cksum\0",
-    "/bin/cmp\0",
-    "/bin/comm\0",
-    "/bin/compress\0",
-    "/bin/date\0",
-    "/bin/df\0",
-    "/bin/diff\0",
-    "/bin/dirname\0",
-    "/bin/echo\0",
-    "/bin/env\0",
-    "/bin/expand\0",
-    "/bin/expr\0",
-    "/bin/false\0",
-    "/bin/getconf\0",
-    "/bin/grep\0",
-    "/bin/head\0",
-    "/bin/id\0",
-    "/bin/ipcrm\0",
-    "/bin/ipcs\0",
-    "/bin/kill\0",
-    "/bin/link\0",
-    "/bin/ln\0",
-    "/bin/logger\0",
-    "/bin/logname\0",
-    "/bin/mesg\0",
-    "/bin/mkdir\0",
-    "/bin/mkfifo\0",
-    "/bin/mv\0",
-    "/bin/nice\0",
-    "/bin/nohup\0",
-    "/bin/pathchk\0",
-    "/bin/pwd\0",
-    "/bin/renice\0",
-    "/bin/rm\0",
-    "/bin/rmdir\0",
-    "/bin/sleep\0",
-    "/bin/sort\0",
-    "/bin/split\0",
-    "/bin/strings\0",
-    "/bin/stty\0",
-    "/bin/tabs\0",
-    "/bin/tee\0",
-    "/bin/time\0",
-    "/bin/touch\0",
-    "/bin/true\0",
-    "/bin/tsort\0",
-    "/bin/tty\0",
-    "/bin/tput\0",
-    "/bin/uname\0",
-    "/bin/uniq\0",
-    "/bin/unlink\0",
-    "/bin/uuencode\0",
-    "/bin/wc\0",
-    "/bin/what\0",
-];
+private enum size_t MAX_EMBEDDED_POSIX_UTILITIES = 128;
+private enum size_t MAX_CANONICAL_LENGTH = 96;
+private enum size_t MAX_HOST_PATH_LENGTH = 512;
+
+private __gshared size_t g_embeddedPosixUtilityCount = 0;
+private __gshared bool   g_manifestLoaded = false;
+private __gshared bool   g_manifestAttempted = false;
+
+private __gshared char[MAX_EMBEDDED_POSIX_UTILITIES][MAX_CANONICAL_LENGTH] g_canonicalStorage;
+private __gshared char[MAX_EMBEDDED_POSIX_UTILITIES][MAX_CANONICAL_LENGTH] g_baseStorage;
+private __gshared char[MAX_EMBEDDED_POSIX_UTILITIES][MAX_HOST_PATH_LENGTH] g_hostStorage;
+
+private __gshared immutable(char)[][MAX_EMBEDDED_POSIX_UTILITIES] g_canonicalSlices;
+private __gshared immutable(char)[][MAX_EMBEDDED_POSIX_UTILITIES] g_baseSlices;
+private __gshared immutable(char)[][MAX_EMBEDDED_POSIX_UTILITIES] g_hostSlices;
+
+private __gshared char[MAX_HOST_PATH_LENGTH] g_rootStorage;
+private __gshared size_t g_rootLength = 0;
 
 @nogc nothrow bool embeddedPosixUtilitiesAvailable()
 {
-    return embeddedPosixUtilityPaths.length != 0;
+    if (!g_manifestAttempted)
+    {
+        loadEmbeddedPosixUtilityManifest();
+    }
+
+    return g_manifestLoaded && g_embeddedPosixUtilityCount != 0;
 }
 
 @nogc nothrow immutable(char)[] embeddedPosixUtilitiesRoot()
 {
-    return embeddedPosixUtilitiesRootPath;
+    if (!embeddedPosixUtilitiesAvailable())
+    {
+        return defaultEmbeddedPosixUtilitiesRoot;
+    }
+
+    return g_rootStorage[0 .. g_rootLength];
+}
+
+@nogc nothrow immutable(char)[][] embeddedPosixUtilityPaths()
+{
+    return g_canonicalSlices[0 .. g_embeddedPosixUtilityCount];
 }
 
 @nogc nothrow void compileEmbeddedPosixUtilities()
 {
     printStageHeader("Embed POSIX utilities");
-    printStatusValue("[posix] Utilities bundled : ", cast(long)embeddedPosixUtilityPaths.length);
-    printStatus("[posix] Bundle root        : ", embeddedPosixUtilitiesRootPath, "");
+
+    loadEmbeddedPosixUtilityManifest();
+
+    const long bundled = cast(long)g_embeddedPosixUtilityCount;
+    printStatusValue("[posix] Utilities bundled : ", bundled);
+
+    immutable(char)[] rootPath = embeddedPosixUtilitiesRoot();
+    printStatus("[posix] Bundle root        : ", rootPath, "");
+
+    if (!embeddedPosixUtilitiesAvailable())
+    {
+        printStatus("[posix] Manifest status   : ", "missing", "");
+    }
+    else
+    {
+        printStatus("[posix] Manifest status   : ", "loaded", "");
+    }
 }
 
-@nogc nothrow bool executeEmbeddedPosixUtility(const(char)* program, const(char*)* /*argv*/, const(char*)* /*envp*/, out int exitCode)
+@nogc nothrow bool executeEmbeddedPosixUtility(const(char)* program, const(char*)* argv, const(char*)* envp, out int exitCode)
+{
+    exitCode = 127;
+    if (!embeddedPosixUtilitiesAvailable())
+    {
+        return false;
+    }
+
+    auto hostPath = resolveEmbeddedUtility(program);
+    if (hostPath is null)
+    {
+        return false;
+    }
+
+    if (!isExecutable(hostPath))
+    {
+        print("[posix] Embedded utility not executable: ");
+        printCString(hostPath);
+        putChar('\n');
+        return false;
+    }
+
+    auto mutableArgv = cast(char**)argv;
+    auto mutableEnvp = cast(char**)envp;
+
+    char*[2] fallbackArgs;
+    if (mutableArgv is null || mutableArgv[0] is null)
+    {
+        fallbackArgs[0] = cast(char*)hostPath;
+        fallbackArgs[1] = null;
+        mutableArgv = fallbackArgs.ptr;
+    }
+
+    if (spawnAndWait(hostPath, mutableArgv, mutableEnvp, exitCode))
+    {
+        return true;
+    }
+
+    print("[posix] Failed to execute embedded utility: ");
+    printCString(hostPath);
+    putChar('\n');
+    return false;
+}
+
+@nogc nothrow private void loadEmbeddedPosixUtilityManifest()
+{
+    g_embeddedPosixUtilityCount = 0;
+    g_rootLength = 0;
+    g_manifestAttempted = true;
+
+    auto file = openManifest();
+    if (file is null)
+    {
+        g_manifestLoaded = false;
+        return;
+    }
+
+    scope(exit) closeManifest(file);
+
+    char[1024] lineBuffer;
+    size_t count = 0;
+
+    while (count < MAX_EMBEDDED_POSIX_UTILITIES)
+    {
+        auto line = readManifestLine(file, lineBuffer);
+        if (line.ptr is null)
+        {
+            break;
+        }
+
+        immutable(char)[] canonical;
+        immutable(char)[] hostPath;
+        if (!parseManifestLine(line, canonical, hostPath))
+        {
+            continue;
+        }
+
+        immutable(char)[] base = canonicalBase(canonical);
+
+        char[MAX_HOST_PATH_LENGTH] resolved;
+        immutable(char)[] normalizedHost = canonicalizeHostPath(hostPath, resolved);
+
+        setStorageSlice(g_canonicalStorage[count], canonical, g_canonicalSlices[count]);
+        setStorageSlice(g_hostStorage[count], normalizedHost, g_hostSlices[count]);
+        setStorageSlice(g_baseStorage[count], base, g_baseSlices[count]);
+
+        if (g_rootLength == 0)
+        {
+            determineRootPath(normalizedHost);
+        }
+
+        ++count;
+    }
+
+    g_embeddedPosixUtilityCount = count;
+    g_manifestLoaded = count != 0;
+}
+
+// --- Manifest helpers ----------------------------------------------------
+
+private alias ManifestHandle = void*;
+
+@nogc nothrow private ManifestHandle openManifest()
+{
+    immutable(char)[] mode = "r";
+    return fopen(posixUtilityManifestPath.ptr, mode.ptr);
+}
+
+@nogc nothrow private void closeManifest(ManifestHandle handle)
+{
+    if (handle !is null)
+    {
+        fclose(handle);
+    }
+}
+
+@nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle handle, char[] buffer)
+{
+    if (handle is null || buffer.length == 0)
+    {
+        return null;
+    }
+
+    auto result = fgets(buffer.ptr, cast(int)buffer.length, handle);
+    if (result is null)
+    {
+        return null;
+    }
+
+    size_t length = 0;
+    while (length < buffer.length && buffer[length] != '\0')
+    {
+        if (buffer[length] == '\n' || buffer[length] == '\r')
+        {
+            buffer[length] = '\0';
+            break;
+        }
+        ++length;
+    }
+
+    return buffer[0 .. length];
+}
+
+@nogc nothrow private bool parseManifestLine(immutable(char)[] line, out immutable(char)[] canonical, out immutable(char)[] hostPath)
+{
+    canonical = null;
+    hostPath = null;
+
+    if (line.length == 0)
+    {
+        return false;
+    }
+
+    size_t firstTab = findChar(line, '\t');
+    if (firstTab == line.length)
+    {
+        return false;
+    }
+
+    size_t secondTab = findChar(line[firstTab + 1 .. $], '\t');
+    if (secondTab == line.length - (firstTab + 1))
+    {
+        return false;
+    }
+
+    secondTab += firstTab + 1;
+
+    canonical = line[firstTab + 1 .. secondTab];
+    hostPath = line[secondTab + 1 .. $];
+
+    return canonical.length != 0 && hostPath.length != 0;
+}
+
+@nogc nothrow private size_t findChar(immutable(char)[] text, char needle)
+{
+    foreach (index, ch; text)
+    {
+        if (ch == needle)
+        {
+            return index;
+        }
+    }
+    return text.length;
+}
+
+@nogc nothrow private immutable(char)[] canonicalBase(immutable(char)[] canonical)
+{
+    size_t start = canonical.length;
+    while (start > 0)
+    {
+        if (canonical[start - 1] == '/')
+        {
+            break;
+        }
+        --start;
+    }
+    return canonical[start .. $];
+}
+
+@nogc nothrow private void setStorageSlice(ref char[MAX_CANONICAL_LENGTH] storage, immutable(char)[] source, out immutable(char)[] slice)
+{
+    size_t copyLength = source.length;
+    if (copyLength >= storage.length)
+    {
+        copyLength = storage.length - 1;
+    }
+
+    foreach (index; 0 .. copyLength)
+    {
+        storage[index] = source[index];
+    }
+
+    storage[copyLength] = '\0';
+
+    slice = storage[0 .. copyLength];
+}
+
+@nogc nothrow private void setStorageSlice(ref char[MAX_HOST_PATH_LENGTH] storage, immutable(char)[] source, out immutable(char)[] slice)
+{
+    size_t copyLength = source.length;
+    if (copyLength >= storage.length)
+    {
+        copyLength = storage.length - 1;
+    }
+
+    foreach (index; 0 .. copyLength)
+    {
+        storage[index] = source[index];
+    }
+
+    storage[copyLength] = '\0';
+    slice = storage[0 .. copyLength];
+}
+
+@nogc nothrow private void determineRootPath(immutable(char)[] hostPath)
+{
+    size_t length = hostPath.length;
+    while (length > 0 && hostPath[length - 1] != '/')
+    {
+        --length;
+    }
+
+    if (length > g_rootStorage.length - 1)
+    {
+        length = g_rootStorage.length - 1;
+    }
+
+    foreach (index; 0 .. length)
+    {
+        g_rootStorage[index] = hostPath[index];
+    }
+
+    if (length < g_rootStorage.length)
+    {
+        g_rootStorage[length] = '\0';
+    }
+
+    g_rootLength = length;
+}
+
+@nogc nothrow private size_t cStringLength(const char* text, size_t limit)
+{
+    if (text is null || limit == 0)
+    {
+        return 0;
+    }
+
+    size_t length = 0;
+    while (length < limit && text[length] != '\0')
+    {
+        ++length;
+    }
+
+    return length;
+}
+
+@nogc nothrow private immutable(char)[] canonicalizeHostPath(immutable(char)[] hostPath, ref char[MAX_HOST_PATH_LENGTH] buffer)
+{
+    if (hostPath.length == 0)
+    {
+        return hostPath;
+    }
+
+    if (hostPath[0] == '/')
+    {
+        return hostPath;
+    }
+
+    auto cwd = getcwd(buffer.ptr, buffer.length);
+    if (cwd is null)
+    {
+        return hostPath;
+    }
+
+    size_t limit = (buffer.length == 0) ? 0 : buffer.length - 1;
+    size_t cwdLength = cStringLength(buffer.ptr, limit);
+    if (cwdLength > limit)
+    {
+        cwdLength = limit;
+    }
+
+    if (cwdLength != 0 && cwdLength < limit && buffer[cwdLength - 1] != '/')
+    {
+        buffer[cwdLength] = '/';
+        ++cwdLength;
+    }
+
+    size_t copyLength = hostPath.length;
+    if (cwdLength >= limit)
+    {
+        copyLength = 0;
+    }
+    else if (cwdLength + copyLength > limit)
+    {
+        copyLength = limit - cwdLength;
+    }
+
+    foreach (index; 0 .. copyLength)
+    {
+        buffer[cwdLength + index] = hostPath[index];
+    }
+
+    size_t total = cwdLength + copyLength;
+    if (total > limit)
+    {
+        total = limit;
+    }
+
+    if (total < buffer.length)
+    {
+        buffer[total] = '\0';
+    }
+
+    return buffer[0 .. total];
+}
+
+// --- Execution helpers ---------------------------------------------------
+
+@nogc nothrow private const(char)* resolveEmbeddedUtility(const(char)* program)
+{
+    if (program is null)
+    {
+        return null;
+    }
+
+    auto index = locateEmbeddedUtility(program);
+    if (index < 0)
+    {
+        return null;
+    }
+
+    return g_hostStorage[index].ptr;
+}
+
+@nogc nothrow private int locateEmbeddedUtility(const(char)* program)
+{
+    foreach (index; 0 .. g_embeddedPosixUtilityCount)
+    {
+        if (cStringEquals(program, g_canonicalStorage[index].ptr))
+        {
+            return cast(int)index;
+        }
+    }
+
+    foreach (index; 0 .. g_embeddedPosixUtilityCount)
+    {
+        if (cStringEquals(program, g_baseStorage[index].ptr))
+        {
+            return cast(int)index;
+        }
+    }
+
+    return -1;
+}
+
+@nogc nothrow private bool isExecutable(const(char)* path)
+{
+    if (path is null)
+    {
+        return false;
+    }
+
+    return access(path, X_OK) == 0;
+}
+
+package @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char** envp, out int exitCode)
 {
     exitCode = 127;
     if (program is null || program[0] == '\0')
@@ -94,55 +468,49 @@ immutable immutable(char)[][] embeddedPosixUtilityPaths = [
         return false;
     }
 
-    if (!matchesEmbeddedUtility(program))
+    auto child = fork();
+    if (child < 0)
     {
         return false;
     }
 
-    print("[posix] Executing embedded utility: ");
-    printCString(program);
-    putChar('\n');
+    if (child == 0)
+    {
+        auto env = (envp is null) ? environ : envp;
+        execve(program, argv, env);
+        _exit(127);
+    }
 
-    exitCode = 0;
+    int status = 0;
+    for (;;) // wait until child exits
+    {
+        auto result = waitpid(child, &status, 0);
+        if (result < 0)
+        {
+            return false;
+        }
+        if (result == child)
+        {
+            break;
+        }
+    }
+
+    exitCode = decodeWaitStatus(status);
     return true;
 }
 
-@nogc nothrow private bool matchesEmbeddedUtility(const(char)* program)
+@nogc nothrow private int decodeWaitStatus(int status)
 {
-    foreach (path; embeddedPosixUtilityPaths)
-    {
-        if (cStringEquals(program, path.ptr))
-        {
-            return true;
-        }
+    enum int EXIT_MASK = 0xFF00;
+    enum int SIGNAL_MASK = 0x7F;
 
-        auto base = baseName(path.ptr);
-        if (base !is null && cStringEquals(program, base))
-        {
-            return true;
-        }
+    if ((status & SIGNAL_MASK) == 0)
+    {
+        return (status & EXIT_MASK) >> 8;
     }
 
-    return false;
-}
-
-@nogc nothrow private const(char)* baseName(const(char)* path)
-{
-    if (path is null)
-    {
-        return null;
-    }
-
-    auto current = path;
-    for (size_t index = 0; path[index] != '\0'; ++index)
-    {
-        if (path[index] == '/')
-        {
-            current = path + index + 1;
-        }
-    }
-
-    return current;
+    const int signal = status & SIGNAL_MASK;
+    return 128 + signal;
 }
 
 @nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
@@ -163,4 +531,81 @@ immutable immutable(char)[][] embeddedPosixUtilityPaths = [
     }
 
     return lhs[index] == '\0' && rhs[index] == '\0';
+}
+
+version (Posix)
+extern(C) @nogc nothrow
+{
+    alias pid_t = int;
+    pid_t fork();
+    int execve(const char*, char* const*, char* const*);
+    pid_t waitpid(pid_t, int*, int);
+    void _exit(int);
+    int access(const char*, int);
+    __gshared char** environ;
+    void* fopen(const char*, const char*);
+    int fclose(void*);
+    char* fgets(char*, int, void*);
+    char* getcwd(char*, size_t);
+}
+
+enum int X_OK = 1;
+else
+{
+    @nogc nothrow private ManifestHandle openManifest()
+    {
+        return null;
+    }
+
+    @nogc nothrow private void closeManifest(ManifestHandle)
+    {
+    }
+
+    @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle, char[])
+    {
+        return null;
+    }
+
+    @nogc nothrow private bool parseManifestLine(immutable(char)[], out immutable(char)[] canonical, out immutable(char)[] hostPath)
+    {
+        canonical = null;
+        hostPath = null;
+        return false;
+    }
+
+    @nogc nothrow private immutable(char)[] canonicalBase(immutable(char)[] canonical)
+    {
+        return canonical;
+    }
+
+    @nogc nothrow private void determineRootPath(immutable(char)[])
+    {
+    }
+
+    @nogc nothrow private const(char)* resolveEmbeddedUtility(const(char)*)
+    {
+        return null;
+    }
+
+    @nogc nothrow private int locateEmbeddedUtility(const(char)*)
+    {
+        return -1;
+    }
+
+    @nogc nothrow private bool isExecutable(const(char)*)
+    {
+        return false;
+    }
+
+    package @nogc nothrow bool spawnAndWait(const(char)*, char**, char**, out int)
+    {
+        return false;
+    }
+
+    extern(C) @nogc nothrow char* getcwd(char*, size_t)
+    {
+        return null;
+    }
+
+    enum int X_OK = 0;
 }

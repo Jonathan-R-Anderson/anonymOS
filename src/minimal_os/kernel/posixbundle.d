@@ -45,7 +45,7 @@ private __gshared size_t g_rootLength = 0;
         return defaultEmbeddedPosixUtilitiesRoot;
     }
 
-    return g_rootStorage[0 .. g_rootLength];
+    return cast(immutable(char)[])g_rootStorage[0 .. g_rootLength];
 }
 
 @nogc nothrow immutable(char)[][] embeddedPosixUtilityPaths()
@@ -218,7 +218,7 @@ version (Posix)
         ++length;
     }
 
-    return buffer[0 .. length];
+    return cast(immutable(char)[])buffer[0 .. length];
 }
 
 version (Posix)
@@ -294,7 +294,7 @@ version (Posix)
 
     storage[copyLength] = '\0';
 
-    slice = storage[0 .. copyLength];
+    slice = cast(immutable(char)[])storage[0 .. copyLength];
 }
 
 @nogc nothrow private void setStorageSlice(ref char[MAX_HOST_PATH_LENGTH] storage, immutable(char)[] source, out immutable(char)[] slice)
@@ -311,7 +311,7 @@ version (Posix)
     }
 
     storage[copyLength] = '\0';
-    slice = storage[0 .. copyLength];
+    slice = cast(immutable(char)[])storage[0 .. copyLength];
 }
 
 version (Posix)
@@ -414,7 +414,7 @@ version (Posix)
         buffer[total] = '\0';
     }
 
-    return buffer[0 .. total];
+    return cast(immutable(char)[])buffer[0 .. total];
 }
 
 // --- Execution helpers ---------------------------------------------------

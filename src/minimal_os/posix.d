@@ -1379,10 +1379,10 @@ mixin template PosixKernelShim()
         auto existing = findExecutableSlot(aliasName);
         const bool alreadyRegistered = (existing !is null) && (existing.entry !is null);
 
-        // Use module-scope forward decl; do NOT qualify as minimal_os.posix.*
+        // Use the canonical entry point defined in minimal_os.posix.
         const int result = registerProcessExecutable(
             aliasName,
-            cast(ProcessEntry)&posixUtilityExecEntry);
+            cast(ProcessEntry)&minimal_os.posix.posixUtilityExecEntry);
         if (result != 0) return false;
 
         if (!alreadyRegistered && contributes) ++g_posixUtilityCount;
@@ -1411,17 +1411,12 @@ mixin template PosixKernelShim()
         g_posixUtilityCount = 0;
 
         // Call the imported/stubbed functions directly
-        if (!embeddedPosixUtilitiesAvailable()) return;
-        auto paths = embeddedPosixUtilityPaths();
+        if (!minimal_os.posix.embeddedPosixUtilitiesAvailable()) return;
+        auto paths = minimal_os.posix.embeddedPosixUtilityPaths();
         foreach (path; paths)
         {
             auto canonical = path.ptr;
             auto registered = registerPosixUtilityAlias(canonical, true);
-            
-            const int result = registerProcessExecutable(
-                aliasName,
-                cast(ProcessEntry)&minimal_os.posix.posixUtilityExecEntry
-            );
 
             auto base = embeddedUtilityBaseName(canonical);
             if (base !is null && base[0] != '\0') registerPosixUtilityAlias(base, false);
@@ -1432,7 +1427,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private bool ensurePosixUtilitiesConfigured()
     {
-        minimal_os.posix.PosixKernelShim!().configureEmbeddedPosixUtilities(); // if calling from outside the mixin
+        configureEmbeddedPosixUtilities();
         return g_posixUtilitiesRegistered;
     }
 

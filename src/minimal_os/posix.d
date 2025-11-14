@@ -114,6 +114,10 @@ mixin template PosixKernelShim()
         minimal_os.posix.embeddedPosixUtilitiesAvailable;
     alias EmbeddedPosixUtilityPathsFn =
         minimal_os.posix.embeddedPosixUtilityPaths;
+    alias RegistryEmbeddedPosixUtilitiesAvailableFn =
+        minimal_os.posix.registryEmbeddedPosixUtilitiesAvailable;
+    alias RegistryEmbeddedPosixUtilityPathsFn =
+        minimal_os.posix.registryEmbeddedPosixUtilityPaths;
 
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;
@@ -1429,9 +1433,9 @@ mixin template PosixKernelShim()
         {
             paths = EmbeddedPosixUtilityPathsFn();
         }
-        else if (registryEmbeddedPosixUtilitiesAvailable())
+        else if (RegistryEmbeddedPosixUtilitiesAvailableFn())
         {
-            paths = registryEmbeddedPosixUtilityPaths();
+            paths = RegistryEmbeddedPosixUtilityPathsFn();
         }
         else
         {
@@ -1493,7 +1497,7 @@ version (Posix)
         {
             // Query embed flag directly
             return embeddedPosixUtilitiesAvailable()
-                || registryEmbeddedPosixUtilitiesAvailable();
+                || RegistryEmbeddedPosixUtilitiesAvailableFn();
         }
 
         if (!_ensure())
@@ -1581,7 +1585,7 @@ else
         // Ask the embed-status (stubs return false) and fall back to the
         // registry helpers when available.
         return embeddedPosixUtilitiesAvailable()
-            || registryEmbeddedPosixUtilitiesAvailable();
+            || RegistryEmbeddedPosixUtilitiesAvailableFn();
     }
 
     private @nogc nothrow void printCString(const(char)* s)

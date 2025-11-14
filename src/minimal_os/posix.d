@@ -2217,17 +2217,17 @@ mixin template PosixKernelShim()
         g_initialized = true;
     }
 
-    @nogc nothrow private bool registerPosixUtilityAlias(const(char)* alias, bool contributes)
+    @nogc nothrow private bool registerPosixUtilityAlias(const(char)* aliasName, bool contributes)
     {
-        if (alias is null || alias[0] == '\0')
+        if (aliasName is null || aliasName[0] == '\0')
         {
             return false;
         }
 
-        auto existing = findExecutableSlot(alias);
+        auto existing = findExecutableSlot(aliasName);
         const bool alreadyRegistered = (existing !is null) && (existing.entry !is null);
 
-        const int result = registerProcessExecutable(alias, &posixUtilityExecEntry);
+        const int result = registerProcessExecutable(aliasName, &posixUtilityExecEntry);
         if (result != 0)
         {
             return false;

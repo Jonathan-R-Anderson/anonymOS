@@ -177,12 +177,14 @@ private __gshared size_t g_rootLength = 0;
 
 private alias ManifestHandle = void*;
 
+version (Posix)
 @nogc nothrow private ManifestHandle openManifest()
 {
     immutable(char)[] mode = "r";
     return fopen(posixUtilityManifestPath.ptr, mode.ptr);
 }
 
+version (Posix)
 @nogc nothrow private void closeManifest(ManifestHandle handle)
 {
     if (handle !is null)
@@ -191,6 +193,7 @@ private alias ManifestHandle = void*;
     }
 }
 
+version (Posix)
 @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle handle, char[] buffer)
 {
     if (handle is null || buffer.length == 0)
@@ -218,6 +221,7 @@ private alias ManifestHandle = void*;
     return buffer[0 .. length];
 }
 
+version (Posix)
 @nogc nothrow private bool parseManifestLine(immutable(char)[] line, out immutable(char)[] canonical, out immutable(char)[] hostPath)
 {
     canonical = null;
@@ -260,6 +264,7 @@ private alias ManifestHandle = void*;
     return text.length;
 }
 
+version (Posix)
 @nogc nothrow private immutable(char)[] canonicalBase(immutable(char)[] canonical)
 {
     size_t start = canonical.length;
@@ -309,6 +314,7 @@ private alias ManifestHandle = void*;
     slice = storage[0 .. copyLength];
 }
 
+version (Posix)
 @nogc nothrow private void determineRootPath(immutable(char)[] hostPath)
 {
     size_t length = hostPath.length;
@@ -413,6 +419,7 @@ private alias ManifestHandle = void*;
 
 // --- Execution helpers ---------------------------------------------------
 
+version (Posix)
 @nogc nothrow private const(char)* resolveEmbeddedUtility(const(char)* program)
 {
     if (program is null)
@@ -429,6 +436,7 @@ private alias ManifestHandle = void*;
     return g_hostStorage[index].ptr;
 }
 
+version (Posix)
 @nogc nothrow private int locateEmbeddedUtility(const(char)* program)
 {
     foreach (index; 0 .. g_embeddedPosixUtilityCount)
@@ -450,6 +458,7 @@ private alias ManifestHandle = void*;
     return -1;
 }
 
+version (Posix)
 @nogc nothrow private bool isExecutable(const(char)* path)
 {
     if (path is null)
@@ -460,7 +469,8 @@ private alias ManifestHandle = void*;
     return access(path, X_OK) == 0;
 }
 
-package @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char** envp, out int exitCode)
+version (Posix)
+package(minimal_os) @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char** envp, out int exitCode)
 {
     exitCode = 127;
     if (program is null || program[0] == '\0')
@@ -499,6 +509,7 @@ package @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char*
     return true;
 }
 
+version (Posix)
 @nogc nothrow private int decodeWaitStatus(int status)
 {
     enum int EXIT_MASK = 0xFF00;
@@ -513,6 +524,7 @@ package @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char*
     return 128 + signal;
 }
 
+version (Posix)
 @nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
 {
     if (lhs is null || rhs is null)
@@ -600,7 +612,7 @@ else
         return false;
     }
 
-    package @nogc nothrow bool spawnAndWait(const(char)*, char**, char**, out int)
+    package(minimal_os) @nogc nothrow bool spawnAndWait(const(char)*, char**, char**, out int)
     {
         return false;
     }

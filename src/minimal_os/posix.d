@@ -108,6 +108,14 @@ mixin template PosixKernelShim()
     // Use the canonical process entry alias defined at module scope
     alias ProcessEntry = minimal_os.posix.PosixProcessEntry;
 
+    // Explicit aliases back to the defining module so the mixin can
+    // reference the canonical helpers regardless of the import context.
+    alias PosixUtilityExecEntryFn = minimal_os.posix.posixUtilityExecEntry;
+    alias EmbeddedPosixUtilitiesAvailableFn =
+        minimal_os.posix.embeddedPosixUtilitiesAvailable;
+    alias EmbeddedPosixUtilityPathsFn =
+        minimal_os.posix.embeddedPosixUtilityPaths;
+
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;
     alias uid_t   = uint;
@@ -1386,7 +1394,7 @@ mixin template PosixKernelShim()
         // Use the canonical entry point defined in minimal_os.posix.
         const int result = registerProcessExecutable(
             aliasName,
-            cast(ProcessEntry)&posixUtilityExecEntry);
+            cast(ProcessEntry)&PosixUtilityExecEntryFn);
         if (result != 0) return false;
 
         if (!alreadyRegistered && contributes) ++g_posixUtilityCount;
@@ -1415,8 +1423,8 @@ mixin template PosixKernelShim()
         g_posixUtilityCount = 0;
 
         // Call the imported/stubbed functions directly
-        if (!embeddedPosixUtilitiesAvailable()) return;
-        auto paths = embeddedPosixUtilityPaths();
+        if (!EmbeddedPosixUtilitiesAvailableFn()) return;
+        auto paths = EmbeddedPosixUtilityPathsFn();
         foreach (path; paths)
         {
             auto canonical = path.ptr;

@@ -4,9 +4,8 @@ import minimal_os.console : print, printLine, printUnsigned;
 
 // example: adjust the path to whatever your search in step 1 shows
 import minimal_os.posixutils.registry :
-    posixUtilityExecEntry,
-    embeddedPosixUtilitiesAvailable,
-    embeddedPosixUtilityPaths;
+    registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
+    registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 
 // ---------------------------
 // Host/Posix C API (guarded)
@@ -1422,9 +1421,22 @@ mixin template PosixKernelShim()
         g_posixUtilitiesRegistered = false;
         g_posixUtilityCount = 0;
 
-        // Call the imported/stubbed functions directly
-        if (!EmbeddedPosixUtilitiesAvailableFn()) return;
-        auto paths = EmbeddedPosixUtilityPathsFn();
+        // Call the imported/stubbed functions directly. If the bundle
+        // helpers report no utilities, fall back to the registry helpers
+        // provided by minimal_os.posixutils.registry.
+        const(char)[][] paths;
+        if (EmbeddedPosixUtilitiesAvailableFn())
+        {
+            paths = EmbeddedPosixUtilityPathsFn();
+        }
+        else if (registryEmbeddedPosixUtilitiesAvailable())
+        {
+            paths = registryEmbeddedPosixUtilityPaths();
+        }
+        else
+        {
+            return;
+        }
         foreach (path; paths)
         {
             auto canonical = path.ptr;
@@ -1480,7 +1492,8 @@ version (Posix)
         static @nogc nothrow bool _ensure()
         {
             // Query embed flag directly
-            return embeddedPosixUtilitiesAvailable();
+            return embeddedPosixUtilitiesAvailable()
+                || registryEmbeddedPosixUtilitiesAvailable();
         }
 
         if (!_ensure())
@@ -1565,8 +1578,10 @@ else
 
     private @nogc nothrow bool ensurePosixUtilitiesConfiguredBare()
     {
-        // Ask the embed-status (stubs return false).
-        return embeddedPosixUtilitiesAvailable();
+        // Ask the embed-status (stubs return false) and fall back to the
+        // registry helpers when available.
+        return embeddedPosixUtilitiesAvailable()
+            || registryEmbeddedPosixUtilitiesAvailable();
     }
 
     private @nogc nothrow void printCString(const(char)* s)

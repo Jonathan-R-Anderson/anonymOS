@@ -102,7 +102,7 @@ else
 mixin template PosixKernelShim()
 {
     // Use the canonical process entry alias defined at module scope
-    alias ProcessEntry = PosixProcessEntry;
+    alias ProcessEntry = minimal_os.posix.PosixProcessEntry;
 
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;

@@ -534,22 +534,25 @@ package @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char*
 }
 
 version (Posix)
-extern(C) @nogc nothrow
 {
     alias pid_t = int;
-    pid_t fork();
-    int execve(const char*, char* const*, char* const*);
-    pid_t waitpid(pid_t, int*, int);
-    void _exit(int);
-    int access(const char*, int);
-    __gshared char** environ;
-    void* fopen(const char*, const char*);
-    int fclose(void*);
-    char* fgets(char*, int, void*);
-    char* getcwd(char*, size_t);
-}
 
-enum int X_OK = 1;
+    extern(C) @nogc nothrow
+    {
+        pid_t fork();
+        int execve(const char*, char* const*, char* const*);
+        pid_t waitpid(pid_t, int*, int);
+        void _exit(int);
+        int access(const char*, int);
+        __gshared char** environ;
+        void* fopen(const char*, const char*);
+        int fclose(void*);
+        char* fgets(char*, int, void*);
+        char* getcwd(char*, size_t);
+    }
+
+    enum int X_OK = 1;
+}
 else
 {
     @nogc nothrow private ManifestHandle openManifest()

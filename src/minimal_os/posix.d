@@ -47,7 +47,7 @@ alias ProcessEntry = PosixProcessEntry;
 
 private enum bool ENABLE_POSIX_DEBUG = true;
 
-@nogc nothrow private long debugBool(bool value)
+@nogc nothrow package(minimal_os) long debugBool(bool value)
 {
     static if (ENABLE_POSIX_DEBUG)
     {
@@ -59,7 +59,7 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     }
 }
 
-@nogc nothrow private void debugPrefix()
+@nogc nothrow package(minimal_os) void debugPrefix()
 {
     static if (ENABLE_POSIX_DEBUG)
     {
@@ -67,7 +67,7 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     }
 }
 
-@nogc nothrow private void debugPrintSigned(long value)
+@nogc nothrow package(minimal_os) void debugPrintSigned(long value)
 {
     static if (ENABLE_POSIX_DEBUG)
     {
@@ -83,7 +83,7 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     }
 }
 
-@nogc nothrow private void debugExpectActual(immutable(char)[] label, long expected, long actual)
+@nogc nothrow package(minimal_os) void debugExpectActual(immutable(char)[] label, long expected, long actual)
 {
     static if (ENABLE_POSIX_DEBUG)
     {
@@ -97,7 +97,7 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     }
 }
 
-@nogc nothrow private void debugLog(immutable(char)[] text)
+@nogc nothrow package(minimal_os) void debugLog(immutable(char)[] text)
 {
     static if (ENABLE_POSIX_DEBUG)
     {

@@ -275,7 +275,6 @@ version (Posix)
     return cast(immutable(char)[])buffer[0 .. length];
 }
 
-version (Posix)
 @nogc nothrow private bool parseManifestLine(immutable(char)[] line, out immutable(char)[] canonical, out immutable(char)[] hostPath)
 {
     canonical = null;
@@ -318,7 +317,6 @@ version (Posix)
     return text.length;
 }
 
-version (Posix)
 @nogc nothrow private immutable(char)[] canonicalBase(immutable(char)[] canonical)
 {
     size_t start = canonical.length;
@@ -368,7 +366,6 @@ version (Posix)
     slice = cast(immutable(char)[])storage[0 .. copyLength];
 }
 
-version (Posix)
 @nogc nothrow private void determineRootPath(immutable(char)[] hostPath)
 {
     size_t length = hostPath.length;
@@ -622,34 +619,85 @@ version (Posix)
 }
 else
 {
+    private struct EmbeddedManifestState
+    {
+        immutable(char)[] data;
+        size_t cursor;
+    }
+
+    private enum immutable(char)[] embeddedManifestData = (()
+    {
+        static if (__traits(compiles, { enum content = import(hostPosixUtilityManifestPath); }))
+        {
+            return import(hostPosixUtilityManifestPath);
+        }
+        else static if (__traits(compiles, { enum content = import(posixUtilityManifestPath); }))
+        {
+            return import(posixUtilityManifestPath);
+        }
+        else static if (__traits(compiles, { enum content = import(hostFallbackPosixUtilityManifestPath); }))
+        {
+            return import(hostFallbackPosixUtilityManifestPath);
+        }
+        else static if (__traits(compiles, { enum content = import(fallbackPosixUtilityManifestPath); }))
+        {
+            return import(fallbackPosixUtilityManifestPath);
+        }
+        else
+        {
+            return cast(immutable(char)[])"";
+        }
+    })();
+
+    private __gshared EmbeddedManifestState g_embeddedManifestState;
+
     @nogc nothrow private ManifestHandle openManifest()
     {
-        return null;
+        if (embeddedManifestData.length == 0)
+        {
+            return null;
+        }
+
+        g_embeddedManifestState.data = embeddedManifestData;
+        g_embeddedManifestState.cursor = 0;
+        return cast(ManifestHandle)&g_embeddedManifestState;
     }
 
     @nogc nothrow private void closeManifest(ManifestHandle)
     {
     }
 
-    @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle, char[])
+    @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle handle, char[] buffer)
     {
-        return null;
-    }
+        if (handle is null || buffer.length == 0)
+        {
+            return null;
+        }
 
-    @nogc nothrow private bool parseManifestLine(immutable(char)[], out immutable(char)[] canonical, out immutable(char)[] hostPath)
-    {
-        canonical = null;
-        hostPath = null;
-        return false;
-    }
+        auto state = cast(EmbeddedManifestState*)handle;
+        if (state.data.length == 0 || state.cursor >= state.data.length)
+        {
+            return null;
+        }
 
-    @nogc nothrow private immutable(char)[] canonicalBase(immutable(char)[] canonical)
-    {
-        return canonical;
-    }
+        size_t length = 0;
+        while (state.cursor < state.data.length && length + 1 < buffer.length)
+        {
+            immutable char ch = state.data[state.cursor++];
+            if (ch == '\n' || ch == '\r')
+            {
+                if (ch == '\r' && state.cursor < state.data.length && state.data[state.cursor] == '\n')
+                {
+                    ++state.cursor;
+                }
+                break;
+            }
 
-    @nogc nothrow private void determineRootPath(immutable(char)[])
-    {
+            buffer[length++] = ch;
+        }
+
+        buffer[length] = '\0';
+        return cast(immutable(char)[])buffer[0 .. length];
     }
 
     @nogc nothrow private const(char)* resolveEmbeddedUtility(const(char)*)

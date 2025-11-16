@@ -63,6 +63,8 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     integrateShell();
     printBuildSummary();
 
+    logShellStateSnapshot("pre-boot");
+
     printLine("");
     printLine("[done] D language cross compiler ready.");
     if (shellState.shellActivated)
@@ -83,6 +85,43 @@ extern(C) @nogc nothrow void runCompilerBuilder()
         {
             printLine("compiler access is required.");
         }
+    }
+}
+
+private void logShellStateSnapshot(const(char)[] context)
+{
+    printLine("[debug] Shell state snapshot: " ~ context);
+    print("         repository fetched : ");
+    printLine(shellState.repositoryFetched ? "yes" : "no");
+    print("         repository         : ");
+    printLine(shellState.repository);
+    print("         revision           : ");
+    printLine(shellState.revision);
+    print("         binary name        : ");
+    printLine(shellState.binaryName);
+    print("         binary bytes       : ");
+    printUnsigned(shellState.binaryBytes);
+    putChar('\n');
+    print("         documented cmds    : ");
+    printUnsigned(shellState.documentedCommandCount);
+    putChar('\n');
+    print("         source files       : ");
+    printUnsigned(shellState.sourceFileCount);
+    putChar('\n');
+    print("         runtime bound      : ");
+    printLine(shellState.runtimeBound ? "yes" : "no");
+    print("         compiler access    : ");
+    printLine(shellState.compilerAccessible ? "yes" : "no");
+    print("         shell activated    : ");
+    printLine(shellState.shellActivated ? "yes" : "no");
+    print("         failure reason     : ");
+    if (shellState.failureReason !is null)
+    {
+        printLine(shellState.failureReason);
+    }
+    else
+    {
+        printLine("<none>");
     }
 }
 

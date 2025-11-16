@@ -27,8 +27,33 @@ class BuildResult:
 
 
 def repo_root_from(start: Path | None = None) -> Path:
-    path = start or Path(__file__).resolve()
-    return path.parents[1]
+    if start is None:
+        return Path(__file__).resolve().parents[1]
+    return start.resolve()
+
+
+def resolve_source_root(source_arg: Path | None, root: Path) -> Path:
+    if source_arg is not None:
+        source_root = source_arg
+        if not source_root.is_absolute():
+            source_root = (root / source_root).resolve()
+        if not source_root.is_dir():
+            raise SystemExit(f"Source directory not found: {source_root}")
+        return source_root
+
+    default_root = root / "tools" / "posixutils"
+    if default_root.is_dir():
+        return default_root
+
+    fallback_root = root / "src" / "minimal_os" / "posixutils"
+    if fallback_root.is_dir():
+        print(
+            f"[warn] POSIX utilities not found under {default_root}; using {fallback_root}",
+            file=sys.stderr,
+        )
+        return fallback_root
+
+    raise SystemExit(f"Source directory not found: {default_root}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,6 +82,11 @@ def parse_args() -> argparse.Namespace:
         "--root",
         type=Path,
         help="Override repository root autodetection",
+    )
+    parser.add_argument(
+        "--source",
+        type=Path,
+        help="Directory containing the POSIX utility D sources",
     )
     return parser.parse_args()
 
@@ -241,9 +271,7 @@ def main() -> None:
     ensure_compiler_available(args.dc)
 
     root = repo_root_from(args.root)
-    source_root = root / "tools" / "posixutils"
-    if not source_root.is_dir():
-        raise SystemExit(f"Source directory not found: {source_root}")
+    source_root = resolve_source_root(args.source, root)
 
     output_dir = args.output or (root / "build" / "posixutils" / "bin")
     output_dir.mkdir(parents=True, exist_ok=True)

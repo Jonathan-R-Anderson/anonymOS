@@ -11,6 +11,7 @@ SH_TARGET="${SH_TARGET:-lfe-sh}"
 SHELL_DC="${SHELL_DC:-ldc2}"
 POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/tools/posixutils}"
 POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
+POSIXUTILS_ALT_ROOT="$ROOT/src/minimal_os/posixutils"
 
 # Cross target + sysroot (x86_64 only for this script)
 : "${TARGET:=x86_64-unknown-elf}"
@@ -221,9 +222,14 @@ else
 fi
 
 # ===================== Build POSIX utilities =====================
+if [ ! -d "$POSIXUTILS_ROOT" ] && [ -d "$POSIXUTILS_ALT_ROOT" ]; then
+  echo "[i] Falling back to POSIX utilities at $POSIXUTILS_ALT_ROOT" >&2
+  POSIXUTILS_ROOT="$POSIXUTILS_ALT_ROOT"
+fi
+
 if [ -d "$POSIXUTILS_ROOT" ]; then
   echo "[*] Building POSIX utilities from $POSIXUTILS_ROOT"
-  POSIX_ARGS=("$ROOT/tools/build_posixutils.py" --dc "$POSIXUTILS_DC" --output "$POSIXUTILS_BIN_DIR")
+  POSIX_ARGS=("$ROOT/tools/build_posixutils.py" --dc "$POSIXUTILS_DC" --source "$POSIXUTILS_ROOT" --output "$POSIXUTILS_BIN_DIR")
   if [ -n "${POSIXUTILS_FLAGS:-}" ]; then
     POSIX_ARGS+=(--flags "$POSIXUTILS_FLAGS")
   fi

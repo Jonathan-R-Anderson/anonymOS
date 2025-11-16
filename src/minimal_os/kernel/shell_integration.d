@@ -210,7 +210,9 @@ private void bindPosixUtilitiesToKernel()
 
 private void finalizeShellActivation()
 {
-    const bool detectedConsole = detectConsoleAvailability();
+    const auto consoleDetection = detectConsoleAvailability();
+    const bool detectedConsole = consoleDetection.available;
+    const bool consoleDisabledByConfig = consoleDetection.disabledByConfiguration;
     if (detectedConsole)
     {
         if (!g_consoleAvailable)
@@ -264,7 +266,9 @@ private void finalizeShellActivation()
             }
             else if (!g_consoleAvailable)
             {
-                reason = "console unavailable";
+                reason = consoleDisabledByConfig
+                    ? "console disabled by configuration"
+                    : "console unavailable";
             }
             else if (!g_shellRegistered)
             {

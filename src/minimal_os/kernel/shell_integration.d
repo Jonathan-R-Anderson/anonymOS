@@ -43,9 +43,29 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
     false,
 );
 
-private void logShellStateSnapshot(const(char)[] context)
+mixin PosixKernelShim;
+
+extern(C) @nogc nothrow void runCompilerBuilder()
 {
-    printLine("[debug] Shell state snapshot: " ~ context);
+    resetBuilderState();
+
+    printLine("========================================");
+    printLine("   Cross Compiler Build Orchestrator");
+    printLine("   Target: Full D language toolchain");
+    printLine("========================================");
+
+    configureToolchain();
+
+    compileStage("Compile front-end", "front-end", frontEndSources());
+    compileStage("Build optimizer + codegen", "optimizer", optimizerSources());
+    compileStage("Assemble runtime libraries", "runtime", runtimeSources());
+    linkCompiler();
+    packageArtifacts();
+    compileEmbeddedPosixUtilities();
+    integrateShell();
+    printBuildSummary();
+
+    printLine("[debug] Shell state snapshot: pre-boot");
     print("         repository fetched : ");
     printLine(shellState.repositoryFetched ? "yes" : "no");
     print("         repository         : ");
@@ -78,31 +98,6 @@ private void logShellStateSnapshot(const(char)[] context)
     {
         printLine("<none>");
     }
-}
-
-mixin PosixKernelShim;
-
-extern(C) @nogc nothrow void runCompilerBuilder()
-{
-    resetBuilderState();
-
-    printLine("========================================");
-    printLine("   Cross Compiler Build Orchestrator");
-    printLine("   Target: Full D language toolchain");
-    printLine("========================================");
-
-    configureToolchain();
-
-    compileStage("Compile front-end", "front-end", frontEndSources());
-    compileStage("Build optimizer + codegen", "optimizer", optimizerSources());
-    compileStage("Assemble runtime libraries", "runtime", runtimeSources());
-    linkCompiler();
-    packageArtifacts();
-    compileEmbeddedPosixUtilities();
-    integrateShell();
-    printBuildSummary();
-
-    logShellStateSnapshot("pre-boot");
 
     printLine("");
     printLine("[done] D language cross compiler ready.");

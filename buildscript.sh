@@ -267,6 +267,17 @@ if [ -f "$SHELL_BINARY" ]; then
   fi
 fi
 
+# Ensure the kernel can find the POSIX utility manifest (and the paths it
+# references) once the ISO boots.  The runtime probes
+# build/posixutils/objects.tsv, so mirror the build/posixutils directory into
+# the ISO image, not just the shell's copy of the binaries.
+POSIX_ISO_DEST="$ISO_STAGING_DIR/build/posixutils"
+if [ -d "$POSIXUTILS_OUT" ]; then
+  rm -rf "$POSIX_ISO_DEST"
+  mkdir -p "$POSIX_ISO_DEST"
+  cp -a "$POSIXUTILS_OUT/." "$POSIX_ISO_DEST/"
+fi
+
 cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
 set timeout=0
 set default=0

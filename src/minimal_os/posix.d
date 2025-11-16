@@ -1192,9 +1192,19 @@ mixin template PosixKernelShim()
     // ---- Utility ----
     @nogc nothrow private void resetProc(ref Proc proc)
     {
-        if (proc.environment !is null) { releaseEnvironmentTable(proc.environment); proc.environment = null; }
-        if (isValidObject(proc.objectId)) destroyProcessObject(proc.objectId);
-        proc = Proc.init; proc.objectId = INVALID_OBJECT_ID;
+        if (proc.environment !is null)
+        {
+            releaseEnvironmentTable(proc.environment);
+            proc.environment = null;
+        }
+
+        if (isProcessObject(proc.objectId))
+        {
+            destroyProcessObject(proc.objectId);
+        }
+
+        proc = Proc.init;
+        proc.objectId = INVALID_OBJECT_ID;
     }
     @nogc nothrow private Proc* findByPid(pid_t pid){ foreach(ref p; g_ptable) if(p.state!=ProcState.UNUSED && p.pid==pid) return &p; return null; }
     @nogc nothrow private Proc* allocProc(){

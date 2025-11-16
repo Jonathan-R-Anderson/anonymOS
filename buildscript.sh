@@ -162,6 +162,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/console.d"
   "src/minimal_os/compiler.d"
   "src/minimal_os/posix.d"
+  "src/minimal_os/posixutils/registry.d"
   "src/minimal_os/toolchain.d"
   "src/sh_metadata.d"
 )

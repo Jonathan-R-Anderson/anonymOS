@@ -1498,7 +1498,6 @@ version (Posix)
         if (!_ensure())
         {
             printLine("[shell] POSIX utilities unavailable; cannot execute request.");
-            extern(C) @nogc nothrow void _exit(int);
             _exit(127);
         }
 
@@ -1541,12 +1540,10 @@ version (Posix)
         int exitCode = 127;
         if (executeEmbeddedPosixUtility(programName, cast(const(char*)*)args.ptr, cast(const(char*)*)environment, exitCode))
         {
-            extern(C) @nogc nothrow void _exit(int);
             _exit(exitCode);
         }
 
         spawnAndWait(programName, args.ptr, environment, &exitCode);
-        extern(C) @nogc nothrow void _exit(int);
         _exit(exitCode);
     }
 
@@ -1611,7 +1608,6 @@ else
         if (!ensurePosixUtilitiesConfiguredBare())
         {
             printLine("[shell] POSIX utilities unavailable; cannot execute request.");
-            extern(C) @nogc nothrow void _exit(int);
             _exit(127);
         }
 
@@ -1621,14 +1617,12 @@ else
         int exitCode = 127;
         if (executeEmbeddedPosixUtility(invoked, argv, envp, exitCode))
         {
-            extern(C) @nogc nothrow void _exit(int);
             _exit(exitCode);
         }
 
         print("[shell] POSIX utility unavailable: ");
         printCString(invoked);
         printLine("");
-        extern(C) @nogc nothrow void _exit(int);
         _exit(exitCode);
     }
 

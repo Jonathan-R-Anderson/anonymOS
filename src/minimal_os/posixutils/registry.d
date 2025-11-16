@@ -13,7 +13,7 @@ alias ExecEntryFn = extern(C) @nogc nothrow
     return false;
 }
 
-@nogc nothrow const(char)[][] embeddedPosixUtilityPaths()
+@nogc nothrow string[] embeddedPosixUtilityPaths()
 {
     return [];
 }

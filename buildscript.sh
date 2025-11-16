@@ -178,7 +178,13 @@ for source in "${KERNEL_SOURCES[@]}"; do
 done
 
 # Startup (asm)
-clang --target="$TARGET" -c "$STARTUP_SRC" -o "$STARTUP_O"
+CLANGFLAGS=("--target=$TARGET")
+if [ "$DEBUG" = "1" ]; then
+  CLANGFLAGS+=("-g")
+else
+  CLANGFLAGS+=("-O2")
+fi
+clang "${CLANGFLAGS[@]}" -c "$STARTUP_SRC" -o "$STARTUP_O"
 
 # ===================== Link kernel with builtins =====================
 LIBDIR="$SYSROOT/usr/lib"

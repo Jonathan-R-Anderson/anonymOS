@@ -1,0 +1,4 @@
+compile posixutils inside of the guest os, not outside or make sure they are imported directly into the kernel, whichever makes more sense. 
+
+get list of system commands for plan9 and convert them for objects
+convert posix commands for compatibility with an object based system

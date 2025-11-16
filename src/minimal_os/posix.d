@@ -1091,25 +1091,49 @@ mixin template PosixKernelShim()
         return EnvBool.unspecified;
     }
 
-    @nogc nothrow private bool detectConsoleAvailability()
+    private struct ConsoleDetectionResult
     {
+        bool available;
+        bool disabledByConfiguration;
+    }
+
+    @nogc nothrow private ConsoleDetectionResult detectConsoleAvailability()
+    {
+        ConsoleDetectionResult result;
+
         const EnvBool assumeConsole = parseEnvBoolean(readEnvironmentVariable("SH_ASSUME_CONSOLE"));
-        if (assumeConsole == EnvBool.truthy) return true;
-        else if (assumeConsole == EnvBool.falsy) return false;
+        if (assumeConsole == EnvBool.truthy)
+        {
+            result.available = true;
+            return result;
+        }
+        else if (assumeConsole == EnvBool.falsy)
+        {
+            result.available = false;
+            result.disabledByConfiguration = true;
+            return result;
+        }
 
         const EnvBool disableConsole = parseEnvBoolean(readEnvironmentVariable("SH_DISABLE_CONSOLE"));
-        if (disableConsole == EnvBool.truthy) return false;
+        if (disableConsole == EnvBool.truthy)
+        {
+            result.available = false;
+            result.disabledByConfiguration = true;
+            return result;
+        }
 
         version (Posix)
         {
-            return (isatty(STDIN_FILENO)  != 0)
+            result.available = (isatty(STDIN_FILENO)  != 0)
                 || (isatty(STDOUT_FILENO) != 0)
                 || (isatty(STDERR_FILENO) != 0);
         }
         else
         {
-            return false;
+            result.available = false;
         }
+
+        return result;
     }
 
     // ---- Simple spinlock (UP stub) ----
@@ -1588,12 +1612,13 @@ mixin template PosixKernelShim()
                 loadEnvironmentFromHost(initProc.environment);
                 ensureEnvironmentObject(initProc.environment, initProc.objectId);
             }
-            g_consoleAvailable = detectConsoleAvailability();
+            const auto consoleDetection = detectConsoleAvailability();
+            g_consoleAvailable = consoleDetection.available;
             configureConsoleFor(*initProc);
         }
         else
         {
-            g_consoleAvailable = detectConsoleAvailability();
+            g_consoleAvailable = detectConsoleAvailability().available;
         }
 
         g_shellRegistered = false;

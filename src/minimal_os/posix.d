@@ -120,6 +120,8 @@ private enum _havePosixBundle =
 
 static if (_havePosixBundle)
 {
+    static import minimal_os.kernel.posixbundle;
+
     alias embeddedPosixUtilitiesAvailable =
         minimal_os.kernel.posixbundle.embeddedPosixUtilitiesAvailable;
     alias embeddedPosixUtilitiesRoot =

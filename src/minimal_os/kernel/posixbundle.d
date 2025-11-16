@@ -7,7 +7,7 @@ static if (!__traits(compiles, { size_t dummy; }))
 import minimal_os.console : print, printLine, printCString, putChar, printStageHeader, printStatus, printStatusValue;
 
 enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
-enum string posixUtilityManifestPath = "build/posixutils/objects.tsv";
+enum string posixUtilityManifestPath = "/build/posixutils/objects.tsv";
 
 private enum size_t MAX_EMBEDDED_POSIX_UTILITIES = 128;
 private enum size_t MAX_CANONICAL_LENGTH = 96;

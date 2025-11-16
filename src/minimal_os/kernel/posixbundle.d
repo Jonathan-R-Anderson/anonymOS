@@ -8,6 +8,8 @@ import minimal_os.console : print, printLine, printCString, putChar, printStageH
 
 enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
 enum string posixUtilityManifestPath = "/build/posixutils/objects.tsv";
+enum string fallbackPosixUtilityManifestPath = "build/posixutils/objects.tsv";
+enum string posixUtilityManifestEnvVar = "POSIXUTILS_MANIFEST";
 
 private enum size_t MAX_EMBEDDED_POSIX_UTILITIES = 128;
 private enum size_t MAX_CANONICAL_LENGTH = 96;
@@ -181,7 +183,48 @@ version (Posix)
 @nogc nothrow private ManifestHandle openManifest()
 {
     immutable(char)[] mode = "r";
-    return fopen(posixUtilityManifestPath.ptr, mode.ptr);
+
+    auto handle = openManifestFromEnvironment(mode);
+    if (handle !is null)
+    {
+        return handle;
+    }
+
+    handle = openManifestFromPath(posixUtilityManifestPath, mode);
+    if (handle !is null)
+    {
+        return handle;
+    }
+
+    return openManifestFromPath(fallbackPosixUtilityManifestPath, mode);
+}
+
+version (Posix)
+@nogc nothrow private ManifestHandle openManifestFromEnvironment(immutable(char)[] mode)
+{
+    if (mode.ptr is null)
+    {
+        return null;
+    }
+
+    auto envPath = getenv(posixUtilityManifestEnvVar.ptr);
+    if (envPath is null || envPath[0] == '\0')
+    {
+        return null;
+    }
+
+    return fopen(envPath, mode.ptr);
+}
+
+version (Posix)
+@nogc nothrow private ManifestHandle openManifestFromPath(immutable(char)[] path, immutable(char)[] mode)
+{
+    if (path.ptr is null || path.length == 0 || mode.ptr is null)
+    {
+        return null;
+    }
+
+    return fopen(path.ptr, mode.ptr);
 }
 
 version (Posix)
@@ -561,6 +604,7 @@ version (Posix)
         int fclose(void*);
         char* fgets(char*, int, void*);
         char* getcwd(char*, size_t);
+        char* getenv(const(char)*);
     }
 
     enum int X_OK = 1;

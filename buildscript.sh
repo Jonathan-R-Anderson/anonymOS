@@ -34,6 +34,7 @@ ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
 ISO_SHELL_PATH="${ISO_SHELL_PATH:-opt/shell}"
+GRUB_CFG_SRC="${GRUB_CFG_SRC:-src/grub/grub.cfg}"
 
 # Optional toolchain bundle inside ISO (set to a path to enable)
 CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
@@ -278,15 +279,19 @@ if [ -d "$POSIXUTILS_OUT" ]; then
   cp -a "$POSIXUTILS_OUT/." "$POSIX_ISO_DEST/"
 fi
 
-cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
+if [ -f "$GRUB_CFG_SRC" ]; then
+  cp "$GRUB_CFG_SRC" "$ISO_STAGING_DIR/boot/grub/grub.cfg"
+else
+  cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
 set timeout=0
 set default=0
 
-menuentry "Toy OS" {
+menuentry "AnonymOS" {
     multiboot /boot/kernel.elf
     boot
 }
 EOF
+fi
 
 # Copy sysroot (handy for inspection on a mounted ISO)
 SYSROOT_DEST="$ISO_STAGING_DIR/$ISO_SYSROOT_PATH"

@@ -430,10 +430,23 @@ private void printBuildSummary()
         printLine("no");
     }
 
-    if (!shellState.shellActivated && shellState.failureReason !is null)
+    print(" Shell status     : ");
+    if (shellState.shellActivated)
     {
-        print(" Shell status     : ");
-        printLine(shellState.failureReason);
+        printLine("available");
+    }
+    else
+    {
+        if (shellState.failureReason !is null)
+        {
+            print("unavailable (");
+            print(shellState.failureReason);
+            printLine(")");
+        }
+        else
+        {
+            printLine("unavailable");
+        }
     }
 
     printDivider();

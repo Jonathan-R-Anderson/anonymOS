@@ -12,6 +12,8 @@ import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 nothrow:
 @nogc:
 
+enum immutable(char)[] posixUnavailableReason = "POSIX utilities unavailable";
+
 struct ShellIntegrationState
 {
     bool repositoryFetched;
@@ -227,9 +229,16 @@ private void bindPosixUtilitiesToKernel()
         printStatus("[shell] POSIX utilities  : ", status, "");
         printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
 
-        if (registered == 0 && (shellState.failureReason is null || shellState.failureReason.length == 0))
+        if (registered == 0)
         {
-            shellState.failureReason = "POSIX utilities unavailable";
+            if (shellState.failureReason is null || shellState.failureReason.length == 0)
+            {
+                shellState.failureReason = posixUnavailableReason;
+            }
+        }
+        else if (shellState.failureReason is posixUnavailableReason)
+        {
+            shellState.failureReason = null;
         }
     }
     else
@@ -240,9 +249,16 @@ private void bindPosixUtilitiesToKernel()
         printStatus("[shell] POSIX utilities  : ", status, "");
         printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
 
-        if (registered == 0 && (shellState.failureReason is null || shellState.failureReason.length == 0))
+        if (registered == 0)
         {
-            shellState.failureReason = "POSIX utilities unavailable";
+            if (shellState.failureReason is null || shellState.failureReason.length == 0)
+            {
+                shellState.failureReason = posixUnavailableReason;
+            }
+        }
+        else if (shellState.failureReason is posixUnavailableReason)
+        {
+            shellState.failureReason = null;
         }
     }
 }
@@ -296,7 +312,7 @@ private void finalizeShellActivation()
                 }
                 else if (!posixReady)
                 {
-                    reason = "POSIX utilities unavailable";
+                    reason = posixUnavailableReason;
                 }
                 else
                 {

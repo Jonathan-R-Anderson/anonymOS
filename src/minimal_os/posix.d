@@ -179,6 +179,12 @@ mixin template PosixKernelShim()
     alias RegistryEmbeddedPosixUtilityPathsFn =
         minimal_os.posix.RegistryEmbeddedPosixUtilityPathsFn;
 
+
+    // Bring debug helpers into the template's scope so mixin users see them.
+    alias debugBool          = minimal_os.posix.debugBool;
+    alias debugExpectActual  = minimal_os.posix.debugExpectActual;
+    alias debugLog           = minimal_os.posix.debugLog;
+
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;
     alias uid_t   = uint;

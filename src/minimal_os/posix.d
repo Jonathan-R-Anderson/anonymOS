@@ -27,19 +27,6 @@ void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
 // Embed/bundle helpers: declare first so the shim can reference them.
 // They’ll be satisfied by the posixbundle import (if present) or by stubs.
-@nogc nothrow bool embeddedPosixUtilitiesAvailable();
-@nogc nothrow immutable(char)[] embeddedPosixUtilitiesRoot();
-@nogc nothrow const(char)[][] embeddedPosixUtilityPaths();
-@nogc nothrow bool executeEmbeddedPosixUtility(
-    const(char)* programName,
-    const(char*)* argv,
-    const(char*)* envp,
-    out int exitCode);
-@nogc nothrow void spawnAndWait(
-    const(char)* programName,
-    char** argv,
-    char** envp,
-    int* exitCode);
 
 // Single canonical typedef for process entrypoints (C ABI, @nogc, nothrow)
 alias PosixProcessEntry = extern(C) @nogc nothrow
@@ -72,11 +59,15 @@ private enum _havePosixBundle =
 
 static if (_havePosixBundle)
 {
-    import minimal_os.kernel.posixbundle : embeddedPosixUtilitiesAvailable,
-                                           embeddedPosixUtilitiesRoot,
-                                           embeddedPosixUtilityPaths,
-                                           executeEmbeddedPosixUtility,
-                                           spawnAndWait;
+    alias embeddedPosixUtilitiesAvailable =
+        minimal_os.kernel.posixbundle.embeddedPosixUtilitiesAvailable;
+    alias embeddedPosixUtilitiesRoot =
+        minimal_os.kernel.posixbundle.embeddedPosixUtilitiesRoot;
+    alias embeddedPosixUtilityPaths =
+        minimal_os.kernel.posixbundle.embeddedPosixUtilityPaths;
+    alias executeEmbeddedPosixUtility =
+        minimal_os.kernel.posixbundle.executeEmbeddedPosixUtility;
+    alias spawnAndWait = minimal_os.kernel.posixbundle.spawnAndWait;
 }
 else
 {

@@ -75,7 +75,8 @@ else
 
     @nogc nothrow immutable(char)[] embeddedPosixUtilitiesRoot() { return null; }
 
-    @nogc nothrow const(char)[][] embeddedPosixUtilityPaths() { return []; }
+    // NOTE: use string[] here so it matches the bundle and registry helpers.
+    @nogc nothrow string[] embeddedPosixUtilityPaths() { return []; }
 
     @nogc nothrow bool executeEmbeddedPosixUtility(const(char)*, const(char*)*, const(char*)*, out int exitCode)
     {
@@ -1416,10 +1417,8 @@ mixin template PosixKernelShim()
         g_posixUtilitiesRegistered = false;
         g_posixUtilityCount = 0;
 
-        // Call the imported/stubbed functions directly. If the bundle
-        // helpers report no utilities, fall back to the registry helpers
-        // provided by minimal_os.posixutils.registry.
-        const(char)[][] paths;
+        // Use string[] so it matches both bundle and registry helpers.
+        string[] paths;
         if (EmbeddedPosixUtilitiesAvailableFn())
         {
             paths = EmbeddedPosixUtilityPathsFn();

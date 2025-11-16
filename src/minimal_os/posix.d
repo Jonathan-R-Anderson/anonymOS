@@ -7,6 +7,11 @@ public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 
+// Module-scope aliases so the name is visible everywhere (including
+// outside the PosixKernelShim mixin).
+alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
+alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
+
 // ---------------------------
 // Host/Posix C API (guarded)
 // ---------------------------
@@ -107,9 +112,9 @@ mixin template PosixKernelShim()
     alias EmbeddedPosixUtilityPathsFn =
         minimal_os.posix.embeddedPosixUtilityPaths;
     alias RegistryEmbeddedPosixUtilitiesAvailableFn =
-        minimal_os.posix.registryEmbeddedPosixUtilitiesAvailable;
+        minimal_os.posix.RegistryEmbeddedPosixUtilitiesAvailableFn;
     alias RegistryEmbeddedPosixUtilityPathsFn =
-        minimal_os.posix.registryEmbeddedPosixUtilityPaths;
+        minimal_os.posix.RegistryEmbeddedPosixUtilityPathsFn;
 
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;

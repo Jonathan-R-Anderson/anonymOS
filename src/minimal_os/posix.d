@@ -164,6 +164,9 @@ void shellExecEntry(const(char*)* argv, const(char*)* envp);
 // ------------------------------
 mixin template PosixKernelShim()
 {
+    // Ensure the defining module is visible wherever this mixin is used.
+    static import minimal_os.posix;
+
     // Use the canonical process entry alias defined at module scope
     alias ProcessEntry = minimal_os.posix.PosixProcessEntry;
 

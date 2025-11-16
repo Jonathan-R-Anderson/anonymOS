@@ -173,7 +173,7 @@ KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
-  ldc2 -I. -Isrc -mtriple="$TARGET" -betterC $DFLAGS \
+  ldc2 -I. -Isrc -J. -mtriple="$TARGET" -betterC $DFLAGS \
        -c "$source" -of="$obj"
   KERNEL_OBJECTS+=("$obj")
 done

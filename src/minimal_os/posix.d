@@ -45,6 +45,67 @@ alias PosixProcessEntry = extern(C) @nogc nothrow
 // Backwards-compatible alias
 alias ProcessEntry = PosixProcessEntry;
 
+private enum bool ENABLE_POSIX_DEBUG = true;
+
+@nogc nothrow private long debugBool(bool value)
+{
+    static if (ENABLE_POSIX_DEBUG)
+    {
+        return value ? 1 : 0;
+    }
+    else
+    {
+        return value ? 1 : 0;
+    }
+}
+
+@nogc nothrow private void debugPrefix()
+{
+    static if (ENABLE_POSIX_DEBUG)
+    {
+        print("[posix-debug] ");
+    }
+}
+
+@nogc nothrow private void debugPrintSigned(long value)
+{
+    static if (ENABLE_POSIX_DEBUG)
+    {
+        if (value < 0)
+        {
+            print("-");
+            printUnsigned(cast(size_t)(-value));
+        }
+        else
+        {
+            printUnsigned(cast(size_t)value);
+        }
+    }
+}
+
+@nogc nothrow private void debugExpectActual(immutable(char)[] label, long expected, long actual)
+{
+    static if (ENABLE_POSIX_DEBUG)
+    {
+        debugPrefix();
+        print(label);
+        print(": expected=");
+        debugPrintSigned(expected);
+        print(", actual=");
+        debugPrintSigned(actual);
+        printLine("");
+    }
+}
+
+@nogc nothrow private void debugLog(immutable(char)[] text)
+{
+    static if (ENABLE_POSIX_DEBUG)
+    {
+        debugPrefix();
+        printLine(text);
+    }
+}
+
 // ----------------------------------------------------------------------
 // Try to import embedded POSIX bundle glue; if unavailable, use stubs.
 // ----------------------------------------------------------------------
@@ -343,7 +404,16 @@ mixin template PosixKernelShim()
     // --------------- object registry ---------------
     @nogc nothrow private size_t allocateObjectSlot()
     {
-        foreach (i, ref objectRef; g_objects) if (!objectRef.used) return i;
+        const bool expectAvailable = (g_objectCount < MAX_KERNEL_OBJECTS);
+        foreach (i, ref objectRef; g_objects)
+        {
+            if (!objectRef.used)
+            {
+                debugExpectActual("allocateObjectSlot availability", debugBool(expectAvailable), 1);
+                return i;
+            }
+        }
+        debugExpectActual("allocateObjectSlot availability", debugBool(expectAvailable), 0);
         return INVALID_OBJECT_ID;
     }
     @nogc nothrow private bool isValidObject(size_t index)
@@ -365,8 +435,15 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private size_t createObjectFromBuffer(KernelObjectKind kind, ref char[MAX_OBJECT_NAME] name, immutable(char)[] type, size_t parent, long primary = 0, long secondary = 0)
     {
+        const bool expectSuccess = (g_objectCount < MAX_KERNEL_OBJECTS);
+        const bool expectParentValid = (parent != INVALID_OBJECT_ID);
         const size_t slot = allocateObjectSlot();
-        if (slot == INVALID_OBJECT_ID) return INVALID_OBJECT_ID;
+        if (slot == INVALID_OBJECT_ID)
+        {
+            debugExpectActual("createObjectFromBuffer allocation success", debugBool(expectSuccess), 0);
+            return INVALID_OBJECT_ID;
+        }
+        debugExpectActual("createObjectFromBuffer allocation success", debugBool(expectSuccess), 1);
 
         auto obj = &g_objects[slot];
         *obj = KernelObject.init;
@@ -376,11 +453,17 @@ mixin template PosixKernelShim()
 
         if (isValidObject(parent))
         {
+            debugExpectActual("createObjectFromBuffer parent valid", debugBool(expectParentValid), 1);
             auto parentObj = &g_objects[parent];
             if (parentObj.childCount < parentObj.children.length)
                 parentObj.children[parentObj.childCount++] = slot;
         }
+        else
+        {
+            debugExpectActual("createObjectFromBuffer parent valid", debugBool(expectParentValid), 0);
+        }
         if (g_objectCount < size_t.max) ++g_objectCount;
+        debugExpectActual("createObjectFromBuffer object count", cast(long)MAX_KERNEL_OBJECTS, cast(long)g_objectCount);
         return slot;
     }
     @nogc nothrow private size_t createObjectLiteral(KernelObjectKind kind, immutable(char)[] name, immutable(char)[] type, size_t parent, long primary = 0, long secondary = 0)
@@ -408,25 +491,36 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void destroyObject(size_t index)
     {
-        if (!isValidObject(index)) return;
+        const bool wasValid = isValidObject(index);
+        debugExpectActual("destroyObject target valid", debugBool(index != INVALID_OBJECT_ID), debugBool(wasValid));
+        if (!wasValid) return;
         auto obj = &g_objects[index]; auto parent = obj.parent;
-        if (isValidObject(parent)) detachChild(parent, index);
+        const bool parentValid = isValidObject(parent);
+        if (parentValid) detachChild(parent, index);
+        debugExpectActual("destroyObject parent linkage", debugBool(parent != INVALID_OBJECT_ID), debugBool(parentValid));
         *obj = KernelObject.init;
         if (g_objectCount > 0) --g_objectCount;
+        debugExpectActual("destroyObject object count", cast(long)MAX_KERNEL_OBJECTS, cast(long)g_objectCount);
     }
     @nogc nothrow private void setObjectLabelLiteral(size_t objectId, immutable(char)[] label)
     {
-        if (!isValidObject(objectId)) return;
+        const bool isValid = isValidObject(objectId);
+        debugExpectActual("setObjectLabelLiteral target valid", 1, debugBool(isValid));
+        if (!isValid) return;
         setLabelFromString(g_objects[objectId].label, label);
     }
     @nogc nothrow private void setObjectLabelCString(size_t objectId, const(char)* label)
     {
-        if (!isValidObject(objectId)) return;
+        const bool isValid = isValidObject(objectId);
+        debugExpectActual("setObjectLabelCString target valid", 1, debugBool(isValid));
+        if (!isValid) return;
         setLabelFromCString(g_objects[objectId].label, label);
     }
     @nogc nothrow private size_t findChildByBuffer(size_t parent, ref char[MAX_OBJECT_NAME] name)
     {
-        if (!isValidObject(parent)) return INVALID_OBJECT_ID;
+        const bool parentValid = isValidObject(parent);
+        debugExpectActual("findChildByBuffer parent valid", 1, debugBool(parentValid));
+        if (!parentValid) return INVALID_OBJECT_ID;
         auto parentObj = &g_objects[parent];
         foreach (i; 0 .. parentObj.childCount)
         {
@@ -486,11 +580,13 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void initializeObjectRegistry()
     {
+        debugExpectActual("initializeObjectRegistry ready flag before", 0, debugBool(g_objectRegistryReady));
         if (g_objectRegistryReady) return;
 
         foreach (ref obj; g_objects) obj = KernelObject.init;
         g_objectCount = 0;
         g_objectRoot = createObjectLiteral(KernelObjectKind.Namespace, "/", "namespace", INVALID_OBJECT_ID);
+        debugExpectActual("initializeObjectRegistry root created", 1, debugBool(isValidObject(g_objectRoot)));
         if (!isValidObject(g_objectRoot)) return;
 
         g_objectProcNamespace = createObjectLiteral(KernelObjectKind.Namespace, "proc", "namespace", g_objectRoot);
@@ -504,15 +600,18 @@ mixin template PosixKernelShim()
         }
 
         g_objectRegistryReady = true;
+        debugExpectActual("initializeObjectRegistry ready flag after", 1, debugBool(g_objectRegistryReady));
     }
 
     // --------------- process object helpers ---------------
     @nogc nothrow private size_t createProcessObject(pid_t pid)
     {
+        debugExpectActual("createProcessObject registry ready", 1, debugBool(g_objectRegistryReady));
         if (!g_objectRegistryReady) return INVALID_OBJECT_ID;
         char[MAX_OBJECT_NAME] name; clearBuffer(name); setBufferFromString(name, "process:"); appendUnsigned(name, cast(size_t)pid);
         auto objectId = createObjectFromBuffer(KernelObjectKind.Process, name, "process", g_objectProcNamespace, cast(long)pid);
         if (isValidObject(objectId)) setObjectLabelLiteral(objectId, "unnamed");
+        debugExpectActual("createProcessObject object valid", 1, debugBool(isValidObject(objectId)));
         return objectId;
     }
     @nogc nothrow private size_t cloneProcessObject(pid_t pid, size_t sourceObject)
@@ -520,12 +619,16 @@ mixin template PosixKernelShim()
         auto objectId = createProcessObject(pid);
         if (isValidObject(objectId) && isValidObject(sourceObject))
             setLabelFromCString(g_objects[objectId].label, g_objects[sourceObject].label.ptr);
+        debugExpectActual("cloneProcessObject source valid", debugBool(sourceObject != INVALID_OBJECT_ID), debugBool(isValidObject(sourceObject)));
         return objectId;
     }
     @nogc nothrow private void destroyProcessObject(size_t objectId)
     {
+        debugExpectActual("destroyProcessObject registry ready", 1, debugBool(g_objectRegistryReady));
         if (!g_objectRegistryReady) return;
-        if (!isProcessObject(objectId)) return;
+        const bool isProcess = isProcessObject(objectId);
+        debugExpectActual("destroyProcessObject target process", 1, debugBool(isProcess));
+        if (!isProcess) return;
         destroyObject(objectId);
     }
     @nogc nothrow private bool isEnvironmentObject(size_t index)
@@ -534,30 +637,43 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private size_t createEnvironmentObject(size_t processObject)
     {
-        if (!g_objectRegistryReady || !isProcessObject(processObject)) return INVALID_OBJECT_ID;
+        debugExpectActual("createEnvironmentObject registry ready", 1, debugBool(g_objectRegistryReady));
+        if (!g_objectRegistryReady || !isProcessObject(processObject))
+        {
+            debugExpectActual("createEnvironmentObject process valid", 1, debugBool(isProcessObject(processObject)));
+            return INVALID_OBJECT_ID;
+        }
         char[MAX_OBJECT_NAME] name; clearBuffer(name); setBufferFromString(name, "env");
         auto objectId = createObjectFromBuffer(KernelObjectKind.Environment, name, "process.environment", processObject);
         if (isValidObject(objectId)) setObjectLabelLiteral(objectId, "environment");
+        debugExpectActual("createEnvironmentObject created", 1, debugBool(isValidObject(objectId)));
         return objectId;
     }
     @nogc nothrow private void destroyEnvironmentObject(size_t objectId)
     {
+        debugExpectActual("destroyEnvironmentObject registry ready", 1, debugBool(g_objectRegistryReady));
         if (!g_objectRegistryReady) return;
-        if (!isEnvironmentObject(objectId)) return;
+        const bool isEnv = isEnvironmentObject(objectId);
+        debugExpectActual("destroyEnvironmentObject target type", 1, debugBool(isEnv));
+        if (!isEnv) return;
         destroyObject(objectId);
     }
 
     // --------------- environment table ---------------
     @nogc nothrow private void clearEnvironmentTable(EnvironmentTable* table)
     {
-        if (table is null) return;
+        const bool tablePresent = (table !is null);
+        debugExpectActual("clearEnvironmentTable table present", 1, debugBool(tablePresent));
+        if (!tablePresent) return;
         foreach (ref entry; table.entries) entry = EnvironmentEntry.init;
         foreach (i; 0 .. table.pointerCache.length) table.pointerCache[i] = null;
         table.entryCount = 0; table.pointerCount = 0; table.pointerDirty = true;
     }
     @nogc nothrow private EnvironmentEntry* findEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength)
     {
-        if (table is null || name is null || nameLength == 0) return null;
+        const bool tableReady = (table !is null);
+        debugExpectActual("findEnvironmentEntry table present", 1, debugBool(tableReady));
+        if (!tableReady || name is null || nameLength == 0) return null;
         foreach (ref entry; table.entries)
         {
             if (!entry.used || entry.nameLength != nameLength) continue;
@@ -569,7 +685,9 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private EnvironmentEntry* allocateEnvironmentEntry(EnvironmentTable* table)
     {
-        if (table is null) return null;
+        const bool tablePresent = (table !is null);
+        debugExpectActual("allocateEnvironmentEntry table present", 1, debugBool(tablePresent));
+        if (!tablePresent) return null;
         foreach (ref entry; table.entries)
         {
             if (!entry.used)
@@ -578,16 +696,30 @@ mixin template PosixKernelShim()
                 entry.used = true;
                 if (table.entryCount < size_t.max) ++table.entryCount;
                 table.pointerDirty = true;
+                debugExpectActual("allocateEnvironmentEntry success", 1, 1);
                 return &entry;
             }
         }
+        debugExpectActual("allocateEnvironmentEntry success", 1, 0);
         return null;
     }
     @nogc nothrow private bool setEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength, const(char)* value, size_t valueLength, bool overwrite = true)
     {
-        if (table is null || name is null) return false;
-        if (nameLength == 0 || nameLength >= MAX_ENV_NAME_LENGTH) return false;
-        if (valueLength >= MAX_ENV_VALUE_LENGTH) return false;
+        const bool hasTable = (table !is null);
+        const bool hasName = (name !is null);
+        debugExpectActual("setEnvironmentEntry table present", 1, debugBool(hasTable));
+        debugExpectActual("setEnvironmentEntry name pointer", 1, debugBool(hasName));
+        if (!hasTable || !hasName) return false;
+        if (nameLength == 0 || nameLength >= MAX_ENV_NAME_LENGTH)
+        {
+            debugExpectActual("setEnvironmentEntry name length", 1, 0);
+            return false;
+        }
+        if (valueLength >= MAX_ENV_VALUE_LENGTH)
+        {
+            debugExpectActual("setEnvironmentEntry value length", 1, 0);
+            return false;
+        }
 
         auto entry = findEnvironmentEntry(table, name, nameLength);
         if (entry is null) entry = allocateEnvironmentEntry(table);
@@ -598,19 +730,23 @@ mixin template PosixKernelShim()
         foreach (i; 0 .. entry.name.length)  entry.name[i]  = (i < nameLength) ? name[i]  : 0;
         foreach (i; 0 .. entry.value.length) entry.value[i] = (i < valueLength) ? value[i] : 0;
         foreach (i; 0 .. entry.combined.length) entry.combined[i] = 0;
+        debugExpectActual("setEnvironmentEntry success", 1, 1);
         return true;
     }
     @nogc nothrow private bool unsetEnvironmentEntry(EnvironmentTable* table, const(char)* name, size_t nameLength)
     {
+        debugExpectActual("unsetEnvironmentEntry table present", 1, debugBool(table !is null));
         auto entry = findEnvironmentEntry(table, name, nameLength);
         if (entry is null) return false;
         *entry = EnvironmentEntry.init;
         if (table.entryCount > 0) --table.entryCount;
         table.pointerDirty = true;
+        debugExpectActual("unsetEnvironmentEntry success", 1, 1);
         return true;
     }
     @nogc nothrow private void refreshEnvironmentEntry(ref EnvironmentEntry entry)
     {
+        debugExpectActual("refreshEnvironmentEntry entry used", 1, debugBool(entry.used));
         if (!entry.used) return;
 
         size_t index = 0;
@@ -636,6 +772,7 @@ mixin template PosixKernelShim()
         entry.combined[index] = 0;
         entry.combinedLength = index;
         entry.dirty = false;
+        debugExpectActual("refreshEnvironmentEntry combined length", cast(long)entry.combined.length, cast(long)entry.combinedLength);
     }
     @nogc nothrow private const(char)* environmentEntryPair(ref EnvironmentEntry entry)
     {
@@ -645,7 +782,10 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void rebuildEnvironmentPointers(EnvironmentTable* table)
     {
-        if (table is null || !table.used) return;
+        const bool tableReady = (table !is null) && table.used;
+        debugExpectActual("rebuildEnvironmentPointers table ready", 1, debugBool(tableReady));
+        if (!tableReady) return;
+        debugExpectActual("rebuildEnvironmentPointers dirty flag", 1, debugBool(table.pointerDirty));
         if (!table.pointerDirty) return;
 
         size_t index = 0;
@@ -662,9 +802,11 @@ mixin template PosixKernelShim()
 
         table.pointerCount = (index == 0) ? 0 : index - 1;
         table.pointerDirty = false;
+        debugExpectActual("rebuildEnvironmentPointers pointer count", cast(long)table.entryCount, cast(long)table.pointerCount);
     }
     @nogc nothrow private EnvironmentTable* allocateEnvironmentTable(pid_t ownerPid, size_t processObject)
     {
+        debugExpectActual("allocateEnvironmentTable ownerPid valid", 1, debugBool(ownerPid >= 0));
         foreach (ref table; g_environmentTables)
         {
             if (!table.used)
@@ -676,30 +818,41 @@ mixin template PosixKernelShim()
                 clearEnvironmentTable(&table);
                 if (g_objectRegistryReady && isProcessObject(processObject))
                     table.objectId = createEnvironmentObject(processObject);
+                debugExpectActual("allocateEnvironmentTable object created", debugBool(isProcessObject(processObject)), debugBool(table.objectId != INVALID_OBJECT_ID));
                 return &table;
             }
         }
+        debugExpectActual("allocateEnvironmentTable success", 1, 0);
         return null;
     }
     @nogc nothrow private void ensureEnvironmentObject(EnvironmentTable* table, size_t processObject)
     {
-        if (table is null) return;
+        const bool tablePresent = (table !is null);
+        debugExpectActual("ensureEnvironmentObject table present", 1, debugBool(tablePresent));
+        if (!tablePresent) return;
         if (table.objectId != INVALID_OBJECT_ID) return;
+        debugExpectActual("ensureEnvironmentObject registry ready", 1, debugBool(g_objectRegistryReady));
+        debugExpectActual("ensureEnvironmentObject process valid", 1, debugBool(isProcessObject(processObject)));
         if (!g_objectRegistryReady || !isProcessObject(processObject)) return;
         table.objectId = createEnvironmentObject(processObject);
+        debugExpectActual("ensureEnvironmentObject object created", 1, debugBool(table.objectId != INVALID_OBJECT_ID));
     }
     @nogc nothrow private void releaseEnvironmentTable(EnvironmentTable* table)
     {
-        if (table is null || !table.used) return;
+        const bool tableReady = (table !is null) && table.used;
+        debugExpectActual("releaseEnvironmentTable table ready", 1, debugBool(tableReady));
+        if (!tableReady) return;
         if (table.objectId != INVALID_OBJECT_ID) destroyEnvironmentObject(table.objectId);
         clearEnvironmentTable(table);
         table.used = false; table.ownerPid = 0; table.objectId = INVALID_OBJECT_ID;
     }
     @nogc nothrow private void cloneEnvironmentTable(EnvironmentTable* destination, EnvironmentTable* source)
     {
+        debugExpectActual("cloneEnvironmentTable destination present", 1, debugBool(destination !is null));
         if (destination is null) return;
         clearEnvironmentTable(destination);
         if (source is null || !source.used) return;
+        debugExpectActual("cloneEnvironmentTable source used", 1, debugBool(source !is null && source.used));
         foreach (ref entry; source.entries)
         {
             if (!entry.used) continue;
@@ -708,9 +861,11 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void loadEnvironmentFromVector(EnvironmentTable* table, const(char*)* envp)
     {
+        debugExpectActual("loadEnvironmentFromVector table present", 1, debugBool(table !is null));
         if (table is null) return;
         clearEnvironmentTable(table);
         if (envp is null) return;
+        debugExpectActual("loadEnvironmentFromVector envp present", 1, debugBool(envp !is null));
 
         size_t index = 0;
         while (envp[index] !is null)
@@ -728,14 +883,17 @@ mixin template PosixKernelShim()
             setEnvironmentEntry(table, kv, nameLength, valuePtr, valueLength);
             ++index;
         }
+        debugExpectActual("loadEnvironmentFromVector entries", cast(long)table.entryCount, cast(long)table.entryCount);
     }
     @nogc nothrow private void loadEnvironmentFromHost(EnvironmentTable* table)
     {
+        debugExpectActual("loadEnvironmentFromHost table present", 1, debugBool(table !is null));
         if (table is null) return;
         clearEnvironmentTable(table);
         version (Posix)
         {
             if (environ is null) return;
+            debugExpectActual("loadEnvironmentFromHost environ present", 1, debugBool(environ !is null));
             int index = 0;
             while (environ[index] !is null)
             {
@@ -756,6 +914,7 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private const(char*)* getEnvironmentVector(Proc* proc)
     {
+        debugExpectActual("getEnvironmentVector process present", 1, debugBool(proc !is null));
         if (proc is null) return null;
         auto table = proc.environment;
         if (table is null || !table.used) return null;
@@ -764,12 +923,14 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const(char)* name, size_t nameLength, const(char)* value, size_t valueLength, bool overwrite = true)
     {
+        debugExpectActual("setEnvironmentValueForProcess proc present", 1, debugBool(proc !is null));
         if (proc is null) return false;
         auto table = proc.environment; if (table is null || !table.used) return false;
         return setEnvironmentEntry(table, name, nameLength, value, valueLength, overwrite);
     }
     @nogc nothrow private bool setEnvironmentValueForProcess(Proc* proc, const(char)* name, const(char)* value, bool overwrite = true)
     {
+        debugExpectActual("setEnvironmentValueForProcess name present", 1, debugBool(name !is null));
         if (name is null) return false;
         const size_t nameLength = cStringLength(name);
         const size_t valueLength = (value is null) ? 0 : cStringLength(value);
@@ -777,6 +938,7 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private const(char)* readEnvironmentValueFromProcess(Proc* proc, const(char)* name, size_t nameLength)
     {
+        debugExpectActual("readEnvironmentValueFromProcess proc present", 1, debugBool(proc !is null));
         if (proc is null) return null;
         auto table = proc.environment; if (table is null || !table.used) return null;
         auto entry = findEnvironmentEntry(table, name, nameLength);
@@ -803,6 +965,7 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void assignProcessState(ref Proc proc, ProcState state)
     {
+        debugExpectActual("assignProcessState transition", cast(long)proc.state, cast(long)state);
         proc.state = state;
         updateProcessObjectState(proc);
     }
@@ -835,6 +998,8 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private void configureConsoleFor(ref Proc proc)
     {
+        const long actualCoverage = (proc.fds.length >= 3) ? 3 : cast(long)proc.fds.length;
+        debugExpectActual("configureConsoleFor stdio coverage", 3, actualCoverage);
         foreach (fd; 0 .. 3)
         {
             if (fd >= proc.fds.length) break;
@@ -1042,11 +1207,13 @@ mixin template PosixKernelShim()
 
     // ---- Very small round-robin scheduler ----
     @nogc nothrow void schedYield(){
+        debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
         if(!g_initialized) return;
         if(g_current is null) {
             foreach(ref p; g_ptable){
                 if(p.state==ProcState.READY){ g_current = &p; assignProcessState(p, ProcState.RUNNING); break; }
             }
+            debugExpectActual("schedYield initial current", 1, debugBool(g_current !is null));
             return;
         }
         lock(&g_plock);
@@ -1071,15 +1238,22 @@ mixin template PosixKernelShim()
             g_current  = next;
             arch_context_switch(oldp, next);
         }
+        debugExpectActual("schedYield next selected", 1, debugBool(next !is null));
         unlock(&g_plock);
     }
 
     // ---- POSIX core syscalls (kernel-side) ----
-    @nogc nothrow pid_t sys_getpid(){ return (g_current is null) ? 0 : g_current.pid; }
+    @nogc nothrow pid_t sys_getpid(){
+        const bool hasCurrent = (g_current !is null);
+        debugExpectActual("sys_getpid current present", 1, debugBool(hasCurrent));
+        return hasCurrent ? g_current.pid : 0;
+    }
 
     @nogc nothrow pid_t sys_fork(){
+        debugExpectActual("sys_fork current present", 1, debugBool(g_current !is null));
         lock(&g_plock);
         auto np = allocProc();
+        debugExpectActual("sys_fork allocation success", 1, debugBool(np !is null));
         if(np is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
         np.ppid   = (g_current ? g_current.pid : 0);
@@ -1116,6 +1290,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow int sys_execve(const(char)* path, const(char*)* argv, const(char*)* envp)
     {
+        debugExpectActual("sys_execve current present", 1, debugBool(g_current !is null));
         if (g_current is null) return setErrno(Errno.ESRCH);
 
         const(char)* execPath = path;
@@ -1124,7 +1299,9 @@ mixin template PosixKernelShim()
             resolved = findExecutableSlot(argv[0]);
             if (resolved !is null) execPath = argv[0];
         }
+        debugExpectActual("sys_execve slot resolved", 1, debugBool(resolved !is null));
         if (resolved is null)   return setErrno(Errno.ENOENT);
+        debugExpectActual("sys_execve entry present", 1, debugBool(resolved.entry !is null));
         if (resolved.entry is null) return setErrno(Errno.ENOEXEC);
 
         auto cur = g_current;
@@ -1149,13 +1326,16 @@ mixin template PosixKernelShim()
                 if(status) *status = p.exitCode;
                 auto pid = p.pid;
                 resetProc(p);
+                debugExpectActual("sys_waitpid child matched", 1, 1);
                 return pid;
             }
         }
+        debugExpectActual("sys_waitpid child matched", 1, 0);
         return setErrno(Errno.ECHILD);
     }
 
     @nogc nothrow void sys__exit(int code){
+        debugExpectActual("sys__exit current present", 1, debugBool(g_current !is null));
         if(g_current is null) return;
         g_current.exitCode = encodeExitStatus(code);
         assignProcessState(*g_current, ProcState.ZOMBIE);
@@ -1165,6 +1345,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow int sys_kill(pid_t pid, int sig){
         auto p = findByPid(pid);
+        debugExpectActual("sys_kill target found", 1, debugBool(p !is null));
         if(p is null) return setErrno(Errno.ESRCH);
         switch(sig){
             case SIG.KILL, SIG.TERM:
@@ -1177,7 +1358,10 @@ mixin template PosixKernelShim()
     }
 
     @nogc nothrow uint sys_sleep(uint seconds){
-        foreach(_; 0 .. seconds * 100) { schedYield(); }
+        size_t actualIterations = 0;
+        const size_t expectedIterations = seconds * 100;
+        foreach(_; 0 .. expectedIterations) { schedYield(); ++actualIterations; }
+        debugExpectActual("sys_sleep iterations", cast(long)expectedIterations, cast(long)actualIterations);
         return 0;
     }
 
@@ -1187,11 +1371,14 @@ mixin template PosixKernelShim()
     @nogc nothrow ssize_t sys_read (int fd, void* buffer, size_t length)
     {
         int hostFd = -1;
-        if (!resolveHostFd(fd, hostFd)) return cast(ssize_t)setErrno(Errno.EBADF);
+        const bool resolved = resolveHostFd(fd, hostFd);
+        debugExpectActual("sys_read fd resolved", 1, debugBool(resolved));
+        if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
         version (Posix)
         {
             auto result = read(hostFd, buffer, length);
             if (result < 0) { _errno = errno; return -1; }
+            debugExpectActual("sys_read bytes", cast(long)length, cast(long)result);
             return cast(ssize_t)result;
         }
         else
@@ -1202,11 +1389,14 @@ mixin template PosixKernelShim()
     @nogc nothrow ssize_t sys_write(int fd, const void* buffer, size_t length)
     {
         int hostFd = -1;
-        if (!resolveHostFd(fd, hostFd)) return cast(ssize_t)setErrno(Errno.EBADF);
+        const bool resolved = resolveHostFd(fd, hostFd);
+        debugExpectActual("sys_write fd resolved", 1, debugBool(resolved));
+        if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
         version (Posix)
         {
             auto result = write(hostFd, buffer, length);
             if (result < 0) { _errno = errno; return -1; }
+            debugExpectActual("sys_write bytes", cast(long)length, cast(long)result);
             return cast(ssize_t)result;
         }
         else
@@ -1240,8 +1430,11 @@ mixin template PosixKernelShim()
 
     @nogc nothrow int registerProcessExecutable(const(char)* path, ProcessEntry entry)
     {
+        debugExpectActual("registerProcessExecutable path present", 1, debugBool(path !is null));
+        debugExpectActual("registerProcessExecutable entry present", 1, debugBool(entry !is null));
         if(path is null || entry is null) return setErrno(Errno.EINVAL);
         const size_t length = cStringLength(path);
+        debugExpectActual("registerProcessExecutable length", EXEC_PATH_LENGTH - 1, cast(long)length);
         if(length == 0 || length >= EXEC_PATH_LENGTH) return setErrno(Errno.E2BIG);
 
         auto existing = findExecutableSlot(path);
@@ -1257,6 +1450,7 @@ mixin template PosixKernelShim()
                     if (objectId != INVALID_OBJECT_ID) existing.objectId = objectId;
                 }
             }
+            debugExpectActual("registerProcessExecutable reuse", 1, 1);
             return 0;
         }
 
@@ -1276,6 +1470,7 @@ mixin template PosixKernelShim()
                     auto objectId = registerExecutableObject(slot.path.ptr, slotIndex);
                     if (objectId != INVALID_OBJECT_ID) slot.objectId = objectId;
                 }
+                debugExpectActual("registerProcessExecutable new slot", 1, 1);
                 return 0;
             }
         }
@@ -1285,10 +1480,12 @@ mixin template PosixKernelShim()
     @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
     {
         auto slot = findExecutableSlot(path);
+        debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));
         if(slot is null) return setErrno(Errno.ENOENT);
 
         lock(&g_plock);
         auto proc = allocProc();
+        debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(proc !is null));
         if(proc is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
         proc.ppid   = (g_current ? g_current.pid : 0);
@@ -1300,13 +1497,16 @@ mixin template PosixKernelShim()
         setNameFromCString(proc.name, path);
         updateProcessObjectLabel(*proc, path);
         unlock(&g_plock);
+        debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(proc.pid > 0));
         return proc.pid;
     }
 
     @nogc nothrow int completeProcess(pid_t pid, int exitCode)
     {
         auto proc = findByPid(pid);
+        debugExpectActual("completeProcess target found", 1, debugBool(proc !is null));
         if(proc is null) return setErrno(Errno.ESRCH);
+        debugExpectActual("completeProcess state active", 1, debugBool(!(proc.state==ProcState.UNUSED || proc.state==ProcState.ZOMBIE)));
         if(proc.state==ProcState.UNUSED || proc.state==ProcState.ZOMBIE) return setErrno(Errno.EINVAL);
 
         proc.exitCode = encodeExitStatus(exitCode);
@@ -1314,6 +1514,7 @@ mixin template PosixKernelShim()
         proc.pendingArgv = null;
         proc.pendingEnvp = null;
         proc.pendingExec = false;
+        debugExpectActual("completeProcess success", 1, 1);
         return 0;
     }
 
@@ -1339,6 +1540,8 @@ mixin template PosixKernelShim()
     @nogc nothrow void initializeInterrupts() { /* Minimal OS build: no IRQs configured */ }
 
     @nogc nothrow void posixInit(){
+        debugLog("posixInit invoked");
+        debugExpectActual("posixInit already initialized", 0, debugBool(g_initialized));
         if(g_initialized) return;
         initializeObjectRegistry();
         foreach(ref p; g_ptable) resetProc(p);
@@ -1350,6 +1553,7 @@ mixin template PosixKernelShim()
         g_posixConfigured = false;
 
         auto initProc = allocProc();
+        debugExpectActual("posixInit init process", 1, debugBool(initProc !is null));
         if(initProc !is null)
         {
             initProc.ppid  = 0;
@@ -1383,11 +1587,13 @@ mixin template PosixKernelShim()
             }
         }
         g_initialized = true;
+        debugExpectActual("posixInit initialized flag", 1, debugBool(g_initialized));
     }
 
     // ------- Embedded POSIX utilities registration -------
     @nogc nothrow private bool registerPosixUtilityAlias(const(char)* aliasName, bool contributes)
     {
+        debugExpectActual("registerPosixUtilityAlias alias present", 1, debugBool(aliasName !is null));
         if (aliasName is null || aliasName[0] == '\0') return false;
 
         auto existing = findExecutableSlot(aliasName);
@@ -1397,9 +1603,11 @@ mixin template PosixKernelShim()
         const int result = registerProcessExecutable(
             aliasName,
             cast(ProcessEntry)&PosixUtilityExecEntryFn);
+        debugExpectActual("registerPosixUtilityAlias registration result", 0, result);
         if (result != 0) return false;
 
         if (!alreadyRegistered && contributes) ++g_posixUtilityCount;
+        debugExpectActual("registerPosixUtilityAlias count", cast(long)g_posixUtilityCount, cast(long)g_posixUtilityCount);
         return true;
     }
 
@@ -1571,7 +1779,9 @@ version (Posix)
                 || RegistryEmbeddedPosixUtilitiesAvailableFn();
         }
 
-        if (!_ensure())
+        const bool embedAvailable = _ensure();
+        debugExpectActual("posixUtilityExecEntry utilities available", 1, debugBool(embedAvailable));
+        if (!embedAvailable)
         {
             printLine("[shell] POSIX utilities unavailable; cannot execute request.");
             _exit(127);
@@ -1614,12 +1824,15 @@ version (Posix)
         char** environment = (vector !is null) ? cast(char**)vector : null;
 
         int exitCode = 127;
-        if (executeEmbeddedPosixUtility(programName, cast(const(char*)*)args.ptr, cast(const(char*)*)environment, exitCode))
+        const bool executedEmbedded = executeEmbeddedPosixUtility(programName, cast(const(char*)*)args.ptr, cast(const(char*)*)environment, exitCode);
+        debugExpectActual("posixUtilityExecEntry embedded exec", 1, debugBool(executedEmbedded));
+        if (executedEmbedded)
         {
             _exit(exitCode);
         }
 
         spawnAndWait(programName, args.ptr, environment, &exitCode);
+        debugExpectActual("posixUtilityExecEntry spawned exit", exitCode, exitCode);
         _exit(exitCode);
     }
 
@@ -1627,6 +1840,7 @@ version (Posix)
     {
         // We’ll look up the C ABI wrapper declared in the shim area
         extern(C) @nogc nothrow int execve(const(char)*, const(char*)*, const(char*)*);
+        debugExpectActual("launchInteractiveShell execve present", 1, debugBool(execve !is null));
         if (execve is null)
         {
             printLine("[shell] execve unavailable; cannot launch.");
@@ -1638,6 +1852,7 @@ version (Posix)
         const(char*)[1] envp = [null];
 
         auto rc = execve("/bin/sh\0".ptr, argv.ptr, envp.ptr);
+        debugExpectActual("launchInteractiveShell execve rc", 0, rc);
         if (rc < 0)
         {
             printLine("[shell] execve('/bin/sh') failed.");
@@ -1652,8 +1867,11 @@ else
     {
         // Ask the embed-status (stubs return false) and fall back to the
         // registry helpers when available.
-        return embeddedPosixUtilitiesAvailable()
-            || RegistryEmbeddedPosixUtilitiesAvailableFn();
+        const bool embed = embeddedPosixUtilitiesAvailable();
+        const bool registry = RegistryEmbeddedPosixUtilitiesAvailableFn();
+        debugExpectActual("ensurePosixUtilitiesConfiguredBare embedded", 1, debugBool(embed));
+        debugExpectActual("ensurePosixUtilitiesConfiguredBare registry", 1, debugBool(registry));
+        return embed || registry;
     }
 
     private @nogc nothrow void printCString(const(char)* s)
@@ -1691,7 +1909,9 @@ else
         if (argv !is null && argv[0] !is null && argv[0][0] != '\0') invoked = argv[0];
 
         int exitCode = 127;
-        if (executeEmbeddedPosixUtility(invoked, argv, envp, exitCode))
+        const bool executedEmbedded = executeEmbeddedPosixUtility(invoked, argv, envp, exitCode);
+        debugExpectActual("bare posixUtilityExecEntry embedded exec", 1, debugBool(executedEmbedded));
+        if (executedEmbedded)
         {
             _exit(exitCode);
         }
@@ -1699,11 +1919,13 @@ else
         print("[shell] POSIX utility unavailable: ");
         printCString(invoked);
         printLine("");
+        debugExpectActual("bare posixUtilityExecEntry exit code", exitCode, exitCode);
         _exit(exitCode);
     }
 
     package @nogc nothrow void launchInteractiveShell()
     {
         printLine("[shell] Interactive shell unavailable: host console support missing.");
+        debugLog("launchInteractiveShell stub invoked");
     }
 }

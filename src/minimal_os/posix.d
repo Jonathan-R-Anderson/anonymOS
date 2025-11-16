@@ -1478,7 +1478,81 @@ version (Posix)
     extern(C) @nogc nothrow const(char)* extractProgramName(const(char)* invoked,
                                                             char* outBuf,
                                                             size_t outBufLen,
-                                                            out size_t outLen);
+                                                            out size_t outLen)
+    {
+        outLen = 0;
+        if (outBuf !is null && outBufLen > 0)
+        {
+            outBuf[0] = '\0';
+        }
+
+        if (invoked is null)
+        {
+            return null;
+        }
+
+        size_t totalLen = 0;
+        while (invoked[totalLen] != '\0')
+        {
+            ++totalLen;
+        }
+
+        if (totalLen == 0)
+        {
+            return invoked;
+        }
+
+        size_t endIndex = totalLen;
+        while (endIndex > 0)
+        {
+            immutable char c = invoked[endIndex - 1];
+            if (c != '/' && c != '\\')
+            {
+                break;
+            }
+            --endIndex;
+        }
+
+        size_t startIndex = endIndex;
+        while (startIndex > 0)
+        {
+            immutable char c = invoked[startIndex - 1];
+            if (c == '/' || c == '\\')
+            {
+                break;
+            }
+            --startIndex;
+        }
+
+        const size_t baseLen = (endIndex >= startIndex) ? (endIndex - startIndex) : 0;
+        const(char)* basePtr = invoked + startIndex;
+
+        if (baseLen == 0)
+        {
+            return invoked;
+        }
+
+        outLen = baseLen;
+
+        if (outBuf is null || outBufLen == 0)
+        {
+            return basePtr;
+        }
+
+        size_t copyLen = baseLen;
+        if (copyLen >= outBufLen)
+        {
+            copyLen = outBufLen - 1;
+        }
+
+        foreach (size_t i; 0 .. copyLen)
+        {
+            outBuf[i] = basePtr[i];
+        }
+        outBuf[copyLen] = '\0';
+
+        return outBuf;
+    }
 
     extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)
     {

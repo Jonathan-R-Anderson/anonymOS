@@ -30,6 +30,11 @@ void shellExecEntry(const(char*)* argv, const(char*)* envp);
 extern(C) @nogc nothrow
 void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
+// Provided by the PosixKernelShim (in the kernel/main) or host.
+// Declare it here so this module can call it.
+extern(C) @nogc nothrow
+void _exit(int code);
+
 // Embed/bundle helpers: declare first so the shim can reference them.
 // They’ll be satisfied by the posixbundle import (if present) or by stubs.
 
@@ -39,16 +44,6 @@ alias PosixProcessEntry = extern(C) @nogc nothrow
 
 // Backwards-compatible alias
 alias ProcessEntry = PosixProcessEntry;
-
-
-// ----------------------------------------------
-// Forward decls visible to PosixKernelShim users
-// ----------------------------------------------
-extern(C) @nogc nothrow
-void shellExecEntry(const(char*)* argv, const(char*)* envp);
-
-extern(C) @nogc nothrow
-void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
 // ----------------------------------------------------------------------
 // Try to import embedded POSIX bundle glue; if unavailable, use stubs.
@@ -95,6 +90,13 @@ else
         if (exitCode !is null) *exitCode = 127;
     }
 }
+
+// ---- Forward decls needed by the shim (appear before mixin use) ----
+extern(C) @nogc nothrow
+void shellExecEntry(const(char*)* argv, const(char*)* envp);
+
+
+
 
 // ------------------------------
 // Minimal helpers used in both

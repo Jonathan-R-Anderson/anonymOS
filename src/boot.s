@@ -9,6 +9,7 @@
 .set IA32_EFER,  0xC0000080
 .set IA32_FS_BASE, 0xC0000100
 .set CR0_PG,     0x80000000
+.set CR0_EM,     0x00000004
 .set CR4_PAE,    0x00000020
 
 .section .multiboot
@@ -81,7 +82,8 @@ long_mode_entry:
     wrmsr
 
     mov %cr0, %rax
-    or $0x22, %rax
+    andq $~CR0_EM, %rax
+    orq $0x22, %rax
     mov %rax, %cr0
 
     mov %cr4, %rax

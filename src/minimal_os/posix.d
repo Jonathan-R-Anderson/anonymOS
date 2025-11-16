@@ -1461,7 +1461,14 @@ mixin template PosixKernelShim()
     @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
 
     // Optional weak-ish symbols for linkage expectations
-    __gshared const(char*)* environ;
+    version (Posix)
+    {
+        extern(C) __gshared char** environ;
+    }
+    else
+    {
+        __gshared char** environ;
+    }
     __gshared const(char*)* __argv;
     __gshared int          __argc;
 

@@ -8,7 +8,9 @@ import minimal_os.console : print, printLine, printCString, putChar, printStageH
 
 enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
 enum string posixUtilityManifestPath = "/build/posixutils/objects.tsv";
-enum string fallbackPosixUtilityManifestPath = "build/posixutils/objects.tsv";
+enum string hostPosixUtilityManifestPath = "build/posixutils/objects.tsv";
+enum string fallbackPosixUtilityManifestPath = "/build/posixutils/manifest.txt";
+enum string hostFallbackPosixUtilityManifestPath = "build/posixutils/manifest.txt";
 enum string posixUtilityManifestEnvVar = "POSIXUTILS_MANIFEST";
 
 private enum size_t MAX_EMBEDDED_POSIX_UTILITIES = 128;
@@ -190,13 +192,22 @@ version (Posix)
         return handle;
     }
 
-    handle = openManifestFromPath(posixUtilityManifestPath, mode);
-    if (handle !is null)
+    immutable string[4] manifestSearchPaths =
+        [ posixUtilityManifestPath,
+          hostPosixUtilityManifestPath,
+          fallbackPosixUtilityManifestPath,
+          hostFallbackPosixUtilityManifestPath ];
+
+    foreach (path; manifestSearchPaths)
     {
-        return handle;
+        handle = openManifestFromPath(path, mode);
+        if (handle !is null)
+        {
+            return handle;
+        }
     }
 
-    return openManifestFromPath(fallbackPosixUtilityManifestPath, mode);
+    return null;
 }
 
 version (Posix)

@@ -145,6 +145,24 @@ fi
 echo "[✓] Builtins:"
 ls -l "$SYSROOT/usr/lib"/libclang_rt.builtins-*.a || true
 
+# ===================== Build POSIX utilities =====================
+if [ ! -d "$POSIXUTILS_ROOT" ] && [ -d "$POSIXUTILS_ALT_ROOT" ]; then
+  echo "[i] Falling back to POSIX utilities at $POSIXUTILS_ALT_ROOT" >&2
+  POSIXUTILS_ROOT="$POSIXUTILS_ALT_ROOT"
+fi
+
+if [ -d "$POSIXUTILS_ROOT" ]; then
+  echo "[*] Building POSIX utilities from $POSIXUTILS_ROOT"
+  POSIX_ARGS=("$ROOT/tools/build_posixutils.py" --dc "$POSIXUTILS_DC" --source "$POSIXUTILS_ROOT" --output "$POSIXUTILS_BIN_DIR"
+)
+  if [ -n "${POSIXUTILS_FLAGS:-}" ]; then
+    POSIX_ARGS+=(--flags "$POSIXUTILS_FLAGS")
+  fi
+  python3 "${POSIX_ARGS[@]}"
+else
+  echo "[!] POSIX utilities source directory not found: $POSIXUTILS_ROOT" >&2
+fi
+
 # ===================== Compile kernel (freestanding D) =====================
 mkdir -p "$OUT_DIR"
 
@@ -230,25 +248,10 @@ else
   echo "[!] Skipping shell build: $SH_ROOT/src missing" >&2
 fi
 
-# ===================== Build POSIX utilities =====================
-if [ ! -d "$POSIXUTILS_ROOT" ] && [ -d "$POSIXUTILS_ALT_ROOT" ]; then
-  echo "[i] Falling back to POSIX utilities at $POSIXUTILS_ALT_ROOT" >&2
-  POSIXUTILS_ROOT="$POSIXUTILS_ALT_ROOT"
-fi
-
-if [ -d "$POSIXUTILS_ROOT" ]; then
-  echo "[*] Building POSIX utilities from $POSIXUTILS_ROOT"
-  POSIX_ARGS=("$ROOT/tools/build_posixutils.py" --dc "$POSIXUTILS_DC" --source "$POSIXUTILS_ROOT" --output "$POSIXUTILS_BIN_DIR")
-  if [ -n "${POSIXUTILS_FLAGS:-}" ]; then
-    POSIX_ARGS+=(--flags "$POSIXUTILS_FLAGS")
-  fi
-  python3 "${POSIX_ARGS[@]}"
-  if [ -d "$POSIXUTILS_BIN_DIR" ]; then
-    mkdir -p "$OUT_DIR/shell/bin"
-    cp -a "$POSIXUTILS_BIN_DIR/." "$OUT_DIR/shell/bin/"
-  fi
-else
-  echo "[!] POSIX utilities source directory not found: $POSIXUTILS_ROOT" >&2
+# ===================== Bundle POSIX utilities into shell staging =====================
+if [ -d "$POSIXUTILS_BIN_DIR" ]; then
+  mkdir -p "$OUT_DIR/shell/bin"
+  cp -a "$POSIXUTILS_BIN_DIR/." "$OUT_DIR/shell/bin/"
 fi
 
 # ===================== GRUB staging & ISO =====================

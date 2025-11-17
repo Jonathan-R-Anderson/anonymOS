@@ -220,10 +220,15 @@ mixin template PosixKernelShim()
         minimal_os.posix.RegistryEmbeddedPosixUtilityPathsFn;
 
 
-    // Bring debug helpers into the template's scope so mixin users see them.
+    // Bring helpers that the mixin's implementation relies on into its
+    // lexical scope so the instantiating module does not need to import the
+    // defining module explicitly.  This mirrors the pattern already used for
+    // the debug helpers.
     alias debugBool          = minimal_os.posix.debugBool;
     alias debugExpectActual  = minimal_os.posix.debugExpectActual;
     alias debugLog           = minimal_os.posix.debugLog;
+    alias probeKernelConsoleReady = minimal_os.posix.probeKernelConsoleReady;
+    alias probeSerialConsoleReady = minimal_os.posix.probeSerialConsoleReady;
 
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;

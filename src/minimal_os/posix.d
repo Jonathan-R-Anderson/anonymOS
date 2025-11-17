@@ -2242,8 +2242,22 @@ else
         return embed || registry;
     }
 
+    private @nogc nothrow void ensureBareMetalShellInterfaces()
+    {
+        if (g_spawnRegisteredProcessFn is null)
+        {
+            g_spawnRegisteredProcessFn = &spawnRegisteredProcess;
+        }
+
+        if (g_waitpidFn is null)
+        {
+            g_waitpidFn = &waitpid;
+        }
+    }
+
     private @nogc nothrow bool bareMetalShellRuntimeReady()
     {
+        ensureBareMetalShellInterfaces();
         return g_spawnRegisteredProcessFn !is null && g_waitpidFn !is null;
     }
 

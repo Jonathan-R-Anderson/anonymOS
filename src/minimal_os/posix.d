@@ -2592,7 +2592,7 @@ else
                 ++index;
             }
 
-            tokens[tokenCount++] = buffer[start .. index];
+            tokens[tokenCount++] = buffer[start .. index].idup;
         }
 
         return tokenCount;

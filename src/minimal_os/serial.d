@@ -10,6 +10,7 @@ private enum ushort REG_MODEM_CONTROL    = 4;
 private enum ushort REG_LINE_STATUS      = 5;
 
 private enum ubyte LSR_TRANSMIT_EMPTY = 0x20;
+private enum ubyte LSR_DATA_READY     = 0x01;
 
 private __gshared bool serialReady = false;
 
@@ -35,6 +36,18 @@ void serialWriteByte(ubyte value)
 
     while ((inb(COM1_BASE + REG_LINE_STATUS) & LSR_TRANSMIT_EMPTY) == 0) {}
     outb(COM1_BASE + REG_DATA, value);
+}
+
+@nogc nothrow
+char serialReadByteBlocking()
+{
+    if (!serialReady)
+    {
+        return '\0';
+    }
+
+    while ((inb(COM1_BASE + REG_LINE_STATUS) & LSR_DATA_READY) == 0) {}
+    return cast(char)inb(COM1_BASE + REG_DATA);
 }
 
 @nogc nothrow

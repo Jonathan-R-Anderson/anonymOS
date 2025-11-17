@@ -79,3 +79,29 @@ This works in every CPU mode but requires you to initialise the UART yourself.
 The kernel now performs this initialisation automatically inside `kmain()` and
 mirrors every VGA character to COM1, so enabling `-serial stdio` will stream the
 same log messages that appear on screen.
+
+## GRUB console probing
+
+GRUB can decide which console devices exist before it loads the kernel.  Enable
+the serial and VGA text modules and let GRUB probe both paths so the firmware
+menu stays visible whether you prefer the graphical window or `-serial stdio`:
+
+```
+insmod serial
+insmod vga_text
+serial --unit=0 --speed=115200 --word=8 --parity=no --stop=1
+terminal_input  console serial
+terminal_output console serial
+```
+
+These commands now live in `src/grub/grub.cfg`, so every ISO boot automatically
+activates both consoles.
+
+## Runtime hardware probe
+
+Once the firmware jumps into the kernel, the new `probeHardware()` routine reads
+the Multiboot information block and logs the hardware that QEMU exposed to the
+guest.  The probe reports the total RAM, enumerates Multiboot modules, dumps the
+physical memory map, and describes the framebuffer (when present).  This runs at
+boot before any other subsystems start so you can confirm that the emulator
+provided the expected devices without attaching a debugger.

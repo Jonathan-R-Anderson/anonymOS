@@ -1,6 +1,6 @@
 module minimal_os.posix;
 
-import minimal_os.console : print, printLine, printUnsigned, printCString, kernelConsoleReady;
+import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 

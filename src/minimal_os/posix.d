@@ -2266,38 +2266,53 @@ else
         bareMetalShellLoop();
     }
 
+    private @nogc nothrow int decodeShellExitStatus(int status)
+    {
+        enum int EXIT_MASK   = 0xFF00;
+        enum int SIGNAL_MASK = 0x7F;
+        enum int SIGNAL_BIT  = 0x80;
+
+        if ((status & SIGNAL_BIT) != 0 && (status & SIGNAL_MASK) != 0)
+        {
+            return 128 + (status & SIGNAL_MASK);
+        }
+
+        return (status & EXIT_MASK) >> 8;
+    }
+
     private @nogc nothrow void bareMetalShellLoop()
     {
-        char[bareMetalShellBufferSize] lineBuffer;
+        if (!g_shellRegistered)
+        {
+            printLine("[shell] Shell executable not registered; cannot launch 'lfe-sh'.");
+            return;
+        }
 
         for (;;)
         {
-            writeShellPrompt();
-            const size_t length = readShellLine(lineBuffer);
-
-            if (length == 0)
+            const pid_t pid = spawnRegisteredProcess(SHELL_PATH.ptr,
+                                                     g_shellDefaultArgv.ptr,
+                                                     g_shellDefaultEnvp.ptr);
+            if (pid < 0)
             {
-                continue;
+                printLine("[shell] Failed to spawn registered shell executable.");
+                return;
             }
 
-            const auto line = lineBuffer[0 .. length];
+            printLine("[shell] Booting 'lfe-sh' interactive shell...");
 
-            if (matchesCommand(line, "help"))
+            int status = 0;
+            auto waited = waitpid(pid, &status, 0);
+            if (waited != pid)
             {
-                handleHelpCommand();
+                printLine("[shell] waitpid failed; aborting interactive shell loop.");
+                return;
             }
-            else if (matchesCommand(line, "reboot"))
-            {
-                handleRebootCommand();
-            }
-            else if (matchesCommand(line, "halt"))
-            {
-                handleHaltCommand();
-            }
-            else
-            {
-                printLine("[shell] Unknown command.");
-            }
+
+            const int exitCode = decodeShellExitStatus(status);
+            print("[shell] Shell session exited with status ");
+            printUnsigned(cast(size_t)exitCode);
+            printLine("; restarting...");
         }
     }
 

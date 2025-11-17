@@ -12,6 +12,7 @@ private enum DEFAULT_COLOUR = 0x0F;
 private __gshared ushort* vgaBuffer = cast(ushort*)0xB8000;
 private __gshared size_t cursorRow = 0;
 private __gshared size_t cursorCol = 0;
+private __gshared bool   g_consoleReady = false;
 
 struct StageSummary
 {
@@ -50,6 +51,7 @@ void clearScreen()
     }
     cursorRow = 0;
     cursorCol = 0;
+    g_consoleReady = true;
 }
 
 void scroll()
@@ -108,6 +110,11 @@ void putChar(char c)
     {
         newline();
     }
+}
+
+@nogc nothrow bool kernelConsoleReady()
+{
+    return g_consoleReady;
 }
 
 private void mirrorToSerial(char c)

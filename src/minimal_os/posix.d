@@ -2230,6 +2230,7 @@ else
     import minimal_os.console : hasSerialConsole, consoleWriteChar, consoleReadCharBlocking;
 
     private enum size_t bareMetalShellBufferSize = 128;
+    private enum size_t bareMetalShellMaxTokens   = 8;
 
     private @nogc nothrow bool ensurePosixUtilitiesConfiguredBare()
     {
@@ -2249,6 +2250,22 @@ else
         // registerBareMetalShellInterfaces().  The fallback implementations in
         // this module are only available when building the Posix shim, so avoid
         // referencing them here to keep non-Posix builds linkable.
+
+        static if (__traits(compiles, { alias Fn = typeof(&spawnRegisteredProcess); }))
+        {
+            if (g_spawnRegisteredProcessFn is null)
+            {
+                g_spawnRegisteredProcessFn = &spawnRegisteredProcess;
+            }
+        }
+
+        static if (__traits(compiles, { alias Fn = typeof(&waitpid); }))
+        {
+            if (g_waitpidFn is null)
+            {
+                g_waitpidFn = &waitpid;
+            }
+        }
     }
 
     private @nogc nothrow bool bareMetalShellRuntimeReady()
@@ -2275,7 +2292,79 @@ else
 
     extern(C) @nogc nothrow void shellExecEntry(const(char*)* , const(char*)*)
     {
-        printLine("[shell] Interactive shell unavailable: host console support missing.");
+        char[bareMetalShellBufferSize] buffer;
+        immutable(char)[][bareMetalShellMaxTokens] tokens;
+
+        printLine("[shell] lfe-sh interactive shell ready. Type 'help' for commands.");
+
+        for (;;)
+        {
+            writeShellPrompt();
+            const size_t length = readShellLine(buffer);
+            if (length == 0)
+            {
+                continue;
+            }
+
+            const size_t tokenCount = tokenizeShellInput(buffer, length, tokens);
+            if (tokenCount == 0)
+            {
+                continue;
+            }
+
+            auto command = tokens[0];
+
+            if (matchesCommand(command, "help"))
+            {
+                handleHelpCommand();
+                continue;
+            }
+
+            if (matchesCommand(command, "reboot"))
+            {
+                handleRebootCommand();
+                continue;
+            }
+
+            if (matchesCommand(command, "halt"))
+            {
+                handleHaltCommand();
+                continue;
+            }
+
+            if (matchesCommand(command, "exit"))
+            {
+                int status = 0;
+                if (tokenCount > 1)
+                {
+                    long parsedStatus = 0;
+                    if (parseSignedInteger(tokens[1], parsedStatus))
+                    {
+                        status = cast(int)parsedStatus;
+                    }
+                    else
+                    {
+                        printLine("[shell] Invalid exit status; using 0.");
+                    }
+                }
+
+                _exit(status);
+            }
+
+            if (matchesCommand(command, "echo"))
+            {
+                handleEchoCommand(tokens, tokenCount);
+                continue;
+            }
+
+            if (matchesCommand(command, "sum"))
+            {
+                handleSumCommand(tokens, tokenCount);
+                continue;
+            }
+
+            handleUnknownCommand(command);
+        }
     }
 
     extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp)
@@ -2458,8 +2547,155 @@ else
     {
         printLine("[shell] Available commands:");
         printLine("  help   - Show this help message");
+        printLine("  echo   - Print the provided arguments");
+        printLine("  sum    - Add integer arguments and display the result");
+        printLine("  exit   - Leave the shell (optional status code)");
         printLine("  reboot - Reboot the system (stub)");
         printLine("  halt   - Halt the system (stub)");
+    }
+
+    private @nogc nothrow void handleUnknownCommand(const(char)[] command)
+    {
+        print("[shell] Unknown command: ");
+        writeShellString(command);
+        consoleWriteChar('\n');
+        printLine("[shell] Type 'help' to list supported commands.");
+    }
+
+    private @nogc nothrow bool isShellWhitespace(char c)
+    {
+        return c == ' ' || c == '\t';
+    }
+
+    private @nogc nothrow size_t tokenizeShellInput(ref char[bareMetalShellBufferSize] buffer,
+                                                    size_t length,
+                                                    ref immutable(char)[][bareMetalShellMaxTokens] tokens)
+    {
+        size_t tokenCount = 0;
+        size_t index = 0;
+
+        while (index < length && tokenCount < tokens.length)
+        {
+            while (index < length && isShellWhitespace(buffer[index]))
+            {
+                ++index;
+            }
+
+            if (index >= length)
+            {
+                break;
+            }
+
+            const size_t start = index;
+            while (index < length && !isShellWhitespace(buffer[index]))
+            {
+                ++index;
+            }
+
+            tokens[tokenCount++] = buffer[start .. index];
+        }
+
+        return tokenCount;
+    }
+
+    private @nogc nothrow void handleEchoCommand(ref immutable(char)[][bareMetalShellMaxTokens] tokens,
+                                                 size_t tokenCount)
+    {
+        if (tokenCount <= 1)
+        {
+            consoleWriteChar('\n');
+            return;
+        }
+
+        foreach (index; 1 .. tokenCount)
+        {
+            writeShellString(tokens[index]);
+            if (index + 1 < tokenCount)
+            {
+                consoleWriteChar(' ');
+            }
+        }
+
+        consoleWriteChar('\n');
+    }
+
+    private @nogc nothrow bool parseSignedInteger(const(char)[] text, out long value)
+    {
+        value = 0;
+        if (text.length == 0)
+        {
+            return false;
+        }
+
+        bool negative = false;
+        size_t index = 0;
+
+        if (text[0] == '+' || text[0] == '-')
+        {
+            negative = (text[0] == '-');
+            index = 1;
+        }
+
+        if (index >= text.length)
+        {
+            return false;
+        }
+
+        long parsed = 0;
+        while (index < text.length)
+        {
+            immutable char c = text[index];
+            if (c < '0' || c > '9')
+            {
+                return false;
+            }
+
+            parsed = parsed * 10 + (c - '0');
+            ++index;
+        }
+
+        value = negative ? -parsed : parsed;
+        return true;
+    }
+
+    private @nogc nothrow void printSignedInteger(long value)
+    {
+        if (value < 0)
+        {
+            consoleWriteChar('-');
+            value = -value;
+        }
+
+        printUnsigned(cast(size_t)value);
+    }
+
+    private @nogc nothrow void handleSumCommand(ref immutable(char)[][bareMetalShellMaxTokens] tokens,
+                                                size_t tokenCount)
+    {
+        if (tokenCount < 3)
+        {
+            printLine("[shell] sum requires at least two integers.");
+            return;
+        }
+
+        long total = 0;
+        foreach (index; 1 .. tokenCount)
+        {
+            long parsed = 0;
+            if (!parseSignedInteger(tokens[index], parsed))
+            {
+                print("[shell] Invalid integer: ");
+                writeShellString(tokens[index]);
+                consoleWriteChar('\n');
+                return;
+            }
+
+            total += parsed;
+        }
+
+        print("[shell] sum = ");
+        printSignedInteger(total);
+        printLine("");
     }
 
     private @nogc nothrow void handleRebootCommand()

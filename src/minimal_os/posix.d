@@ -1099,22 +1099,31 @@ mixin template PosixKernelShim()
     {
         bool available;
         bool disabledByConfiguration;
+        immutable(char)[] reason;
     }
 
     @nogc nothrow private ConsoleDetectionResult detectConsoleAvailability()
     {
         ConsoleDetectionResult result;
 
+        enum reasonAssumeConsole = "console forced via SH_ASSUME_CONSOLE";
+        enum reasonAssumeConsoleDisabled = "console disabled via SH_ASSUME_CONSOLE";
+        enum reasonDisableConsole = "console disabled via SH_DISABLE_CONSOLE";
+        enum reasonNoStdStreams = "console unavailable: no stdin/stdout/stderr descriptors";
+        enum reasonUnsupportedProbes = "console unavailable: host console probes disabled for this build";
+
         const EnvBool assumeConsole = parseEnvBoolean(readEnvironmentVariable("SH_ASSUME_CONSOLE"));
         if (assumeConsole == EnvBool.truthy)
         {
             result.available = true;
+            result.reason = reasonAssumeConsole;
             return result;
         }
         else if (assumeConsole == EnvBool.falsy)
         {
             result.available = false;
             result.disabledByConfiguration = true;
+            result.reason = reasonAssumeConsoleDisabled;
             return result;
         }
 
@@ -1123,12 +1132,16 @@ mixin template PosixKernelShim()
         {
             result.available = false;
             result.disabledByConfiguration = true;
+            result.reason = reasonDisableConsole;
             return result;
         }
 
+        bool hostProbeSupported = false;
+        bool hasValidStdStreams = false;
+
         version (Posix)
         {
-            bool hasValidStdStreams = false;
+            hostProbeSupported = true;
 
             stat_t statBuffer;
             foreach (fd; [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO])
@@ -1179,6 +1192,18 @@ mixin template PosixKernelShim()
         else
         {
             result.available = false;
+        }
+
+        if (!result.available && (result.reason is null || result.reason.length == 0))
+        {
+            if (!hostProbeSupported)
+            {
+                result.reason = reasonUnsupportedProbes;
+            }
+            else if (!hasValidStdStreams)
+            {
+                result.reason = reasonNoStdStreams;
+            }
         }
 
         return result;

@@ -1824,6 +1824,7 @@ mixin template PosixKernelShim()
         }
 
         g_shellRegistered = false;
+        ensureBareMetalShellInterfaces();
         version (Posix)
         {
             if (g_consoleAvailable)

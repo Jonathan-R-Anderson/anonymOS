@@ -2190,6 +2190,10 @@ else
 {
     // Non-Posix (bare-metal) builds get minimal stubs.
 
+    import minimal_os.console : hasSerialConsole, consoleWriteChar, consoleReadCharBlocking;
+
+    private enum size_t bareMetalShellBufferSize = 128;
+
     private @nogc nothrow bool ensurePosixUtilitiesConfiguredBare()
     {
         // Ask the embed-status (stubs return false) and fall back to the
@@ -2252,7 +2256,146 @@ else
 
     package @nogc nothrow void launchInteractiveShell()
     {
-        printLine("[shell] Interactive shell unavailable: host console support missing.");
-        debugLog("launchInteractiveShell stub invoked");
+        if (!hasSerialConsole())
+        {
+            printLine("[shell] No serial console; skipping shell.");
+            return;
+        }
+
+        printLine("[shell] Starting bare-metal shell on serial...");
+        bareMetalShellLoop();
+    }
+
+    private @nogc nothrow void bareMetalShellLoop()
+    {
+        char[bareMetalShellBufferSize] lineBuffer;
+
+        for (;;)
+        {
+            writeShellPrompt();
+            const size_t length = readShellLine(lineBuffer);
+
+            if (length == 0)
+            {
+                continue;
+            }
+
+            const auto line = lineBuffer[0 .. length];
+
+            if (matchesCommand(line, "help"))
+            {
+                handleHelpCommand();
+            }
+            else if (matchesCommand(line, "reboot"))
+            {
+                handleRebootCommand();
+            }
+            else if (matchesCommand(line, "halt"))
+            {
+                handleHaltCommand();
+            }
+            else
+            {
+                printLine("[shell] Unknown command.");
+            }
+        }
+    }
+
+    private @nogc nothrow size_t readShellLine(ref char[bareMetalShellBufferSize] buffer)
+    {
+        size_t length = 0;
+
+        for (;;)
+        {
+            const char c = consoleReadCharBlocking();
+
+            if (c == '\0')
+            {
+                continue;
+            }
+
+            if (c == '\r' || c == '\n')
+            {
+                consoleWriteChar('\n');
+                break;
+            }
+
+            if (c == '\b' || c == 0x7F)
+            {
+                if (length > 0)
+                {
+                    --length;
+                    consoleWriteChar('\b');
+                    consoleWriteChar(' ');
+                    consoleWriteChar('\b');
+                }
+                continue;
+            }
+
+            if (length >= buffer.length)
+            {
+                continue;
+            }
+
+            consoleWriteChar(c);
+            buffer[length] = c;
+            ++length;
+        }
+
+        return length;
+    }
+
+    private @nogc nothrow void writeShellPrompt()
+    {
+        writeShellString("> ");
+    }
+
+    private @nogc nothrow void writeShellString(const(char)[] text)
+    {
+        if (text is null)
+        {
+            return;
+        }
+
+        foreach (c; text)
+        {
+            consoleWriteChar(c);
+        }
+    }
+
+    private @nogc nothrow bool matchesCommand(const(char)[] input, immutable(char)[] command)
+    {
+        if (input.length != command.length)
+        {
+            return false;
+        }
+
+        foreach (index; 0 .. command.length)
+        {
+            if (input[index] != command[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private @nogc nothrow void handleHelpCommand()
+    {
+        printLine("[shell] Available commands:");
+        printLine("  help   - Show this help message");
+        printLine("  reboot - Reboot the system (stub)");
+        printLine("  halt   - Halt the system (stub)");
+    }
+
+    private @nogc nothrow void handleRebootCommand()
+    {
+        printLine("[shell] Reboot requested (stub; not implemented).");
+    }
+
+    private @nogc nothrow void handleHaltCommand()
+    {
+        printLine("[shell] Halt requested (stub; not implemented).");
     }
 }

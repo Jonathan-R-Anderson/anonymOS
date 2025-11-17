@@ -19,8 +19,9 @@ version (Posix)
 {
     private import core.sys.posix.unistd : isatty, read, write, close;
     private import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
+    private import core.sys.posix.sys.stat : fstat, stat_t;
     private import core.sys.posix.sys.types : ssize_t;
-    private import core.stdc.errno : errno;
+    private import core.stdc.errno : errno, EBADF;
 }
 
 // ---- Forward decls needed by the shim (appear before mixin use) ----
@@ -1127,9 +1128,27 @@ mixin template PosixKernelShim()
 
         version (Posix)
         {
-            result.available = (isatty(STDIN_FILENO)  != 0)
-                || (isatty(STDOUT_FILENO) != 0)
-                || (isatty(STDERR_FILENO) != 0);
+            bool hasValidStdStreams = false;
+
+            stat_t statBuffer;
+            foreach (fd; [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO])
+            {
+                errno = 0;
+                if (isatty(fd) != 0)
+                {
+                    result.available = true;
+                    break;
+                }
+
+                // Track whether at least one stdio descriptor is usable even
+                // when it is not backed by a TTY.  Headless harnesses pipe the
+                // shell through regular files or sockets, which still works for
+                // scripted execution as long as the descriptor itself is open.
+                if (errno != EBADF && fstat(fd, &statBuffer) == 0)
+                {
+                    hasValidStdStreams = true;
+                }
+            }
 
             // Some CI environments and build harnesses detach stdio from the
             // controlling TTY, which makes the basic isatty() checks lie even
@@ -1145,6 +1164,16 @@ mixin template PosixKernelShim()
                     scope(exit) close(ttyFd);
                     result.available = (isatty(ttyFd) != 0);
                 }
+            }
+
+            // If none of the probes managed to locate an actual TTY, allow the
+            // shell to run in "headless" mode whenever stdio is still routed
+            // through a valid descriptor.  This keeps the build-time shell
+            // available for scripted use even inside fully detached
+            // environments.
+            if (!result.available && hasValidStdStreams)
+            {
+                result.available = true;
             }
         }
         else

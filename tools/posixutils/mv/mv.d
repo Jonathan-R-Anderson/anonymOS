@@ -193,7 +193,7 @@ int copySpecial(string src, ref stat_t st, string dest) {
     }
 
     if (S_ISFIFO(st.st_mode)) {
-        auto mode = cast(mode_t)(st.st_mode & 0o7777);
+        auto mode = cast(mode_t)(st.st_mode & 0x0FFF);
         if (mkfifo(dest.toStringz, mode) != 0) {
             perror(dest.toStringz);
             return 1;

@@ -1,7 +1,8 @@
 module minimal_os.posix;
 
-import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady;
+import minimal_os.console : print, printLine, printUnsigned, printCString, kernelConsoleReady;
 import minimal_os.serial : serialConsoleReady;
+import sh_metadata : shBinaryName, shRepositoryPath;
 
 // example: adjust the path to whatever your search in step 1 shows
 public import minimal_os.posixutils.registry :
@@ -18,11 +19,45 @@ alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPa
 // ---------------------------
 version (Posix)
 {
-    private import core.sys.posix.unistd : isatty, read, write, close;
+    private import core.sys.posix.unistd : isatty, read, write, close, access;
     private import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
     private import core.sys.posix.sys.stat : fstat, stat_t;
     private import core.sys.posix.sys.types : ssize_t;
     private import core.stdc.errno : errno, EBADF;
+    private enum int X_OK = 1;
+
+    private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
+    private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
+    private immutable char[] g_envVarShellBinary = "SH_SHELL_BINARY\0";
+    private immutable char[] g_envVarShellRoot = "SH_SHELL_ROOT\0";
+
+    private const(char)*[] g_shellEnvVarOrder =
+        [ g_envVarLfeShBinary.ptr,
+          g_envVarShBinary.ptr,
+          g_envVarShellBinary.ptr,
+          g_envVarShellRoot.ptr ];
+
+    private immutable char[] g_isoShellPath = "/opt/shell/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_isoShellBinPath = "/opt/shell/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_kernelShellPath = "/kernel/shell/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_kernelShellBinPath = "/kernel/shell/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_repoShellPath = shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_repoShellBinPath = shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_usrLocalShellPath = "/usr/local/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_usrShellPath = "/usr/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_defaultShPath = "/bin/sh\0";
+
+    private immutable(char)[] g_shellSearchOrder[] =
+        [ g_isoShellPath,
+          g_isoShellBinPath,
+          g_kernelShellPath,
+          g_kernelShellBinPath,
+          g_repoShellPath,
+          g_repoShellBinPath,
+          g_usrLocalShellPath,
+          g_usrShellPath,
+          g_binShellPath ];
 }
 
 // ---- Forward decls needed by the shim (appear before mixin use) ----
@@ -2010,9 +2045,118 @@ version (Posix)
         _exit(exitCode);
     }
 
+    @nogc nothrow private bool pathExecutable(const(char)* path)
+    {
+        if (path is null || path[0] == '\0')
+        {
+            return false;
+        }
+
+        return access(path, X_OK) == 0;
+    }
+
+    @nogc nothrow private const(char)* combineShellRoot(const(char)* root)
+    {
+        enum size_t BUFFER_SIZE = 512;
+        static __gshared char[BUFFER_SIZE] buffer;
+
+        if (root is null || root[0] == '\0')
+        {
+            return null;
+        }
+
+        const size_t rootLength = cStringLength(root);
+        size_t index = 0;
+        while (index < rootLength && index + 1 < buffer.length)
+        {
+            buffer[index] = root[index];
+            ++index;
+        }
+
+        if (index == 0)
+        {
+            return null;
+        }
+
+        if (buffer[index - 1] != '/' && index + 1 < buffer.length)
+        {
+            buffer[index++] = '/';
+        }
+
+        foreach (ch; shBinaryName)
+        {
+            if (index + 1 >= buffer.length)
+            {
+                return null;
+            }
+            buffer[index++] = ch;
+        }
+
+        buffer[index] = '\0';
+        return buffer.ptr;
+    }
+
+    @nogc nothrow private const(char)* shellPathFromEnvironment()
+    {
+        foreach (envName; g_shellEnvVarOrder)
+        {
+            auto value = readEnvironmentVariable(envName);
+            if (value is null || value[0] == '\0')
+            {
+                continue;
+            }
+
+            const bool isRootEnv = (envName is g_envVarShellRoot.ptr);
+            if (isRootEnv)
+            {
+                auto combined = combineShellRoot(value);
+                if (pathExecutable(combined))
+                {
+                    return combined;
+                }
+            }
+            else if (pathExecutable(value))
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private const(char)* resolveShellBinaryPath()
+    {
+        auto envPath = shellPathFromEnvironment();
+        if (envPath !is null)
+        {
+            return envPath;
+        }
+
+        foreach (candidate; g_shellSearchOrder)
+        {
+            if (pathExecutable(candidate.ptr))
+            {
+                return candidate.ptr;
+            }
+        }
+
+        return g_defaultShPath.ptr;
+    }
+
+    @nogc nothrow private void announceShellLaunch(const(char)* path)
+    {
+        if (path is null)
+        {
+            return;
+        }
+
+        print("[shell] Launching interactive shell: ");
+        printCString(path);
+        printLine("");
+    }
+
     package @nogc nothrow void launchInteractiveShell()
     {
-        // We’ll look up the C ABI wrapper declared in the shim area
         extern(C) @nogc nothrow int execve(const(char)*, const(char*)*, const(char*)*);
         debugExpectActual("launchInteractiveShell execve present", 1, debugBool(execve !is null));
         if (execve is null)
@@ -2021,15 +2165,24 @@ version (Posix)
             return;
         }
 
-        // Attempt to launch /bin/sh (registered by posixInit when console exists)
-        const(char*)[2] argv = ["/bin/sh\0".ptr, null];
+        const(char)* shellPath = resolveShellBinaryPath();
+        if (shellPath is null)
+        {
+            shellPath = g_defaultShPath.ptr;
+        }
+
+        announceShellLaunch(shellPath);
+
+        const(char*)[2] argv = [shellPath, null];
         const(char*)[1] envp = [null];
 
-        auto rc = execve("/bin/sh\0".ptr, argv.ptr, envp.ptr);
+        auto rc = execve(shellPath, argv.ptr, envp.ptr);
         debugExpectActual("launchInteractiveShell execve rc", 0, rc);
         if (rc < 0)
         {
-            printLine("[shell] execve('/bin/sh') failed.");
+            print("[shell] execve failed for: ");
+            printCString(shellPath);
+            printLine("");
         }
     }
 }

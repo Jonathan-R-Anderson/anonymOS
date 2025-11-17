@@ -135,8 +135,9 @@ private @nogc nothrow void logModules(const MultibootInfo info)
     foreach (index; 0 .. info.modsCount)
     {
         const size_t base = info.modsAddr + index * MultibootModule.sizeof;
-        const MultibootModule* module = cast(const MultibootModule*)base;
-        if (module is null)
+        // renamed from `module` (keyword!) to `mod`
+        const MultibootModule* mod = cast(const MultibootModule*)base;
+        if (mod is null)
         {
             continue;
         }
@@ -144,9 +145,9 @@ private @nogc nothrow void logModules(const MultibootInfo info)
         print("           [");
         printUnsigned(index);
         print("] 0x");
-        printHex(module.modStart, 8);
+        printHex(mod.modStart, 8);
         print(" - 0x");
-        printHex(module.modEnd, 8);
+        printHex(mod.modEnd, 8);
         printLine("");
     }
 }

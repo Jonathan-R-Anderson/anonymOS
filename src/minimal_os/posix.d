@@ -48,7 +48,7 @@ version (Posix)
     private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
     private immutable char[] g_defaultShPath = "/bin/sh\0";
 
-    private immutable(char)[] g_shellSearchOrder[] =
+    private immutable(char)[][] g_shellSearchOrder =
         [ g_isoShellPath,
           g_isoShellBinPath,
           g_kernelShellPath,

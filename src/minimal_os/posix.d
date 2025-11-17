@@ -4,6 +4,37 @@ import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 
+// ---------------------------------------------------------------------
+// Shared shell state accessible both to the shim mixin and bare-metal
+// helpers defined later in this module.  The mixin aliases these symbols
+// so the state remains centralized here instead of being instantiated in
+// every module that mixes in the shim.
+// ---------------------------------------------------------------------
+alias pid_t = int;
+
+package(minimal_os) __gshared bool g_shellRegistered = false;
+
+package(minimal_os) immutable char[8] SHELL_PATH = "/bin/sh\0";
+package(minimal_os) __gshared const(char*)[2] g_shellDefaultArgv =
+    [SHELL_PATH.ptr, null];
+package(minimal_os) __gshared const(char*)[1] g_shellDefaultEnvp = [null];
+
+alias SpawnRegisteredProcessFn = @nogc nothrow
+    pid_t function(const(char)* path, const(char*)* argv, const(char*)* envp);
+alias WaitPidFn = @nogc nothrow
+    pid_t function(pid_t wpid, int* status, int options);
+
+package(minimal_os) __gshared SpawnRegisteredProcessFn g_spawnRegisteredProcessFn;
+package(minimal_os) __gshared WaitPidFn               g_waitpidFn;
+
+package(minimal_os) @nogc nothrow void registerBareMetalShellInterfaces(
+    SpawnRegisteredProcessFn spawnFn,
+    WaitPidFn waitFn)
+{
+    g_spawnRegisteredProcessFn = spawnFn;
+    g_waitpidFn = waitFn;
+}
+
 // example: adjust the path to whatever your search in step 1 shows
 public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
@@ -254,6 +285,11 @@ mixin template PosixKernelShim()
     alias RegistryEmbeddedPosixUtilityPathsFn =
         minimal_os.posix.RegistryEmbeddedPosixUtilityPathsFn;
 
+    alias g_shellRegistered = minimal_os.posix.g_shellRegistered;
+    alias g_shellDefaultArgv = minimal_os.posix.g_shellDefaultArgv;
+    alias g_shellDefaultEnvp = minimal_os.posix.g_shellDefaultEnvp;
+    alias SHELL_PATH = minimal_os.posix.SHELL_PATH;
+
 
     // Bring helpers that the mixin's implementation relies on into its
     // lexical scope so the instantiating module does not need to import the
@@ -397,14 +433,9 @@ mixin template PosixKernelShim()
     private __gshared Proc*          g_current    = null;
     private __gshared bool           g_initialized = false;
     private __gshared bool           g_consoleAvailable = false;
-    private __gshared bool           g_shellRegistered   = false;
     private __gshared bool           g_posixUtilitiesRegistered = false;
     private __gshared size_t         g_posixUtilityCount = 0;
     private __gshared bool           g_posixConfigured   = false;
-
-    private immutable char[8]        SHELL_PATH = "/bin/sh\0";
-    private __gshared const(char*)[2] g_shellDefaultArgv = [SHELL_PATH.ptr, null];
-    private __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
     // --------------- small buffer/string utils ---------------
     @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
@@ -1612,6 +1643,12 @@ mixin template PosixKernelShim()
     @nogc nothrow pid_t fork(){   return sys_fork();   }
     @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
     @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
+
+    shared static this()
+    {
+        minimal_os.posix.registerBareMetalShellInterfaces(&spawnRegisteredProcess,
+                                                          &waitpid);
+    }
     @nogc nothrow void  _exit(int c){ sys__exit(c); }
     @nogc nothrow int   kill(pid_t p, int s){ return sys_kill(p,s); }
     @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
@@ -2205,6 +2242,11 @@ else
         return embed || registry;
     }
 
+    private @nogc nothrow bool bareMetalShellRuntimeReady()
+    {
+        return g_spawnRegisteredProcessFn !is null && g_waitpidFn !is null;
+    }
+
     private @nogc nothrow void printCString(const(char)* s)
     {
         if (s is null) { print("<null>"); return; }
@@ -2288,11 +2330,17 @@ else
             return;
         }
 
+        if (!bareMetalShellRuntimeReady())
+        {
+            printLine("[shell] Shell runtime unavailable; cannot launch 'lfe-sh'.");
+            return;
+        }
+
         for (;;)
         {
-            const pid_t pid = spawnRegisteredProcess(SHELL_PATH.ptr,
-                                                     g_shellDefaultArgv.ptr,
-                                                     g_shellDefaultEnvp.ptr);
+            const pid_t pid = g_spawnRegisteredProcessFn(SHELL_PATH.ptr,
+                                                         g_shellDefaultArgv.ptr,
+                                                         g_shellDefaultEnvp.ptr);
             if (pid < 0)
             {
                 printLine("[shell] Failed to spawn registered shell executable.");
@@ -2302,7 +2350,7 @@ else
             printLine("[shell] Booting 'lfe-sh' interactive shell...");
 
             int status = 0;
-            auto waited = waitpid(pid, &status, 0);
+            auto waited = g_waitpidFn(pid, &status, 0);
             if (waited != pid)
             {
                 printLine("[shell] waitpid failed; aborting interactive shell loop.");

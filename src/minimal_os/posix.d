@@ -100,14 +100,42 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     }
 }
 
-@nogc nothrow package(minimal_os) void debugLog(immutable(char)[] text)
-{
-    static if (ENABLE_POSIX_DEBUG)
+    @nogc nothrow package(minimal_os) void debugLog(immutable(char)[] text)
     {
-        debugPrefix();
-        printLine(text);
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            printLine(text);
+        }
     }
-}
+
+    // Some builds (particularly host/Posix ones) intentionally omit the
+    // kernel/serial console modules.  Guard the probe helpers behind
+    // __traits(compiles, ...) so the shim can fall back to "console not
+    // present" without forcing those modules to exist in every build.
+    private @nogc nothrow bool probeKernelConsoleReady()
+    {
+        static if (__traits(compiles, kernelConsoleReady()))
+        {
+            return kernelConsoleReady();
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    private @nogc nothrow bool probeSerialConsoleReady()
+    {
+        static if (__traits(compiles, serialConsoleReady()))
+        {
+            return serialConsoleReady();
+        }
+        else
+        {
+            return false;
+        }
+    }
 
 // ----------------------------------------------------------------------
 // Try to import embedded POSIX bundle glue; if unavailable, use stubs.
@@ -1192,8 +1220,8 @@ mixin template PosixKernelShim()
         }
         else
         {
-            const bool kernelConsole = kernelConsoleReady();
-            const bool serialConsole = serialConsoleReady();
+            const bool kernelConsole = probeKernelConsoleReady();
+            const bool serialConsole = probeSerialConsoleReady();
             hostProbeSupported = kernelConsole || serialConsole;
             hasValidStdStreams = hostProbeSupported;
 

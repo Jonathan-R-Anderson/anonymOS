@@ -2293,7 +2293,7 @@ else
     extern(C) @nogc nothrow void shellExecEntry(const(char*)* , const(char*)*)
     {
         char[bareMetalShellBufferSize] buffer;
-        immutable(char)[][bareMetalShellMaxTokens] tokens;
+        const(char)[][bareMetalShellMaxTokens] tokens;
 
         printLine("[shell] lfe-sh interactive shell ready. Type 'help' for commands.");
 
@@ -2569,7 +2569,7 @@ else
 
     private @nogc nothrow size_t tokenizeShellInput(ref char[bareMetalShellBufferSize] buffer,
                                                     size_t length,
-                                                    ref immutable(char)[][bareMetalShellMaxTokens] tokens)
+                                                    ref const(char)[][bareMetalShellMaxTokens] tokens)
     {
         size_t tokenCount = 0;
         size_t index = 0;
@@ -2592,13 +2592,13 @@ else
                 ++index;
             }
 
-            tokens[tokenCount++] = buffer[start .. index].idup;
+            tokens[tokenCount++] = buffer[start .. index];
         }
 
         return tokenCount;
     }
 
-    private @nogc nothrow void handleEchoCommand(ref immutable(char)[][bareMetalShellMaxTokens] tokens,
+    private @nogc nothrow void handleEchoCommand(ref const(char)[][bareMetalShellMaxTokens] tokens,
                                                  size_t tokenCount)
     {
         if (tokenCount <= 1)
@@ -2669,7 +2669,7 @@ else
         printUnsigned(cast(size_t)value);
     }
 
-    private @nogc nothrow void handleSumCommand(ref immutable(char)[][bareMetalShellMaxTokens] tokens,
+    private @nogc nothrow void handleSumCommand(ref const(char)[][bareMetalShellMaxTokens] tokens,
                                                 size_t tokenCount)
     {
         if (tokenCount < 3)

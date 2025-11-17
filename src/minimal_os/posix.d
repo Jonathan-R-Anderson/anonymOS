@@ -313,6 +313,8 @@ mixin template PosixKernelShim()
     alias g_shellDefaultArgv = minimal_os.posix.g_shellDefaultArgv;
     alias g_shellDefaultEnvp = minimal_os.posix.g_shellDefaultEnvp;
     alias SHELL_PATH = minimal_os.posix.SHELL_PATH;
+    alias ensureBareMetalShellInterfaces =
+        minimal_os.posix.ensureBareMetalShellInterfaces;
 
 
     // Bring helpers that the mixin's implementation relies on into its

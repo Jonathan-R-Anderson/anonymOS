@@ -2244,15 +2244,11 @@ else
 
     private @nogc nothrow void ensureBareMetalShellInterfaces()
     {
-        if (g_spawnRegisteredProcessFn is null)
-        {
-            g_spawnRegisteredProcessFn = &spawnRegisteredProcess;
-        }
-
-        if (g_waitpidFn is null)
-        {
-            g_waitpidFn = &waitpid;
-        }
+        // Bare-metal builds rely on the host environment (or other minimal_os
+        // components) to register usable spawn/wait implementations via
+        // registerBareMetalShellInterfaces().  The fallback implementations in
+        // this module are only available when building the Posix shim, so avoid
+        // referencing them here to keep non-Posix builds linkable.
     }
 
     private @nogc nothrow bool bareMetalShellRuntimeReady()

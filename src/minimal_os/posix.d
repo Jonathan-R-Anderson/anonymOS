@@ -35,6 +35,30 @@ package(minimal_os) @nogc nothrow void registerBareMetalShellInterfaces(
     g_waitpidFn = waitFn;
 }
 
+private @nogc nothrow void ensureBareMetalShellInterfaces()
+{
+    // Bare-metal builds rely on host integrations (or other minimal_os modules)
+    // to provide spawn/wait hooks.  The Posix shim offers fallback
+    // implementations, so opportunistically register them whenever they are
+    // available so callers can depend on g_spawnRegisteredProcessFn/g_waitpidFn
+    // without caring about the build configuration.
+    static if (__traits(compiles, { alias Fn = typeof(&spawnRegisteredProcess); }))
+    {
+        if (g_spawnRegisteredProcessFn is null)
+        {
+            g_spawnRegisteredProcessFn = &spawnRegisteredProcess;
+        }
+    }
+
+    static if (__traits(compiles, { alias Fn = typeof(&waitpid); }))
+    {
+        if (g_waitpidFn is null)
+        {
+            g_waitpidFn = &waitpid;
+        }
+    }
+}
+
 // example: adjust the path to whatever your search in step 1 shows
 public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
@@ -2242,31 +2266,6 @@ else
         debugExpectActual("ensurePosixUtilitiesConfiguredBare embedded", 1, debugBool(embed));
         debugExpectActual("ensurePosixUtilitiesConfiguredBare registry", 1, debugBool(registry));
         return embed || registry;
-    }
-
-    private @nogc nothrow void ensureBareMetalShellInterfaces()
-    {
-        // Bare-metal builds rely on the host environment (or other minimal_os
-        // components) to register usable spawn/wait implementations via
-        // registerBareMetalShellInterfaces().  The fallback implementations in
-        // this module are only available when building the Posix shim, so avoid
-        // referencing them here to keep non-Posix builds linkable.
-
-        static if (__traits(compiles, { alias Fn = typeof(&spawnRegisteredProcess); }))
-        {
-            if (g_spawnRegisteredProcessFn is null)
-            {
-                g_spawnRegisteredProcessFn = &spawnRegisteredProcess;
-            }
-        }
-
-        static if (__traits(compiles, { alias Fn = typeof(&waitpid); }))
-        {
-            if (g_waitpidFn is null)
-            {
-                g_waitpidFn = &waitpid;
-            }
-        }
     }
 
     private @nogc nothrow bool bareMetalShellRuntimeReady()

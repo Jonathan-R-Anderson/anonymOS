@@ -1,6 +1,6 @@
 module minimal_os.console;
 
-import minimal_os.serial : serialWriteByte;
+import minimal_os.serial : serialWriteByte, serialConsoleReady, serialReadByteBlocking;
 
 nothrow:
 @nogc:
@@ -221,6 +221,38 @@ void printHex(size_t value, uint digits = size_t.sizeof * 2)
     {
         putChar(buffer[index]);
     }
+}
+
+@nogc nothrow bool hasSerialConsole()
+{
+    return serialConsoleReady();
+}
+
+@nogc nothrow void consoleWriteChar(char c)
+{
+    if (!hasSerialConsole())
+    {
+        return;
+    }
+
+    if (c == '\n')
+    {
+        serialWriteByte('\r');
+        serialWriteByte('\n');
+        return;
+    }
+
+    serialWriteByte(cast(ubyte)c);
+}
+
+@nogc nothrow char consoleReadCharBlocking()
+{
+    if (!hasSerialConsole())
+    {
+        return '\0';
+    }
+
+    return serialReadByteBlocking();
 }
 
 void printLine(const(char)[] text)

@@ -35,7 +35,7 @@ package(minimal_os) @nogc nothrow void registerBareMetalShellInterfaces(
     g_waitpidFn = waitFn;
 }
 
-private @nogc nothrow void ensureBareMetalShellInterfaces()
+package(minimal_os) @nogc nothrow void ensureBareMetalShellInterfaces()
 {
     // Bare-metal builds rely on host integrations (or other minimal_os modules)
     // to provide spawn/wait hooks.  The Posix shim offers fallback
@@ -1670,7 +1670,7 @@ mixin template PosixKernelShim()
     @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
     @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
 
-    shared static this()
+    extern(D) shared static this()
     {
         minimal_os.posix.registerBareMetalShellInterfaces(&spawnRegisteredProcess,
                                                           &waitpid);

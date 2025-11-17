@@ -51,6 +51,11 @@ void serialWriteString(const(char)[] text)
     }
 }
 
+@nogc nothrow bool serialConsoleReady()
+{
+    return serialReady;
+}
+
 @nogc nothrow
 private void setupPort()
 {

@@ -1,6 +1,7 @@
 module minimal_os.posix;
 
-import minimal_os.console : print, printLine, printUnsigned;
+import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady;
+import minimal_os.serial : serialConsoleReady;
 
 // example: adjust the path to whatever your search in step 1 shows
 public import minimal_os.posixutils.registry :
@@ -1191,7 +1192,19 @@ mixin template PosixKernelShim()
         }
         else
         {
-            result.available = false;
+            const bool kernelConsole = kernelConsoleReady();
+            const bool serialConsole = serialConsoleReady();
+            hostProbeSupported = kernelConsole || serialConsole;
+            hasValidStdStreams = hostProbeSupported;
+
+            if (hostProbeSupported)
+            {
+                result.available = true;
+            }
+            else
+            {
+                result.available = false;
+            }
         }
 
         if (!result.available && (result.reason is null || result.reason.length == 0))

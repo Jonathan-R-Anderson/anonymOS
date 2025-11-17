@@ -526,16 +526,24 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
     )
 
     args = parser.parse_args(argv)
-    config_data = load_config(args.config)
+    config_data, config_base = load_config(args.config)
     merged: dict = dict(config_data)
+
+    def normalize_cli_path(value: Path) -> Path:
+        return value.expanduser().resolve()
 
     def set_path(key: str, value: Path | None) -> None:
         if value is not None:
-            merged[key] = str(value)
+            merged[key] = str(normalize_cli_path(value))
 
     def set_str(key: str, value: str | None) -> None:
         if value is not None:
             merged[key] = value
+
+    def extend_cli_paths(key: str, values):
+        if not values:
+            return
+        extend_list(key, [str(normalize_cli_path(item)) for item in values])
 
     def extend_list(key: str, values):
         if not values:
@@ -547,14 +555,14 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
             items = []
         else:
             items = [existing]
-        items.extend(str(item) for item in values)
+        items.extend(values)
         merged[key] = items
 
     set_path("compiler", args.compiler)
     set_path("runtime", args.runtime)
     set_path("phobos", args.phobos)
     set_path("mstd", args.mstd)
-    extend_list("user", args.user_dirs)
+    extend_cli_paths("user", args.user_dirs)
     set_path("build_dir", args.build_dir)
     set_path("output", args.output)
     set_path("log_file", args.log_file)
@@ -562,10 +570,10 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
     set_path("gcc", args.gcc)
     extend_list("compile_flags", args.compile_flags)
     extend_list("link_flags", args.link_flags)
-    extend_list("lib_dirs", args.lib_dirs)
+    extend_cli_paths("lib_dirs", args.lib_dirs)
     extend_list("libs", args.libs)
     extend_list("skip", args.skip_patterns)
-    extend_list("include_dirs", args.include_dirs)
+    extend_cli_paths("include_dirs", args.include_dirs)
     set_path("conf", args.conf_file)
     set_path("sysroot", args.sysroot)
     set_path("archiver", args.archiver)
@@ -577,33 +585,37 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
         merged["keep_going"] = True
 
     try:
-        return build_settings_from_dict(merged)
+        return build_settings_from_dict(merged, base_dir=config_base)
     except ValueError as exc:
         parser.error(str(exc))
         raise  # pragma: no cover - parser.error exits
 
 
-def build_settings_from_dict(data: dict) -> BuildSettings:
+def build_settings_from_dict(data: dict, *, base_dir: Path | None = None) -> BuildSettings:
+    resolved_base = base_dir.expanduser().resolve() if base_dir else None
+
+    def normalize_path(value) -> Path:
+        path = Path(str(value)).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        if resolved_base is not None:
+            return (resolved_base / path).resolve()
+        return path.resolve()
+
     def resolve_executable(key: str) -> Path:
         value = data.get(key)
         if value is None:
             raise ValueError(f"Missing required configuration value: {key}")
 
-        raw_path = Path(str(value)).expanduser()
-
-        direct_candidates: list[Path] = [raw_path]
-        if not raw_path.is_absolute():
-            direct_candidates.append(Path.cwd() / raw_path)
-
-        for candidate in direct_candidates:
-            if candidate.exists():
-                return candidate.resolve()
+        candidate = normalize_path(value)
+        if candidate.exists():
+            return candidate
 
         search_terms: list[str] = []
         string_value = str(value)
         if string_value:
             search_terms.append(string_value)
-        name = raw_path.name
+        name = Path(string_value).name
         if name and name not in search_terms:
             search_terms.append(name)
 
@@ -621,13 +633,13 @@ def build_settings_from_dict(data: dict) -> BuildSettings:
         value = data.get(key)
         if value is None:
             raise ValueError(f"Missing required configuration value: {key}")
-        return Path(value).expanduser().resolve()
+        return normalize_path(value)
 
     def optional_path(key: str) -> Path | None:
         value = data.get(key)
         if value is None:
             return None
-        return Path(value).expanduser().resolve()
+        return normalize_path(value)
 
     def path_list(key: str) -> List[Path]:
         value = data.get(key, [])
@@ -637,7 +649,7 @@ def build_settings_from_dict(data: dict) -> BuildSettings:
             values = []
         else:
             values = [value]
-        return [Path(item).expanduser().resolve() for item in values if item]
+        return [normalize_path(item) for item in values if item]
 
     def str_list(key: str) -> List[str]:
         value = data.get(key, [])
@@ -680,17 +692,17 @@ def build_settings_from_dict(data: dict) -> BuildSettings:
     )
 
 
-
-def load_config(path: Path | None) -> dict:
+def load_config(path: Path | None) -> tuple[dict, Path | None]:
     if path is None:
-        return {}
+        return {}, None
     if tomllib is None:
         raise RuntimeError("TOML support is unavailable; install tomli or use Python 3.11+")
-    with path.expanduser().open("rb") as fp:
+    expanded = path.expanduser()
+    with expanded.open("rb") as fp:
         data = tomllib.load(fp)
     if not isinstance(data, dict):
         raise ValueError("Configuration file must define a table at the top level")
-    return data
+    return data, expanded.resolve().parent
 
 
 def main(argv: Sequence[str] | None = None) -> int:

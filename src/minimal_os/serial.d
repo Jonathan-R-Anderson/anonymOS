@@ -66,7 +66,7 @@ private void setupPort()
 @nogc nothrow
 private void outb(ushort port, ubyte value)
 {
-    @nogc asm
+    asm @nogc nothrow
     {
         mov DX, port;
         mov AL, value;
@@ -78,7 +78,7 @@ private void outb(ushort port, ubyte value)
 private ubyte inb(ushort port)
 {
     ubyte value;
-    @nogc asm
+    asm @nogc nothrow
     {
         mov DX, port;
         in  AL, DX;

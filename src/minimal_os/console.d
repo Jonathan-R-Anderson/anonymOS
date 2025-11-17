@@ -1,5 +1,7 @@
 module minimal_os.console;
 
+import minimal_os.serial : serialWriteByte;
+
 nothrow:
 @nogc:
 
@@ -87,6 +89,7 @@ void putChar(char c)
     if (c == '\n')
     {
         newline();
+        mirrorToSerial('\n');
         return;
     }
 
@@ -99,10 +102,24 @@ void putChar(char c)
     vgaBuffer[index] = cast(ushort)c | (cast(ushort)DEFAULT_COLOUR << 8);
     ++cursorCol;
 
+    mirrorToSerial(c);
+
     if (cursorCol >= VGA_WIDTH)
     {
         newline();
     }
+}
+
+private void mirrorToSerial(char c)
+{
+    if (c == '\n')
+    {
+        serialWriteByte('\r');
+        serialWriteByte('\n');
+        return;
+    }
+
+    serialWriteByte(cast(ubyte)c);
 }
 
 void backspace()

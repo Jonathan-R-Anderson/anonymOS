@@ -263,6 +263,7 @@ private void finalizeShellActivation()
     const auto consoleDetection = detectConsoleAvailability();
     const bool detectedConsole = consoleDetection.available;
     const bool consoleDisabledByConfig = consoleDetection.disabledByConfiguration;
+    immutable(char)[] consoleDiagnostic = consoleDetection.reason;
     if (detectedConsole)
     {
         if (!g_consoleAvailable)
@@ -316,9 +317,16 @@ private void finalizeShellActivation()
             }
             else if (!g_consoleAvailable)
             {
-                reason = consoleDisabledByConfig
-                    ? "console disabled by configuration"
-                    : "console unavailable";
+                if (consoleDiagnostic !is null && consoleDiagnostic.length != 0)
+                {
+                    reason = consoleDiagnostic;
+                }
+                else
+                {
+                    reason = consoleDisabledByConfig
+                        ? "console disabled by configuration"
+                        : "console unavailable";
+                }
             }
             else if (!g_shellRegistered)
             {

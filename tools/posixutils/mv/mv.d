@@ -18,14 +18,15 @@ import core.stdc.stdio  : perror, rename; // rename is from stdio.h
 import core.sys.posix.unistd :
     access, W_OK, F_OK, isatty, STDIN_FILENO,
     unlink, read, write, close,
-    fchown;
+    fchown, readlink, symlink;
 
 import core.sys.posix.fcntl  : open, O_RDONLY, O_CREAT, O_TRUNC, O_WRONLY;
 import core.sys.posix.sys.types : ssize_t, off_t, uid_t, gid_t, mode_t;
 import core.sys.posix.sys.stat :
     stat_t,    // struct type
     stat, lstat, fstat, fchmod,
-    S_ISDIR, S_ISREG, S_ISUID, S_ISGID;
+    S_ISDIR, S_ISREG, S_ISUID, S_ISGID,
+    S_ISLNK, S_ISFIFO, mkfifo;
 
 import core.sys.posix.utime : utimbuf, utime;
 import core.stdc.stdlib     : exit;
@@ -161,8 +162,45 @@ int copyRegularFile(string src, ref stat_t st, string dest) {
     return rc;
 }
 
-int copySpecial(string src, ref stat_t /*st*/, string /*dest*/) {
-    // Not implemented (matches your TODO)
+int copySpecial(string src, ref stat_t st, string dest) {
+    // Handle symbolic links and FIFOs; other types remain unsupported
+    if (S_ISLNK(st.st_mode)) {
+        size_t bufSize = cast(size_t)(st.st_size > 0 ? st.st_size + 1 : 256);
+        string target;
+
+        while (true) {
+            auto buf = new char[bufSize];
+            auto len = readlink(src.toStringz, buf.ptr, bufSize);
+            if (len < 0) {
+                perror(src.toStringz);
+                return 1;
+            }
+
+            if (len >= bufSize) {
+                bufSize *= 2;
+                continue; // buffer too small, retry
+            }
+
+            target = cast(string) buf[0 .. cast(size_t)len].idup;
+            break;
+        }
+
+        if (symlink(target.toStringz, dest.toStringz) != 0) {
+            perror(dest.toStringz);
+            return 1;
+        }
+        return 0;
+    }
+
+    if (S_ISFIFO(st.st_mode)) {
+        auto mode = cast(mode_t)(st.st_mode & 0o7777);
+        if (mkfifo(dest.toStringz, mode) != 0) {
+            perror(dest.toStringz);
+            return 1;
+        }
+        return 0;
+    }
+
     stderr.writefln("%sunsupported file type for '%s'", PFX, src);
     return 1;
 }

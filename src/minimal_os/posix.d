@@ -19,9 +19,9 @@ package(minimal_os) __gshared const(char*)[2] g_shellDefaultArgv =
     [SHELL_PATH.ptr, null];
 package(minimal_os) __gshared const(char*)[1] g_shellDefaultEnvp = [null];
 
-alias SpawnRegisteredProcessFn = @nogc nothrow
+alias SpawnRegisteredProcessFn = extern(C) @nogc nothrow
     pid_t function(const(char)* path, const(char*)* argv, const(char*)* envp);
-alias WaitPidFn = @nogc nothrow
+alias WaitPidFn = extern(C) @nogc nothrow
     pid_t function(pid_t wpid, int* status, int options);
 
 package(minimal_os) __gshared SpawnRegisteredProcessFn g_spawnRegisteredProcessFn;

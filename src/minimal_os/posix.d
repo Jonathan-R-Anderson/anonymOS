@@ -17,7 +17,8 @@ alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPa
 // ---------------------------
 version (Posix)
 {
-    private import core.sys.posix.unistd : isatty, read, write;
+    private import core.sys.posix.unistd : isatty, read, write, close;
+    private import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
     private import core.sys.posix.sys.types : ssize_t;
     private import core.stdc.errno : errno;
 }
@@ -1129,6 +1130,22 @@ mixin template PosixKernelShim()
             result.available = (isatty(STDIN_FILENO)  != 0)
                 || (isatty(STDOUT_FILENO) != 0)
                 || (isatty(STDERR_FILENO) != 0);
+
+            // Some CI environments and build harnesses detach stdio from the
+            // controlling TTY, which makes the basic isatty() checks lie even
+            // though /dev/tty is still reachable.  Fall back to probing the
+            // device node directly so the interactive shell stays enabled when
+            // a console actually exists.
+            if (!result.available)
+            {
+                enum ttyPath = "/dev/tty\0";
+                const int ttyFd = open(ttyPath.ptr, O_RDONLY | O_NOCTTY);
+                if (ttyFd >= 0)
+                {
+                    scope(exit) close(ttyFd);
+                    result.available = (isatty(ttyFd) != 0);
+                }
+            }
         }
         else
         {

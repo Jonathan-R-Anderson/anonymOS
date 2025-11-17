@@ -113,7 +113,11 @@ private enum bool ENABLE_POSIX_DEBUG = true;
     // kernel/serial console modules.  Guard the probe helpers behind
     // __traits(compiles, ...) so the shim can fall back to "console not
     // present" without forcing those modules to exist in every build.
-    private @nogc nothrow bool probeKernelConsoleReady()
+    // Expose the console probes to the rest of the minimal_os package so the
+    // PosixKernelShim mixin (instantiated in other modules) can reference them.
+    // Using package visibility avoids leaking the helpers publicly while still
+    // allowing all minimal_os modules to share the logic.
+    @nogc nothrow package(minimal_os) bool probeKernelConsoleReady()
     {
         static if (__traits(compiles, kernelConsoleReady()))
         {
@@ -125,7 +129,7 @@ private enum bool ENABLE_POSIX_DEBUG = true;
         }
     }
 
-    private @nogc nothrow bool probeSerialConsoleReady()
+    @nogc nothrow package(minimal_os) bool probeSerialConsoleReady()
     {
         static if (__traits(compiles, serialConsoleReady()))
         {

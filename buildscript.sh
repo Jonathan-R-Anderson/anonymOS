@@ -163,6 +163,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/kernel/exceptions.d"
   "src/minimal_os/console.d"
   "src/minimal_os/serial.d"
+  "src/minimal_os/hardware.d"
   "src/minimal_os/compiler.d"
   "src/minimal_os/posix.d"
   "src/minimal_os/posixutils/registry.d"

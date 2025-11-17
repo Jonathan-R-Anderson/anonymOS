@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build D-based POSIX utility binaries for the interactive shell.
 
-This script scans tools/posixutils for translated utilities and compiles each
-subdirectory that contains D sources into a standalone binary.  By default the
-artifacts are placed under build/posixutils/bin so that the kernel can extend
-PATH when launching the interactive shell.
+This script scans src/minimal_os/posixutils for translated utilities and
+compiles each subdirectory that contains D sources into a standalone binary.
+By default the artifacts are placed under build/posixutils/bin so that the
+kernel can extend PATH when launching the interactive shell.
 """
 from __future__ import annotations
 
@@ -41,17 +41,9 @@ def resolve_source_root(source_arg: Path | None, root: Path) -> Path:
             raise SystemExit(f"Source directory not found: {source_root}")
         return source_root
 
-    default_root = root / "tools" / "posixutils"
+    default_root = root / "src" / "minimal_os" / "posixutils"
     if default_root.is_dir():
         return default_root
-
-    fallback_root = root / "src" / "minimal_os" / "posixutils"
-    if fallback_root.is_dir():
-        print(
-            f"[warn] POSIX utilities not found under {default_root}; using {fallback_root}",
-            file=sys.stderr,
-        )
-        return fallback_root
 
     raise SystemExit(f"Source directory not found: {default_root}")
 

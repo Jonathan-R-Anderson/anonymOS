@@ -38,7 +38,7 @@ version (X86_64)
         Lresume:
             mov result, EAX;
         Lend:
-        }
+        };
         return result;
     }
 
@@ -59,7 +59,7 @@ version (X86_64)
             mov RAX, retval;
             mov R11, [RDX + JMP_RIP];
             jmp R11;
-        }
+        };
     }
 }
 else

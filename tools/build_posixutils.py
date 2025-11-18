@@ -182,9 +182,18 @@ def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], outp
         pass
 
 
+# Some directories under src/minimal_os/posixutils export helper libraries that
+# are consumed by multiple utilities but are not themselves runnable commands.
+# Skip those so that LDC does not try to link them as executables (which would
+# fail because they do not define main()).
+NON_COMMAND_DIRECTORIES = {"process"}
+
+
 def discover_commands(source_root: Path) -> Iterable[tuple[str, List[Path]]]:
     for entry in sorted(source_root.iterdir()):
         if not entry.is_dir():
+            continue
+        if entry.name in NON_COMMAND_DIRECTORIES:
             continue
         sources = [src for src in sorted(entry.glob("*.d")) if is_d_source(src)]
         if not sources:

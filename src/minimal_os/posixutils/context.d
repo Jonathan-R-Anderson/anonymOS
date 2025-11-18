@@ -2,7 +2,13 @@ module minimal_os.posixutils.context;
 
 version (X86_64)
 {
-    align(16) struct jmp_buf
+    // Export the jump buffer type so other modules can selectively import it.
+    // Without an explicit `public` the definition ended up module-private on
+    // some compilers, which caused imports such as
+    // `import minimal_os.posixutils.context : jmp_buf;` to fail.  Marking it as
+    // `public` ensures the scheduler structures in `minimal_os.posix` can use
+    // the type regardless of the target architecture.
+    public align(16) struct jmp_buf
     {
         size_t[8] regs;
     }

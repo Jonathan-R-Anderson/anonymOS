@@ -26,7 +26,10 @@ from typing import Dict, List, Sequence
 try:  # Python 3.11+
     import tomllib  # type: ignore[attr-defined]
 except ModuleNotFoundError:  # pragma: no cover - compatibility with older Python
-    tomllib = None  # type: ignore[assignment]
+    try:
+        import tomli as tomllib  # type: ignore[assignment, import-not-found]
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency
+        tomllib = None  # type: ignore[assignment]
 
 
 @dataclass

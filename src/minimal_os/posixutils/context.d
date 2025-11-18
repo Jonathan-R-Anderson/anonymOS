@@ -1,6 +1,10 @@
 module minimal_os.posixutils.context;
 
-version (X86_64)
+version (Posix)
+{
+    public import core.stdc.setjmp : jmp_buf, setjmp, longjmp;
+}
+else version (X86_64)
 {
     align(16) struct jmp_buf
     {

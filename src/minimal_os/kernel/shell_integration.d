@@ -4,7 +4,8 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 
 import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
 import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
-import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry;
+import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
+    registerBareMetalShellInterfaces, spawnRegisteredProcess, waitpid;
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
@@ -126,6 +127,7 @@ private void integrateShell()
 {
     printStageHeader("Integrate 'lfe-sh' shell environment");
 
+    ensureBareMetalShellRuntimeHooks();
     fetchShellSnapshot();
     updateShellBinaryMetrics();
     checkShellRuntimeBindings();
@@ -260,6 +262,8 @@ private void bindPosixUtilitiesToKernel()
 
 private void finalizeShellActivation()
 {
+    ensureBareMetalShellRuntimeHooks();
+
     const auto consoleDetection = detectConsoleAvailability();
     const bool detectedConsole = consoleDetection.available;
     const bool consoleDisabledByConfig = consoleDetection.disabledByConfiguration;
@@ -343,6 +347,25 @@ private void finalizeShellActivation()
         printStatus("[shell] Activation        : ", "blocked", "");
         printStatus("[shell] Failure reason    : ", reason, "");
     }
+}
+
+private void ensureBareMetalShellRuntimeHooks()
+{
+    version (Posix)
+    {
+        // Host/Posix shim builds register the shell runtime hooks during module
+        // initialization, so nothing additional is required here.
+        return;
+    }
+
+    static bool runtimeHooksRegistered = false;
+    if (runtimeHooksRegistered)
+    {
+        return;
+    }
+
+    registerBareMetalShellInterfaces(&spawnRegisteredProcess, &waitpid);
+    runtimeHooksRegistered = true;
 }
 
 // POSIX-in-Kernel shim implementation now lives in minimal_os.posix::PosixKernelShim.

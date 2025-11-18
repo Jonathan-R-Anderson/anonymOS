@@ -1,6 +1,7 @@
 module minimal_os.posix;
 
-import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady;
+import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady,
+                           printHex;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 
@@ -1814,12 +1815,28 @@ mixin template PosixKernelShim()
         public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
         {
             auto slot = findExecutableSlot(path);
-            debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));
+            const bool slotFound = (slot !is null);
+            debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slotFound));
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                print("spawnRegisteredProcess slot found: expected=1, actual=");
+                printUnsigned(slotFound ? 1 : 0);
+                printLine("");
+            }
             if(slot is null) return setErrno(Errno.ENOENT);
 
             lock(&g_plock);
             auto proc = allocProc();
-            debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(proc !is null));
+            const bool allocOk = (proc !is null);
+            debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(allocOk));
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                print("spawnRegisteredProcess alloc success: expected=1, actual=");
+                printUnsigned(allocOk ? 1 : 0);
+                printLine("");
+            }
             if(proc is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
             proc.ppid   = (g_current ? g_current.pid : 0);
@@ -1831,7 +1848,15 @@ mixin template PosixKernelShim()
             setNameFromCString(proc.name, path);
             updateProcessObjectLabel(*proc, path);
             unlock(&g_plock);
-            debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(proc.pid > 0));
+            const bool pidAssigned = (proc.pid > 0);
+            debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(pidAssigned));
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                print("spawnRegisteredProcess pid assigned: expected=1, actual=");
+                printUnsigned(pidAssigned ? 1 : 0);
+                printLine("");
+            }
             return proc.pid;
         }
     }
@@ -2101,6 +2126,15 @@ version (Posix)
 
     extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)
     {
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            print("[shell-debug] shellExecEntry entered: argv=0x");
+            printHex(cast(size_t)argv);
+            print(", envp=0x");
+            printHex(cast(size_t)envp);
+            printLine("");
+        }
+
         // Prefer provided envp; host bridge can ignore or use it.
         runHostShellSession(argv, envp);
     }

@@ -51,3 +51,30 @@ The default `shellExecEntry` simply invokes `runHostShellSession(argv, envp)` (l
 While debugging, keep GDB stopped on `launchInteractiveShell` and repeatedly single-step the `g_spawnRegisteredProcessFn`/`g_waitpidFn` calls. After each iteration, dump the recent `dbg` log (the monitor collects the last few kilobytes) so you can correlate every label with the code blocks above. This is faster than reflashing the entire image, and the deterministic labels make it clear which prerequisite failed without additional instrumentation. If you see the kernel immediately re-print `[shell] Booting 'lfe-sh' interactive shell...`, verify that `decodeShellExitStatus()` is running with the status returned by your `waitpid` implementation; a bogus status that always sets the signal bit will force the loop to restart without ever reaching `shellExecEntry()`.
 
 Following this checklist lets you diagnose why the bare-metal shell never prints its prompt using only the built-in `dbg` telemetry.
+
+## 6. Sample GDB walkthrough
+
+Once you know which functions to inspect, a short GDB session confirms that the kernel is spawning `/bin/sh` and then blocking in `waitpid`:
+
+```
+(gdb) break spawnRegisteredProcess
+(gdb) c
+```
+
+When the breakpoint triggers, step through the body to verify that the executable slot lookup succeeded and that a `Proc` struct was allocated for the child:
+
+```
+(gdb) n  # slot lookup
+(gdb) n  # allocation
+```
+
+After the function returns you drop back into `bareMetalShellLoop()`, which should immediately print the boot banner before waiting on the shell process:
+
+```
+(gdb) n
+2515                printLine("[shell] Booting 'lfe-sh' interactive shell...");
+(gdb) n
+2518                auto waited = g_waitpidFn(pid, &status, 0);
+```
+
+If `waitpid` never returns, re-run the loop and inspect the `dbg` stream for `sys_waitpid child matched` or `schedYield` markers. Seeing only the `actual=0` variant of the waitpid log means the parent never observed the child enter the zombie state, so focus on why `shellExecEntry()` is not running.

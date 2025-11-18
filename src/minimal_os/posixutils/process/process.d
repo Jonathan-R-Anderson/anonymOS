@@ -4,7 +4,7 @@ version (Posix)
 {
     import core.stdc.errno : errno, EINVAL, ENOENT;
     import core.sys.posix.sys.types : pid_t;
-    import core.sys.posix.sys.wait : waitpid as posixWaitpid;
+    import core.sys.posix.sys.wait : posixWaitpid = waitpid;
     import core.sys.posix.unistd : fork, execve, _exit;
 
     extern(C) __gshared char** environ;

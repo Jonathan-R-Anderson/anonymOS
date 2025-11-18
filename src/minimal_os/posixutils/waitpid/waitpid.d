@@ -1,4 +1,4 @@
-module waitpid_tool;
+module waitpid;
 
 import std.stdio : writeln, writefln, stderr;
 import std.getopt : getopt, defaultGetoptPrinter, GetoptResult, config;

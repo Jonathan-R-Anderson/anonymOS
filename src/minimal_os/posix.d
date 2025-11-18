@@ -1131,9 +1131,19 @@ mixin template PosixKernelShim()
     }
     @nogc nothrow private void assignProcessState(ref Proc proc, ProcState state)
     {
-        debugExpectActual("assignProcessState transition", cast(long)proc.state, cast(long)state);
+        const ProcState previousState = proc.state;
+        if (previousState == state)
+        {
+            return;
+        }
+
         proc.state = state;
         updateProcessObjectState(proc);
+
+        debugExpectActual(
+            "assignProcessState applied state",
+            cast(long)state,
+            cast(long)proc.state);
     }
 
     // ---- Executable registration ----

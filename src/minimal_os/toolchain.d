@@ -33,7 +33,7 @@ struct PackageManifest
 }
 
 enum DEFAULT_HOST_TRIPLE    = "x86_64-pc-linux-gnu";
-enum DEFAULT_TARGET_TRIPLE  = "wasm32-unknown-unknown";
+enum DEFAULT_TARGET_TRIPLE  = "x86_64-pc-unknown-unknown";
 enum DEFAULT_RUNTIME_VARIANT = "minimal";
 
 private enum size_t LINKED_ARTIFACT_IMAGE_CAPACITY = 16_384;

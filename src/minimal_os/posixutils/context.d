@@ -62,7 +62,14 @@ version (X86_64)
         };
     }
 }
+else static if (__traits(compiles, { import core.stdc.setjmp : jmp_buf; }))
+{
+    public import core.stdc.setjmp : jmp_buf;
+
+    extern(C) @nogc nothrow int setjmp(ref jmp_buf env);
+    extern(C) @nogc nothrow void longjmp(ref jmp_buf env, int value);
+}
 else
 {
-    static assert(0, "jmp_buf implementation only provided for x86_64");
+    static assert(0, "jmp_buf implementation only provided for this architecture");
 }

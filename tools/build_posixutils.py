@@ -186,7 +186,7 @@ def compile_command(dc: str, flags: Sequence[str], sources: Sequence[Path], outp
 # are consumed by multiple utilities but are not themselves runnable commands.
 # Skip those so that LDC does not try to link them as executables (which would
 # fail because they do not define main()).
-NON_COMMAND_DIRECTORIES = {"process"}
+NON_COMMAND_DIRECTORIES = {"process", "api"}
 
 
 def discover_commands(source_root: Path) -> Iterable[tuple[str, List[Path]]]:

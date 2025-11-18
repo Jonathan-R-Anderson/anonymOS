@@ -13,7 +13,7 @@ version (Posix)
 else
 {
     import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
-        registerBareMetalShellInterfaces, spawnRegisteredProcess, waitpid;
+        registerBareMetalShellInterfaces;
 }
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
@@ -373,8 +373,10 @@ private void ensureBareMetalShellRuntimeHooks()
         return;
     }
 
-    registerBareMetalShellInterfaces(&spawnRegisteredProcess, &waitpid);
+    // Let the Posix shim wire up g_spawnRegisteredProcessFn/g_waitpidFn
+    ensureBareMetalShellInterfaces();
     runtimeHooksRegistered = true;
+}
 }
 
 // POSIX-in-Kernel shim implementation now lives in minimal_os.posix::PosixKernelShim.

@@ -161,10 +161,18 @@ fi
 mkdir -p "$OUT_DIR"
 
 if [ "$DEBUG" = "1" ]; then
-  DFLAGS="-g -O0"
+DFLAGS="-g -O0"
 else
   DFLAGS="-O3 -release"
 fi
+
+# When targeting a freestanding triple such as x86_64-unknown-elf, druntime
+# does not automatically select a C runtime implementation.  The kernel still
+# uses declarations from core.stdc.* (for FILE, intptr_t, etc.), so explicitly
+# provide the desired CRuntime version to ldc2.  Allow callers to override it
+# via CRUNTIME_VERSION if they want to experiment with a different libc model.
+: "${CRUNTIME_VERSION:=CRuntime_Glibc}"
+CRUNTIME_FLAG="-d-version=${CRUNTIME_VERSION}"
 
 # D objects (kernel + dependencies)
 KERNEL_SOURCES=(
@@ -187,7 +195,7 @@ KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
-  ldc2 -I. -Isrc -J. -mtriple="$TARGET" -betterC $DFLAGS \
+  ldc2 -I. -Isrc -J. -mtriple="$TARGET" -betterC $DFLAGS "$CRUNTIME_FLAG" \
        -c "$source" -of="$obj"
   KERNEL_OBJECTS+=("$obj")
 done

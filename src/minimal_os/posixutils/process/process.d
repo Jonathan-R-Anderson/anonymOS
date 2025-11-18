@@ -1,4 +1,4 @@
-module minimal_os.posixutils.api.process;
+module process;
 
 version (Posix)
 {

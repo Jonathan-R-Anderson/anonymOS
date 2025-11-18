@@ -198,6 +198,11 @@ private enum bool ENABLE_POSIX_DEBUG = true;
 {
     static if (ENABLE_POSIX_DEBUG)
     {
+        if (expected == actual)
+        {
+            return;
+        }
+
         debugPrefix();
         print(label);
         print(": expected=");

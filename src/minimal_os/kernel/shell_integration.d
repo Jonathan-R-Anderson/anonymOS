@@ -377,7 +377,6 @@ private void ensureBareMetalShellRuntimeHooks()
     ensureBareMetalShellInterfaces();
     runtimeHooksRegistered = true;
 }
-}
 
 // POSIX-in-Kernel shim implementation now lives in minimal_os.posix::PosixKernelShim.
 private void printBuildSummary()

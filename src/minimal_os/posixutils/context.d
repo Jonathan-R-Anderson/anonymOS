@@ -1,10 +1,6 @@
 module minimal_os.posixutils.context;
 
-version (Posix)
-{
-    public import core.stdc.setjmp : jmp_buf, setjmp, longjmp;
-}
-else version (X86_64)
+version (X86_64)
 {
     align(16) struct jmp_buf
     {
@@ -24,7 +20,7 @@ else version (X86_64)
     {
         int result;
         auto envPtr = &env;
-        asm @nogc nothrow
+        asm
         {
             mov RDX, envPtr;
             mov [RDX + JMP_RBX], RBX;
@@ -50,7 +46,7 @@ else version (X86_64)
     {
         auto envPtr = &env;
         int retval = value ? value : 1;
-        asm @nogc nothrow
+        asm
         {
             mov RDX, envPtr;
             mov RBX, [RDX + JMP_RBX];

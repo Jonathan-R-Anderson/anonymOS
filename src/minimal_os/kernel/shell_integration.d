@@ -8,7 +8,7 @@ version (Posix)
 {
     import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
         registerBareMetalShellInterfaces;
-    import minimal_os.posixutils.api.process : spawnRegisteredProcess, waitpid;
+    import minimal_os.posixutils.process : spawnRegisteredProcess, waitpid;
 }
 else
 {

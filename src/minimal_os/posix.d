@@ -66,7 +66,7 @@ public import minimal_os.posixutils.registry :
 
 version (Posix)
 {
-    public import minimal_os.posixutils.api.process
+    public import minimal_os.posixutils.process.process
         : spawnRegisteredProcess,
           waitpid;
 }
@@ -1680,7 +1680,7 @@ mixin template PosixKernelShim()
     }
     else
     {
-        @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
+        public @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
     }
 
     extern(D) shared static this()
@@ -1766,7 +1766,7 @@ mixin template PosixKernelShim()
     }
     else
     {
-        @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
+        public @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
         {
             auto slot = findExecutableSlot(path);
             debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));

@@ -64,6 +64,13 @@ public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 
+version (Posix)
+{
+    public import minimal_os.posixutils.api.process
+        : spawnRegisteredProcess,
+          waitpid;
+}
+
 // Module-scope aliases so the name is visible everywhere (including
 // outside the PosixKernelShim mixin).
 alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
@@ -1668,7 +1675,13 @@ mixin template PosixKernelShim()
     @nogc nothrow pid_t getpid(){ return sys_getpid(); }
     @nogc nothrow pid_t fork(){   return sys_fork();   }
     @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
-    @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
+    version (Posix)
+    {
+    }
+    else
+    {
+        @nogc nothrow pid_t waitpid(pid_t p, int* s, int o){ return sys_waitpid(p,s,o); }
+    }
 
     extern(D) shared static this()
     {
@@ -1748,28 +1761,34 @@ mixin template PosixKernelShim()
         return setErrno(Errno.ENFILE);
     }
 
-    @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
+    version (Posix)
     {
-        auto slot = findExecutableSlot(path);
-        debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));
-        if(slot is null) return setErrno(Errno.ENOENT);
+    }
+    else
+    {
+        @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
+        {
+            auto slot = findExecutableSlot(path);
+            debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));
+            if(slot is null) return setErrno(Errno.ENOENT);
 
-        lock(&g_plock);
-        auto proc = allocProc();
-        debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(proc !is null));
-        if(proc is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
+            lock(&g_plock);
+            auto proc = allocProc();
+            debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(proc !is null));
+            if(proc is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
-        proc.ppid   = (g_current ? g_current.pid : 0);
-        assignProcessState(*proc, ProcState.READY);
-        proc.entry  = slot.entry;
-        proc.pendingArgv = argv;
-        proc.pendingEnvp = envp;
-        proc.pendingExec = true;
-        setNameFromCString(proc.name, path);
-        updateProcessObjectLabel(*proc, path);
-        unlock(&g_plock);
-        debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(proc.pid > 0));
-        return proc.pid;
+            proc.ppid   = (g_current ? g_current.pid : 0);
+            assignProcessState(*proc, ProcState.READY);
+            proc.entry  = slot.entry;
+            proc.pendingArgv = argv;
+            proc.pendingEnvp = envp;
+            proc.pendingExec = true;
+            setNameFromCString(proc.name, path);
+            updateProcessObjectLabel(*proc, path);
+            unlock(&g_plock);
+            debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(proc.pid > 0));
+            return proc.pid;
+        }
     }
 
     @nogc nothrow int completeProcess(pid_t pid, int exitCode)

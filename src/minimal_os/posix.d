@@ -358,6 +358,13 @@ mixin template PosixKernelShim()
     alias probeKernelConsoleReady = minimal_os.posix.probeKernelConsoleReady;
     alias probeSerialConsoleReady = minimal_os.posix.probeSerialConsoleReady;
 
+    // Jump buffer helpers live in minimal_os.posix, so alias them into the
+    // mixin scope.  This keeps mixin users from having to import the context
+    // module explicitly.
+    alias jmp_buf = minimal_os.posix.jmp_buf;
+    alias setjmp  = minimal_os.posix.setjmp;
+    alias longjmp = minimal_os.posix.longjmp;
+
     // ---- Basic types (avoid druntime) ----
     alias pid_t   = int;
     alias uid_t   = uint;

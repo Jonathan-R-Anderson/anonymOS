@@ -1597,17 +1597,36 @@ mixin template PosixKernelShim()
     }
 
     @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
-        foreach(ref p; g_ptable){
-            if(p.state==ProcState.ZOMBIE && (wpid<=0 || p.pid==wpid) && p.ppid==(g_current?g_current.pid:0)){
-                if(status) *status = p.exitCode;
+        const pid_t currentPid = (g_current ? g_current.pid : 0);
+
+        while (true)
+        {
+            bool matchingChildFound = false;
+
+            foreach (ref p; g_ptable)
+            {
+                if (p.state == ProcState.UNUSED) continue;
+                if (p.ppid != currentPid) continue;
+                if (wpid > 0 && p.pid != wpid) continue;
+
+                matchingChildFound = true;
+                if (p.state != ProcState.ZOMBIE) continue;
+
+                if (status) *status = p.exitCode;
                 auto pid = p.pid;
                 resetProc(p);
                 debugExpectActual("sys_waitpid child matched", 1, 1);
                 return pid;
             }
+
+            if (!matchingChildFound)
+            {
+                debugExpectActual("sys_waitpid child matched", 1, 0);
+                return setErrno(Errno.ECHILD);
+            }
+
+            schedYield();
         }
-        debugExpectActual("sys_waitpid child matched", 1, 0);
-        return setErrno(Errno.ECHILD);
     }
 
     @nogc nothrow void sys__exit(int code){

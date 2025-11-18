@@ -76,10 +76,10 @@ else
     // in this module.  ensureBareMetalShellInterfaces() probes these symbols via
     // __traits(compiles, ...) during early initialization, so declare them now
     // to make the trait succeed even though the definitions live below.
-    public @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path,
-                                                     const(char*)* argv,
-                                                     const(char*)* envp);
-    public @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options);
+    public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path,
+                                                               const(char*)* argv,
+                                                               const(char*)* envp);
+    public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options);
 }
 
 // Module-scope aliases so the name is visible everywhere (including
@@ -1777,7 +1777,7 @@ mixin template PosixKernelShim()
     }
     else
     {
-        public @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
+        public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
         {
             auto slot = findExecutableSlot(path);
             debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slot !is null));

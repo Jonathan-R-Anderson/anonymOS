@@ -350,6 +350,7 @@ mixin template PosixKernelShim()
     // defining module explicitly.  This mirrors the pattern already used for
     // the debug helpers.
     alias ENABLE_POSIX_DEBUG      = minimal_os.posix.ENABLE_POSIX_DEBUG;
+    alias debugPrefix             = minimal_os.posix.debugPrefix;
     alias debugBool               = minimal_os.posix.debugBool;
     alias debugExpectActual       = minimal_os.posix.debugExpectActual;
     alias debugLog                = minimal_os.posix.debugLog;

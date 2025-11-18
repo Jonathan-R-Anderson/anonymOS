@@ -4,7 +4,7 @@ import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady,
                            printHex;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
-import core.sys.posix.setjmp : jmp_buf, setjmp, longjmp;
+import minimal_os.posixutils.context : jmp_buf, setjmp, longjmp;
 
 // ---------------------------------------------------------------------
 // Shared shell state accessible both to the shim mixin and bare-metal

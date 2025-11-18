@@ -37,7 +37,7 @@ version (X86_64)
             jmp Lend;
         Lresume:
             mov result, EAX;
-        Lend:
+        Lend:;
         };
         return result;
     }

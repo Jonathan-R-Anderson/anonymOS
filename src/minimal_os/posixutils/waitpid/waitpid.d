@@ -11,7 +11,7 @@ import core.stdc.stdio : perror;
 
 private void printStatus(pid_t pid, int status)
 {
-    writefln("pid %lld:", cast(long long)pid);
+    writefln("pid %lld:", cast(long)pid);
 
     if (WIFEXITED(status))
     {

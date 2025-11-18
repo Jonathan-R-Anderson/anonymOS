@@ -4,6 +4,7 @@ import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady,
                            printHex;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
+import core.stdc.setjmp : jmp_buf, setjmp, longjmp;
 
 // ---------------------------------------------------------------------
 // Shared shell state accessible both to the shim mixin and bare-metal
@@ -474,8 +475,8 @@ mixin template PosixKernelShim()
         SigSet    sigmask;
         FD[MAX_FD] fds;
         extern(C) @nogc nothrow void function(const(char*)* argv, const(char*)* envp) entry;
-        void*     ctx;
-        void*     kstack;
+        jmp_buf   context;
+        bool      contextValid;
         char[16]  name;
         const(char*)* pendingArgv;
         const(char*)* pendingEnvp;
@@ -1397,8 +1398,51 @@ mixin template PosixKernelShim()
     @nogc nothrow private void lock(Spin* /*s*/){ }
     @nogc nothrow private void unlock(Spin* /*s*/){}
 
-    // ---- Arch switch hook (no-op stub)
-    extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* /*newp*/) { }
+    @nogc nothrow private void runPendingExec(Proc* proc)
+    {
+        if (proc is null) return;
+
+        auto entry = proc.entry;
+        auto argv  = proc.pendingArgv;
+        auto envp  = proc.pendingEnvp;
+        proc.pendingArgv = null;
+        proc.pendingEnvp = null;
+        proc.pendingExec = false;
+        proc.contextValid = false;
+
+        if (entry is null)
+        {
+            completeProcess(proc.pid, 127);
+            schedYield();
+            return;
+        }
+
+        entry(argv, envp);
+
+        // Treat a returning entry point as an implicit exit.
+        sys__exit(0);
+    }
+
+    // ---- Arch switch hook (cooperative scheduling)
+    extern(C) @nogc nothrow void arch_context_switch(Proc* /*oldp*/, Proc* newp)
+    {
+        debugExpectActual("arch_context_switch next present", 1, debugBool(newp !is null));
+        if (newp is null)
+        {
+            return;
+        }
+
+        if (newp.pendingExec)
+        {
+            runPendingExec(newp);
+            return;
+        }
+
+        if (newp.contextValid)
+        {
+            longjmp(newp.context, 1);
+        }
+    }
 
     // ---- Helpers ----
     @nogc nothrow private size_t cStringLength(const(char)* str)
@@ -1503,41 +1547,95 @@ mixin template PosixKernelShim()
         return null;
     }
 
-    // ---- Very small round-robin scheduler ----
-    @nogc nothrow void schedYield(){
-        debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
-        if(!g_initialized) return;
-        if(g_current is null) {
-            foreach(ref p; g_ptable){
-                if(p.state==ProcState.READY){ g_current = &p; assignProcessState(p, ProcState.RUNNING); break; }
+    @nogc nothrow private bool saveProcessContext(Proc* proc)
+    {
+        if (proc is null) return false;
+
+        const auto result = setjmp(proc.context);
+        proc.contextValid = true;
+        return result != 0;
+    }
+
+    @nogc nothrow private Proc* selectNextReadyProcess(Proc* current)
+    {
+        size_t startIndex = 0;
+        if (current !is null)
+        {
+            foreach (i, ref candidate; g_ptable)
+            {
+                if ((&candidate) is current)
+                {
+                    startIndex = i;
+                    break;
+                }
             }
-            debugExpectActual("schedYield initial current", 1, debugBool(g_current !is null));
+        }
+
+        foreach (offset; 1 .. MAX_PROC + 1)
+        {
+            const auto index = (startIndex + offset) % MAX_PROC;
+            auto candidate = &g_ptable[index];
+            if ((*candidate).state == ProcState.READY)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    // ---- Very small round-robin scheduler ----
+    @nogc nothrow void schedYield()
+    {
+        debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
+        if (!g_initialized) return;
+
+        if (g_current is null)
+        {
+            foreach (ref proc; g_ptable)
+            {
+                if (proc.state == ProcState.READY)
+                {
+                    g_current = &proc;
+                    assignProcessState(proc, ProcState.RUNNING);
+                    return;
+                }
+            }
+
+            debugExpectActual("schedYield initial current", 1, debugBool(false));
             return;
         }
-        lock(&g_plock);
-        Proc* oldp = g_current;
-        if(oldp.state==ProcState.RUNNING) assignProcessState(*oldp, ProcState.READY);
 
-        size_t idx=0;
-        foreach(i, ref p; g_ptable) if((&p) is oldp){ idx=i; break; }
-        Proc* next = null;
-        foreach(j; 1..MAX_PROC+1){
-            auto k = (idx + j) % MAX_PROC;
-            if(g_ptable[k].state==ProcState.READY){ next = &g_ptable[k]; break; }
+        auto current = g_current;
+        if (saveProcessContext(current))
+        {
+            return;
         }
-        if(next is null) {
-            if(oldp.state!=ProcState.ZOMBIE){ assignProcessState(*oldp, ProcState.RUNNING); unlock(&g_plock); return; }
-            foreach(ref p; g_ptable){
-                if(p.state==ProcState.READY){ next=&p; break; }
+
+        lock(&g_plock);
+
+        if (current.state == ProcState.RUNNING)
+        {
+            assignProcessState(*current, ProcState.READY);
+        }
+
+        auto next = selectNextReadyProcess(current);
+        if (next is null)
+        {
+            if (current.state != ProcState.ZOMBIE)
+            {
+                assignProcessState(*current, ProcState.RUNNING);
             }
+            unlock(&g_plock);
+            return;
         }
-        if(next !is null){
-            assignProcessState(*next, ProcState.RUNNING);
-            g_current  = next;
-            arch_context_switch(oldp, next);
-        }
-        debugExpectActual("schedYield next selected", 1, debugBool(next !is null));
+
+        assignProcessState(*next, ProcState.RUNNING);
+        g_current = next;
         unlock(&g_plock);
+
+        debugExpectActual("schedYield next selected", 1, debugBool(true));
+        arch_context_switch(current, next);
     }
 
     // ---- POSIX core syscalls (kernel-side) ----
@@ -1880,6 +1978,7 @@ mixin template PosixKernelShim()
         proc.pendingArgv = null;
         proc.pendingEnvp = null;
         proc.pendingExec = false;
+        proc.contextValid = false;
         debugExpectActual("completeProcess success", 1, 1);
         return 0;
     }

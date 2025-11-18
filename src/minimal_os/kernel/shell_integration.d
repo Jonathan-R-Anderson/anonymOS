@@ -360,20 +360,18 @@ private void finalizeShellActivation()
 
 private void ensureBareMetalShellRuntimeHooks()
 {
-    version (Posix)
-    {
-        // Host/Posix shim builds register the shell runtime hooks during module
-        // initialization, so nothing additional is required here.
-        return;
-    }
-
     static bool runtimeHooksRegistered = false;
     if (runtimeHooksRegistered)
     {
         return;
     }
 
-    // Let the Posix shim wire up g_spawnRegisteredProcessFn/g_waitpidFn
+    // Let the Posix shim wire up g_spawnRegisteredProcessFn/g_waitpidFn.  On
+    // host builds the hooks normally arrive via module constructors, but in
+    // bare-metal builds we have to request them explicitly.  Calling into
+    // ensureBareMetalShellInterfaces() in every configuration guarantees the
+    // pointers are populated before the console loop runs, even when the
+    // Posix shim is fully implemented and no lightweight fallback is in use.
     ensureBareMetalShellInterfaces();
     runtimeHooksRegistered = true;
 }

@@ -157,7 +157,11 @@ alias PosixProcessEntry = extern(C) @nogc nothrow
 // Backwards-compatible alias
 alias ProcessEntry = PosixProcessEntry;
 
-private enum bool ENABLE_POSIX_DEBUG = true;
+// The PosixKernelShim mixin is instantiated in other modules, so it can't
+// reference `private` symbols from this module.  Use package visibility so the
+// debug flag is still internal to minimal_os while remaining accessible to the
+// mixin expansion.
+package(minimal_os) enum bool ENABLE_POSIX_DEBUG = true;
 
 @nogc nothrow package(minimal_os) long debugBool(bool value)
 {

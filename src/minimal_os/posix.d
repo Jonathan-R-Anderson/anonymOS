@@ -85,7 +85,7 @@ public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options
 alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
 alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
 
-@nogc nothrow private size_t cStringLength(const(char)* str)
+@nogc nothrow package(minimal_os) size_t cStringLength(const(char)* str)
 {
     if (str is null) return 0;
     size_t length = 0;
@@ -93,7 +93,7 @@ alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPa
     return length;
 }
 
-@nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
+@nogc nothrow package(minimal_os) bool cStringEquals(const(char)* lhs, const(char)* rhs)
 {
     if (lhs is null || rhs is null) return false;
     size_t index = 0;

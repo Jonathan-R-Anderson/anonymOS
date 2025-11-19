@@ -386,6 +386,10 @@ mixin template PosixKernelShim()
     alias probeKernelConsoleReady = minimal_os.posix.probeKernelConsoleReady;
     alias probeSerialConsoleReady = minimal_os.posix.probeSerialConsoleReady;
 
+    // Basic string helpers defined at module scope that the mixin relies on.
+    alias cStringLength           = minimal_os.posix.cStringLength;
+    alias cStringEquals           = minimal_os.posix.cStringEquals;
+
     // Jump buffer helpers live in minimal_os.posix, so alias them into the
     // mixin scope.  This keeps mixin users from having to import the context
     // module explicitly.

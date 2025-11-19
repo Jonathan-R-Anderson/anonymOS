@@ -12,6 +12,7 @@ import std.process : environment;
 import std.string : toStringz;
 import core.stdc.string : strdup;
 import core.stdc.stdio : perror;
+import core.stdc.errno : errno, ECHILD;
 import std.conv : to;
 import std.algorithm : remove;
 import std.array : array;
@@ -24,6 +25,38 @@ __gshared pid_t shell_pgid;
 // --- Forward Declarations ---
 void launchJob(Node ast);
 void execute_job_in_child(Node ast);
+
+void updateJobStatusFromWait(Job job, int status) {
+    if (WIFSTOPPED(status)) {
+        job.status = JobStatus.Stopped;
+    } else if (WIFEXITED(status) || WIFSIGNALED(status)) {
+        job.status = JobStatus.Completed;
+    } else {
+        job.status = JobStatus.Running;
+    }
+}
+
+void refreshJobStatus(Job job) {
+    int status;
+    errno = 0;
+    auto result = waitpid(job.pgid, &status, WNOHANG | WUNTRACED);
+    if (result > 0) {
+        updateJobStatusFromWait(job, status);
+    } else if (result < 0 && errno == ECHILD && job.status == JobStatus.Running) {
+        // The job has already been reaped elsewhere; treat it as completed.
+        job.status = JobStatus.Completed;
+    }
+}
+
+void refreshAllJobs() {
+    foreach(job; jobTable) {
+        refreshJobStatus(job);
+    }
+}
+
+void pruneCompletedJobs() {
+    jobTable = jobTable.remove!(j => j.status == JobStatus.Completed).array;
+}
 
 // --- Builtin Implementations ---
 Job findJob(int jobId) {
@@ -106,23 +139,26 @@ void builtin_fg(SimpleCommand cmd) {
     tcsetpgrp(STDIN_FILENO, job.pgid);
 
     int status;
-    if (waitpid(job.pgid, &status, WUNTRACED) < 0) {
+    auto result = waitpid(job.pgid, &status, WUNTRACED);
+    if (result < 0) {
         perror("waitpid");
+    } else if (result > 0) {
+        updateJobStatusFromWait(job, status);
     }
 
     tcsetpgrp(STDIN_FILENO, shell_pgid);
 
-    // TODO: Update job status based on waitpid result more accurately
-    if (job.status != JobStatus.Stopped) {
+    if (job.status == JobStatus.Completed) {
         jobTable = jobTable.remove!(j => j.jobId == jobId).array;
     }
 }
 
 void builtin_jobs() {
-    // TODO: Update job statuses before printing
+    refreshAllJobs();
     foreach(job; jobTable) {
         writeln("[", job.jobId, "]\t", job.status, "\t", job.command);
     }
+    pruneCompletedJobs();
 }
 
 // --- Builtin Dispatcher ---

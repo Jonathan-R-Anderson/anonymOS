@@ -2747,7 +2747,10 @@ else
                     if (attempt < MAX_WAIT_ATTEMPTS - 1)
                     {
                         // Simple delay - in a real implementation this would use a proper timer
-                        for (int i = 0; i < 1000000; i++) { asm { nop; } }
+                        for (int i = 0; i < 1000000; i++)
+                        {
+                            asm @nogc nothrow { nop; }
+                        }
                     }
                 }
                 else

@@ -7,8 +7,14 @@ import std.exception : enforce;
 import std.exception : EnforceException;
 
 import minimal_os.kernel.numa : NumaPlacementHint;
-import minimal_os.kernel.vmo : HashBytes, MappingProt, VBuilder, VmoCommitMetadata,
-    VmoCommitResult, VmoHandle, VmoMapping, VmoStore;
+import minimal_os.kernel.vmo : ByteSlice, HashBytes, MappingProt, VBuilder,
+    VmoCommitMetadata, VmoCommitResult, VmoHandle, VmoMapping, VmoStore;
+
+enum DeviceVmoAccess : ubyte
+{
+    readable,
+    writable,
+}
 
 /// Enumerates the verbs that a capability can exercise over a `VmoHandle`.
 enum CapabilityRight : ubyte
@@ -122,6 +128,7 @@ private:
         return true;
     }
 }
+
 
 /// Thin wrapper around `VBuilder` that emphasises the staged-write pattern.
 /// Callers append or patch bytes through the builder and can only observe the
@@ -249,6 +256,145 @@ public:
     HashBytes provenanceDigest;
 }
 
+/// Represents a DMA view over a VMO.  Readable views let a device consume
+/// immutable snapshots built by the CPU, while writable views stage device DMA
+/// writes without ever exposing a CPU-writable mapping.
+struct DeviceVmoCapability
+{
+public:
+    static DeviceVmoCapability readable(VmoHandle handle)
+    {
+        enforce(handle.store !is null, "device-readable views require a valid handle");
+        DeviceVmoCapability view;
+        view._access = DeviceVmoAccess.readable;
+        view._handle = handle;
+        return view;
+    }
+
+    static DeviceVmoCapability writable(DeviceDmaStagingBuffer staging)
+    {
+        enforce(staging !is null, "device-writable views require a staging buffer");
+        DeviceVmoCapability view;
+        view._access = DeviceVmoAccess.writable;
+        view._staging = staging;
+        return view;
+    }
+
+    @property bool isReadableByDevice() const
+    {
+        return _access == DeviceVmoAccess.readable;
+    }
+
+    @property bool isWritableByDevice() const
+    {
+        return _access == DeviceVmoAccess.writable;
+    }
+
+    @property size_t length() const
+    {
+        return isWritableByDevice ? _staging.length : _handle.length;
+    }
+
+    ByteSlice dmaRead(size_t offset = 0, size_t span = size_t.max) const
+    {
+        enforce(isReadableByDevice, "device capability does not permit reads");
+        return _handle.read(offset, span);
+    }
+
+    void dmaWrite(size_t offset, const scope ubyte[] bytes) const
+    {
+        enforce(isWritableByDevice, "device capability does not permit writes");
+        _staging.ingestFromDevice(offset, bytes);
+    }
+
+private:
+    DeviceVmoAccess _access;
+    DeviceDmaStagingBuffer _staging;
+    VmoHandle _handle;
+}
+
+/// Manages the lifecycle of a DMA staging buffer.  Devices receive a
+/// WritableByDevice capability that targets IOMMU-mapped frames.  Once the
+/// device signals completion the kernel seals the buffer into an immutable VMO
+/// and publishes a regular read capability.
+final class DeviceDmaStagingBuffer
+{
+public:
+    this(VmoStore store, size_t length)
+    {
+        enforce(store !is null, "staging buffers require a VmoStore");
+        enforce(length > 0, "staging buffers must be non-empty");
+        _store = store;
+        _frames.length = length;
+    }
+
+    DeviceVmoCapability writableByDevice()
+    {
+        enforce(!_sealed, "cannot hand out writable view after sealing");
+        enforce(!_issuedWritable, "writable view already issued");
+        _issuedWritable = true;
+        return DeviceVmoCapability.writable(this);
+    }
+
+    @property size_t length() const
+    {
+        return _frames.length;
+    }
+
+    @property bool sealed() const
+    {
+        return _sealed;
+    }
+
+    SealedCommit sealDeviceWrite(VmoCommitMetadata metadata = VmoCommitMetadata.init)
+    {
+        enforce(!_sealed, "DMA buffer already sealed");
+        auto handle = _store.fromBytes(_frames);
+        auto result = VmoCommitResult(handle, handle.hash, handle.length, metadata);
+        _sealedHandle = handle;
+        _sealed = true;
+        return SealedCommit(result);
+    }
+
+    VmoCapability deviceReadableCapability(const scope CapabilityRight[] rights = null) const
+    {
+        enforce(_sealed, "DMA buffer must be sealed before deriving a capability");
+        return VmoCapability(_sealedHandle, rights);
+    }
+
+    DeviceVmoCapability readableByDevice() const
+    {
+        enforce(_sealed, "DMA buffer must be sealed before deriving a device view");
+        return DeviceVmoCapability.readable(_sealedHandle);
+    }
+
+private:
+    VmoStore _store;
+    ubyte[] _frames;
+    bool _sealed;
+    bool _issuedWritable;
+    VmoHandle _sealedHandle;
+
+    void ingestFromDevice(size_t offset, const scope ubyte[] bytes)
+    {
+        enforce(!_sealed, "DMA buffer already sealed");
+        enforce(offset <= _frames.length, "device write offset beyond staging extent");
+        enforce(offset + bytes.length <= _frames.length, "device write exceeds staging extent");
+        if (bytes.length == 0)
+        {
+            return;
+        }
+        _frames[offset .. offset + bytes.length] = bytes;
+    }
+}
+
+/// Wraps a CPU-owned VMO capability in a device-readable view so drivers can
+/// hand immutable data to hardware without granting mutation rights.
+DeviceVmoCapability readableByDevice(VmoCapability capability)
+{
+    return DeviceVmoCapability.readable(capability.handle);
+}
+
 unittest
 {
     import std.exception : assertThrown;
@@ -302,4 +448,40 @@ unittest
     auto commitB = SealedCommit(builderB.commit(second));
 
     assert(commitA.matches(commitB));
+}
+
+unittest
+{
+    import std.exception : assertThrown;
+
+    auto store = new VmoStore();
+    auto dma = new DeviceDmaStagingBuffer(store, 8);
+    auto writable = dma.writableByDevice();
+    assert(writable.isWritableByDevice);
+    auto payload = cast(const ubyte[])"ABCDEFGH";
+    writable.dmaWrite(0, payload);
+    auto sealed = dma.sealDeviceWrite();
+    auto cpuView = dma.deviceReadableCapability();
+    assert(cpuView.handle.materialize() == payload);
+    auto readable = dma.readableByDevice();
+    assert(readable.isReadableByDevice);
+    assert(readable.dmaRead() == payload);
+    assertThrown!EnforceException(readable.dmaWrite(0, cast(const ubyte[])"!!"));
+    assertThrown!EnforceException(writable.dmaRead());
+    assert(sealed.matchesHandle(cpuView.handle));
+}
+
+unittest
+{
+    import std.exception : assertThrown;
+
+    auto store = new VmoStore();
+    auto builder = store.boundedBuilder(4);
+    builder.append(cast(ubyte[])"pong");
+    auto sealed = builder.commit();
+    auto cap = VmoCapability(sealed.handle);
+    auto deviceView = readableByDevice(cap);
+    assert(deviceView.isReadableByDevice);
+    assert(deviceView.dmaRead() == cast(const ubyte[])"pong");
+    assertThrown!EnforceException(deviceView.dmaWrite(0, cast(const ubyte[])"zz"));
 }

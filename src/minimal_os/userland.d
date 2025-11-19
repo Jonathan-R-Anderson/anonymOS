@@ -40,6 +40,8 @@ struct UserProcess
 struct UserlandRuntime
 {
 public:
+nothrow:
+@nogc:
     void reset()
     {
         _serviceCount = 0;
@@ -59,7 +61,7 @@ public:
         }
 
         size_t index = _serviceCount++;
-        auto ref slot = _services[index];
+        auto slot = &_services[index];
         slot.name = name;
         slot.binary = binary;
         slot.summary = summary;
@@ -83,8 +85,8 @@ public:
             return false;
         }
 
-        auto ref service = _services[serviceIndex];
-        auto ref process = _processes[_processCount++];
+        auto service = &_services[serviceIndex];
+        auto process = &_processes[_processCount++];
         process.pid = _nextPid++;
         process.name = service.name;
         process.binary = service.binary;

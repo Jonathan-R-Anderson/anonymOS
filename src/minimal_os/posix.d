@@ -71,23 +71,14 @@ public import minimal_os.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 
-version (Posix)
-{
-    public import minimal_os.posixutils.process.process
-        : spawnRegisteredProcess,
-          waitpid;
-}
-else
-{
-    // Forward declarations for the bare-metal implementations that appear later
-    // in this module.  ensureBareMetalShellInterfaces() probes these symbols via
-    // __traits(compiles, ...) during early initialization, so declare them now
-    // to make the trait succeed even though the definitions live below.
-    public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path,
-                                                               const(char*)* argv,
-                                                               const(char*)* envp);
-    public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options);
-}
+// Forward declarations for the bare-metal implementations that appear later
+// in this module.  ensureBareMetalShellInterfaces() probes these symbols via
+// __traits(compiles, ...) during early initialization, so declare them now
+// to make the trait succeed even though the definitions live below.
+public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path,
+                                                           const(char*)* argv,
+                                                           const(char*)* envp);
+public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options);
 
 // Module-scope aliases so the name is visible everywhere (including
 // outside the PosixKernelShim mixin).
@@ -99,12 +90,16 @@ alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPa
 // ---------------------------
 version (Posix)
 {
-    private import core.sys.posix.unistd : isatty, read, write, close, access;
+    private import core.sys.posix.unistd : isatty, read, write, close, access,
+                                           chdir, fork, execve, _exit;
     private import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
     private import core.sys.posix.sys.stat : fstat, stat_t;
     private import core.sys.posix.sys.types : ssize_t;
-    private import core.stdc.errno : errno, EBADF;
+    private import core.stdc.errno : errno, EBADF, EINTR;
+    private import core.sys.posix.sys.wait : posixWaitPid = waitpid;
+    private enum int F_OK = 0;
     private enum int X_OK = 1;
+    extern(C) __gshared char** environ;
 
     private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
     private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
@@ -123,6 +118,10 @@ version (Posix)
     private immutable char[] g_kernelShellBinPath = "/kernel/shell/bin/" ~ shBinaryName ~ "\0";
     private immutable char[] g_repoShellPath = shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
     private immutable char[] g_repoShellBinPath = shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_repoShellRelativePath = "." ~ shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_repoShellRelativeBinPath = "." ~ shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
+    private immutable char[] g_repoShellDir = shRepositoryPath ~ "\0";
+    private immutable char[] g_repoShellDirRelative = "." ~ shRepositoryPath ~ "\0";
     private immutable char[] g_usrLocalShellPath = "/usr/local/bin/" ~ shBinaryName ~ "\0";
     private immutable char[] g_usrShellPath = "/usr/bin/" ~ shBinaryName ~ "\0";
     private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
@@ -135,6 +134,8 @@ version (Posix)
           g_kernelShellBinPath,
           g_repoShellPath,
           g_repoShellBinPath,
+          g_repoShellRelativePath,
+          g_repoShellRelativeBinPath,
           g_usrLocalShellPath,
           g_usrShellPath,
           g_binShellPath ];
@@ -2197,8 +2198,8 @@ mixin template PosixKernelShim()
 // ------------------------
 version (Posix)
 {
-    // Host-side shell bridge; implemented elsewhere in your host integration.
-    private extern(C) @nogc nothrow void runHostShellSession(const(char*)* argv, const(char*)* envp);
+    // Host-side shell bridge lives in this module so the kernel can drop into
+    // the packaged lfe-sh environment without needing an external stub.
 
     // Safe constant used by posixUtilityExecEntry for fallback argv buffer
     private enum PATH_BUFFER_SIZE = 256;
@@ -2464,6 +2465,176 @@ version (Posix)
         return g_defaultShPath.ptr;
     }
 
+    @nogc nothrow private bool pathExists(const(char)* path)
+    {
+        if (path is null || path[0] == '\0')
+        {
+            return false;
+        }
+
+        return access(path, F_OK) == 0;
+    }
+
+    @nogc nothrow private const(char)* repositoryShellRoot()
+    {
+        const(char)*[2] candidates =
+            [ g_repoShellDir.ptr,
+              g_repoShellDirRelative.ptr ];
+
+        foreach (candidate; candidates)
+        {
+            if (pathExists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private const(char)* repositoryShellBinary()
+    {
+        const(char)*[4] candidates =
+            [ g_repoShellPath.ptr,
+              g_repoShellBinPath.ptr,
+              g_repoShellRelativePath.ptr,
+              g_repoShellRelativeBinPath.ptr ];
+
+        foreach (candidate; candidates)
+        {
+            if (pathExecutable(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    @nogc nothrow private const(char)* deriveShellDirectory(const(char)* shellPath)
+    {
+        enum size_t BUFFER_SIZE = 512;
+        static __gshared char[BUFFER_SIZE] buffer;
+
+        if (shellPath is null || shellPath[0] == '\0')
+        {
+            return null;
+        }
+
+        size_t index = 0;
+        while (shellPath[index] != '\0' && index + 1 < buffer.length)
+        {
+            buffer[index] = shellPath[index];
+            ++index;
+        }
+        buffer[index] = '\0';
+
+        if (index == 0)
+        {
+            return null;
+        }
+
+        while (index > 0)
+        {
+            --index;
+            if (buffer[index] == '/')
+            {
+                buffer[index] = '\0';
+                break;
+            }
+            buffer[index] = '\0';
+        }
+
+        if (buffer[0] == '\0')
+        {
+            return null;
+        }
+
+        return buffer.ptr;
+    }
+
+    @nogc nothrow private void enterShellWorkingDirectory(const(char)* shellPath)
+    {
+        auto repoRoot = repositoryShellRoot();
+        if (repoRoot !is null && chdir(repoRoot) == 0)
+        {
+            return;
+        }
+
+        auto derived = deriveShellDirectory(shellPath);
+        if (derived !is null)
+        {
+            chdir(derived);
+        }
+    }
+
+    @nogc nothrow private void waitForShellChild(pid_t child)
+    {
+        int status = 0;
+        for (;;)
+        {
+            auto rc = posixWaitPid(child, &status, 0);
+            if (rc < 0)
+            {
+                if (errno == EINTR)
+                {
+                    continue;
+                }
+                break;
+            }
+
+            if (rc == child)
+            {
+                break;
+            }
+        }
+    }
+
+    private extern(C) @nogc nothrow void runHostShellSession(const(char*)* argv, const(char*)* envp)
+    {
+        auto repoBinary = repositoryShellBinary();
+        const(char)* shellPath = repoBinary !is null ? repoBinary : resolveShellBinaryPath();
+        if (shellPath is null)
+        {
+            shellPath = g_defaultShPath.ptr;
+        }
+
+        enterShellWorkingDirectory(shellPath);
+
+        const(char*)[2] fallbackArgv = [shellPath, null];
+        const(char*)* argvVector = argv;
+        if (argvVector is null || argvVector[0] is null)
+        {
+            argvVector = fallbackArgv.ptr;
+        }
+
+        const(char*)[1] emptyEnv = [null];
+        const(char*)* envVector = envp;
+        if (envVector is null || envVector[0] is null)
+        {
+            envVector = cast(const(char*)*)environ;
+            if (envVector is null)
+            {
+                envVector = emptyEnv.ptr;
+            }
+        }
+
+        const pid_t child = fork();
+        if (child < 0)
+        {
+            printLine("[shell] Failed to fork host shell process.");
+            return;
+        }
+
+        if (child == 0)
+        {
+            execve(shellPath, cast(char**)argvVector, cast(char**)envVector);
+            _exit(127);
+        }
+
+        waitForShellChild(child);
+    }
+
     @nogc nothrow private void announceShellLaunch(const(char)* path)
     {
         if (path is null)
@@ -2491,6 +2662,8 @@ version (Posix)
         {
             shellPath = g_defaultShPath.ptr;
         }
+
+        enterShellWorkingDirectory(shellPath);
 
         announceShellLaunch(shellPath);
 

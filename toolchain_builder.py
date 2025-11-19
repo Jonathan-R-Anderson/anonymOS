@@ -56,6 +56,11 @@ class BuildSettings:
     dry_run: bool = False
     force: bool = False
     keep_going: bool = False
+    build_posixutils: bool = False
+    posixutils_source: Path | None = None
+    posixutils_output: Path | None = None
+    posixutils_dc: str | None = None
+    posixutils_flags: List[str] = field(default_factory=list)
 
     def all_include_dirs(self) -> List[Path]:
         includes: List[Path] = []
@@ -170,6 +175,9 @@ class ToolchainBuilder:
             )
         if self.settings.sysroot:
             self._create_sysroot(groups, include_dirs, group_archives)
+
+        if self.settings.build_posixutils:
+            self._build_posixutils()
 
     def _compile_group(self, group: BuildGroup) -> List[Path]:
         sources = sorted(group.root.rglob("*.d"))
@@ -432,6 +440,31 @@ class ToolchainBuilder:
         used.add(candidate)
         return candidate
 
+    def _build_posixutils(self) -> None:
+        script = self._repo_root() / "tools" / "build_posixutils.py"
+        if not script.exists():
+            self._log(f"POSIX utility builder not found at {script}; skipping", console=True)
+            return
+
+        python = Path(sys.executable or "python3")
+        dc = self.settings.posixutils_dc or str(self.settings.compiler)
+        output_root = self.settings.posixutils_output or (self._repo_root() / "build" / "posixutils" / "bin")
+        source_root = self.settings.posixutils_source or (self._repo_root() / "src" / "minimal_os" / "posixutils")
+
+        cmd: List[str] = [str(python), str(script), "--dc", dc, "--root", str(self._repo_root())]
+        cmd.extend(["--source", str(source_root)])
+        cmd.extend(["--output", str(output_root)])
+        if self.settings.posixutils_flags:
+            cmd.append("--flags")
+            cmd.extend(self.settings.posixutils_flags)
+
+        self._log("\n=== Building POSIX utilities ===", console=True)
+        self._execute(cmd)
+
+    @staticmethod
+    def _repo_root() -> Path:
+        return Path(__file__).resolve().parent
+
 
 def resolve_source_root(path: Path) -> Path:
     path = path.expanduser().resolve()
@@ -527,6 +560,36 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
         action="store_true",
         help="Continue compilation after errors (errors will still be reported)",
     )
+    parser.add_argument(
+        "--build-posixutils",
+        action="store_true",
+        help="Invoke tools/build_posixutils.py after the runtime build completes",
+    )
+    parser.add_argument(
+        "--posixutils-source",
+        type=Path,
+        default=None,
+        help="Override the POSIX utilities source directory",
+    )
+    parser.add_argument(
+        "--posixutils-output",
+        type=Path,
+        default=None,
+        help="Directory for built POSIX utility binaries",
+    )
+    parser.add_argument(
+        "--posixutils-dc",
+        type=str,
+        default=None,
+        help="D compiler used for POSIX utilities (defaults to --compiler)",
+    )
+    parser.add_argument(
+        "--posixutils-flag",
+        dest="posixutils_flags",
+        action="append",
+        default=None,
+        help="Additional compiler flag for POSIX utilities (repeatable)",
+    )
 
     args = parser.parse_args(argv)
     config_data, config_base = load_config(args.config)
@@ -586,6 +649,12 @@ def parse_args(argv: Sequence[str]) -> BuildSettings:
         merged["force"] = True
     if args.keep_going:
         merged["keep_going"] = True
+    if args.build_posixutils:
+        merged["build_posixutils"] = True
+    set_path("posixutils_source", args.posixutils_source)
+    set_path("posixutils_output", args.posixutils_output)
+    set_str("posixutils_dc", args.posixutils_dc)
+    extend_list("posixutils_flags", args.posixutils_flags)
 
     try:
         return build_settings_from_dict(merged, base_dir=config_base)
@@ -692,6 +761,11 @@ def build_settings_from_dict(data: dict, *, base_dir: Path | None = None) -> Bui
         dry_run=bool(data.get("dry_run", False)),
         force=bool(data.get("force", False)),
         keep_going=bool(data.get("keep_going", False)),
+        build_posixutils=bool(data.get("build_posixutils", False)),
+        posixutils_source=optional_path("posixutils_source"),
+        posixutils_output=optional_path("posixutils_output"),
+        posixutils_dc=data.get("posixutils_dc"),
+        posixutils_flags=str_list("posixutils_flags"),
     )
 
 

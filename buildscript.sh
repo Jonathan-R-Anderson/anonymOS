@@ -26,6 +26,8 @@ STARTUP_O="$OUT_DIR/startup.o"
 KERNEL_ELF="$OUT_DIR/kernel.elf"
 POSIXUTILS_OUT="${POSIXUTILS_OUT:-$OUT_DIR/posixutils}"
 POSIXUTILS_BIN_DIR="$POSIXUTILS_OUT/bin"
+KERNEL_POSIX_STAGING="${KERNEL_POSIX_STAGING:-$OUT_DIR/kernel-posixutils}"
+KERNEL_POSIX_BIN_STAGING="$KERNEL_POSIX_STAGING/bin"
 
 # ISO packaging
 ISO_STAGING_DIR="${ISO_STAGING_DIR:-$OUT_DIR/isodir}"
@@ -33,6 +35,7 @@ ISO_IMAGE="${ISO_IMAGE:-$OUT_DIR/os.iso}"
 ISO_SYSROOT_PATH="${ISO_SYSROOT_PATH:-opt/sysroot}"
 ISO_TOOLCHAIN_PATH="${ISO_TOOLCHAIN_PATH:-opt/toolchain}"
 ISO_SHELL_PATH="${ISO_SHELL_PATH:-opt/shell}"
+KERNEL_POSIX_ISO_PATH="${KERNEL_POSIX_ISO_PATH:-kernel/posixutils}"
 GRUB_CFG_SRC="${GRUB_CFG_SRC:-src/grub/grub.cfg}"
 
 # Optional toolchain bundle inside ISO (set to a path to enable)
@@ -153,6 +156,14 @@ if [ -d "$POSIXUTILS_ROOT" ]; then
     POSIX_ARGS+=(--flags "$POSIXUTILS_FLAGS")
   fi
   python3 "${POSIX_ARGS[@]}"
+  if [ -d "$POSIXUTILS_BIN_DIR" ]; then
+    rm -rf "$KERNEL_POSIX_STAGING"
+    mkdir -p "$KERNEL_POSIX_BIN_STAGING"
+    cp -a "$POSIXUTILS_BIN_DIR/." "$KERNEL_POSIX_BIN_STAGING/"
+    if [ -f "$POSIXUTILS_OUT/objects.tsv" ]; then
+      cp "$POSIXUTILS_OUT/objects.tsv" "$KERNEL_POSIX_STAGING/"
+    fi
+  fi
 else
   echo "[!] POSIX utilities source directory not found: $POSIXUTILS_ROOT" >&2
 fi
@@ -279,6 +290,13 @@ if [ -d "$POSIXUTILS_OUT" ]; then
   rm -rf "$POSIX_ISO_DEST"
   mkdir -p "$POSIX_ISO_DEST"
   cp -a "$POSIXUTILS_OUT/." "$POSIX_ISO_DEST/"
+fi
+
+if [ -d "$KERNEL_POSIX_STAGING" ]; then
+  POSIX_KERNEL_DEST="$ISO_STAGING_DIR/$KERNEL_POSIX_ISO_PATH"
+  rm -rf "$POSIX_KERNEL_DEST"
+  mkdir -p "$POSIX_KERNEL_DEST"
+  cp -a "$KERNEL_POSIX_STAGING/." "$POSIX_KERNEL_DEST/"
 fi
 
 if [ -f "$GRUB_CFG_SRC" ]; then

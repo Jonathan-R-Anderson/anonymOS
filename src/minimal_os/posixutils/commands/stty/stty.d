@@ -6,7 +6,7 @@
     - Removes libpu.h dependencies; uses Phobos and core.sys.posix.*.
     - Uses cfget*/cfset* for speeds (instead of c_ispeed/c_ospeed fields).
 +/
-module stty;
+module minimal_os.posixutils.commands.stty.stty;
 
 version (Posix):
 
@@ -17,7 +17,7 @@ import std.conv;
 import std.exception;
 import std.getopt;
 import std.array;
-import std.format : formattedRead; // for formattedRead!"%u"
+import std.format : formattedRead, formattedWrite, format; // formatted IO helpers
 import core.stdc.stdint;
 import core.stdc.stdlib : exit;
 import core.sys.posix.unistd;
@@ -133,6 +133,32 @@ static immutable SttyParam[] params = [
 static termios ti;
 static const(SttyParam)* lastParam = null;
 
+const(SttyParam)* findParam(string name) {
+    foreach (ref param; params)
+        if (param.name == name)
+            return &param;
+    return null;
+}
+
+alias StringAppender = typeof(appender!string());
+
+struct ControlCharDesc {
+    string name;
+    size_t index;
+}
+
+static immutable ControlCharDesc[] controlChars = [
+    {"intr",  VINTR},
+    {"quit",  VQUIT},
+    {"erase", VERASE},
+    {"kill",  VKILL},
+    {"eof",   VEOF},
+    {"eol",   VEOL},
+    {"susp",  VSUSP},
+    {"start", VSTART},
+    {"stop",  VSTOP},
+];
+
 // ---- helpers ----
 
 int usage() {
@@ -154,9 +180,88 @@ int sttyPushTi() {
     return 0;
 }
 
-// Not implemented (same as original C)
+string formatControlChar(ubyte value) {
+    enum string undef = "<undef>";
+    if (value == 0 || value == cast(ubyte)0xFF)
+        return undef;
+    if (value == 0x7F)
+        return "^?";
+    if (value < 0x20)
+        return "^" ~ cast(char)(value + '@');
+    if (value >= 0x20 && value <= 0x7E)
+        return format("%c", cast(char)value);
+    return format("0x%02X", value);
+}
+
+tcflag_t flagsForType(const ref termios t, STTYParamType type) {
+    final switch (type) {
+        case STTYParamType.cfl: return t.c_cflag;
+        case STTYParamType.ifl: return t.c_iflag;
+        case STTYParamType.ofl: return t.c_oflag;
+        case STTYParamType.lfl: return t.c_lflag;
+        default: return 0;
+    }
+}
+
+void appendControlChars(ref StringAppender app, const ref termios snapshot) {
+    bool first = true;
+    foreach (desc; controlChars) {
+        if (!first) app.put(' ');
+        first = false;
+        auto value = snapshot.c_cc[desc.index];
+        formattedWrite(app, "%s = %s;", desc.name, formatControlChar(value));
+    }
+    app.put('\n');
+}
+
+void appendFlagLine(ref StringAppender app, string label, const ref termios snapshot, STTYParamType type) {
+    auto flags = flagsForType(snapshot, type);
+    bool first = true;
+    formattedWrite(app, "%s: ", label);
+    foreach (ref param; params) {
+        if (param.ptype != type) continue;
+        if (param.val == 0 && param.valClear == 0) continue;
+
+        const bool isGroup = (param.valClear != 0) && (param.valClear != param.val);
+        bool enabled;
+        if (isGroup) {
+            enabled = (flags & param.valClear) == param.val;
+            if (!enabled) continue;
+        } else {
+            enabled = (flags & param.val) == param.val;
+        }
+
+        if (!first) app.put(' ');
+        first = false;
+        if (!isGroup && !enabled)
+            app.put('-');
+        app.put(param.name);
+    }
+    app.put('\n');
+}
+
+string describeTermiosHumanReadable(const ref termios snapshot) {
+    auto app = appender!string();
+    const ispd = cfgetispeed(&snapshot);
+    const ospd = cfgetospeed(&snapshot);
+
+    formattedWrite(app,
+        "speed %s baud; ispeed %s baud; ospeed %s baud; rows 0; columns 0; line = 0;\n",
+        speedToString(ospd), speedToString(ispd), speedToString(ospd));
+
+    appendControlChars(app, snapshot);
+    appendFlagLine(app, "cflags", snapshot, STTYParamType.cfl);
+    appendFlagLine(app, "iflags", snapshot, STTYParamType.ifl);
+    appendFlagLine(app, "oflags", snapshot, STTYParamType.ofl);
+    appendFlagLine(app, "lflags", snapshot, STTYParamType.lfl);
+
+    return app.data;
+}
+
 int sttyShow() {
-    return 1;
+    auto desc = describeTermiosHumanReadable(ti);
+    write(desc);
+    return 0;
 }
 
 uint speedToBits(uint speed) {
@@ -199,6 +304,53 @@ uint speedToBits(uint speed) {
         default:
             return 0xFFFF_FFFFu;
     }
+}
+
+uint bitsToSpeed(speed_t bits) {
+    switch (bits) {
+        case B0:      return 0;
+        case B50:     return 50;
+        case B75:     return 75;
+        case B110:    return 110;
+        case B134:    return 134;
+        case B150:    return 150;
+        case B200:    return 200;
+        case B300:    return 300;
+        case B600:    return 600;
+        case B1200:   return 1200;
+        case B1800:   return 1800;
+        case B2400:   return 2400;
+        case B4800:   return 4800;
+        case B9600:   return 9600;
+        case B19200:  return 19200;
+        case B38400:  return 38400;
+
+        static if (__traits(compiles, B57600))   { case B57600:   return 57600; }
+        static if (__traits(compiles, B115200))  { case B115200:  return 115200; }
+        static if (__traits(compiles, B230400))  { case B230400:  return 230400; }
+        static if (__traits(compiles, B460800))  { case B460800:  return 460800; }
+        static if (__traits(compiles, B500000))  { case B500000:  return 500000; }
+        static if (__traits(compiles, B576000))  { case B576000:  return 576000; }
+        static if (__traits(compiles, B921600))  { case B921600:  return 921600; }
+        static if (__traits(compiles, B1000000)) { case B1000000: return 1000000; }
+        static if (__traits(compiles, B1152000)) { case B1152000: return 1152000; }
+        static if (__traits(compiles, B1500000)) { case B1500000: return 1500000; }
+        static if (__traits(compiles, B2000000)) { case B2000000: return 2000000; }
+        static if (__traits(compiles, B2500000)) { case B2500000: return 2500000; }
+        static if (__traits(compiles, B3000000)) { case B3000000: return 3000000; }
+        static if (__traits(compiles, B3500000)) { case B3500000: return 3500000; }
+        static if (__traits(compiles, B4000000)) { case B4000000: return 4000000; }
+
+        default:
+            return 0xFFFF_FFFFu;
+    }
+}
+
+string speedToString(speed_t bits) {
+    const val = bitsToSpeed(bits);
+    if (val == 0xFFFF_FFFFu)
+        return to!string(cast(uint)bits);
+    return to!string(val);
 }
 
 int paramSpeed(uint speed, bool isInput) {
@@ -250,6 +402,48 @@ int sttyShowCompact() {
 bool isCompactForm(string arg) {
     return arg.length >= COMPACT_PFX.length &&
            arg[0 .. COMPACT_PFX.length] == COMPACT_PFX;
+}
+
+unittest {
+    import std.algorithm : canFind;
+
+    auto saved = ti;
+    scope(exit) ti = saved;
+
+    ti = termios.init;
+    enforce(cfsetispeed(&ti, B9600) == 0);
+    enforce(cfsetospeed(&ti, B9600) == 0);
+    ti.c_iflag = ICRNL | IXANY;
+    ti.c_oflag = OPOST;
+    ti.c_cflag = CREAD | CS8;
+    ti.c_lflag = ICANON | ECHO;
+
+    auto eraseParam = findParam("erase");
+    auto intrParam  = findParam("intr");
+    auto quitParam  = findParam("quit");
+    auto suspParam  = findParam("susp");
+    assert(eraseParam !is null && intrParam !is null);
+    assert(quitParam !is null && suspParam !is null);
+
+    assert(paramCChar(*eraseParam, "^H") == 0);
+    assert(ti.c_cc[VERASE] == 0x08);
+    assert(paramCChar(*intrParam, "^C") == 0);
+    assert(ti.c_cc[VINTR] == 0x03);
+    assert(paramCChar(*quitParam, "0x1C") == 0);
+    assert(ti.c_cc[VQUIT] == 0x1C);
+    assert(paramCChar(*suspParam, "032") == 0);
+    assert(ti.c_cc[VSUSP] == 26);
+
+    auto desc = describeTermiosHumanReadable(ti);
+    assert(desc.canFind("speed 9600 baud"));
+    assert(desc.canFind("intr = ^C;"));
+    assert(desc.canFind("erase = ^H;"));
+    assert(desc.canFind("quit = ^\\;"));
+    assert(desc.canFind("susp = ^Z;"));
+    assert(desc.canFind("cflags:"));
+    assert(desc.canFind("iflags:"));
+    assert(desc.canFind("oflags:"));
+    assert(desc.canFind("lflags:"));
 }
 
 // Accept the same compact line; parse fields split by ':'
@@ -337,10 +531,56 @@ int paramApply(ref termios t, in SttyParam param, string setting, bool setVal) {
     return 0;
 }
 
-// Not implemented (same as original C)
+bool parseNumericChar(string text, uint base, out ubyte value) {
+    try {
+        auto parsed = to!uint(text, base);
+        if (parsed > ubyte.max) return false;
+        value = cast(ubyte)parsed;
+        return true;
+    } catch (ConvException) {
+        return false;
+    }
+}
+
+bool parseControlCharValue(string setting, out ubyte value) {
+    if (setting.length == 0)
+        return false;
+    if (setting == "undef") {
+        value = 0;
+        return true;
+    }
+    if (setting[0] == '^' && setting.length == 2) {
+        const c = setting[1];
+        if (c == '?') {
+            value = 0x7F;
+            return true;
+        }
+        value = cast(ubyte)(cast(ubyte)c & 0x1F);
+        return true;
+    }
+    if (setting.length > 2 && (setting[0 .. 2] == "0x" || setting[0 .. 2] == "0X"))
+        return parseNumericChar(setting[2 .. $], 16, value);
+    if (setting.length > 1 && setting[0] == '0') {
+        if (parseNumericChar(setting, 8, value))
+            return true;
+    }
+    if (setting.length == 1) {
+        value = cast(ubyte)setting[0];
+        return true;
+    }
+    if (parseNumericChar(setting, 10, value))
+        return true;
+    return false;
+}
+
 int paramCChar(in SttyParam param, string setting) {
-    // TODO: interpret caret notation (^C etc.) and set ti.c_cc[param.val]
-    return 1;
+    ubyte value;
+    if (!parseControlCharValue(setting, value)) {
+        stderr.writeln("stty: invalid control character '", setting, "'");
+        return 1;
+    }
+    ti.c_cc[cast(size_t)param.val] = value;
+    return 0;
 }
 
 int sttySet(string setting) {
@@ -418,6 +658,7 @@ bool isHelpArg(string arg) {
            arg == "-V" || arg == "-H" || arg == "-?";
 }
 
+version (unittest) {} else
 int main(string[] args) {
     // Help-only path
     if (args.length == 2 && isHelpArg(args[1]))
@@ -428,7 +669,7 @@ int main(string[] args) {
         return 1;
     }
 
-    // No args → show (unimplemented stub)
+    // No args → show current settings
     if (args.length == 1)
         return sttyShow();
 

@@ -81,7 +81,7 @@ private uint argbToRgb565(uint argb) {
     return (r5 << 11) | (g6 << 5) | b5;
 }
 
-// Convert ARGB to native 24/32-bit pixel for RGB/BGR
+// Convert ARGB to native 24/32-bit pixel for RGB/BGR (alpha ignored)
 @nogc nothrow @system
 private uint argbToNative(uint argb) {
     auto r = (argb >> 16) & 0xFF;
@@ -156,7 +156,7 @@ bool framebufferAvailable() {
 }
 
 // --------------------------------------------------------------------------
-// Low-level pixel operations
+// Low-level pixel operations (Set pixel / fill)
 // --------------------------------------------------------------------------
 
 // Put a single pixel in ARGB space; handles 16/24/32bpp if initialized.
@@ -165,7 +165,7 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
     if (!g_fbInitialized) return;
     if (x >= g_fb.width || y >= g_fb.height) return;
 
-    const bpp  = g_fb.bpp;
+    const bpp   = g_fb.bpp;
     ubyte* addr = g_fb.addr;
 
     const byteOffset = y * g_fb.pitch + x * (bpp / 8);
@@ -180,8 +180,8 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
             const native = argbToNative(argbColor);
             auto p = addr + byteOffset;
             // 24bpp: lowest 3 bytes are the pixel.
-            p[0] = cast(ubyte)(native        & 0xFF);
-            p[1] = cast(ubyte)((native >> 8) & 0xFF);
+            p[0] = cast(ubyte)( native        & 0xFF);
+            p[1] = cast(ubyte)((native >> 8)  & 0xFF);
             p[2] = cast(ubyte)((native >> 16) & 0xFF);
             break;
         }
@@ -232,13 +232,71 @@ void framebufferDrawRect(uint x, uint y, uint w, uint h, uint argbColor, bool fi
     } else {
         // Top and bottom
         foreach (xx; x .. xEnd) {
-            framebufferPutPixel(xx, y,     argbColor);
+            framebufferPutPixel(xx, y,        argbColor);
             framebufferPutPixel(xx, yEnd - 1, argbColor);
         }
         // Left and right
         foreach (yy; y .. yEnd) {
-            framebufferPutPixel(x,     yy, argbColor);
+            framebufferPutPixel(x,        yy, argbColor);
             framebufferPutPixel(xEnd - 1, yy, argbColor);
+        }
+    }
+}
+
+// Convenience: fill rectangle wrapper (explicit "fill rect" op)
+@nogc nothrow @system
+void framebufferFillRect(uint x, uint y, uint w, uint h, uint argbColor) {
+    framebufferDrawRect(x, y, w, h, argbColor, true);
+}
+
+// --------------------------------------------------------------------------
+// Bitmap blit: 8-bit mask (for fonts/icons)
+// --------------------------------------------------------------------------
+//
+// We treat the source as an 8-bit per pixel mask:
+//   - mask == 0   -> transparent (or background if useBg == true)
+//   - mask != 0   -> draw foreground color
+//
+// This is generic and independent of your fallback font; you can use it
+// for icons or higher-res fonts later.
+
+@nogc nothrow @system
+void framebufferBlitMask(uint dstX, uint dstY,
+                         const(ubyte)* mask,
+                         uint maskWidth, uint maskHeight,
+                         uint maskStride,
+                         uint fgARGB,
+                         uint bgARGB = 0,
+                         bool useBg = false)
+{
+    if (!g_fbInitialized) return;
+    if (mask is null) return;
+    if (maskWidth == 0 || maskHeight == 0) return;
+
+    // Clip against framebuffer bounds.
+    if (dstX >= g_fb.width || dstY >= g_fb.height) return;
+
+    uint maxW = g_fb.width  - dstX;
+    uint maxH = g_fb.height - dstY;
+
+    uint blitW = maskWidth;
+    uint blitH = maskHeight;
+    if (blitW > maxW) blitW = maxW;
+    if (blitH > maxH) blitH = maxH;
+
+    foreach (row; 0 .. blitH) {
+        const(ubyte)* srcRow = mask + row * maskStride;
+
+        foreach (col; 0 .. blitW) {
+            const ubyte m = srcRow[col];
+
+            // Fully transparent and no background requested
+            if (m == 0 && !useBg) {
+                continue;
+            }
+
+            const uint color = (m == 0) ? bgARGB : fgARGB;
+            framebufferPutPixel(dstX + col, dstY + row, color);
         }
     }
 }

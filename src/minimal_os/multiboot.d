@@ -93,6 +93,11 @@ struct MultibootContext
 {
     const MultibootInfo* info;
 
+    private static @trusted const(T)* ptrFromAddress(T)(size_t address)
+    {
+        return cast(const(T)*)address;
+    }
+
     /// Attempt to construct a context from the raw Multiboot register values.
     @nogc nothrow
     static MultibootContext fromBootValues(ulong magic, ulong infoAddress)
@@ -137,7 +142,7 @@ struct MultibootContext
         }
 
         const size_t base = info.modsAddr + index * MultibootModule.sizeof;
-        return cast(const MultibootModule*)base;
+        return ptrFromAddress!MultibootModule(base);
     }
 
     /// Iterate over memory map entries in-order.
@@ -176,14 +181,14 @@ struct MultibootMmapRange
     MultibootMmapEntry front() const
     {
         // Caller must ensure !empty().
-        const MultibootMmapEntry* entry = cast(const MultibootMmapEntry*)base;
+        const MultibootMmapEntry* entry = MultibootContext.ptrFromAddress!MultibootMmapEntry(base);
         return *entry;
     }
 
     @nogc @safe nothrow
     void popFront()
     {
-        const MultibootMmapEntry* entry = cast(const MultibootMmapEntry*)base;
+        const MultibootMmapEntry* entry = MultibootContext.ptrFromAddress!MultibootMmapEntry(base);
         const size_t advance = entry.entrySize + uint.sizeof;
         base += advance;
 

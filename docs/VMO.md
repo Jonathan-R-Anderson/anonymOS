@@ -120,3 +120,25 @@ constructor accepts a `contentCacheCapacity` that limits the number of unique
 page hashes retained at any time. The cache evicts entries using an LRU policy
 based on the content hashes so newly faulted data pushes out the least recently
 used pages while hot data stays resident.
+
+## Observability & tooling
+
+The immutable, content-addressed nature of VMOs lends itself well to rich
+observability hooks that can be used from both the kernel and user space.
+
+* `hash(vmo)` – emits the canonical identifier for any VMO. Because the hash is
+  derived from the canonical encoding, it acts as a stable handle in logs,
+  trace spans, and deduplication tables regardless of which process materialised
+  the object.
+* `explain(vmo)` – renders the extent DAG using the same slice/concat/delta
+  vocabulary described earlier in this document. This is invaluable when
+  debugging complex builders because it surfaces how the final content was
+  composed from smaller pieces.
+* `profile(map)` – instruments mappings to capture page-fault counts, the cost
+  of flattening the DAG into resident pages, and current residency. Operators
+  can run it against hot mappings to quickly see whether cost is dominated by
+  cold faults, deltas, or repeated flattening.
+
+These primitives make the VMO subsystem transparent: operators can correlate
+hashes across logs, inspect problematic graphs, and quantify residency pressure
+without reaching into kernel internals.

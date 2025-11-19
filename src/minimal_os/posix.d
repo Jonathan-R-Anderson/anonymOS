@@ -4,7 +4,12 @@ import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady,
                            printHex;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
-import minimal_os.posixutils.context : jmp_buf, setjmp, longjmp;
+// Re-export the context helpers so the PosixKernelShim mixin (and any
+// modules that import `minimal_os.posix`) can reference them via
+// `minimal_os.posix.jmp_buf`, etc.  Without the public import, instantiating
+// modules needed to import the context package directly which defeated the
+// purpose of the mixin.
+public import minimal_os.posixutils.context : jmp_buf, setjmp, longjmp;
 
 // ---------------------------------------------------------------------
 // Shared shell state accessible both to the shim mixin and bare-metal

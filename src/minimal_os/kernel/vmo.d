@@ -788,6 +788,199 @@ void send(VmoChannel channel, const scope VmoHandle[] caps)
     channel.enqueue(caps);
 }
 
+/// Simple in-memory filesystem that surfaces every directory entry as a VMO
+/// capability.  Callers either publish existing `VmoHandle`s or let the
+/// filesystem materialise handles from raw bytes.  Reading a file returns the
+/// capability instead of copying data, mirroring the "filesystem returns VMO
+/// capabilities" model described in the design notes.
+class VmoFileSystem
+{
+public:
+    this(VmoStore store)
+    {
+        enforce(store !is null, "store cannot be null");
+        _store = store;
+    }
+
+    VmoHandle publishBytes(string path, const scope ubyte[] data)
+    {
+        enforce(path.length > 0, "path cannot be empty");
+        auto handle = _store.fromBytes(data);
+        return publish(path, handle);
+    }
+
+    VmoHandle publish(string path, VmoHandle handle)
+    {
+        enforce(path.length > 0, "path cannot be empty");
+        _entries[path] = handle;
+        return handle;
+    }
+
+    VmoHandle read(string path) const
+    {
+        auto ptr = path in _entries;
+        enforce(ptr !is null, "missing file");
+        return *ptr;
+    }
+
+    bool exists(string path) const
+    {
+        return (path in _entries) !is null;
+    }
+
+private:
+    VmoStore _store;
+    VmoHandle[string] _entries;
+}
+
+/// IPC endpoint helper that forwards VMO handles between processes.  Payloads
+/// are delivered as handles so receivers can map the bytes read-only without
+/// copying, satisfying the zero-copy IPC goal from the specification.
+class VmoIpcEndpoint
+{
+public:
+    this(VmoChannel channel)
+    {
+        enforce(channel !is null, "channel cannot be null");
+        _channel = channel;
+    }
+
+    void sendPayload(const scope VmoHandle[] payload)
+    {
+        send(_channel, payload);
+    }
+
+    VmoHandle[] receivePayload()
+    {
+        return _channel.receive();
+    }
+
+    static VmoMapping[] mapReadOnly(const scope VmoHandle[] payload,
+                                    NumaPlacementHint hint = NumaPlacementHint.automatic())
+    {
+        VmoMapping[] mappings;
+        mappings.reserve(payload.length);
+        foreach (handle; payload)
+        {
+            mappings ~= handle.map(0, MappingProt.read, hint);
+        }
+        return mappings;
+    }
+
+private:
+    VmoChannel _channel;
+}
+
+enum PipeMode : ubyte
+{
+    chunked,
+    rolling,
+}
+
+/// Pipe/stream abstraction that emits either a sequence of small VMOs or a
+/// single rolling VMO backed by a `VBuilder`.  Writers append bytes and the pipe
+/// exposes the resulting VMO handles to readers without any intermediate
+/// buffers.
+class VmoPipe
+{
+public:
+    this(VmoStore store, PipeMode mode = PipeMode.chunked, size_t chunkSize = 4096)
+    {
+        enforce(store !is null, "store cannot be null");
+        enforce(chunkSize > 0, "chunk size must be positive");
+        _store = store;
+        _mode = mode;
+        _chunkSize = chunkSize;
+        _channel = new VmoChannel();
+        if (_mode == PipeMode.rolling)
+        {
+            _builder = _store.streamingBuilder();
+        }
+    }
+
+    void write(const scope ubyte[] data)
+    {
+        if (data.length == 0)
+        {
+            return;
+        }
+        final switch (_mode)
+        {
+        case PipeMode.chunked:
+            writeChunked(data);
+            break;
+        case PipeMode.rolling:
+            enforce(_builder !is null, "rolling builder is unavailable");
+            _builder.append(data);
+            break;
+        }
+    }
+
+    void flushRolling(VmoCommitMetadata metadata = VmoCommitMetadata.init)
+    {
+        enforce(_mode == PipeMode.rolling, "flushRolling only valid in rolling mode");
+        enforce(_builder !is null, "rolling builder is unavailable");
+        auto result = _builder.commit(metadata);
+        send(_channel, [result.handle]);
+        _builder = _store.streamingBuilder();
+    }
+
+    VmoHandle read()
+    {
+        auto message = _channel.receive();
+        enforce(message.length == 1, "pipe messages contain exactly one VMO");
+        return message[0];
+    }
+
+    bool empty() const
+    {
+        return _channel.empty();
+    }
+
+private:
+    VmoStore _store;
+    PipeMode _mode;
+    size_t _chunkSize;
+    VmoChannel _channel;
+    VBuilder _builder;
+
+    void writeChunked(const scope ubyte[] data)
+    {
+        size_t start = 0;
+        while (start < data.length)
+        {
+            auto end = min(start + _chunkSize, data.length);
+            auto handle = _store.fromBytes(data[start .. end]);
+            send(_channel, [handle]);
+            start = end;
+        }
+    }
+}
+
+/// Thin wrapper over a VMO-backed file that provides read-only mappings and
+/// instant snapshots.  Taking a snapshot simply returns the underlying handle
+/// because files are immutable VMOs.
+struct MemoryMappedFile
+{
+    VmoHandle handle;
+
+    this(VmoHandle handle)
+    {
+        this.handle = handle;
+    }
+
+    VmoMapping mapReadOnly(size_t address = 0,
+                           NumaPlacementHint hint = NumaPlacementHint.automatic()) const
+    {
+        return handle.map(address, MappingProt.read, hint);
+    }
+
+    VmoHandle snapshot() const
+    {
+        return handle;
+    }
+}
+
 unittest
 {
     auto store = new VmoStore(8);
@@ -962,4 +1155,61 @@ unittest
     assert(received.length == 2);
     assert(received[0].hash == payloadA.hash);
     assert(received[1].hash == payloadB.hash);
+}
+
+unittest
+{
+    auto store = new VmoStore(8);
+    auto fs = new VmoFileSystem(store);
+    auto handle = fs.publishBytes("/cfg", cast(const ubyte[])"CONFIG");
+    auto reopened = fs.read("/cfg");
+    assert(handle.hash == reopened.hash);
+    assert(fs.exists("/cfg"));
+}
+
+unittest
+{
+    auto store = new VmoStore(8);
+    auto channel = new VmoChannel();
+    auto endpoint = new VmoIpcEndpoint(channel);
+    auto payload = store.fromBytes(cast(const ubyte[])"payload");
+    endpoint.sendPayload([payload]);
+    auto received = endpoint.receivePayload();
+    auto mappings = VmoIpcEndpoint.mapReadOnly(received);
+    assert(mappings.length == 1);
+    assert(mappings[0].handle.hash == payload.hash);
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto pipe = new VmoPipe(store, PipeMode.chunked, 2);
+    pipe.write(cast(const ubyte[])"abcd");
+    auto first = pipe.read();
+    auto second = pipe.read();
+    assert(first.materialize() == cast(const ubyte[])"ab");
+    assert(second.materialize() == cast(const ubyte[])"cd");
+    assert(pipe.empty());
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto pipe = new VmoPipe(store, PipeMode.rolling);
+    pipe.write(cast(const ubyte[])"ab");
+    pipe.write(cast(const ubyte[])"cd");
+    pipe.flushRolling();
+    auto combined = pipe.read();
+    assert(combined.materialize() == cast(const ubyte[])"abcd");
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto handle = store.fromBytes(cast(const ubyte[])"file");
+    MemoryMappedFile file = MemoryMappedFile(handle);
+    auto mapping = file.mapReadOnly();
+    assert(mapping.handle.hash == handle.hash);
+    auto snapshot = file.snapshot();
+    assert(snapshot.hash == handle.hash);
 }

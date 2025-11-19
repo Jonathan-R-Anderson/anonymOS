@@ -2684,10 +2684,9 @@ else
 {
     // Non-Posix (bare-metal) builds get minimal stubs.
 
-    import minimal_os.console : hasSerialConsole, consoleWriteChar, consoleReadCharBlocking;
+    import minimal_os.console : hasSerialConsole;
 
-    private enum size_t bareMetalShellBufferSize = 128;
-    private enum size_t bareMetalShellMaxTokens   = 8;
+    private immutable char[] g_shellPackagedProgram = "/bin/" ~ shBinaryName ~ "\0";
 
     private @nogc nothrow bool ensurePosixUtilitiesConfiguredBare()
     {
@@ -2722,91 +2721,18 @@ else
         }
     }
 
-    extern(C) @nogc nothrow void shellExecEntry(const(char*)* , const(char*)*)
+    extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)
     {
-        printLine("[shell] lfe-sh embedded shell main starting (VGA)");
-        consoleWriteChar('['); consoleWriteChar('s'); consoleWriteChar('h'); consoleWriteChar('e'); consoleWriteChar('l'); consoleWriteChar('l'); consoleWriteChar(']'); consoleWriteChar(' ');
-        consoleWriteChar('l'); consoleWriteChar('f'); consoleWriteChar('e'); consoleWriteChar('-'); consoleWriteChar('s'); consoleWriteChar('h'); consoleWriteChar(' ');
-        consoleWriteChar('e'); consoleWriteChar('m'); consoleWriteChar('b'); consoleWriteChar('e'); consoleWriteChar('d'); consoleWriteChar('d'); consoleWriteChar('e'); consoleWriteChar('d'); consoleWriteChar(' ');
-        consoleWriteChar('s'); consoleWriteChar('h'); consoleWriteChar('e'); consoleWriteChar('l'); consoleWriteChar('l'); consoleWriteChar(' ');
-        consoleWriteChar('m'); consoleWriteChar('a'); consoleWriteChar('i'); consoleWriteChar('n'); consoleWriteChar(' ');
-        consoleWriteChar('s'); consoleWriteChar('t'); consoleWriteChar('a'); consoleWriteChar('r'); consoleWriteChar('t'); consoleWriteChar('i'); consoleWriteChar('n'); consoleWriteChar('g'); consoleWriteChar(' ');
-        consoleWriteChar('('); consoleWriteChar('s'); consoleWriteChar('e'); consoleWriteChar('r'); consoleWriteChar('i'); consoleWriteChar('a'); consoleWriteChar('l'); consoleWriteChar(')');
-        consoleWriteChar('\n');
+        printLine("[shell] Delegating to packaged 'lfe-sh' binary...");
 
-        char[bareMetalShellBufferSize] buffer;
-        const(char)[][bareMetalShellMaxTokens] tokens;
-
-        printLine("[shell] lfe-sh interactive shell ready. Type 'help' for commands.");
-
-        for (;;)
+        const(char*)[2] fallbackArgv = [g_shellPackagedProgram.ptr, null];
+        const(char*)* effectiveArgv = argv;
+        if (effectiveArgv is null || effectiveArgv[0] is null)
         {
-            writeShellPrompt();
-            const size_t length = readShellLine(buffer);
-            if (length == 0)
-            {
-                continue;
-            }
-
-            const size_t tokenCount = tokenizeShellInput(buffer, length, tokens);
-            if (tokenCount == 0)
-            {
-                continue;
-            }
-
-            auto command = tokens[0];
-
-            if (matchesCommand(command, "help"))
-            {
-                handleHelpCommand();
-                continue;
-            }
-
-            if (matchesCommand(command, "reboot"))
-            {
-                handleRebootCommand();
-                continue;
-            }
-
-            if (matchesCommand(command, "halt"))
-            {
-                handleHaltCommand();
-                continue;
-            }
-
-            if (matchesCommand(command, "exit"))
-            {
-                int status = 0;
-                if (tokenCount > 1)
-                {
-                    long parsedStatus = 0;
-                    if (parseSignedInteger(tokens[1], parsedStatus))
-                    {
-                        status = cast(int)parsedStatus;
-                    }
-                    else
-                    {
-                        printLine("[shell] Invalid exit status; using 0.");
-                    }
-                }
-
-                _exit(status);
-            }
-
-            if (matchesCommand(command, "echo"))
-            {
-                handleEchoCommand(tokens, tokenCount);
-                continue;
-            }
-
-            if (matchesCommand(command, "sum"))
-            {
-                handleSumCommand(tokens, tokenCount);
-                continue;
-            }
-
-            handleUnknownCommand(command);
+            effectiveArgv = fallbackArgv.ptr;
         }
+
+        posixUtilityExecEntry(effectiveArgv, envp);
     }
 
     extern(C) @nogc nothrow void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp)
@@ -2845,15 +2771,7 @@ else
             return;
         }
 
-        printLine("[shell] Starting bare-metal shell on serial...");
-        printLine("[shell] entering bare-metal shell main (VGA)");
-        consoleWriteChar('['); consoleWriteChar('s'); consoleWriteChar('h'); consoleWriteChar('e'); consoleWriteChar('l'); consoleWriteChar('l'); consoleWriteChar(']'); consoleWriteChar(' ');
-        consoleWriteChar('e'); consoleWriteChar('n'); consoleWriteChar('t'); consoleWriteChar('e'); consoleWriteChar('r'); consoleWriteChar('i'); consoleWriteChar('n'); consoleWriteChar('g'); consoleWriteChar(' ');
-        consoleWriteChar('b'); consoleWriteChar('a'); consoleWriteChar('r'); consoleWriteChar('e'); consoleWriteChar('-'); consoleWriteChar('m'); consoleWriteChar('e'); consoleWriteChar('t'); consoleWriteChar('a'); consoleWriteChar('l'); consoleWriteChar(' ');
-        consoleWriteChar('s'); consoleWriteChar('h'); consoleWriteChar('e'); consoleWriteChar('l'); consoleWriteChar('l'); consoleWriteChar(' ');
-        consoleWriteChar('m'); consoleWriteChar('a'); consoleWriteChar('i'); consoleWriteChar('n'); consoleWriteChar(' ');
-        consoleWriteChar('('); consoleWriteChar('V'); consoleWriteChar('G'); consoleWriteChar('A'); consoleWriteChar(')');
-        consoleWriteChar('\n');
+        printLine("[shell] Starting packaged shell on serial...");
         bareMetalShellLoop();
     }
 
@@ -2951,248 +2869,5 @@ else
         }
     }
 
-    private @nogc nothrow size_t readShellLine(ref char[bareMetalShellBufferSize] buffer)
-    {
-        size_t length = 0;
-
-        for (;;)
-        {
-            const char c = consoleReadCharBlocking();
-
-            if (c == '\0')
-            {
-                continue;
-            }
-
-            if (c == '\r' || c == '\n')
-            {
-                consoleWriteChar('\n');
-                break;
-            }
-
-            if (c == '\b' || c == 0x7F)
-            {
-                if (length > 0)
-                {
-                    --length;
-                    consoleWriteChar('\b');
-                    consoleWriteChar(' ');
-                    consoleWriteChar('\b');
-                }
-                continue;
-            }
-
-            if (length >= buffer.length)
-            {
-                continue;
-            }
-
-            consoleWriteChar(c);
-            buffer[length] = c;
-            ++length;
-        }
-
-        return length;
-    }
-
-    private @nogc nothrow void writeShellPrompt()
-    {
-        writeShellString("> ");
-    }
-
-    private @nogc nothrow void writeShellString(const(char)[] text)
-    {
-        if (text is null)
-        {
-            return;
-        }
-
-        foreach (c; text)
-        {
-            consoleWriteChar(c);
-        }
-    }
-
-    private @nogc nothrow bool matchesCommand(const(char)[] input, immutable(char)[] command)
-    {
-        if (input.length != command.length)
-        {
-            return false;
-        }
-
-        foreach (index; 0 .. command.length)
-        {
-            if (input[index] != command[index])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private @nogc nothrow void handleHelpCommand()
-    {
-        printLine("[shell] Available commands:");
-        printLine("  help   - Show this help message");
-        printLine("  echo   - Print the provided arguments");
-        printLine("  sum    - Add integer arguments and display the result");
-        printLine("  exit   - Leave the shell (optional status code)");
-        printLine("  reboot - Reboot the system (stub)");
-        printLine("  halt   - Halt the system (stub)");
-    }
-
-    private @nogc nothrow void handleUnknownCommand(const(char)[] command)
-    {
-        print("[shell] Unknown command: ");
-        writeShellString(command);
-        consoleWriteChar('\n');
-        printLine("[shell] Type 'help' to list supported commands.");
-    }
-
-    private @nogc nothrow bool isShellWhitespace(char c)
-    {
-        return c == ' ' || c == '\t';
-    }
-
-    private @nogc nothrow size_t tokenizeShellInput(ref char[bareMetalShellBufferSize] buffer,
-                                                    size_t length,
-                                                    ref const(char)[][bareMetalShellMaxTokens] tokens)
-    {
-        size_t tokenCount = 0;
-        size_t index = 0;
-
-        while (index < length && tokenCount < tokens.length)
-        {
-            while (index < length && isShellWhitespace(buffer[index]))
-            {
-                ++index;
-            }
-
-            if (index >= length)
-            {
-                break;
-            }
-
-            const size_t start = index;
-            while (index < length && !isShellWhitespace(buffer[index]))
-            {
-                ++index;
-            }
-
-            tokens[tokenCount++] = buffer[start .. index];
-        }
-
-        return tokenCount;
-    }
-
-    private @nogc nothrow void handleEchoCommand(ref const(char)[][bareMetalShellMaxTokens] tokens,
-                                                 size_t tokenCount)
-    {
-        if (tokenCount <= 1)
-        {
-            consoleWriteChar('\n');
-            return;
-        }
-
-        foreach (index; 1 .. tokenCount)
-        {
-            writeShellString(tokens[index]);
-            if (index + 1 < tokenCount)
-            {
-                consoleWriteChar(' ');
-            }
-        }
-
-        consoleWriteChar('\n');
-    }
-
-    private @nogc nothrow bool parseSignedInteger(const(char)[] text, out long value)
-    {
-        value = 0;
-        if (text.length == 0)
-        {
-            return false;
-        }
-
-        bool negative = false;
-        size_t index = 0;
-
-        if (text[0] == '+' || text[0] == '-')
-        {
-            negative = (text[0] == '-');
-            index = 1;
-        }
-
-        if (index >= text.length)
-        {
-            return false;
-        }
-
-        long parsed = 0;
-        while (index < text.length)
-        {
-            immutable char c = text[index];
-            if (c < '0' || c > '9')
-            {
-                return false;
-            }
-
-            parsed = parsed * 10 + (c - '0');
-            ++index;
-        }
-
-        value = negative ? -parsed : parsed;
-        return true;
-    }
-
-    private @nogc nothrow void printSignedInteger(long value)
-    {
-        if (value < 0)
-        {
-            consoleWriteChar('-');
-            value = -value;
-        }
-
-        printUnsigned(cast(size_t)value);
-    }
-
-    private @nogc nothrow void handleSumCommand(ref const(char)[][bareMetalShellMaxTokens] tokens,
-                                                size_t tokenCount)
-    {
-        if (tokenCount < 3)
-        {
-            printLine("[shell] sum requires at least two integers.");
-            return;
-        }
-
-        long total = 0;
-        foreach (index; 1 .. tokenCount)
-        {
-            long parsed = 0;
-            if (!parseSignedInteger(tokens[index], parsed))
-            {
-                print("[shell] Invalid integer: ");
-                writeShellString(tokens[index]);
-                consoleWriteChar('\n');
-                return;
-            }
-
-            total += parsed;
-        }
-
-        print("[shell] sum = ");
-        printSignedInteger(total);
-        printLine("");
-    }
-
-    private @nogc nothrow void handleRebootCommand()
-    {
-        printLine("[shell] Reboot requested (stub; not implemented).");
-    }
-
-    private @nogc nothrow void handleHaltCommand()
-    {
-        printLine("[shell] Halt requested (stub; not implemented).");
-    }
+    // Legacy bare-metal helpers removed in favour of invoking the packaged shell binary.
 }

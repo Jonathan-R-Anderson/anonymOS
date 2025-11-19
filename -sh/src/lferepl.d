@@ -1511,6 +1511,50 @@ Value evalList(Expr e) {
         auto objVal = evalExpr(e.list[1]);
         auto h = objectsystem.verify(valueToString(objVal));
         return atomVal(h);
+    } else if(head == "issueCapability") {
+        if(e.list.length < 2)
+            throw new Exception("issueCapability: missing object identifier");
+        auto objVal = evalExpr(e.list[1]);
+        string[] rights;
+        foreach(arg; e.list[2 .. $])
+            rights ~= valueToString(evalExpr(arg));
+        auto handle = objectsystem.issueCapability(valueToString(objVal), rights);
+        return atomVal(handle.length ? handle : "undefined");
+    } else if(head == "deriveCapability") {
+        if(e.list.length < 2)
+            throw new Exception("deriveCapability: missing capability handle");
+        auto baseVal = evalExpr(e.list[1]);
+        string[] rights;
+        foreach(arg; e.list[2 .. $])
+            rights ~= valueToString(evalExpr(arg));
+        auto handle = objectsystem.deriveCapability(valueToString(baseVal), rights);
+        return atomVal(handle.length ? handle : "undefined");
+    } else if(head == "capabilityRights") {
+        if(e.list.length < 2)
+            throw new Exception("capabilityRights: missing capability handle");
+        auto handleVal = evalExpr(e.list[1]);
+        auto rights = objectsystem.capabilityRights(valueToString(handleVal));
+        Value[] vals; foreach(r; rights) vals ~= atomVal(r);
+        return listVal(vals);
+    } else if(head == "capabilityTarget") {
+        if(e.list.length < 2)
+            throw new Exception("capabilityTarget: missing capability handle");
+        auto handleVal = evalExpr(e.list[1]);
+        auto target = objectsystem.capabilityTarget(valueToString(handleVal));
+        return atomVal(target.length ? target : "undefined");
+    } else if(head == "capabilityHasRight") {
+        if(e.list.length < 3)
+            throw new Exception("capabilityHasRight: need handle and right");
+        auto handleVal = evalExpr(e.list[1]);
+        auto rightVal = evalExpr(e.list[2]);
+        bool ok = objectsystem.capabilityHasRight(valueToString(handleVal), valueToString(rightVal));
+        return atomVal(ok ? "true" : "false");
+    } else if(head == "destroyCapability") {
+        if(e.list.length < 2)
+            throw new Exception("destroyCapability: missing handle");
+        auto handleVal = evalExpr(e.list[1]);
+        bool ok = objectsystem.destroyCapability(valueToString(handleVal));
+        return atomVal(ok ? "true" : "false");
     } else if(head == "sh") {
         if (e.list.length < 2) {
             throw new Exception("sh: missing command");

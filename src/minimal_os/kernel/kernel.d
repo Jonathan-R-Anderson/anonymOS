@@ -2,6 +2,7 @@ module minimal_os.kernel.kernel;
 
 public import minimal_os.kernel.memory;
 
+import minimal_os.framebuffer;
 import minimal_os.console : clearScreen;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
@@ -21,4 +22,8 @@ extern(C) void kmain(ulong magic, ulong info)
 
     posixInit();
     runCompilerBuilder();
+    if (framebufferAvailable()) {
+        framebufferWriteString("Hello from D kernel!\n");
+        framebufferDrawRect(10, 40, 200, 50, 0xFF00FF00, true); // green block
+    }
 }

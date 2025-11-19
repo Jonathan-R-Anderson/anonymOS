@@ -1,6 +1,7 @@
 module minimal_os.posixutils.registry;
 
-import core.stdc.config : ptrdiff_t;
+alias ptrdiff_t = object.ptrdiff_t;
+
 import minimal_os.kernel.posixbundle : fallbackPosixUtilityManifestPath,
     hostFallbackPosixUtilityManifestPath, hostPosixUtilityManifestPath,
     posixUtilityManifestPath;
@@ -25,11 +26,13 @@ private enum string objectManifest = loadManifest();
 private enum PosixUtilityDescriptor[] parsedManifest = parseObjectManifest(objectManifest);
 private immutable(PosixUtilityDescriptor)[] g_posixUtilityDescriptors = parsedManifest;
 private enum immutable(char)[][] canonicalPathList = collectCanonicalPaths(parsedManifest);
-private immutable(immutable(char)[])[] g_canonicalPaths = canonicalPathList;
+private immutable(char)[][] g_canonicalPaths = canonicalPathList;
+
 private enum immutable(char)[][] nameList = collectUtilityNames(parsedManifest);
-private immutable(immutable(char)[])[] g_utilityNames = nameList;
+private immutable(char)[][] g_utilityNames = nameList;
+
 private enum immutable(char)[][] objectIdList = collectObjectIds(parsedManifest);
-private immutable(immutable(char)[])[] g_objectIds = objectIdList;
+private immutable(char)[][] g_objectIds = objectIdList;
 
 @nogc nothrow ExecEntryFn posixUtilityExecEntry(scope const(char)[] name)
 {

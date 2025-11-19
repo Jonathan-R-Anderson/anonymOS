@@ -1,5 +1,7 @@
 module minimal_os.multiboot;
 
+import minimal_os.framebuffer;
+
 /// Helpers and data layouts for interacting with Multiboot loaders.
 ///
 /// The structures mirror the Multiboot 1 specification so that the kernel can
@@ -196,3 +198,18 @@ struct MultibootMmapRange
     }
 }
 
+
+void initVideoFromMultiboot(const MultibootInfo* mbi) @nogc nothrow @system {
+    // Example names – adjust to your actual struct fields:
+    void* fbBase   = cast(void*) mbi.framebuffer_addr;
+    uint  fbWidth  = mbi.framebuffer_width;
+    uint  fbHeight = mbi.framebuffer_height;
+    uint  fbPitch  = mbi.framebuffer_pitch;
+    uint  fbBpp    = mbi.framebuffer_bpp;
+    bool  fbIsBGR  = (mbi.framebuffer_type == FRAMEBUFFER_TYPE_RGB &&
+                      mbi.framebuffer_red_field_position   == 16 &&
+                      mbi.framebuffer_blue_field_position  == 0);
+
+    initFramebuffer(fbBase, fbWidth, fbHeight, fbPitch, fbBpp, fbIsBGR);
+    framebufferBootBanner("minimal_os framebuffer online");
+}

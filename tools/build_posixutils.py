@@ -190,7 +190,10 @@ NON_COMMAND_DIRECTORIES = {"process", "api"}
 
 
 def discover_commands(source_root: Path) -> Iterable[tuple[str, List[Path]]]:
-    for entry in sorted(source_root.iterdir()):
+    commands_root = source_root / "commands"
+    search_root = commands_root if commands_root.is_dir() else source_root
+
+    for entry in sorted(search_root.iterdir()):
         if not entry.is_dir():
             continue
         if entry.name in NON_COMMAND_DIRECTORIES:

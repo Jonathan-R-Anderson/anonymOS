@@ -38,3 +38,32 @@ via their content hashes.  The accompanying unit tests (run via
 ``ldc2 -unittest tests/vmo_test_runner.d``) exercise slicing, concatenation,
 delta overlays, and page cache sharing to ensure the canonical encoding and lazy
 faulting behaviour match the specification.
+
+## VBuilder – staged writers
+
+VMOs are immutable, so writes must be staged through a `VBuilder`. Builders are
+ephemeral objects that keep a private log of appends and patches. The log is not
+visible to other components which makes builders the only authority that can
+produce a new immutable VMO once `commit()` is invoked. Committing seals the log
+and returns a `VmoHandle` capability referencing the new content. Any further
+attempt to append or patch after committing raises an error, reinforcing that
+VMOs themselves never change.
+
+`VmoStore` can provision builders in two flavours:
+
+* `boundedBuilder(maxBytes)` – enforces an upper bound on the total number of
+  bytes appended, making it ideal for pre-sized blobs.
+* `streamingBuilder()` – intended for pipes or ingestion where the caller keeps
+  pushing chunks without a known upper bound.
+
+Both builder types expose the same API:
+
+* `append(bytes)` – records a chunk into the private log (zero-length chunks are
+  ignored).
+* `patch(offset, bytes)` – records a sparse overlay that is applied when the log
+  is sealed.
+* `commit()` – concatenates all append chunks, overlays the recorded patches,
+  and returns the resulting immutable `VmoHandle`.
+
+Internally builders reuse the existing extent machinery, so incremental writes
+benefit from deduplication and can share physical pages once committed.

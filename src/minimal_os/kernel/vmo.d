@@ -7,6 +7,115 @@ import std.exception : enforce;
 
 alias ByteSlice = immutable(ubyte)[];
 
+class VmoStore;
+struct VmoHandle;
+struct DeltaPatch;
+
+enum VBuilderMode : ubyte
+{
+    bounded,
+    streaming,
+}
+
+final class VBuilder
+{
+public:
+    this(VmoStore store, VBuilderMode mode, size_t limit)
+    {
+        enforce(store !is null, "store cannot be null");
+        _store = store;
+        _mode = mode;
+        _limit = limit;
+    }
+
+    @property size_t length() const
+    {
+        return _length;
+    }
+
+    void append(const scope ubyte[] data)
+    {
+        ensureActive();
+        if (data.length == 0)
+        {
+            return;
+        }
+        enforce(!isBounded || data.length <= available(), "builder capacity exceeded");
+        auto handle = _store.fromBytes(data);
+        _segments ~= handle;
+        _length += data.length;
+    }
+
+    void patch(size_t offset, const scope ubyte[] data)
+    {
+        ensureActive();
+        enforce(data.length > 0, "patch requires data");
+        enforce(offset + data.length <= _length, "patch exceeds written length");
+        _patches ~= makePatch(offset, data);
+    }
+
+    VmoHandle commit()
+    {
+        ensureActive();
+        scope(exit)
+        {
+            _committed = true;
+            _segments.length = 0;
+            _patches.length = 0;
+        }
+
+        auto base = buildBase();
+        if (_patches.length == 0)
+        {
+            return base;
+        }
+        return _store.delta(base, _patches);
+    }
+
+private:
+    VmoStore _store;
+    VBuilderMode _mode;
+    size_t _limit;
+    size_t _length;
+    bool _committed;
+    VmoHandle[] _segments;
+    DeltaPatch[] _patches;
+
+    bool get isBounded() const
+    {
+        return _mode == VBuilderMode.bounded;
+    }
+
+    size_t available() const
+    {
+        if (!isBounded)
+        {
+            return size_t.max - _length;
+        }
+        enforce(_length <= _limit, "builder exceeded declared limit");
+        return _limit - _length;
+    }
+
+    void ensureActive() const
+    {
+        enforce(!_committed, "builder already committed");
+    }
+
+    VmoHandle buildBase()
+    {
+        if (_segments.length == 0)
+        {
+            const(ubyte)[] empty;
+            return _store.fromBytes(empty);
+        }
+        if (_segments.length == 1)
+        {
+            return _segments[0];
+        }
+        return _store.concat(_segments);
+    }
+}
+
 private enum NodeKind : ubyte
 {
     page,
@@ -298,6 +407,16 @@ public:
         return intern(node);
     }
 
+    VBuilder boundedBuilder(size_t maxBytes)
+    {
+        return new VBuilder(this, VBuilderMode.bounded, maxBytes);
+    }
+
+    VBuilder streamingBuilder()
+    {
+        return new VBuilder(this, VBuilderMode.streaming, 0);
+    }
+
     size_t nodeLength(HashBytes hash) const
     {
         auto ptr = hash in _nodes;
@@ -561,4 +680,38 @@ unittest
     assert(pages[0].index == 0 && pages[0].data == cast(const ubyte[])"abcd");
     assert(pages[1].index == 1 && pages[1].data == cast(const ubyte[])"efgh");
     assert(pages[2].index == 2 && pages[2].data == cast(const ubyte[])"ijkl");
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto builder = store.boundedBuilder(8);
+    builder.append(cast(const ubyte[])"abcd");
+    builder.append(cast(const ubyte[])"efgh");
+    auto handle = builder.commit();
+    assert(handle.length == 8);
+    assert(handle.materialize() == cast(const ubyte[])"abcdefgh");
+}
+
+unittest
+{
+    import std.exception : assertThrown;
+    auto store = new VmoStore(4);
+    auto builder = store.boundedBuilder(4);
+    builder.append(cast(const ubyte[])"abcd");
+    assertThrown!Exception(builder.append(cast(const ubyte[])"e"));
+}
+
+unittest
+{
+    import std.exception : assertThrown;
+    auto store = new VmoStore(4);
+    auto builder = store.streamingBuilder();
+    builder.append(cast(const ubyte[])"abcd");
+    builder.append(cast(const ubyte[])"efgh");
+    builder.patch(2, cast(const ubyte[])"XYZ");
+    auto handle = builder.commit();
+    assert(handle.materialize() == cast(const ubyte[])"abXYZfgh");
+    assertThrown!Exception(builder.commit());
+    assertThrown!Exception(builder.append(cast(const ubyte[])"zz"));
 }

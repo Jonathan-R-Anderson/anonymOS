@@ -4,17 +4,8 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 
 import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
 import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
-version (Posix)
-{
-    import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
-        registerBareMetalShellInterfaces;
-    import minimal_os.posixutils.process : spawnRegisteredProcess, waitpid;
-}
-else
-{
-    import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
-        registerBareMetalShellInterfaces;
-}
+import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
+    registerBareMetalShellInterfaces;
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
@@ -22,8 +13,6 @@ import minimal_os.userland : bootUserland;
 
 nothrow:
 @nogc:
-
-enum immutable(char)[] posixUnavailableReason = "POSIX utilities unavailable";
 
 struct ShellIntegrationState
 {
@@ -225,51 +214,16 @@ private void checkShellCompilerAccess()
 
 private void bindPosixUtilitiesToKernel()
 {
-    version (Posix)
+    if (!g_posixConfigured)
     {
-        if (!g_posixConfigured)
-        {
-            ensurePosixUtilitiesConfigured();
-        }
-
-        const size_t registered = registerPosixUtilities();
-
-        immutable(char)[] status = (registered > 0) ? "available" : "unavailable";
-        printStatus("[shell] POSIX utilities  : ", status, "");
-        printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
-
-        if (registered == 0)
-        {
-            if (shellState.failureReason is null || shellState.failureReason.length == 0)
-            {
-                shellState.failureReason = posixUnavailableReason;
-            }
-        }
-        else if (shellState.failureReason is posixUnavailableReason)
-        {
-            shellState.failureReason = null;
-        }
+        ensurePosixUtilitiesConfigured();
     }
-    else
-    {
-        const size_t registered = registerPosixUtilities();
 
-        immutable(char)[] status = (registered > 0) ? "available" : "unavailable";
-        printStatus("[shell] POSIX utilities  : ", status, "");
-        printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
+    const size_t registered = registerPosixUtilities();
 
-        if (registered == 0)
-        {
-            if (shellState.failureReason is null || shellState.failureReason.length == 0)
-            {
-                shellState.failureReason = posixUnavailableReason;
-            }
-        }
-        else if (shellState.failureReason is posixUnavailableReason)
-        {
-            shellState.failureReason = null;
-        }
-    }
+    immutable(char)[] status = (registered > 0) ? "available" : "unavailable";
+    printStatus("[shell] POSIX utilities  : ", status, "");
+    printStatusValue("[shell] POSIX execs    : ", cast(long)registered);
 }
 
 private void finalizeShellActivation()
@@ -299,8 +253,7 @@ private void finalizeShellActivation()
         g_shellRegistered = false;
     }
 
-    const bool posixReady = g_posixUtilitiesRegistered;
-    const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound && posixReady;
+    const bool prerequisitesMet = shellState.compilerAccessible && shellState.runtimeBound;
     const bool consoleReady = g_consoleAvailable && g_shellRegistered;
 
     if (prerequisitesMet && consoleReady)
@@ -321,10 +274,6 @@ private void finalizeShellActivation()
                 if (!shellState.compilerAccessible || !shellState.runtimeBound)
                 {
                     reason = "integration prerequisites missing";
-                }
-                else if (!posixReady)
-                {
-                    reason = posixUnavailableReason;
                 }
                 else
                 {

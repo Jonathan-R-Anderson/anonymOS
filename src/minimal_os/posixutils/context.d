@@ -26,7 +26,7 @@ version (X86_64)
     {
         int result;
         auto envPtr = &env;
-        asm
+        asm @nogc nothrow
         {
             mov RDX, envPtr;
             mov [RDX + JMP_RBX], RBX;
@@ -52,7 +52,7 @@ version (X86_64)
     {
         auto envPtr = &env;
         int retval = value ? value : 1;
-        asm
+        asm @nogc nothrow
         {
             mov RDX, envPtr;
             mov RBX, [RDX + JMP_RBX];

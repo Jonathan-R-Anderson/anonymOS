@@ -1,5 +1,6 @@
 module minimal_os.kernel.vmo;
 
+import core.atomic : atomicExchange, atomicStore;
 import std.algorithm : max, min, sort;
 import std.array : appender, Appender;
 import std.digest.sha : sha256Of;
@@ -15,6 +16,19 @@ enum VBuilderMode : ubyte
 {
     bounded,
     streaming,
+}
+
+struct VmoCommitMetadata
+{
+    string[string] tags;
+}
+
+struct VmoCommitResult
+{
+    VmoHandle handle;
+    HashBytes hash;
+    size_t length;
+    VmoCommitMetadata metadata;
 }
 
 final class VBuilder
@@ -46,6 +60,31 @@ public:
         _length += data.length;
     }
 
+    void write(size_t offset, const scope ubyte[] data)
+    {
+        ensureActive();
+        enforce(offset <= _length, "write offset beyond current builder length");
+        if (data.length == 0)
+        {
+            return;
+        }
+        if (offset == _length)
+        {
+            append(data);
+            return;
+        }
+        enforce(offset + data.length <= _length, "write exceeds staged length");
+        patch(offset, data);
+    }
+
+    void copyFrom(VmoHandle source, size_t sourceOffset, size_t length, size_t destinationOffset)
+    {
+        ensureActive();
+        enforce(sourceOffset + length <= source.length, "copy exceeds source length");
+        auto data = source.read(sourceOffset, length);
+        write(destinationOffset, data);
+    }
+
     void patch(size_t offset, const scope ubyte[] data)
     {
         ensureActive();
@@ -54,7 +93,7 @@ public:
         _patches ~= makePatch(offset, data);
     }
 
-    VmoHandle commit()
+    VmoCommitResult commit(VmoCommitMetadata metadata = VmoCommitMetadata.init)
     {
         ensureActive();
         scope(exit)
@@ -65,11 +104,8 @@ public:
         }
 
         auto base = buildBase();
-        if (_patches.length == 0)
-        {
-            return base;
-        }
-        return _store.delta(base, _patches);
+        auto handle = _patches.length == 0 ? base : _store.delta(base, _patches);
+        return VmoCommitResult(handle, handle.hash, handle.length, metadata);
     }
 
 private:
@@ -265,6 +301,8 @@ struct VmoHandle
         return _store.nodeLength(_hash);
     }
 
+    alias contentId = hash;
+
     ByteSlice read(size_t offset = 0, size_t length = size_t.max) const
     {
         enforce(offset <= this.length, "offset beyond end of object");
@@ -288,6 +326,26 @@ struct VmoHandle
     {
         return PageRange(_store, _hash);
     }
+
+    VmoMapping map(size_t address = 0, MappingProt prot = MappingProt.read) const
+    {
+        enforce(prot == MappingProt.read, "only read-only mappings are supported");
+        return VmoMapping(this, address, prot);
+    }
+}
+
+enum MappingProt : uint
+{
+    read = 1,
+    write = 2,
+    execute = 4,
+}
+
+struct VmoMapping
+{
+    VmoHandle handle;
+    size_t address;
+    MappingProt prot;
 }
 
 struct PageKey
@@ -385,7 +443,6 @@ public:
 
     VmoHandle delta(VmoHandle base, const scope DeltaPatch[] overlays)
     {
-        enforce(overlays.length > 0, "overlays cannot be empty");
         DeltaPatch[] normalized;
         normalized.reserve(overlays.length);
         foreach (patch; overlays)
@@ -396,7 +453,10 @@ public:
             }
             normalized ~= DeltaPatch(patch.offset, patch.data.idup);
         }
-        enforce(normalized.length > 0, "overlays cannot be empty");
+        if (normalized.length == 0)
+        {
+            return base;
+        }
         sort!((a, b) => a.offset < b.offset)(normalized);
 
         Node node;
@@ -405,6 +465,39 @@ public:
         node.delta.base = base.hash;
         node.delta.patches = normalized;
         return intern(node);
+    }
+
+    VmoHandle diff(VmoHandle oldVersion, VmoHandle newVersion)
+    {
+        enforce(oldVersion.length == newVersion.length, "diff requires equal lengths");
+        auto oldBytes = oldVersion.materialize();
+        auto newBytes = newVersion.materialize();
+        DeltaPatch[] patches;
+        size_t idx = 0;
+        while (idx < oldBytes.length)
+        {
+            if (oldBytes[idx] == newBytes[idx])
+            {
+                ++idx;
+                continue;
+            }
+            auto start = idx;
+            while (idx < oldBytes.length && oldBytes[idx] != newBytes[idx])
+            {
+                ++idx;
+            }
+            patches ~= makePatch(start, newBytes[start .. idx]);
+        }
+        return delta(oldVersion, patches);
+    }
+
+    VBuilder createBuilder(size_t sizeHint)
+    {
+        if (sizeHint == 0 || sizeHint == size_t.max)
+        {
+            return streamingBuilder();
+        }
+        return boundedBuilder(sizeHint);
     }
 
     VBuilder boundedBuilder(size_t maxBytes)
@@ -617,6 +710,54 @@ DeltaPatch makePatch(size_t offset, const scope ubyte[] data)
     return DeltaPatch(offset, data.idup);
 }
 
+HashBytes contentId(VmoHandle handle)
+{
+    return handle.hash;
+}
+
+VmoHandle swap(ref shared(VmoHandle) slot, VmoHandle newCap)
+{
+    auto previous = atomicExchange(slot, newCap);
+    return cast(VmoHandle)previous;
+}
+
+class VmoChannel
+{
+public:
+    void enqueue(const scope VmoHandle[] caps)
+    {
+        VmoHandle[] snapshot;
+        snapshot.reserve(caps.length);
+        foreach (cap; caps)
+        {
+            snapshot ~= cap;
+        }
+        _queue ~= snapshot;
+    }
+
+    VmoHandle[] receive()
+    {
+        enforce(_queue.length > 0, "channel queue empty");
+        auto message = _queue[0];
+        _queue = _queue[1 .. $];
+        return message;
+    }
+
+    bool empty() const
+    {
+        return _queue.length == 0;
+    }
+
+private:
+    VmoHandle[][] _queue;
+}
+
+void send(VmoChannel channel, const scope VmoHandle[] caps)
+{
+    enforce(channel !is null, "channel cannot be null");
+    channel.enqueue(caps);
+}
+
 unittest
 {
     auto store = new VmoStore(8);
@@ -688,9 +829,11 @@ unittest
     auto builder = store.boundedBuilder(8);
     builder.append(cast(const ubyte[])"abcd");
     builder.append(cast(const ubyte[])"efgh");
-    auto handle = builder.commit();
+    auto result = builder.commit();
+    auto handle = result.handle;
     assert(handle.length == 8);
     assert(handle.materialize() == cast(const ubyte[])"abcdefgh");
+    assert(result.hash == handle.hash);
 }
 
 unittest
@@ -710,8 +853,73 @@ unittest
     builder.append(cast(const ubyte[])"abcd");
     builder.append(cast(const ubyte[])"efgh");
     builder.patch(2, cast(const ubyte[])"XYZ");
-    auto handle = builder.commit();
+    auto result = builder.commit();
+    auto handle = result.handle;
     assert(handle.materialize() == cast(const ubyte[])"abXYZfgh");
     assertThrown!Exception(builder.commit());
     assertThrown!Exception(builder.append(cast(const ubyte[])"zz"));
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto builder = store.createBuilder(0);
+    builder.append(cast(const ubyte[])"abcd");
+    builder.write(4, cast(const ubyte[])"ef");
+    builder.write(0, cast(const ubyte[])"AB");
+    auto result = builder.commit();
+    assert(result.handle.materialize() == cast(const ubyte[])"ABcdef");
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto builder = store.createBuilder(6);
+    builder.append(cast(const ubyte[])"abcdef");
+    auto source = store.fromBytes(cast(const ubyte[])"UVWXYZ");
+    builder.copyFrom(source, 3, 3, 3);
+    auto result = builder.commit();
+    assert(result.handle.materialize() == cast(const ubyte[])"abcXYZ");
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto base = store.fromBytes(cast(const ubyte[])"ABCDEFGH");
+    auto updated = store.fromBytes(cast(const ubyte[])"ABcdEFGH");
+    auto delta = store.diff(base, updated);
+    assert(delta.materialize() == updated.materialize());
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto handle = store.fromBytes(cast(const ubyte[])"abcd");
+    auto mapping = handle.map(0, MappingProt.read);
+    assert(mapping.handle.hash == handle.hash);
+    assert(mapping.prot == MappingProt.read);
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto first = store.fromBytes(cast(const ubyte[])"abcd");
+    auto second = store.fromBytes(cast(const ubyte[])"efgh");
+    shared(VmoHandle) slot;
+    atomicStore(slot, first);
+    auto previous = swap(slot, second);
+    assert(previous.hash == first.hash);
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto channel = new VmoChannel();
+    auto payloadA = store.fromBytes(cast(const ubyte[])"abcd");
+    auto payloadB = store.fromBytes(cast(const ubyte[])"efgh");
+    send(channel, [payloadA, payloadB]);
+    auto received = channel.receive();
+    assert(received.length == 2);
+    assert(received[0].hash == payloadA.hash);
+    assert(received[1].hash == payloadB.hash);
 }

@@ -129,7 +129,7 @@ struct MultibootContext
 
     /// Retrieve the Nth module, or null on error.
     @nogc @safe pure nothrow
-    const MultibootModule* moduleAt(size_t index) const
+    const(MultibootModule)* moduleAt(size_t index) const
     {
         if (!valid || index >= moduleCount())
         {
@@ -200,15 +200,23 @@ struct MultibootMmapRange
 
 
 void initVideoFromMultiboot(const MultibootInfo* mbi) @nogc nothrow @system {
-    // Example names – adjust to your actual struct fields:
-    void* fbBase   = cast(void*) mbi.framebuffer_addr;
-    uint  fbWidth  = mbi.framebuffer_width;
-    uint  fbHeight = mbi.framebuffer_height;
-    uint  fbPitch  = mbi.framebuffer_pitch;
-    uint  fbBpp    = mbi.framebuffer_bpp;
-    bool  fbIsBGR  = (mbi.framebuffer_type == FRAMEBUFFER_TYPE_RGB &&
-                      mbi.framebuffer_red_field_position   == 16 &&
-                      mbi.framebuffer_blue_field_position  == 0);
+    void* fbBase   = cast(void*) mbi.framebufferAddr;
+    uint  fbWidth  = mbi.framebufferWidth;
+    uint  fbHeight = mbi.framebufferHeight;
+    uint  fbPitch  = mbi.framebufferPitch;
+    uint  fbBpp    = mbi.framebufferBpp;
+
+    // Color layout is only meaningful for RGB framebuffers (type 1 in Multiboot
+    // spec). The colorInfo array is laid out as
+    // [red_position, red_size, green_position, green_size, blue_position, blue_size].
+    enum ubyte framebufferTypeRgb = 1;
+    bool fbIsBGR = false;
+    if (mbi.framebufferType == framebufferTypeRgb)
+    {
+        const ubyte redPosition  = mbi.colorInfo[0];
+        const ubyte bluePosition = mbi.colorInfo[4];
+        fbIsBGR = (redPosition == 16 && bluePosition == 0);
+    }
 
     initFramebuffer(fbBase, fbWidth, fbHeight, fbPitch, fbBpp, fbIsBGR);
     framebufferBootBanner("minimal_os framebuffer online");

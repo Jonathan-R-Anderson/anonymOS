@@ -1,6 +1,6 @@
 module minimal_os.posixutils.registry;
 
-import core.stdc.config : ptrdiff_t;
+import core.stdc.stddef : ptrdiff_t;
 import minimal_os.kernel.posixbundle : fallbackPosixUtilityManifestPath,
     hostFallbackPosixUtilityManifestPath, hostPosixUtilityManifestPath,
     posixUtilityManifestPath;

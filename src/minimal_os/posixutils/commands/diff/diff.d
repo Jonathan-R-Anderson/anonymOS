@@ -97,7 +97,7 @@ final class DiffLine
         hash = blobHash(HASH_START, cast(const(ubyte)[]) data);
     }
 
-    string normalized() @safe
+    string normalized() @trusted
     {
         if (!optBlanksEquiv)
             return data;
@@ -174,7 +174,7 @@ struct Change
     string[] lines2;
 }
 
-string collapseWhitespace(const(string) s)
+@safe string collapseWhitespace(const(string) s)
 {
     auto builder = appender!string();
     bool inSpace = false;

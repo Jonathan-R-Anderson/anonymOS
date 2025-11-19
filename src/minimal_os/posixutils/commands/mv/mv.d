@@ -5,20 +5,20 @@ version (Posix) {} else static assert(0, "This utility requires a POSIX system."
 
 import std.stdio        : writeln, writefln, stderr, readln;
 import std.getopt       : getopt, defaultGetoptPrinter, GetoptResult;
-import std.string       : toStringz, strip, format;
-import std.path         : baseName;
+import std.string       : toStringz, strip, fromStringz;
+import std.path         : baseName, buildPath;
 import std.conv         : to;
-import std.algorithm    : min;
 import std.uni          : toLower;
 
-import core.stdc.errno  : errno, EXDEV, EEXIST;
+import core.stdc.errno  : errno, EXDEV;
 import core.stdc.string : strerror;
 import core.stdc.stdio  : perror, rename; // rename is from stdio.h
 
 import core.sys.posix.unistd :
     access, W_OK, F_OK, isatty, STDIN_FILENO,
     unlink, read, write, close,
-    fchown, readlink, symlink;
+    fchown, readlink, symlink,
+    rmdir;
 
 import core.sys.posix.fcntl  : open, O_RDONLY, O_CREAT, O_TRUNC, O_WRONLY;
 import core.sys.posix.sys.types : ssize_t, off_t, uid_t, gid_t, mode_t;
@@ -26,7 +26,10 @@ import core.sys.posix.sys.stat :
     stat_t,    // struct type
     stat, lstat, fstat, fchmod,
     S_ISDIR, S_ISREG, S_ISUID, S_ISGID,
-    S_ISLNK, S_ISFIFO, mkfifo;
+    S_ISLNK, S_ISFIFO, mkfifo,
+    mkdir;
+
+import core.sys.posix.dirent : DIR, dirent, opendir, readdir, closedir;
 
 import core.sys.posix.utime : utimbuf, utime;
 import core.stdc.stdlib     : exit;
@@ -206,31 +209,164 @@ int copySpecial(string src, ref stat_t st, string dest) {
     return 1;
 }
 
-int copyFile(string src, string dest, bool recurse) {
+int removeIfEmptyDirectory(string path) {
+    auto dir = opendir(path.toStringz);
+    if (dir is null) {
+        perror(path.toStringz);
+        return 1;
+    }
+    scope(exit) {
+        if (closedir(dir) != 0)
+            perror(path.toStringz);
+    }
+
+    dirent* entry;
+    while ((entry = readdir(dir)) !is null) {
+        auto name = fromStringz(entry.d_name.ptr);
+        if (name == "." || name == "..")
+            continue;
+        stderr.writefln("%scannot overwrite directory '%s': directory not empty", PFX, path);
+        return 1;
+    }
+
+    if (rmdir(path.toStringz) != 0) {
+        perror(path.toStringz);
+        return 1;
+    }
+    return 0;
+}
+
+int removeTree(string path) {
+    stat_t st;
+    if (lstat(path.toStringz, &st) != 0) {
+        perror(path.toStringz);
+        return 1;
+    }
+
+    if (!S_ISDIR(st.st_mode)) {
+        if (unlink(path.toStringz) != 0) {
+            perror(path.toStringz);
+            return 1;
+        }
+        return 0;
+    }
+
+    auto dir = opendir(path.toStringz);
+    if (dir is null) {
+        perror(path.toStringz);
+        return 1;
+    }
+    scope(exit) {
+        if (closedir(dir) != 0)
+            perror(path.toStringz);
+    }
+
+    dirent* entry;
+    while ((entry = readdir(dir)) !is null) {
+        auto name = fromStringz(entry.d_name.ptr);
+        if (name == "." || name == "..")
+            continue;
+        auto child = buildPath(path, name);
+        if (removeTree(child) != 0)
+            return 1;
+    }
+
+    if (rmdir(path.toStringz) != 0) {
+        perror(path.toStringz);
+        return 1;
+    }
+    return 0;
+}
+
+int copyDirectoryRecursive(string src, string dest, ref stat_t st) {
+    auto mode = cast(mode_t)(st.st_mode & 0x0FFF);
+    if (mkdir(dest.toStringz, mode) != 0) {
+        perror(dest.toStringz);
+        return 1;
+    }
+
+    auto dir = opendir(src.toStringz);
+    if (dir is null) {
+        perror(src.toStringz);
+        return 1;
+    }
+    scope(exit) {
+        if (closedir(dir) != 0)
+            perror(src.toStringz);
+    }
+
+    dirent* entry;
+    while ((entry = readdir(dir)) !is null) {
+        auto name = fromStringz(entry.d_name.ptr);
+        if (name == "." || name == "..")
+            continue;
+        auto childSrc = buildPath(src, name);
+        auto childDest = buildPath(dest, name);
+        bool childCopiedDir;
+        auto rc = copyFile(childSrc, childDest, childCopiedDir);
+        if (rc != 0)
+            return rc;
+    }
+
+    utimbuf utb;
+    utb.actime  = st.st_atime;
+    utb.modtime = st.st_mtime;
+    int rc = 0;
+    if (utime(dest.toStringz, &utb) != 0) {
+        perror(dest.toStringz);
+        rc = 1;
+    }
+
+    int dirfd = open(dest.toStringz, O_RDONLY);
+    if (dirfd < 0) {
+        perror(dest.toStringz);
+        return 1;
+    }
+    scope(exit) {
+        if (dirfd >= 0)
+            if (close(dirfd) != 0)
+                perror(dest.toStringz);
+    }
+
+    rc |= copyAttributes(dest, dirfd, st, rc);
+    return rc;
+}
+
+int copyFile(string src, string dest, out bool copiedDirectory) {
+    copiedDirectory = false;
     stat_t st;
 
     if (lstat(src.toStringz, &st) != 0) {
         perror(src.toStringz);
         return 1;
     }
-
-    if (S_ISDIR(st.st_mode) && !recurse) {
-        stderr.writefln("%sattempting to copy directory '%s' as file", PFX, src);
-        return 1;
-    }
+    bool srcIsDir = S_ISDIR(st.st_mode);
 
     // If destination exists, remove it (unlink before copy)
     if (pathExists(dest)) {
-        if (unlink(dest.toStringz) != 0) {
+        stat_t dst;
+        if (lstat(dest.toStringz, &dst) != 0) {
             perror(dest.toStringz);
             return 1;
         }
+        if (S_ISDIR(dst.st_mode)) {
+            if (!srcIsDir) {
+                stderr.writefln("%scannot overwrite directory '%s' with non-directory", PFX, dest);
+                return 1;
+            }
+            if (removeIfEmptyDirectory(dest) != 0)
+                return 1;
+        } else {
+            if (unlink(dest.toStringz) != 0) {
+                perror(dest.toStringz);
+                return 1;
+            }
+        }
     }
 
-    if (S_ISDIR(st.st_mode)) {
-        // recursion not implemented (matches C's copy_recurse returning -1)
-        stderr.writefln("%srecursive directory copy not implemented for '%s'", PFX, src);
-        return 1;
+    if (srcIsDir) {
+        copiedDirectory = true;
+        return copyDirectoryRecursive(src, dest, st);
     }
 
     if (!S_ISREG(st.st_mode))
@@ -239,7 +375,7 @@ int copyFile(string src, string dest, bool recurse) {
     return copyRegularFile(src, st, dest);
 }
 
-int moveOne(string src, string dest, ref Options opt, bool recurseForDirCopy) {
+int moveOne(string src, string dest, ref Options opt) {
     // interactive/force logic for overwriting dest
     if (!opt.force && pathExists(dest) &&
         (opt.interactive || shouldAsk(dest))) {
@@ -258,12 +394,18 @@ int moveOne(string src, string dest, ref Options opt, bool recurseForDirCopy) {
     }
 
     // Cross-device: copy then unlink
-    auto c = copyFile(src, dest, recurseForDirCopy);
+    bool copiedDir;
+    auto c = copyFile(src, dest, copiedDir);
     if (c != 0) return c;
 
-    if (unlink(src.toStringz) != 0) {
-        perror(src.toStringz);
-        return 1;
+    if (copiedDir) {
+        if (removeTree(src) != 0)
+            return 1;
+    } else {
+        if (unlink(src.toStringz) != 0) {
+            perror(src.toStringz);
+            return 1;
+        }
     }
 
     return 0;
@@ -311,7 +453,7 @@ extern(C) int main(int argc, char** argv) {
             stderr.writeln("mv: too many arguments when target is not a directory");
             return 1;
         }
-        status |= moveOne(srcs[0], dest, opt, /*recurseForDirCopy*/ false);
+        status |= moveOne(srcs[0], dest, opt);
         return status ? 1 : 0;
     }
 
@@ -320,7 +462,7 @@ extern(C) int main(int argc, char** argv) {
         auto base = baseName(src);
         auto outPath  = dest ~ "/" ~ base;
         // For dir→dir across filesystems, original code intended recursion but left TODO.
-        status |= moveOne(src, outPath, opt, /*recurseForDirCopy*/ true);
+        status |= moveOne(src, outPath, opt);
     }
 
     return status ? 1 : 0;

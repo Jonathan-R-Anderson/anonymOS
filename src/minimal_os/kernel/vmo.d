@@ -5,6 +5,7 @@ import std.algorithm : max, min, sort;
 import std.array : appender, Appender;
 import std.digest.sha : sha256Of;
 import std.exception : enforce;
+import minimal_os.kernel.numa : NumaNode, NumaPlacementHint;
 
 alias ByteSlice = immutable(ubyte)[];
 
@@ -327,10 +328,10 @@ struct VmoHandle
         return PageRange(_store, _hash);
     }
 
-    VmoMapping map(size_t address = 0, MappingProt prot = MappingProt.read) const
+    VmoMapping map(size_t address = 0, MappingProt prot = MappingProt.read, NumaPlacementHint hint = NumaPlacementHint.automatic()) const
     {
         enforce(prot == MappingProt.read, "only read-only mappings are supported");
-        return VmoMapping(this, address, prot);
+        return VmoMapping(this, address, prot, hint);
     }
 }
 
@@ -346,6 +347,7 @@ struct VmoMapping
     VmoHandle handle;
     size_t address;
     MappingProt prot;
+    NumaPlacementHint numaHint;
 }
 
 struct PageKey
@@ -522,6 +524,11 @@ public:
         return _nodes.length;
     }
 
+    bool contains(HashBytes hash) const
+    {
+        return (hash in _nodes) !is null;
+    }
+
     @property size_t uniquePageCount() const
     {
         return _pagePool.length;
@@ -575,6 +582,29 @@ public:
             return readDelta(node.delta, offset, length);
         }
         assert(0, "unreachable");
+    }
+
+    HashBytes[] childHashes(HashBytes hash) const
+    {
+        auto nodePtr = hash in _nodes;
+        enforce(nodePtr !is null, "unknown node hash");
+        auto node = *nodePtr;
+        HashBytes[] children;
+        final switch (node.kind)
+        {
+        case NodeKind.page:
+            break;
+        case NodeKind.slice:
+            children ~= node.slice.base;
+            break;
+        case NodeKind.concat:
+            children = node.concat.children.idup;
+            break;
+        case NodeKind.delta:
+            children ~= node.delta.base;
+            break;
+        }
+        return children;
     }
 
 private:
@@ -898,6 +928,16 @@ unittest
     auto mapping = handle.map(0, MappingProt.read);
     assert(mapping.handle.hash == handle.hash);
     assert(mapping.prot == MappingProt.read);
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto handle = store.fromBytes(cast(const ubyte[])"abcd");
+    auto hint = NumaPlacementHint.prefer(NumaNode.node2);
+    auto mapping = handle.map(0, MappingProt.read, hint);
+    assert(mapping.numaHint.hasPreference);
+    assert(mapping.numaHint.preferred == NumaNode.node2);
 }
 
 unittest

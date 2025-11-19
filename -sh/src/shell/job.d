@@ -5,7 +5,7 @@ import core.sys.posix.unistd : pid_t;
 public enum JobStatus {
     Running,
     Stopped,
-    Done
+    Completed
 }
 
 public class Job {

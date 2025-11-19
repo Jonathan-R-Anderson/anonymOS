@@ -2685,6 +2685,7 @@ else
     // Non-Posix (bare-metal) builds get minimal stubs.
 
     import minimal_os.console : hasSerialConsole;
+    import minimal_os.fallback_shell : runFallbackShell;
 
     private immutable char[] g_shellPackagedProgram = "/bin/" ~ shBinaryName ~ "\0";
 
@@ -2742,6 +2743,7 @@ else
         if (!ensurePosixUtilitiesConfiguredBare())
         {
             printLine("[shell] POSIX utilities unavailable; cannot execute request.");
+            runFallbackShell();
             _exit(127);
         }
 
@@ -2760,6 +2762,12 @@ else
         printCString(invoked);
         printLine("");
         debugExpectActual("bare posixUtilityExecEntry exit code", exitCode, exitCode);
+
+        if (invoked !is null && (cStringEquals(invoked, SHELL_PATH.ptr) || cStringEquals(invoked, g_shellPackagedProgram.ptr)))
+        {
+            runFallbackShell();
+        }
+
         _exit(exitCode);
     }
 

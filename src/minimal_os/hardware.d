@@ -1,76 +1,7 @@
 module minimal_os.hardware;
 
 import minimal_os.console : print, printLine, printUnsigned, printHex;
-
-enum uint multibootLoaderMagic = 0x2BADB002;
-
-enum MultibootInfoFlag : uint
-{
-    memoryInfo      = 1u << 0,
-    moduleInfo      = 1u << 3,
-    memoryMap       = 1u << 6,
-    framebufferInfo = 1u << 12,
-}
-
-align(1) struct MultibootInfo
-{
-    uint flags;
-    uint memLower;
-    uint memUpper;
-    uint bootDevice;
-    uint cmdline;
-    uint modsCount;
-    uint modsAddr;
-    uint syms0;
-    uint syms1;
-    uint syms2;
-    uint syms3;
-    uint mmapLength;
-    uint mmapAddr;
-    uint drivesLength;
-    uint drivesAddr;
-    uint configTable;
-    uint bootLoaderName;
-    uint apmTable;
-    uint vbeControlInfo;
-    uint vbeModeInfo;
-    ushort vbeMode;
-    ushort vbeInterfaceSeg;
-    ushort vbeInterfaceOff;
-    ushort vbeInterfaceLen;
-    ulong framebufferAddr;
-    uint framebufferPitch;
-    uint framebufferWidth;
-    uint framebufferHeight;
-    ubyte framebufferBpp;
-    ubyte framebufferType;
-    ubyte[6] colorInfo;
-}
-
-align(1) struct MultibootModule
-{
-    uint modStart;
-    uint modEnd;
-    uint stringPtr;
-    uint reserved;
-}
-
-align(1) struct MultibootMmapEntry
-{
-    uint entrySize;
-    ulong address;
-    ulong length;
-    uint entryType;
-}
-
-enum MmapRegionType : uint
-{
-    available       = 1,
-    reserved        = 2,
-    acpiReclaimable = 3,
-    acpiNvs         = 4,
-    badMemory       = 5,
-}
+import minimal_os.multiboot;
 
 @nogc nothrow
 void probeHardware(ulong magic, ulong infoAddress)
@@ -78,65 +9,52 @@ void probeHardware(ulong magic, ulong infoAddress)
     printLine("");
     printLine("[probe] Inspecting firmware-provided hardware tables...");
 
-    if (magic != multibootLoaderMagic)
+    const context = MultibootContext.fromBootValues(magic, infoAddress);
+    if (!context.valid)
     {
         printLine("[probe] Multiboot signature missing, skipping hardware scan.");
         return;
     }
 
-    if (infoAddress == 0)
-    {
-        printLine("[probe] Multiboot info pointer invalid.");
-        return;
-    }
-
-    const MultibootInfo* info = cast(const MultibootInfo*)infoAddress;
-    if (info is null)
-    {
-        printLine("[probe] Unable to decode Multiboot info block.");
-        return;
-    }
-
-    logBasicMemory(*info);
-    logModules(*info);
-    logMemoryMap(*info);
-    logFramebuffer(*info);
+    logBasicMemory(context);
+    logModules(context);
+    logMemoryMap(context);
+    logFramebuffer(context);
 }
 
-private @nogc nothrow void logBasicMemory(const MultibootInfo info)
+private @nogc nothrow void logBasicMemory(const MultibootContext context)
 {
-    if ((info.flags & MultibootInfoFlag.memoryInfo) == 0)
+    if (!context.hasFlag(MultibootInfoFlag.memoryInfo))
     {
         printLine("[probe] Firmware omitted basic memory totals.");
         return;
     }
 
     print("[probe] Lower memory : ");
-    printUnsigned(info.memLower);
+    printUnsigned(context.info.memLower);
     printLine(" KiB");
 
     print("[probe] Upper memory : ");
-    printUnsigned(info.memUpper);
+    printUnsigned(context.info.memUpper);
     printLine(" KiB");
 }
 
-private @nogc nothrow void logModules(const MultibootInfo info)
+private @nogc nothrow void logModules(const MultibootContext context)
 {
-    if ((info.flags & MultibootInfoFlag.moduleInfo) == 0 || info.modsCount == 0)
+    if (!context.hasFlag(MultibootInfoFlag.moduleInfo) || context.moduleCount() == 0)
     {
         printLine("[probe] No Multiboot modules supplied.");
         return;
     }
 
     print("[probe] Modules      : ");
-    printUnsigned(info.modsCount);
+    printUnsigned(context.moduleCount());
     printLine("");
 
-    foreach (index; 0 .. info.modsCount)
+    foreach (index; 0 .. context.moduleCount())
     {
-        const size_t base = info.modsAddr + index * MultibootModule.sizeof;
         // renamed from `module` (keyword!) to `mod`
-        const MultibootModule* mod = cast(const MultibootModule*)base;
+        const MultibootModule* mod = context.moduleAt(index);
         if (mod is null)
         {
             continue;
@@ -152,9 +70,9 @@ private @nogc nothrow void logModules(const MultibootInfo info)
     }
 }
 
-private @nogc nothrow void logMemoryMap(const MultibootInfo info)
+private @nogc nothrow void logMemoryMap(const MultibootContext context)
 {
-    if ((info.flags & MultibootInfoFlag.memoryMap) == 0 || info.mmapLength == 0)
+    if (!context.hasFlag(MultibootInfoFlag.memoryMap) || context.info.mmapLength == 0)
     {
         printLine("[probe] Memory map not available.");
         return;
@@ -162,25 +80,12 @@ private @nogc nothrow void logMemoryMap(const MultibootInfo info)
 
     printLine("[probe] Physical memory map:");
 
-    size_t offset = 0;
-    const size_t base = info.mmapAddr;
-    while (offset < info.mmapLength)
+    auto entries = context.mmapEntries();
+    while (!entries.empty())
     {
-        const MultibootMmapEntry* entry = cast(const MultibootMmapEntry*)(base + offset);
-        if (entry is null)
-        {
-            break;
-        }
-
-        logRegion(*entry);
-
-        // Each record stores the payload size excluding the entrySize field.
-        const size_t advance = entry.entrySize + uint.sizeof;
-        if (advance == 0)
-        {
-            break;
-        }
-        offset += advance;
+        const entry = entries.front();
+        logRegion(entry);
+        entries.popFront();
     }
 }
 
@@ -210,23 +115,23 @@ private @nogc nothrow immutable(char)[] regionTypeName(uint entryType)
     }
 }
 
-private @nogc nothrow void logFramebuffer(const MultibootInfo info)
+private @nogc nothrow void logFramebuffer(const MultibootContext context)
 {
-    if ((info.flags & MultibootInfoFlag.framebufferInfo) == 0)
+    if (!context.hasFlag(MultibootInfoFlag.framebufferInfo))
     {
         printLine("[probe] No framebuffer description provided.");
         return;
     }
 
     print("[probe] Framebuffer  : 0x");
-    printHex(cast(size_t)info.framebufferAddr, 16);
+    printHex(cast(size_t)context.info.framebufferAddr, 16);
     print("  ");
-    printUnsigned(info.framebufferWidth);
+    printUnsigned(context.info.framebufferWidth);
     print("x");
-    printUnsigned(info.framebufferHeight);
+    printUnsigned(context.info.framebufferHeight);
     print("x");
-    printUnsigned(info.framebufferBpp);
+    printUnsigned(context.info.framebufferBpp);
     print(" @ ");
-    printUnsigned(info.framebufferPitch);
+    printUnsigned(context.info.framebufferPitch);
     printLine(" bytes/scanline");
 }

@@ -85,6 +85,28 @@ public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options
 alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
 alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
 
+@nogc nothrow private size_t cStringLength(const(char)* str)
+{
+    if (str is null) return 0;
+    size_t length = 0;
+    while (str[length] != 0) ++length;
+    return length;
+}
+
+@nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
+{
+    if (lhs is null || rhs is null) return false;
+    size_t index = 0;
+    for (;;)
+    {
+        const(char) a = lhs[index];
+        const(char) b = rhs[index];
+        if (a != b) return false;
+        if (a == 0) return true;
+        ++index;
+    }
+}
+
 // ---------------------------
 // Host/Posix C API (guarded)
 // ---------------------------
@@ -1458,25 +1480,6 @@ mixin template PosixKernelShim()
     }
 
     // ---- Helpers ----
-    @nogc nothrow private size_t cStringLength(const(char)* str)
-    {
-        if (str is null) return 0;
-        size_t length = 0; while (str[length] != 0) ++length;
-        return length;
-    }
-    @nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
-    {
-        if (lhs is null || rhs is null) return false;
-        size_t index = 0;
-        for (;;)
-        {
-            const(char) a = lhs[index];
-            const(char) b = rhs[index];
-            if (a != b) return false;
-            if (a == 0) return true;
-            ++index;
-        }
-    }
     @nogc nothrow private void clearName(ref char[16] name)
     {
         foreach (i; 0 .. name.length) name[i] = 0;

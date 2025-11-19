@@ -199,7 +199,10 @@ tcflag_t flagsForType(const ref termios t, STTYParamType type) {
         case STTYParamType.ifl: return t.c_iflag;
         case STTYParamType.ofl: return t.c_oflag;
         case STTYParamType.lfl: return t.c_lflag;
-        default: return 0;
+        case STTYParamType.ispeed:
+        case STTYParamType.ospeed:
+        case STTYParamType.cchar:
+            return 0;
     }
 }
 

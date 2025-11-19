@@ -204,14 +204,7 @@ def discover_commands(source_root: Path) -> Iterable[tuple[str, List[Path]]]:
         yield entry.name, sources
 
 
-COMMAND_FLAG_OVERRIDES: dict[str, Sequence[str]] = {
-    # expr.d expects to be linked with a Bison-generated parser that
-    # defines yyparse.  Until that port lands in the tree, build the D
-    # lexer with the provided stub implementation instead so that the
-    # build keeps moving.  (The stub prints an explanatory error when
-    # invoked.)
-    "expr": ("-version=NoBison",),
-}
+COMMAND_FLAG_OVERRIDES: dict[str, Sequence[str]] = {}
 
 
 # Some utilities have external library dependencies beyond the D runtime

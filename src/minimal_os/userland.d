@@ -1,7 +1,7 @@
 module minimal_os.userland;
 
 import minimal_os.console : print, printLine, printStageHeader, printStatusValue,
-    printUnsigned;
+    printUnsigned, putChar;
 
 nothrow:
 @nogc:
@@ -15,6 +15,12 @@ private enum size_t INITIAL_PID = 2000;
 private enum immutable(char)[] STATE_READY = "ready";
 private enum immutable(char)[] STATE_RUNNING = "running";
 private enum immutable(char)[] STATE_WAITING = "waiting";
+
+private enum immutable(char)[] DESKTOP_TITLE = "aurora.rice";
+private enum immutable(char)[] DESKTOP_THEME = "violet glass";
+private enum immutable(char)[] DESKTOP_WALLPAPER_NAME = "userland_wallpaper.txt";
+private enum size_t DESKTOP_PANEL_WIDTH = 66;
+private enum immutable(char)[] DESKTOP_WALLPAPER = import("userland_wallpaper.txt");
 
 struct UserService
 {
@@ -376,6 +382,8 @@ private void logUserlandSnapshot(const scope ref UserlandRuntime runtime)
     {
         printProcessDetails(process);
     }
+
+    renderRicedDesktop(runtime);
 }
 
 private void printProcessDetails(const scope UserProcess process)
@@ -423,6 +431,212 @@ private void printProcessDetails(const scope UserProcess process)
         }
     }
     printLine("");
+}
+
+private void renderRicedDesktop(const scope ref UserlandRuntime runtime)
+{
+    printLine("");
+    printLine("[userland] booting aurora.rice desktop...");
+
+    printFrameLine('+', '-', '+');
+    printPanelLine(DESKTOP_TITLE);
+    printPanelKeyValue("theme", DESKTOP_THEME);
+    printPanelKeyValue("wallpaper", DESKTOP_WALLPAPER_NAME);
+    printPanelMetric("services", runtime.serviceCount);
+    printPanelMetric("processes", runtime.processCount);
+    printPanelMetric("ready queue", runtime.readyProcessCount());
+    printSectionDivider();
+    printPanelLine("wallpaper preview");
+    renderWallpaperPane();
+    printSectionDivider();
+    printPanelLine("process dock");
+    renderProcessDock(runtime);
+    printFrameLine('+', '-', '+');
+}
+
+private void renderWallpaperPane()
+{
+    size_t lineStart = 0;
+    for (size_t index = 0; index < DESKTOP_WALLPAPER.length; ++index)
+    {
+        if (DESKTOP_WALLPAPER[index] == '\n')
+        {
+            renderWallpaperLine(DESKTOP_WALLPAPER[lineStart .. index]);
+            lineStart = index + 1;
+        }
+    }
+
+    if (lineStart < DESKTOP_WALLPAPER.length)
+    {
+        renderWallpaperLine(DESKTOP_WALLPAPER[lineStart .. $]);
+    }
+}
+
+private void renderWallpaperLine(const(char)[] line)
+{
+    print("| ");
+    size_t used = printLimited(line, DESKTOP_PANEL_WIDTH);
+    padPanel(used);
+    printLine(" |");
+}
+
+private void renderProcessDock(const scope ref UserlandRuntime runtime)
+{
+    if (runtime.processCount == 0)
+    {
+        printPanelLine("no user processes scheduled");
+        return;
+    }
+
+    foreach (process; runtime.processes())
+    {
+        printProcessDockLine(process);
+    }
+}
+
+private void printProcessDockLine(const scope UserProcess process)
+{
+    immutable(char)[] binary = process.binary;
+    immutable(char)[] summary = process.summary;
+
+    if (binary is null || binary.length == 0)
+    {
+        binary = "<unspecified binary>";
+    }
+
+    if (summary is null || summary.length == 0)
+    {
+        summary = "no summary provided";
+    }
+
+    print("| ");
+    size_t used = 0;
+    used += printLimited("pid ", DESKTOP_PANEL_WIDTH);
+    used += printUnsignedWithCount(process.pid);
+    if (used < DESKTOP_PANEL_WIDTH)
+    {
+        used += printLimited(" - ", DESKTOP_PANEL_WIDTH - used);
+    }
+    used += printLimited(process.name, DESKTOP_PANEL_WIDTH - used);
+    if (used < DESKTOP_PANEL_WIDTH)
+    {
+        used += printLimited("  [", DESKTOP_PANEL_WIDTH - used);
+        used += printLimited(process.state, DESKTOP_PANEL_WIDTH - used);
+        used += printLimited("]", DESKTOP_PANEL_WIDTH - used);
+    }
+    padPanel(used);
+    printLine(" |");
+
+    print("| ");
+    size_t infoUsed = 0;
+    infoUsed += printLimited("binary: ", DESKTOP_PANEL_WIDTH);
+    infoUsed += printLimited(binary, DESKTOP_PANEL_WIDTH - infoUsed);
+    if (infoUsed < DESKTOP_PANEL_WIDTH)
+    {
+        infoUsed += printLimited(" - ", DESKTOP_PANEL_WIDTH - infoUsed);
+    }
+    infoUsed += printLimited(summary, DESKTOP_PANEL_WIDTH - infoUsed);
+    padPanel(infoUsed);
+    printLine(" |");
+}
+
+private void printPanelLine(const(char)[] text)
+{
+    print("| ");
+    size_t used = printLimited(text, DESKTOP_PANEL_WIDTH);
+    padPanel(used);
+    printLine(" |");
+}
+
+private void printPanelKeyValue(immutable(char)[] key, immutable(char)[] value)
+{
+    print("| ");
+    size_t used = 0;
+    used += printLimited(key, DESKTOP_PANEL_WIDTH);
+    if (used < DESKTOP_PANEL_WIDTH)
+    {
+        used += printLimited(" : ", DESKTOP_PANEL_WIDTH - used);
+    }
+    used += printLimited(value, DESKTOP_PANEL_WIDTH - used);
+    padPanel(used);
+    printLine(" |");
+}
+
+private void printPanelMetric(immutable(char)[] key, size_t value)
+{
+    print("| ");
+    size_t used = 0;
+    used += printLimited(key, DESKTOP_PANEL_WIDTH);
+    if (used < DESKTOP_PANEL_WIDTH)
+    {
+        used += printLimited(" : ", DESKTOP_PANEL_WIDTH - used);
+    }
+    used += printUnsignedWithCount(value);
+    padPanel(used);
+    printLine(" |");
+}
+
+private void printSectionDivider()
+{
+    printFrameLine('+', '-', '+');
+}
+
+private void printFrameLine(char start, char fill, char end)
+{
+    putChar(start);
+    foreach (i; 0 .. DESKTOP_PANEL_WIDTH + 2)
+    {
+        putChar(fill);
+    }
+    putChar(end);
+    putChar('\n');
+}
+
+private size_t printLimited(const(char)[] text, size_t maxChars)
+{
+    size_t printed = 0;
+    if (text is null)
+    {
+        return printed;
+    }
+
+    foreach (index; 0 .. text.length)
+    {
+        if (printed >= maxChars)
+        {
+            break;
+        }
+        putChar(text[index]);
+        ++printed;
+    }
+    return printed;
+}
+
+private void padPanel(size_t used)
+{
+    while (used < DESKTOP_PANEL_WIDTH)
+    {
+        putChar(' ');
+        ++used;
+    }
+}
+
+private size_t printUnsignedWithCount(size_t value)
+{
+    const size_t digits = countDigits(value);
+    printUnsigned(value);
+    return digits;
+}
+
+private size_t countDigits(size_t value)
+{
+    size_t digits = 1;
+    while (value >= 10)
+    {
+        value /= 10;
+        ++digits;
+    }
+    return digits;
 }
 
 unittest

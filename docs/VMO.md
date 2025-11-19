@@ -98,3 +98,25 @@ when they fault pages. Read-only pages can be replicated to multiple NUMA nodes
 without breaking deduplication: replicas reuse the canonical content hash while
 maintaining per-node copies. This keeps the mapping layer NUMA-aware without
 requiring additional kernel data structures beyond the page cache itself.
+
+## Garbage collection & lifecycle
+
+`VmoStore` exposes lifecycle hooks so the kernel can reason about which VMOs are
+still reachable. Kernel subsystems register their live capabilities (process
+tables, filesystem inodes, IPC channels, etc.) via `trackCapability(label,
+handle)` and periodically call `collectGarbage()`. The collector walks the DAG
+from every registered root and from any outstanding `VmoPinLease`, then removes
+nodes that are no longer reachable. This lazy reclamation keeps the fast-path
+unchanged while ensuring unused subgraphs eventually disappear.
+
+Processes can call `pin(handle)` to obtain a `VmoPinLease` that temporarily
+protects the underlying DAG from reclamation. Releasing the lease (explicitly or
+via scope exit) decrements the pin count so the collector can reclaim the nodes
+again. Pins let higher-level policies enforce quotas without giving processes a
+mutable view of the page cache.
+
+Content-addressed pages inside `VmoStore` are backed by a bounded cache. The
+constructor accepts a `contentCacheCapacity` that limits the number of unique
+page hashes retained at any time. The cache evicts entries using an LRU policy
+based on the content hashes so newly faulted data pushes out the least recently
+used pages while hot data stays resident.

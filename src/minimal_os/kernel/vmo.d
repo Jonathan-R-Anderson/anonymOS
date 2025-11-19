@@ -12,6 +12,10 @@ alias ByteSlice = immutable(ubyte)[];
 class VmoStore;
 struct VmoHandle;
 struct DeltaPatch;
+struct CachedPage;
+struct CapabilityRecord;
+struct CapabilityAnchor;
+struct VmoPinLease;
 
 enum VBuilderMode : ubyte
 {
@@ -373,18 +377,96 @@ struct PageKey
     }
 }
 
+struct CachedPage
+{
+    ByteSlice data;
+    HashBytes contentHash;
+}
+
 class VmoStore
 {
 public:
-    this(size_t pageSize = 4096)
+    this(size_t pageSize = 4096, size_t contentCacheCapacity = 1024)
     {
         enforce(pageSize > 0, "pageSize must be positive");
+        enforce(contentCacheCapacity > 0, "content cache capacity must be positive");
         _pageSize = pageSize;
+        _contentCacheCapacity = contentCacheCapacity;
     }
 
     @property size_t pageSize() const
     {
         return _pageSize;
+    }
+
+    CapabilityAnchor trackCapability(string label, VmoHandle handle)
+    {
+        enforce(label.length > 0, "capability label cannot be empty");
+        enforce(handle.store is this, "cannot track handle from another VmoStore");
+        auto id = _nextCapabilityId++;
+        CapabilityRecord record;
+        record.label = label;
+        record.hash = handle.hash;
+        _capabilityRoots[id] = record;
+        return CapabilityAnchor(this, id);
+    }
+
+    VmoPinLease pin(VmoHandle handle)
+    {
+        enforce(handle.store is this, "cannot pin handle from another VmoStore");
+        addPin(handle.hash);
+        return VmoPinLease(this, handle.hash);
+    }
+
+    void collectGarbage()
+    {
+        bool[HashBytes] visited;
+        HashBytes[] stack;
+        foreach (_, record; _capabilityRoots)
+        {
+            stack ~= record.hash;
+        }
+        foreach (hash, _; _pinCounts)
+        {
+            stack ~= hash;
+        }
+
+        while (stack.length > 0)
+        {
+            auto current = stack[$ - 1];
+            stack.length -= 1;
+            if (auto seen = current in visited)
+            {
+                if (*seen)
+                {
+                    continue;
+                }
+            }
+            visited[current] = true;
+            if ((current in _nodes) is null)
+            {
+                continue;
+            }
+            foreach (child; childHashes(current))
+            {
+                stack ~= child;
+            }
+        }
+
+        HashBytes[] victims;
+        foreach (hash, _; _nodes)
+        {
+            auto seen = hash in visited;
+            if (seen is null || !*seen)
+            {
+                victims ~= hash;
+            }
+        }
+
+        foreach (victim; victims)
+        {
+            discardNode(victim);
+        }
     }
 
     VmoHandle page(const scope ubyte[] data)
@@ -545,7 +627,8 @@ public:
         auto cached = key in _pageCache;
         if (cached !is null)
         {
-            return *cached;
+            touchContentCache((*cached).contentHash);
+            return (*cached).data;
         }
 
         auto len = nodeLength(hash);
@@ -561,8 +644,13 @@ public:
             _pagePool[digest] = page;
             pooled = digest in _pagePool;
         }
-        _pageCache[key] = *pooled;
-        return *pooled;
+        touchContentCache(digest);
+        enforceContentCapacity();
+        CachedPage entry;
+        entry.data = *pooled;
+        entry.contentHash = digest;
+        _pageCache[key] = entry;
+        return entry.data;
     }
 
     ByteSlice readSpan(HashBytes hash, size_t offset, size_t length)
@@ -615,8 +703,116 @@ public:
 private:
     size_t _pageSize;
     Node[HashBytes] _nodes;
-    ByteSlice[PageKey] _pageCache;
+    CachedPage[PageKey] _pageCache;
     ByteSlice[HashBytes] _pagePool;
+    size_t _contentCacheCapacity;
+    size_t _contentClock;
+    size_t[HashBytes] _contentUsage;
+    CapabilityRecord[size_t] _capabilityRoots;
+    size_t _nextCapabilityId;
+    size_t[HashBytes] _pinCounts;
+
+    void touchContentCache(HashBytes digest)
+    {
+        auto tick = ++_contentClock;
+        _contentUsage[digest] = tick;
+    }
+
+    void enforceContentCapacity()
+    {
+        while (_pagePool.length > _contentCacheCapacity)
+        {
+            HashBytes victim;
+            size_t oldest = size_t.max;
+            bool found = false;
+            foreach (hash, _; _pagePool)
+            {
+                auto tickPtr = hash in _contentUsage;
+                size_t tick = tickPtr is null ? 0 : *tickPtr;
+                if (tick < oldest)
+                {
+                    oldest = tick;
+                    victim = hash;
+                    found = true;
+                }
+            }
+            if (!found)
+            {
+                break;
+            }
+            _pagePool.remove(victim);
+            _contentUsage.remove(victim);
+            purgePageCacheForContent(victim);
+        }
+    }
+
+    void purgePageCacheForContent(HashBytes digest)
+    {
+        PageKey[] stale;
+        foreach (key, entry; _pageCache)
+        {
+            if (entry.contentHash == digest)
+            {
+                stale ~= key;
+            }
+        }
+        foreach (victim; stale)
+        {
+            _pageCache.remove(victim);
+        }
+    }
+
+    void discardNode(HashBytes hash)
+    {
+        _nodes.remove(hash);
+        PageKey[] stale;
+        foreach (key, _; _pageCache)
+        {
+            if (key.node == hash)
+            {
+                stale ~= key;
+            }
+        }
+        foreach (victim; stale)
+        {
+            _pageCache.remove(victim);
+        }
+    }
+
+    void updateCapabilityRoot(size_t id, HashBytes hash)
+    {
+        auto rec = id in _capabilityRoots;
+        enforce(rec !is null, "unknown capability root");
+        (*rec).hash = hash;
+    }
+
+    void unregisterCapabilityRoot(size_t id)
+    {
+        enforce((id in _capabilityRoots) !is null, "unknown capability root");
+        _capabilityRoots.remove(id);
+    }
+
+    void addPin(HashBytes hash)
+    {
+        auto ptr = hash in _pinCounts;
+        size_t count = ptr is null ? 0 : *ptr;
+        _pinCounts[hash] = count + 1;
+    }
+
+    void releasePin(HashBytes hash)
+    {
+        auto ptr = hash in _pinCounts;
+        enforce(ptr !is null && *ptr > 0, "pin underflow");
+        auto updated = *ptr - 1;
+        if (updated == 0)
+        {
+            _pinCounts.remove(hash);
+        }
+        else
+        {
+            _pinCounts[hash] = updated;
+        }
+    }
 
     VmoHandle intern(Node node)
     {
@@ -736,6 +932,82 @@ private:
             buffer[baseStart .. baseStart + span] = patch.data[dataStart .. dataStart + span];
         }
         return cast(ByteSlice)buffer;
+    }
+}
+
+struct CapabilityRecord
+{
+    string label;
+    HashBytes hash;
+}
+
+struct CapabilityAnchor
+{
+    private VmoStore _store;
+    private size_t _id;
+
+    this(VmoStore store, size_t id)
+    {
+        _store = store;
+        _id = id;
+    }
+
+    @property bool valid() const
+    {
+        return _store !is null;
+    }
+
+    void update(VmoHandle handle)
+    {
+        enforce(valid, "capability anchor no longer active");
+        enforce(handle.store is _store, "cannot update anchor with foreign handle");
+        _store.updateCapabilityRoot(_id, handle.hash);
+    }
+
+    void clear()
+    {
+        if (!valid)
+        {
+            return;
+        }
+        _store.unregisterCapabilityRoot(_id);
+        _store = null;
+    }
+}
+
+struct VmoPinLease
+{
+    private VmoStore _store;
+    private HashBytes _hash;
+    private bool _active;
+
+    this(VmoStore store, HashBytes hash)
+    {
+        _store = store;
+        _hash = hash;
+        _active = true;
+    }
+
+    @disable this(this);
+
+    @property bool active() const
+    {
+        return _active;
+    }
+
+    void release()
+    {
+        if (!_active)
+        {
+            return;
+        }
+        _store.releasePin(_hash);
+        _active = false;
+    }
+
+    ~this()
+    {
+        release();
     }
 }
 
@@ -1345,4 +1617,53 @@ unittest
     assert(mapping.handle.hash == handle.hash);
     auto snapshot = file.snapshot();
     assert(snapshot.hash == handle.hash);
+}
+
+unittest
+{
+    auto store = new VmoStore(4, 2);
+    auto live = store.fromBytes(cast(const ubyte[])"live");
+    auto garbage = store.fromBytes(cast(const ubyte[])"dead");
+    auto anchor = store.trackCapability("process:1", live);
+    store.collectGarbage();
+    assert(store.contains(live.hash));
+    assert(!store.contains(garbage.hash));
+
+    auto updated = store.fromBytes(cast(const ubyte[])"next");
+    anchor.update(updated);
+    store.collectGarbage();
+    assert(!store.contains(live.hash));
+    assert(store.contains(updated.hash));
+
+    anchor.clear();
+    store.collectGarbage();
+    assert(store.nodeCount == 0);
+}
+
+unittest
+{
+    auto store = new VmoStore(4, 2);
+    auto pinned = store.fromBytes(cast(const ubyte[])"keep");
+    auto lease = store.pin(pinned);
+    store.collectGarbage();
+    assert(store.contains(pinned.hash));
+    lease.release();
+    store.collectGarbage();
+    assert(store.nodeCount == 0);
+}
+
+unittest
+{
+    auto store = new VmoStore(4, 2);
+    auto first = store.fromBytes(cast(const ubyte[])"aaaa");
+    auto second = store.fromBytes(cast(const ubyte[])"bbbb");
+    auto third = store.fromBytes(cast(const ubyte[])"cccc");
+    first.materialize();
+    second.materialize();
+    assert(store.uniquePageCount == 2);
+    third.materialize();
+    assert(store.uniquePageCount == 2);
+    // Accessing an evicted entry re-populates the cache without exceeding capacity.
+    second.materialize();
+    assert(store.uniquePageCount == 2);
 }

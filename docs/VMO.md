@@ -76,3 +76,25 @@ other IO endpoints expose their payloads by yielding VMO handles or streams of
 VMOs.  Because processes only map VMOs rather than naming individual pages, the
 kernel can focus on tracking capabilities and permissions while letting the
 canonical VMO hashes provide global identity for deduplication and integrity.
+
+## Paging & physical memory
+
+`minimal_os.kernel.paging` extends the reference implementation with a
+content-addressed page cache. Page frames are indexed by `(hash, offset)` which
+allows the cache to deduplicate both the physical storage and the resident page
+objects. A simple RLE compressor is applied opportunistically so that repeated
+byte runs occupy less memory, making compression and deduplication natural side
+effects of the content-addressed design.
+
+The cache tracks reachability through the VMO DAG. `pin()` walks every child of
+the specified root, increments a graph-aware reference count, and keeps page
+frames alive while the root is reachable. `unpin()` performs the inverse walk
+and immediately evicts the page frames for nodes whose reachability drops to
+zero. This ensures reclamation honours DAG structure instead of blindly paging
+out data that might still be referenced elsewhere.
+
+Mapping APIs accept NUMA placement hints so callers can express locality needs
+when they fault pages. Read-only pages can be replicated to multiple NUMA nodes
+without breaking deduplication: replicas reuse the canonical content hash while
+maintaining per-node copies. This keeps the mapping layer NUMA-aware without
+requiring additional kernel data structures beyond the page cache itself.

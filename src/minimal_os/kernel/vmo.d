@@ -1,6 +1,6 @@
 module minimal_os.kernel.vmo;
 
-import core.atomic : atomicExchange, atomicStore;
+import core.atomic : atomicCompareExchange, atomicExchange, atomicLoad, atomicStore;
 import std.algorithm : max, min, sort;
 import std.array : appender, Appender;
 import std.digest.sha : sha256Of;
@@ -295,6 +295,11 @@ struct VmoHandle
     @property HashBytes hash() const
     {
         return _hash;
+    }
+
+    @property VmoStore store() const
+    {
+        return _store;
     }
 
     @property size_t length() const
@@ -751,6 +756,97 @@ VmoHandle swap(ref shared(VmoHandle) slot, VmoHandle newCap)
     return cast(VmoHandle)previous;
 }
 
+/// Implements the "versioned pointer" pattern where an application holds a
+/// capability to a pointer that always references the latest immutable VMO
+/// snapshot.  Writers build a new snapshot, then attempt to publish it via a
+/// compare-and-swap so readers never block.
+struct VersionedVmoPointer
+{
+public:
+    this(VmoHandle initial)
+    {
+        enforce(initial.store !is null, "initial handle must originate from a VmoStore");
+        _store = initial.store;
+        atomicStore(_current, initial);
+    }
+
+    @property bool initialized() const
+    {
+        return _store !is null;
+    }
+
+    @property VmoStore store() const
+    {
+        return _store;
+    }
+
+    /// Returns the latest committed snapshot.
+    VmoHandle current() const
+    {
+        ensureInitialized();
+        return cast(VmoHandle)atomicLoad(_current);
+    }
+
+    /// Atomically swaps the pointer with `next`, returning the previous
+    /// snapshot.  Primarily useful for rollbacks/restores.
+    VmoHandle exchange(VmoHandle next)
+    {
+        ensureInitialized();
+        enforce(next.store is _store, "cannot install handle from a different VmoStore");
+        return swap(_current, next);
+    }
+
+    /// Publishes `desired` if the current snapshot matches `expected`.
+    bool compareAndSwap(VmoHandle expected, VmoHandle desired)
+    {
+        ensureInitialized();
+        enforce(desired.store is _store, "cannot install handle from a different VmoStore");
+        auto observed = atomicCompareExchange(_current, desired, expected);
+        return observed == expected;
+    }
+
+    /// Convenience helper that commits a builder and attempts to publish the
+    /// resulting snapshot if the pointer still matches `expected`.  Returns true
+    /// when the publish succeeds.  When the publish fails the caller retains the
+    /// committed handle (exposed via `result` when provided) and can decide how
+    /// to reconcile the conflict.
+    bool tryPublish(VmoHandle expected,
+                    VBuilder builder,
+                    VmoCommitMetadata metadata = VmoCommitMetadata.init,
+                    VmoCommitResult* result = null)
+    {
+        ensureInitialized();
+        auto commit = builder.commit(metadata);
+        if (result !is null)
+        {
+            *result = commit;
+        }
+        enforce(commit.handle.store is _store, "cannot install handle from a different VmoStore");
+        auto observed = atomicCompareExchange(_current, commit.handle, expected);
+        return observed == expected;
+    }
+
+    /// Builds a delta VMO that describes how to transform the current snapshot
+    /// into `candidate`.  The resulting overlay can be replicated elsewhere and
+    /// applied lazily, making incremental updates efficient.
+    VmoHandle diffAgainstCurrent(VmoHandle candidate)
+    {
+        ensureInitialized();
+        enforce(candidate.store is _store, "diff requires handles from the same VmoStore");
+        auto snapshot = current();
+        return _store.diff(snapshot, candidate);
+    }
+
+private:
+    VmoStore _store;
+    shared(VmoHandle) _current;
+
+    void ensureInitialized() const
+    {
+        enforce(initialized, "versioned pointer has not been initialised");
+    }
+}
+
 class VmoChannel
 {
 public:
@@ -1142,6 +1238,43 @@ unittest
     atomicStore(slot, first);
     auto previous = swap(slot, second);
     assert(previous.hash == first.hash);
+}
+
+unittest
+{
+    auto store = new VmoStore(4);
+    auto builder = store.createBuilder(4);
+    builder.append(cast(const ubyte[])"INIT");
+    auto base = builder.commit().handle;
+    VersionedVmoPointer pointer = VersionedVmoPointer(base);
+    assert(pointer.initialized());
+
+    auto snapshot = pointer.current();
+    auto writerA = store.createBuilder(4);
+    writerA.append(cast(const ubyte[])"AAAA");
+    auto updateA = writerA.commit().handle;
+    assert(pointer.compareAndSwap(snapshot, updateA));
+    auto latest = pointer.current();
+    assert(latest.materialize() == cast(const ubyte[])"AAAA");
+
+    auto writerB = store.createBuilder(4);
+    writerB.append(cast(const ubyte[])"BBBB");
+    auto updateB = writerB.commit().handle;
+    assert(!pointer.compareAndSwap(snapshot, updateB));
+    auto delta = pointer.diffAgainstCurrent(updateB);
+    assert(delta.materialize() == updateB.materialize());
+
+    VmoCommitResult publishResult;
+    auto writerC = store.createBuilder(4);
+    writerC.append(cast(const ubyte[])"CCCC");
+    assert(pointer.tryPublish(latest, writerC, VmoCommitMetadata.init, &publishResult));
+    assert(pointer.current().materialize() == cast(const ubyte[])"CCCC");
+    latest = pointer.current();
+
+    auto rollback = store.fromBytes(cast(const ubyte[])"ROLL");
+    auto replaced = pointer.exchange(rollback);
+    assert(replaced.hash == latest.hash);
+    assert(pointer.current().hash == rollback.hash);
 }
 
 unittest

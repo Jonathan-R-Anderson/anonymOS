@@ -264,7 +264,7 @@ private struct Parser
             lexeme = "";
             return;
         }
-        lexeme = gTokenText is null ? "" : fromStringz(gTokenText);
+        lexeme = gTokenText is null ? "" : fromStringz(gTokenText).idup;
         if (current == TOK_NUM)
             numberValue = yylval;
     }
@@ -426,11 +426,15 @@ private struct Parser
             }
             case TOK_RPAREN:
                 unexpectedToken(currentTokenText());
+                return makeNumber(0); // unreachable
             case TOK_EOF:
                 unexpectedEndOfExpression();
+                return makeNumber(0); // unreachable
             default:
                 unexpectedToken(currentTokenText());
+                return makeNumber(0); // unreachable
         }
+        assert(0);
     }
 
     Value parseLength()

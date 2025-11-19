@@ -1,6 +1,6 @@
 module minimal_os.posixutils.registry;
 
-import core.stdc.stddef : ptrdiff_t;
+import core.stdc.config : ptrdiff_t;
 import minimal_os.kernel.posixbundle : fallbackPosixUtilityManifestPath,
     hostFallbackPosixUtilityManifestPath, hostPosixUtilityManifestPath,
     posixUtilityManifestPath;
@@ -23,15 +23,13 @@ nothrow:
 
 private enum string objectManifest = loadManifest();
 private enum PosixUtilityDescriptor[] parsedManifest = parseObjectManifest(objectManifest);
-private immutable(PosixUtilityDescriptor)[parsedManifest.length] g_posixUtilityDescriptors =
-    toStaticArray(parsedManifest);
+private immutable(PosixUtilityDescriptor)[] g_posixUtilityDescriptors = parsedManifest;
 private enum immutable(char)[][] canonicalPathList = collectCanonicalPaths(parsedManifest);
-private immutable(immutable(char)[])[canonicalPathList.length] g_canonicalPaths =
-    toStaticArray(canonicalPathList);
+private immutable(immutable(char)[])[] g_canonicalPaths = canonicalPathList;
 private enum immutable(char)[][] nameList = collectUtilityNames(parsedManifest);
-private immutable(immutable(char)[])[nameList.length] g_utilityNames = toStaticArray(nameList);
+private immutable(immutable(char)[])[] g_utilityNames = nameList;
 private enum immutable(char)[][] objectIdList = collectObjectIds(parsedManifest);
-private immutable(immutable(char)[])[objectIdList.length] g_objectIds = toStaticArray(objectIdList);
+private immutable(immutable(char)[])[] g_objectIds = objectIdList;
 
 @nogc nothrow ExecEntryFn posixUtilityExecEntry(scope const(char)[] name)
 {

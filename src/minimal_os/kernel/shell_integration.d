@@ -18,6 +18,7 @@ else
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
+import minimal_os.userland : bootUserland;
 
 nothrow:
 @nogc:
@@ -109,6 +110,8 @@ extern(C) @nogc nothrow void runCompilerBuilder()
         printLine("<none>");
     }
 
+    printLine("");
+    bootUserland();
     printLine("");
     printLine("[done] D language cross compiler ready.");
     if (shellState.shellActivated)

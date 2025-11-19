@@ -6,6 +6,7 @@ import std.conv : to;
 import std.array;
 import std.algorithm;
 import std.file : write, readText, exists;
+import std.random : Random, uniform, unpredictableSeed;
 import md5sum : hexDigest;
 
 struct Object {
@@ -22,6 +23,37 @@ struct Object {
 
 __gshared Object[string] registry;
 __gshared size_t counter;
+immutable string[] capabilityRightUniverse = [
+    "read", "map", "slice", "concat", "hash", "diff", "derive", "destroy"
+];
+
+struct Capability {
+    string handle;
+    string target;
+    string[] rights;
+}
+
+__gshared Capability[string] capabilityStore;
+__gshared Random capabilityRng;
+
+shared static this() {
+    capabilityRng = Random(unpredictableSeed());
+}
+
+private string newCapabilityHandle() {
+    immutable char[] alphabet = "0123456789abcdef";
+    char[32] raw;
+    immutable int alphaLen = cast(int)alphabet.length;
+    while(true) {
+        foreach(i; 0 .. raw.length) {
+            raw[i] = alphabet[uniform(0, alphaLen, capabilityRng)];
+        }
+        auto handle = "cap-" ~ raw.idup;
+        if(handle !in capabilityStore)
+            return handle;
+    }
+}
+
 struct Subscription { string obj; string event; }
 __gshared Subscription[size_t] subscriptions;
 
@@ -214,6 +246,93 @@ string[] capabilities(string obj) {
     if(obj in registry && ("root" in registry[obj].acl))
         return registry[obj].acl["root"];
     return [];
+}
+
+private bool normalizeRights(string[] requested, ref string[] normalized) {
+    bool[string] selected;
+    foreach(r; requested) {
+        auto norm = r.strip.toLower();
+        if(!norm.length) continue;
+        if(norm in selected) continue;
+        bool valid;
+        foreach(right; capabilityRightUniverse) {
+            if(right == norm) { valid = true; break; }
+        }
+        if(!valid) return false;
+        selected[norm] = true;
+    }
+    foreach(right; capabilityRightUniverse) {
+        if(right in selected) normalized ~= right;
+    }
+    return true;
+}
+
+private Capability* findCapability(string handle) {
+    if(auto entry = handle in capabilityStore)
+        return entry;
+    return null;
+}
+
+string issueCapability(string obj, string[] requestedRights) {
+    if(obj !in registry) return "";
+    string[] normalized;
+    if(!normalizeRights(requestedRights, normalized)) return "";
+    if(normalized.length == 0) normalized = capabilityRightUniverse.dup;
+    auto handle = newCapabilityHandle();
+    capabilityStore[handle] = Capability(handle, obj, normalized);
+    return handle;
+}
+
+string deriveCapability(string handle, string[] requestedRights) {
+    auto base = findCapability(handle);
+    if(base is null) return "";
+    string[] normalized;
+    if(!normalizeRights(requestedRights, normalized)) return "";
+    if(normalized.length == 0) normalized = base.rights.dup;
+    foreach(r; normalized) {
+        bool permitted;
+        foreach(pr; base.rights) {
+            if(pr == r) { permitted = true; break; }
+        }
+        if(!permitted) return "";
+    }
+    auto childHandle = newCapabilityHandle();
+    capabilityStore[childHandle] = Capability(childHandle, base.target, normalized);
+    return childHandle;
+}
+
+string[] capabilityRights(string handle) {
+    if(auto cap = findCapability(handle))
+        return cap.rights.dup;
+    return [];
+}
+
+string capabilityTarget(string handle) {
+    if(auto cap = findCapability(handle))
+        return cap.target;
+    return "";
+}
+
+bool capabilityHasRight(string handle, string right) {
+    auto cap = findCapability(handle);
+    if(cap is null) return false;
+    auto norm = right.strip.toLower();
+    foreach(r; cap.rights) {
+        if(r == norm) return true;
+    }
+    return false;
+}
+
+bool destroyCapability(string handle) {
+    auto cap = findCapability(handle);
+    if(cap is null) return false;
+    bool canDestroy;
+    foreach(r; cap.rights) {
+        if(r == "destroy") { canDestroy = true; break; }
+    }
+    if(!canDestroy) return false;
+    capabilityStore.remove(handle);
+    return true;
 }
 
 size_t subscribe(string obj, string event) {

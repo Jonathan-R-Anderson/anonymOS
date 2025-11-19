@@ -282,6 +282,22 @@ The REPL now includes a minimal object oriented layer implemented in `objectsyst
 (isIsolated obj)
 (seal obj)
 (verify obj)
+(issueCapability obj rights..)
+(deriveCapability capability rights..)
+(capabilityRights capability)
+(capabilityTarget capability)
+(capabilityHasRight capability right)
+(destroyCapability capability)
 ```
 
 These commands provide a simple demonstration of integrating an OOP style with the existing LFE interpreter written in D.
+
+### Capability handles
+
+Capabilities are unforgeable handles issued by the object system. When a
+capability is created it is bound to a specific object together with a set of
+rights drawn from `{read, map, slice, concat, hash, diff, derive, destroy}`.
+Deriving a new capability from an existing handle can only remove rights,
+ensuring monotonic attenuation. You can inspect handles with
+`capabilityRights`, check individual rights with `capabilityHasRight`, and
+revoke handles that possess the `destroy` right via `destroyCapability`.

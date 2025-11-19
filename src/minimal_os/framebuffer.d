@@ -166,13 +166,13 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
     if (x >= g_fb.width || y >= g_fb.height) return;
 
     const bpp  = g_fb.bpp;
-    const addr = g_fb.addr;
+    ubyte* addr = g_fb.addr;
 
     const byteOffset = y * g_fb.pitch + x * (bpp / 8);
 
-    final switch (bpp) {
+    switch (bpp) {
         case 16: {
-            const px = cast(ushort*) (addr + byteOffset);
+            auto px = cast(ushort*) (addr + byteOffset);
             *px = cast(ushort) argbToRgb565(argbColor);
             break;
         }
@@ -186,7 +186,7 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
             break;
         }
         case 32: {
-            const px = cast(uint*) (addr + byteOffset);
+            auto px = cast(uint*) (addr + byteOffset);
             *px = argbToNative(argbColor); // ignore alpha
             break;
         }
@@ -296,8 +296,8 @@ private void scrollUpOneRow() {
 
     // If the framebuffer is taller than text grid, we'll just scroll the grid area.
     const bytesPerRow = g_fb.pitch;
-    const src = g_fb.addr + glyphPixels * bytesPerRow;
-    const dst = g_fb.addr;
+    auto src = g_fb.addr + glyphPixels * bytesPerRow;
+    auto dst = g_fb.addr;
     const bytesToMove = (textHeightPixels - glyphPixels) * bytesPerRow;
 
     memmove(dst, src, bytesToMove);
@@ -359,7 +359,7 @@ private void newLine() {
 void framebufferWriteChar(char c) {
     if (!g_fbInitialized) return;
 
-    final switch (c) {
+    switch (c) {
         case '\n':
             newLine();
             break;

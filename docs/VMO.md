@@ -67,3 +67,12 @@ Both builder types expose the same API:
 
 Internally builders reuse the existing extent machinery, so incremental writes
 benefit from deduplication and can share physical pages once committed.
+
+## Namespace integration
+
+The capability-based namespace described in `docs/NAMESPACE.md` makes VMOs the
+sole currency for sharing bytes between processes.  Files, pipes, sockets, and
+other IO endpoints expose their payloads by yielding VMO handles or streams of
+VMOs.  Because processes only map VMOs rather than naming individual pages, the
+kernel can focus on tracking capabilities and permissions while letting the
+canonical VMO hashes provide global identity for deduplication and integrity.

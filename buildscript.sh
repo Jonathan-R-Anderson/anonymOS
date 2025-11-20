@@ -185,7 +185,7 @@ fi
 # Using `-d-version` avoids colliding with the compiler's `--version` flag
 # (which prints the compiler version and rejects values).
 if [ "$ENABLE_USERLAND" != "0" ]; then
-  DFLAGS+=" -d-version=MinimalOsUserland"
+  DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
 fi
 
 # D objects (kernel + dependencies)
@@ -215,9 +215,12 @@ KERNEL_SOURCES=(
   "src/minimal_os/posixutils/context.d"
   "src/minimal_os/posixutils/registry.d"
   "src/minimal_os/toolchain.d"
-  "src/minimal_os/userland.d"
   "src/sh_metadata.d"
 )
+
+if [ "$ENABLE_USERLAND" != "0" ]; then
+  KERNEL_SOURCES+=("src/minimal_os/userland.d")
+fi
 
 if [ "$ENABLE_USERLAND" = "0" ]; then
   echo "[!] Userland bootstrap disabled (ENABLE_USERLAND=0); using stubbed kernel bootstrap." >&2

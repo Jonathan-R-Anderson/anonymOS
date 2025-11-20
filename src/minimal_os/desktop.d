@@ -63,7 +63,7 @@ void runSimpleDesktopLoop()
         // desktop remains on-screen, then enter a low-power halt until the
         // next interrupt.
         schedYield();
-        asm { hlt; }
+        asm @nogc nothrow { hlt; }
     }
 }
 

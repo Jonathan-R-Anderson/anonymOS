@@ -393,12 +393,6 @@ private void logServiceProvision(const scope ServicePlan plan,
 private SystemProperties computeSystemProperties(const scope ref UserlandRuntime runtime)
 {
     SystemProperties properties;
-    properties.desktopReady = desktopStackReady(runtime);
-    return properties;
-}
-
-private bool desktopStackReady(const scope ref UserlandRuntime runtime)
-{
     immutable(char)[][] desktopStack =
         [ "xorg-server", "xinit", "display-manager", "i3" ];
 
@@ -406,10 +400,13 @@ private bool desktopStackReady(const scope ref UserlandRuntime runtime)
     {
         if (!processReady(runtime, service))
         {
-            return false;
+            properties.desktopReady = false;
+            return properties;
         }
     }
-    return true;
+
+    properties.desktopReady = true;
+    return properties;
 }
 
 private bool processReady(const scope ref UserlandRuntime runtime, immutable(char)[] name)

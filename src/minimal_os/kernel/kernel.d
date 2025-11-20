@@ -3,7 +3,7 @@ module minimal_os.kernel.kernel;
 public import minimal_os.kernel.memory;
 
 import minimal_os.display.framebuffer;
-import minimal_os.console : clearScreen;
+import minimal_os.console : clearScreen, printLine;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
@@ -40,6 +40,22 @@ extern(C) void kmain(ulong magic, ulong info)
         }
     }
 
+    // If no framebuffer, inform user that shell will be available via serial
+    if (!framebufferReady)
+    {
+        printLine("");
+        printLine("========================================");
+        printLine("  No Framebuffer Detected");
+        printLine("========================================");
+        printLine("Graphics desktop is unavailable.");
+        printLine("The lfe-sh shell will be accessible");
+        printLine("via serial console after toolchain build.");
+        printLine("");
+        printLine("Connect via: -serial stdio (QEMU)");
+        printLine("========================================");
+        printLine("");
+    }
+
     initializeInterrupts();
 
     posixInit();
@@ -48,6 +64,7 @@ extern(C) void kmain(ulong magic, ulong info)
     const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
         &compilerBuilderProcessEntry);
 
+    // Only spawn desktop if framebuffer is available
     if (framebufferReady)
     {
         const int desktopRegistration = registerProcessExecutable("/sbin/desktop",
@@ -56,6 +73,12 @@ extern(C) void kmain(ulong magic, ulong info)
         {
             cast(void) spawnRegisteredProcess("/sbin/desktop", null, null);
         }
+    }
+    else
+    {
+        printLine("[kernel] Graphics desktop disabled - framebuffer unavailable");
+        printLine("[kernel] Serial shell will be available after build completes");
+        printLine("");
     }
 
     if (builderRegistration == 0)

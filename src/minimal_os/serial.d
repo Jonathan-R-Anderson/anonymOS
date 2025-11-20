@@ -69,6 +69,59 @@ void serialWriteString(const(char)[] text)
     return serialReady;
 }
 
+/// Non-blocking serial read - returns 0 if no data available
+@nogc nothrow
+char serialReadByteNonBlocking()
+{
+    if (!serialReady)
+    {
+        return '\0';
+    }
+    
+    // Check if data is ready
+    if ((inb(COM1_BASE + REG_LINE_STATUS) & LSR_DATA_READY) == 0)
+    {
+        return '\0';  // No data available
+    }
+    
+    return cast(char)inb(COM1_BASE + REG_DATA);
+}
+
+/// Poll serial port and generate keyboard events from input
+@nogc nothrow
+void pollSerialInput(InputQueue)(ref InputQueue queue)
+{
+    import minimal_os.display.input_pipeline : InputEvent, enqueue;
+    
+    if (!serialReady)
+    {
+        return;
+    }
+    
+    // Read up to 16 characters per poll to avoid blocking too long
+    foreach (i; 0 .. 16)
+    {
+        char c = serialReadByteNonBlocking();
+        if (c == '\0')
+        {
+            break;  // No more data
+        }
+        
+        // Generate keyboard event for this character
+        InputEvent event;
+        event.type = InputEvent.Type.keyDown;
+        event.data1 = cast(int)c;
+        event.data2 = 0;  // No scancode for serial input
+        event.data3 = 0;  // No modifiers
+        enqueue(queue, event);
+        
+        // Immediately generate key-up event (serial doesn't have key state)
+        event.type = InputEvent.Type.keyUp;
+        enqueue(queue, event);
+    }
+}
+
+
 @nogc nothrow
 private void setupPort()
 {

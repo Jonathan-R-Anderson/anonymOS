@@ -4,10 +4,15 @@ import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.window_manager.renderer;
 import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvailable, compositorEnsureReady;
+import minimal_os.display.input_pipeline : InputQueue;
+import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
 import minimal_os.kernel.shell_integration : schedYield;
+import minimal_os.serial : pollSerialInput;
 
 __gshared WindowManager g_windowManager;
 __gshared bool g_windowManagerReady = false;
+__gshared InputQueue g_inputQueue;
+__gshared ulong g_frameCount = 0;
 
 private enum uint desktopTaskbarHeight = 32;
 private enum size_t desktopCount = 3;
@@ -50,6 +55,10 @@ private @nogc nothrow void ensureWindowManager()
     g_windowManager.registerShortcut("Ctrl+Win+Left/Right", "switch desktop");
 
     g_windowManager.switchDesktop(0);
+    
+    // Initialize input handler
+    initializeInputHandler(g_fb.width, g_fb.height);
+    
     g_windowManagerReady = true;
 }
 
@@ -70,7 +79,7 @@ void runSimpleDesktopOnce()
     }
 }
 
-/// Continuously re-render the desktop while cooperating with the scheduler.
+/// Active event loop for the desktop with input handling
 @nogc nothrow
 void runSimpleDesktopLoop()
 {
@@ -79,12 +88,46 @@ void runSimpleDesktopLoop()
         return;
     }
 
+    // Initial setup
+    ensureWindowManager();
+    
+    // Try to initialize USB HID
+    import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
+    initializeUSBHID();
+    
+    // Render initial frame
     runSimpleDesktopOnce();
 
+    // Active event loop
     while (true)
     {
+        ++g_frameCount;
+        
+        // Poll input devices
+        if (usbHIDAvailable())
+        {
+            pollUSBHID(g_inputQueue);
+        }
+        
+        // Poll serial as fallback
+        pollSerialInput(g_inputQueue);
+        
+        // Process all pending input events
+        processInputEvents(g_inputQueue, g_windowManager);
+        
+        // Re-render if needed (for now, render every frame)
+        // TODO: Only render when state actually changed
+        runSimpleDesktopOnce();
+        
+        // Yield to scheduler and pause briefly
         schedYield();
-        asm @nogc nothrow { hlt; }
+        
+        // Target ~60 FPS: simple delay
+        // TODO: More sophisticated timing
+        foreach (i; 0 .. 1000)
+        {
+            asm @nogc nothrow { nop; }
+        }
     }
 }
 
@@ -93,3 +136,4 @@ extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* /*argv*/, const(c
 {
     runSimpleDesktopLoop();
 }
+

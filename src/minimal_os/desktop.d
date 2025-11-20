@@ -1,7 +1,7 @@
 module minimal_os.desktop;
 
 import minimal_os.framebuffer;
-import minimal_os.posix : ProcessEntry, schedYield;
+import minimal_os.kernel.shell_integration : ProcessEntry, schedYield;
 
 /// Render a static placeholder desktop using the framebuffer APIs.
 @nogc nothrow

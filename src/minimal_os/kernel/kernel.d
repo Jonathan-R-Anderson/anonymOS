@@ -8,8 +8,8 @@ import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.desktop : desktopProcessEntry, runSimpleDesktopOnce;
-import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts;
-import minimal_os.posix : registerProcessExecutable, spawnRegisteredProcess, schedYield;
+import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
+    registerProcessExecutable, spawnRegisteredProcess, schedYield;
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.

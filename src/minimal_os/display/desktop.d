@@ -3,6 +3,7 @@ module minimal_os.display.desktop;
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.window_manager.renderer;
+import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvailable, compositorEnsureReady;
 import minimal_os.kernel.shell_integration : schedYield;
 
 __gshared WindowManager g_windowManager;
@@ -57,7 +58,16 @@ private void ensureWindowManager()
 void runSimpleDesktopOnce()
 {
     ensureWindowManager();
-    renderWorkspace(&g_windowManager);
+    compositorEnsureReady();
+
+    if (compositorAvailable())
+    {
+        renderWorkspaceComposited(&g_windowManager);
+    }
+    else
+    {
+        renderWorkspace(&g_windowManager);
+    }
 }
 
 /// Continuously re-render the desktop while cooperating with the scheduler.

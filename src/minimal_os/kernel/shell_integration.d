@@ -10,41 +10,11 @@ import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompile
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 
+// C-ABI bridge into minimal_os.userland.bootUserland.
+extern(C) @nogc nothrow void minimal_os_bootUserland();
 
-version (MinimalOsUserland)
-{
-    version (MinimalOsUserlandLinked)
-    {
-        // Import the real userland entry point and alias it to avoid name
-        // collisions with the local wrapper function below.
-        import minimal_os.userland : userlandBootUserland = bootUserland;
-
-        private enum bool userlandAvailable = true;
-
-        private @nogc nothrow void bootUserland()
-        {
-            userlandBootUserland();
-        }
-    }
-    else
-    {
-        private enum bool userlandAvailable = false;
-
-        private @nogc nothrow void bootUserland()
-        {
-            printLine("[warn] Userland bootstrap not linked; skipping.");
-        }
-    }
-}
-else
-{
-    private enum bool userlandAvailable = false;
-
-    private @nogc nothrow void bootUserland()
-    {
-        printLine("[warn] Userland support is disabled in this build.");
-    }
-}
+// In this configuration we always compile & link userland.
+enum bool userlandAvailable = true;
 
 
 
@@ -138,11 +108,8 @@ extern(C) @nogc nothrow void runCompilerBuilder()
     }
 
     printLine("");
-    bootUserland();
-    if (!userlandAvailable)
-    {
-        printLine("[warn] Userland support is disabled in this build.");
-    }
+    printLine("[kernel] Bootstrapping userland services...");
+    minimal_os_bootUserland();
     printLine("");
     printLine("[done] D language cross compiler ready.");
     if (shellState.shellActivated)

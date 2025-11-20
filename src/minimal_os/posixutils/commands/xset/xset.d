@@ -2,7 +2,7 @@ module xset;
 
 import std.conv : to;
 import std.format : format;
-import std.math : clamp;
+import std.algorithm.comparison : clamp;
 import std.stdio : stderr, writeln, writefln;
 import std.string : startsWith, strip;
 

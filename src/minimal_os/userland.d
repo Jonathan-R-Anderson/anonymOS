@@ -302,6 +302,8 @@ private enum immutable(char)[][] NET_CAPABILITIES =
     [ "net.bind", "net.connect", "net.capability" ];
 private enum immutable(char)[][] SHELL_CAPABILITIES =
     [ "ipc.bootstrap", "posix.exec", "console.claim" ];
+private enum immutable(char)[][] I3_CAPABILITIES =
+    [ "display.manage", "ipc.userland", "workspace.control", "console.claim" ];
 
 private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
     [ ServicePlan("init", "/sbin/init", "Capability supervisor",
@@ -312,6 +314,8 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
                   PKG_CAPABILITIES, STATE_READY, false),
       ServicePlan("netd", "/bin/netd", "Network capability broker",
                   NET_CAPABILITIES, STATE_WAITING, true),
+      ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
+                  I3_CAPABILITIES, STATE_READY, false),
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
 

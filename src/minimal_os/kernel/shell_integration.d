@@ -174,6 +174,7 @@ mixin PosixKernelShim;
 }
 
 
+pragma(mangle, "compilerBuilderProcessEntry")
 extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
 {
     // Inlined runCompilerBuilder (avoiding extern(C) linkage issues in betterC)

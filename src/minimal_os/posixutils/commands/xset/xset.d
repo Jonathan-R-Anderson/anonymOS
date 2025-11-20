@@ -37,7 +37,7 @@ private int handleHelpAndVersion(string[] args)
 {
     foreach (arg; args[1 .. $])
     {
-        final switch (arg)
+        switch (arg)
         {
         case "--version", "-V":
             writeln("xset (mock) 1.0");
@@ -94,7 +94,7 @@ private void handleScreensaver(ref XsetState state, string[] args, ref size_t i)
     }
 
     string next = args[i + 1];
-    final switch (next)
+    switch (next)
     {
     case "on":
         state.screensaverEnabled = true;
@@ -151,7 +151,7 @@ private void handleDpms(ref XsetState state, string[] args, ref size_t i)
     }
 
     string next = args[i + 1];
-    final switch (next)
+    switch (next)
     {
     case "force":
         if (i + 2 < args.length)
@@ -233,7 +233,7 @@ private void handleBell(ref XsetState state, string[] args, ref size_t i)
     }
 
     string next = args[i + 1];
-    final switch (next)
+    switch (next)
     {
     case "on":
         state.bellEnabled = true;
@@ -344,7 +344,7 @@ int main(string[] args)
     for (size_t i = 1; i < args.length; ++i)
     {
         auto arg = args[i];
-        final switch (arg)
+        switch (arg)
         {
         case "q", "-q", "--query":
             queryRequested = true;

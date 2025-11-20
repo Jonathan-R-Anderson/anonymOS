@@ -358,7 +358,20 @@ void bootUserland()
         logServiceProvision(plan, desiredState, registered, launched);
     }
 
-    auto systemProperties = computeSystemProperties(runtime);
+    SystemProperties systemProperties;
+    immutable(char)[][] desktopStack =
+        [ "xorg-server", "xinit", "display-manager", "i3" ];
+
+    systemProperties.desktopReady = true;
+    foreach (service; desktopStack)
+    {
+        if (!processReady(runtime, service))
+        {
+            systemProperties.desktopReady = false;
+            break;
+        }
+    }
+
     logUserlandSnapshot(runtime, systemProperties);
 }
 
@@ -388,25 +401,6 @@ private void logServiceProvision(const scope ServicePlan plan,
     }
 
     printLine(desiredState);
-}
-
-private SystemProperties computeSystemProperties(const scope ref UserlandRuntime runtime)
-{
-    SystemProperties properties;
-    immutable(char)[][] desktopStack =
-        [ "xorg-server", "xinit", "display-manager", "i3" ];
-
-    foreach (service; desktopStack)
-    {
-        if (!processReady(runtime, service))
-        {
-            properties.desktopReady = false;
-            return properties;
-        }
-    }
-
-    properties.desktopReady = true;
-    return properties;
 }
 
 private bool processReady(const scope ref UserlandRuntime runtime, immutable(char)[] name)

@@ -11,19 +11,31 @@ import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompile
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 version (MinimalOsUserland)
 {
-    private enum bool userlandAvailable = __traits(compiles, {
-        import minimal_os.userland : bootUserland;
-        bootUserland();
-    });
-
-    private @nogc nothrow void bootUserland()
+    version (MinimalOsUserlandLinked)
     {
-        static if (userlandAvailable)
-        {
+        private enum bool userlandAvailable = __traits(compiles, {
             import minimal_os.userland : bootUserland;
             bootUserland();
+        });
+
+        private @nogc nothrow void bootUserland()
+        {
+            static if (userlandAvailable)
+            {
+                import minimal_os.userland : bootUserland;
+                bootUserland();
+            }
+            else
+            {
+                printLine("[warn] Userland bootstrap not linked; skipping.");
+            }
         }
-        else
+    }
+    else
+    {
+        private enum bool userlandAvailable = false;
+
+        private @nogc nothrow void bootUserland()
         {
             printLine("[warn] Userland bootstrap not linked; skipping.");
         }

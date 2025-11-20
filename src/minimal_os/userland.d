@@ -693,6 +693,11 @@ private size_t countDigits(size_t value)
     return digits;
 }
 
+extern(C) @nogc nothrow void minimal_os_bootUserland()
+{
+    bootUserland();
+}
+
 unittest
 {
     UserlandRuntime runtime;

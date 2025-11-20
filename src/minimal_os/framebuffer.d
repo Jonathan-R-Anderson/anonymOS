@@ -104,12 +104,12 @@ private uint argbToNative(uint argb) {
 
 // C-ABI init hook so you can call it from C/ASM if desired
 extern(C) @nogc nothrow @system
-void framebufferInit(void* base,
-                     uint  width,
-                     uint  height,
-                     uint  pitchBytes,
-                     uint  bpp,
-                     bool  isBGR)
+void framebufferInit(const(void)* base,
+                     uint        width,
+                     uint        height,
+                     uint        pitchBytes,
+                     uint        bpp,
+                     bool        isBGR)
 {
     if (base is null) {
         g_fbInitialized = false;
@@ -139,12 +139,12 @@ void framebufferInit(void* base,
 
 // D-friendly wrapper (same as above, just nicer to call)
 @nogc nothrow @system
-void initFramebuffer(void* base,
-                     uint  width,
-                     uint  height,
-                     uint  pitchBytes,
-                     uint  bpp,
-                     bool  isBGR)
+void initFramebuffer(const(void)* base,
+                     uint        width,
+                     uint        height,
+                     uint        pitchBytes,
+                     uint        bpp,
+                     bool        isBGR)
 {
     framebufferInit(base, width, height, pitchBytes, bpp, isBGR);
 }

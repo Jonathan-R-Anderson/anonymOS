@@ -338,7 +338,7 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
 
-void bootUserland()
+@nogc nothrow void bootUserland()
 {
     printStageHeader("Provision userland services");
 

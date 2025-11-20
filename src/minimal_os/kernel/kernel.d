@@ -7,8 +7,9 @@ import minimal_os.console : clearScreen;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
-import minimal_os.desktop : runSimpleDesktopOnce, runSimpleDesktopLoop;
-import minimal_os.kernel.shell_integration : runCompilerBuilder, posixInit, initializeInterrupts;
+import minimal_os.desktop : desktopProcessEntry, runSimpleDesktopOnce;
+import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts;
+import minimal_os.posix : registerProcessExecutable, spawnRegisteredProcess, schedYield;
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
@@ -42,11 +43,30 @@ extern(C) void kmain(ulong magic, ulong info)
     initializeInterrupts();
 
     posixInit();
-    runCompilerBuilder();
 
-    // Keep the graphical display visible after bootstrapping is complete.
+    // Register processes that should run alongside the kernel core.
+    const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
+        &compilerBuilderProcessEntry);
+
     if (framebufferReady)
     {
-        runSimpleDesktopLoop();
+        const int desktopRegistration = registerProcessExecutable("/sbin/desktop",
+            &desktopProcessEntry);
+        if (desktopRegistration == 0)
+        {
+            cast(void) spawnRegisteredProcess("/sbin/desktop", null, null);
+        }
+    }
+
+    if (builderRegistration == 0)
+    {
+        cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
+    }
+
+    // Idle the kernel while co-operative tasks (desktop, compiler, shell) run.
+    while (true)
+    {
+        schedYield();
+        asm { hlt; }
     }
 }

@@ -4,7 +4,7 @@ import minimal_os.console : print, printLine, printUnsigned, printHex;
 import minimal_os.multiboot;
 
 @nogc nothrow
-void probeHardware(ulong magic, ulong infoAddress)
+MultibootContext probeHardware(ulong magic, ulong infoAddress)
 {
     printLine("");
     printLine("[probe] Inspecting firmware-provided hardware tables...");
@@ -13,13 +13,15 @@ void probeHardware(ulong magic, ulong infoAddress)
     if (!context.valid)
     {
         printLine("[probe] Multiboot signature missing, skipping hardware scan.");
-        return;
+        return context;
     }
 
     logBasicMemory(context);
     logModules(context);
     logMemoryMap(context);
     logFramebuffer(context);
+
+    return context;
 }
 
 private @nogc nothrow void logBasicMemory(const MultibootContext context)

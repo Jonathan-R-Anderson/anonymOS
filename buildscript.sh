@@ -54,10 +54,6 @@ DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/dmd}"
 # Optional toy linker wrapper (used if present), else we fall back to ld.lld
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
-# Toggle userland bootstrap support. Set ENABLE_USERLAND=0 to build without the
-# optional userland module (the kernel will fall back to a stubbed bootstrap).
-: "${ENABLE_USERLAND:=1}"
-
 # Debug/Opt flags (DEBUG=1 default). Set DEBUG=0 for release-ish build.
 : "${DEBUG:=1}"
 
@@ -176,19 +172,15 @@ fi
 mkdir -p "$OUT_DIR"
 
 if [ "$DEBUG" = "1" ]; then
-DFLAGS="-g -O0"
+  DFLAGS="-g -O0"
 else
   DFLAGS="-O3 -release"
 fi
 
-# Enable optional userland bootstrap support only when requested.
-# Using `-d-version` avoids colliding with the compiler's `--version` flag
-# (which prints the compiler version and rejects values).
-if [ "$ENABLE_USERLAND" != "0" ]; then
-  DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
-fi
+# Always enable userland bootstrap support
+DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
 
-# D objects (kernel + dependencies)
+# D objects (kernel + dependencies + userland)
 KERNEL_SOURCES=(
   "$KERNEL_D"
   "src/minimal_os/kernel/memory.d"
@@ -216,20 +208,14 @@ KERNEL_SOURCES=(
   "src/minimal_os/posixutils/registry.d"
   "src/minimal_os/toolchain.d"
   "src/sh_metadata.d"
+  "src/minimal_os/userland.d"
 )
-
-if [ "$ENABLE_USERLAND" != "0" ]; then
-  KERNEL_SOURCES+=("src/minimal_os/userland.d")
-fi
-
-if [ "$ENABLE_USERLAND" = "0" ]; then
-  echo "[!] Userland bootstrap disabled (ENABLE_USERLAND=0); using stubbed kernel bootstrap." >&2
-fi
 
 KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
+  echo "[*] Compiling D source: $source -> $obj"
   ldc2 -I. -Isrc -J. -Jsrc/minimal_os -mtriple="$TARGET" -betterC $DFLAGS \
        -c "$source" -of="$obj"
   KERNEL_OBJECTS+=("$obj")
@@ -242,12 +228,14 @@ if [ "$DEBUG" = "1" ]; then
 else
   CLANGFLAGS+=("-O2")
 fi
+echo "[*] Compiling startup ASM: $STARTUP_SRC -> $STARTUP_O"
 clang "${CLANGFLAGS[@]}" -c "$STARTUP_SRC" -o "$STARTUP_O"
 
 # ===================== Link kernel with builtins =====================
 LIBDIR="$SYSROOT/usr/lib"
 [ -f "$FLAT" ] || LIBDIR="$SYSROOT/usr/lib/generic"
 
+echo "[*] Linking kernel: $KERNEL_ELF"
 if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
   # Native linker path
   "$LINK_BACKEND" ${LLD_MACH:+-m "$LLD_MACH"} -T "$LINKER_SCRIPT" -nostdlib \

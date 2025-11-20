@@ -189,6 +189,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/serial.d"
   "src/minimal_os/hardware.d"
   "src/minimal_os/framebuffer.d"
+  "src/minimal_os/desktop.d"
   "src/minimal_os/compiler.d"
   "src/minimal_os/fallback_shell.d"
   "src/minimal_os/posix.d"

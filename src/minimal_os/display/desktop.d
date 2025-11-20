@@ -12,7 +12,7 @@ __gshared bool g_windowManagerReady = false;
 private enum uint desktopTaskbarHeight = 32;
 private enum size_t desktopCount = 3;
 
-private void ensureWindowManager()
+private @nogc nothrow void ensureWindowManager()
 {
     if (g_windowManagerReady || !framebufferAvailable())
     {

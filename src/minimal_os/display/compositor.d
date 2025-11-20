@@ -44,6 +44,8 @@ private struct WindowEntry
 
 struct Compositor
 {
+    @nogc nothrow:
+
     uint   width;
     uint   height;
     uint   pitch;

@@ -4,7 +4,7 @@ import std.array : appender;
 import std.file : exists, read, write;
 import std.getopt : defaultGetoptPrinter, getopt, GetoptResult;
 import std.path : buildPath;
-import std.stdio : byChunk, stderr, stdin, stdout, writeln;
+import std.stdio : stderr, stdin, stdout, writeln;
 import std.string : toLower;
 
 private enum string VERSION = "xclip 1.0 (minimal replacement)";
@@ -52,9 +52,15 @@ private string clipboardPath(string selection)
 private int writeSelection(const Options opts)
 {
     auto buf = appender!(ubyte[])();
-    foreach (chunk; stdin.byChunk(4096))
+    ubyte[4096] chunk;
+    while (true)
     {
-        buf.put(chunk);
+        auto readCount = stdin.rawRead(chunk[]);
+        if (readCount == 0)
+        {
+            break;
+        }
+        buf.put(chunk[0 .. readCount]);
     }
 
     auto path = clipboardPath(opts.selection);

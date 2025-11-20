@@ -34,7 +34,7 @@ private __gshared size_t g_rootLength = 0;
 
 @nogc nothrow bool embeddedPosixUtilitiesAvailable()
 {
-    if (!g_manifestAttempted)
+    if (!g_manifestAttempted || (!g_manifestLoaded && g_embeddedPosixUtilityCount == 0))
     {
         loadEmbeddedPosixUtilityManifest();
     }

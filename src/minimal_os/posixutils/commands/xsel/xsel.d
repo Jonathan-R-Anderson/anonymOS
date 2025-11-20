@@ -30,7 +30,7 @@ private void printUsage(GetoptResult res)
     writeln("Usage: xsel [-i|-o|-k|-c] [-a] [-p|-s|-b]");
     writeln("Copies stdin to a selection or prints a stored selection to stdout.");
     writeln();
-    defaultGetoptPrinter("Options:", res.options, stderr);
+    defaultGetoptPrinter("Options:", res.options);
 }
 
 private string normalizeSelection(string sel)

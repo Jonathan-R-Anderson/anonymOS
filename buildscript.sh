@@ -178,7 +178,9 @@ else
 fi
 
 # Enable optional userland bootstrap support in builds that include the module.
-DFLAGS+=" -version=MinimalOsUserland"
+# Using `-d-version` avoids colliding with the compiler's `--version` flag
+# (which prints the compiler version and rejects values).
+DFLAGS+=" -d-version=MinimalOsUserland"
 
 # D objects (kernel + dependencies)
 KERNEL_SOURCES=(

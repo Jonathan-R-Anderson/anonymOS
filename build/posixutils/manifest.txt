@@ -1,0 +1,4 @@
+sys.sh	/bin/sh	/bin/sh
+sys.ls	/bin/ls	/bin/ls
+sys.echo	/bin/echo	/bin/echo
+sys.cat	/bin/cat	/bin/cat

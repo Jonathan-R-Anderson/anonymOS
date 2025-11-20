@@ -144,11 +144,13 @@ private alias ManifestHandle = const(char)[];
 
 private void ensureManifestLoaded()
 {
-    if (g_manifestAttempted)
+    if (g_manifestLoaded && g_manifestCount != 0)
     {
         return;
     }
 
+    // Allow repeated attempts so late-arriving manifests (e.g. generated
+    // during boot) can still be observed after an earlier failure.
     g_manifestAttempted = true;
 
     version (Posix)

@@ -27,7 +27,10 @@ UI; there is no modern graphics stack in place yet.
 - **Display server bookkeeping**: `src/minimal_os/display/server.d` adds
   protocol and readiness tracking for Wayland/X11 style servers and their
   compositor/input/font dependencies. It does not start a real server yet, but
-  provides a structured place to hang future initialization.
+  provides a structured place to hang future initialization. When configured
+  for X11 it now carries an `x11Config` block that mirrors Xorg/Xinit/display
+  manager expectations and is backed by a bookkeeping struct in
+  `src/minimal_os/display/x11_stack.d`.
 - **Font stack description**: `src/minimal_os/display/font_stack.d` models a
   FreeType/HarfBuzz-style pipeline and keeps track of registered fonts so that
   higher-level code can detect whether rich text shaping is available.
@@ -41,6 +44,19 @@ UI; there is no modern graphics stack in place yet.
 
 These additions keep the framebuffer renderer working while sketching the
 interfaces needed for a full display server and compositor stack.
+
+### X11 stack representation
+- `src/minimal_os/display/x11_stack.d` models the core pieces of an X11 stack
+  (Xorg server, xinit handoff, and a display manager) so that the kernel can
+  track readiness even before the binaries exist.
+- The `X11StackConfig`/`X11StackState` pair records whether the framebuffer is
+  online, which display manager flavor is expected (xdm/lightdm/gdm), and
+  whether xinit or the display manager can launch sessions.
+- The scaffolding is purely declarative for now but gives callers a single
+  `x11StackReady` check to decide when to hand control to an X server.
+- Userland gets mirrored bookkeeping via new service plans for `xorg-server`,
+  `xinit`, and a display manager, keeping the launch roster aligned with the
+  kernel-side readiness tracker even before the binaries are packaged.
 
 ## i3 desktop integration scaffolding
 - A new userland service entry registers the i3 tiling window manager with the

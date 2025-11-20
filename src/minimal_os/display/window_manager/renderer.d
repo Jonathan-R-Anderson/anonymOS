@@ -118,7 +118,7 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
     framebufferSetTextColors(textColor, barColor);
     g_fbCursorX = (window.x + padding) / glyphWidth;
     g_fbCursorY = (window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0)) / glyphHeight;
-    framebufferWriteString(window.title.ptr);
+    framebufferWriteString(window.title);
 }
 
 private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)
@@ -137,13 +137,13 @@ private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)
         framebufferWriteString(active ? "[" : " ");
         auto ch = cast(char)('1' + i);
         char[2] label = [ch, '\0'];
-        framebufferWriteString(label.ptr);
+        framebufferWriteString(label[0 .. 1]);
         framebufferWriteString(active ? "]" : " ");
     }
 
     framebufferWriteString("  layout: ");
     immutable(char)[] layoutName = (manager.layoutForActiveDesktop() == LayoutMode.tiling) ? "tiling" : "floating";
-    framebufferWriteString(layoutName.ptr);
+    framebufferWriteString(layoutName);
 
     framebufferWriteString("  focus: ");
     const focused = manager.focusedWindowId();
@@ -154,8 +154,8 @@ private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)
     else
     {
         char[32] buffer;
-        formatUnsigned(focused, buffer[]);
-        framebufferWriteString(buffer.ptr);
+        const len = formatUnsigned(focused, buffer[]);
+        framebufferWriteString(buffer[0 .. len]);
     }
 
     if (manager.shortcuts().length > 0)
@@ -163,9 +163,9 @@ private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)
         framebufferWriteString("  shortcuts: ");
         foreach (ref const shortcut; manager.shortcuts())
         {
-            framebufferWriteString(shortcut.name.ptr);
+            framebufferWriteString(shortcut.name);
             framebufferWriteString("->");
-            framebufferWriteString(shortcut.action.ptr);
+            framebufferWriteString(shortcut.action);
             framebufferWriteString("  ");
         }
     }

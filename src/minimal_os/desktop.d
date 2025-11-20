@@ -1,6 +1,7 @@
 module minimal_os.desktop;
 
 import minimal_os.framebuffer;
+import minimal_os.posix : ProcessEntry, schedYield;
 
 /// Render a static placeholder desktop using the framebuffer APIs.
 @nogc nothrow
@@ -46,8 +47,29 @@ void runSimpleDesktopOnce()
 @nogc nothrow
 void runSimpleDesktopLoop()
 {
+    if (!framebufferAvailable())
+    {
+        return;
+    }
+
+    // Render the scene once and then halt the CPU between interrupts so we
+    // keep the final frame visible without burning a full core. Interrupts are
+    // enabled by the time this loop runs, so HLT will wake when needed.
+    runSimpleDesktopOnce();
+
     while (true)
     {
-        runSimpleDesktopOnce();
+        // Cooperatively yield so other processes can make progress while the
+        // desktop remains on-screen, then enter a low-power halt until the
+        // next interrupt.
+        schedYield();
+        asm { hlt; }
     }
+}
+
+/// Process entrypoint that keeps the placeholder desktop running alongside
+/// other tasks.
+extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+{
+    runSimpleDesktopLoop();
 }

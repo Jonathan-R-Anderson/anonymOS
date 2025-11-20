@@ -4,7 +4,7 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 
 import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
 import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
-import minimal_os.posix : PosixKernelShim, launchInteractiveShell, shellExecEntry,
+import minimal_os.posix : PosixKernelShim, ProcessEntry, launchInteractiveShell, shellExecEntry,
     registerBareMetalShellInterfaces;
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
@@ -122,6 +122,11 @@ extern(C) @nogc nothrow void runCompilerBuilder()
             printLine("compiler access is required.");
         }
     }
+}
+
+extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+{
+    runCompilerBuilder();
 }
 
 private void integrateShell()

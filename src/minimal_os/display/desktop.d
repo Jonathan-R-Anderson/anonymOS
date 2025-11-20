@@ -1,6 +1,6 @@
-module minimal_os.desktop;
+module minimal_os.display.desktop;
 
-import minimal_os.framebuffer;
+import minimal_os.display.framebuffer;
 import minimal_os.kernel.shell_integration : schedYield;
 
 /// Render a static placeholder desktop using the framebuffer APIs.

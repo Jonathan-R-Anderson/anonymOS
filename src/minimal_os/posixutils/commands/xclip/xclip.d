@@ -1,40 +1,139 @@
 module xclip;
 
-import std.stdio : stderr, writeln, writefln;
+import std.array : appender;
+import std.file : exists, read, write;
+import std.getopt : defaultGetoptPrinter, getopt, GetoptResult;
+import std.path : buildPath;
+import std.stdio : byChunk, stderr, stdin, stdout, writeln;
+import std.string : toLower;
 
-private enum string stubNote =
-    "Clipboard access requires an X11/Wayland server; this environment\n" ~
-    "runs without a display stack, so clipboard operations are unavailable.\n" ~
-    "The stub keeps scripts that probe for xclip from crashing.";
+private enum string VERSION = "xclip 1.0 (minimal replacement)";
 
-private int handleCommonFlags(string[] args, string tool)
+/// Location on disk used to emulate clipboard selections.
+private enum string CLIPBOARD_DIR = "/tmp";
+
+struct Options
 {
-    foreach (arg; args[1 .. $])
+    bool output = false;      // -o / --out
+    bool input = true;        // -i / --in (default)
+    string selection = "primary";
+    bool showHelp = false;
+    bool showVersion = false;
+}
+
+private void printUsage(GetoptResult res)
+{
+    writeln("Usage: xclip [-i|-o] [-selection {primary|secondary|clipboard}]");
+    writeln("Copies stdin to a selection or prints a stored selection to stdout.");
+    writeln();
+    defaultGetoptPrinter("Options:", res.options, stderr);
+}
+
+private string normalizeSelection(string sel)
+{
+    auto lower = toLower(sel);
+    if (lower.length == 0)
     {
-        if (arg == "--version" || arg == "-V")
-        {
-            writeln(tool ~ " (stub) - no clipboard backend available");
-            return 0;
-        }
-        if (arg == "--help" || arg == "-h")
-        {
-            writeln(tool ~ ": clipboard access is not supported in this environment.");
-            writeln("\n" ~ stubNote);
-            return 0;
-        }
+        return "";
     }
-    return -1;
+
+    // Accept both full names and shorthand (p/s/c).
+    if (lower[0] == 'p') return "primary";
+    if (lower[0] == 's') return "secondary";
+    if (lower[0] == 'c') return "clipboard";
+    return ""; // invalid
+}
+
+private string clipboardPath(string selection)
+{
+    return buildPath(CLIPBOARD_DIR, "xclip-" ~ selection ~ ".buf");
+}
+
+private int writeSelection(const Options opts)
+{
+    auto buf = appender!(ubyte[])();
+    foreach (chunk; stdin.byChunk(4096))
+    {
+        buf.put(chunk);
+    }
+
+    auto path = clipboardPath(opts.selection);
+    write(path, buf.data);
+    return 0;
+}
+
+private int readSelection(const Options opts)
+{
+    auto path = clipboardPath(opts.selection);
+    if (!exists(path))
+    {
+        stderr.writeln("xclip: no data available for selection '" ~ opts.selection ~ "'");
+        return 1;
+    }
+
+    auto data = read(path);
+    stdout.rawWrite(data);
+    return 0;
 }
 
 int main(string[] args)
 {
-    auto flagResult = handleCommonFlags(args, "xclip");
-    if (flagResult >= 0)
+    Options opts;
+    auto res = getopt(args,
+        "i|in", "Read standard input into the selection (default).", &opts.input,
+        "o|out", "Print the contents of the selection to standard output.", &opts.output,
+        "selection|sel", "Target selection: primary, secondary, or clipboard.", &opts.selection,
+        "help|h", "Show help message and exit.", &opts.showHelp,
+        "version|V", "Show version information and exit.", &opts.showVersion,
+    );
+
+    if (opts.output)
     {
-        return flagResult;
+        opts.input = false;
     }
 
-    stderr.writefln("xclip: clipboard access is unavailable in this environment.");
-    stderr.writeln(stubNote);
-    return 1;
+    if (opts.showHelp)
+    {
+        printUsage(res);
+        return 0;
+    }
+
+    if (opts.showVersion)
+    {
+        writeln(VERSION);
+        return 0;
+    }
+
+    opts.selection = normalizeSelection(opts.selection);
+    if (!opts.selection.length)
+    {
+        stderr.writeln("xclip: invalid selection; choose primary, secondary, or clipboard");
+        return 1;
+    }
+
+    if (!opts.input && !opts.output)
+    {
+        stderr.writeln("xclip: choose either input (-i) or output (-o) mode");
+        return 1;
+    }
+
+    if (opts.input && opts.output)
+    {
+        stderr.writeln("xclip: -i/--in and -o/--out are mutually exclusive");
+        return 1;
+    }
+
+    try
+    {
+        if (opts.output)
+        {
+            return readSelection(opts);
+        }
+        return writeSelection(opts);
+    }
+    catch (Exception e)
+    {
+        stderr.writeln("xclip: " ~ e.msg);
+        return 1;
+    }
 }

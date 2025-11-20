@@ -2,12 +2,12 @@ module minimal_os.kernel.kernel;
 
 public import minimal_os.kernel.memory;
 
-import minimal_os.framebuffer;
+import minimal_os.display.framebuffer;
 import minimal_os.console : clearScreen;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
-import minimal_os.desktop : desktopProcessEntry, runSimpleDesktopOnce;
+import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
     registerProcessExecutable, spawnRegisteredProcess, schedYield;
 

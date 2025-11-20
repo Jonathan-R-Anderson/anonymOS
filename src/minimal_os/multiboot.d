@@ -1,6 +1,6 @@
 module minimal_os.multiboot;
 
-import minimal_os.framebuffer;
+import minimal_os.display.framebuffer;
 
 /// Helpers and data layouts for interacting with Multiboot loaders.
 ///

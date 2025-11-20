@@ -16,7 +16,7 @@ version (MinimalOsUserland)
         bootUserland();
     });
 
-    private void bootUserland()
+    private @nogc nothrow void bootUserland()
     {
         static if (userlandAvailable)
         {
@@ -33,7 +33,7 @@ else
 {
     private enum bool userlandAvailable = false;
 
-    private void bootUserland()
+    private @nogc nothrow void bootUserland()
     {
         printLine("[warn] Userland bootstrap not linked; skipping.");
     }

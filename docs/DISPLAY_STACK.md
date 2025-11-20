@@ -7,7 +7,8 @@ setting, compositors, GPU acceleration, and display servers are not yet present.
 ## Implemented pieces
 - **Framebuffer init and drawing**: The kernel reads Multiboot framebuffer
   details and initializes a linear framebuffer with support for 16/24/32 bpp
-  pixels, basic shapes, and text rendering using a fallback glyph.
+  pixels, basic shapes, and text rendering using a fallback glyph. Related code
+  now lives under `src/minimal_os/display/` to keep display components grouped.
 - **Placeholder desktop**: A simple task draws a static background, taskbar, and
   window outline directly into the framebuffer and then idles.
 

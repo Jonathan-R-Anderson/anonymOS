@@ -1,4 +1,4 @@
-module minimal_os.framebuffer;
+module minimal_os.display.framebuffer;
 
 @safe: // default, we drop to @system in the few places we need pointer math
 

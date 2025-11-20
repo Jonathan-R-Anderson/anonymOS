@@ -22,3 +22,17 @@ The following layers are not implemented and would need dedicated subsystems:
 
 Overall, the current display path stops at a software framebuffer and placeholder
 UI; there is no modern graphics stack in place yet.
+
+## i3 desktop integration scaffolding
+- A new userland service entry registers the i3 tiling window manager with the
+  boot-time service planner, complete with basic display and IPC capabilities.
+  This is a bookkeeping step so i3 shows up alongside core daemons when the
+  placeholder desktop renders its process dock.
+- The i3 entry is still aspirational: the kernel lacks an X11/Wayland stack,
+  modesetting, and the rest of the Linux userspace that i3 expects. Treat the
+  service plan as a target interface for when a real display server and package
+  loader come online.
+- When the display stack grows to include an X11 or Wayland server, the i3
+  service plan can be extended with additional capabilities (e.g., GPU access
+  or IPC sockets) and wired to a package resolver that fetches the i3 binary
+  from userland storage.

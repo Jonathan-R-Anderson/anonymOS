@@ -81,7 +81,7 @@ private Options parseOptions(string[] args)
     Options opts;
     foreach (arg; args[1 .. $])
     {
-        final switch (arg)
+        switch (arg)
         {
         case "--help", "-h":
             opts.showHelp = true;
@@ -191,9 +191,9 @@ private void printQuery(bool verbose)
             outp.posY,
             "normal (normal left inverted right x axis y axis)");
 
-        foreach (mode; outp.modes)
+        foreach (candidateMode; outp.modes)
         {
-            printModeLine(mode, verbose);
+            printModeLine(candidateMode, verbose);
         }
     }
 }

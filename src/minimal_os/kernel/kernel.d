@@ -21,6 +21,8 @@ extern(C) void kmain(ulong magic, ulong info)
     initSerial();
     auto context = probeHardware(magic, info);
 
+    bool framebufferReady = false;
+
     if (context.valid && context.hasFlag(MultibootInfoFlag.framebufferInfo))
     {
         const fbInfo = framebufferInfoFromMultiboot(context.info);
@@ -28,7 +30,8 @@ extern(C) void kmain(ulong magic, ulong info)
         {
             initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR);
 
-            if (framebufferAvailable())
+            framebufferReady = framebufferAvailable();
+            if (framebufferReady)
             {
                 framebufferBootBanner("minimal_os is booting...");
                 runSimpleDesktopOnce();
@@ -40,4 +43,10 @@ extern(C) void kmain(ulong magic, ulong info)
 
     posixInit();
     runCompilerBuilder();
+
+    // Keep the graphical display visible after bootstrapping is complete.
+    if (framebufferReady)
+    {
+        runSimpleDesktopLoop();
+    }
 }

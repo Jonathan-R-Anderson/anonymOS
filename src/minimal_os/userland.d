@@ -16,6 +16,13 @@ private enum immutable(char)[] STATE_READY = "ready";
 private enum immutable(char)[] STATE_RUNNING = "running";
 private enum immutable(char)[] STATE_WAITING = "waiting";
 
+private struct SystemProperties
+{
+    bool multithreadingEnabled = true;
+    bool multiprocessingEnabled = true;
+    bool desktopReady;
+}
+
 private enum immutable(char)[] DESKTOP_TITLE = "aurora.rice";
 private enum immutable(char)[] DESKTOP_THEME = "violet glass";
 private enum immutable(char)[] DESKTOP_WALLPAPER_NAME = "userland_wallpaper.txt";
@@ -319,15 +326,15 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
       ServicePlan("pkgd", "/bin/pkgd", "Package + manifest resolver",
                   PKG_CAPABILITIES, STATE_READY, false),
       ServicePlan("netd", "/bin/netd", "Network capability broker",
-                  NET_CAPABILITIES, STATE_WAITING, true),
+                  NET_CAPABILITIES, STATE_RUNNING, true),
       ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
-                  XORG_CAPABILITIES, STATE_WAITING, false),
+                  XORG_CAPABILITIES, STATE_RUNNING, false),
       ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
-                  XINIT_CAPABILITIES, STATE_WAITING, false),
+                  XINIT_CAPABILITIES, STATE_RUNNING, false),
       ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
-                  DM_CAPABILITIES, STATE_WAITING, false),
+                  DM_CAPABILITIES, STATE_RUNNING, false),
       ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
-                  I3_CAPABILITIES, STATE_READY, false),
+                  I3_CAPABILITIES, STATE_RUNNING, false),
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
 
@@ -351,7 +358,8 @@ void bootUserland()
         logServiceProvision(plan, desiredState, registered, launched);
     }
 
-    logUserlandSnapshot(runtime);
+    auto systemProperties = computeSystemProperties(runtime);
+    logUserlandSnapshot(runtime, systemProperties);
 }
 
 private void logServiceProvision(const scope ServicePlan plan,
@@ -382,7 +390,42 @@ private void logServiceProvision(const scope ServicePlan plan,
     printLine(desiredState);
 }
 
-private void logUserlandSnapshot(const scope ref UserlandRuntime runtime)
+private SystemProperties computeSystemProperties(const scope ref UserlandRuntime runtime)
+{
+    SystemProperties properties;
+    properties.desktopReady = desktopStackReady(runtime);
+    return properties;
+}
+
+private bool desktopStackReady(const scope ref UserlandRuntime runtime)
+{
+    immutable(char)[][] desktopStack =
+        [ "xorg-server", "xinit", "display-manager", "i3" ];
+
+    foreach (service; desktopStack)
+    {
+        if (!processReady(runtime, service))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+private bool processReady(const scope ref UserlandRuntime runtime, immutable(char)[] name)
+{
+    foreach (process; runtime.processes())
+    {
+        if (process.name == name && isReadyState(process.state))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+private void logUserlandSnapshot(const scope ref UserlandRuntime runtime,
+                                 const scope SystemProperties properties)
 {
     printStatusValue("[userland] Registered services : ", cast(long)runtime.serviceCount);
     printStatusValue("[userland] Active processes     : ", cast(long)runtime.processCount);
@@ -399,7 +442,7 @@ private void logUserlandSnapshot(const scope ref UserlandRuntime runtime)
         printProcessDetails(process);
     }
 
-    renderRicedDesktop(runtime);
+    renderRicedDesktop(runtime, properties);
 }
 
 private void printProcessDetails(const scope UserProcess process)
@@ -449,7 +492,8 @@ private void printProcessDetails(const scope UserProcess process)
     printLine("");
 }
 
-private void renderRicedDesktop(const scope ref UserlandRuntime runtime)
+private void renderRicedDesktop(const scope ref UserlandRuntime runtime,
+                                const scope SystemProperties properties)
 {
     printLine("");
     printLine("[userland] booting aurora.rice desktop...");
@@ -458,6 +502,9 @@ private void renderRicedDesktop(const scope ref UserlandRuntime runtime)
     printPanelLine(DESKTOP_TITLE);
     printPanelKeyValue("theme", DESKTOP_THEME);
     printPanelKeyValue("wallpaper", DESKTOP_WALLPAPER_NAME);
+    printPanelKeyValue("multithreading", properties.multithreadingEnabled ? "enabled" : "disabled");
+    printPanelKeyValue("multiprocessing", properties.multiprocessingEnabled ? "enabled" : "disabled");
+    printPanelKeyValue("desktop ready", properties.desktopReady ? "yes" : "no");
     printPanelMetric("services", runtime.serviceCount);
     printPanelMetric("processes", runtime.processCount);
     printPanelMetric("ready queue", runtime.readyProcessCount());

@@ -1,49 +1,66 @@
 module minimal_os.display.desktop;
 
 import minimal_os.display.framebuffer;
+import minimal_os.display.window_manager.manager;
+import minimal_os.display.window_manager.renderer;
 import minimal_os.kernel.shell_integration : schedYield;
 
-/// Render a static placeholder desktop using the framebuffer APIs.
-@nogc nothrow
-void runSimpleDesktopOnce()
+__gshared WindowManager g_windowManager;
+__gshared bool g_windowManagerReady = false;
+
+private enum uint desktopTaskbarHeight = 32;
+private enum size_t desktopCount = 3;
+
+private void ensureWindowManager()
 {
-    if (!framebufferAvailable())
+    if (g_windowManagerReady || !framebufferAvailable())
     {
         return;
     }
 
-    enum uint backgroundColor = 0xFF202020;
-    enum uint taskbarColor    = 0xFF303030;
-    enum uint windowColor     = 0xFF2C2C2C;
-    enum uint titleBarColor   = 0xFF383838;
-    enum uint borderColor     = 0xFF505050;
-    enum uint textColor       = 0xFFFFFFFF;
+    g_windowManager.reset();
+    g_windowManager.configure(g_fb.width, g_fb.height, desktopTaskbarHeight, desktopCount);
+    g_windowManager.setLayout(0, LayoutMode.tiling);
+    g_windowManager.setLayout(1, LayoutMode.floating);
+    g_windowManager.setLayout(2, LayoutMode.tiling);
 
-    framebufferFill(backgroundColor);
+    const uint halfW = g_fb.width / 2;
+    const uint halfH = g_fb.height / 2;
+    const uint thirdW = g_fb.width / 3;
+    const uint quarterH = g_fb.height / 4;
 
-    enum uint taskbarHeight = 32;
-    const uint taskbarY = (g_fb.height > taskbarHeight) ? g_fb.height - taskbarHeight : 0;
-    framebufferFillRect(0, taskbarY, g_fb.width, taskbarHeight, taskbarColor);
+    auto editor = g_windowManager.createWindow("text editor", halfW, halfH, false, 0);
+    auto monitor = g_windowManager.createWindow("system monitor", thirdW, halfH, false, 0);
+    auto console = g_windowManager.createWindow("console", thirdW, quarterH, true, 0);
+    g_windowManager.moveWindow(console, cast(int) (g_fb.width - thirdW - 24), 24);
+    g_windowManager.resizeWindow(monitor, 0, -cast(int) (quarterH / 2));
+    g_windowManager.focusWindow(editor);
 
-    const uint windowWidth  = g_fb.width / 2;
-    const uint windowHeight = g_fb.height / 2;
-    const uint availableHeight = (g_fb.height > taskbarHeight) ? g_fb.height - taskbarHeight : g_fb.height;
-    const uint windowX = (g_fb.width  > windowWidth)  ? (g_fb.width  - windowWidth)  / 2 : 0;
-    const uint windowY = (availableHeight > windowHeight) ? (availableHeight - windowHeight) / 2 : 0;
+    auto docs = g_windowManager.createWindow("docs", halfW, halfH, true, 1);
+    g_windowManager.moveWindow(docs, 24, 24);
+    g_windowManager.toggleFloating(docs, true);
 
-    framebufferFillRect(windowX, windowY, windowWidth, windowHeight, windowColor);
-    framebufferDrawRect(windowX, windowY, windowWidth, windowHeight, borderColor, false);
+    auto tools = g_windowManager.createWindow("tools", thirdW, halfH, false, 2);
+    g_windowManager.maximizeWindow(tools, true);
 
-    enum uint titleHeight = 24;
-    framebufferFillRect(windowX, windowY, windowWidth, titleHeight, titleBarColor);
+    g_windowManager.registerShortcut("Alt+Tab", "cycle focus");
+    g_windowManager.registerShortcut("Super+Arrow", "snap to tile");
+    g_windowManager.registerShortcut("Ctrl+F", "toggle floating");
+    g_windowManager.registerShortcut("Ctrl+Win+Left/Right", "switch desktop");
 
-    framebufferSetTextColors(textColor, titleBarColor);
-    g_fbCursorX = (windowX + 8) / glyphWidth;
-    g_fbCursorY = (windowY + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0)) / glyphHeight;
-    framebufferWriteString("minimal_os desktop (placeholder)");
+    g_windowManager.switchDesktop(0);
+    g_windowManagerReady = true;
 }
 
-/// Continuously re-render the placeholder desktop.
+/// Render a window-managed desktop using the framebuffer APIs.
+@nogc nothrow
+void runSimpleDesktopOnce()
+{
+    ensureWindowManager();
+    renderWorkspace(&g_windowManager);
+}
+
+/// Continuously re-render the desktop while cooperating with the scheduler.
 @nogc nothrow
 void runSimpleDesktopLoop()
 {
@@ -52,23 +69,16 @@ void runSimpleDesktopLoop()
         return;
     }
 
-    // Render the scene once and then halt the CPU between interrupts so we
-    // keep the final frame visible without burning a full core. Interrupts are
-    // enabled by the time this loop runs, so HLT will wake when needed.
     runSimpleDesktopOnce();
 
     while (true)
     {
-        // Cooperatively yield so other processes can make progress while the
-        // desktop remains on-screen, then enter a low-power halt until the
-        // next interrupt.
         schedYield();
         asm @nogc nothrow { hlt; }
     }
 }
 
-/// Process entrypoint that keeps the placeholder desktop running alongside
-/// other tasks.
+/// Process entrypoint that keeps the desktop running alongside other tasks.
 extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
 {
     runSimpleDesktopLoop();

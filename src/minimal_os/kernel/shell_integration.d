@@ -9,26 +9,21 @@ import minimal_os.posix : PosixKernelShim, ProcessEntry, launchInteractiveShell,
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
+
+
 version (MinimalOsUserland)
 {
     version (MinimalOsUserlandLinked)
     {
-        private enum bool userlandAvailable = __traits(compiles, {
-            import minimal_os.userland : bootUserland;
-            bootUserland();
-        });
+        // Import the real userland entry point and alias it to avoid name
+        // collisions with the local wrapper function below.
+        import minimal_os.userland : userlandBootUserland = bootUserland;
+
+        private enum bool userlandAvailable = true;
 
         private @nogc nothrow void bootUserland()
         {
-            static if (userlandAvailable)
-            {
-                import minimal_os.userland : bootUserland;
-                bootUserland();
-            }
-            else
-            {
-                printLine("[warn] Userland bootstrap not linked; skipping.");
-            }
+            userlandBootUserland();
         }
     }
     else
@@ -47,9 +42,12 @@ else
 
     private @nogc nothrow void bootUserland()
     {
-        printLine("[warn] Userland bootstrap not linked; skipping.");
+        printLine("[warn] Userland support is disabled in this build.");
     }
 }
+
+
+
 
 nothrow:
 @nogc:

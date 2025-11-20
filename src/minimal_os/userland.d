@@ -302,6 +302,12 @@ private enum immutable(char)[][] NET_CAPABILITIES =
     [ "net.bind", "net.connect", "net.capability" ];
 private enum immutable(char)[][] SHELL_CAPABILITIES =
     [ "ipc.bootstrap", "posix.exec", "console.claim" ];
+private enum immutable(char)[][] XORG_CAPABILITIES =
+    [ "display.x11", "display.driver", "input.bridge", "namespace.publish" ];
+private enum immutable(char)[][] XINIT_CAPABILITIES =
+    [ "display.x11", "session.launch", "ipc.userland", "posix.exec" ];
+private enum immutable(char)[][] DM_CAPABILITIES =
+    [ "display.login", "session.control", "ipc.userland" ];
 private enum immutable(char)[][] I3_CAPABILITIES =
     [ "display.manage", "ipc.userland", "workspace.control", "console.claim" ];
 
@@ -314,6 +320,12 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
                   PKG_CAPABILITIES, STATE_READY, false),
       ServicePlan("netd", "/bin/netd", "Network capability broker",
                   NET_CAPABILITIES, STATE_WAITING, true),
+      ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
+                  XORG_CAPABILITIES, STATE_WAITING, false),
+      ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
+                  XINIT_CAPABILITIES, STATE_WAITING, false),
+      ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
+                  DM_CAPABILITIES, STATE_WAITING, false),
       ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
                   I3_CAPABILITIES, STATE_READY, false),
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",

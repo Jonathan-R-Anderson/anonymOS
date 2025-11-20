@@ -1,6 +1,7 @@
 module minimal_os.display.server;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
+import minimal_os.display.x11_stack;
 
 /// Enumeration for the type of display server protocol we want to expose.
 /// These are intentionally high level: the kernel still lacks the userspace
@@ -20,6 +21,7 @@ struct DisplayServerConfig
     bool compositorEnabled = true;
     bool inputEnabled = true;
     bool fontStackEnabled = true;
+    X11StackConfig x11Config;
 }
 
 /// Tracks runtime readiness for the display server and attached subsystems.
@@ -30,6 +32,7 @@ struct DisplayServerState
     bool compositorReady;
     bool inputPlumbed;
     bool fontStackReady;
+    X11StackState x11Stack;
 }
 
 /// Provide a human-readable label for the requested protocol. Useful for logs
@@ -54,6 +57,10 @@ DisplayServerState bootstrapDisplayServer(DisplayServerConfig config) @nogc noth
     DisplayServerState state;
     state.config = config;
     state.framebufferOnline = framebufferAvailable();
+    if (config.protocol == DisplayProtocol.x11)
+    {
+        state.x11Stack = bootstrapX11Stack(config.x11Config);
+    }
     state.compositorReady = config.compositorEnabled && state.framebufferOnline;
     return state;
 }
@@ -90,10 +97,19 @@ bool displayServerReady(ref DisplayServerState state) @nogc nothrow
         return false;
     }
 
-    if (!state.config.compositorEnabled)
+    bool protocolReady = state.config.protocol == DisplayProtocol.wayland ?
+                         state.compositorReady :
+                         x11StackReady(state.x11Stack);
+
+    if (!state.config.compositorEnabled && state.config.protocol == DisplayProtocol.wayland)
     {
-        return state.inputPlumbed && state.fontStackReady;
+        protocolReady = true;
     }
 
-    return state.compositorReady && state.inputPlumbed && state.fontStackReady;
+    if (!protocolReady)
+    {
+        return false;
+    }
+
+    return state.inputPlumbed && state.fontStackReady;
 }

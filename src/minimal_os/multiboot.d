@@ -158,6 +158,23 @@ struct MultibootContext
     }
 }
 
+/// Description of a framebuffer parsed from Multiboot data.
+struct MultibootFramebufferInfo
+{
+    void* base;
+    uint  width;
+    uint  height;
+    uint  pitch;
+    uint  bpp;
+    bool  isBGR;
+
+    @nogc @safe pure nothrow
+    bool valid() const
+    {
+        return base !is null && width > 0 && height > 0 && bpp > 0;
+    }
+}
+
 /// Range helper for memory map iteration.
 struct MultibootMmapRange
 {
@@ -204,25 +221,51 @@ struct MultibootMmapRange
 }
 
 
-void initVideoFromMultiboot(const MultibootInfo* mbi) @nogc nothrow @system {
-    void* fbBase   = cast(void*) mbi.framebufferAddr;
-    uint  fbWidth  = mbi.framebufferWidth;
-    uint  fbHeight = mbi.framebufferHeight;
-    uint  fbPitch  = mbi.framebufferPitch;
-    uint  fbBpp    = mbi.framebufferBpp;
+/// Extract framebuffer configuration from a Multiboot info block.
+MultibootFramebufferInfo framebufferInfoFromMultiboot(const MultibootInfo* mbi) @nogc nothrow @system
+{
+    MultibootFramebufferInfo fbInfo;
+    if (mbi is null)
+    {
+        return fbInfo;
+    }
+
+    fbInfo.base   = cast(void*) mbi.framebufferAddr;
+    fbInfo.width  = mbi.framebufferWidth;
+    fbInfo.height = mbi.framebufferHeight;
+    fbInfo.pitch  = mbi.framebufferPitch;
+    fbInfo.bpp    = mbi.framebufferBpp;
 
     // Color layout is only meaningful for RGB framebuffers (type 1 in Multiboot
     // spec). The colorInfo array is laid out as
     // [red_position, red_size, green_position, green_size, blue_position, blue_size].
     enum ubyte framebufferTypeRgb = 1;
-    bool fbIsBGR = false;
     if (mbi.framebufferType == framebufferTypeRgb)
     {
         const ubyte redPosition  = mbi.colorInfo[0];
         const ubyte bluePosition = mbi.colorInfo[4];
-        fbIsBGR = (redPosition == 16 && bluePosition == 0);
+        fbInfo.isBGR = (redPosition == 16 && bluePosition == 0);
     }
 
-    initFramebuffer(fbBase, fbWidth, fbHeight, fbPitch, fbBpp, fbIsBGR);
-    framebufferBootBanner("minimal_os framebuffer online");
+    return fbInfo;
+}
+
+/// Initialize the framebuffer using Multiboot info and display a banner.
+bool initVideoFromMultiboot(const MultibootInfo* mbi, const(char)[] bannerMessage = "minimal_os framebuffer online") @nogc nothrow @system
+{
+    const fbInfo = framebufferInfoFromMultiboot(mbi);
+    if (!fbInfo.valid())
+    {
+        return false;
+    }
+
+    initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR);
+
+    if (!framebufferAvailable())
+    {
+        return false;
+    }
+
+    framebufferBootBanner(bannerMessage);
+    return true;
 }

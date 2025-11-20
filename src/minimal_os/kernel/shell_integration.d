@@ -9,7 +9,20 @@ import minimal_os.posix : PosixKernelShim, ProcessEntry, launchInteractiveShell,
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
-import minimal_os.userland : bootUserland;
+static if (__traits(compiles, { import minimal_os.userland; }))
+{
+    import minimal_os.userland : bootUserland;
+    private enum bool userlandAvailable = true;
+}
+else
+{
+    private enum bool userlandAvailable = false;
+
+    private void bootUserland()
+    {
+        printLine("[warn] Userland bootstrap not linked; skipping.");
+    }
+}
 
 nothrow:
 @nogc:
@@ -101,6 +114,10 @@ extern(C) @nogc nothrow void runCompilerBuilder()
 
     printLine("");
     bootUserland();
+    if (!userlandAvailable)
+    {
+        printLine("[warn] Userland support is disabled in this build.");
+    }
     printLine("");
     printLine("[done] D language cross compiler ready.");
     if (shellState.shellActivated)

@@ -177,6 +177,9 @@ else
   DFLAGS="-O3 -release"
 fi
 
+# Enable optional userland bootstrap support in builds that include the module.
+DFLAGS+=" -version=MinimalOsUserland"
+
 # D objects (kernel + dependencies)
 KERNEL_SOURCES=(
   "$KERNEL_D"

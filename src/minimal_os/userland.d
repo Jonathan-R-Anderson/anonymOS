@@ -338,7 +338,7 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
 
-private void bootUserlandImpl()
+extern(C) @nogc nothrow void minimal_os_bootUserland()
 {
     printStageHeader("Provision userland services");
 
@@ -373,11 +373,6 @@ private void bootUserlandImpl()
     }
 
     logUserlandSnapshot(runtime, systemProperties);
-}
-
-extern(C) @nogc nothrow void minimal_os_bootUserland()
-{
-    bootUserlandImpl();
 }
 
 extern(C) alias bootUserland = minimal_os_bootUserland;

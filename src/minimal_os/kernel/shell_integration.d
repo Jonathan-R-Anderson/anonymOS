@@ -9,7 +9,7 @@ import minimal_os.posix : PosixKernelShim, ProcessEntry, launchInteractiveShell,
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
-static if (__traits(compiles, { import minimal_os.userland; }))
+version (MinimalOsUserland)
 {
     import minimal_os.userland : bootUserland;
     private enum bool userlandAvailable = true;

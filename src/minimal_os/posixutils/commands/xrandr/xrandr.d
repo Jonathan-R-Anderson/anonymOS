@@ -81,42 +81,41 @@ private Options parseOptions(string[] args)
     Options opts;
     foreach (arg; args[1 .. $])
     {
-        switch (arg)
+        if (arg == "--help" || arg == "-h")
         {
-        case "--help", "-h":
             opts.showHelp = true;
-            break;
-        case "--version", "-V":
+        }
+        else if (arg == "--version" || arg == "-V")
+        {
             opts.showVersion = true;
-            break;
-        case "--verbose":
-        case "--prop":
-        case "--properties":
+        }
+        else if (arg == "--verbose" || arg == "--prop" || arg == "--properties")
+        {
             opts.verbose = true;
-            break;
-        case "--listmonitors":
+        }
+        else if (arg == "--listmonitors")
+        {
             opts.listMonitors = true;
-            break;
-        case "--listactivemonitors":
+        }
+        else if (arg == "--listactivemonitors")
+        {
             opts.listActiveMonitors = true;
-            break;
-        case "--listproviders":
+        }
+        else if (arg == "--listproviders")
+        {
             opts.listProviders = true;
-            break;
-        default:
-            if (arg.length && arg[0] == '-')
+        }
+        else if (arg.length && arg[0] == '-')
+        {
+            if (!isQueryOnlyFlag(arg))
             {
-                if (!isQueryOnlyFlag(arg))
-                {
-                    opts.configRequested = true;
-                }
-            }
-            else
-            {
-                // Positional arguments imply a configuration request.
                 opts.configRequested = true;
             }
-            break;
+        }
+        else
+        {
+            // Positional arguments imply a configuration request.
+            opts.configRequested = true;
         }
     }
     return opts;
@@ -180,9 +179,9 @@ private void printQuery(bool verbose)
             continue;
         }
 
-        auto mode = outp.currentMode();
+        auto activeMode = outp.currentMode();
         string primaryMark = outp.primary ? " primary" : "";
-        string modeInfo = mode is null ? "0x0" : format("%dx%d", mode.width, mode.height);
+        string modeInfo = activeMode is null ? "0x0" : format("%dx%d", activeMode.width, activeMode.height);
         writefln("%s connected%s %s+%s+%s %s",
             outp.name,
             primaryMark,

@@ -44,6 +44,7 @@ public struct ShortcutBinding
 
 struct WindowManager
 {
+@nogc:
 public:
     void reset()
     {

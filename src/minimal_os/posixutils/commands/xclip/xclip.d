@@ -26,7 +26,7 @@ private void printUsage(GetoptResult res)
     writeln("Usage: xclip [-i|-o] [-selection {primary|secondary|clipboard}]");
     writeln("Copies stdin to a selection or prints a stored selection to stdout.");
     writeln();
-    defaultGetoptPrinter("Options:", res.options, stderr);
+    defaultGetoptPrinter("Options:", res.options);
 }
 
 private string normalizeSelection(string sel)
@@ -55,12 +55,12 @@ private int writeSelection(const Options opts)
     ubyte[4096] chunk;
     while (true)
     {
-        auto readCount = stdin.rawRead(chunk[]);
-        if (readCount == 0)
+        auto readData = stdin.rawRead(chunk[]);
+        if (readData.length == 0)
         {
             break;
         }
-        buf.put(chunk[0 .. readCount]);
+        buf.put(readData);
     }
 
     auto path = clipboardPath(opts.selection);

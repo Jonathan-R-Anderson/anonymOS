@@ -9,14 +9,14 @@ nothrow:
 private enum size_t MAX_USER_SERVICES = 12;
 private enum size_t MAX_USER_PROCESSES = 32;
 private enum size_t MAX_CAPABILITIES_PER_SERVICE = 8;
-private enum size_t INVALID_INDEX = size_t.max;
+public enum size_t INVALID_INDEX = size_t.max;
 private enum size_t INITIAL_PID = 2000;
 
 private enum immutable(char)[] STATE_READY = "ready";
 private enum immutable(char)[] STATE_RUNNING = "running";
 private enum immutable(char)[] STATE_WAITING = "waiting";
 
-private struct SystemProperties
+public struct SystemProperties
 {
     bool multithreadingEnabled = true;
     bool multiprocessingEnabled = true;
@@ -275,7 +275,7 @@ private:
     size_t _nextPid;
 }
 
-private immutable(char)[] normaliseState(immutable(char)[] state)
+public immutable(char)[] normaliseState(immutable(char)[] state)
 {
     if (state is null || state.length == 0)
     {
@@ -318,7 +318,7 @@ private enum immutable(char)[][] DM_CAPABILITIES =
 private enum immutable(char)[][] I3_CAPABILITIES =
     [ "display.manage", "ipc.userland", "workspace.control", "console.claim" ];
 
-private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
+public immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
     [ ServicePlan("init", "/sbin/init", "Capability supervisor",
                   INIT_CAPABILITIES, STATE_RUNNING, false),
       ServicePlan("vfsd", "/bin/vfsd", "Immutable namespace + VMO store",
@@ -338,7 +338,8 @@ private immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
 
-extern(C) @nogc nothrow void minimal_os_bootUserland()
+
+public @nogc nothrow void bootUserland_impl()
 {
     printStageHeader("Provision userland services");
 
@@ -375,9 +376,7 @@ extern(C) @nogc nothrow void minimal_os_bootUserland()
     logUserlandSnapshot(runtime, systemProperties);
 }
 
-extern(C) alias bootUserland = minimal_os_bootUserland;
-
-private void logServiceProvision(const scope ServicePlan plan,
+public void logServiceProvision(const scope ServicePlan plan,
                                  immutable(char)[] desiredState,
                                  bool registered,
                                  bool launched)
@@ -405,7 +404,7 @@ private void logServiceProvision(const scope ServicePlan plan,
     printLine(desiredState);
 }
 
-private bool processReady(const scope ref UserlandRuntime runtime, immutable(char)[] name)
+public bool processReady(const scope ref UserlandRuntime runtime, immutable(char)[] name)
 {
     foreach (process; runtime.processes())
     {
@@ -417,7 +416,7 @@ private bool processReady(const scope ref UserlandRuntime runtime, immutable(cha
     return false;
 }
 
-private void logUserlandSnapshot(const scope ref UserlandRuntime runtime,
+public void logUserlandSnapshot(const scope ref UserlandRuntime runtime,
                                  const scope SystemProperties properties)
 {
     printStatusValue("[userland] Registered services : ", cast(long)runtime.serviceCount);

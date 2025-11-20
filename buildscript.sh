@@ -54,6 +54,10 @@ DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/dmd}"
 # Optional toy linker wrapper (used if present), else we fall back to ld.lld
 TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
+# Toggle userland bootstrap support. Set ENABLE_USERLAND=0 to build without the
+# optional userland module (the kernel will fall back to a stubbed bootstrap).
+: "${ENABLE_USERLAND:=1}"
+
 # Debug/Opt flags (DEBUG=1 default). Set DEBUG=0 for release-ish build.
 : "${DEBUG:=1}"
 
@@ -177,10 +181,12 @@ else
   DFLAGS="-O3 -release"
 fi
 
-# Enable optional userland bootstrap support in builds that include the module.
+# Enable optional userland bootstrap support only when requested.
 # Using `-d-version` avoids colliding with the compiler's `--version` flag
 # (which prints the compiler version and rejects values).
-DFLAGS+=" -d-version=MinimalOsUserland"
+if [ "$ENABLE_USERLAND" != "0" ]; then
+  DFLAGS+=" -d-version=MinimalOsUserland"
+fi
 
 # D objects (kernel + dependencies)
 KERNEL_SOURCES=(
@@ -189,7 +195,6 @@ KERNEL_SOURCES=(
   "src/minimal_os/kernel/posixbundle.d"
   "src/minimal_os/kernel/shell_integration.d"
   "src/minimal_os/kernel/exceptions.d"
-  "src/minimal_os/userland.d"
   "src/minimal_os/console.d"
   "src/minimal_os/serial.d"
   "src/minimal_os/hardware.d"
@@ -212,6 +217,12 @@ KERNEL_SOURCES=(
   "src/minimal_os/toolchain.d"
   "src/sh_metadata.d"
 )
+
+if [ "$ENABLE_USERLAND" != "0" ]; then
+  KERNEL_SOURCES+=("src/minimal_os/userland.d")
+else
+  echo "[!] Userland bootstrap disabled (ENABLE_USERLAND=0); using stubbed kernel bootstrap." >&2
+fi
 
 KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do

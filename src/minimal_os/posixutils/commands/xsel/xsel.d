@@ -5,7 +5,7 @@ import std.exception : enforce;
 import std.file : exists, read, remove, write;
 import std.getopt : defaultGetoptPrinter, getopt, GetoptResult;
 import std.path : buildPath;
-import std.stdio : byChunk, stderr, stdin, stdout, writeln;
+import std.stdio : stderr, stdin, stdout, writeln;
 import std.string : toLower;
 
 private enum string VERSION = "xsel 1.0 (minimal replacement)";

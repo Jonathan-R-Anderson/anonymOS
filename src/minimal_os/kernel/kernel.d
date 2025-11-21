@@ -10,11 +10,11 @@ import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 version (MinimalOsUserlandLinked)
 {
-    import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry as stubCompilerBuilderProcessEntry;
+    import minimal_os.kernel.compiler_builder_stub : stubCompilerBuilderProcessEntry = compilerBuilderProcessEntry;
 
     static if (__traits(compiles, { import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry; }))
     {
-        import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry as realCompilerBuilderProcessEntry,
+        import minimal_os.kernel.shell_integration : realCompilerBuilderProcessEntry = compilerBuilderProcessEntry,
             posixInit, initializeInterrupts, registerProcessExecutable, spawnRegisteredProcess, schedYield;
 
         // Prefer the fully featured builder entry when the userland module is

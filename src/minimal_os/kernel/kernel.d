@@ -10,8 +10,17 @@ import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 version (MinimalOsUserlandLinked)
 {
-    import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
-        registerProcessExecutable, spawnRegisteredProcess, schedYield;
+    static if (__traits(compiles, { import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry; }))
+    {
+        import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
+            registerProcessExecutable, spawnRegisteredProcess, schedYield;
+    }
+    else
+    {
+        import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry;
+        import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+            spawnRegisteredProcess, schedYield;
+    }
 }
 else
 {

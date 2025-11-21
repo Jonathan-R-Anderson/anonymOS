@@ -8,3 +8,6 @@ __pycache__/
 node_modules/
 !third_party/posix/
 !third_party/posix/**
+cfwallpaper.png
+cfwallpaper.gif
+src/minimal_os/display/generated_wallpaper.d

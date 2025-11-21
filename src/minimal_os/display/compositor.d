@@ -2,6 +2,7 @@ module minimal_os.display.compositor;
 
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
+import minimal_os.display.wallpaper : drawWallpaperToBuffer;
 
 nothrow:
 @nogc:
@@ -10,7 +11,6 @@ private enum uint maxCompositeWidth  = 1920;
 private enum uint maxCompositeHeight = 1080;
 private enum size_t maxCompositePixels = cast(size_t) maxCompositeWidth * maxCompositeHeight;
 
-private enum uint backgroundColor = 0xFF202020;
 private enum uint taskbarColor    = 0xFF303030;
 private enum uint windowColor     = 0xFF2C2C2C;
 private enum uint titleBarColor   = 0xFF383838;
@@ -350,7 +350,7 @@ void renderWorkspaceComposited(const WindowManager* manager)
         return;
     }
 
-    g_compositor.clear(backgroundColor);
+    drawWallpaperToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
 
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);

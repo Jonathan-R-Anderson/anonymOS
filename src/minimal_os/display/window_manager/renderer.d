@@ -2,11 +2,11 @@ module minimal_os.display.window_manager.renderer;
 
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
+import minimal_os.display.wallpaper : drawWallpaperToFramebuffer;
 
 nothrow:
 @nogc:
 
-private enum uint backgroundColor = 0xFF202020;
 private enum uint taskbarColor    = 0xFF303030;
 private enum uint windowColor     = 0xFF2C2C2C;
 private enum uint titleBarColor   = 0xFF383838;
@@ -26,7 +26,7 @@ void renderWorkspace(const WindowManager* manager)
         return;
     }
 
-    framebufferFill(backgroundColor);
+    drawWallpaperToFramebuffer();
 
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);

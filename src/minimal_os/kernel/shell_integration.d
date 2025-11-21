@@ -175,7 +175,7 @@ mixin PosixKernelShim;
 
 
 pragma(mangle, "compilerBuilderProcessEntry")
-extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
 {
     // Inlined runCompilerBuilder (avoiding extern(C) linkage issues in betterC)
     resetBuilderState();
@@ -293,6 +293,10 @@ extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/,
         }
     }
 }
+
+// Ensure the compiler builder entry point is always emitted, even when link-time
+// dead-stripping is aggressive.
+pragma(LDC_force_link, compilerBuilderProcessEntry);
 
 
 private void integrateShell()

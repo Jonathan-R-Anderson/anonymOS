@@ -211,6 +211,20 @@ KERNEL_SOURCES=(
   "src/minimal_os/userland.d"
 )
 
+# Ensure shell integration is always present (kmain registers compiler-builder).
+ensure_kernel_source() {
+  local needle="$1"
+  for src in "${KERNEL_SOURCES[@]}"; do
+    if [[ "$src" == "$needle" ]]; then
+      return
+    fi
+  done
+  echo "[+] Adding required kernel source: $needle"
+  KERNEL_SOURCES+=("$needle")
+}
+
+ensure_kernel_source "src/minimal_os/kernel/shell_integration.d"
+
 KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"

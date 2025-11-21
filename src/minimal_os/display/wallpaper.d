@@ -40,7 +40,7 @@ private immutable WallpaperData g_wallpaper = loadWallpaper();
 private __gshared size_t g_wallpaperFrameIndex;
 private __gshared uint g_wallpaperFrameTick;
 
-WallpaperData wallpaperImage()
+immutable(WallpaperData) wallpaperImage()
 {
     return g_wallpaper;
 }

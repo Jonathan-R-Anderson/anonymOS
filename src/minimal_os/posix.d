@@ -1364,33 +1364,33 @@ mixin template PosixKernelShim()
     {
         ConsoleDetectionResult result;
 
-        enum reasonAssumeConsole = "console forced via SH_ASSUME_CONSOLE";
+        enum reasonAssumeConsole         = "console forced via SH_ASSUME_CONSOLE";
         enum reasonAssumeConsoleDisabled = "console disabled via SH_ASSUME_CONSOLE";
-        enum reasonDisableConsole = "console disabled via SH_DISABLE_CONSOLE";
-        enum reasonNoStdStreams = "console unavailable: no stdin/stdout/stderr descriptors";
-        enum reasonUnsupportedProbes = "console unavailable: host console probes disabled for this build";
+        enum reasonDisableConsole        = "console disabled via SH_DISABLE_CONSOLE";
+        enum reasonNoStdStreams          = "console unavailable: no stdin/stdout/stderr descriptors";
+        enum reasonUnsupportedProbes     = "console unavailable: host console probes disabled for this build";
 
         const EnvBool assumeConsole = parseEnvBoolean(readEnvironmentVariable("SH_ASSUME_CONSOLE"));
         if (assumeConsole == EnvBool.truthy)
         {
             result.available = true;
-            result.reason = reasonAssumeConsole;
+            result.reason    = reasonAssumeConsole;
             return result;
         }
         else if (assumeConsole == EnvBool.falsy)
         {
-            result.available = false;
+            result.available               = false;
             result.disabledByConfiguration = true;
-            result.reason = reasonAssumeConsoleDisabled;
+            result.reason                  = reasonAssumeConsoleDisabled;
             return result;
         }
 
         const EnvBool disableConsole = parseEnvBoolean(readEnvironmentVariable("SH_DISABLE_CONSOLE"));
         if (disableConsole == EnvBool.truthy)
         {
-            result.available = false;
+            result.available               = false;
             result.disabledByConfiguration = true;
-            result.reason = reasonDisableConsole;
+            result.reason                  = reasonDisableConsole;
             return result;
         }
 
@@ -1401,47 +1401,43 @@ mixin template PosixKernelShim()
         {
             hostProbeSupported = true;
 
-            stat_t statBuffer;
+            minimal_os.posix.stat_t statBuffer;
+
             foreach (fd; [STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO])
             {
-                errno = 0;
-                if (isatty(fd) != 0)
+                minimal_os.posix.errno = 0;
+
+                if (minimal_os.posix.isatty(fd) != 0)
                 {
                     result.available = true;
                     break;
                 }
 
-                // Track whether at least one stdio descriptor is usable even
-                // when it is not backed by a TTY.  Headless harnesses pipe the
-                // shell through regular files or sockets, which still works for
-                // scripted execution as long as the descriptor itself is open.
-                if (errno != EBADF && fstat(fd, &statBuffer) == 0)
+                // Track whether at least one std descriptor is usable even
+                // when it is not backed by a TTY.
+                if (minimal_os.posix.errno != minimal_os.posix.EBADF &&
+                    minimal_os.posix.fstat(fd, &statBuffer) == 0)
                 {
                     hasValidStdStreams = true;
                 }
             }
 
-            // Some CI environments and build harnesses detach stdio from the
-            // controlling TTY, which makes the basic isatty() checks lie even
-            // though /dev/tty is still reachable.  Fall back to probing the
-            // device node directly so the interactive shell stays enabled when
-            // a console actually exists.
+            // Try /dev/tty if none of the std streams look like a TTY.
             if (!result.available)
             {
                 enum ttyPath = "/dev/tty\0";
-                const int ttyFd = open(ttyPath.ptr, O_RDONLY | O_NOCTTY);
+                const int ttyFd = minimal_os.posix.open(
+                    ttyPath.ptr,
+                    minimal_os.posix.O_RDONLY | minimal_os.posix.O_NOCTTY);
+
                 if (ttyFd >= 0)
                 {
-                    scope(exit) close(ttyFd);
-                    result.available = (isatty(ttyFd) != 0);
+                    scope (exit) minimal_os.posix.close(ttyFd);
+                    result.available = (minimal_os.posix.isatty(ttyFd) != 0);
                 }
             }
 
-            // If none of the probes managed to locate an actual TTY, allow the
-            // shell to run in "headless" mode whenever stdio is still routed
-            // through a valid descriptor.  This keeps the build-time shell
-            // available for scripted use even inside fully detached
-            // environments.
+            // Allow "headless" console if stdio is still valid.
             if (!result.available && hasValidStdStreams)
             {
                 result.available = true;
@@ -1451,8 +1447,8 @@ mixin template PosixKernelShim()
         {
             const bool kernelConsole = probeKernelConsoleReady();
             const bool serialConsole = probeSerialConsoleReady();
-            hostProbeSupported = kernelConsole || serialConsole;
-            hasValidStdStreams = hostProbeSupported;
+            hostProbeSupported       = kernelConsole || serialConsole;
+            hasValidStdStreams       = hostProbeSupported;
 
             if (hostProbeSupported)
             {
@@ -1851,16 +1847,21 @@ mixin template PosixKernelShim()
     // ---- FD/IO syscalls (stubs) ----
     @nogc nothrow int     sys_open (const(char)* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
     @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
-    @nogc nothrow ssize_t sys_read (int fd, void* buffer, size_t length)
+    @nogc nothrow ssize_t sys_read(int fd, void* buffer, size_t length)
     {
         int hostFd = -1;
         const bool resolved = resolveHostFd(fd, hostFd);
         debugExpectActual("sys_read fd resolved", 1, debugBool(resolved));
         if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
+
         version (Posix)
         {
-            auto result = read(hostFd, buffer, length);
-            if (result < 0) { _errno = errno; return -1; }
+            auto result = minimal_os.posix.read(hostFd, buffer, length);
+            if (result < 0)
+            {
+                _errno = minimal_os.posix.errno;
+                return -1;
+            }
             debugExpectActual("sys_read bytes", cast(long)length, cast(long)result);
             return cast(ssize_t)result;
         }
@@ -1869,16 +1870,22 @@ mixin template PosixKernelShim()
             return cast(ssize_t)setErrno(Errno.ENOSYS);
         }
     }
+
     @nogc nothrow ssize_t sys_write(int fd, const void* buffer, size_t length)
     {
         int hostFd = -1;
         const bool resolved = resolveHostFd(fd, hostFd);
         debugExpectActual("sys_write fd resolved", 1, debugBool(resolved));
         if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
+
         version (Posix)
         {
-            auto result = write(hostFd, buffer, length);
-            if (result < 0) { _errno = errno; return -1; }
+            auto result = minimal_os.posix.write(hostFd, buffer, length);
+            if (result < 0)
+            {
+                _errno = minimal_os.posix.errno;
+                return -1;
+            }
             debugExpectActual("sys_write bytes", cast(long)length, cast(long)result);
             return cast(ssize_t)result;
         }
@@ -1906,39 +1913,36 @@ mixin template PosixKernelShim()
     }
 
     // Bare-metal waitpid that actually runs the process
-    extern(C) @nogc nothrow pid_t bareMetalWaitPid(pid_t pid, int* status, int options)
+    extern(C) @nogc nothrow pid_t bareMetalWaitPid(pid_t pid, int* status, int /*options*/)
     {
-        print("[posix-debug] bareMetalWaitPid: entered, pid=");
-        printUnsigned(cast(size_t)pid);
-        printLine("");
+        minimal_os.posix.print("[posix-debug] bareMetalWaitPid: entered, pid=");
+        minimal_os.posix.printUnsigned(cast(size_t)pid);
+        minimal_os.posix.printLine("");
 
         auto proc = findByPid(pid);
         if (proc is null)
         {
-            printLine("[posix-debug] bareMetalWaitPid: process not found");
+            minimal_os.posix.printLine("[posix-debug] bareMetalWaitPid: process not found");
             return -1;
         }
 
-        print("[posix-debug] bareMetalWaitPid: calling entrypoint for pid=");
-        printUnsigned(cast(size_t)pid);
-        printLine("");
+        minimal_os.posix.print("[posix-debug] bareMetalWaitPid: calling entrypoint for pid=");
+        minimal_os.posix.printUnsigned(cast(size_t)pid);
+        minimal_os.posix.printLine("");
 
         if (proc.pendingExec && proc.entry !is null)
         {
-            // Set current process for the duration of the call
             auto savedCurrent = g_current;
-            g_current = proc;
+            g_current         = proc;
 
-            // Clear pending flag and call the entry point
-            proc.pendingExec = false;
+            proc.pendingExec  = false;
             proc.entry(proc.pendingArgv, proc.pendingEnvp);
 
-            // Restore current process
             g_current = savedCurrent;
 
-            print("[posix-debug] bareMetalWaitPid: process returned pid=");
-            printUnsigned(cast(size_t)pid);
-            printLine("");
+            minimal_os.posix.print("[posix-debug] bareMetalWaitPid: process returned pid=");
+            minimal_os.posix.printUnsigned(cast(size_t)pid);
+            minimal_os.posix.printLine("");
         }
 
         if (status) *status = 0;
@@ -2028,53 +2032,68 @@ mixin template PosixKernelShim()
     }
     else
     {
-        public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)* path, const(char*)* argv, const(char*)* envp)
+        public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(
+            const(char)* path,
+            const(char*)* argv,
+            const(char*)* envp)
         {
-            printLine("[posix-debug] spawnRegisteredProcess: before entry call");
+            minimal_os.posix.printLine("[posix-debug] spawnRegisteredProcess: before entry call");
+
             auto slot = findExecutableSlot(path);
             const bool slotFound = (slot !is null);
             debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slotFound));
+
             static if (ENABLE_POSIX_DEBUG)
             {
                 debugPrefix();
-                print("spawnRegisteredProcess slot found: expected=1, actual=");
-                printUnsigned(slotFound ? 1 : 0);
-                printLine("");
+                minimal_os.posix.print("spawnRegisteredProcess slot found: expected=1, actual=");
+                minimal_os.posix.printUnsigned(slotFound ? 1 : 0);
+                minimal_os.posix.printLine("");
             }
-            if(slot is null) return setErrno(Errno.ENOENT);
+
+            if (slot is null) return setErrno(Errno.ENOENT);
 
             lock(&g_plock);
-            auto proc = allocProc();
+            auto proc        = allocProc();
             const bool allocOk = (proc !is null);
             debugExpectActual("spawnRegisteredProcess alloc success", 1, debugBool(allocOk));
+
             static if (ENABLE_POSIX_DEBUG)
             {
                 debugPrefix();
-                print("spawnRegisteredProcess alloc success: expected=1, actual=");
-                printUnsigned(allocOk ? 1 : 0);
-                printLine("");
+                minimal_os.posix.print("spawnRegisteredProcess alloc success: expected=1, actual=");
+                minimal_os.posix.printUnsigned(allocOk ? 1 : 0);
+                minimal_os.posix.printLine("");
             }
-            if(proc is null){ unlock(&g_plock); return setErrno(Errno.EAGAIN); }
 
-            proc.ppid   = (g_current ? g_current.pid : 0);
+            if (proc is null)
+            {
+                unlock(&g_plock);
+                return setErrno(Errno.EAGAIN);
+            }
+
+            proc.ppid        = (g_current ? g_current.pid : 0);
             assignProcessState(*proc, ProcState.READY);
-            proc.entry  = slot.entry;
+            proc.entry       = slot.entry;
             proc.pendingArgv = argv;
             proc.pendingEnvp = envp;
             proc.pendingExec = true;
             setNameFromCString(proc.name, path);
             updateProcessObjectLabel(*proc, path);
             unlock(&g_plock);
+
             const bool pidAssigned = (proc.pid > 0);
             debugExpectActual("spawnRegisteredProcess pid assigned", 1, debugBool(pidAssigned));
+
             static if (ENABLE_POSIX_DEBUG)
             {
                 debugPrefix();
-                print("spawnRegisteredProcess pid assigned: expected=1, actual=");
-                printUnsigned(pidAssigned ? 1 : 0);
-                printLine("");
+                minimal_os.posix.print("spawnRegisteredProcess pid assigned: expected=1, actual=");
+                minimal_os.posix.printUnsigned(pidAssigned ? 1 : 0);
+                minimal_os.posix.printLine("");
             }
-            printLine("[posix-debug] spawnRegisteredProcess: after entry call");
+
+            minimal_os.posix.printLine("[posix-debug] spawnRegisteredProcess: after entry call");
             return proc.pid;
         }
     }
@@ -2163,7 +2182,9 @@ mixin template PosixKernelShim()
         {
             if (g_consoleAvailable)
             {
-                const int registration = registerProcessExecutable("/bin/sh", cast(ProcessEntry)&shellExecEntry);
+                const int registration =
+                    registerProcessExecutable("/bin/sh",
+                        cast(ProcessEntry)&minimal_os.posix.shellExecEntry);
                 g_shellRegistered = (registration == 0);
             }
         }

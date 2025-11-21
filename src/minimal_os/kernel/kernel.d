@@ -3,36 +3,31 @@ module minimal_os.kernel.kernel;
 public import minimal_os.kernel.memory;
 
 import minimal_os.display.framebuffer;
-import minimal_os.console : clearScreen, printLine;
+import minimal_os.console : clearScreen, printLine, printStageHeader;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 version (MinimalOsUserlandLinked)
 {
-    // Prefer the fully featured builder entry when the userland module is
-    // linked, but keep the stub around as a fallback so the kernel still links
-    // in minimal build configurations. Default to the stub so the linker always
-    // has a symbol to resolve, then override with the real entry if it is
-    // available (and linked) in the current build.
-    import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntryStub = compilerBuilderProcessEntry;
-
-    static if (__traits(compiles, { import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry; }))
+    // Declare the compiler-builder entry point as a weak symbol so the kernel
+    // still links even if the full shell integration module is omitted from
+    // the build. A strong definition from shell_integration.d will override
+    // this lightweight fallback whenever it is present.
+    pragma(mangle, "compilerBuilderProcessEntry")
+    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
     {
-        import minimal_os.kernel.shell_integration : realCompilerBuilderProcessEntry = compilerBuilderProcessEntry,
-            posixInit, initializeInterrupts, registerProcessExecutable, spawnRegisteredProcess, schedYield;
-
-        alias SelectedCompilerBuilderProcessEntry = realCompilerBuilderProcessEntry;
-    }
-    else
-    {
-        import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
-            spawnRegisteredProcess, schedYield;
-
-        alias SelectedCompilerBuilderProcessEntry = compilerBuilderProcessEntryStub;
+        printLine("[kernel] compiler builder unavailable; inline stub entry used");
+        printStageHeader("Provision userland services (inline stub)");
     }
 
-    alias compilerBuilderProcessEntry = SelectedCompilerBuilderProcessEntry;
+    static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
+    {
+        pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
+    }
+
+    import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+        spawnRegisteredProcess, schedYield;
 }
 else
 {

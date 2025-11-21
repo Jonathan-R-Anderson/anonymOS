@@ -186,6 +186,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/kernel/memory.d"
   "src/minimal_os/kernel/posixbundle.d"
   "src/minimal_os/kernel/shell_integration.d"
+  "src/minimal_os/kernel/compiler_builder_stub.d"
   "src/minimal_os/kernel/exceptions.d"
   "src/minimal_os/console.d"
   "src/minimal_os/serial.d"

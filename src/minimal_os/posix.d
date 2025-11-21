@@ -119,6 +119,54 @@ version (Posix)
     private import core.sys.posix.sys.types : ssize_t;
     private import core.stdc.errno : errno, EBADF, EINTR;
     private import core.sys.posix.sys.wait : posixWaitPid = waitpid;
+
+    // Some C library shims used by the minimal toolchain omit certain
+    // declarations.  Add conservative fallbacks so the Posix build still
+    // compiles even when the standard headers are pared down.
+    static if (!__traits(compiles, { stat_t _; }))
+    {
+        struct stat_t { long _placeholder; }
+        extern(C) int fstat(int fd, stat_t* buf);
+    }
+
+    static if (!__traits(compiles, { auto _ = errno; }))
+    {
+        extern(C) __gshared int errno;
+    }
+
+    static if (!__traits(compiles, { return isatty(0); }))
+    {
+        extern(C) int isatty(int fd);
+    }
+
+    static if (!__traits(compiles, { return open(null, 0, 0); }))
+    {
+        extern(C) int open(const char* path, int flags, int mode = 0);
+    }
+
+    static if (!__traits(compiles, { return close(0); }))
+    {
+        extern(C) int close(int fd);
+    }
+
+    static if (!__traits(compiles, { return read(0, null, 0); }))
+    {
+        extern(C) ssize_t read(int fd, void* buffer, size_t length);
+    }
+
+    static if (!__traits(compiles, { return write(0, null, 0); }))
+    {
+        extern(C) ssize_t write(int fd, const void* buffer, size_t length);
+    }
+
+    static if (!__traits(compiles, { auto _ = EBADF; }))
+    {
+        enum EBADF = 9;
+    }
+    static if (!__traits(compiles, { auto _ = EINTR; }))
+    {
+        enum EINTR = 4;
+    }
     private enum int F_OK = 0;
     private enum int X_OK = 1;
     extern(C) __gshared char** environ;
@@ -1847,6 +1895,10 @@ mixin template PosixKernelShim()
     @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
     version (Posix)
     {
+        public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)*, const(char*)*, const(char*)*)
+        {
+            return setErrno(Errno.ENOSYS);
+        }
     }
     else
     {

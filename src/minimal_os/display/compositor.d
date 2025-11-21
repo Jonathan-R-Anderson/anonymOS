@@ -1,8 +1,10 @@
 module minimal_os.display.compositor;
 
 import minimal_os.display.framebuffer;
+import minimal_os.display.canvas;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToBuffer;
+import core.stdc.stdlib : malloc, free;
 
 nothrow:
 @nogc:
@@ -17,6 +19,7 @@ private enum uint titleBarColor   = 0xFF383838;
 private enum uint titleFocused    = 0xFF4650C0;
 private enum uint borderColor     = 0xFF505050;
 private enum uint textColor       = 0xFFFFFFFF;
+private enum uint contentFill     = 0xFF1C1C1C;
 
 private immutable ubyte[8][128] font8x8Basic = [
     [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], // 0
@@ -152,6 +155,15 @@ private immutable ubyte[8][128] font8x8Basic = [
 private struct WindowEntry
 {
     const(Window)* window;
+}
+
+private struct Surface
+{
+    size_t id;
+    uint width;
+    uint height;
+    uint* pixels;
+    bool inUse;
 }
 
 struct Compositor
@@ -323,6 +335,8 @@ struct Compositor
 
 private __gshared uint[maxCompositePixels] g_compositorBackBuffer;
 private __gshared Compositor g_compositor;
+private __gshared Surface[WINDOW_MANAGER_CAPACITY] g_surfaces;
+private __gshared size_t g_nextSurfaceId;
 
 bool compositorAvailable()
 {
@@ -335,6 +349,101 @@ void compositorEnsureReady()
     {
         g_compositor.configureFromFramebuffer();
     }
+}
+
+bool compositorAllocateSurface(uint width, uint height, out size_t id, out Canvas canvas)
+{
+    id = size_t.max;
+    canvas = Canvas.init;
+
+    if (width == 0 || height == 0)
+    {
+        return false;
+    }
+
+    const size_t needed = cast(size_t) width * height;
+    if (needed > maxCompositePixels)
+    {
+        return false;
+    }
+
+    foreach (ref surface; g_surfaces)
+    {
+        if (surface.inUse)
+        {
+            continue;
+        }
+
+        const size_t bytes = needed * uint.sizeof;
+        auto memory = cast(uint*) malloc(bytes);
+        if (memory is null)
+        {
+            return false;
+        }
+
+        surface.inUse = true;
+        surface.id = ++g_nextSurfaceId;
+        surface.width = width;
+        surface.height = height;
+        surface.pixels = memory;
+
+        id = surface.id;
+        canvas = createBufferCanvas(memory, width, height, width);
+        return canvas.available;
+    }
+
+    return false;
+}
+
+bool compositorResizeSurface(size_t id, uint width, uint height, out Canvas canvas)
+{
+    canvas = Canvas.init;
+    auto surface = findSurface(id);
+    if (surface is null)
+    {
+        return false;
+    }
+
+    const size_t needed = cast(size_t) width * height;
+    if (needed == 0 || needed > maxCompositePixels)
+    {
+        return false;
+    }
+
+    const size_t bytes = needed * uint.sizeof;
+    auto memory = cast(uint*) malloc(bytes);
+    if (memory is null)
+    {
+        return false;
+    }
+
+    if (surface.pixels !is null)
+    {
+        free(surface.pixels);
+    }
+
+    surface.width = width;
+    surface.height = height;
+    surface.pixels = memory;
+
+    canvas = createBufferCanvas(memory, width, height, width);
+    return canvas.available;
+}
+
+void compositorReleaseSurface(size_t id)
+{
+    auto surface = findSurface(id);
+    if (surface is null)
+    {
+        return;
+    }
+
+    if (surface.pixels !is null)
+    {
+        free(surface.pixels);
+    }
+
+    *surface = Surface.init;
 }
 
 void renderWorkspaceComposited(const WindowManager* manager)
@@ -402,6 +511,53 @@ private size_t collectWindows(const WindowManager* manager, ref WindowEntry[WIND
     return count;
 }
 
+private Surface* findSurface(size_t id) @nogc nothrow
+{
+    foreach (ref surface; g_surfaces)
+    {
+        if (surface.inUse && surface.id == id)
+        {
+            return &surface;
+        }
+    }
+
+    return null;
+}
+
+private void blitSurface(const Surface* surface, uint destX, uint destY, uint maxWidth, uint maxHeight) @nogc nothrow
+{
+    if (surface is null || !g_compositor.available() || surface.pixels is null)
+    {
+        return;
+    }
+
+    const uint rows = (surface.height < maxHeight) ? surface.height : maxHeight;
+    const uint cols = (surface.width < maxWidth) ? surface.width : maxWidth;
+
+    foreach (y; 0 .. rows)
+    {
+        const uint targetY = destY + y;
+        if (targetY >= g_compositor.height)
+        {
+            break;
+        }
+
+        const uint srcOffset = y * surface.width;
+        const uint dstOffset = targetY * g_compositor.pitch + destX;
+
+        foreach (x; 0 .. cols)
+        {
+            const uint targetX = destX + x;
+            if (targetX >= g_compositor.width)
+            {
+                break;
+            }
+
+            g_compositor.buffer[dstOffset + x] = surface.pixels[srcOffset + x];
+        }
+    }
+}
+
 private void drawWindows(scope const(WindowEntry)[] windows, uint taskbarHeight)
 {
     foreach (ref const entry; windows)
@@ -440,6 +596,14 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
     g_compositor.fillRect(buttonX, buttonY, buttonSize, buttonSize, 0xFFCCCC66);
 
     g_compositor.drawString(window.x + padding, window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0), window.title.ptr, textColor, barColor);
+
+    if (window.height > titleHeight)
+    {
+        const uint contentY = window.y + titleHeight;
+        const uint contentHeight = window.height - titleHeight;
+        g_compositor.fillRect(window.x, contentY, window.width, contentHeight, contentFill);
+        blitSurface(findSurface(window.surfaceId), window.x, contentY, window.width, contentHeight);
+    }
 }
 
 private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)

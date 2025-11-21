@@ -158,6 +158,26 @@ struct MultibootContext
     }
 }
 
+/// Identify which firmware path delivered the framebuffer description.
+enum MultibootVideoBackend : ubyte
+{
+    unknown,
+    vbe,
+    efiGop,
+    drm,
+}
+
+/// Optional mode selection parameters passed from higher layers so we can
+/// validate or override the bootloader-provided framebuffer info.
+struct FramebufferModeRequest
+{
+    uint   desiredWidth;
+    uint   desiredHeight;
+    uint   desiredBpp;
+    ushort desiredModeNumber;
+    bool   allowFallback = true; // accept bootloader defaults when the request cannot be met
+}
+
 /// Description of a framebuffer parsed from Multiboot data.
 struct MultibootFramebufferInfo
 {
@@ -167,12 +187,39 @@ struct MultibootFramebufferInfo
     uint  pitch;
     uint  bpp;
     bool  isBGR;
+    ushort modeNumber;
+    MultibootVideoBackend backend;
 
     @nogc @safe pure nothrow
     bool valid() const
     {
         return base !is null && width > 0 && height > 0 && bpp > 0;
     }
+}
+
+align(1) struct VbeModeInfo
+{
+    ushort attributes;
+    ubyte  winA, winB;
+    ushort granularity;
+    ushort winsize;
+    ushort segmentA, segmentB;
+    uint   realFctPtr;
+    ushort pitch; // bytes per scanline
+    ushort width, height;
+    ubyte  wChar, yChar, planes, bpp, banks;
+    ubyte  memoryModel, bankSize, imagePages;
+    ubyte  reserved0;
+
+    ubyte  redMaskSize, redFieldPosition;
+    ubyte  greenMaskSize, greenFieldPosition;
+    ubyte  blueMaskSize, blueFieldPosition;
+    ubyte  rsvdMaskSize, rsvdFieldPosition;
+    ubyte  directColorModeInfo;
+
+    uint   physBasePtr;
+    uint   reserved1;
+    ushort reserved2;
 }
 
 /// Range helper for memory map iteration.
@@ -235,6 +282,8 @@ MultibootFramebufferInfo framebufferInfoFromMultiboot(const MultibootInfo* mbi) 
     fbInfo.height = mbi.framebufferHeight;
     fbInfo.pitch  = mbi.framebufferPitch;
     fbInfo.bpp    = mbi.framebufferBpp;
+    fbInfo.modeNumber = mbi.vbeMode;
+    fbInfo.backend = (mbi.vbeControlInfo != 0 || mbi.vbeModeInfo != 0) ? MultibootVideoBackend.vbe : MultibootVideoBackend.efiGop;
 
     // Color layout is only meaningful for RGB framebuffers (type 1 in Multiboot
     // spec). The colorInfo array is laid out as
@@ -247,19 +296,117 @@ MultibootFramebufferInfo framebufferInfoFromMultiboot(const MultibootInfo* mbi) 
         fbInfo.isBGR = (redPosition == 16 && bluePosition == 0);
     }
 
+    // Validate that the loader didn't hand us a bogus pitch/bpp combination.
+    if (!framebufferModeSupported(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp))
+    {
+        fbInfo.base = null;
+    }
+
+    return fbInfo;
+}
+
+/// Try to reinterpret the VBE mode info block when Multiboot provided one. This
+/// helps us reconstruct the mode when the loader didn't populate the generic
+/// framebuffer fields (common with older BIOS VBE paths).
+MultibootFramebufferInfo framebufferInfoFromVbe(const MultibootInfo* mbi) @nogc nothrow @system
+{
+    MultibootFramebufferInfo fbInfo;
+    if (mbi is null || mbi.vbeModeInfo == 0)
+    {
+        return fbInfo;
+    }
+
+    const VbeModeInfo* modeInfo = cast(const VbeModeInfo*) mbi.vbeModeInfo;
+    fbInfo.base       = cast(void*) modeInfo.physBasePtr;
+    fbInfo.width      = modeInfo.width;
+    fbInfo.height     = modeInfo.height;
+    fbInfo.pitch      = modeInfo.pitch;
+    fbInfo.bpp        = modeInfo.bpp;
+    fbInfo.modeNumber = mbi.vbeMode;
+    fbInfo.backend    = MultibootVideoBackend.vbe;
+
+    const ubyte redPosition  = modeInfo.redFieldPosition;
+    const ubyte bluePosition = modeInfo.blueFieldPosition;
+    fbInfo.isBGR = (redPosition == 16 && bluePosition == 0);
+
+    if (!framebufferModeSupported(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp))
+    {
+        fbInfo.base = null;
+    }
+
+    return fbInfo;
+}
+
+/// Choose which framebuffer mode to expose based on the bootloader tables and a
+/// requested mode from higher layers.
+MultibootFramebufferInfo selectFramebufferMode(const MultibootInfo* mbi, FramebufferModeRequest request) @nogc nothrow @system
+{
+    // Prefer the generic Multiboot framebuffer description first.
+    auto fbInfo = framebufferInfoFromMultiboot(mbi);
+
+    // If a specific mode is requested, attempt to validate it before falling
+    // back to whatever the bootloader set.
+    bool requestHasDims = request.desiredWidth != 0 && request.desiredHeight != 0 && request.desiredBpp != 0;
+    if (requestHasDims && fbInfo.valid())
+    {
+        if (fbInfo.width != request.desiredWidth ||
+            fbInfo.height != request.desiredHeight ||
+            fbInfo.bpp != request.desiredBpp)
+        {
+            fbInfo.base = null; // force fallback path
+        }
+    }
+
+    if (fbInfo.valid())
+    {
+        // Honor an explicit mode number mismatch if requested.
+        if (request.desiredModeNumber != 0 && fbInfo.modeNumber != 0 && fbInfo.modeNumber != request.desiredModeNumber)
+        {
+            fbInfo.base = null;
+        }
+    }
+
+    if (!fbInfo.valid())
+    {
+        // See if the firmware left VBE mode info around that satisfies the request.
+        auto vbeInfo = framebufferInfoFromVbe(mbi);
+        if (vbeInfo.valid())
+        {
+            bool matches = true;
+            if (request.desiredModeNumber != 0 && vbeInfo.modeNumber != 0)
+            {
+                matches = (vbeInfo.modeNumber == request.desiredModeNumber);
+            }
+
+            if (matches && requestHasDims)
+            {
+                matches = vbeInfo.width == request.desiredWidth &&
+                          vbeInfo.height == request.desiredHeight &&
+                          vbeInfo.bpp == request.desiredBpp;
+            }
+
+            if (matches || request.allowFallback)
+            {
+                return vbeInfo;
+            }
+        }
+    }
+
+    // Either the Multiboot framebuffer was already good, or we could not do
+    // better than whatever the loader provided.
     return fbInfo;
 }
 
 /// Initialize the framebuffer using Multiboot info and display a banner.
 bool initVideoFromMultiboot(const MultibootInfo* mbi, const(char)[] bannerMessage = "minimal_os framebuffer online") @nogc nothrow @system
 {
-    const fbInfo = framebufferInfoFromMultiboot(mbi);
+    const fbInfo = selectFramebufferMode(mbi, FramebufferModeRequest.init);
     if (!fbInfo.valid())
     {
         return false;
     }
 
-    initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR);
+    initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR, fbInfo.modeNumber, true);
 
     if (!framebufferAvailable())
     {

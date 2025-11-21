@@ -23,6 +23,8 @@ struct Framebuffer {
     uint   pitch;    // bytes per scanline
     uint   bpp;      // bits per pixel (16/24/32 supported)
     bool   isBGR;    // true if hardware expects BGR ordering instead of RGB
+    ushort modeNumber; // firmware-reported mode number (VBE or GOP-like), 0 when unknown
+    bool   fromFirmware; // true when imported from Multiboot/VBE/EFI tables
 }
 
 // Global state
@@ -109,14 +111,11 @@ void framebufferInit(const(void)* base,
                      uint        height,
                      uint        pitchBytes,
                      uint        bpp,
-                     bool        isBGR)
+                     bool        isBGR,
+                     ushort      modeNumber = 0,
+                     bool        fromFirmware = true)
 {
-    if (base is null) {
-        g_fbInitialized = false;
-        return;
-    }
-
-    if (bpp == 0 || bpp > MaxSupportedBpp) {
+    if (!framebufferModeSupported(base, width, height, pitchBytes, bpp)) {
         g_fbInitialized = false;
         return;
     }
@@ -127,6 +126,8 @@ void framebufferInit(const(void)* base,
     g_fb.pitch  = pitchBytes;
     g_fb.bpp    = bpp;
     g_fb.isBGR  = isBGR;
+    g_fb.modeNumber = modeNumber;
+    g_fb.fromFirmware = fromFirmware;
 
     g_fbInitialized = true;
     g_fbFgColor     = fbDefaultFgColor;
@@ -144,15 +145,61 @@ void initFramebuffer(const(void)* base,
                      uint        height,
                      uint        pitchBytes,
                      uint        bpp,
-                     bool        isBGR)
+                     bool        isBGR,
+                     ushort      modeNumber = 0,
+                     bool        fromFirmware = true)
 {
-    framebufferInit(base, width, height, pitchBytes, bpp, isBGR);
+    framebufferInit(base, width, height, pitchBytes, bpp, isBGR, modeNumber, fromFirmware);
 }
 
 // Query
 @nogc nothrow @system
 bool framebufferAvailable() {
     return g_fbInitialized;
+}
+
+/// Validate a framebuffer mode before enabling it. This keeps callers honest
+/// about stride alignment and supported pixel formats.
+@nogc nothrow @system
+bool framebufferModeSupported(const(void)* base,
+                              uint width,
+                              uint height,
+                              uint pitchBytes,
+                              uint bpp)
+{
+    if (base is null || width == 0 || height == 0) {
+        return false;
+    }
+
+    // Only the canonical RGB565/RGB888/RGBA8888 layouts are supported.
+    if (bpp != 16 && bpp != 24 && bpp != 32) {
+        return false;
+    }
+
+    const uint bytesPerPixel = bpp / 8;
+    if (bytesPerPixel == 0) {
+        return false;
+    }
+
+    // Pitch must be large enough to hold an entire scanline and aligned to the
+    // pixel size so putPixel math remains correct.
+    if (pitchBytes < width * bytesPerPixel) {
+        return false;
+    }
+
+    if ((pitchBytes % bytesPerPixel) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+/// Expose the active framebuffer descriptor so higher layers (display server,
+/// compositor experiments) can understand the chosen mode.
+@nogc nothrow @system
+Framebuffer framebufferDescriptor()
+{
+    return g_fb;
 }
 
 // --------------------------------------------------------------------------

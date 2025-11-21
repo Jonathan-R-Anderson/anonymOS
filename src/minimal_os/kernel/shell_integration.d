@@ -301,7 +301,10 @@ export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*
 // on other compilers that may not understand the pragma.
 version (LDC)
 {
-    pragma(LDC_force_link, compilerBuilderProcessEntry);
+    static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
+    {
+        pragma(LDC_force_link, compilerBuilderProcessEntry);
+    }
 }
 
 

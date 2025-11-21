@@ -26,12 +26,12 @@ version (MinimalOsUserlandLinked)
         pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
     }
 
-    import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+    import minimal_os.posix : posixInit, initializeInterrupts, registerProcessExecutable,
         spawnRegisteredProcess, schedYield;
 }
 else
 {
-    import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+    import minimal_os.posix : posixInit, initializeInterrupts, registerProcessExecutable,
         spawnRegisteredProcess, schedYield;
 }
 

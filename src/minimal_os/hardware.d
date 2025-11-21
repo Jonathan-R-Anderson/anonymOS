@@ -125,15 +125,37 @@ private @nogc nothrow void logFramebuffer(const MultibootContext context)
         return;
     }
 
+    const fbInfo = selectFramebufferMode(context.info, FramebufferModeRequest.init);
+    if (!fbInfo.valid())
+    {
+        printLine("[probe] Framebuffer description was present but invalid.");
+        return;
+    }
+
     print("[probe] Framebuffer  : 0x");
-    printHex(cast(size_t)context.info.framebufferAddr, 16);
+    printHex(cast(size_t)fbInfo.base, 16);
     print("  ");
-    printUnsigned(context.info.framebufferWidth);
+    printUnsigned(fbInfo.width);
     print("x");
-    printUnsigned(context.info.framebufferHeight);
+    printUnsigned(fbInfo.height);
     print("x");
-    printUnsigned(context.info.framebufferBpp);
+    printUnsigned(fbInfo.bpp);
     print(" @ ");
-    printUnsigned(context.info.framebufferPitch);
-    printLine(" bytes/scanline");
+    printUnsigned(fbInfo.pitch);
+    print(" bytes/scanline (mode ");
+    printUnsigned(fbInfo.modeNumber);
+    print(", backend: ");
+    print(videoBackendLabel(fbInfo.backend));
+    printLine(")");
+}
+
+private @nogc nothrow immutable(char)[] videoBackendLabel(MultibootVideoBackend backend)
+{
+    final switch (backend)
+    {
+        case MultibootVideoBackend.vbe:     return "VBE";
+        case MultibootVideoBackend.efiGop:  return "EFI GOP";
+        case MultibootVideoBackend.drm:     return "DRM";
+        case MultibootVideoBackend.unknown: return "unknown";
+    }
 }

@@ -6,7 +6,7 @@ import minimal_os.display.framebuffer;
 import minimal_os.console : clearScreen, printLine, printStageHeader;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
-import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
+import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 version (MinimalOsUserlandLinked)
 {
@@ -50,10 +50,16 @@ extern(C) void kmain(ulong magic, ulong info)
 
     if (context.valid && context.hasFlag(MultibootInfoFlag.framebufferInfo))
     {
-        const fbInfo = framebufferInfoFromMultiboot(context.info);
+        FramebufferModeRequest fbRequest;
+        fbRequest.desiredWidth  = 1024;
+        fbRequest.desiredHeight = 768;
+        fbRequest.desiredBpp    = 32;
+        fbRequest.desiredModeNumber = context.info.vbeMode;
+
+        const fbInfo = selectFramebufferMode(context.info, fbRequest);
         if (fbInfo.valid())
         {
-            initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR);
+            initFramebuffer(fbInfo.base, fbInfo.width, fbInfo.height, fbInfo.pitch, fbInfo.bpp, fbInfo.isBGR, fbInfo.modeNumber, true);
 
             framebufferReady = framebufferAvailable();
             if (framebufferReady)

@@ -13,7 +13,11 @@ POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/src/minimal_os/posixutils}"
 POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
 
 # Cross target + sysroot (x86_64 only for this script)
-: "${TARGET:=x86_64-unknown-elf}"
+# Default to a Linux-flavored triple so ldc defines the POSIX/glibc runtime
+# versions that `core.stdc` headers expect. Using a bare `*-elf` triple leaves
+# those versions unset, which in turn makes basic C types like `c_long` and
+# `wchar_t` undefined when compiling with `-betterC`.
+: "${TARGET:=x86_64-unknown-linux-gnu}"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
 # Kernel sources / outputs
@@ -64,7 +68,7 @@ TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 
 # Map TARGET -> builtins suffix & LLD machine
 case "$TARGET" in
-  x86_64-*-elf|x86_64-unknown-elf)
+  x86_64-*-elf|x86_64-unknown-elf|x86_64-*-linux-gnu)
     LIBSUFFIX="x86_64"
     LLD_MACH="elf_x86_64"
     ;;

@@ -8,8 +8,16 @@ import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
-import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
-    registerProcessExecutable, spawnRegisteredProcess, schedYield;
+version (MinimalOsUserlandLinked)
+{
+    import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry, posixInit, initializeInterrupts,
+        registerProcessExecutable, spawnRegisteredProcess, schedYield;
+}
+else
+{
+    import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+        spawnRegisteredProcess, schedYield;
+}
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
@@ -61,8 +69,19 @@ extern(C) void kmain(ulong magic, ulong info)
     posixInit();
 
     // Register processes that should run alongside the kernel core.
-    const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
-        &compilerBuilderProcessEntry);
+    version (MinimalOsUserlandLinked)
+    {
+        const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
+            &compilerBuilderProcessEntry);
+        if (builderRegistration == 0)
+        {
+            cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
+        }
+    }
+    else
+    {
+        printLine("[kernel] Compiler builder disabled (MinimalOsUserlandLinked not set)");
+    }
 
     // Only spawn desktop if framebuffer is available
     if (framebufferReady)
@@ -79,11 +98,6 @@ extern(C) void kmain(ulong magic, ulong info)
         printLine("[kernel] Graphics desktop disabled - framebuffer unavailable");
         printLine("[kernel] Serial shell will be available after build completes");
         printLine("");
-    }
-
-    if (builderRegistration == 0)
-    {
-        cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
     }
 
     // Idle the kernel while co-operative tasks (desktop, compiler, shell) run.

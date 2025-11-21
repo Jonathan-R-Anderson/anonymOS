@@ -1,6 +1,7 @@
 module minimal_os.display.x11_stack;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
+import minimal_os.posix : spawnAndWait;
 
 nothrow:
 @nogc:
@@ -63,10 +64,15 @@ X11StackState bootstrapX11Stack(X11StackConfig config) @nogc nothrow
         return state;
     }
 
-    state.xorgServerReady = config.enableXorgServer;
-    state.xinitReady = config.enableXinit;
+    state.xorgServerReady = config.enableXorgServer &&
+                            startStackProcess("/bin/Xorg");
+
+    state.xinitReady = config.enableXinit &&
+                       startStackProcess("/bin/xinit");
+
     state.displayManagerReady = config.requireDisplayManager &&
-                                config.displayManager != DisplayManagerKind.none;
+                                config.displayManager != DisplayManagerKind.none &&
+                                startDisplayManager(config.displayManager);
     recomputeSessionReady(state);
     return state;
 }
@@ -113,4 +119,34 @@ private void recomputeSessionReady(ref X11StackState state) @nogc nothrow
 {
     state.sessionReady = state.xorgServerReady &&
                          (state.displayManagerReady || state.xinitReady);
+}
+
+private bool startStackProcess(const(char)* path) @nogc nothrow
+{
+    if (path is null || path[0] == '\0')
+    {
+        return false;
+    }
+
+    int exitCode = 127;
+    char*[2] argv;
+    argv[0] = cast(char*) path;
+    argv[1] = null;
+    const bool launched = spawnAndWait(path, argv.ptr, null, exitCode);
+    return launched && exitCode == 0;
+}
+
+private bool startDisplayManager(DisplayManagerKind kind) @nogc nothrow
+{
+    final switch (kind)
+    {
+        case DisplayManagerKind.none:
+            return false;
+        case DisplayManagerKind.xdm:
+            return startStackProcess("/bin/xdm");
+        case DisplayManagerKind.lightdm:
+            return startStackProcess("/bin/lightdm");
+        case DisplayManagerKind.gdm:
+            return startStackProcess("/bin/gdm");
+    }
 }

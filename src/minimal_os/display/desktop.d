@@ -3,7 +3,8 @@ module minimal_os.display.desktop;
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.window_manager.renderer;
-import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvailable, compositorEnsureReady;
+import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvailable, compositorEnsureReady,
+                                       compositorAllocateSurface, compositorResizeSurface, compositorReleaseSurface;
 import minimal_os.display.input_pipeline : InputQueue;
 import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
 import minimal_os.kernel.shell_integration : schedYield;
@@ -29,6 +30,9 @@ private @nogc nothrow void ensureWindowManager()
     g_windowManager.setLayout(0, LayoutMode.tiling);
     g_windowManager.setLayout(1, LayoutMode.floating);
     g_windowManager.setLayout(2, LayoutMode.tiling);
+    g_windowManager.configureSurfaceCallbacks(&compositorAllocateSurface,
+                                              &compositorResizeSurface,
+                                              &compositorReleaseSurface);
 
     const uint halfW = g_fb.width / 2;
     const uint halfH = g_fb.height / 2;

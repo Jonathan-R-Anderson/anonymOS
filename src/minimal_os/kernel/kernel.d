@@ -12,33 +12,27 @@ version (MinimalOsUserlandLinked)
 {
     // Prefer the fully featured builder entry when the userland module is
     // linked, but keep the stub around as a fallback so the kernel still links
-    // in minimal build configurations. If neither module is available, define a
-    // tiny in-place stub so the linker always has a symbol to resolve.
+    // in minimal build configurations. Default to the stub so the linker always
+    // has a symbol to resolve, then override with the real entry if it is
+    // available (and linked) in the current build.
+    import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntryStub = compilerBuilderProcessEntry;
+
     static if (__traits(compiles, { import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry; }))
     {
         import minimal_os.kernel.shell_integration : realCompilerBuilderProcessEntry = compilerBuilderProcessEntry,
             posixInit, initializeInterrupts, registerProcessExecutable, spawnRegisteredProcess, schedYield;
 
-        alias compilerBuilderProcessEntry = realCompilerBuilderProcessEntry;
-    }
-    else static if (__traits(compiles, { import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry; }))
-    {
-        import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
-            spawnRegisteredProcess, schedYield;
-        import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry;
+        alias SelectedCompilerBuilderProcessEntry = realCompilerBuilderProcessEntry;
     }
     else
     {
         import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
             spawnRegisteredProcess, schedYield;
 
-        pragma(mangle, "compilerBuilderProcessEntry")
-        extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
-        {
-            import minimal_os.console : printLine;
-            printLine("[kernel] compiler builder unavailable; inline stub entry used");
-        }
+        alias SelectedCompilerBuilderProcessEntry = compilerBuilderProcessEntryStub;
     }
+
+    alias compilerBuilderProcessEntry = SelectedCompilerBuilderProcessEntry;
 }
 else
 {

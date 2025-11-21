@@ -10,23 +10,34 @@ import minimal_os.multiboot : MultibootInfoFlag, framebufferInfoFromMultiboot;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 version (MinimalOsUserlandLinked)
 {
-    import minimal_os.kernel.compiler_builder_stub : stubCompilerBuilderProcessEntry = compilerBuilderProcessEntry;
-
+    // Prefer the fully featured builder entry when the userland module is
+    // linked, but keep the stub around as a fallback so the kernel still links
+    // in minimal build configurations. If neither module is available, define a
+    // tiny in-place stub so the linker always has a symbol to resolve.
     static if (__traits(compiles, { import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry; }))
     {
         import minimal_os.kernel.shell_integration : realCompilerBuilderProcessEntry = compilerBuilderProcessEntry,
             posixInit, initializeInterrupts, registerProcessExecutable, spawnRegisteredProcess, schedYield;
 
-        // Prefer the fully featured builder entry when the userland module is
-        // linked, but keep the stub around as a weak fallback so the kernel
-        // still links in minimal build configurations.
         alias compilerBuilderProcessEntry = realCompilerBuilderProcessEntry;
+    }
+    else static if (__traits(compiles, { import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry; }))
+    {
+        import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
+            spawnRegisteredProcess, schedYield;
+        import minimal_os.kernel.compiler_builder_stub : compilerBuilderProcessEntry;
     }
     else
     {
         import minimal_os.kernel.shell_integration : posixInit, initializeInterrupts, registerProcessExecutable,
             spawnRegisteredProcess, schedYield;
-        alias compilerBuilderProcessEntry = stubCompilerBuilderProcessEntry;
+
+        pragma(mangle, "compilerBuilderProcessEntry")
+        extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+        {
+            import minimal_os.console : printLine;
+            printLine("[kernel] compiler builder unavailable; inline stub entry used");
+        }
     }
 }
 else

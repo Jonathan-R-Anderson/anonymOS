@@ -1,6 +1,7 @@
 module minimal_os.display.server;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
+import minimal_os.multiboot : FramebufferModeRequest;
 import minimal_os.display.x11_stack;
 
 /// Enumeration for the type of display server protocol we want to expose.
@@ -21,6 +22,9 @@ struct DisplayServerConfig
     bool compositorEnabled = true;
     bool inputEnabled = true;
     bool fontStackEnabled = true;
+    /// Mode selection passed down from the firmware tables. If left as init
+    /// values the bootloader's chosen framebuffer is used.
+    FramebufferModeRequest framebufferRequest;
     X11StackConfig x11Config;
 }
 

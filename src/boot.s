@@ -1,6 +1,16 @@
 .set ALIGN,         1 << 0
 .set MEMINFO,       1 << 1
-.set FLAGS,         ALIGN | MEMINFO
+.set VIDEOMODE,     1 << 2
+
+# Request a graphics mode from the bootloader so we don't depend on its
+# defaults. GRUB will attempt to set a VBE/EFI GOP mode matching these
+# dimensions before jumping to the kernel.
+.set VIDEO_MODE,    1
+.set VIDEO_WIDTH,   1024
+.set VIDEO_HEIGHT,  768
+.set VIDEO_DEPTH,   32
+
+.set FLAGS,         ALIGN | MEMINFO | VIDEOMODE
 .set MAGIC,         0x1BADB002
 .set CHECKSUM,      -(MAGIC + FLAGS)
 
@@ -17,6 +27,15 @@
     .long MAGIC
     .long FLAGS
     .long CHECKSUM
+    .long 0             # header_addr (unused)
+    .long 0             # load_addr (unused)
+    .long 0             # load_end_addr (unused)
+    .long 0             # bss_end_addr (unused)
+    .long 0             # entry_addr (unused)
+    .long VIDEO_MODE    # mode_type: 0=text, 1=graphics
+    .long VIDEO_WIDTH
+    .long VIDEO_HEIGHT
+    .long VIDEO_DEPTH
 
     .section .bss
     .align 16

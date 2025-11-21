@@ -294,10 +294,12 @@ export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*
     }
 }
 
-// Ensure the compiler builder entry point is always emitted, even when link-time
-// dead-stripping is aggressive. Only apply this directive when supported by the
-// compiler to avoid build errors on compilers that don't recognize it.
-static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
+// Ensure the compiler builder entry point is always emitted, even when
+// link-time dead-stripping is aggressive.  Use an explicit LDC version check
+// rather than __traits(compiles, ...) so the directive is applied whenever the
+// build uses LDC (our default kernel compiler) while still remaining harmless
+// on other compilers that may not understand the pragma.
+version (LDC)
 {
     pragma(LDC_force_link, compilerBuilderProcessEntry);
 }

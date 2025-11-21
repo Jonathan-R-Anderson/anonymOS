@@ -13,6 +13,7 @@ private enum uint titleBarColor   = 0xFF383838;
 private enum uint titleFocused    = 0xFF4650C0;
 private enum uint borderColor     = 0xFF505050;
 private enum uint textColor       = 0xFFFFFFFF;
+private enum uint contentColor    = 0xFF1C1C1C;
 
 private struct WindowEntry
 {
@@ -119,6 +120,13 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
     g_fbCursorX = (window.x + padding) / glyphWidth;
     g_fbCursorY = (window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0)) / glyphHeight;
     framebufferWriteString(window.title);
+
+    if (window.height > titleHeight)
+    {
+        const uint contentY = window.y + titleHeight;
+        const uint contentHeight = window.height - titleHeight;
+        framebufferFillRect(window.x, contentY, window.width, contentHeight, contentColor);
+    }
 }
 
 private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)

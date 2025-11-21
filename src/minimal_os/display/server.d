@@ -3,6 +3,8 @@ module minimal_os.display.server;
 import minimal_os.display.framebuffer : framebufferAvailable;
 import minimal_os.multiboot : FramebufferModeRequest;
 import minimal_os.display.x11_stack;
+import minimal_os.display.canvas : Canvas, createFramebufferCanvas;
+import minimal_os.posix : spawnRegisteredProcess, pid_t;
 
 /// Enumeration for the type of display server protocol we want to expose.
 /// These are intentionally high level: the kernel still lacks the userspace
@@ -36,6 +38,8 @@ struct DisplayServerState
     bool compositorReady;
     bool inputPlumbed;
     bool fontStackReady;
+    Canvas framebufferCanvas;
+    pid_t compositorPid;
     X11StackState x11Stack;
 }
 
@@ -60,12 +64,21 @@ DisplayServerState bootstrapDisplayServer(DisplayServerConfig config) @nogc noth
 {
     DisplayServerState state;
     state.config = config;
-    state.framebufferOnline = framebufferAvailable();
+    state.framebufferCanvas = createFramebufferCanvas();
+    state.framebufferOnline = state.framebufferCanvas.available;
     if (config.protocol == DisplayProtocol.x11)
     {
         state.x11Stack = bootstrapX11Stack(config.x11Config);
     }
-    state.compositorReady = config.compositorEnabled && state.framebufferOnline;
+    if (config.compositorEnabled && state.framebufferOnline)
+    {
+        state.compositorPid = startCompositorProcess();
+        state.compositorReady = state.compositorPid > 0;
+    }
+    else
+    {
+        state.compositorReady = false;
+    }
     return state;
 }
 
@@ -116,4 +129,9 @@ bool displayServerReady(ref DisplayServerState state) @nogc nothrow
     }
 
     return state.inputPlumbed && state.fontStackReady;
+}
+
+private pid_t startCompositorProcess() @nogc nothrow
+{
+    return spawnRegisteredProcess("/sbin/desktop", null, null);
 }

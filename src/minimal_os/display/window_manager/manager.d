@@ -1,6 +1,7 @@
 module minimal_os.display.window_manager.manager;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
+import minimal_os.display.canvas : Canvas;
 
 nothrow:
 @nogc:
@@ -34,6 +35,8 @@ public struct Window
     bool floating;
     size_t desktop;
     size_t zOrder;
+    size_t surfaceId;
+    Canvas surfaceCanvas;
 }
 
 public struct ShortcutBinding
@@ -49,8 +52,13 @@ nothrow:
 public:
     void reset()
     {
+        foreach (i; 0 .. _windowCount)
+        {
+            releaseSurface(_windows[i].surfaceId);
+        }
         _windowCount = 0;
         _nextId = 1;
+        _nextZOrder = 0;
         _activeDesktop = 0;
         _desktopCount = 1;
         _configured = false;
@@ -59,6 +67,9 @@ public:
             desktop = LayoutMode.tiling;
         }
         _shortcutCount = 0;
+        _allocateSurface = null;
+        _resizeSurface = null;
+        _releaseSurface = null;
     }
 
     void configure(uint screenWidth, uint screenHeight, uint taskbarHeight, size_t desktopCount)
@@ -68,6 +79,15 @@ public:
         _taskbarHeight = taskbarHeight;
         _desktopCount = (desktopCount == 0 || desktopCount > MAX_DESKTOPS) ? MAX_DESKTOPS : desktopCount;
         _configured = framebufferAvailable();
+    }
+
+    void configureSurfaceCallbacks(SurfaceAllocator allocator,
+                                   SurfaceResizer resizer,
+                                   SurfaceReleaser releaser)
+    {
+        _allocateSurface = allocator;
+        _resizeSurface = resizer;
+        _releaseSurface = releaser;
     }
 
     size_t createWindow(immutable(char)[] title, uint width, uint height, bool floating = false, size_t desktop = INVALID_INDEX)
@@ -92,6 +112,9 @@ public:
         w.floating = floating;
         w.desktop = targetDesktop;
         w.zOrder = _nextZOrder++;
+        w.surfaceId = INVALID_INDEX;
+
+        attachSurface(w);
 
         focusWindow(w.id);
         applyLayout();
@@ -107,6 +130,7 @@ public:
         }
 
         const wasFocused = _windows[index].focused;
+        releaseSurface(_windows[index].surfaceId);
 
         foreach (i; index .. _windowCount - 1)
         {
@@ -179,6 +203,15 @@ public:
         w.width = newWidth;
         w.height = newHeight;
         enforceBounds(w);
+
+        if (_resizeSurface !is null && w.surfaceId != INVALID_INDEX)
+        {
+            Canvas resized;
+            if (_resizeSurface(w.surfaceId, w.width, w.height, resized))
+            {
+                w.surfaceCanvas = resized;
+            }
+        }
         return true;
     }
 
@@ -232,6 +265,15 @@ public:
             enforceBounds(w);
         }
         bringToFront(index);
+
+        if (_resizeSurface !is null && w.surfaceId != INVALID_INDEX)
+        {
+            Canvas resized;
+            if (_resizeSurface(w.surfaceId, w.width, w.height, resized))
+            {
+                w.surfaceCanvas = resized;
+            }
+        }
         return true;
     }
 
@@ -322,6 +364,9 @@ private:
     uint _screenHeight;
     uint _taskbarHeight;
     bool _configured;
+    SurfaceAllocator _allocateSurface;
+    SurfaceResizer _resizeSurface;
+    SurfaceReleaser _releaseSurface;
 
     size_t findIndex(size_t id) const
     {
@@ -475,4 +520,33 @@ private:
             window.y = (availableHeight > window.height) ? availableHeight - window.height : 0;
         }
     }
+
+    void attachSurface(Window* window)
+    {
+        if (window is null || _allocateSurface is null)
+        {
+            return;
+        }
+
+        Canvas canvas;
+        size_t id = INVALID_INDEX;
+        if (_allocateSurface(window.width, window.height, id, canvas))
+        {
+            window.surfaceId = id;
+            window.surfaceCanvas = canvas;
+        }
+    }
+
+    void releaseSurface(size_t id)
+    {
+        if (_releaseSurface is null || id == INVALID_INDEX)
+        {
+            return;
+        }
+        _releaseSurface(id);
+    }
 }
+
+alias SurfaceAllocator = bool function(uint width, uint height, out size_t id, out Canvas canvas) @nogc nothrow;
+alias SurfaceResizer = bool function(size_t id, uint width, uint height, out Canvas canvas) @nogc nothrow;
+alias SurfaceReleaser = void function(size_t id) @nogc nothrow;

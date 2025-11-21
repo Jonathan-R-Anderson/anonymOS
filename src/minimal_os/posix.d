@@ -1605,7 +1605,7 @@ mixin template PosixKernelShim()
     }
 
     // ---- Very small round-robin scheduler ----
-    @nogc nothrow void schedYield()
+    public @nogc nothrow void schedYield()
     {
         debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
         if (!g_initialized) return;
@@ -1922,7 +1922,7 @@ mixin template PosixKernelShim()
         char[16] name;
     }
 
-    @nogc nothrow int registerProcessExecutable(const(char)* path, ProcessEntry entry)
+    public @nogc nothrow int registerProcessExecutable(const(char)* path, ProcessEntry entry)
     {
         debugExpectActual("registerProcessExecutable path present", 1, debugBool(path !is null));
         debugExpectActual("registerProcessExecutable entry present", 1, debugBool(entry !is null));
@@ -2064,9 +2064,9 @@ mixin template PosixKernelShim()
     }
 
     // ---- Init hook ----
-    @nogc nothrow void initializeInterrupts() { /* Minimal OS build: no IRQs configured */ }
+    public @nogc nothrow void initializeInterrupts() { /* Minimal OS build: no IRQs configured */ }
 
-    @nogc nothrow void posixInit(){
+    public @nogc nothrow void posixInit(){
         debugLog("posixInit invoked");
         debugExpectActual("posixInit already initialized", 0, debugBool(g_initialized));
         if(g_initialized) return;

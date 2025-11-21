@@ -8,6 +8,10 @@ import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
+import minimal_os.posix : PosixKernelShim;
+
+mixin PosixKernelShim;
+
 version (MinimalOsUserlandLinked)
 {
     // Declare the compiler-builder entry point as a weak symbol so the kernel
@@ -25,14 +29,6 @@ version (MinimalOsUserlandLinked)
     {
         pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
     }
-
-    import minimal_os.posix : posixInit, initializeInterrupts, registerProcessExecutable,
-        spawnRegisteredProcess, schedYield;
-}
-else
-{
-    import minimal_os.posix : posixInit, initializeInterrupts, registerProcessExecutable,
-        spawnRegisteredProcess, schedYield;
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

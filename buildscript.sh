@@ -183,6 +183,9 @@ fi
 
 # Always enable userland bootstrap support
 DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
+# Kernel build is freestanding; avoid host libc interop even when the target
+# triple defines version(Posix).
+DFLAGS+=" -d-version=MinimalOsFreestanding"
 
 # D objects (kernel + dependencies + userland)
 KERNEL_SOURCES=(

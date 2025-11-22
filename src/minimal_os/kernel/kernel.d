@@ -27,6 +27,14 @@ static if (__traits(compiles, { pragma(LDC_extern_weak, compilerBuilderProcessEn
 {
     pragma(LDC_extern_weak, compilerBuilderProcessEntry);
 }
+else static if (__traits(compiles, { pragma(weak, compilerBuilderProcessEntry); }))
+{
+    // Fallback for toolchains that do not support the LDC-specific weak pragma.
+    // A weak reference lets the kernel link even when the builder entry point
+    // is not linked in (it resolves to null at runtime), while still allowing a
+    // strong definition to override when available.
+    pragma(weak, compilerBuilderProcessEntry);
+}
 static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
 {
     pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);

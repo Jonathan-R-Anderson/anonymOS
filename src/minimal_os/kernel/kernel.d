@@ -19,8 +19,14 @@ import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
 
 // Prefer a weak reference on LDC so undefined references resolve to null rather
-// than producing a link error. Guard the pragma so it remains harmless on
-// compilers that do not understand LDC-specific attributes.
+// than producing a link error. Guard the pragmas so they remain harmless on
+// compilers that do not understand LDC-specific attributes.  The explicit
+// `LDC_extern_weak` pragma is required for references to remain optional when
+// no definition is linked, whereas `LDC_attributes` alone is insufficient.
+static if (__traits(compiles, { pragma(LDC_extern_weak, compilerBuilderProcessEntry); }))
+{
+    pragma(LDC_extern_weak, compilerBuilderProcessEntry);
+}
 static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
 {
     pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);

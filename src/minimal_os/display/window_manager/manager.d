@@ -2,6 +2,7 @@ module minimal_os.display.window_manager.manager;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
 import minimal_os.display.canvas : Canvas;
+import minimal_os.display.input_pipeline : InputEvent, InputQueue, enqueue, dequeue;
 
 nothrow:
 @nogc:
@@ -70,6 +71,11 @@ public:
         _allocateSurface = null;
         _resizeSurface = null;
         _releaseSurface = null;
+        foreach (ref queue; _inputQueues)
+        {
+            queue.head = 0;
+            queue.tail = 0;
+        }
     }
 
     void configure(uint screenWidth, uint screenHeight, uint taskbarHeight, size_t desktopCount)
@@ -114,6 +120,9 @@ public:
         w.zOrder = _nextZOrder++;
         w.surfaceId = INVALID_INDEX;
 
+        _inputQueues[_windowCount - 1].head = 0;
+        _inputQueues[_windowCount - 1].tail = 0;
+
         attachSurface(w);
 
         focusWindow(w.id);
@@ -135,6 +144,7 @@ public:
         foreach (i; index .. _windowCount - 1)
         {
             _windows[i] = _windows[i + 1];
+            _inputQueues[i] = _inputQueues[i + 1];
         }
         --_windowCount;
 
@@ -333,6 +343,28 @@ public:
         return _windows[0 .. _windowCount];
     }
 
+    /// Enqueue an input event for the specified window
+    bool queueInputForWindow(size_t id, InputEvent event)
+    {
+        const index = findIndex(id);
+        if (index == INVALID_INDEX)
+        {
+            return false;
+        }
+        return enqueue(_inputQueues[index], event);
+    }
+
+    /// Inspect the pending input events for a window (read-only)
+    const(InputQueue)* windowInputQueue(size_t id) const
+    {
+        const index = findIndex(id);
+        if (index == INVALID_INDEX)
+        {
+            return null;
+        }
+        return &_inputQueues[index];
+    }
+
     size_t activeDesktop() const { return _activeDesktop; }
     size_t desktopCount() const { return _desktopCount; }
     LayoutMode layoutForActiveDesktop() const { return _layouts[_activeDesktop]; }
@@ -367,6 +399,7 @@ private:
     SurfaceAllocator _allocateSurface;
     SurfaceResizer _resizeSurface;
     SurfaceReleaser _releaseSurface;
+    InputQueue[MAX_WINDOWS] _inputQueues;
 
     size_t findIndex(size_t id) const
     {
@@ -388,12 +421,15 @@ private:
         }
 
         auto window = _windows[index];
+        auto queue = _inputQueues[index];
         foreach (i; index .. _windowCount - 1)
         {
             _windows[i] = _windows[i + 1];
+            _inputQueues[i] = _inputQueues[i + 1];
         }
         window.zOrder = _nextZOrder++;
         _windows[_windowCount - 1] = window;
+        _inputQueues[_windowCount - 1] = queue;
     }
 
     void clearFocus(size_t desktop)

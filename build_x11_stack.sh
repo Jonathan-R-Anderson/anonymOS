@@ -171,7 +171,7 @@ build_package() {
 
     case "$name" in
         # Packages that use Meson
-        libdrm|libepoxy|cairo|pango|libstartup-notification|i3|libxcb|libX11|libXau|libXdmcp|xorgproto)
+        libdrm|libepoxy|pixman|cairo|pango|libstartup-notification|i3|libxcb|libX11|libXau|libXdmcp|xorgproto)
             build_meson "$name" "$tarball" "${extra_flags[@]}" ;;
         # Everything else uses Autotools
         *)

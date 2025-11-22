@@ -255,11 +255,13 @@ if [ ! -f "pango-${PANGO_VERSION}.tar.xz" ]; then
     wget "https://download.gnome.org/sources/pango/${PANGO_VERSION%.*}/pango-${PANGO_VERSION}.tar.xz"
 fi
 
-if [ ! -f "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" ]; then
+if [ ! -f "startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" ]; then
     log "Downloading libstartup-notification..."
-    if ! wget "https://www.freedesktop.org/software/startup-notification/releases/libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"; then
-        wget -O "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" \
-            "https://download.gnome.org/sources/startup-notification/${LIBSTARTUP_NOTIFICATION_VERSION%.*}/startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" || \
+    STARTUP_NOTIFICATION_SERIES=$(echo "$LIBSTARTUP_NOTIFICATION_VERSION" | awk -F. '{print $1"."$2}')
+
+    if ! wget "https://www.freedesktop.org/software/startup-notification/releases/startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"; then
+        wget -O "startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" \
+            "https://download.gnome.org/sources/startup-notification/${STARTUP_NOTIFICATION_SERIES}/startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" || \
             error "Failed to download libstartup-notification"
     fi
 fi
@@ -345,7 +347,7 @@ make install
 
 build_autotools "cairo" "cairo-${CAIRO_VERSION}.tar.xz"
 build_meson "pango" "pango-${PANGO_VERSION}.tar.xz"
-build_autotools "libstartup-notification" "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
+build_autotools "libstartup-notification" "startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
 
 # Phase 11: i3 window manager
 log "Building i3..."

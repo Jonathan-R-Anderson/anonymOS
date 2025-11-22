@@ -5,6 +5,7 @@ import minimal_os.display.canvas;
 import minimal_os.display.font_stack : activeFontStack;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToBuffer;
+import minimal_os.display.gpu_accel : acceleratedPresentBuffer;
 
 nothrow:
 @nogc:
@@ -171,6 +172,11 @@ struct Compositor
     void present()
     {
         if (!ready || !framebufferAvailable())
+        {
+            return;
+        }
+
+        if (acceleratedPresentBuffer(buffer, width, height, pitch))
         {
             return;
         }

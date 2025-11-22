@@ -4,8 +4,11 @@ import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCou
 
 import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
 import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
-import minimal_os.posix : PosixKernelShim, ProcessEntry, launchInteractiveShell, shellExecEntry,
-    registerBareMetalShellInterfaces;
+import minimal_os.posix : ProcessEntry, launchInteractiveShell, shellExecEntry,
+    registerBareMetalShellInterfaces, ensureBareMetalShellInterfaces,
+    g_posixConfigured, ensurePosixUtilitiesConfigured, registerPosixUtilities,
+    detectConsoleAvailability, g_consoleAvailable, g_shellRegistered,
+    registerProcessExecutable;
 import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
     toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
@@ -52,8 +55,6 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
     false,
     false,
 );
-
-mixin PosixKernelShim;
 
 @nogc nothrow void runCompilerBuilder()
 {

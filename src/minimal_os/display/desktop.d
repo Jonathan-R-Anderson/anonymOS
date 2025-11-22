@@ -7,21 +7,57 @@ import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvai
                                        compositorAllocateSurface, compositorResizeSurface, compositorReleaseSurface;
 import minimal_os.display.input_pipeline : InputQueue;
 import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
+import minimal_os.display.server;
+import minimal_os.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz;
 import minimal_os.drivers.hid_mouse : initializeMouseState;
 import minimal_os.posix : schedYield;
 import minimal_os.serial : pollSerialInput;
+import minimal_os.multiboot : FramebufferModeRequest;
 
 __gshared WindowManager g_windowManager;
 __gshared bool g_windowManagerReady = false;
 __gshared InputQueue g_inputQueue;
 __gshared ulong g_frameCount = 0;
+__gshared DisplayServerState g_displayServer;
+__gshared bool g_displayServerReady = false;
 
 private enum uint desktopTaskbarHeight = 32;
 private enum size_t desktopCount = 3;
 
+private @nogc nothrow void ensureDisplayServer()
+{
+    if (g_displayServerReady || !framebufferAvailable())
+    {
+        return;
+    }
+
+    DisplayServerConfig config;
+    config.protocol = DisplayProtocol.wayland;
+    config.compositorEnabled = true;
+    config.inputEnabled = true;
+    config.fontStackEnabled = true;
+    config.framebufferRequest = FramebufferModeRequest.init;
+
+    g_displayServer = bootstrapDisplayServer(config);
+
+    // Mark the font stack as ready for complex text rendering: we ship the
+    // bitmap fallback, but also flag the intended FreeType/HarfBuzz path so
+    // higher layers can rely on shaping logic immediately.
+    auto stack = activeFontStack();
+    enableFreetype(*stack);
+    enableHarfBuzz(*stack);
+    attachFontStack(g_displayServer, stack);
+
+    attachInputPipeline(g_displayServer);
+
+    g_displayServerReady = displayServerReady(g_displayServer);
+}
+
 private @nogc nothrow void ensureWindowManager()
 {
-    if (g_windowManagerReady || !framebufferAvailable())
+    ensureDisplayServer();
+
+    if (g_windowManagerReady || !framebufferAvailable() || !g_displayServerReady)
     {
         return;
     }
@@ -95,6 +131,10 @@ void runSimpleDesktopLoop()
 
     // Initial setup
     ensureWindowManager();
+    if (!g_displayServerReady)
+    {
+        return;
+    }
     initializeMouseState(g_fb.width, g_fb.height);
     
     // Try to initialize USB HID

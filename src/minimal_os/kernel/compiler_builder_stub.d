@@ -8,7 +8,8 @@ import minimal_os.userland : UserlandRuntime, SystemProperties, normaliseState,
 // still links when the full userland is not present. When the real
 // implementation is linked (from shell_integration.d), the strong symbol
 // overrides this stub.
-extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+pragma(mangle, "compilerBuilderProcessEntry")
+export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
 {
     printLine("[kernel] compiler builder unavailable; stub entry used");
 
@@ -53,4 +54,13 @@ extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/,
 static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
 {
     pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
+}
+
+// In builds that aggressively drop unreferenced symbols, explicitly request that
+// the stubbed entry point is retained. The real implementation in
+// shell_integration.d provides a strong definition and will override this
+// version when linked.
+static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
+{
+    pragma(LDC_force_link, compilerBuilderProcessEntry);
 }

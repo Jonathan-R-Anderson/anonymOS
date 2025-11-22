@@ -198,6 +198,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/serial.d"
   "src/minimal_os/hardware.d"
   "src/minimal_os/display/canvas.d"
+  "src/minimal_os/display/font_stack.d"
   "src/minimal_os/display/framebuffer.d"
   "src/minimal_os/display/input_pipeline.d"
   "src/minimal_os/display/input_handler.d"

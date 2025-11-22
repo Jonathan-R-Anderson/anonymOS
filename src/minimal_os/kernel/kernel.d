@@ -12,39 +12,12 @@ import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredP
     schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
-// Treat the compiler builder entry point as optional so the kernel can still link
-// in environments where the full userland object was not provided. When the
-// definition is absent, we rely on a weak symbol to resolve to null so we can
-// skip registration gracefully at runtime.
-extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
-
-// Prefer a weak reference on LDC so undefined references resolve to null rather
-// than producing a link error. Guard the pragmas so they remain harmless on
-// compilers that do not understand LDC-specific attributes.  The explicit
-// `LDC_extern_weak` pragma is required for references to remain optional when
-// no definition is linked, whereas `LDC_attributes` alone is insufficient.
-static if (__traits(compiles, { pragma(LDC_extern_weak, compilerBuilderProcessEntry); }))
+version (MinimalOsUserlandLinked)
 {
-    pragma(LDC_extern_weak, compilerBuilderProcessEntry);
-}
-else static if (__traits(compiles, { pragma(weak, compilerBuilderProcessEntry); }))
-{
-    // Fallback for toolchains that do not support the LDC-specific weak pragma.
-    // A weak reference lets the kernel link even when the builder entry point
-    // is not linked in (it resolves to null at runtime), while still allowing a
-    // strong definition to override when available.
-    pragma(weak, compilerBuilderProcessEntry);
-}
-static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
-{
-    pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
-}
-
-// Ensure the symbol is retained when available even if the linker performs
-// aggressive dead-stripping.
-static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
-{
-    pragma(LDC_force_link, compilerBuilderProcessEntry);
+    // This symbol must be defined in the userland object when
+    // -version=MinimalOsUserlandLinked is used.
+    extern(C) @nogc nothrow
+    void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp);
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
@@ -105,22 +78,14 @@ extern(C) void kmain(ulong magic, ulong info)
     // Register processes that should run alongside the kernel core.
     version (MinimalOsUserlandLinked)
     {
-        // Explicitly type the function pointer so overload resolution cannot be
-        // confused by multiple weak/strong definitions of the symbol that may
-        // be present depending on the build configuration.
         ProcessEntry builderEntry = &compilerBuilderProcessEntry;
-        if (builderEntry !is null)
+        const int builderRegistration = registerProcessExecutable(
+            "/sbin/compiler-builder",
+            builderEntry
+        );
+        if (builderRegistration == 0)
         {
-            const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
-                builderEntry);
-            if (builderRegistration == 0)
-            {
-                cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
-            }
-        }
-        else
-        {
-            printLine("[kernel] Compiler builder unavailable (symbol not linked)");
+            cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
         }
     }
     else

@@ -198,45 +198,45 @@ else
     private enum int X_OK = 1;
     extern(C) __gshared char** environ;
 }
-    private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
-    private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
-    private immutable char[] g_envVarShellBinary = "SH_SHELL_BINARY\0";
-    private immutable char[] g_envVarShellRoot = "SH_SHELL_ROOT\0";
 
-    private const(char)*[] g_shellEnvVarOrder =
-        [ g_envVarLfeShBinary.ptr,
-          g_envVarShBinary.ptr,
-          g_envVarShellBinary.ptr,
-          g_envVarShellRoot.ptr ];
+private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
+private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
+private immutable char[] g_envVarShellBinary = "SH_SHELL_BINARY\0";
+private immutable char[] g_envVarShellRoot = "SH_SHELL_ROOT\0";
 
-    private immutable char[] g_isoShellPath = "/opt/shell/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_isoShellBinPath = "/opt/shell/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_kernelShellPath = "/kernel/shell/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_kernelShellBinPath = "/kernel/shell/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_repoShellPath = shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_repoShellBinPath = shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_repoShellRelativePath = "." ~ shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_repoShellRelativeBinPath = "." ~ shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_repoShellDir = shRepositoryPath ~ "\0";
-    private immutable char[] g_repoShellDirRelative = "." ~ shRepositoryPath ~ "\0";
-    private immutable char[] g_usrLocalShellPath = "/usr/local/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_usrShellPath = "/usr/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
-    private immutable char[] g_defaultShPath = "/bin/sh\0";
+private const(char)*[] g_shellEnvVarOrder =
+    [ g_envVarLfeShBinary.ptr,
+      g_envVarShBinary.ptr,
+      g_envVarShellBinary.ptr,
+      g_envVarShellRoot.ptr ];
 
-    private immutable(char)[][] g_shellSearchOrder =
-        [ g_isoShellPath,
-          g_isoShellBinPath,
-          g_kernelShellPath,
-          g_kernelShellBinPath,
-          g_repoShellPath,
-          g_repoShellBinPath,
-          g_repoShellRelativePath,
-          g_repoShellRelativeBinPath,
-          g_usrLocalShellPath,
-          g_usrShellPath,
-          g_binShellPath ];
-}
+private immutable char[] g_isoShellPath = "/opt/shell/" ~ shBinaryName ~ "\0";
+private immutable char[] g_isoShellBinPath = "/opt/shell/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_kernelShellPath = "/kernel/shell/" ~ shBinaryName ~ "\0";
+private immutable char[] g_kernelShellBinPath = "/kernel/shell/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_repoShellPath = shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
+private immutable char[] g_repoShellBinPath = shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_repoShellRelativePath = "." ~ shRepositoryPath ~ "/" ~ shBinaryName ~ "\0";
+private immutable char[] g_repoShellRelativeBinPath = "." ~ shRepositoryPath ~ "/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_repoShellDir = shRepositoryPath ~ "\0";
+private immutable char[] g_repoShellDirRelative = "." ~ shRepositoryPath ~ "\0";
+private immutable char[] g_usrLocalShellPath = "/usr/local/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_usrShellPath = "/usr/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
+private immutable char[] g_defaultShPath = "/bin/sh\0";
+
+private immutable(char)[][] g_shellSearchOrder =
+    [ g_isoShellPath,
+      g_isoShellBinPath,
+      g_kernelShellPath,
+      g_kernelShellBinPath,
+      g_repoShellPath,
+      g_repoShellBinPath,
+      g_repoShellRelativePath,
+      g_repoShellRelativeBinPath,
+      g_usrLocalShellPath,
+      g_usrShellPath,
+      g_binShellPath ];
 
 // ---- Forward decls needed by the shim (appear before mixin use) ----
 extern(C) @nogc nothrow

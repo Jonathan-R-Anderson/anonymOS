@@ -4,7 +4,6 @@ import minimal_os.display.framebuffer;
 import minimal_os.display.canvas;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToBuffer;
-import core.stdc.stdlib : malloc, free;
 
 nothrow:
 @nogc:
@@ -163,7 +162,23 @@ private struct Surface
     uint width;
     uint height;
     uint* pixels;
+    size_t poolOffset;
+    size_t poolLength;
     bool inUse;
+}
+
+private struct PoolBlock
+{
+    size_t offset;
+    size_t length;
+    bool free;
+}
+
+private struct PixelAllocation
+{
+    uint*  ptr;
+    size_t offset;
+    size_t length;
 }
 
 struct Compositor
@@ -337,6 +352,123 @@ private __gshared uint[maxCompositePixels] g_compositorBackBuffer;
 private __gshared Compositor g_compositor;
 private __gshared Surface[WINDOW_MANAGER_CAPACITY] g_surfaces;
 private __gshared size_t g_nextSurfaceId;
+private __gshared uint[maxCompositePixels] g_surfacePool;
+private __gshared PoolBlock[WINDOW_MANAGER_CAPACITY * 2] g_poolBlocks;
+private __gshared size_t g_poolBlockCount;
+
+private void ensurePoolInitialized() @nogc nothrow
+{
+    if (g_poolBlockCount == 0)
+    {
+        g_poolBlocks[0] = PoolBlock(0, maxCompositePixels, true);
+        g_poolBlockCount = 1;
+    }
+}
+
+private void mergeFreeBlocks() @nogc nothrow
+{
+    bool merged;
+    do
+    {
+        merged = false;
+        foreach (i; 0 .. g_poolBlockCount)
+        {
+            auto left = &g_poolBlocks[i];
+            if (!left.free)
+            {
+                continue;
+            }
+
+            foreach (j; i + 1 .. g_poolBlockCount)
+            {
+                auto right = &g_poolBlocks[j];
+                if (!right.free)
+                {
+                    continue;
+                }
+
+                const bool adjacentForward = left.offset + left.length == right.offset;
+                const bool adjacentBackward = right.offset + right.length == left.offset;
+                if (!adjacentForward && !adjacentBackward)
+                {
+                    continue;
+                }
+
+                const size_t newOffset = (right.offset < left.offset) ? right.offset : left.offset;
+                left.length += right.length;
+                left.offset = newOffset;
+
+                foreach (k; j + 1 .. g_poolBlockCount)
+                {
+                    g_poolBlocks[k - 1] = g_poolBlocks[k];
+                }
+                --g_poolBlockCount;
+                merged = true;
+                break;
+            }
+
+            if (merged)
+            {
+                break;
+            }
+        }
+    }
+    while (merged);
+}
+
+private PixelAllocation allocateSurfacePixels(size_t needed) @nogc nothrow
+{
+    ensurePoolInitialized();
+
+    if (needed == 0 || needed > maxCompositePixels)
+    {
+        return PixelAllocation.init;
+    }
+
+    foreach (i; 0 .. g_poolBlockCount)
+    {
+        auto block = &g_poolBlocks[i];
+        if (!block.free || block.length < needed)
+        {
+            continue;
+        }
+
+        const offset = block.offset;
+        const remaining = block.length - needed;
+
+        block.free = false;
+        block.length = needed;
+
+        if (remaining > 0 && g_poolBlockCount < g_poolBlocks.length)
+        {
+            g_poolBlocks[g_poolBlockCount++] = PoolBlock(offset + needed, remaining, true);
+        }
+
+        return PixelAllocation(&g_surfacePool[offset], offset, needed);
+    }
+
+    return PixelAllocation.init;
+}
+
+private void freeSurfacePixels(size_t offset, size_t length) @nogc nothrow
+{
+    if (length == 0)
+    {
+        return;
+    }
+
+    ensurePoolInitialized();
+
+    foreach (ref block; g_poolBlocks[0 .. g_poolBlockCount])
+    {
+        if (!block.free && block.offset == offset && block.length == length)
+        {
+            block.free = true;
+            mergeFreeBlocks();
+            break;
+        }
+    }
+}
 
 bool compositorAvailable()
 {
@@ -374,9 +506,8 @@ bool compositorAllocateSurface(uint width, uint height, out size_t id, out Canva
             continue;
         }
 
-        const size_t bytes = needed * uint.sizeof;
-        auto memory = cast(uint*) malloc(bytes);
-        if (memory is null)
+        const auto allocation = allocateSurfacePixels(needed);
+        if (allocation.ptr is null)
         {
             return false;
         }
@@ -385,10 +516,12 @@ bool compositorAllocateSurface(uint width, uint height, out size_t id, out Canva
         surface.id = ++g_nextSurfaceId;
         surface.width = width;
         surface.height = height;
-        surface.pixels = memory;
+        surface.pixels = allocation.ptr;
+        surface.poolOffset = allocation.offset;
+        surface.poolLength = allocation.length;
 
         id = surface.id;
-        canvas = createBufferCanvas(memory, width, height, width);
+        canvas = createBufferCanvas(surface.pixels, width, height, width);
         return canvas.available;
     }
 
@@ -410,23 +543,21 @@ bool compositorResizeSurface(size_t id, uint width, uint height, out Canvas canv
         return false;
     }
 
-    const size_t bytes = needed * uint.sizeof;
-    auto memory = cast(uint*) malloc(bytes);
-    if (memory is null)
+    const auto allocation = allocateSurfacePixels(needed);
+    if (allocation.ptr is null)
     {
         return false;
     }
 
-    if (surface.pixels !is null)
-    {
-        free(surface.pixels);
-    }
+    freeSurfacePixels(surface.poolOffset, surface.poolLength);
 
     surface.width = width;
     surface.height = height;
-    surface.pixels = memory;
+    surface.pixels = allocation.ptr;
+    surface.poolOffset = allocation.offset;
+    surface.poolLength = allocation.length;
 
-    canvas = createBufferCanvas(memory, width, height, width);
+    canvas = createBufferCanvas(surface.pixels, width, height, width);
     return canvas.available;
 }
 
@@ -438,10 +569,7 @@ void compositorReleaseSurface(size_t id)
         return;
     }
 
-    if (surface.pixels !is null)
-    {
-        free(surface.pixels);
-    }
+    freeSurfacePixels(surface.poolOffset, surface.poolLength);
 
     *surface = Surface.init;
 }

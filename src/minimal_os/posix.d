@@ -1,7 +1,7 @@
 module minimal_os.posix;
 
-import minimal_os.console : print, printLine, printUnsigned, kernelConsoleReady,
-                           printHex;
+public import minimal_os.console : print, printLine, printUnsigned,
+                                   kernelConsoleReady, printHex;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 // Re-export the context helpers so the PosixKernelShim mixin (and any

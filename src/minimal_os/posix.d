@@ -112,13 +112,13 @@ alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPa
 // ---------------------------
 version (Posix)
 {
-    private import core.sys.posix.unistd : isatty, read, write, close, access,
+    public import core.sys.posix.unistd : isatty, read, write, close, access,
                                            chdir, fork, execve, _exit;
-    private import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
-    private import core.sys.posix.sys.stat : fstat, stat_t;
-    private import core.sys.posix.sys.types : ssize_t;
-    private import core.stdc.errno : errno, EBADF, EINTR;
-    private import core.sys.posix.sys.wait : posixWaitPid = waitpid;
+    public import core.sys.posix.fcntl : open, O_RDONLY, O_NOCTTY;
+    public import core.sys.posix.sys.stat : fstat, stat_t;
+    public import core.sys.posix.sys.types : ssize_t;
+    public import core.stdc.errno : errno, EBADF, EINTR;
+    public import core.sys.posix.sys.wait : posixWaitPid = waitpid;
 
     // Some C library shims used by the minimal toolchain omit certain
     // declarations.  Add conservative fallbacks so the Posix build still

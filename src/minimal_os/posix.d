@@ -2538,11 +2538,33 @@ version (Posix)
         return buffer.ptr;
     }
 
+    @nogc nothrow private const(char)* readHostEnvironmentVariable(const(char)* name)
+    {
+        if (name is null || name[0] == '\0') return null;
+
+        const size_t nameLength = cStringLength(name);
+        if (nameLength == 0) return null;
+
+        auto entries = environ; if (entries is null) return null;
+
+        size_t index = 0;
+        while (entries[index] !is null)
+        {
+            const(char)* entry = entries[index];
+            size_t matchIndex = 0;
+            while (matchIndex < nameLength && entry[matchIndex] == name[matchIndex]) ++matchIndex;
+            if (matchIndex == nameLength && entry[matchIndex] == '=') return entry + nameLength + 1;
+            ++index;
+        }
+
+        return null;
+    }
+
     @nogc nothrow private const(char)* shellPathFromEnvironment()
     {
         foreach (envName; g_shellEnvVarOrder)
         {
-            auto value = readEnvironmentVariable(envName);
+            auto value = readHostEnvironmentVariable(envName);
             if (value is null || value[0] == '\0')
             {
                 continue;
@@ -2770,8 +2792,10 @@ version (Posix)
     package @nogc nothrow void launchInteractiveShell()
     {
         extern(C) @nogc nothrow int execve(const(char)*, const(char*)*, const(char*)*);
-        debugExpectActual("launchInteractiveShell execve present", 1, debugBool(execve !is null));
-        if (execve is null)
+        auto execveFn = &execve;
+
+        debugExpectActual("launchInteractiveShell execve present", 1, debugBool(execveFn !is null));
+        if (execveFn is null)
         {
             printLine("[shell] execve unavailable; cannot launch.");
             return;
@@ -2790,7 +2814,7 @@ version (Posix)
         const(char*)[2] argv = [shellPath, null];
         const(char*)[1] envp = [null];
 
-        auto rc = execve(shellPath, argv.ptr, envp.ptr);
+        auto rc = execveFn(shellPath, argv.ptr, envp.ptr);
         debugExpectActual("launchInteractiveShell execve rc", 0, rc);
         if (rc < 0)
         {

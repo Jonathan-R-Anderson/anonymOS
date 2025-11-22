@@ -1,5 +1,6 @@
 module minimal_os.display.window_manager.renderer;
 
+import minimal_os.display.font_stack : activeFontStack;
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToFramebuffer;
@@ -98,6 +99,7 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
         return;
     }
 
+    auto canvas = createFramebufferCanvas();
     const uint titleHeight = 24;
     framebufferFillRect(window.x, window.y, window.width, window.height, windowColor);
     framebufferDrawRect(window.x, window.y, window.width, window.height, borderColor, false);
@@ -116,10 +118,7 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
     buttonX -= buttonSize + padding;
     framebufferFillRect(buttonX, buttonY, buttonSize, buttonSize, 0xFFCCCC66);
 
-    framebufferSetTextColors(textColor, barColor);
-    g_fbCursorX = (window.x + padding) / glyphWidth;
-    g_fbCursorY = (window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0)) / glyphHeight;
-    framebufferWriteString(window.title);
+    canvasText(canvas, activeFontStack(), window.x + padding, window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0), window.title, textColor, barColor);
 
     if (window.height > titleHeight)
     {
@@ -134,49 +133,55 @@ private void drawTaskbar(const WindowManager* manager, uint taskbarHeight)
     const uint taskbarY = (g_fb.height > taskbarHeight) ? g_fb.height - taskbarHeight : 0;
     framebufferFillRect(0, taskbarY, g_fb.width, taskbarHeight, taskbarColor);
 
-    framebufferSetTextColors(textColor, taskbarColor);
-    g_fbCursorX = 1;
-    g_fbCursorY = taskbarY / glyphHeight;
+    auto canvas = createFramebufferCanvas();
+    uint cursorX = glyphWidth;
+    const uint cursorY = taskbarY + (taskbarHeight > glyphHeight ? (taskbarHeight - glyphHeight) / 2 : 0);
 
-    framebufferWriteString("desktops: ");
+    cursorX = drawLabel(canvas, cursorX, cursorY, "desktops:");
     foreach (i; 0 .. manager.desktopCount())
     {
         const bool active = (i == manager.activeDesktop());
-        framebufferWriteString(active ? "[" : " ");
+        cursorX = drawLabel(canvas, cursorX, cursorY, active ? "[" : " ");
         auto ch = cast(char)('1' + i);
         char[2] label = [ch, '\0'];
-        framebufferWriteString(label[0 .. 1]);
-        framebufferWriteString(active ? "]" : " ");
+        cursorX = drawLabel(canvas, cursorX, cursorY, label[0 .. 1]);
+        cursorX = drawLabel(canvas, cursorX, cursorY, active ? "]" : " ");
     }
 
-    framebufferWriteString("  layout: ");
+    cursorX = drawLabel(canvas, cursorX + glyphWidth, cursorY, "layout:");
     immutable(char)[] layoutName = (manager.layoutForActiveDesktop() == LayoutMode.tiling) ? "tiling" : "floating";
-    framebufferWriteString(layoutName);
+    cursorX = drawLabel(canvas, cursorX, cursorY, layoutName);
 
-    framebufferWriteString("  focus: ");
+    cursorX = drawLabel(canvas, cursorX + glyphWidth, cursorY, "focus:");
     const focused = manager.focusedWindowId();
     if (focused == size_t.max)
     {
-        framebufferWriteString("none");
+        cursorX = drawLabel(canvas, cursorX, cursorY, "none");
     }
     else
     {
         char[32] buffer;
         const len = formatUnsigned(focused, buffer[]);
-        framebufferWriteString(buffer[0 .. len]);
+        cursorX = drawLabel(canvas, cursorX, cursorY, buffer[0 .. len]);
     }
 
     if (manager.shortcuts().length > 0)
     {
-        framebufferWriteString("  shortcuts: ");
+        cursorX = drawLabel(canvas, cursorX + glyphWidth, cursorY, "shortcuts:");
         foreach (ref const shortcut; manager.shortcuts())
         {
-            framebufferWriteString(shortcut.name);
-            framebufferWriteString("->");
-            framebufferWriteString(shortcut.action);
-            framebufferWriteString("  ");
+            cursorX = drawLabel(canvas, cursorX, cursorY, shortcut.name);
+            cursorX = drawLabel(canvas, cursorX, cursorY, "->");
+            cursorX = drawLabel(canvas, cursorX, cursorY, shortcut.action);
+            cursorX += glyphWidth;
         }
     }
+}
+
+private uint drawLabel(ref Canvas canvas, uint cursorX, uint cursorY, const(char)[] text)
+{
+    const uint width = canvasText(canvas, activeFontStack(), cursorX, cursorY, text, textColor, taskbarColor);
+    return cursorX + width;
 }
 
 private size_t formatUnsigned(size_t value, scope char[] buffer)

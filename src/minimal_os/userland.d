@@ -2,6 +2,10 @@ module minimal_os.userland;
 
 import minimal_os.console : print, printLine, printStageHeader, printStatusValue,
     printUnsigned, putChar;
+import minimal_os.display.server : DisplayProtocol, DisplayServerConfig,
+    DisplayServerState, attachFontStack, attachInputPipeline,
+    bootstrapDisplayServer, displayServerReady;
+import minimal_os.display.x11_stack : DisplayManagerKind, X11StackConfig;
 
 nothrow:
 @nogc:
@@ -126,6 +130,19 @@ nothrow:
         }
         process.state = normaliseState(requestedState);
         return true;
+    }
+
+    bool updateProcessStateByName(immutable(char)[] name, immutable(char)[] requestedState)
+    {
+        foreach (ref process; _processes[0 .. _processCount])
+        {
+            if (process.name == name)
+            {
+                process.state = normaliseState(requestedState);
+                return true;
+            }
+        }
+        return false;
     }
 
     bool grantCapability(size_t pid, immutable(char)[] capability)
@@ -328,15 +345,58 @@ public immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
       ServicePlan("netd", "/bin/netd", "Network capability broker",
                   NET_CAPABILITIES, STATE_RUNNING, true),
       ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
-                  XORG_CAPABILITIES, STATE_RUNNING, false),
+                  XORG_CAPABILITIES, STATE_WAITING, false),
       ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
-                  XINIT_CAPABILITIES, STATE_RUNNING, false),
+                  XINIT_CAPABILITIES, STATE_WAITING, false),
       ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
-                  DM_CAPABILITIES, STATE_RUNNING, false),
+                  DM_CAPABILITIES, STATE_WAITING, false),
       ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
-                  I3_CAPABILITIES, STATE_RUNNING, false),
+                  I3_CAPABILITIES, STATE_WAITING, false),
       ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
                   SHELL_CAPABILITIES, STATE_READY, false) ];
+
+private DisplayServerState configureDisplayServer()
+{
+    DisplayServerConfig config;
+    config.protocol = DisplayProtocol.x11;
+    config.compositorEnabled = false;
+    config.x11Config = X11StackConfig(true, true, true, DisplayManagerKind.xdm);
+
+    DisplayServerState state = bootstrapDisplayServer(config);
+    attachInputPipeline(state);
+    attachFontStack(state);
+    return state;
+}
+
+private struct DisplayServicePlanner
+{
+    UserlandRuntime* runtime;
+
+    void reconcile(ref DisplayServerState displayState)
+    {
+        if (runtime is null)
+        {
+            return;
+        }
+
+        const bool wantsDisplayManager = displayState.config.protocol == DisplayProtocol.x11 &&
+                                         displayState.x11Stack.config.requireDisplayManager &&
+                                         displayState.x11Stack.config.displayManager != DisplayManagerKind.none;
+
+        runtime.updateProcessStateByName("xorg-server",
+                                         displayState.x11Stack.xorgServerReady ? STATE_RUNNING : STATE_WAITING);
+        runtime.updateProcessStateByName("xinit",
+                                         displayState.x11Stack.xinitReady ? STATE_RUNNING : STATE_WAITING);
+
+        immutable(char)[] displayManagerState = wantsDisplayManager ?
+            (displayState.x11Stack.displayManagerReady ? STATE_RUNNING : STATE_WAITING) :
+            STATE_READY;
+        runtime.updateProcessStateByName("display-manager", displayManagerState);
+
+        immutable(char)[] sessionState = displayServerReady(displayState) ? STATE_RUNNING : STATE_WAITING;
+        runtime.updateProcessStateByName("i3", sessionState);
+    }
+}
 
 
 public @nogc nothrow void bootUserland_impl()
@@ -345,6 +405,8 @@ public @nogc nothrow void bootUserland_impl()
 
     UserlandRuntime runtime;
     runtime.reset();
+
+    auto displayState = configureDisplayServer();
 
     foreach (plan; DEFAULT_SERVICE_PLANS)
     {
@@ -359,11 +421,15 @@ public @nogc nothrow void bootUserland_impl()
         logServiceProvision(plan, desiredState, registered, launched);
     }
 
+    DisplayServicePlanner displayPlanner;
+    displayPlanner.runtime = &runtime;
+    displayPlanner.reconcile(displayState);
+
     SystemProperties systemProperties;
     immutable(char)[][] desktopStack =
         [ "xorg-server", "xinit", "display-manager", "i3" ];
 
-    systemProperties.desktopReady = true;
+    systemProperties.desktopReady = displayServerReady(displayState);
     foreach (service; desktopStack)
     {
         if (!processReady(runtime, service))

@@ -372,7 +372,7 @@ private struct DisplayServicePlanner
 {
     UserlandRuntime* runtime;
 
-    void reconcile(ref DisplayServerState displayState)
+    @nogc nothrow void reconcile(ref DisplayServerState displayState)
     {
         if (runtime is null)
         {

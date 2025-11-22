@@ -10,7 +10,7 @@ struct BitmapFont
     bool available;
     /// Expanded 8x16 glyphs for the ASCII subset. Each row is a byte mask where
     /// the high bit maps to the left-most pixel.
-    ubyte[128][glyphHeight] glyphs;
+    ubyte[glyphHeight][128] glyphs;
     /// Fallback glyph used when a codepoint is missing.
     ubyte[glyphHeight] fallback;
 }

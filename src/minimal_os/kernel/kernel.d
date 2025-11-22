@@ -9,7 +9,7 @@ import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
-    schedYield, initializeInterrupts;
+    schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
 // Treat the compiler builder entry point as optional so the kernel can still link
@@ -82,7 +82,10 @@ extern(C) void kmain(ulong magic, ulong info)
     // Register processes that should run alongside the kernel core.
     version (MinimalOsUserlandLinked)
     {
-        auto builderEntry = &compilerBuilderProcessEntry;
+        // Explicitly type the function pointer so overload resolution cannot be
+        // confused by multiple weak/strong definitions of the symbol that may
+        // be present depending on the build configuration.
+        ProcessEntry builderEntry = &compilerBuilderProcessEntry;
         if (builderEntry !is null)
         {
             const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",

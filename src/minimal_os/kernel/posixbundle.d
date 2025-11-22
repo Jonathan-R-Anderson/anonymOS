@@ -5,6 +5,7 @@ static if (!__traits(compiles, { size_t dummy; }))
     alias size_t = typeof(int.sizeof);
 }
 import minimal_os.console : print, printLine, printCString, putChar, printStageHeader, printStatus, printStatusValue;
+version (Posix) import minimal_os.posix : environ;
 
 enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
 enum string posixUtilityManifestPath = "/build/posixutils/objects.tsv";
@@ -607,7 +608,6 @@ version (Posix)
         pid_t waitpid(pid_t, int*, int);
         void _exit(int);
         int access(const(char)*, int);
-        __gshared char** environ;
         void* fopen(const(char)*, const(char)*);
         int fclose(void*);
         char* fgets(char*, int, void*);

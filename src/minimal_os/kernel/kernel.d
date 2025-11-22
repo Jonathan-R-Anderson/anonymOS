@@ -10,7 +10,7 @@ import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, Framebuf
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts, ProcessEntry;
-import minimal_os.kernel.shell_integration : runCompilerBuilder;
+import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
 // Treat the compiler builder entry point as optional so the kernel can still link
 // in environments where the full userland object was not provided. LDC resolves
@@ -26,12 +26,6 @@ version (LDC)
 else
 {
     extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
-}
-
-pragma(mangle, "compilerBuilderProcessEntry")
-export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
-{
-    runCompilerBuilder();
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

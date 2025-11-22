@@ -1,7 +1,7 @@
 module minimal_os.display.input_handler;
 
 import minimal_os.display.input_pipeline : InputEvent, InputQueue, dequeue;
-import minimal_os.display.window_manager.manager : WindowManager;
+import minimal_os.display.window_manager.manager : WindowManager, Window;
 import minimal_os.display.framebuffer : g_fb;
 
 @nogc:

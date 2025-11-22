@@ -23,9 +23,8 @@ alias pid_t = int;
 package(minimal_os) __gshared bool g_shellRegistered = false;
 
 package(minimal_os) immutable char[8] SHELL_PATH = "/bin/sh\0";
-package(minimal_os) __gshared const(char*)[2] g_shellDefaultArgv =
-    [SHELL_PATH.ptr, null];
-package(minimal_os) __gshared const(char*)[1] g_shellDefaultEnvp = [null];
+package(minimal_os) __gshared const(char*)[2] g_shellDefaultArgv;
+package(minimal_os) __gshared const(char*)[1] g_shellDefaultEnvp;
 
 alias SpawnRegisteredProcessFn = extern(C) @nogc nothrow
     pid_t function(const(char)* path, const(char*)* argv, const(char*)* envp);
@@ -83,8 +82,15 @@ public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options
 
 // Module-scope aliases so the name is visible everywhere (including
 // outside the PosixKernelShim mixin).
-alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
-alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
+    alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
+    alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
+
+extern(D) shared static this()
+{
+    g_shellDefaultArgv[0] = SHELL_PATH.ptr;
+    g_shellDefaultArgv[1] = null;
+    g_shellDefaultEnvp[0] = null;
+}
 
 @nogc nothrow package(minimal_os) size_t cStringLength(const(char)* str)
 {

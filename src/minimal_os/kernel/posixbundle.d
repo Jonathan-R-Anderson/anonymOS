@@ -5,7 +5,8 @@ static if (!__traits(compiles, { size_t dummy; }))
     alias size_t = typeof(int.sizeof);
 }
 import minimal_os.console : print, printLine, printCString, putChar, printStageHeader, printStatus, printStatusValue;
-version (Posix) import minimal_os.posix : environ;
+import minimal_os.posix : hostPosixInteropEnabled;
+static if (hostPosixInteropEnabled) import minimal_os.posix : environ;
 
 enum string defaultEmbeddedPosixUtilitiesRoot = "/kernel/posixutils/bin";
 enum string posixUtilityManifestPath = "/build/posixutils/objects.tsv";
@@ -182,7 +183,7 @@ private __gshared size_t g_rootLength = 0;
 
 private alias ManifestHandle = void*;
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifest()
 {
     immutable(char)[] mode = "r";
@@ -211,7 +212,7 @@ version (Posix)
     return null;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifestFromEnvironment(immutable(char)[] mode)
 {
     if (mode.ptr is null)
@@ -228,7 +229,7 @@ version (Posix)
     return fopen(envPath, mode.ptr);
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifestFromPath(immutable(char)[] path, immutable(char)[] mode)
 {
     if (path.ptr is null || path.length == 0 || mode.ptr is null)
@@ -239,7 +240,7 @@ version (Posix)
     return fopen(path.ptr, mode.ptr);
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private void closeManifest(ManifestHandle handle)
 {
     if (handle !is null)
@@ -248,7 +249,7 @@ version (Posix)
     }
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle handle, char[] buffer)
 {
     if (handle is null || buffer.length == 0)
@@ -471,7 +472,7 @@ version (Posix)
 
 // --- Execution helpers ---------------------------------------------------
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private const(char)* resolveEmbeddedUtility(const(char)* program)
 {
     if (program is null)
@@ -488,7 +489,7 @@ version (Posix)
     return g_hostStorage[index].ptr;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private int locateEmbeddedUtility(const(char)* program)
 {
     foreach (index; 0 .. g_embeddedPosixUtilityCount)
@@ -510,7 +511,7 @@ version (Posix)
     return -1;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private bool isExecutable(const(char)* path)
 {
     if (path is null)
@@ -521,7 +522,7 @@ version (Posix)
     return access(path, X_OK) == 0;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 package(minimal_os) @nogc nothrow bool spawnAndWait(const(char)* program, char** argv, char** envp, out int exitCode)
 {
     exitCode = 127;
@@ -561,7 +562,7 @@ package(minimal_os) @nogc nothrow bool spawnAndWait(const(char)* program, char**
     return true;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private int decodeWaitStatus(int status)
 {
     enum int EXIT_MASK = 0xFF00;
@@ -576,7 +577,7 @@ version (Posix)
     return 128 + signal;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private bool cStringEquals(const(char)* lhs, const(char)* rhs)
 {
     if (lhs is null || rhs is null)
@@ -597,7 +598,7 @@ version (Posix)
     return lhs[index] == '\0' && rhs[index] == '\0';
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 {
     alias pid_t = int;
 

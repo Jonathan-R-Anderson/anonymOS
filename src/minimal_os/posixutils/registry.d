@@ -5,6 +5,7 @@ alias ptrdiff_t = object.ptrdiff_t;
 import minimal_os.kernel.posixbundle : fallbackPosixUtilityManifestPath,
     hostFallbackPosixUtilityManifestPath, hostPosixUtilityManifestPath,
     posixUtilityManifestEnvVar, posixUtilityManifestPath;
+import minimal_os.posix : hostPosixInteropEnabled;
 
 alias ExecEntryFn = extern(C) @nogc nothrow
     void function(const(char*)* argv, const(char*)* envp);
@@ -137,7 +138,7 @@ private bool stringsEqual(scope const(char)[] lhs, scope const(char)[] rhs)
     return true;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 private alias ManifestHandle = void*;
 else
 private alias ManifestHandle = const(char)[];
@@ -153,7 +154,7 @@ private void ensureManifestLoaded()
     // during boot) can still be observed after an earlier failure.
     g_manifestAttempted = true;
 
-    version (Posix)
+    static if (hostPosixInteropEnabled)
     {
         loadManifestFromDisk();
     }
@@ -163,7 +164,7 @@ private void ensureManifestLoaded()
     }
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 private void loadManifestFromDisk()
 {
     g_manifestCount = 0;
@@ -237,7 +238,7 @@ private void loadEmbeddedManifest()
     finalizeManifest(count);
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifest()
 {
     immutable(char)[] mode = "r";
@@ -266,7 +267,7 @@ version (Posix)
     return null;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifestFromEnvironment(immutable(char)[] mode)
 {
     if (mode.ptr is null)
@@ -283,7 +284,7 @@ version (Posix)
     return fopen(envPath, mode.ptr);
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private ManifestHandle openManifestFromPath(immutable(char)[] path, immutable(char)[] mode)
 {
     if (path.ptr is null || path.length == 0 || mode.ptr is null)
@@ -294,7 +295,7 @@ version (Posix)
     return fopen(path.ptr, mode.ptr);
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private void closeManifest(ManifestHandle handle)
 {
     if (handle !is null)
@@ -303,7 +304,7 @@ version (Posix)
     }
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 @nogc nothrow private immutable(char)[] readManifestLine(ManifestHandle handle, char[] buffer)
 {
     if (handle is null || buffer.length == 0)
@@ -415,7 +416,7 @@ auto toStaticArray(T)(const(T)[] values)
     return result;
 }
 
-version (Posix)
+static if (hostPosixInteropEnabled)
 extern(C) @nogc nothrow
 {
     void* fopen(const(char)*, const(char)*);

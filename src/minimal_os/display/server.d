@@ -1,6 +1,7 @@
 module minimal_os.display.server;
 
 import minimal_os.display.framebuffer : framebufferAvailable;
+import minimal_os.display.font_stack;
 import minimal_os.multiboot : FramebufferModeRequest;
 import minimal_os.display.x11_stack;
 import minimal_os.display.canvas : Canvas, createFramebufferCanvas;
@@ -38,6 +39,7 @@ struct DisplayServerState
     bool compositorReady;
     bool inputPlumbed;
     bool fontStackReady;
+    FontStack fontStack;
     Canvas framebufferCanvas;
     pid_t compositorPid;
     X11StackState x11Stack;
@@ -73,6 +75,7 @@ DisplayServerState bootstrapDisplayServer(DisplayServerConfig config) @nogc noth
     state.config = config;
     state.framebufferCanvas = createFramebufferCanvas();
     state.framebufferOnline = state.framebufferCanvas.available;
+    state.fontStack = createFallbackOnlyFontStack();
     if (config.protocol == DisplayProtocol.x11)
     {
         state.x11Stack = bootstrapX11Stack(config.x11Config);
@@ -126,9 +129,19 @@ void attachInputPipeline(ref DisplayServerState state) @nogc nothrow
 
 /// Attach a font stack. This is intentionally decoupled from framebuffer so
 /// future work can plug in FreeType/HarfBuzz without changing call sites.
-void attachFontStack(ref DisplayServerState state, bool ready) @nogc nothrow
+void attachFontStack(ref DisplayServerState state, FontStack* stack = null) @nogc nothrow
 {
-    state.fontStackReady = ready && state.config.fontStackEnabled;
+    if (stack is null)
+    {
+        stack = activeFontStack();
+    }
+
+    if (stack !is null)
+    {
+        state.fontStack = *stack;
+    }
+
+    state.fontStackReady = state.config.fontStackEnabled && fontStackReady(&state.fontStack);
 }
 
 /// Aggregate readiness: callers can use this to decide whether to keep the

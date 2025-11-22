@@ -61,8 +61,13 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
     false,
 );
 
-@nogc nothrow void runCompilerBuilder()
+pragma(inline, false)
+export extern(C) @nogc nothrow
+void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
 {
+    cast(void) argv;
+    cast(void) envp;
+
     resetBuilderState();
 
     printLine("========================================");
@@ -120,7 +125,6 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
     
     // Inline userland bootstrap (avoiding LDC betterC extern(C) dead code elimination)
     {
-        import minimal_os.console : printStageHeader;
         printStageHeader("Provision userland services");
 
         UserlandRuntime runtime;
@@ -140,7 +144,7 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
         }
 
         SystemProperties systemProperties;
-        immutable(char)[][] desktopStack =
+        immutable(char)[][4] desktopStack =
             [ "xorg-server", "xinit", "display-manager", "i3" ];
 
         systemProperties.desktopReady = true;
@@ -177,17 +181,6 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
             printLine("compiler access is required.");
         }
     }
-}
-
-
-extern(C) @nogc nothrow
-void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
-{
-    // Currently we ignore argv/envp; they are provided for future extensibility.
-    cast(void) argv;
-    cast(void) envp;
-
-    runCompilerBuilder();
 }
 
 

@@ -82,10 +82,11 @@ extern(C) void kmain(ulong magic, ulong info)
     // Register processes that should run alongside the kernel core.
     version (MinimalOsUserlandLinked)
     {
-        if (compilerBuilderProcessEntry !is null)
+        auto builderEntry = &compilerBuilderProcessEntry;
+        if (builderEntry !is null)
         {
             const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
-                &compilerBuilderProcessEntry);
+                builderEntry);
             if (builderRegistration == 0)
             {
                 cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);

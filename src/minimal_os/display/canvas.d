@@ -2,6 +2,7 @@ module minimal_os.display.canvas;
 
 import minimal_os.display.font_stack;
 import minimal_os.display.framebuffer;
+import minimal_os.display.gpu_accel : acceleratedFill, acceleratedFillRect;
 import core.stdc.string : memcmp;
 
 /// Basic 2D canvas abstraction layered on top of the existing framebuffer
@@ -262,7 +263,10 @@ void canvasFill(ref Canvas canvas, uint argbColor) @nogc nothrow
 
     if (canvas.targetsFramebuffer)
     {
-        framebufferFill(argbColor);
+        if (!acceleratedFill(argbColor))
+        {
+            framebufferFill(argbColor);
+        }
         return;
     }
 
@@ -291,7 +295,10 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
 
     if (canvas.targetsFramebuffer)
     {
-        framebufferDrawRect(x, y, w, h, argbColor, filled);
+        if (!(filled && acceleratedFillRect(x, y, w, h, argbColor)))
+        {
+            framebufferDrawRect(x, y, w, h, argbColor, filled);
+        }
         return;
     }
 

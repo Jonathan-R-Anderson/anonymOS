@@ -13,19 +13,24 @@ import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredP
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
 // Treat the compiler builder entry point as optional so the kernel can still link
-// in environments where the full userland object was not provided. LDC resolves
-// missing weak symbols to null, allowing us to skip registration gracefully.
-version (LDC)
+// in environments where the full userland object was not provided. When the
+// definition is absent, we rely on a weak symbol to resolve to null so we can
+// skip registration gracefully at runtime.
+extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
+
+// Prefer a weak reference on LDC so undefined references resolve to null rather
+// than producing a link error. Guard the pragma so it remains harmless on
+// compilers that do not understand LDC-specific attributes.
+static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
 {
-    // Mark the symbol as weak when building with LDC so the kernel can still
-    // link even if the userland object providing the implementation is
-    // missing. The pragma applies to the following declaration.
-    pragma(LDC_extern_weak)
-    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
+    pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
 }
-else
+
+// Ensure the symbol is retained when available even if the linker performs
+// aggressive dead-stripping.
+static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
 {
-    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
+    pragma(LDC_force_link, compilerBuilderProcessEntry);
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

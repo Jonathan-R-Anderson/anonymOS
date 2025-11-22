@@ -1,16 +1,21 @@
 module minimal_os.kernel.shell_integration;
 
-import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCount, shDocumentedCommandCount, shBinarySizeBytes;
+import sh_metadata : shRepositoryPath, shBinaryName, shRevision, shSourceFileCount,
+    shDocumentedCommandCount, shBinarySizeBytes;
 
-import minimal_os.console : putChar, print, printLine, printCString, printUnsigned, printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage, stageSummaryData;
-import minimal_os.compiler : compileStage, frontEndSources, optimizerSources, runtimeSources;
+import minimal_os.console : putChar, print, printLine, printCString, printUnsigned,
+    printDivider, printStageHeader, printStatus, printStatusValue, clearActiveStage,
+    stageSummaryData;
+import minimal_os.compiler : compileStage, frontEndSources, optimizerSources,
+    runtimeSources;
 import minimal_os.posix : ProcessEntry, launchInteractiveShell, shellExecEntry,
     registerBareMetalShellInterfaces, ensureBareMetalShellInterfaces,
     g_posixConfigured, ensurePosixUtilitiesConfigured, registerPosixUtilities,
     detectConsoleAvailability, g_consoleAvailable, g_shellRegistered,
     registerProcessExecutable;
-import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler, packageArtifacts,
-    toolchainConfiguration, linkArtifacts, packageManifest, linkedArtifactSize;
+import minimal_os.toolchain : resetBuilderState, configureToolchain, linkCompiler,
+    packageArtifacts, toolchainConfiguration, linkArtifacts, packageManifest,
+    linkedArtifactSize;
 import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 
 
@@ -175,137 +180,14 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
 }
 
 
-pragma(mangle, "compilerBuilderProcessEntry")
-export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+extern(C) @nogc nothrow
+void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
 {
-    // Inlined runCompilerBuilder (avoiding extern(C) linkage issues in betterC)
-    resetBuilderState();
+    // Currently we ignore argv/envp; they are provided for future extensibility.
+    cast(void) argv;
+    cast(void) envp;
 
-    printLine("========================================");
-    printLine("   Cross Compiler Build Orchestrator");
-    printLine("   Target: Full D language toolchain");
-    printLine("========================================");
-
-    configureToolchain();
-
-    compileStage("Compile front-end", "front-end", frontEndSources());
-    compileStage("Build optimizer + codegen", "optimizer", optimizerSources());
-    compileStage("Assemble runtime libraries", "runtime", runtimeSources());
-    linkCompiler();
-    packageArtifacts();
-    compileEmbeddedPosixUtilities();
-    integrateShell();
-    printBuildSummary();
-
-    printLine("[debug] Shell state snapshot: pre-boot");
-    print("         repository fetched : ");
-    printLine(shellState.repositoryFetched ? "yes" : "no");
-    print("         repository         : ");
-    printLine(shellState.repository);
-    print("         revision           : ");
-    printLine(shellState.revision);
-    print("         binary name        : ");
-    printLine(shellState.binaryName);
-    print("         binary bytes       : ");
-    printUnsigned(shellState.binaryBytes);
-    putChar('\n');
-    print("         documented cmds    : ");
-    printUnsigned(shellState.documentedCommandCount);
-    putChar('\n');
-    print("         source files       : ");
-    printUnsigned(shellState.sourceFileCount);
-    putChar('\n');
-    print("         runtime bound      : ");
-    printLine(shellState.runtimeBound ? "yes" : "no");
-    print("         compiler access    : ");
-    printLine(shellState.compilerAccessible ? "yes" : "no");
-    print("         shell activated    : ");
-    printLine(shellState.shellActivated ? "yes" : "no");
-    print("         failure reason     : ");
-    if (shellState.failureReason !is null)
-    {
-        printLine(shellState.failureReason);
-    }
-    else
-    {
-        printLine("<none>");
-    }
-
-    printLine("");
-    printLine("[kernel] Bootstrapping userland services...");
-    
-    // Inline userland bootstrap (avoiding LDC betterC extern(C) dead code elimination)
-    {
-        import minimal_os.console : printStageHeader;
-        printStageHeader("Provision userland services");
-
-        UserlandRuntime runtime;
-        runtime.reset();
-
-        foreach (plan; DEFAULT_SERVICE_PLANS)
-        {
-            immutable(char)[] desiredState = normaliseState(plan.desiredState);
-            const size_t serviceIndex = runtime.registerService(plan.name,
-                                                                plan.binary,
-                                                                plan.summary,
-                                                                plan.capabilities,
-                                                                plan.optional);
-            const bool registered = serviceIndex != size_t.max;
-            const bool launched = registered ? runtime.launchService(serviceIndex, desiredState) : false;
-            logServiceProvision(plan, desiredState, registered, launched);
-        }
-
-        SystemProperties systemProperties;
-        immutable(char)[][] desktopStack =
-            [ "xorg-server", "xinit", "display-manager", "i3" ];
-
-        systemProperties.desktopReady = true;
-        foreach (service; desktopStack)
-        {
-            if (!processReady(runtime, service))
-            {
-                systemProperties.desktopReady = false;
-                break;
-            }
-        }
-
-        logUserlandSnapshot(runtime, systemProperties);
-    }
-    
-    printLine("");
-    printLine("[done] D language cross compiler ready.");
-    if (shellState.shellActivated)
-    {
-        printLine("[done] 'lfe-sh' interactive shell ready.");
-        printLine("");
-        printLine("Booting 'lfe-sh' interactive shell...");
-        launchInteractiveShell();
-    }
-    else
-    {
-        print("[warn] 'lfe-sh' shell unavailable: ");
-        if (shellState.failureReason !is null)
-        {
-            printLine(shellState.failureReason);
-        }
-        else
-        {
-            printLine("compiler access is required.");
-        }
-    }
-}
-
-// Ensure the compiler builder entry point is always emitted, even when
-// link-time dead-stripping is aggressive.  Use an explicit LDC version check
-// rather than __traits(compiles, ...) so the directive is applied whenever the
-// build uses LDC (our default kernel compiler) while still remaining harmless
-// on other compilers that may not understand the pragma.
-version (LDC)
-{
-    static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
-    {
-        pragma(LDC_force_link, compilerBuilderProcessEntry);
-    }
+    runCompilerBuilder();
 }
 
 

@@ -12,6 +12,12 @@ import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredP
     schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
+// Always pull in the weak compiler-builder stub so kernel-only builds still
+// have a definition for the entry point even if the full shell integration
+// object is not linked. The real implementation in shell_integration.d carries
+// a strong symbol that overrides this stub when present.
+static import minimal_os.kernel.compiler_builder_stub;
+
 // Treat the compiler builder entry point as optional so the kernel can still link
 // in environments where the full userland object was not provided. LDC resolves
 // missing weak symbols to null, allowing us to skip registration gracefully.

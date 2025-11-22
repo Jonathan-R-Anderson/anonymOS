@@ -7,7 +7,7 @@ import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvai
                                        compositorAllocateSurface, compositorResizeSurface, compositorReleaseSurface;
 import minimal_os.display.input_pipeline : InputQueue;
 import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
-import minimal_os.kernel.shell_integration : schedYield;
+import minimal_os.posix : schedYield;
 import minimal_os.serial : pollSerialInput;
 
 __gshared WindowManager g_windowManager;

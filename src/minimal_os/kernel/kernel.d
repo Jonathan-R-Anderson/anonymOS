@@ -8,9 +8,8 @@ import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
-import minimal_os.posix : PosixKernelShim;
-
-mixin PosixKernelShim;
+import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
+    schedYield, initializeInterrupts;
 
 version (MinimalOsUserlandLinked)
 {

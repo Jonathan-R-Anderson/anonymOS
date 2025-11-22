@@ -5,6 +5,22 @@ public import minimal_os.console : print, printLine, printUnsigned,
                                    printCString;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
+
+// Decide whether to rely on host/Posix C interop.  Kernel builds define
+// MinimalOsFreestanding to force the freestanding path even on hosts where the
+// compiler would normally set version(Posix).
+version (MinimalOsFreestanding)
+{
+    package(minimal_os) enum bool hostPosixInteropEnabled = false;
+}
+else version (Posix)
+{
+    package(minimal_os) enum bool hostPosixInteropEnabled = true;
+}
+else
+{
+    package(minimal_os) enum bool hostPosixInteropEnabled = false;
+}
 // Re-export the context helpers so the PosixKernelShim mixin (and any
 // modules that import `minimal_os.posix`) can reference them via
 // `minimal_os.posix.jmp_buf`, etc.  Without the public import, instantiating
@@ -134,7 +150,7 @@ extern(D) shared static this()
 // ---------------------------
 // Host/Posix C API (guarded)
 // ---------------------------
-version (Posix)
+static if (hostPosixInteropEnabled)
 {
     public import core.sys.posix.unistd : isatty, read, write, close, access,
                                            chdir, fork, execve, _exit;
@@ -257,7 +273,7 @@ void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
 // Provided by the PosixKernelShim (in the kernel/main) or host.
 // Declare it here so this module can call it.
-version (Posix)
+static if (hostPosixInteropEnabled)
 {
     // Use the Posix import.
 }
@@ -1192,7 +1208,7 @@ mixin template PosixKernelShim()
         debugExpectActual("loadEnvironmentFromHost table present", 1, debugBool(table !is null));
         if (table is null) return;
         clearEnvironmentTable(table);
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             if (environ is null) return;
             debugExpectActual("loadEnvironmentFromHost environ present", 1, debugBool(environ !is null));
@@ -1341,7 +1357,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private const(char)* readEnvironmentVariable(const(char)* name)
     {
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             if (name is null || name[0] == '\0') return null;
             const size_t nameLength = cStringLength(name);
@@ -1438,7 +1454,7 @@ mixin template PosixKernelShim()
         bool hostProbeSupported = false;
         bool hasValidStdStreams = false;
 
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             hostProbeSupported = true;
 
@@ -1895,7 +1911,7 @@ mixin template PosixKernelShim()
         debugExpectActual("sys_read fd resolved", 1, debugBool(resolved));
         if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
 
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             auto result = minimal_os.posix.read(hostFd, buffer, length);
             if (result < 0)
@@ -1919,7 +1935,7 @@ mixin template PosixKernelShim()
         debugExpectActual("sys_write fd resolved", 1, debugBool(resolved));
         if (!resolved) return cast(ssize_t)setErrno(Errno.EBADF);
 
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             auto result = minimal_os.posix.write(hostFd, buffer, length);
             if (result < 0)
@@ -1941,7 +1957,7 @@ mixin template PosixKernelShim()
     @nogc nothrow pid_t getpid(){ return sys_getpid(); }
     @nogc nothrow pid_t fork(){   return sys_fork();   }
     @nogc nothrow int   execve(const(char)* p, const(char*)* a, const(char*)* e){ return sys_execve(p,a,e); }
-    version (Posix)
+    static if (hostPosixInteropEnabled)
     {
         public extern(C) @nogc nothrow pid_t spawnRegisteredProcess(const(char)*, const(char*)*, const(char*)*)
         {
@@ -1995,7 +2011,7 @@ mixin template PosixKernelShim()
         minimal_os.posix.registerBareMetalShellInterfaces(&spawnRegisteredProcess,
                                                           &bareMetalWaitPid);
     }
-    version (Posix)
+    static if (hostPosixInteropEnabled)
     {
         // Use the Posix-provided _exit.
     }
@@ -2007,7 +2023,7 @@ mixin template PosixKernelShim()
     @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
 
     // Optional weak-ish symbols for linkage expectations
-    version (Posix)
+    static if (hostPosixInteropEnabled)
     {
         extern(C) __gshared char** environ;
     }
@@ -2075,7 +2091,7 @@ mixin template PosixKernelShim()
         return setErrno(Errno.ENFILE);
     }
 
-    version (Posix)
+    static if (hostPosixInteropEnabled)
     {
     }
     else
@@ -2226,7 +2242,7 @@ mixin template PosixKernelShim()
 
         g_shellRegistered = false;
         ensureBareMetalShellInterfaces();
-        version (Posix)
+        static if (hostPosixInteropEnabled)
         {
             if (g_consoleAvailable)
             {
@@ -2328,7 +2344,7 @@ mixin PosixKernelShim;
 // ------------------------
 // Shell & utility entries
 // ------------------------
-version (Posix)
+static if (hostPosixInteropEnabled)
 {
     // Host-side shell bridge lives in this module so the kernel can drop into
     // the packaged lfe-sh environment without needing an external stub.

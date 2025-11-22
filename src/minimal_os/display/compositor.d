@@ -506,7 +506,7 @@ bool compositorAllocateSurface(uint width, uint height, out size_t id, out Canva
             continue;
         }
 
-        const auto allocation = allocateSurfacePixels(needed);
+        auto allocation = allocateSurfacePixels(needed);
         if (allocation.ptr is null)
         {
             return false;
@@ -543,7 +543,7 @@ bool compositorResizeSurface(size_t id, uint width, uint height, out Canvas canv
         return false;
     }
 
-    const auto allocation = allocateSurfacePixels(needed);
+    auto allocation = allocateSurfacePixels(needed);
     if (allocation.ptr is null)
     {
         return false;

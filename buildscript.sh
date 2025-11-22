@@ -183,7 +183,7 @@ install_desktop_stub() {
   local name="$1"
   local target="$DESKTOP_BIN_DIR/$name"
   local source="$DESKTOP_ASSETS_DIR/stubs/display-component.sh"
-  if [ -f "$source" ]; then
+  if [ -f "$source" ] && [ ! -f "$target" ]; then
     cp "$source" "$target"
     chmod +x "$target"
     echo "[*] Installed desktop stub: $target"
@@ -267,6 +267,10 @@ KERNEL_SOURCES=(
   "src/minimal_os/toolchain.d"
   "src/sh_metadata.d"
   "src/minimal_os/userland.d"
+  "src/minimal_os/fs.d"
+  "src/minimal_os/kernel/linux_syscalls.d"
+  "src/minimal_os/kernel/syscalls.d"
+  "src/minimal_os/elf.d"
 )
 
 # Ensure shell integration is always present (kmain registers compiler-builder).
@@ -398,17 +402,34 @@ if [ -d "$DESKTOP_STAGING_DIR" ]; then
     mkdir -p "$ISO_STAGING_DIR/etc"
     cp -a "$DESKTOP_ETC_DIR/." "$ISO_STAGING_DIR/etc/"
   fi
+  DESKTOP_LIB_DIR="$DESKTOP_STAGING_DIR/lib"
+  if [ -d "$DESKTOP_LIB_DIR" ]; then
+    mkdir -p "$ISO_STAGING_DIR/lib"
+    cp -a "$DESKTOP_LIB_DIR/." "$ISO_STAGING_DIR/lib/"
+    # Ensure /lib64 exists for 64-bit loader
+    if [ ! -e "$ISO_STAGING_DIR/lib64" ]; then
+       ln -s lib "$ISO_STAGING_DIR/lib64"
+    fi
+  fi
+fi
+
+# Create initrd from desktop staging
+INITRD_IMG="$ISO_STAGING_DIR/boot/initrd.tar"
+if [ -d "$DESKTOP_STAGING_DIR" ]; then
+    echo "[*] Creating initrd from $DESKTOP_STAGING_DIR"
+    tar -cf "$INITRD_IMG" -C "$DESKTOP_STAGING_DIR" .
 fi
 
 if [ -f "$GRUB_CFG_SRC" ]; then
   cp "$GRUB_CFG_SRC" "$ISO_STAGING_DIR/boot/grub/grub.cfg"
 else
-  cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<'EOF'
+  cat >"$ISO_STAGING_DIR/boot/grub/grub.cfg" <<EOF
 set timeout=0
 set default=0
 
 menuentry "AnonymOS" {
     multiboot /boot/kernel.elf
+    module /boot/initrd.tar initrd
     boot
 }
 EOF

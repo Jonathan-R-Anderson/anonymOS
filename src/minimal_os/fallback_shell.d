@@ -187,6 +187,14 @@ private enum char PROMPT_CHAR = '#';
             continue;
         }
 
+        if (command == "xinit" || command == "startx" || command == "i3")
+        {
+            printLine("[shell] Error: External binary not found.");
+            printLine("[shell] The ELF loader is active, but the filesystem is empty.");
+            printLine("[shell] Ensure binaries are loaded into the VFS.");
+            continue;
+        }
+
         print("[shell] Unknown command: ");
         printLineImmediate(command);
     }

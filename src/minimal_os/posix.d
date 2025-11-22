@@ -170,7 +170,34 @@ version (Posix)
     private enum int F_OK = 0;
     private enum int X_OK = 1;
     extern(C) __gshared char** environ;
+}
+else
+{
+    // Provide stub declarations for bare-metal builds so references remain
+    // visible even when the Posix imports are unavailable. These placeholders
+    // mirror the Posix signatures while leaving the bare-metal implementations
+    // to supply any needed definitions.
+    public struct stat_t { long _placeholder; }
+    public alias ssize_t = long;
 
+    public extern(C) __gshared int errno;
+    public enum EBADF = 9;
+    public enum EINTR = 4;
+    public enum O_RDONLY = 0;
+    public enum O_NOCTTY = 0;
+
+    public extern(C) int fstat(int fd, stat_t* buf);
+    public extern(C) int isatty(int fd);
+    public extern(C) int open(const char* path, int flags, int mode = 0);
+    public extern(C) int close(int fd);
+    public extern(C) ssize_t read(int fd, void* buffer, size_t length);
+    public extern(C) ssize_t write(int fd, const void* buffer, size_t length);
+    public extern(C) int posixWaitPid(int pid, int* status, int options);
+
+    private enum int F_OK = 0;
+    private enum int X_OK = 1;
+    extern(C) __gshared char** environ;
+}
     private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
     private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
     private immutable char[] g_envVarShellBinary = "SH_SHELL_BINARY\0";

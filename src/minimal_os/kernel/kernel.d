@@ -12,6 +12,14 @@ import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredP
     schedYield, initializeInterrupts;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
+// Treat the compiler builder entry point as optional so the kernel can still link
+// in environments where the full userland object was not provided. LDC resolves
+// missing weak symbols to null, allowing us to skip registration gracefully.
+version (LDC)
+{
+    pragma(LDC_extern_weak, compilerBuilderProcessEntry);
+}
+
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
 extern(C) void kmain(ulong magic, ulong info)
@@ -70,11 +78,18 @@ extern(C) void kmain(ulong magic, ulong info)
     // Register processes that should run alongside the kernel core.
     version (MinimalOsUserlandLinked)
     {
-        const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
-            &compilerBuilderProcessEntry);
-        if (builderRegistration == 0)
+        if (compilerBuilderProcessEntry !is null)
         {
-            cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
+            const int builderRegistration = registerProcessExecutable("/sbin/compiler-builder",
+                &compilerBuilderProcessEntry);
+            if (builderRegistration == 0)
+            {
+                cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
+            }
+        }
+        else
+        {
+            printLine("[kernel] Compiler builder unavailable (symbol not linked)");
         }
     }
     else

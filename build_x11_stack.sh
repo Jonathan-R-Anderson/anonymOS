@@ -146,6 +146,14 @@ build_meson() {
     tar -xf "$SOURCES_DIR/$tarball"
     cd "$source_dir"
 
+    if [ ! -f meson.build ]; then
+        log "$name does not contain a meson.build; falling back to Autotools"
+        cd "$BUILD_DIR"
+        rm -rf "$source_dir"
+        build_autotools "$name" "$tarball" "${extra_flags[@]}"
+        return
+    fi
+
     meson setup build --prefix="$INSTALL_PREFIX" \
         --buildtype=release \
         "${extra_flags[@]}"

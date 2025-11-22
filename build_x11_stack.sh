@@ -257,7 +257,11 @@ fi
 
 if [ ! -f "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" ]; then
     log "Downloading libstartup-notification..."
-    wget "https://www.freedesktop.org/software/startup-notification/releases/libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
+    if ! wget "https://www.freedesktop.org/software/startup-notification/releases/libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"; then
+        wget -O "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" \
+            "https://download.gnome.org/sources/startup-notification/${LIBSTARTUP_NOTIFICATION_VERSION%.*}/startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz" || \
+            error "Failed to download libstartup-notification"
+    fi
 fi
 
 # i3 window manager

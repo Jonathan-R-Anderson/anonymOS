@@ -10,13 +10,7 @@ import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, Framebuf
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts, ProcessEntry;
-import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
-
-// Always pull in the weak compiler-builder stub so kernel-only builds still
-// have a definition for the entry point even if the full shell integration
-// object is not linked. The real implementation in shell_integration.d carries
-// a strong symbol that overrides this stub when present.
-static import minimal_os.kernel.compiler_builder_stub;
+import minimal_os.kernel.shell_integration : runCompilerBuilder;
 
 // Treat the compiler builder entry point as optional so the kernel can still link
 // in environments where the full userland object was not provided. LDC resolves
@@ -28,6 +22,16 @@ version (LDC)
     // missing. The pragma applies to the following declaration.
     pragma(LDC_extern_weak)
     extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
+}
+else
+{
+    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
+}
+
+pragma(mangle, "compilerBuilderProcessEntry")
+export extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
+{
+    runCompilerBuilder();
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

@@ -22,7 +22,7 @@ struct CursorState
 
 private __gshared CursorState g_cursor;
 
-private bool fetchWindow(ref const WindowManager manager, size_t id, out Window window) @nogc nothrow
+private bool fetchWindow(ref const WindowManager manager, size_t id, out const Window window) @nogc nothrow
 {
     foreach (ref const candidate; manager.windows())
     {
@@ -43,7 +43,7 @@ private void dispatchToWindow(ref const InputEvent event, ref WindowManager mana
     }
 
     InputEvent translated = event;
-    Window window;
+    const Window window;
     if (fetchWindow(manager, id, window))
     {
         if (event.type == InputEvent.Type.pointerMove ||

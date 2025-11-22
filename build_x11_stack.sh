@@ -125,17 +125,21 @@ build_autotools() {
 
 build_meson() {
     local name="$1"
-    local source_dir="$2"
+    local tarball="$2"
     shift 2
     local extra_flags=("$@")
-    
+
     log "Building $name..."
+    cd "$BUILD_DIR"
+    local source_dir="${tarball%.tar.*}"
+    rm -rf "$source_dir"
+    tar -xf "$SOURCES_DIR/$tarball"
     cd "$source_dir"
-    
+
     meson setup build --prefix="$INSTALL_PREFIX" \
         --buildtype=release \
         "${extra_flags[@]}"
-    
+
     ninja -C build
     ninja -C build install
     log "$name installed."
@@ -268,8 +272,7 @@ log "All sources downloaded."
 
 # Phase 1: Protocol definitions
 build_autotools "xcb-proto" "xcb-proto-${XCB_PROTO_VERSION}.tar.xz"
-build_meson "xorgproto" "$BUILD_DIR/xorgproto-${XPROTO_VERSION}"
-cd "$BUILD_DIR" && tar -xf "$SOURCES_DIR/xorgproto-${XPROTO_VERSION}.tar.xz"
+build_meson "xorgproto" "xorgproto-${XPROTO_VERSION}.tar.xz"
 build_autotools "xtrans" "xtrans-${XTRANS_VERSION}.tar.xz"
 
 # Phase 2: Core X libraries
@@ -300,10 +303,8 @@ build_autotools "libxkbfile" "libxkbfile-${LIBXKBFILE_VERSION}.tar.xz"
 # Phase 5: Graphics libraries
 build_autotools "libpng" "libpng-${LIBPNG_VERSION}.tar.xz"
 build_autotools "pixman" "pixman-${PIXMAN_VERSION}.tar.gz"
-build_meson "libdrm" "$BUILD_DIR/libdrm-${LIBDRM_VERSION}" -Dintel=disabled -Dradeon=disabled -Damdgpu=disabled -Dnouveau=disabled
-cd "$BUILD_DIR" && tar -xf "$SOURCES_DIR/libdrm-${LIBDRM_VERSION}.tar.xz"
-build_meson "libepoxy" "$BUILD_DIR/libepoxy-${LIBEPOXY_VERSION}"
-cd "$BUILD_DIR" && tar -xf "$SOURCES_DIR/libepoxy-${LIBEPOXY_VERSION}.tar.xz"
+build_meson "libdrm" "libdrm-${LIBDRM_VERSION}.tar.xz" -Dintel=disabled -Dradeon=disabled -Damdgpu=disabled -Dnouveau=disabled
+build_meson "libepoxy" "libepoxy-${LIBEPOXY_VERSION}.tar.xz"
 
 # Phase 6: Font libraries
 build_autotools "freetype" "freetype-${FREETYPE_VERSION}.tar.xz"
@@ -339,8 +340,7 @@ make -j"$JOBS"
 make install
 
 build_autotools "cairo" "cairo-${CAIRO_VERSION}.tar.xz"
-build_meson "pango" "$BUILD_DIR/pango-${PANGO_VERSION}"
-cd "$BUILD_DIR" && tar -xf "$SOURCES_DIR/pango-${PANGO_VERSION}.tar.xz"
+build_meson "pango" "pango-${PANGO_VERSION}.tar.xz"
 build_autotools "libstartup-notification" "libstartup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
 
 # Phase 11: i3 window manager

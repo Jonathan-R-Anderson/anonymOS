@@ -90,6 +90,23 @@ extern(D) shared static this()
     g_shellDefaultArgv[0] = SHELL_PATH.ptr;
     g_shellDefaultArgv[1] = null;
     g_shellDefaultEnvp[0] = null;
+
+    g_shellEnvVarOrder[0] = g_envVarLfeShBinary.ptr;
+    g_shellEnvVarOrder[1] = g_envVarShBinary.ptr;
+    g_shellEnvVarOrder[2] = g_envVarShellBinary.ptr;
+    g_shellEnvVarOrder[3] = g_envVarShellRoot.ptr;
+
+    g_shellSearchOrder[0] = g_isoShellPath;
+    g_shellSearchOrder[1] = g_isoShellBinPath;
+    g_shellSearchOrder[2] = g_kernelShellPath;
+    g_shellSearchOrder[3] = g_kernelShellBinPath;
+    g_shellSearchOrder[4] = g_repoShellPath;
+    g_shellSearchOrder[5] = g_repoShellBinPath;
+    g_shellSearchOrder[6] = g_repoShellRelativePath;
+    g_shellSearchOrder[7] = g_repoShellRelativeBinPath;
+    g_shellSearchOrder[8] = g_usrLocalShellPath;
+    g_shellSearchOrder[9] = g_usrShellPath;
+    g_shellSearchOrder[10] = g_binShellPath;
 }
 
 @nogc nothrow package(minimal_os) size_t cStringLength(const(char)* str)
@@ -211,11 +228,7 @@ private immutable char[] g_envVarShBinary = "SH_BINARY_PATH\0";
 private immutable char[] g_envVarShellBinary = "SH_SHELL_BINARY\0";
 private immutable char[] g_envVarShellRoot = "SH_SHELL_ROOT\0";
 
-private const(char)*[] g_shellEnvVarOrder =
-    [ g_envVarLfeShBinary.ptr,
-      g_envVarShBinary.ptr,
-      g_envVarShellBinary.ptr,
-      g_envVarShellRoot.ptr ];
+private __gshared const(char*)[4] g_shellEnvVarOrder;
 
 private immutable char[] g_isoShellPath = "/opt/shell/" ~ shBinaryName ~ "\0";
 private immutable char[] g_isoShellBinPath = "/opt/shell/bin/" ~ shBinaryName ~ "\0";
@@ -232,18 +245,7 @@ private immutable char[] g_usrShellPath = "/usr/bin/" ~ shBinaryName ~ "\0";
 private immutable char[] g_binShellPath = "/bin/" ~ shBinaryName ~ "\0";
 private immutable char[] g_defaultShPath = "/bin/sh\0";
 
-private immutable(char)[][] g_shellSearchOrder =
-    [ g_isoShellPath,
-      g_isoShellBinPath,
-      g_kernelShellPath,
-      g_kernelShellBinPath,
-      g_repoShellPath,
-      g_repoShellBinPath,
-      g_repoShellRelativePath,
-      g_repoShellRelativeBinPath,
-      g_usrLocalShellPath,
-      g_usrShellPath,
-      g_binShellPath ];
+private __gshared immutable(char)[][11] g_shellSearchOrder;
 
 // ---- Forward decls needed by the shim (appear before mixin use) ----
 extern(C) @nogc nothrow
@@ -614,11 +616,11 @@ mixin template PosixKernelShim()
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
-    private __gshared bool           g_initialized = false;
-    private __gshared bool           g_consoleAvailable = false;
-    private __gshared bool           g_posixUtilitiesRegistered = false;
-    private __gshared size_t         g_posixUtilityCount = 0;
-    private __gshared bool           g_posixConfigured   = false;
+    package(minimal_os) __gshared bool g_initialized = false;
+    package(minimal_os) __gshared bool g_consoleAvailable = false;
+    package(minimal_os) __gshared bool g_posixUtilitiesRegistered = false;
+    package(minimal_os) __gshared size_t g_posixUtilityCount = 0;
+    package(minimal_os) __gshared bool g_posixConfigured   = false;
 
     // --------------- small buffer/string utils ---------------
     @nogc nothrow private void clearBuffer(ref char[MAX_OBJECT_NAME] buffer)
@@ -1399,7 +1401,7 @@ mixin template PosixKernelShim()
         immutable(char)[] reason;
     }
 
-    @nogc nothrow private ConsoleDetectionResult detectConsoleAvailability()
+    package(minimal_os) @nogc nothrow ConsoleDetectionResult detectConsoleAvailability()
     {
         ConsoleDetectionResult result;
 
@@ -2306,7 +2308,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow private bool ensurePosixUtilitiesConfigured()
+    package(minimal_os) @nogc nothrow bool ensurePosixUtilitiesConfigured()
     {
         configureEmbeddedPosixUtilities();
         return g_posixUtilitiesRegistered;
@@ -2318,6 +2320,10 @@ mixin template PosixKernelShim()
         return g_posixUtilityCount;
     }
 } // end mixin PosixKernelShim
+
+// Instantiate the shim once at module scope so its symbols are defined in this
+// module and can be imported without duplicating code across kernel modules.
+mixin PosixKernelShim;
 
 // ------------------------
 // Shell & utility entries

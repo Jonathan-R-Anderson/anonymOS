@@ -4,6 +4,7 @@ import minimal_os.display.font_stack : activeFontStack;
 import minimal_os.display.framebuffer;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToFramebuffer;
+import minimal_os.display.canvas;
 
 nothrow:
 @nogc:

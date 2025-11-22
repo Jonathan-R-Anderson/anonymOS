@@ -112,7 +112,17 @@ build_autotools() {
     tar -xf "$SOURCES_DIR/$tarball"
     local dir="${tarball%.tar.*}"
     cd "$dir"
-    
+
+    # If there is no configure script, try to generate it
+    if [ ! -x ./configure ]; then
+        if [ -f configure.ac ] || [ -f configure.in ]; then
+            log "Running autoreconf for $name"
+            autoreconf -i || error "autoreconf failed for $name"
+        else
+            error "No configure script found for $name"
+        fi
+    fi
+
     ./configure --prefix="$INSTALL_PREFIX" \
         --disable-static \
         --enable-shared \
@@ -143,6 +153,22 @@ build_meson() {
     ninja -C build
     ninja -C build install
     log "$name installed."
+}
+
+build_package() {
+    local name="$1"
+    local tarball="$2"
+    shift 2
+    local extra_flags=("$@")
+
+    case "$name" in
+        # Packages that use Meson
+        libdrm|libepoxy|cairo|pango|libstartup-notification|i3|libxcb|libX11|libXau|libXdmcp|xorgproto)
+            build_meson "$name" "$tarball" "${extra_flags[@]}" ;;
+        # Everything else uses Autotools
+        *)
+            build_autotools "$name" "$tarball" "${extra_flags[@]}" ;;
+    esac
 }
 
 # ===================== Setup =====================
@@ -277,52 +303,52 @@ log "All sources downloaded."
 # ===================== Build Process =====================
 
 # Phase 1: Protocol definitions
-build_autotools "xcb-proto" "xcb-proto-${XCB_PROTO_VERSION}.tar.xz"
-build_meson "xorgproto" "xorgproto-${XPROTO_VERSION}.tar.xz"
-build_autotools "xtrans" "xtrans-${XTRANS_VERSION}.tar.xz"
+build_package "xcb-proto" "xcb-proto-${XCB_PROTO_VERSION}.tar.xz"
+build_package "xorgproto" "xorgproto-${XPROTO_VERSION}.tar.xz"
+build_package "xtrans" "xtrans-${XTRANS_VERSION}.tar.xz"
 
 # Phase 2: Core X libraries
-build_autotools "libXau" "libXau-${LIBXAU_VERSION}.tar.xz"
-build_autotools "libXdmcp" "libXdmcp-${LIBXDMCP_VERSION}.tar.xz"
-build_autotools "libxcb" "libxcb-${LIBXCB_VERSION}.tar.xz"
-build_autotools "libX11" "libX11-${LIBX11_VERSION}.tar.xz"
+build_package "libXau" "libXau-${LIBXAU_VERSION}.tar.xz"
+build_package "libXdmcp" "libXdmcp-${LIBXDMCP_VERSION}.tar.xz"
+build_package "libxcb" "libxcb-${LIBXCB_VERSION}.tar.xz"
+build_package "libX11" "libX11-${LIBX11_VERSION}.tar.xz"
 
 # Phase 3: xcb-util libraries
-build_autotools "xcb-util" "xcb-util-${XCB_UTIL_VERSION}.tar.xz"
-build_autotools "xcb-util-image" "xcb-util-image-${XCB_UTIL_IMAGE_VERSION}.tar.xz"
-build_autotools "xcb-util-keysyms" "xcb-util-keysyms-${XCB_UTIL_KEYSYMS_VERSION}.tar.xz"
-build_autotools "xcb-util-renderutil" "xcb-util-renderutil-${XCB_UTIL_RENDERUTIL_VERSION}.tar.xz"
-build_autotools "xcb-util-wm" "xcb-util-wm-${XCB_UTIL_WM_VERSION}.tar.xz"
-build_autotools "xcb-util-cursor" "xcb-util-cursor-${XCB_UTIL_CURSOR_VERSION}.tar.xz"
+build_package "xcb-util" "xcb-util-${XCB_UTIL_VERSION}.tar.xz"
+build_package "xcb-util-image" "xcb-util-image-${XCB_UTIL_IMAGE_VERSION}.tar.xz"
+build_package "xcb-util-keysyms" "xcb-util-keysyms-${XCB_UTIL_KEYSYMS_VERSION}.tar.xz"
+build_package "xcb-util-renderutil" "xcb-util-renderutil-${XCB_UTIL_RENDERUTIL_VERSION}.tar.xz"
+build_package "xcb-util-wm" "xcb-util-wm-${XCB_UTIL_WM_VERSION}.tar.xz"
+build_package "xcb-util-cursor" "xcb-util-cursor-${XCB_UTIL_CURSOR_VERSION}.tar.xz"
 
 # Phase 4: X extension libraries
-build_autotools "libXext" "libXext-${LIBXEXT_VERSION}.tar.xz"
-build_autotools "libXfixes" "libXfixes-${LIBXFIXES_VERSION}.tar.xz"
-build_autotools "libXdamage" "libXdamage-${LIBXDAMAGE_VERSION}.tar.xz"
-build_autotools "libXxf86vm" "libXxf86vm-${LIBXXF86VM_VERSION}.tar.xz"
-build_autotools "libXrandr" "libXrandr-${LIBXRANDR_VERSION}.tar.xz"
-build_autotools "libXrender" "libXrender-${LIBXRENDER_VERSION}.tar.xz"
-build_autotools "libXi" "libXi-${LIBXI_VERSION}.tar.xz"
-build_autotools "libXtst" "libXtst-${LIBXTST_VERSION}.tar.xz"
-build_autotools "libxkbfile" "libxkbfile-${LIBXKBFILE_VERSION}.tar.xz"
+build_package "libXext" "libXext-${LIBXEXT_VERSION}.tar.xz"
+build_package "libXfixes" "libXfixes-${LIBXFIXES_VERSION}.tar.xz"
+build_package "libXdamage" "libXdamage-${LIBXDAMAGE_VERSION}.tar.xz"
+build_package "libXxf86vm" "libXxf86vm-${LIBXXF86VM_VERSION}.tar.xz"
+build_package "libXrandr" "libXrandr-${LIBXRANDR_VERSION}.tar.xz"
+build_package "libXrender" "libXrender-${LIBXRENDER_VERSION}.tar.xz"
+build_package "libXi" "libXi-${LIBXI_VERSION}.tar.xz"
+build_package "libXtst" "libXtst-${LIBXTST_VERSION}.tar.xz"
+build_package "libxkbfile" "libxkbfile-${LIBXKBFILE_VERSION}.tar.xz"
 
 # Phase 5: Graphics libraries
-build_autotools "libpng" "libpng-${LIBPNG_VERSION}.tar.xz"
-build_autotools "pixman" "pixman-${PIXMAN_VERSION}.tar.gz"
-build_meson "libdrm" "libdrm-${LIBDRM_VERSION}.tar.xz" -Dintel=disabled -Dradeon=disabled -Damdgpu=disabled -Dnouveau=disabled
-build_meson "libepoxy" "libepoxy-${LIBEPOXY_VERSION}.tar.xz"
+build_package "libpng" "libpng-${LIBPNG_VERSION}.tar.xz"
+build_package "pixman" "pixman-${PIXMAN_VERSION}.tar.gz"
+build_package "libdrm" "libdrm-${LIBDRM_VERSION}.tar.xz" -Dintel=disabled -Dradeon=disabled -Damdgpu=disabled -Dnouveau=disabled
+build_package "libepoxy" "libepoxy-${LIBEPOXY_VERSION}.tar.xz"
 
 # Phase 6: Font libraries
-build_autotools "freetype" "freetype-${FREETYPE_VERSION}.tar.xz"
-build_autotools "fontconfig" "fontconfig-${FONTCONFIG_VERSION}.tar.xz"
-build_autotools "libXfont2" "libXfont2-${LIBXFONT2_VERSION}.tar.xz"
+build_package "freetype" "freetype-${FREETYPE_VERSION}.tar.xz"
+build_package "fontconfig" "fontconfig-${FONTCONFIG_VERSION}.tar.xz"
+build_package "libXfont2" "libXfont2-${LIBXFONT2_VERSION}.tar.xz"
 
 # Phase 7: Keyboard configuration
-build_autotools "xkeyboard-config" "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}.tar.gz"
-build_autotools "xkbcomp" "xkbcomp-${XKBCOMP_VERSION}.tar.xz"
+build_package "xkeyboard-config" "xkeyboard-config-${XKEYBOARD_CONFIG_VERSION}.tar.gz"
+build_package "xkbcomp" "xkbcomp-${XKBCOMP_VERSION}.tar.xz"
 
 # Phase 8: Xorg server
-build_autotools "xorg-server" "xorg-server-${XORG_SERVER_VERSION}.tar.xz" \
+build_package "xorg-server" "xorg-server-${XORG_SERVER_VERSION}.tar.xz" \
     --enable-xorg \
     --disable-xwayland \
     --disable-xnest \
@@ -330,11 +356,11 @@ build_autotools "xorg-server" "xorg-server-${XORG_SERVER_VERSION}.tar.xz" \
     --with-xkb-output=/var/lib/xkb
 
 # Phase 9: X utilities
-build_autotools "xinit" "xinit-${XINIT_VERSION}.tar.xz"
-build_autotools "xdm" "xdm-${XDM_VERSION}.tar.xz"
+build_package "xinit" "xinit-${XINIT_VERSION}.tar.xz"
+build_package "xdm" "xdm-${XDM_VERSION}.tar.xz"
 
 # Phase 10: i3 dependencies
-build_autotools "libev" "libev-${LIBEV_VERSION}.tar.gz"
+build_package "libev" "libev-${LIBEV_VERSION}.tar.gz"
 
 log "Building yajl..."
 cd "$BUILD_DIR"
@@ -345,9 +371,9 @@ cd yajl-build
 make -j"$JOBS"
 make install
 
-build_autotools "cairo" "cairo-${CAIRO_VERSION}.tar.xz"
-build_meson "pango" "pango-${PANGO_VERSION}.tar.xz"
-build_autotools "libstartup-notification" "startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
+build_package "cairo" "cairo-${CAIRO_VERSION}.tar.xz"
+build_package "pango" "pango-${PANGO_VERSION}.tar.xz"
+build_package "libstartup-notification" "startup-notification-${LIBSTARTUP_NOTIFICATION_VERSION}.tar.gz"
 
 # Phase 11: i3 window manager
 log "Building i3..."

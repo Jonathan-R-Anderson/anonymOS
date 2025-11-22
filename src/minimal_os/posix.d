@@ -1,7 +1,8 @@
 module minimal_os.posix;
 
 public import minimal_os.console : print, printLine, printUnsigned,
-                                   kernelConsoleReady, printHex;
+                                   kernelConsoleReady, printHex,
+                                   printCString;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 // Re-export the context helpers so the PosixKernelShim mixin (and any
@@ -248,6 +249,11 @@ void posixUtilityExecEntry(const(char*)* argv, const(char*)* envp);
 
 // Provided by the PosixKernelShim (in the kernel/main) or host.
 // Declare it here so this module can call it.
+version (Posix)
+{
+    // Use the Posix import.
+}
+else
 extern(C) @nogc nothrow
 void _exit(int code);
 
@@ -405,9 +411,9 @@ else
     }
 
     // Stub spawn/wait (no host shell); just sets 127.
-    @nogc nothrow void spawnAndWait(const(char)* /*prog*/, char** /*argv*/, char** /*envp*/, int* exitCode)
+    @nogc nothrow void spawnAndWait(const(char)* /*prog*/, char** /*argv*/, char** /*envp*/, out int exitCode)
     {
-        if (exitCode !is null) *exitCode = 127;
+        exitCode = 127;
     }
 }
 
@@ -1981,7 +1987,14 @@ mixin template PosixKernelShim()
         minimal_os.posix.registerBareMetalShellInterfaces(&spawnRegisteredProcess,
                                                           &bareMetalWaitPid);
     }
-    @nogc nothrow void  _exit(int c){ sys__exit(c); }
+    version (Posix)
+    {
+        // Use the Posix-provided _exit.
+    }
+    else
+    {
+        @nogc nothrow void _exit(int c){ sys__exit(c); }
+    }
     @nogc nothrow int   kill(pid_t p, int s){ return sys_kill(p,s); }
     @nogc nothrow uint  sleep(uint s){ return sys_sleep(s); }
 
@@ -2469,7 +2482,7 @@ version (Posix)
             _exit(exitCode);
         }
 
-        spawnAndWait(programName, args.ptr, environment, &exitCode);
+        spawnAndWait(programName, args.ptr, environment, exitCode);
         debugExpectActual("posixUtilityExecEntry spawned exit", exitCode, exitCode);
         _exit(exitCode);
     }
@@ -2811,22 +2824,6 @@ else
     {
         ensureBareMetalShellInterfaces();
         return g_spawnRegisteredProcessFn !is null && g_waitpidFn !is null;
-    }
-
-    private @nogc nothrow void printCString(const(char)* s)
-    {
-        if (s is null) { print("<null>"); return; }
-        enum fd = 1;
-        size_t i = 0; while (s[i] != 0) ++i;
-        version (Posix)
-        {
-            import core.sys.posix.unistd : write;
-            write(fd, s, i);
-        }
-        else
-        {
-            foreach (k; 0 .. i) { /* optional: putChar(s[k]); */ }
-        }
     }
 
     extern(C) @nogc nothrow void shellExecEntry(const(char*)* argv, const(char*)* envp)

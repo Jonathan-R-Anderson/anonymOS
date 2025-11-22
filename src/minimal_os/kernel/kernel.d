@@ -12,14 +12,6 @@ import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredP
     schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
-version (MinimalOsUserlandLinked)
-{
-    // This symbol must be defined in the userland object when
-    // -version=MinimalOsUserlandLinked is used.
-    extern(C) @nogc nothrow
-    void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp);
-}
-
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
 extern(C) void kmain(ulong magic, ulong info)

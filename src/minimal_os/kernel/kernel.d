@@ -6,7 +6,7 @@ import minimal_os.display.framebuffer;
 import minimal_os.console : clearScreen, print, printLine, printStageHeader, printUnsigned;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
-import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest, MultibootFramebufferInfo, MultibootVideoBackend;
+import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, FramebufferModeRequest, MultibootFramebufferInfo, MultibootVideoBackend, MultibootContext;
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts, ProcessEntry;

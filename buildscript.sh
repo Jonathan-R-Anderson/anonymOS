@@ -11,6 +11,10 @@ SH_TARGET="${SH_TARGET:-lfe-sh}"
 SHELL_DC="${SHELL_DC:-ldc2}"
 POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/src/minimal_os/posixutils}"
 POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
+DESKTOP_ASSETS_DIR="${DESKTOP_ASSETS_DIR:-$ROOT/assets/desktop}"
+DESKTOP_STAGING_DIR="${DESKTOP_STAGING_DIR:-$OUT_DIR/desktop-stack}"
+DESKTOP_BIN_DIR="$DESKTOP_STAGING_DIR/bin"
+DESKTOP_ETC_DIR="$DESKTOP_STAGING_DIR/etc"
 
 # Cross target + sysroot (x86_64 only for this script)
 # Default to a Linux-flavored triple so ldc defines the POSIX/glibc runtime
@@ -170,6 +174,43 @@ if [ -d "$POSIXUTILS_ROOT" ]; then
   fi
 else
   echo "[!] POSIX utilities source directory not found: $POSIXUTILS_ROOT" >&2
+fi
+
+# ===================== Build desktop/display stack stubs =====================
+mkdir -p "$DESKTOP_BIN_DIR" "$DESKTOP_ETC_DIR/X11/xinit"
+
+install_desktop_stub() {
+  local name="$1"
+  local target="$DESKTOP_BIN_DIR/$name"
+  local source="$DESKTOP_ASSETS_DIR/stubs/display-component.sh"
+  if [ -f "$source" ]; then
+    cp "$source" "$target"
+    chmod +x "$target"
+    echo "[*] Installed desktop stub: $target"
+  else
+    echo "[!] Desktop stub source missing: $source" >&2
+  fi
+}
+
+if [ -d "$DESKTOP_ASSETS_DIR" ]; then
+  install_desktop_stub "Xorg"
+  install_desktop_stub "xinit"
+  install_desktop_stub "xdm"
+  install_desktop_stub "lightdm"
+  install_desktop_stub "gdm"
+  install_desktop_stub "i3"
+
+  SESSION_SCRIPT_SRC="$DESKTOP_ASSETS_DIR/session-start.sh"
+  SESSION_SCRIPT_DEST="$DESKTOP_ETC_DIR/X11/xinit/minimal-i3-session"
+  if [ -f "$SESSION_SCRIPT_SRC" ]; then
+    cp "$SESSION_SCRIPT_SRC" "$SESSION_SCRIPT_DEST"
+    chmod +x "$SESSION_SCRIPT_DEST"
+    echo "[*] Installed session script: $SESSION_SCRIPT_DEST"
+  else
+    echo "[!] Session startup script missing: $SESSION_SCRIPT_SRC" >&2
+  fi
+else
+  echo "[!] Desktop assets directory not found: $DESKTOP_ASSETS_DIR" >&2
 fi
 
 # ===================== Compile kernel (freestanding D) =====================
@@ -341,6 +382,18 @@ if [ -d "$KERNEL_POSIX_STAGING" ]; then
   rm -rf "$POSIX_KERNEL_DEST"
   mkdir -p "$POSIX_KERNEL_DEST"
   cp -a "$KERNEL_POSIX_STAGING/." "$POSIX_KERNEL_DEST/"
+fi
+
+# Desktop/display stack staging
+if [ -d "$DESKTOP_STAGING_DIR" ]; then
+  if [ -d "$DESKTOP_BIN_DIR" ]; then
+    mkdir -p "$ISO_STAGING_DIR/bin"
+    cp -a "$DESKTOP_BIN_DIR/." "$ISO_STAGING_DIR/bin/"
+  fi
+  if [ -d "$DESKTOP_ETC_DIR" ]; then
+    mkdir -p "$ISO_STAGING_DIR/etc"
+    cp -a "$DESKTOP_ETC_DIR/." "$ISO_STAGING_DIR/etc/"
+  fi
 fi
 
 if [ -f "$GRUB_CFG_SRC" ]; then

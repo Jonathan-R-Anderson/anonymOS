@@ -192,6 +192,10 @@ KERNEL_SOURCES=(
   "$KERNEL_D"
   "src/minimal_os/kernel/memory.d"
   "src/minimal_os/kernel/posixbundle.d"
+  # Always include the weak compiler builder stub so the kernel still links
+  # even if the full shell integration object is not present (e.g. manual
+  # builds that only compile kernel.d).
+  "src/minimal_os/kernel/compiler_builder_stub.d"
   "src/minimal_os/kernel/shell_integration.d"
   "src/minimal_os/kernel/exceptions.d"
   "src/minimal_os/console.d"

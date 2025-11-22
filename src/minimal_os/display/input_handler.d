@@ -22,6 +22,42 @@ struct CursorState
 
 private __gshared CursorState g_cursor;
 
+private bool fetchWindow(ref const WindowManager manager, size_t id, out Window window) @nogc nothrow
+{
+    foreach (ref const candidate; manager.windows())
+    {
+        if (candidate.id == id)
+        {
+            window = candidate;
+            return true;
+        }
+    }
+    return false;
+}
+
+private void dispatchToWindow(ref const InputEvent event, ref WindowManager manager, size_t id) @nogc nothrow
+{
+    if (id == size_t.max)
+    {
+        return;
+    }
+
+    InputEvent translated = event;
+    Window window;
+    if (fetchWindow(manager, id, window))
+    {
+        if (event.type == InputEvent.Type.pointerMove ||
+            event.type == InputEvent.Type.buttonDown ||
+            event.type == InputEvent.Type.buttonUp)
+        {
+            translated.data1 -= window.x;
+            translated.data2 -= window.y;
+        }
+    }
+
+    manager.queueInputForWindow(id, translated);
+}
+
 /// Initialize the input handler with screen dimensions
 void initializeInputHandler(uint screenWidth, uint screenHeight) @nogc nothrow
 {
@@ -100,7 +136,7 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
         manager.switchDesktop(desktop);
         return;
     }
-    
+
     // Arrow keys for window movement (with Alt modifier)
     if (altPressed)
     {
@@ -120,14 +156,13 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
         }
         return;
     }
-    
-    // TODO: Send key event to focused window's application
+
+    dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
 private void handleKeyUp(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
 {
-    // Key up events are mainly for application input, not window manager control
-    // TODO: Send to focused window's application
+    dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
 private void handlePointerMove(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
@@ -149,6 +184,8 @@ private void handlePointerMove(ref const InputEvent event, ref WindowManager man
         g_cursor.dragStartX = g_cursor.x;
         g_cursor.dragStartY = g_cursor.y;
     }
+
+    dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
 private void handleButtonDown(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
@@ -176,6 +213,8 @@ private void handleButtonDown(ref const InputEvent event, ref WindowManager mana
                 g_cursor.dragStartX = mouseX;
                 g_cursor.dragStartY = mouseY;
             }
+
+            dispatchToWindow(event, manager, clickedId);
         }
     }
 }
@@ -183,13 +222,15 @@ private void handleButtonDown(ref const InputEvent event, ref WindowManager mana
 private void handleButtonUp(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
 {
     const ubyte buttons = cast(ubyte)event.data3;
-    
+
     // Left button released - stop dragging
     if ((buttons & 0x01) == 0 && g_cursor.dragging)
     {
         g_cursor.dragging = false;
         g_cursor.dragWindowId = size_t.max;
     }
+
+    dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
 private void cycleWindowFocus(ref WindowManager manager) @nogc nothrow

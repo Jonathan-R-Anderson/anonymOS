@@ -41,6 +41,13 @@ struct DisplayServerState
     Canvas framebufferCanvas;
     pid_t compositorPid;
     X11StackState x11Stack;
+    struct InputCapabilities
+    {
+        bool pointerPresent;
+        bool touchPresent;
+        bool keyboardPresent;
+    }
+    InputCapabilities inputCaps;
 }
 
 /// Provide a human-readable label for the requested protocol. Useful for logs
@@ -94,7 +101,26 @@ void attachInputPipeline(ref DisplayServerState state) @nogc nothrow
 
     if (state.config.inputEnabled)
     {
-        state.inputPlumbed = true;
+        import minimal_os.drivers.usb_hid : initializeUSBHID, usbHIDAvailable,
+                                            usbHIDPointerPresent, usbHIDTouchPresent,
+                                            usbHIDKeyboardPresent;
+        import minimal_os.posix : schedYield;
+
+        initializeUSBHID();
+
+        // Block until a controller has reported devices or a short timeout expires
+        size_t attempts = 0;
+        while (!usbHIDAvailable() && attempts < 1024)
+        {
+            ++attempts;
+            schedYield();
+        }
+
+        state.inputCaps.pointerPresent = usbHIDPointerPresent();
+        state.inputCaps.touchPresent = usbHIDTouchPresent();
+        state.inputCaps.keyboardPresent = usbHIDKeyboardPresent();
+
+        state.inputPlumbed = usbHIDAvailable();
     }
 }
 

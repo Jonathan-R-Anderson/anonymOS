@@ -2,6 +2,8 @@ module minimal_os.drivers.usb_hid;
 
 import minimal_os.console : print, printLine, printHex, printUnsigned;
 import minimal_os.display.input_pipeline : InputQueue, enqueue, InputEvent;
+import minimal_os.drivers.hid_keyboard : HIDKeyboardReport, processKeyboardReport;
+import minimal_os.drivers.hid_mouse : HIDMouseReport, processMouseReport;
 
 @nogc:
 nothrow:
@@ -38,15 +40,26 @@ struct HIDDevice
 struct USBHIDSubsystem
 {
     @nogc nothrow:
-    
+
     USBControllerType controllerType;
     bool initialized;
     HIDDevice[8] devices;
     ubyte deviceCount;
+    bool pointerPresent;
+    bool touchPresent;
+    bool keyboardPresent;
+    size_t keyboardMockIndex;
+    size_t mouseMockIndex;
     
     void initialize()
     {
         printLine("[usb-hid] Initializing USB HID subsystem...");
+
+        pointerPresent = false;
+        touchPresent = false;
+        keyboardPresent = false;
+        keyboardMockIndex = 0;
+        mouseMockIndex = 0;
         
         // Detect USB controllers
         controllerType = detectUSBController();
@@ -75,7 +88,7 @@ struct USBHIDSubsystem
         print("[usb-hid] Detected ");
         printUnsigned(deviceCount);
         printLine(" HID device(s)");
-        
+
         initialized = true;
     }
     
@@ -141,7 +154,7 @@ struct USBHIDSubsystem
         devices[0].endpoint = 1;
         devices[0].vendorId = 0x046D;  // Logitech
         devices[0].productId = 0xC31C;
-        
+
         // Mock mouse
         devices[1].deviceType = HIDDeviceType.mouse;
         devices[1].enabled = true;
@@ -149,8 +162,14 @@ struct USBHIDSubsystem
         devices[1].endpoint = 1;
         devices[1].vendorId = 0x046D;
         devices[1].productId = 0xC077;
-        
+
         deviceCount = 2;
+
+        keyboardPresent = true;
+        pointerPresent = true;
+        touchPresent = false;
+        keyboardMockIndex = 0;
+        mouseMockIndex = 0;
     }
     
     private void pollDevice(ref HIDDevice device, ref InputQueue queue)
@@ -173,14 +192,38 @@ struct USBHIDSubsystem
     
     private void pollKeyboard(ref HIDDevice device, ref InputQueue queue)
     {
-        // Would read from USB endpoint and parse HID keyboard reports
-        // Stub for now
+        // In the absence of real hardware, feed a short demo sequence once
+        // after boot so the compositor can observe key delivery. The sequence
+        // types "hi" with proper up/down transitions.
+        immutable HIDKeyboardReport[4] mockReports = [
+            HIDKeyboardReport(0, 0, [0x0B, 0, 0, 0, 0, 0]), // h down
+            HIDKeyboardReport(0, 0, [0, 0, 0, 0, 0, 0]),    // h up
+            HIDKeyboardReport(0, 0, [0x0C, 0, 0, 0, 0, 0]), // i down
+            HIDKeyboardReport(0, 0, [0, 0, 0, 0, 0, 0])     // i up
+        ];
+
+        if (keyboardMockIndex < mockReports.length)
+        {
+            auto report = mockReports[keyboardMockIndex++];
+            processKeyboardReport(report, queue);
+        }
     }
     
     private void pollMouse(ref HIDDevice device, ref InputQueue queue)
     {
-        // Would read from USB endpoint and parse HID mouse reports
-        // Stub for now
+        // Demo pattern: move diagonally and click once to exercise pointer
+        // plumbing. The pattern runs once after initialization.
+        immutable HIDMouseReport[3] mockReports = [
+            HIDMouseReport(0, 5, 5, 0),   // move
+            HIDMouseReport(1, 0, 0, 0),   // left button down
+            HIDMouseReport(0, 0, 0, 0)    // left button up
+        ];
+
+        if (mouseMockIndex < mockReports.length)
+        {
+            auto report = mockReports[mouseMockIndex++];
+            processMouseReport(report, queue, 1280, 720);
+        }
     }
 }
 
@@ -251,4 +294,22 @@ void pollUSBHID(ref InputQueue queue) @nogc nothrow
 bool usbHIDAvailable() @nogc nothrow
 {
     return g_usbHID.initialized;
+}
+
+/// Report whether a pointer-class HID device (mouse, touchpad, etc.) is online
+bool usbHIDPointerPresent() @nogc nothrow
+{
+    return g_usbHID.pointerPresent;
+}
+
+/// Report whether a touch digitizer was enumerated
+bool usbHIDTouchPresent() @nogc nothrow
+{
+    return g_usbHID.touchPresent;
+}
+
+/// Report whether a keyboard HID device was discovered
+bool usbHIDKeyboardPresent() @nogc nothrow
+{
+    return g_usbHID.keyboardPresent;
 }

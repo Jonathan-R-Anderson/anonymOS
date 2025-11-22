@@ -7,6 +7,7 @@ import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvai
                                        compositorAllocateSurface, compositorResizeSurface, compositorReleaseSurface;
 import minimal_os.display.input_pipeline : InputQueue;
 import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
+import minimal_os.drivers.hid_mouse : initializeMouseState;
 import minimal_os.posix : schedYield;
 import minimal_os.serial : pollSerialInput;
 
@@ -94,6 +95,7 @@ void runSimpleDesktopLoop()
 
     // Initial setup
     ensureWindowManager();
+    initializeMouseState(g_fb.width, g_fb.height);
     
     // Try to initialize USB HID
     import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;

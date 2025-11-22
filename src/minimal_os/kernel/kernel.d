@@ -10,25 +10,7 @@ import minimal_os.multiboot : MultibootInfoFlag, selectFramebufferMode, Framebuf
 import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts;
-
-version (MinimalOsUserlandLinked)
-{
-    // Declare the compiler-builder entry point as a weak symbol so the kernel
-    // still links even if the full shell integration module is omitted from
-    // the build. A strong definition from shell_integration.d will override
-    // this lightweight fallback whenever it is present.
-    pragma(mangle, "compilerBuilderProcessEntry")
-    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
-    {
-        printLine("[kernel] compiler builder unavailable; inline stub entry used");
-        printStageHeader("Provision userland services (inline stub)");
-    }
-
-    static if (__traits(compiles, { pragma(LDC_attributes, "weak", compilerBuilderProcessEntry); }))
-    {
-        pragma(LDC_attributes, "weak", compilerBuilderProcessEntry);
-    }
-}
+import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.

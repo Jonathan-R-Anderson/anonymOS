@@ -17,7 +17,11 @@ import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 // missing weak symbols to null, allowing us to skip registration gracefully.
 version (LDC)
 {
-    pragma(LDC_extern_weak, compilerBuilderProcessEntry);
+    // Mark the symbol as weak when building with LDC so the kernel can still
+    // link even if the userland object providing the implementation is
+    // missing. The pragma applies to the following declaration.
+    pragma(LDC_extern_weak)
+    extern(C) @nogc nothrow void compilerBuilderProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/);
 }
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.

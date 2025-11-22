@@ -100,7 +100,7 @@ private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext con
     fbRequest.desiredModeNumber = context.valid ? context.info.vbeMode : 0;
     fbRequest.allowFallback = true;
 
-    const ModesetResult result = enableDisplayPipeline(context, fbRequest);
+    ModesetResult result = enableDisplayPipeline(context, fbRequest);
     if (result.framebufferReady)
     {
         configureAccelerationFromModeset(result);

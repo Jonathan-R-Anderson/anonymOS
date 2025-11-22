@@ -253,6 +253,8 @@ KERNEL_SOURCES=(
   "src/minimal_os/display/desktop.d"
   "src/minimal_os/display/server.d"
   "src/minimal_os/display/x11_stack.d"
+  "src/minimal_os/display/modesetting.d"
+  "src/minimal_os/display/gpu_accel.d"
   "src/minimal_os/drivers/usb_hid.d"
   "src/minimal_os/drivers/hid_keyboard.d"
   "src/minimal_os/drivers/hid_mouse.d"

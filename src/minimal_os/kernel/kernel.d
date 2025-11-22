@@ -13,6 +13,7 @@ import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
+import minimal_os.kernel.syscalls : initSyscalls;
 
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
@@ -45,8 +46,32 @@ extern(C) void kmain(ulong magic, ulong info)
     }
 
     initializeInterrupts();
+    initSyscalls();
 
     posixInit();
+
+    // Load initrd if present
+    if (context.valid)
+    {
+        const size_t modCount = context.moduleCount();
+        for (size_t i = 0; i < modCount; ++i)
+        {
+            auto mod = context.moduleAt(i);
+            if (mod !is null)
+            {
+                // Check if it's the initrd (simple check: assume first module or check string)
+                // For now, just assume any module is the initrd.
+                // In future, check mod.stringPtr for "initrd"
+                
+                const(ubyte)[] modData = (cast(const(ubyte)*)cast(size_t)mod.modStart)[0 .. (mod.modEnd - mod.modStart)];
+                
+                printLine("[kernel] Loading initrd module...");
+                import minimal_os.fs : parseTarball;
+                parseTarball(modData);
+                printLine("[kernel] Initrd loaded.");
+            }
+        }
+    }
 
     // Register processes that should run alongside the kernel core.
     version (MinimalOsUserlandLinked)

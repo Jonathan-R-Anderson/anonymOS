@@ -5,6 +5,8 @@ public import minimal_os.console : print, printLine, printUnsigned,
                                    printCString;
 import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
+import minimal_os.fs : readFile;
+import minimal_os.elf : loadElf, ElfLoaderContext;
 
 // Decide whether to rely on host/Posix C interop.  Kernel builds define
 // MinimalOsFreestanding to force the freestanding path even on hosts where the
@@ -209,7 +211,7 @@ static if (hostPosixInteropEnabled)
     }
     private enum int F_OK = 0;
     private enum int X_OK = 1;
-    extern(C) __gshared char** environ;
+    public extern(C) __gshared char** environ;
 }
 else
 {
@@ -236,7 +238,7 @@ else
 
     private enum int F_OK = 0;
     private enum int X_OK = 1;
-    extern(C) __gshared char** environ;
+    public extern(C) __gshared char** environ;
 }
 
 private immutable char[] g_envVarLfeShBinary = "LFE_SH_BINARY\0";
@@ -1760,13 +1762,13 @@ mixin template PosixKernelShim()
     }
 
     // ---- POSIX core syscalls (kernel-side) ----
-    @nogc nothrow pid_t sys_getpid(){
+    package(minimal_os) @nogc nothrow pid_t sys_getpid(){
         const bool hasCurrent = (g_current !is null);
         debugExpectActual("sys_getpid current present", 1, debugBool(hasCurrent));
         return hasCurrent ? g_current.pid : 0;
     }
 
-    @nogc nothrow pid_t sys_fork(){
+    package(minimal_os) @nogc nothrow pid_t sys_fork(){
         debugExpectActual("sys_fork current present", 1, debugBool(g_current !is null));
         lock(&g_plock);
         auto np = allocProc();
@@ -1777,20 +1779,23 @@ mixin template PosixKernelShim()
         assignProcessState(*np, ProcState.READY);
         np.sigmask= 0;
         np.entry  = (g_current ? g_current.entry : null);
-        if (g_current && g_objectRegistryReady && isProcessObject(np.objectId) && isProcessObject(g_current.objectId))
-            setObjectLabelCString(np.objectId, g_objects[g_current.objectId].label.ptr);
+        np.context = g_current.context; // copy registers? setjmp/longjmp style
+        np.contextValid = false; // child returns 0 from fork, needs care
+        
+        // Copy FDs
+        foreach(i, fd; g_current.fds) np.fds[i] = fd;
 
-        if (g_current)
+        // Copy name
+        foreach(i, c; g_current.name) np.name[i] = c;
+
+        // Copy pending exec state
+        np.pendingArgv = g_current.pendingArgv;
+        np.pendingEnvp = g_current.pendingEnvp;
+        np.pendingExec = g_current.pendingExec;
+        if (np.environment !is null)
         {
-            foreach (i; 0 .. np.fds.length) np.fds[i] = g_current.fds[i];
-            np.pendingArgv = g_current.pendingArgv;
-            np.pendingEnvp = g_current.pendingEnvp;
-            np.pendingExec = g_current.pendingExec;
-            if (np.environment !is null)
-            {
-                cloneEnvironmentTable(np.environment, g_current.environment);
-                ensureEnvironmentObject(np.environment, np.objectId);
-            }
+            cloneEnvironmentTable(np.environment, g_current.environment);
+            ensureEnvironmentObject(np.environment, np.objectId);
         }
         else if (np.environment !is null)
         {
@@ -1805,7 +1810,7 @@ mixin template PosixKernelShim()
         return np.pid;
     }
 
-    @nogc nothrow int sys_execve(const(char)* path, const(char*)* argv, const(char*)* envp)
+    package(minimal_os) @nogc nothrow int sys_execve(const(char)* path, const(char*)* argv, const(char*)* envp)
     {
         debugExpectActual("sys_execve current present", 1, debugBool(g_current !is null));
         if (g_current is null) return setErrno(Errno.ESRCH);
@@ -1816,10 +1821,36 @@ mixin template PosixKernelShim()
             resolved = findExecutableSlot(argv[0]);
             if (resolved !is null) execPath = argv[0];
         }
-        debugExpectActual("sys_execve slot resolved", 1, debugBool(resolved !is null));
-        if (resolved is null)   return setErrno(Errno.ENOENT);
-        debugExpectActual("sys_execve entry present", 1, debugBool(resolved.entry !is null));
-        if (resolved.entry is null) return setErrno(Errno.ENOEXEC);
+        
+        if (resolved is null)
+        {
+            // Try ELF loader
+            auto fileData = readFile(execPath);
+            if (fileData !is null)
+            {
+                ElfLoaderContext ctx;
+                if (loadElf(fileData, ctx))
+                {
+                    auto cur = g_current;
+                    (*cur).entry = cast(typeof((*cur).entry))ctx.entryPoint;
+                    setNameFromCString((*cur).name, execPath);
+                    updateProcessObjectLabel(*cur, execPath);
+
+                    if (cur.environment !is null)
+                    {
+                        if (envp !is null) loadEnvironmentFromVector(cur.environment, envp);
+                        ensureEnvironmentObject(cur.environment, cur.objectId);
+                    }
+
+                    (*cur).entry(argv, envp);
+                    sys__exit(0);
+                    return 0;
+                }
+            }
+        }
+
+        debugExpectActual("sys_execve entry present", 1, debugBool(resolved !is null && resolved.entry !is null));
+        if (resolved is null || resolved.entry is null) return setErrno(Errno.ENOEXEC);
 
         auto cur = g_current;
         (*cur).entry = resolved.entry;
@@ -1837,7 +1868,7 @@ mixin template PosixKernelShim()
         return 0;
     }
 
-    @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
+    package(minimal_os) @nogc nothrow pid_t sys_waitpid(pid_t wpid, int* status, int /*options*/){
         const pid_t currentPid = (g_current ? g_current.pid : 0);
 
         while (true)
@@ -1855,7 +1886,16 @@ mixin template PosixKernelShim()
 
                 if (status) *status = p.exitCode;
                 auto pid = p.pid;
-                resetProc(p);
+                
+                // Reap
+                p.state = ProcState.UNUSED;
+                p.ppid = 0;
+                p.pid = 0;
+                p.entry = null;
+                releaseEnvironmentTable(p.environment);
+                destroyProcessObject(p.objectId);
+                p.objectId = INVALID_OBJECT_ID;
+                
                 debugExpectActual("sys_waitpid child matched", 1, 1);
                 return pid;
             }
@@ -1870,7 +1910,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow void sys__exit(int code){
+    package(minimal_os) @nogc nothrow void sys__exit(int code){
         debugExpectActual("sys__exit current present", 1, debugBool(g_current !is null));
         if(g_current is null) return;
         g_current.exitCode = encodeExitStatus(code);
@@ -1879,7 +1919,7 @@ mixin template PosixKernelShim()
         for(;;){}
     }
 
-    @nogc nothrow int sys_kill(pid_t pid, int sig){
+    package(minimal_os) @nogc nothrow int sys_kill(pid_t pid, int sig){
         auto p = findByPid(pid);
         debugExpectActual("sys_kill target found", 1, debugBool(p !is null));
         if(p is null) return setErrno(Errno.ESRCH);
@@ -1893,7 +1933,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow uint sys_sleep(uint seconds){
+    package(minimal_os) @nogc nothrow uint sys_sleep(uint seconds){
         size_t actualIterations = 0;
         const size_t expectedIterations = seconds * 100;
         foreach(_; 0 .. expectedIterations) { schedYield(); ++actualIterations; }
@@ -1902,9 +1942,9 @@ mixin template PosixKernelShim()
     }
 
     // ---- FD/IO syscalls (stubs) ----
-    @nogc nothrow int     sys_open (const(char)* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
-    @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
-    @nogc nothrow ssize_t sys_read(int fd, void* buffer, size_t length)
+    package(minimal_os) @nogc nothrow int     sys_open (const(char)* /*path*/, int /*flags*/, int /*mode*/){ return setErrno(Errno.ENOSYS); }
+    package(minimal_os) @nogc nothrow int     sys_close(int /*fd*/){ return setErrno(Errno.ENOSYS); }
+    package(minimal_os) @nogc nothrow ssize_t sys_read(int fd, void* buffer, size_t length)
     {
         int hostFd = -1;
         const bool resolved = resolveHostFd(fd, hostFd);
@@ -1928,7 +1968,7 @@ mixin template PosixKernelShim()
         }
     }
 
-    @nogc nothrow ssize_t sys_write(int fd, const void* buffer, size_t length)
+    package(minimal_os) @nogc nothrow ssize_t sys_write(int fd, const void* buffer, size_t length)
     {
         int hostFd = -1;
         const bool resolved = resolveHostFd(fd, hostFd);

@@ -160,7 +160,7 @@ private size_t resolveBochsFramebufferBase()
     return 0xE0000000;
 }
 
-private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte function, ubyte offset)
+private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset)
 {
     enum ushort pciConfigAddress = 0xCF8;
     enum ushort pciConfigData    = 0xCFC;
@@ -168,7 +168,7 @@ private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte function, ubyte offset
     const uint address = (1u << 31) |
                          (cast(uint)bus << 16) |
                          (cast(uint)slot << 11) |
-                         (cast(uint)function << 8) |
+                         (cast(uint)func << 8) |
                          (offset & 0xFC);
 
     uint value;

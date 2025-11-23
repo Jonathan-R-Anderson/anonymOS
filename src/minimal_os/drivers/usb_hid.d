@@ -326,7 +326,7 @@ private bool initializeXHCI(uint bus, uint slot, uint func, uint mmioBase) @nogc
 
 private uint mmioRead32(uint base, uint offset) @nogc nothrow
 {
-    return *cast(volatile uint*)(base + offset);
+    return *cast(volatile(uint*))(base + offset);
 }
 
 private void enumerateXHCIDevices() @nogc nothrow
@@ -337,7 +337,7 @@ private void enumerateXHCIDevices() @nogc nothrow
         return;
     }
 
-    const ubyte capLength = *cast(volatile ubyte*)(controllerMmioBase);
+    const ubyte capLength = *cast(volatile(ubyte*))(controllerMmioBase);
     const uint hcsParams1 = mmioRead32(controllerMmioBase, 0x04);
     const uint portCount = (hcsParams1 >> 24) & 0xFF;
     const uint portBase = controllerMmioBase + capLength + 0x400; // port register set base

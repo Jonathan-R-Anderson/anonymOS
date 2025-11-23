@@ -134,7 +134,7 @@ private size_t resolveBochsFramebufferBase()
     enum ushort bochsVendorId = 0x1234;
     enum ushort bochsDeviceId = 0x1111;
 
-    foreach (slot; 0 .. 32)
+    foreach (ubyte slot; 0 .. 32)
     {
         const uint id = pciConfigRead32(0, cast(ubyte)slot, 0, 0);
         const ushort vendor = cast(ushort)(id & 0xFFFF);
@@ -213,8 +213,8 @@ private void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, u
 
     const uint address = (1u << 31) |
                          (cast(uint)bus << 16) |
-                         (cast<uint)slot << 11) |
-                         (cast<uint)func << 8) |
+                         (cast(uint)slot << 11) |
+                         (cast(uint)func << 8) |
                          (offset & 0xFC);
 
     asm @nogc nothrow

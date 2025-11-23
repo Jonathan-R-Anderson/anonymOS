@@ -210,6 +210,7 @@ Framebuffer framebufferDescriptor()
 @nogc nothrow @system
 void framebufferPutPixel(uint x, uint y, uint argbColor) {
     if (!g_fbInitialized) return;
+    if (g_fb.addr is null) return;
     if (x >= g_fb.width || y >= g_fb.height) return;
 
     const bpp   = g_fb.bpp;

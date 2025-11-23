@@ -1,4 +1,4 @@
-module minimal_os.posixutils.process.process;
+module minimal_os.kernel.posixutils.process.process;
 
 import core.stdc.errno : errno, EINVAL, ENOENT;
 import core.sys.posix.sys.types : pid_t;

@@ -32,26 +32,22 @@ __gshared size_t g_fileCount = 0;
     while (name[len] != 0) len++;
     immutable(char)[] nameSlice = cast(immutable(char)[])name[0 .. len];
 
-    foreach (i; 0 .. g_fileCount)
+    // Use Object Store with path resolution
+    import minimal_os.objects : getRootObject, getObject, ObjectType, resolvePath, ObjectID;
+    
+    ObjectID rootDir = getRootObject();
+    if (rootDir.low == 0) return null; // No root
+    
+    auto cap = resolvePath(rootDir, nameSlice);
+    if (cap.oid.low == 0 && cap.oid.high == 0) return null; // Not found
+    
+    auto fileSlot = getObject(cap.oid);
+    if (fileSlot !is null && fileSlot.type == ObjectType.Blob)
     {
-        if (g_files[i].name == nameSlice)
-        {
-            return g_files[i].data;
-        }
-        
-        // Handle leading slash mismatch
-        // If requested "/bin/sh" but stored "bin/sh"
-        if (nameSlice.length > 0 && nameSlice[0] == '/' && g_files[i].name == nameSlice[1 .. $])
-        {
-            return g_files[i].data;
-        }
-        
-        // If requested "bin/sh" but stored "/bin/sh"
-        if (g_files[i].name.length > 0 && g_files[i].name[0] == '/' && g_files[i].name[1 .. $] == nameSlice)
-        {
-            return g_files[i].data;
-        }
+        if (fileSlot.blob.vmo !is null)
+            return fileSlot.blob.vmo.dataPtr[0 .. fileSlot.blob.vmo.dataLen];
     }
+    
     return null;
 }
 
@@ -133,6 +129,89 @@ struct TarHeader
             const(ubyte)[] data = tarData[dataOffset .. dataOffset + size];
             
             registerFile(name, data);
+            
+            // Create Blob Object
+            import minimal_os.objects : createBlob, createDirectory, addEntry, getRootObject, setRootObject, ObjectID, Capability, Rights, getObject, ObjectType;
+            
+            // Initialize root if needed
+            if (getRootObject().low == 0)
+            {
+                setRootObject(createDirectory());
+            }
+            
+            ObjectID blobId = createBlob(data);
+            
+            // Parse path and create directories
+            // name is e.g. "bin/sh" or "usr/lib/foo.so"
+            // We need to traverse/create directories from root.
+            
+            ObjectID currentDir = getRootObject();
+            
+            size_t start = 0;
+            // Skip leading slash
+            if (name.length > 0 && name[0] == '/') start = 1;
+            
+            for (size_t i = start; i < name.length; ++i)
+            {
+                if (name[i] == '/')
+                {
+                    // Found a component
+                    const(char)[] component = name[start .. i];
+                    
+                    // Check if component exists in currentDir
+                    // We need a lookup function. For now, just linear search in addEntry logic?
+                    // No, we need to find the ID.
+                    
+                    ObjectID nextDir = ObjectID(0,0);
+                    
+                    // Manual lookup in directory
+                    auto slot = getObject(currentDir);
+                    if (slot !is null && slot.type == ObjectType.Directory)
+                    {
+                        for (size_t k = 0; k < slot.directory.count; ++k)
+                        {
+                            auto entry = &slot.directory.entries[k];
+                            // Compare name
+                            bool match = true;
+                            size_t clen = 0;
+                            while (entry.name[clen] != 0) clen++;
+                            
+                            if (clen != component.length) match = false;
+                            else
+                            {
+                                for (size_t m = 0; m < clen; ++m)
+                                {
+                                    if (entry.name[m] != component[m]) { match = false; break; }
+                                }
+                            }
+                            
+                            if (match)
+                            {
+                                nextDir = entry.cap.oid;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (nextDir.low == 0)
+                    {
+                        // Create new directory
+                        nextDir = createDirectory();
+                        addEntry(currentDir, component, Capability(nextDir, Rights.Read | Rights.Write | Rights.Enumerate));
+                    }
+                    
+                    currentDir = nextDir;
+                    start = i + 1;
+                }
+            }
+            
+            // Add file to final directory
+            if (start < name.length)
+            {
+                const(char)[] filename = name[start .. $];
+                addEntry(currentDir, filename, Capability(blobId, Rights.Read | Rights.Write | Rights.Execute));
+            }
+
             
             // Also register with leading '/' if it doesn't have one
             if (nameLen > 0 && name[0] != '/')

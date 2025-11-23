@@ -6,7 +6,7 @@
     - Removes libpu.h dependencies; uses Phobos and core.sys.posix.*.
     - Uses cfget*/cfset* for speeds (instead of c_ispeed/c_ospeed fields).
 +/
-module minimal_os.posixutils.commands.stty.stty;
+module minimal_os.kernel.posixutils.commands.stty.stty;
 
 version (Posix):
 

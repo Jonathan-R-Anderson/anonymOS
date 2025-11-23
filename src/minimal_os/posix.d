@@ -28,7 +28,7 @@ else
 // `minimal_os.posix.jmp_buf`, etc.  Without the public import, instantiating
 // modules needed to import the context package directly which defeated the
 // purpose of the mixin.
-public import minimal_os.posixutils.context : jmp_buf, setjmp, longjmp;
+public import minimal_os.kernel.posixutils.context : jmp_buf, setjmp, longjmp;
 
 // ---------------------------------------------------------------------
 // Shared shell state accessible both to the shim mixin and bare-metal
@@ -85,7 +85,7 @@ package(minimal_os) @nogc nothrow void ensureBareMetalShellInterfaces()
 }
 
 // example: adjust the path to whatever your search in step 1 shows
-public import minimal_os.posixutils.registry :
+public import minimal_os.kernel.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 

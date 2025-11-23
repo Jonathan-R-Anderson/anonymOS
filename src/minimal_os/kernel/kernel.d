@@ -5,11 +5,12 @@ public import minimal_os.kernel.memory;
 import minimal_os.display.framebuffer;
 import minimal_os.display.modesetting : enableDisplayPipeline, ModesetResult;
 import minimal_os.display.gpu_accel : configureAccelerationFromModeset;
-import minimal_os.console : clearScreen, print, printLine, printStageHeader, printUnsigned;
+import minimal_os.display.splash : renderBootSplash;
+import minimal_os.console : clearScreen, print, printLine, printStageHeader, printUnsigned, setFramebufferConsoleEnabled;
 import minimal_os.serial : initSerial;
 import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : FramebufferModeRequest, MultibootContext;
-import minimal_os.display.desktop : desktopProcessEntry, runSimpleDesktopOnce;
+import minimal_os.display.desktop : desktopProcessEntry;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
     schedYield, initializeInterrupts, ProcessEntry;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
@@ -129,11 +130,8 @@ private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext con
     if (result.framebufferReady)
     {
         configureAccelerationFromModeset(result);
-    }
-
-    if (result.framebufferReady)
-    {
-        runSimpleDesktopOnce();
+        renderBootSplash();
+        setFramebufferConsoleEnabled(false);
     }
     else
     {

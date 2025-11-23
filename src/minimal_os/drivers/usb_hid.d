@@ -215,14 +215,22 @@ private uint inl(uint port) @nogc nothrow
 
 private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset) @nogc nothrow
 {
-    const uint address = (cast(uint)bus << 16) | (cast(uint)slot << 11) | (cast(uint)func << 8) | (offset & 0xFC) | 0x8000_0000;
+    const uint address = (cast(uint)bus << 16) |
+                        (cast(uint)slot << 11) |
+                        (cast(uint)func << 8) |
+                        ((cast(uint)offset) & 0xFC) |
+                        0x8000_0000;
     outl(pciConfigAddress, address);
     return inl(pciConfigData);
 }
 
 private void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, uint value) @nogc nothrow
 {
-    const uint address = (cast(uint)bus << 16) | (cast<uint)slot << 11) | (cast<uint)func << 8) | (offset & 0xFC) | 0x8000_0000;
+    const uint address = (cast(uint)bus << 16) |
+                        (cast(uint)slot << 11) |
+                        (cast(uint)func << 8) |
+                        ((cast(uint)offset) & 0xFC) |
+                        0x8000_0000;
     outl(pciConfigAddress, address);
     outl(pciConfigData, value);
 }
@@ -329,7 +337,7 @@ private void enumerateXHCIDevices() @nogc nothrow
         return;
     }
 
-    const uint capLength = *cast(volatile ubyte*)controllerMmioBase;
+    const ubyte capLength = *cast(volatile ubyte*)(controllerMmioBase);
     const uint hcsParams1 = mmioRead32(controllerMmioBase, 0x04);
     const uint portCount = (hcsParams1 >> 24) & 0xFF;
     const uint portBase = controllerMmioBase + capLength + 0x400; // port register set base

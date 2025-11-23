@@ -249,6 +249,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/display/wallpaper_types.d"
   "src/minimal_os/display/wallpaper_builtin.d"
   "src/minimal_os/display/wallpaper.d"
+  "src/minimal_os/display/splash.d"
   "src/minimal_os/display/window_manager/manager.d"
   "src/minimal_os/display/window_manager/renderer.d"
   "src/minimal_os/display/compositor.d"

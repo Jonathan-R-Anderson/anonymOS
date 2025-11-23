@@ -73,8 +73,9 @@ ModesetResult enableDisplayPipeline(const MultibootContext context,
     const bool bochsEnabled = enableBochsVbeMode(fallbackWidth, fallbackHeight, fallbackBpp);
     if (bochsEnabled)
     {
+        const size_t bochsFbBase = resolveBochsFramebufferBase();
         auto fbInfo = MultibootFramebufferInfo(
-            cast(void*)0xE0000000,
+            cast(void*)bochsFbBase,
             fallbackWidth,
             fallbackHeight,
             fallbackWidth * (fallbackBpp / 8),
@@ -120,6 +121,68 @@ private void logActiveFramebuffer(const MultibootFramebufferInfo fbInfo, bool fr
     printUnsigned(fbInfo.pitch);
     print(fromFirmware ? " (firmware)" : " (fallback)");
     printLine("");
+}
+
+/// Discover the physical base address of the Bochs/QEMU linear framebuffer.
+///
+/// Older assumptions hardcoded the LFB to 0xE0000000, but QEMU may expose the
+/// VGA device at a different BAR depending on the chipset. Walk the PCI config
+/// space for the Bochs VGA device and return its BAR0 base, falling back to the
+/// legacy address when nothing is detected.
+private size_t resolveBochsFramebufferBase()
+{
+    enum ushort bochsVendorId = 0x1234;
+    enum ushort bochsDeviceId = 0x1111;
+
+    foreach (slot; 0 .. 32)
+    {
+        const uint id = pciConfigRead32(0, cast(ubyte)slot, 0, 0);
+        const ushort vendor = cast(ushort)(id & 0xFFFF);
+        if (vendor == 0xFFFF)
+        {
+            continue; // slot unused
+        }
+
+        const ushort device = cast(ushort)((id >> 16) & 0xFFFF);
+        if (vendor == bochsVendorId && device == bochsDeviceId)
+        {
+            const uint bar0 = pciConfigRead32(0, cast(ubyte)slot, 0, 0x10);
+            const bool isMemoryBar = (bar0 & 0x1) == 0;
+            if (isMemoryBar)
+            {
+                return bar0 & 0xFFFFFFF0;
+            }
+        }
+    }
+
+    // Fall back to the traditional Bochs linear framebuffer base when PCI
+    // probing failed. This keeps older configurations working.
+    return 0xE0000000;
+}
+
+private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte function, ubyte offset)
+{
+    enum ushort pciConfigAddress = 0xCF8;
+    enum ushort pciConfigData    = 0xCFC;
+
+    const uint address = (1u << 31) |
+                         (cast(uint)bus << 16) |
+                         (cast(uint)slot << 11) |
+                         (cast(uint)function << 8) |
+                         (offset & 0xFC);
+
+    uint value;
+    asm @nogc nothrow
+    {
+        mov DX, pciConfigAddress;
+        mov EAX, address;
+        out DX, EAX;
+        mov DX, pciConfigData;
+        in  EAX, DX;
+        mov value, EAX;
+    }
+
+    return value;
 }
 
 /// Minimal Bochs/QEMU VBE programming path used when no framebuffer was

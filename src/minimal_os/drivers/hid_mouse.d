@@ -1,6 +1,7 @@
 module minimal_os.drivers.hid_mouse;
 
 import minimal_os.display.input_pipeline : InputQueue, InputEvent, enqueue;
+import minimal_os.display.framebuffer : framebufferMoveCursor;
 
 @nogc:
 nothrow:
@@ -62,6 +63,9 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
         if (g_mouseState.x >= screenWidth) g_mouseState.x = cast(int)screenWidth - 1;
         if (g_mouseState.y >= screenHeight) g_mouseState.y = cast(int)screenHeight - 1;
         
+        // Update software cursor
+        framebufferMoveCursor(g_mouseState.x, g_mouseState.y);
+
         // Generate pointer move event
         InputEvent event;
         event.type = InputEvent.Type.pointerMove;

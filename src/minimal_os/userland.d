@@ -1,7 +1,7 @@
 module minimal_os.userland;
 
 import minimal_os.console : print, printLine, printStageHeader, printStatusValue,
-    printUnsigned, putChar;
+    printUnsigned, putChar, clearScreen;
 import minimal_os.display.server : DisplayProtocol, DisplayServerConfig,
     DisplayServerState, attachFontStack, attachInputPipeline,
     bootstrapDisplayServer, displayServerReady;
@@ -239,8 +239,9 @@ private:
         size_t count = 0;
         if (source !is null)
         {
-            foreach (cap; source)
+            for (size_t i = 0; i < source.length; ++i)
             {
+                immutable(char)[] cap = source[i];
                 if (cap is null || cap.length == 0)
                 {
                     continue;
@@ -306,7 +307,7 @@ private bool isReadyState(immutable(char)[] state)
     return state is null || state.length == 0 || state == STATE_READY || state == STATE_RUNNING;
 }
 
-private struct ServicePlan
+public struct ServicePlan
 {
     immutable(char)[] name;
     immutable(char)[] binary;
@@ -335,25 +336,34 @@ private enum immutable(char)[][] DM_CAPABILITIES =
 private enum immutable(char)[][] I3_CAPABILITIES =
     [ "display.manage", "ipc.userland", "workspace.control", "console.claim" ];
 
-public immutable ServicePlan[] DEFAULT_SERVICE_PLANS =
-    [ ServicePlan("init", "/sbin/init", "Capability supervisor",
-                  INIT_CAPABILITIES, STATE_RUNNING, false),
-      ServicePlan("vfsd", "/bin/vfsd", "Immutable namespace + VMO store",
-                  VFS_CAPABILITIES, STATE_RUNNING, false),
-      ServicePlan("pkgd", "/bin/pkgd", "Package + manifest resolver",
-                  PKG_CAPABILITIES, STATE_READY, false),
-      ServicePlan("netd", "/bin/netd", "Network capability broker",
-                  NET_CAPABILITIES, STATE_RUNNING, true),
-      ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
-                  XORG_CAPABILITIES, STATE_WAITING, false),
-      ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
-                  XINIT_CAPABILITIES, STATE_WAITING, false),
-      ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
-                  DM_CAPABILITIES, STATE_WAITING, false),
-      ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
-                  I3_CAPABILITIES, STATE_WAITING, false),
-      ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
-                  SHELL_CAPABILITIES, STATE_READY, false) ];
+__gshared ServicePlan[9] g_servicePlans;
+__gshared bool g_servicePlansInitialized = false;
+
+extern(C) export pragma(inline, false)
+public void initializeServicePlans()
+{
+    if (g_servicePlansInitialized) return;
+    
+    g_servicePlans[0] = ServicePlan("init", "/sbin/init", "Capability supervisor",
+                  INIT_CAPABILITIES, STATE_RUNNING, false);
+    g_servicePlans[1] = ServicePlan("vfsd", "/bin/vfsd", "Immutable namespace + VMO store",
+                  VFS_CAPABILITIES, STATE_RUNNING, false);
+    g_servicePlans[2] = ServicePlan("pkgd", "/bin/pkgd", "Package + manifest resolver",
+                  PKG_CAPABILITIES, STATE_READY, false);
+    g_servicePlans[3] = ServicePlan("netd", "/bin/netd", "Network capability broker",
+                  NET_CAPABILITIES, STATE_RUNNING, true);
+    g_servicePlans[4] = ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
+                  XORG_CAPABILITIES, STATE_WAITING, false);
+    g_servicePlans[5] = ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
+                  XINIT_CAPABILITIES, STATE_WAITING, false);
+    g_servicePlans[6] = ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
+                  DM_CAPABILITIES, STATE_WAITING, false);
+    g_servicePlans[7] = ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
+                  I3_CAPABILITIES, STATE_WAITING, false);
+    g_servicePlans[8] = ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
+                  SHELL_CAPABILITIES, STATE_READY, false);
+    g_servicePlansInitialized = true;
+}
 
 private DisplayServerState configureDisplayServer()
 {
@@ -408,7 +418,9 @@ public @nogc nothrow void bootUserland_impl()
 
     auto displayState = configureDisplayServer();
 
-    foreach (plan; DEFAULT_SERVICE_PLANS)
+    initializeServicePlans();
+    
+    foreach (plan; g_servicePlans)
     {
         immutable(char)[] desiredState = normaliseState(plan.desiredState);
         const size_t serviceIndex = runtime.registerService(plan.name,
@@ -553,6 +565,7 @@ private void printProcessDetails(const scope UserProcess process)
 private void renderRicedDesktop(const scope ref UserlandRuntime runtime,
                                 const scope SystemProperties properties)
 {
+    clearScreen();
     printLine("");
     printLine("[userland] booting aurora.rice desktop...");
 

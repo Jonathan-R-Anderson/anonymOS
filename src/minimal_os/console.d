@@ -1,6 +1,7 @@
 module minimal_os.console;
 
 import minimal_os.serial : serialWriteByte, serialConsoleReady, serialReadByteBlocking;
+import minimal_os.display.framebuffer : framebufferAvailable, framebufferWriteChar, framebufferClear;
 
 nothrow:
 @nogc:
@@ -44,6 +45,12 @@ const(StageSummary)[] stageSummaryData()
 
 void clearScreen()
 {
+    if (framebufferAvailable())
+    {
+        framebufferClear();
+        // We still reset VGA cursor state just in case
+    }
+
     const size_t total = VGA_WIDTH * VGA_HEIGHT;
     for (size_t i = 0; i < total; ++i)
     {
@@ -88,6 +95,11 @@ void newline()
 
 void putChar(char c)
 {
+    if (framebufferAvailable())
+    {
+        framebufferWriteChar(c);
+    }
+
     if (c == '\n')
     {
         newline();

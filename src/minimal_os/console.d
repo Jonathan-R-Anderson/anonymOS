@@ -14,6 +14,7 @@ private __gshared ushort* vgaBuffer = cast(ushort*)0xB8000;
 private __gshared size_t cursorRow = 0;
 private __gshared size_t cursorCol = 0;
 private __gshared bool   g_consoleReady = false;
+private __gshared bool   g_framebufferConsoleEnabled = true;
 
 struct StageSummary
 {
@@ -31,6 +32,20 @@ void resetStageSummaries()
 {
     stageSummaryCount = 0;
     activeStage = null;
+}
+
+/// Control whether kernel console messages should also be drawn into the
+/// framebuffer. When disabled, console output continues to be mirrored to the
+/// serial port and VGA text buffer but leaves the graphical framebuffer
+/// untouched so desktop rendering is not disturbed during boot.
+void setFramebufferConsoleEnabled(bool enabled)
+{
+    g_framebufferConsoleEnabled = enabled;
+}
+
+bool framebufferConsoleEnabled()
+{
+    return g_framebufferConsoleEnabled;
 }
 
 void clearActiveStage()
@@ -95,7 +110,7 @@ void newline()
 
 void putChar(char c)
 {
-    if (framebufferAvailable())
+    if (framebufferAvailable() && g_framebufferConsoleEnabled)
     {
         framebufferWriteChar(c);
     }

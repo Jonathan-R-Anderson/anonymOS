@@ -235,7 +235,6 @@ KERNEL_SOURCES=(
   "src/minimal_os/kernel/heap.d"
   "src/minimal_os/kernel/posixbundle.d"
   "src/minimal_os/kernel/shell_integration.d"
-  "src/minimal_os/kernel/compiler_builder_stub.d"
   "src/minimal_os/kernel/exceptions.d"
   "src/minimal_os/console.d"
   "src/minimal_os/serial.d"
@@ -290,7 +289,6 @@ ensure_kernel_source() {
 }
 
 ensure_kernel_source "src/minimal_os/kernel/shell_integration.d"
-ensure_kernel_source "src/minimal_os/kernel/compiler_builder_stub.d"
 
 KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do

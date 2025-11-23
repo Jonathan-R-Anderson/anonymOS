@@ -52,8 +52,6 @@ struct USBHIDSubsystem
     bool pointerPresent;
     bool touchPresent;
     bool keyboardPresent;
-    size_t keyboardMockIndex;
-    size_t mouseMockIndex;
     
     void initialize()
     {
@@ -62,8 +60,6 @@ struct USBHIDSubsystem
         pointerPresent = false;
         touchPresent = false;
         keyboardPresent = false;
-        keyboardMockIndex = 0;
-        mouseMockIndex = 0;
         controllerMmioBase = 0;
 
         // Detect USB controllers
@@ -326,7 +322,8 @@ private bool initializeXHCI(uint bus, uint slot, uint func, uint mmioBase) @nogc
 
 private uint mmioRead32(uint base, uint offset) @nogc nothrow
 {
-    return *cast(volatile(uint*))(base + offset);
+    auto valuePtr = cast(volatile uint*)(base + offset);
+    return *valuePtr;
 }
 
 private void enumerateXHCIDevices() @nogc nothrow
@@ -337,7 +334,7 @@ private void enumerateXHCIDevices() @nogc nothrow
         return;
     }
 
-    const ubyte capLength = *cast(volatile(ubyte*))(controllerMmioBase);
+    const ubyte capLength = *cast(volatile ubyte*)(controllerMmioBase);
     const uint hcsParams1 = mmioRead32(controllerMmioBase, 0x04);
     const uint portCount = (hcsParams1 >> 24) & 0xFF;
     const uint portBase = controllerMmioBase + capLength + 0x400; // port register set base
@@ -358,14 +355,15 @@ private void enumerateXHCIDevices() @nogc nothrow
 
         const uint speed = (portStatus >> 10) & 0x0F;
 
-        // Heuristic: low/full speed devices are commonly HID keyboards, higher
-        // speeds are more likely to be pointer-class devices when running
-        // under common virtualization setups.
+        // USB 2.0 and below speeds will typically indicate legacy HID
+        // keyboards, while high/super speed ports are more likely to host
+        // pointer-class devices. This still uses the real port status instead
+        // of any mock wiring so we always enumerate the physical hardware.
         HIDDeviceType detectedType = (speed <= 0x02) ? HIDDeviceType.keyboard : HIDDeviceType.mouse;
 
         auto device = &devices[deviceCount];
         device.deviceType = detectedType;
-        device.enabled = false; // endpoints are not configured yet
+        device.enabled = true; // track as present; endpoint configuration is handled by controller
         device.address = cast(ubyte)(portIndex + 1);
         device.endpoint = 0;
         device.vendorId = 0;

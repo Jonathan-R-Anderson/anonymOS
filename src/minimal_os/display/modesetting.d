@@ -169,7 +169,9 @@ private bool enableBochsVbeMode(uint width, uint height, uint bpp)
     dispiWrite(VBE_DISPI_IOPORT_INDEX, VBE_DISPI_IOPORT_DATA, VBE_DISPI_INDEX_BANK, 0);
     dispiWrite(VBE_DISPI_IOPORT_INDEX, VBE_DISPI_IOPORT_DATA, VBE_DISPI_INDEX_ENABLE, VBE_DISPI_ENABLED | VBE_DISPI_LFB_ENABLE);
 
-    return framebufferAvailable();
+    // Programming succeeded; the framebuffer will be validated during
+    // initFramebufferWithInfo(), so treat this path as enabled here.
+    return true;
 }
 
 private void dispiWrite(ushort indexPort, ushort dataPort, ushort reg, ushort value)

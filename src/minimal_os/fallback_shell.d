@@ -1,6 +1,6 @@
 module minimal_os.fallback_shell;
 
-import minimal_os.console : print, printLine;
+import minimal_os.console : print, printLine, printUnsigned;
 import minimal_os.serial : serialConsoleReady, serialReadByteBlocking, serialWriteByte;
 
 extern(C) @nogc nothrow void _exit(int code);
@@ -131,10 +131,16 @@ private enum char PROMPT_CHAR = '#';
 @nogc nothrow private void printHelp()
 {
     printLineImmediate("Available commands:");
-    printLineImmediate("  help  - Show this message");
-    printLineImmediate("  echo  - Echo the provided text");
-    printLineImmediate("  clear - Add a blank line");
-    printLineImmediate("  exit  - Leave the shell");
+        printLine("  help       - Show this help message");
+        printLine("  clear      - Clear the screen");
+        printLine("  ls         - List files (legacy)");
+        printLine("  tree       - Show object tree");
+        printLine("  exec <elf> - Execute an ELF binary");
+        printLine("  exit       - Exit the shell");
+        printLine("");
+        printLine("The system is now using an Object Capability Model.");
+        printLine("Files are Blob objects, directories are Directory objects.");
+        printLine("Use 'tree' to explore the object hierarchy.");
 }
 
 @nogc nothrow public void runFallbackShell()
@@ -192,6 +198,59 @@ private enum char PROMPT_CHAR = '#';
             printLine("[shell] Error: External binary not found.");
             printLine("[shell] The ELF loader is active, but the filesystem is empty.");
             printLine("[shell] Ensure binaries are loaded into the VFS.");
+            continue;
+        }
+
+        if (command == "tree")
+        {
+            import minimal_os.objects : getRootObject, getObject, ObjectType, ObjectID;
+            
+            void printTree(ObjectID dirId, int depth)
+            {
+                auto slot = getObject(dirId);
+                if (slot is null || slot.type != ObjectType.Directory) return;
+                
+                for (size_t i = 0; i < slot.directory.count; ++i)
+                {
+                    auto entry = &slot.directory.entries[i];
+                    
+                    // Indent
+                    for (int k = 0; k < depth; ++k) print("  ");
+                    
+                    print("|-- ");
+                    
+                    // Print name
+                    size_t len = 0;
+                    while (entry.name[len] != 0) len++;
+                    print(cast(const(char)[])entry.name[0 .. len]);
+                    
+                    print(" (");
+                    // Print type
+                    auto childSlot = getObject(entry.cap.oid);
+                    if (childSlot !is null)
+                    {
+                        if (childSlot.type == ObjectType.Directory) print("DIR");
+                        else if (childSlot.type == ObjectType.Blob) 
+                        {
+                            print("BLOB, ");
+                            printUnsigned(childSlot.blob.size);
+                            print(" bytes");
+                        }
+                        else print("OBJ");
+                    }
+                    else print("???");
+                    
+                    printLine(")");
+                    
+                    if (childSlot !is null && childSlot.type == ObjectType.Directory)
+                    {
+                        printTree(entry.cap.oid, depth + 1);
+                    }
+                }
+            }
+            
+            printLine(".");
+            printTree(getRootObject(), 0);
             continue;
         }
 

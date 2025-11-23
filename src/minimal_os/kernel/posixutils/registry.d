@@ -1,4 +1,4 @@
-module minimal_os.posixutils.registry;
+module minimal_os.kernel.posixutils.registry;
 
 alias ptrdiff_t = object.ptrdiff_t;
 

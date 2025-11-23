@@ -232,6 +232,7 @@ DFLAGS+=" -d-version=MinimalOsFreestanding"
 KERNEL_SOURCES=(
   "$KERNEL_D"
   "src/minimal_os/kernel/memory.d"
+  "src/minimal_os/kernel/heap.d"
   "src/minimal_os/kernel/posixbundle.d"
   "src/minimal_os/kernel/shell_integration.d"
   "src/minimal_os/kernel/exceptions.d"
@@ -271,6 +272,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/kernel/linux_syscalls.d"
   "src/minimal_os/kernel/syscalls.d"
   "src/minimal_os/elf.d"
+  "src/minimal_os/objects.d"
 )
 
 # Ensure shell integration is always present (kmain registers compiler-builder).

@@ -1,4 +1,4 @@
-module minimal_os.posixutils.context;
+module minimal_os.kernel.posixutils.context;
 
 version (X86_64)
 {

@@ -33,9 +33,43 @@ enum SYS_SET_TID_ADDRESS = 218;
 enum SYS_SET_ROBUST_LIST = 273;
 enum SYS_PRLIMIT64 = 302;
 enum SYS_RSEQ    = 334;
+enum SYS_CAP_INVOKE = 1000; // Custom syscall number for capability invocation
 
-extern(C) void wrmsr(uint msr, ulong value);
-extern(C) ulong rdmsr(uint msr);
+extern(C) long sys_cap_invoke(ulong capId, ulong method, ulong arg1, ulong arg2)
+{
+    // Placeholder for capability invocation logic
+    // In a real system, we would look up the capability in the process's c-list,
+    // verify rights, and dispatch to the object.
+    
+    import minimal_os.console : printLine, printHex;
+    // printLine("[syscall] sys_cap_invoke");
+    // printHex(capId);
+    
+    return 0;
+}
+
+extern(C) void wrmsr(uint msr, ulong value)
+{
+    asm {
+        mov ECX, msr;
+        mov EAX, value; // Low 32
+        mov RDX, value;
+        shr RDX, 32;    // High 32
+        wrmsr;
+    }
+}
+
+extern(C) ulong rdmsr(uint msr)
+{
+    ulong low, high;
+    asm {
+        mov ECX, msr;
+        rdmsr;
+        mov low, RAX;
+        mov high, RDX;
+    }
+    return (high << 32) | low;
+}
 
 // Assembly entry point for syscalls
 extern(C) void syscallEntry();
@@ -86,7 +120,7 @@ extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r
              break;
              
         case SYS_FSTAT:
-             result = sys_fstat(cast(int)rdi, cast(stat_t*)rsi);
+             result = sys_fstat(cast(int)rdi, cast(minimal_os.kernel.linux_syscalls.stat_t*)rsi);
              break;
 
         case SYS_MMAP:
@@ -161,6 +195,10 @@ extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r
             result = sys_kill(cast(int)rdi, cast(int)rsi);
             break;
 
+        case SYS_CAP_INVOKE:
+            result = sys_cap_invoke(cast(ulong)rdi, cast(ulong)rsi, cast(ulong)rdx, cast(ulong)r10);
+            break;
+
         default:
             print("[syscall] Unknown syscall: ");
             printUnsigned(cast(size_t)rax);
@@ -175,18 +213,18 @@ extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r
 }
 
 // Assembly stub
-extern(C) naked @nogc nothrow void syscallEntry()
+extern(C) void syscallEntry()
 {
-    // Save user stack pointer and switch to kernel stack
     asm {
+        naked;
         // Save user rsp
-        mov [scratch_rsp], rsp;
+        mov [scratch_rsp], RSP;
         // Load kernel rsp
-        mov rsp, [kernel_rsp];
+        mov RSP, [kernel_rsp];
 
         // Save registers that will be used for argument shuffling
         // Push the 7th argument (original r9) onto the stack for the call
-        push r9;
+        push R9;
 
         // Shuffle registers to match D calling convention for handleSyscall
         // handleSyscall(rax, rdi, rsi, rdx, r10, r8, r9)
@@ -199,21 +237,21 @@ extern(C) naked @nogc nothrow void syscallEntry()
         //   r8  <- r10 (original arg4)
         //   r9  <- r8  (original arg5)
         //   [stack] holds original r9 (arg6)
-        mov r9, r8;   // sixth arg becomes r9
-        mov r8, r10;  // fifth arg becomes r8
-        mov rcx, rdx; // fourth arg becomes rcx
-        mov rdx, rsi; // third arg becomes rdx
-        mov rsi, rdi; // second arg becomes rsi
-        mov rdi, rax; // first arg becomes rdi (syscall number)
+        mov R9, R8;   // sixth arg becomes r9
+        mov R8, R10;  // fifth arg becomes r8
+        mov RCX, RDX; // fourth arg becomes rcx
+        mov RDX, RSI; // third arg becomes rdx
+        mov RSI, RDI; // second arg becomes rsi
+        mov RDI, RAX; // first arg becomes rdi (syscall number)
 
         // Call the dispatcher
         call handleSyscall;
 
         // Clean up the stack (pop the pushed original r9)
-        add rsp, 8;
+        add RSP, 8;
 
         // Restore user stack pointer
-        mov rsp, [scratch_rsp];
+        mov RSP, [scratch_rsp];
 
         // Return to user mode (RAX already contains the return value)
         sysretq;

@@ -233,14 +233,39 @@ pml4_table:
 
     .align 4096
 pdpt_table:
-    .quad pd_table + 0x03         # present | writable
-    .fill 511, 8, 0
+    .quad pd_table0 + 0x03        # present | writable
+    .quad pd_table1 + 0x03        # present | writable
+    .quad pd_table2 + 0x03        # present | writable
+    .quad pd_table3 + 0x03        # present | writable
+    .fill 508, 8, 0
 
     .align 4096
-pd_table:
-    # Identity-map the first 1 GiB with 2 MiB pages.
-    # Trick: (.-pd_table)/8 is the current entry index (0..511).
+pd_table0:
+    # Identity-map the first 4 GiB with 2 MiB pages so firmware framebuffers
+    # (often placed near 3.5 GiB) remain accessible as soon as paging is on.
+    # Trick: (.-pd_tableX)/8 is the current entry index (0..511).
     .set PAGE_FLAGS, 0x0000000000000083   # present | writable | 2M
     .rept 512
-        .quad ( (.-pd_table)/8 * 0x200000 ) + PAGE_FLAGS
+        .quad ( (.-pd_table0)/8 * 0x200000 ) + PAGE_FLAGS
+    .endr
+
+    .align 4096
+pd_table1:
+    .set BASE_GB1, 0x0000000040000000
+    .rept 512
+        .quad BASE_GB1 + ( (.-pd_table1)/8 * 0x200000 ) + PAGE_FLAGS
+    .endr
+
+    .align 4096
+pd_table2:
+    .set BASE_GB2, 0x0000000080000000
+    .rept 512
+        .quad BASE_GB2 + ( (.-pd_table2)/8 * 0x200000 ) + PAGE_FLAGS
+    .endr
+
+    .align 4096
+pd_table3:
+    .set BASE_GB3, 0x00000000C0000000
+    .rept 512
+        .quad BASE_GB3 + ( (.-pd_table3)/8 * 0x200000 ) + PAGE_FLAGS
     .endr

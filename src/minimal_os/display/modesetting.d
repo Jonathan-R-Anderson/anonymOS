@@ -146,6 +146,7 @@ private size_t resolveBochsFramebufferBase()
         const ushort device = cast(ushort)((id >> 16) & 0xFFFF);
         if (vendor == bochsVendorId && device == bochsDeviceId)
         {
+            enableBgaMemoryAccess(slot);
             const uint bar0 = pciConfigRead32(0, cast(ubyte)slot, 0, 0x10);
             const bool isMemoryBar = (bar0 & 0x1) == 0;
             if (isMemoryBar)
@@ -183,6 +184,48 @@ private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset)
     }
 
     return value;
+}
+
+/// Ensure the Bochs VBE device decodes memory cycles on BAR0 before we try to
+/// treat the LFB as a linear framebuffer. Without MEM/BUS MASTER enabled the
+/// guest will fault as soon as we write pixels.
+private void enableBgaMemoryAccess(ubyte slot)
+{
+    enum ushort pciConfigCommand = 0x04;
+    enum uint   commandMemSpace  = 0x2;
+    enum uint   commandBusMaster = 0x4;
+
+    uint command = pciConfigRead32(0, slot, 0, pciConfigCommand);
+    const bool memEnabled  = (command & commandMemSpace) != 0;
+    const bool busEnabled  = (command & commandBusMaster) != 0;
+    const uint updatedMask = command | commandMemSpace | commandBusMaster;
+
+    if (!memEnabled || !busEnabled)
+    {
+        pciConfigWrite32(0, slot, 0, pciConfigCommand, updatedMask);
+    }
+}
+
+private void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, uint value)
+{
+    enum ushort pciConfigAddress = 0xCF8;
+    enum ushort pciConfigData    = 0xCFC;
+
+    const uint address = (1u << 31) |
+                         (cast(uint)bus << 16) |
+                         (cast<uint)slot << 11) |
+                         (cast<uint)func << 8) |
+                         (offset & 0xFC);
+
+    asm @nogc nothrow
+    {
+        mov DX, pciConfigAddress;
+        mov EAX, address;
+        out DX, EAX;
+        mov DX, pciConfigData;
+        mov EAX, value;
+        out DX, EAX;
+    }
 }
 
 /// Minimal Bochs/QEMU VBE programming path used when no framebuffer was

@@ -167,9 +167,9 @@ private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset)
     enum ushort pciConfigData    = 0xCFC;
 
     const uint address = (1u << 31) |
-                         (cast(uint)bus << 16) |
-                         (cast(uint)slot << 11) |
-                         (cast(uint)func << 8) |
+                         ((cast(uint)bus) << 16) |
+                         ((cast(uint)slot) << 11) |
+                         ((cast(uint)func) << 8) |
                          (offset & 0xFC);
 
     uint value;

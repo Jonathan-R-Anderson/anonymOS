@@ -211,6 +211,15 @@ void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
     }
 }
 
+// In some toolchain configurations the linker may aggressively discard
+// unreferenced symbols. Explicitly request that the compiler builder entry
+// point is retained so `kmain` can always register it when
+// `MinimalOsUserlandLinked` is enabled.
+static if (__traits(compiles, { pragma(LDC_force_link, compilerBuilderProcessEntry); }))
+{
+    pragma(LDC_force_link, compilerBuilderProcessEntry);
+}
+
 
 private void integrateShell()
 {

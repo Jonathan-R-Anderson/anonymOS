@@ -42,6 +42,10 @@ struct USBHIDSubsystem
     @nogc nothrow:
 
     USBControllerType controllerType;
+    uint controllerBus;
+    uint controllerSlot;
+    uint controllerFunction;
+    uint controllerMmioBase;
     bool initialized;
     HIDDevice[8] devices;
     ubyte deviceCount;
@@ -60,10 +64,11 @@ struct USBHIDSubsystem
         keyboardPresent = false;
         keyboardMockIndex = 0;
         mouseMockIndex = 0;
-        
+        controllerMmioBase = 0;
+
         // Detect USB controllers
-        controllerType = detectUSBController();
-        
+        controllerType = detectUSBController(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
+
         if (controllerType == USBControllerType.none)
         {
             printLine("[usb-hid] No USB controllers detected");
@@ -113,63 +118,37 @@ struct USBHIDSubsystem
     
     private bool initializeController()
     {
-        // This is a simplified stub - real USB controller initialization
-        // requires extensive PCI enumeration, memory-mapped I/O setup,
-        // port configuration, and protocol handshaking.
-        
-        // For now, we'll assume the controller is ready and return true
-        // to allow the rest of the system to work with mock/stub data.
-        
         final switch (controllerType)
         {
             case USBControllerType.uhci:
-                return initializeUHCI();
+                return initializeUHCI(controllerBus, controllerSlot, controllerFunction);
             case USBControllerType.ehci:
-                return initializeEHCI();
+                return initializeEHCI(controllerBus, controllerSlot, controllerFunction);
             case USBControllerType.xhci:
-                return initializeXHCI();
+                return initializeXHCI(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
             case USBControllerType.none:
                 return false;
         }
     }
-    
+
     private void enumerateHIDDevices()
     {
-        // This is a stub for HID device enumeration
-        // Real implementation would:
-        // 1. Reset USB ports
-        // 2. Send USB GET_DESCRIPTOR requests
-        // 3. Parse device descriptors
-        // 4. Identify HID class devices (class 0x03)
-        // 5. Get HID report descriptors
-        // 6. Configure endpoints
-        
-        // For now, we'll create mock devices to allow testing
-        printLine("[usb-hid] Device enumeration not fully implemented - using mock devices");
-        
-        // Mock keyboard
-        devices[0].deviceType = HIDDeviceType.keyboard;
-        devices[0].enabled = true;
-        devices[0].address = 1;
-        devices[0].endpoint = 1;
-        devices[0].vendorId = 0x046D;  // Logitech
-        devices[0].productId = 0xC31C;
-
-        // Mock mouse
-        devices[1].deviceType = HIDDeviceType.mouse;
-        devices[1].enabled = true;
-        devices[1].address = 2;
-        devices[1].endpoint = 1;
-        devices[1].vendorId = 0x046D;
-        devices[1].productId = 0xC077;
-
-        deviceCount = 2;
-
-        keyboardPresent = true;
-        pointerPresent = true;
+        deviceCount = 0;
+        keyboardPresent = false;
+        pointerPresent = false;
         touchPresent = false;
-        keyboardMockIndex = 0;
-        mouseMockIndex = 0;
+
+        final switch (controllerType)
+        {
+            case USBControllerType.xhci:
+                enumerateXHCIDevices();
+                break;
+            case USBControllerType.ehci:
+            case USBControllerType.uhci:
+            case USBControllerType.none:
+                // TODO: add UHCI/EHCI enumeration once host controller drivers exist
+                break;
+        }
     }
     
     private void pollDevice(ref HIDDevice device, ref InputQueue queue)
@@ -192,72 +171,208 @@ struct USBHIDSubsystem
     
     private void pollKeyboard(ref HIDDevice device, ref InputQueue queue)
     {
-        // In the absence of real hardware, feed a short demo sequence once
-        // after boot so the compositor can observe key delivery. The sequence
-        // types "hi" with proper up/down transitions.
-        immutable HIDKeyboardReport[4] mockReports = [
-            HIDKeyboardReport(0, 0, [0x0B, 0, 0, 0, 0, 0]), // h down
-            HIDKeyboardReport(0, 0, [0, 0, 0, 0, 0, 0]),    // h up
-            HIDKeyboardReport(0, 0, [0x0C, 0, 0, 0, 0, 0]), // i down
-            HIDKeyboardReport(0, 0, [0, 0, 0, 0, 0, 0])     // i up
-        ];
-
-        if (keyboardMockIndex < mockReports.length)
-        {
-            auto report = mockReports[keyboardMockIndex++];
-            processKeyboardReport(report, queue);
-        }
+        // TODO: submit transfer descriptors and parse real HID keyboard reports
+        // when a complete USB host stack is available.
     }
-    
+
     private void pollMouse(ref HIDDevice device, ref InputQueue queue)
     {
-        // Demo pattern: move diagonally and click once to exercise pointer
-        // plumbing. The pattern runs once after initialization.
-        immutable HIDMouseReport[3] mockReports = [
-            HIDMouseReport(0, 5, 5, 0),   // move
-            HIDMouseReport(1, 0, 0, 0),   // left button down
-            HIDMouseReport(0, 0, 0, 0)    // left button up
-        ];
-
-        if (mouseMockIndex < mockReports.length)
-        {
-            auto report = mockReports[mouseMockIndex++];
-            processMouseReport(report, queue, 1280, 720);
-        }
+        // TODO: submit transfer descriptors and parse real HID mouse reports
+        // when a complete USB host stack is available.
     }
 }
 
-private USBControllerType detectUSBController() @nogc nothrow
+private enum uint pciConfigAddress = 0xCF8;
+private enum uint pciConfigData = 0xCFC;
+
+private void outl(uint port, uint value) @nogc nothrow
 {
-    // Detect USB controller via PCI enumeration
-    // This is a stub - real implementation would scan PCI bus
-    
-    // PCI Class codes:
-    // 0x0C = Serial Bus Controller
-    // 0x03 = USB Controller
-    // Sub-classes: 0x00=UHCI, 0x10=OHCI, 0x20=EHCI, 0x30=XHCI
-    
-    // For now, pretend we found an XHCI controller
-    printLine("[usb-hid] PCI enumeration stub - assuming XHCI controller present");
-    return USBControllerType.xhci;
+    asm
+    {
+        "mov DX, %[port];"
+        "mov EAX, %[value];"
+        "out DX, EAX;"
+        :
+        : [port] "r" (port), [value] "r" (value)
+        : "eax", "dx";
+    }
 }
 
-private bool initializeUHCI() @nogc nothrow
+private uint inl(uint port) @nogc nothrow
 {
-    printLine("[usb-hid] UHCI initialization stub");
-    return true;
+    uint value;
+    asm
+    {
+        "mov DX, %[port];"
+        "in EAX, DX;"
+        "mov %[value], EAX;"
+        : [value] "=r" (value)
+        : [port] "r" (port)
+        : "eax", "dx";
+    }
+    return value;
 }
 
-private bool initializeEHCI() @nogc nothrow
+private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset) @nogc nothrow
 {
-    printLine("[usb-hid] EHCI initialization stub");
-    return true;
+    const uint address = (cast(uint)bus << 16) | (cast(uint)slot << 11) | (cast(uint)func << 8) | (offset & 0xFC) | 0x8000_0000;
+    outl(pciConfigAddress, address);
+    return inl(pciConfigData);
 }
 
-private bool initializeXHCI() @nogc nothrow
+private void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, uint value) @nogc nothrow
 {
-    printLine("[usb-hid] XHCI initialization stub");
-    return true;
+    const uint address = (cast(uint)bus << 16) | (cast<uint)slot << 11) | (cast<uint)func << 8) | (offset & 0xFC) | 0x8000_0000;
+    outl(pciConfigAddress, address);
+    outl(pciConfigData, value);
+}
+
+private USBControllerType detectUSBController(ref uint busOut, ref uint slotOut, ref uint funcOut, ref uint mmioBaseOut) @nogc nothrow
+{
+    USBControllerType detected = USBControllerType.none;
+    mmioBaseOut = 0;
+
+    foreach (bus; 0 .. 256)
+    {
+        foreach (slot; 0 .. 32)
+        {
+            foreach (func; 0 .. 8)
+            {
+                const uint vendorDevice = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0);
+                if ((vendorDevice & 0xFFFF) == 0xFFFF)
+                {
+                    if (func == 0)
+                    {
+                        break;
+                    }
+                    continue;
+                }
+
+                const uint classCode = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 8);
+                const ubyte baseClass = cast(ubyte)((classCode >> 24) & 0xFF);
+                const ubyte subClass = cast(ubyte)((classCode >> 16) & 0xFF);
+                const ubyte progIf = cast(ubyte)((classCode >> 8) & 0xFF);
+
+                if (baseClass == 0x0C && subClass == 0x03)
+                {
+                    busOut = bus;
+                    slotOut = slot;
+                    funcOut = func;
+
+                    final switch (progIf)
+                    {
+                        case 0x00:
+                            detected = USBControllerType.uhci;
+                            break;
+                        case 0x20:
+                            detected = USBControllerType.ehci;
+                            break;
+                        case 0x30:
+                            detected = USBControllerType.xhci;
+                            break;
+                        default:
+                            detected = USBControllerType.none;
+                            break;
+                    }
+
+                    const uint bar0 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x10);
+                    mmioBaseOut = bar0 & 0xFFFF_FFF0;
+
+                    return detected;
+                }
+            }
+        }
+    }
+
+    return detected;
+}
+
+private bool initializeUHCI(uint bus, uint slot, uint func) @nogc nothrow
+{
+    const uint commandOffset = 0x04;
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
+    command |= 0x0006; // memory + bus master enable
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
+    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
+}
+
+private bool initializeEHCI(uint bus, uint slot, uint func) @nogc nothrow
+{
+    const uint commandOffset = 0x04;
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
+    command |= 0x0006; // memory + bus master enable
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
+    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
+}
+
+private bool initializeXHCI(uint bus, uint slot, uint func, uint mmioBase) @nogc nothrow
+{
+    const uint commandOffset = 0x04;
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
+    command |= 0x0006; // memory + bus master enable
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
+
+    // Ensure the MMIO base is valid
+    return mmioBase != 0 && (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
+}
+
+private uint mmioRead32(uint base, uint offset) @nogc nothrow
+{
+    return *cast(volatile uint*)(base + offset);
+}
+
+private void enumerateXHCIDevices() @nogc nothrow
+{
+    if (controllerMmioBase == 0)
+    {
+        printLine("[usb-hid] No MMIO base for XHCI; skipping enumeration");
+        return;
+    }
+
+    const uint capLength = *cast(volatile ubyte*)controllerMmioBase;
+    const uint hcsParams1 = mmioRead32(controllerMmioBase, 0x04);
+    const uint portCount = (hcsParams1 >> 24) & 0xFF;
+    const uint portBase = controllerMmioBase + capLength + 0x400; // port register set base
+
+    foreach (portIndex; 0 .. portCount)
+    {
+        const uint portStatus = mmioRead32(portBase, portIndex * 0x10);
+        const bool connected = (portStatus & 0x01) != 0;
+        if (!connected)
+        {
+            continue;
+        }
+
+        if (deviceCount >= devices.length)
+        {
+            break;
+        }
+
+        const uint speed = (portStatus >> 10) & 0x0F;
+
+        // Heuristic: low/full speed devices are commonly HID keyboards, higher
+        // speeds are more likely to be pointer-class devices when running
+        // under common virtualization setups.
+        HIDDeviceType detectedType = (speed <= 0x02) ? HIDDeviceType.keyboard : HIDDeviceType.mouse;
+
+        auto device = &devices[deviceCount];
+        device.deviceType = detectedType;
+        device.enabled = false; // endpoints are not configured yet
+        device.address = cast(ubyte)(portIndex + 1);
+        device.endpoint = 0;
+        device.vendorId = 0;
+        device.productId = 0;
+
+        deviceCount++;
+        if (detectedType == HIDDeviceType.keyboard)
+        {
+            keyboardPresent = true;
+        }
+        else
+        {
+            pointerPresent = true;
+        }
+    }
 }
 
 private const(char)[] controllerTypeName(USBControllerType type) @nogc nothrow pure

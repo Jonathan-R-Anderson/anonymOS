@@ -21,7 +21,11 @@ import minimal_os.kernel.posixbundle : compileEmbeddedPosixUtilities;
 
 // Import userland bootstrap functions directly
 import minimal_os.userland : UserlandRuntime, SystemProperties, normaliseState, 
-    DEFAULT_SERVICE_PLANS, INVALID_INDEX, processReady, logServiceProvision, logUserlandSnapshot;
+    g_servicePlans, g_servicePlansInitialized, ServicePlan, INVALID_INDEX, processReady, logServiceProvision, logUserlandSnapshot;
+
+
+
+
 
 // In this configuration we always compile & link userland.
 enum bool userlandAvailable = true;
@@ -61,6 +65,7 @@ __gshared ShellIntegrationState shellState = ShellIntegrationState(
     false,
 );
 
+pragma(mangle, "compilerBuilderProcessEntry")
 pragma(inline, false)
 export extern(C) @nogc nothrow
 void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
@@ -130,7 +135,30 @@ void compilerBuilderProcessEntry(const(char*)* argv, const(char*)* envp)
         UserlandRuntime runtime;
         runtime.reset();
 
-        foreach (plan; DEFAULT_SERVICE_PLANS)
+        if (!g_servicePlansInitialized)
+        {
+            g_servicePlans[0] = ServicePlan("init", "/sbin/init", "Capability supervisor",
+                          [ "ipc.bootstrap", "scheduler.control", "namespace.grant" ], "running", false);
+            g_servicePlans[1] = ServicePlan("vfsd", "/bin/vfsd", "Immutable namespace + VMO store",
+                          [ "vmo.map", "vmo.clone", "namespace.publish", "namespace.read" ], "running", false);
+            g_servicePlans[2] = ServicePlan("pkgd", "/bin/pkgd", "Package + manifest resolver",
+                          [ "package.open", "package.verify", "cache.commit" ], "ready", false);
+            g_servicePlans[3] = ServicePlan("netd", "/bin/netd", "Network capability broker",
+                          [ "net.bind", "net.connect", "net.capability" ], "running", true);
+            g_servicePlans[4] = ServicePlan("xorg-server", "/bin/Xorg", "X11 display server",
+                          [ "display.x11", "display.driver", "input.bridge", "namespace.publish" ], "waiting", false);
+            g_servicePlans[5] = ServicePlan("xinit", "/bin/xinit", "X11 session bootstrapper",
+                          [ "display.x11", "session.launch", "ipc.userland", "posix.exec" ], "waiting", false);
+            g_servicePlans[6] = ServicePlan("display-manager", "/bin/xdm", "Graphical login + session manager",
+                          [ "display.login", "session.control", "ipc.userland" ], "waiting", false);
+            g_servicePlans[7] = ServicePlan("i3", "/bin/i3", "Tiling window manager and desktop",
+                          [ "display.manage", "ipc.userland", "workspace.control", "console.claim" ], "waiting", false);
+            g_servicePlans[8] = ServicePlan("lfe-sh", "/bin/sh", "Interactive shell bridge",
+                          [ "ipc.bootstrap", "posix.exec", "console.claim" ], "ready", false);
+            g_servicePlansInitialized = true;
+        }
+        
+        foreach (plan; g_servicePlans)
         {
             immutable(char)[] desiredState = normaliseState(plan.desiredState);
             const size_t serviceIndex = runtime.registerService(plan.name,

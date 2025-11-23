@@ -136,6 +136,7 @@ void framebufferInit(const(void)* base,
     g_fbCursorY     = 0;
 
     framebufferClear();
+    framebufferInitCursor();
 }
 
 // D-friendly wrapper (same as above, just nicer to call)
@@ -521,4 +522,248 @@ void framebufferBootBanner(const(char)[] msg) {
     framebufferSetTextColors(0xFFFFFFFF, 0x00000000); // white on black
     framebufferWriteString(msg);
     framebufferWriteChar('\n');
+}
+
+// --------------------------------------------------------------------------
+// Software Cursor
+// --------------------------------------------------------------------------
+
+struct CursorIcon {
+    uint width;
+    uint height;
+    const(uint)* pixels; // ARGB
+}
+
+private __gshared CursorIcon g_currentCursorIcon;
+private __gshared int        g_cursorX = 0;
+private __gshared int        g_cursorY = 0;
+private __gshared bool       g_cursorVisible = false;
+private __gshared uint[64 * 64] g_cursorSaveBuffer; // Max 64x64 cursor
+private __gshared bool       g_cursorSaveBufferValid = false;
+
+// Default 12x19 arrow cursor (ARGB)
+// Simple pixel art arrow
+private __gshared uint[12 * 19] g_defaultCursorPixels = [
+    0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+];
+
+@nogc nothrow @system
+void framebufferInitCursor()
+{
+    g_currentCursorIcon.width  = 12;
+    g_currentCursorIcon.height = 19;
+    g_currentCursorIcon.pixels = g_defaultCursorPixels.ptr;
+    g_cursorVisible = false;
+    g_cursorSaveBufferValid = false;
+}
+
+@nogc nothrow @system
+void framebufferSetCursorIcon(uint width, uint height, const(uint)* pixels)
+{
+    // Hide old cursor first to restore background
+    bool wasVisible = g_cursorVisible;
+    if (wasVisible) framebufferHideCursor();
+
+    g_currentCursorIcon.width  = width;
+    g_currentCursorIcon.height = height;
+    g_currentCursorIcon.pixels = pixels;
+
+    if (wasVisible) framebufferShowCursor();
+}
+
+@nogc nothrow @system
+void framebufferMoveCursor(int x, int y)
+{
+    if (!g_fbInitialized) return;
+
+    // If visible, we must:
+    // 1. Restore background at old position
+    // 2. Save background at new position
+    // 3. Draw cursor at new position
+    if (g_cursorVisible)
+    {
+        framebufferRestoreBackground();
+        g_cursorX = x;
+        g_cursorY = y;
+        framebufferSaveBackground();
+        framebufferDrawCursorIcon();
+    }
+    else
+    {
+        g_cursorX = x;
+        g_cursorY = y;
+    }
+}
+
+@nogc nothrow @system
+void framebufferShowCursor()
+{
+    if (!g_fbInitialized) return;
+    if (g_cursorVisible) return;
+
+    g_cursorVisible = true;
+    framebufferSaveBackground();
+    framebufferDrawCursorIcon();
+}
+
+@nogc nothrow @system
+void framebufferHideCursor()
+{
+    if (!g_fbInitialized) return;
+    if (!g_cursorVisible) return;
+
+    framebufferRestoreBackground();
+    g_cursorVisible = false;
+}
+
+// Internal helpers
+
+@nogc nothrow @system
+private void framebufferSaveBackground()
+{
+    if (!g_fbInitialized) return;
+    
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    if (w > 64 || h > 64) return; // Safety cap
+
+    // Read pixels from framebuffer into g_cursorSaveBuffer
+    // We need a 'getPixel' equivalent, but for speed we'll just calc offsets
+    // Note: This is slow if done pixel-by-pixel. 
+    // Ideally we'd have a blitRead, but we'll implement a simple loop here.
+    
+    // We must clip against screen bounds
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            // Read pixel
+            // This requires reading from video memory, which can be slow, but necessary for software cursor.
+            // We'll implement a fast read helper if needed, but for now we assume direct access is okay.
+            // WARNING: Reading from LFB is very slow on some hardware.
+            
+            // Calculate offset
+            const byteOffset = cy * g_fb.pitch + cx * (g_fb.bpp / 8);
+            uint pixelVal = 0;
+            
+            // We only support 32bpp read-back easily here for simplicity, 
+            // or we assume we can just cast to uint* if 32bpp.
+            // For 16/24bpp it's more complex. Let's support 32bpp primarily for now.
+            if (g_fb.bpp == 32)
+            {
+                pixelVal = *(cast(uint*)(g_fb.addr + byteOffset));
+            }
+            else if (g_fb.bpp == 16)
+            {
+                pixelVal = *(cast(ushort*)(g_fb.addr + byteOffset));
+            }
+            // 24bpp is messy to read back efficiently without a helper
+            
+            g_cursorSaveBuffer[row * 64 + col] = pixelVal;
+        }
+    }
+    g_cursorSaveBufferValid = true;
+}
+
+@nogc nothrow @system
+private void framebufferRestoreBackground()
+{
+    if (!g_fbInitialized || !g_cursorSaveBufferValid) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            const saved = g_cursorSaveBuffer[row * 64 + col];
+            framebufferPutPixel(cx, cy, saved); // PutPixel handles format conversion if 'saved' was ARGB? 
+            // WAIT: We saved the RAW pixel value. framebufferPutPixel expects ARGB.
+            // We need a 'putRawPixel' or we need to convert back.
+            // Actually, since we read the raw value, we should write the raw value back.
+            // But framebufferPutPixel takes ARGB.
+            // We should implement a 'putPixelRaw' or just write directly here.
+            
+            const byteOffset = cy * g_fb.pitch + cx * (g_fb.bpp / 8);
+            if (g_fb.bpp == 32)
+            {
+                *(cast(uint*)(g_fb.addr + byteOffset)) = saved;
+            }
+            else if (g_fb.bpp == 16)
+            {
+                *(cast(ushort*)(g_fb.addr + byteOffset)) = cast(ushort)saved;
+            }
+        }
+    }
+}
+
+@nogc nothrow @system
+private void framebufferDrawCursorIcon()
+{
+    if (!g_fbInitialized) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const pixels = g_currentCursorIcon.pixels;
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            const argb = pixels[row * w + col];
+            
+            // Simple alpha blending: if alpha > 0, draw.
+            // Ideally we'd do proper blending, but for a basic cursor, 
+            // 0 alpha = transparent, anything else = opaque is a good start.
+            // Or simple threshold.
+            if ((argb & 0xFF000000) != 0)
+            {
+                framebufferPutPixel(cx, cy, argb);
+            }
+        }
+    }
 }

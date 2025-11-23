@@ -172,7 +172,7 @@ private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset)
                          (offset & 0xFC);
 
     uint value;
-    asm
+    asm @nogc nothrow
     {
         mov DX, pciConfigAddress;
         mov EAX, address;
@@ -239,7 +239,7 @@ private bool enableBochsVbeMode(uint width, uint height, uint bpp)
 
 private void dispiWrite(ushort indexPort, ushort dataPort, ushort reg, ushort value)
 {
-    asm
+    asm @nogc nothrow
     {
         mov DX, indexPort;
         mov AX, reg;
@@ -253,7 +253,7 @@ private void dispiWrite(ushort indexPort, ushort dataPort, ushort reg, ushort va
 private ushort dispiRead(ushort indexPort, ushort dataPort, ushort reg)
 {
     ushort value;
-    asm
+    asm @nogc nothrow
     {
         mov DX, indexPort;
         mov AX, reg;

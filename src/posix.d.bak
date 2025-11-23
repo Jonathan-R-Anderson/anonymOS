@@ -61,13 +61,13 @@ package(minimal_os) @nogc nothrow void ensureBareMetalShellInterfaces()
 }
 
 // example: adjust the path to whatever your search in step 1 shows
-public import minimal_os.posixutils.registry :
+public import minimal_os.kernel.posixutils.registry :
     registryEmbeddedPosixUtilitiesAvailable = embeddedPosixUtilitiesAvailable,
     registryEmbeddedPosixUtilityPaths = embeddedPosixUtilityPaths;
 
 version (Posix)
 {
-    public import minimal_os.posixutils.process.process
+    public import minimal_os.kernel.posixutils.process.process
         : spawnRegisteredProcess,
           waitpid;
 }

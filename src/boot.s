@@ -198,6 +198,154 @@ invalidOpcodeStub:
 
 .size invalidOpcodeStub, . - invalidOpcodeStub
 
+    .global timerIsrStub
+    .type timerIsrStub, @function
+    .extern timerIsrHandler
+timerIsrStub:
+    # Save caller state
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    subq $16, %rsp
+    mov %ds, 8(%rsp)
+    mov %es, 0(%rsp)
+    mov $DATA_SEG, %ax
+    mov %ax, %ds
+    mov %ax, %es
+
+    leaq fpu_save_area(%rip), %rax
+    fxsave64 (%rax)
+
+    call timerIsrHandler
+
+    fxrstor64 (%rax)
+
+    mov 0(%rsp), %es
+    mov 8(%rsp), %ds
+    addq $16, %rsp
+
+    # Restore
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    iretq
+
+.size timerIsrStub, . - timerIsrStub
+
+    .global keyboardIsrStub
+    .type keyboardIsrStub, @function
+    .extern keyboardIsrHandler
+keyboardIsrStub:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    subq $16, %rsp
+    mov %ds, 8(%rsp)
+    mov %es, 0(%rsp)
+    mov $DATA_SEG, %ax
+    mov %ax, %ds
+    mov %ax, %es
+
+    leaq fpu_save_area(%rip), %rax
+    fxsave64 (%rax)
+
+    call keyboardIsrHandler
+
+    fxrstor64 (%rax)
+
+    mov 0(%rsp), %es
+    mov 8(%rsp), %ds
+    addq $16, %rsp
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    iretq
+
+.size keyboardIsrStub, . - keyboardIsrStub
+
+    .global pageFaultStub
+    .type pageFaultStub, @function
+    .extern pageFaultHandler
+pageFaultStub:
+    # CPU has pushed error code + interrupt frame already.
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    movq %rsp, %rdi          # arg0: pointer to saved regs + fault frame
+    call pageFaultHandler
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    addq $8, %rsp            # skip error code pushed by CPU
+    iretq
+
+.size pageFaultStub, . - pageFaultStub
+
+    .global interruptContextSwitch
+    .type interruptContextSwitch, @function
+# void interruptContextSwitch(uint64_t* oldSpOut, uint64_t newSp)
+# rdi = pointer to store old RSP
+# rsi = new RSP to load
+interruptContextSwitch:
+    mov %rsp, (%rdi)
+    mov %rsi, %rsp
+    ret
+
+.size interruptContextSwitch, . - interruptContextSwitch
+
     .global loadIDT
     .type loadIDT, @function
 loadIDT:
@@ -214,6 +362,11 @@ saved_magic:
     .long 0          # 32-bit multiboot magic
 saved_info:
     .long 0          # 32-bit multiboot info pointer
+
+    .section .data
+    .balign 16
+fpu_save_area:
+    .space 512
 
     .align 16
 gdt64:

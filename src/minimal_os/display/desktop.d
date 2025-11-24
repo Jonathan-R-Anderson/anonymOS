@@ -1,6 +1,7 @@
 module minimal_os.display.desktop;
 
 import minimal_os.display.framebuffer;
+import minimal_os.console : printLine, printUnsigned;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.window_manager.renderer;
 import minimal_os.display.compositor : renderWorkspaceComposited, compositorAvailable, compositorEnsureReady,
@@ -33,7 +34,10 @@ private @nogc nothrow void ensureDisplayServer()
 
     DisplayServerConfig config;
     config.protocol = DisplayProtocol.wayland;
-    config.compositorEnabled = true;
+    // Run without an external compositor process; fall back to the built-in
+    // software renderer so the desktop is usable even if /sbin/desktop is
+    // absent in the image.
+    config.compositorEnabled = false;
     config.inputEnabled = true;
     config.fontStackEnabled = true;
     config.framebufferRequest = FramebufferModeRequest.init;
@@ -51,6 +55,15 @@ private @nogc nothrow void ensureDisplayServer()
     attachInputPipeline(g_displayServer);
 
     g_displayServerReady = displayServerReady(g_displayServer);
+
+    if (g_displayServerReady)
+    {
+        printLine("[desktop] display server ready");
+    }
+    else
+    {
+        printLine("[desktop] display server not ready");
+    }
 }
 
 private @nogc nothrow void ensureWindowManager()
@@ -59,6 +72,10 @@ private @nogc nothrow void ensureWindowManager()
 
     if (g_windowManagerReady || !framebufferAvailable() || !g_displayServerReady)
     {
+        if (!g_displayServerReady)
+        {
+            printLine("[desktop] window manager blocked: display server not ready");
+        }
         return;
     }
 
@@ -101,6 +118,7 @@ private @nogc nothrow void ensureWindowManager()
     initializeInputHandler(g_fb.width, g_fb.height);
     
     g_windowManagerReady = true;
+    printLine("[desktop] window manager initialized");
 }
 
 /// Render a window-managed desktop using the framebuffer APIs.
@@ -140,6 +158,7 @@ void runSimpleDesktopLoop()
     // Try to initialize USB HID
     import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
     initializeUSBHID();
+    framebufferShowCursor();
     
     // Render initial frame
     runSimpleDesktopOnce();
@@ -180,6 +199,6 @@ void runSimpleDesktopLoop()
 /// Process entrypoint that keeps the desktop running alongside other tasks.
 extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* /*argv*/, const(char*)* /*envp*/)
 {
+    printLine("[desktop] entering main loop");
     runSimpleDesktopLoop();
 }
-

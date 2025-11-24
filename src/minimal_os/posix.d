@@ -7,6 +7,7 @@ import minimal_os.serial : serialConsoleReady;
 import sh_metadata : shBinaryName, shRepositoryPath;
 import minimal_os.fs : readFile;
 import minimal_os.elf : loadElf, ElfLoaderContext;
+import minimal_os.kernel.cpu : cpuCurrent;
 
 // Decide whether to rely on host/Posix C interop.  Kernel builds define
 // MinimalOsFreestanding to force the freestanding path even on hosts where the
@@ -612,11 +613,18 @@ mixin template PosixKernelShim()
 
     private __gshared EnvironmentTable[MAX_PROC] g_environmentTables;
 
-    struct Proc
+    public struct Proc
     {
         pid_t     pid;
         pid_t     ppid;
         ProcState state;
+        ulong     vruntime;
+        uint      weight;
+        int       nice;
+        uint      timeSlice;
+        uint      sliceRemaining;
+        size_t    rqNext;
+        bool      onRunQueue;
         int       exitCode;
         SigSet    sigmask;
         FD[MAX_FD] fds;
@@ -634,6 +642,8 @@ mixin template PosixKernelShim()
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
+    private enum size_t INVALID_INDEX = size_t.max;
+    private __gshared size_t         g_runQueueHead = INVALID_INDEX;
     package(minimal_os) __gshared bool g_initialized = false;
     package(minimal_os) __gshared bool g_consoleAvailable = false;
     package(minimal_os) __gshared bool g_posixUtilitiesRegistered = false;
@@ -1294,14 +1304,128 @@ mixin template PosixKernelShim()
         proc.state = state;
         updateProcessObjectState(proc);
 
+        // Maintain run queue membership
+        if (previousState == ProcState.READY && state != ProcState.READY)
+        {
+            runQueueRemove(&proc);
+        }
+        else if (previousState != ProcState.READY && state == ProcState.READY)
+        {
+            runQueueInsert(&proc);
+        }
+
         debugExpectActual(
             "assignProcessState applied state",
             cast(long)state,
             cast(long)proc.state);
     }
 
+    @nogc nothrow private size_t indexOfProc(Proc* p)
+    {
+        if (p is null) return INVALID_INDEX;
+        foreach (i, ref proc; g_ptable)
+        {
+            if (&proc is p)
+            {
+                return i;
+            }
+        }
+        return INVALID_INDEX;
+    }
+
+    @nogc nothrow private void runQueueInsert(Proc* p)
+    {
+        if (p is null || p.onRunQueue)
+        {
+            return;
+        }
+
+        const size_t idx = indexOfProc(p);
+        if (idx == INVALID_INDEX)
+        {
+            return;
+        }
+
+        size_t prev = INVALID_INDEX;
+        size_t cur = g_runQueueHead;
+        while (cur != INVALID_INDEX)
+        {
+            auto candidate = &g_ptable[cur];
+            if (p.vruntime < candidate.vruntime)
+            {
+                break;
+            }
+            prev = cur;
+            cur = candidate.rqNext;
+        }
+
+        p.rqNext = cur;
+        if (prev == INVALID_INDEX)
+        {
+            g_runQueueHead = idx;
+        }
+        else
+        {
+            g_ptable[prev].rqNext = idx;
+        }
+
+        p.onRunQueue = true;
+    }
+
+    @nogc nothrow private void runQueueRemove(Proc* p)
+    {
+        if (p is null || !p.onRunQueue)
+        {
+            return;
+        }
+
+        const size_t target = indexOfProc(p);
+        if (target == INVALID_INDEX)
+        {
+            return;
+        }
+
+        size_t prev = INVALID_INDEX;
+        size_t cur = g_runQueueHead;
+        while (cur != INVALID_INDEX)
+        {
+            if (cur == target)
+            {
+                const size_t next = g_ptable[cur].rqNext;
+                if (prev == INVALID_INDEX)
+                {
+                    g_runQueueHead = next;
+                }
+                else
+                {
+                    g_ptable[prev].rqNext = next;
+                }
+                p.rqNext = INVALID_INDEX;
+                p.onRunQueue = false;
+                return;
+            }
+            prev = cur;
+            cur = g_ptable[cur].rqNext;
+        }
+    }
+
+    @nogc nothrow private Proc* popRunQueue()
+    {
+        if (g_runQueueHead == INVALID_INDEX)
+        {
+            return null;
+        }
+
+        const size_t idx = g_runQueueHead;
+        auto p = &g_ptable[idx];
+        g_runQueueHead = p.rqNext;
+        p.rqNext = INVALID_INDEX;
+        p.onRunQueue = false;
+        return p;
+    }
+
     // ---- Executable registration ----
-    private enum MAX_EXECUTABLES = 128;
+private enum MAX_EXECUTABLES = 128;
     private enum EXEC_PATH_LENGTH = 64;
     private struct ExecutableSlot
     {
@@ -1651,6 +1775,12 @@ mixin template PosixKernelShim()
 
         proc = Proc.init;
         proc.objectId = INVALID_OBJECT_ID;
+        proc.weight = 1024;
+        proc.timeSlice = 4;
+        proc.sliceRemaining = proc.timeSlice;
+        proc.nice = 0;
+        proc.rqNext = INVALID_INDEX;
+        proc.onRunQueue = false;
     }
     @nogc nothrow private Proc* findByPid(pid_t pid){ foreach(ref p; g_ptable) if(p.state!=ProcState.UNUSED && p.pid==pid) return &p; return null; }
     @nogc nothrow private Proc* allocProc(){
@@ -1660,6 +1790,13 @@ mixin template PosixKernelShim()
             {
                 resetProc(p);
                 p.pid = g_nextPid++;
+                p.vruntime = 0;
+                p.weight = 1024;
+                p.timeSlice = 4;
+                p.sliceRemaining = p.timeSlice;
+                p.nice = 0;
+                p.rqNext = INVALID_INDEX;
+                p.onRunQueue = false;
                 p.objectId = createProcessObject(p.pid);
                 p.environment = allocateEnvironmentTable(p.pid, p.objectId);
                 if (p.environment !is null) ensureEnvironmentObject(p.environment, p.objectId);
@@ -1681,30 +1818,7 @@ mixin template PosixKernelShim()
 
     @nogc nothrow private Proc* selectNextReadyProcess(Proc* current)
     {
-        size_t startIndex = 0;
-        if (current !is null)
-        {
-            foreach (i, ref candidate; g_ptable)
-            {
-                if ((&candidate) is current)
-                {
-                    startIndex = i;
-                    break;
-                }
-            }
-        }
-
-        foreach (offset; 1 .. MAX_PROC + 1)
-        {
-            const auto index = (startIndex + offset) % MAX_PROC;
-            auto candidate = &g_ptable[index];
-            if ((*candidate).state == ProcState.READY)
-            {
-                return candidate;
-            }
-        }
-
-        return null;
+        return popRunQueue();
     }
 
     // ---- Very small round-robin scheduler ----
@@ -1720,6 +1834,7 @@ mixin template PosixKernelShim()
                 if (proc.state == ProcState.READY)
                 {
                     g_current = &proc;
+                    proc.sliceRemaining = proc.timeSlice;
                     assignProcessState(proc, ProcState.RUNNING);
                     return;
                 }
@@ -1754,6 +1869,7 @@ mixin template PosixKernelShim()
         }
 
         assignProcessState(*next, ProcState.RUNNING);
+        next.sliceRemaining = next.timeSlice;
         g_current = next;
         unlock(&g_plock);
 
@@ -1766,6 +1882,38 @@ mixin template PosixKernelShim()
         const bool hasCurrent = (g_current !is null);
         debugExpectActual("sys_getpid current present", 1, debugBool(hasCurrent));
         return hasCurrent ? g_current.pid : 0;
+    }
+
+    /// Scheduler tick hook: update accounting and report whether a preemptive
+    /// switch should occur.
+    public @nogc nothrow bool schedulerTick()
+    {
+        if (!g_initialized || g_current is null)
+        {
+            return false;
+        }
+
+        auto current = g_current;
+        if (current.state != ProcState.RUNNING)
+        {
+            return false;
+        }
+
+        const uint effWeight = current.weight ? current.weight : 1024;
+        current.vruntime += effWeight;
+
+        if (current.sliceRemaining > 0)
+        {
+            --current.sliceRemaining;
+        }
+
+        if (current.sliceRemaining == 0)
+        {
+            current.sliceRemaining = current.timeSlice;
+            return true;
+        }
+
+        return false;
     }
 
     package(minimal_os) @nogc nothrow pid_t sys_fork(){

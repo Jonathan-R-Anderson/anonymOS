@@ -12,7 +12,10 @@ import minimal_os.hardware : probeHardware;
 import minimal_os.multiboot : FramebufferModeRequest, MultibootContext;
 import minimal_os.display.desktop : desktopProcessEntry;
 import minimal_os.posix : posixInit, registerProcessExecutable, spawnRegisteredProcess,
-    schedYield, initializeInterrupts, ProcessEntry;
+    schedYield, ProcessEntry;
+import minimal_os.kernel.interrupts : initializeInterrupts;
+import minimal_os.kernel.cpu : initializeCPUState;
+import minimal_os.drivers.pci : initializePCI;
 import minimal_os.kernel.shell_integration : compilerBuilderProcessEntry;
 import minimal_os.kernel.syscalls : initSyscalls;
 
@@ -25,7 +28,10 @@ extern(C) void kmain(ulong magic, ulong info)
 
     clearScreen();
     initSerial();
+    initializeCPUState();
     auto context = probeHardware(magic, info);
+
+    initializePCI();
 
     const ModesetResult display = tryBringUpDisplay(context);
     const bool framebufferReady = display.framebufferReady;
@@ -48,6 +54,10 @@ extern(C) void kmain(ulong magic, ulong info)
 
     initializeInterrupts();
     initSyscalls();
+
+    // Reset object store before parsing initrd to avoid stale entries between boots.
+    import minimal_os.objects : resetObjectStore;
+    resetObjectStore();
 
     posixInit();
 
@@ -131,7 +141,9 @@ private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext con
     {
         configureAccelerationFromModeset(result);
         renderBootSplash();
-        setFramebufferConsoleEnabled(false);
+        // Keep framebuffer console enabled so kernel logs remain visible during
+        // desktop bring-up and debugging.
+        setFramebufferConsoleEnabled(true);
     }
     else
     {

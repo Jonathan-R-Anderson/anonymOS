@@ -106,7 +106,7 @@ bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyph
         const ubyte bits = (row == 0 || row == glyphHeight - 1) ? 0xFF : 0x81;
         foreach (col; 0 .. glyphWidth)
         {
-            const maskBit = cast(ubyte)(0x80 >> col);
+            const maskBit = cast(ubyte)(0x01 << col);
             mask[row * glyphWidth + col] = (bits & maskBit) ? 0xFF : 0x00;
         }
     }

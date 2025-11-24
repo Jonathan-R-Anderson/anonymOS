@@ -201,7 +201,7 @@ bool glyphMask(const BitmapFont* font, dchar codepoint, ref ubyte[glyphWidth * g
         const ubyte bits = (*source)[row];
         foreach (col; 0 .. glyphWidth)
         {
-            const maskBit = cast(ubyte)(0x80 >> col);
+            const maskBit = cast(ubyte)(0x01 << col);
             mask[row * glyphWidth + col] = (bits & maskBit) ? 0xFF : 0x00;
         }
     }

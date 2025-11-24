@@ -251,7 +251,10 @@ __gshared size_t g_nextFreeSlot = 0;
     // Create backing VMO (immutable by default)
     ObjectID vmoId = createVMO(data, true);
     if (vmoId.low == 0) return ObjectID(0,0);
-    
+
+    // Ensure space for the blob entry after the VMO consumed a slot.
+    if (g_nextFreeSlot >= g_objectStore.length) return ObjectID(0,0);
+
     ObjectID newId = ObjectID(g_nextFreeSlot + 1, 0);
     
     ObjectSlot* slot = &g_objectStore[g_nextFreeSlot++];
@@ -261,13 +264,22 @@ __gshared size_t g_nextFreeSlot = 0;
     // Get VMO slot
     auto vmoSlot = getObject(vmoId);
     if (vmoSlot is null) return ObjectID(0,0);
-    
+
     slot.blob.vmo = &vmoSlot.vmo;
     slot.blob.size = data.length;
     slot.blob.createdTime = 0; // TODO: Get actual time
     slot.blob.modifiedTime = 0;
     
     return newId;
+}
+
+@nogc nothrow void resetObjectStore()
+{
+    g_nextFreeSlot = 0;
+    foreach (ref slot; g_objectStore)
+    {
+        slot = ObjectSlot.init;
+    }
 }
 
 // Create Block Device
@@ -778,8 +790,6 @@ struct SearchResult
 {
     return slot.type == ObjectType.Blob && (rights & Rights.Execute);
 }
-
-
 
 
 

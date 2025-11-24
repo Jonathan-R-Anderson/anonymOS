@@ -69,6 +69,8 @@ TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 : "${QEMU_RUN:=0}"       # set to 1 to run QEMU
 : "${QEMU_GDB:=0}"       # set to 1 to add -s -S for GDB
 : "${QEMU_BIN:=qemu-system-x86_64}"
+: "${QEMU_USB:=1}"       # set to 0 to skip adding USB controller + HID devices
+: "${QEMU_PS2:=1}"       # set to 0 to skip explicit ISA i8042 (PS/2) device
 
 # Map TARGET -> builtins suffix & LLD machine
 case "$TARGET" in
@@ -233,10 +235,13 @@ KERNEL_SOURCES=(
   "$KERNEL_D"
   "src/minimal_os/kernel/memory.d"
   "src/minimal_os/kernel/heap.d"
+  "src/minimal_os/kernel/cpu.d"
+  "src/minimal_os/kernel/interrupts.d"
   "src/minimal_os/kernel/posixbundle.d"
   "src/minimal_os/kernel/compiler_builder_entry.d"
   "src/minimal_os/kernel/shell_integration.d"
   "src/minimal_os/kernel/exceptions.d"
+  "src/minimal_os/kernel/dma.d"
   "src/minimal_os/console.d"
   "src/minimal_os/serial.d"
   "src/minimal_os/hardware.d"
@@ -258,6 +263,7 @@ KERNEL_SOURCES=(
   "src/minimal_os/display/x11_stack.d"
   "src/minimal_os/display/modesetting.d"
   "src/minimal_os/display/gpu_accel.d"
+  "src/minimal_os/drivers/pci.d"
   "src/minimal_os/drivers/usb_hid.d"
   "src/minimal_os/drivers/hid_keyboard.d"
   "src/minimal_os/drivers/hid_mouse.d"
@@ -473,6 +479,11 @@ echo "[✓] ISO image: $ISO_IMAGE"
 if [ "$QEMU_RUN" = "1" ]; then
   need "$QEMU_BIN"
   QEMU_ARGS=(-cdrom "$ISO_IMAGE" -serial stdio)
+  if [ "$QEMU_USB" = "1" ]; then
+    # Provide an xHCI controller with USB HID devices so the guest can enumerate
+    # keyboard/mouse when a USB host stack is present.
+    QEMU_ARGS+=(-device qemu-xhci -device usb-kbd -device usb-tablet)
+  fi
   [ "$QEMU_GDB" = "1" ] && QEMU_ARGS+=(-s -S)
   echo "[→] Launching: $QEMU_BIN ${QEMU_ARGS[*]}"
   exec "$QEMU_BIN" "${QEMU_ARGS[@]}"

@@ -11,6 +11,7 @@ import minimal_os.kernel.dma : dma_alloc;
 @nogc:
 nothrow:
 
+
 /// USB HID device types we support
 enum HIDDeviceType : ubyte
 {
@@ -108,14 +109,14 @@ struct USBHIDSubsystem
     
     void poll(ref InputQueue queue)
     {
+        // Consume legacy PS/2 (including USB legacy) input so we surface
+        // real keyboard/mouse events while the USB host stack is minimal.
+        pollLegacyPS2(queue);
+
         if (!initialized)
         {
             return;
         }
-
-        // Consume legacy PS/2 (including USB legacy) input so we surface
-        // real keyboard/mouse events while the USB host stack is minimal.
-        pollLegacyPS2(queue);
         
         // Poll each enabled HID device
         foreach (ref device; devices[0 .. deviceCount])
@@ -866,7 +867,7 @@ private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
     HIDMouseReport report;
     report.buttons = cast(ubyte)(g_ps2MousePacket[0] & 0x07);
     report.deltaX = cast(byte)g_ps2MousePacket[1];
-    report.deltaY = cast(byte)g_ps2MousePacket[2];
+    report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
     report.deltaWheel = 0;
 
     processMouseReport(report, queue, g_fb.width, g_fb.height);

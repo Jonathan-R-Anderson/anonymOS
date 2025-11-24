@@ -10,7 +10,7 @@ import minimal_os.display.input_pipeline : InputQueue;
 import minimal_os.display.input_handler : initializeInputHandler, processInputEvents;
 import minimal_os.display.server;
 import minimal_os.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz;
-import minimal_os.drivers.hid_mouse : initializeMouseState;
+import minimal_os.drivers.hid_mouse : initializeMouseState, getMousePosition;
 import minimal_os.posix : schedYield;
 import minimal_os.serial : pollSerialInput;
 import minimal_os.multiboot : FramebufferModeRequest;
@@ -183,6 +183,11 @@ void runSimpleDesktopLoop()
         // Re-render if needed (for now, render every frame)
         // TODO: Only render when state actually changed
         runSimpleDesktopOnce();
+        
+        // Draw cursor overlay
+        int mx, my;
+        getMousePosition(mx, my);
+        framebufferMoveCursor(mx, my);
         
         // Yield to scheduler and pause briefly
         schedYield();

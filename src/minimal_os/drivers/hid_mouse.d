@@ -62,9 +62,7 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
         if (g_mouseState.y < 0) g_mouseState.y = 0;
         if (g_mouseState.x >= screenWidth) g_mouseState.x = cast(int)screenWidth - 1;
         if (g_mouseState.y >= screenHeight) g_mouseState.y = cast(int)screenHeight - 1;
-        
-        // Update software cursor
-        framebufferMoveCursor(g_mouseState.x, g_mouseState.y);
+
 
         // Generate pointer move event
         InputEvent event;

@@ -51,6 +51,7 @@ struct USBHIDSubsystem
     uint controllerFunction;
     uint controllerMmioBase;
     bool initialized;
+    bool usbHostActive;
     HIDDevice[8] devices;
     ubyte deviceCount;
     bool pointerPresent;
@@ -70,32 +71,45 @@ struct USBHIDSubsystem
         touchPresent = false;
         keyboardPresent = false;
         controllerMmioBase = 0;
+        usbHostActive = false;
 
         // Detect USB controllers
         controllerType = detectUSBController(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
 
         if (controllerType == USBControllerType.none)
         {
-            printLine("[usb-hid] No USB controllers detected");
-            initialized = false;
+            printLine("[usb-hid] No USB controllers detected; using legacy PS/2 input only");
+            initialized = true;
             return;
         }
         
         print("[usb-hid] Found controller: ");
         printLine(controllerTypeName(controllerType));
         
-        // Initialize the controller
-        if (!initializeController())
+        // FIXME: The XHCI driver is incomplete (missing endpoint configuration and polling).
+        // Initializing it resets the controller, which kills the BIOS legacy PS/2 emulation.
+        // We must skip initialization to keep the PS/2 fallback working for input.
+        if (controllerType == USBControllerType.xhci)
         {
-            printLine("[usb-hid] Failed to initialize USB controller");
-            initialized = false;
+            printLine("[usb-hid] Skipping XHCI init to preserve legacy PS/2 emulation");
+            // Treat the subsystem as online so the desktop/input pipeline proceeds,
+            // but leave the USB host stack inactive.
+            controllerType = USBControllerType.none;
+            pointerPresent = true;
+            keyboardPresent = true;
+            initialized = true;
             return;
         }
 
-        if (controllerType == USBControllerType.xhci)
+        // Initialize the controller
+        if (!initializeController())
         {
-            powerOnXHCIPorts();
+            printLine("[usb-hid] Failed to initialize USB controller; falling back to PS/2");
+            initialized = true;
+            return;
         }
+
+        usbHostActive = true;
         
         // Enumerate HID devices
         enumerateHIDDevices();
@@ -105,6 +119,7 @@ struct USBHIDSubsystem
         printLine(" HID device(s)");
 
         initialized = true;
+
     }
     
     void poll(ref InputQueue queue)
@@ -113,7 +128,7 @@ struct USBHIDSubsystem
         // real keyboard/mouse events while the USB host stack is minimal.
         pollLegacyPS2(queue);
 
-        if (!initialized)
+        if (!initialized || !usbHostActive)
         {
             return;
         }
@@ -663,6 +678,12 @@ private bool initializeLegacyPS2() @nogc nothrow
     ps2WriteData(config);
 
     // Enable mouse data reporting (0xF4) via the auxiliary channel (0xD4 prefix).
+    // First reset the mouse to defaults (0xFF)
+    ps2WriteCommand(0xD4);
+    ps2WriteData(0xFF);
+    if (ps2WaitOutputFull()) ps2ReadData(); // ack
+    if (ps2WaitOutputFull()) ps2ReadData(); // completion code (0xAA) or ID (0x00)
+
     ps2WriteCommand(0xD4);
     ps2WriteData(0xF4);
     if (ps2WaitOutputFull())
@@ -840,6 +861,7 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
             addHidKey(g_ps2KeyboardReport, hid);
     }
 
+    g_usbHID.keyboardPresent = true;
     processKeyboardReport(g_ps2KeyboardReport, queue);
 }
 
@@ -870,6 +892,7 @@ private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
     report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
     report.deltaWheel = 0;
 
+    g_usbHID.pointerPresent = true;
     processMouseReport(report, queue, g_fb.width, g_fb.height);
 }
 
@@ -881,10 +904,16 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     }
 
     bool sawEvent = false;
+    // Debug: print status port occasionally or on change? Too spammy.
+    // Let's just print if we see data.
+    
     while ((inb(ps2StatusPort) & ps2StatusOutputFull) != 0)
     {
         const ubyte status = inb(ps2StatusPort);
         const ubyte data = inb(ps2DataPort);
+        
+        // print("[ps2] data: "); printHex(data); print(" status: "); printHex(status); printLine("");
+
         if ((status & ps2StatusIsMouse) != 0)
         {
             handlePs2MouseByte(data, queue);

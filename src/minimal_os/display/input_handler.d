@@ -166,8 +166,12 @@ private void handleKeyUp(ref const InputEvent event, ref WindowManager manager) 
 
 private void handlePointerMove(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
 {
-    g_cursor.x = event.data1;
-    g_cursor.y = event.data2;
+    // g_cursor.x = event.data1;
+    // g_cursor.y = event.data2;
+    // Use the authoritative mouse state directly to ensure synchronization
+    // with the desktop loop's cursor rendering.
+    import minimal_os.drivers.hid_mouse : getMousePosition;
+    getMousePosition(g_cursor.x, g_cursor.y);
     
     // Handle window dragging
     if (g_cursor.dragging && g_cursor.dragWindowId != size_t.max)

@@ -71,6 +71,7 @@ TOY_LD="${TOY_LD:-$ROOT/tools/toy-ld}"
 : "${QEMU_BIN:=qemu-system-x86_64}"
 : "${QEMU_USB:=1}"       # set to 0 to skip adding USB controller + HID devices
 : "${QEMU_PS2:=1}"       # set to 0 to skip explicit ISA i8042 (PS/2) device
+: "${QEMU_DISPLAY:=}"    # optional extra display args, e.g. "-display gtk" or "-display sdl"
 
 # Map TARGET -> builtins suffix & LLD machine
 case "$TARGET" in
@@ -228,7 +229,7 @@ fi
 DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
 # Kernel build is freestanding; avoid host libc interop even when the target
 # triple defines version(Posix).
-DFLAGS+=" -d-version=MinimalOsFreestanding"
+DFLAGS+=" -d-version=MinimalOsFreestanding -disable-red-zone"
 
 # D objects (kernel + dependencies + userland)
 KERNEL_SOURCES=(
@@ -478,11 +479,16 @@ echo "[✓] ISO image: $ISO_IMAGE"
 # ===================== Optional: QEMU autolaunch =====================
 if [ "$QEMU_RUN" = "1" ]; then
   need "$QEMU_BIN"
-  QEMU_ARGS=(-cdrom "$ISO_IMAGE" -serial stdio)
+  QEMU_ARGS=(-cdrom "$ISO_IMAGE" -serial stdio -machine pc,i8042=on)
   if [ "$QEMU_USB" = "1" ]; then
+    echo "[!] QEMU_USB=1: guest xHCI driver is partially stubbed; USB input may be routed via legacy PS/2" >&2
     # Provide an xHCI controller with USB HID devices so the guest can enumerate
     # keyboard/mouse when a USB host stack is present.
-    QEMU_ARGS+=(-device qemu-xhci -device usb-kbd -device usb-tablet)
+    # QEMU_ARGS+=(-device qemu-xhci -device usb-kbd -device usb-tablet -D /tmp/qemu-ps2.log)
+    QEMU_ARGS+=(-device ps2-mouse -D /tmp/qemu-ps2.log)
+  fi
+  if [ -n "$QEMU_DISPLAY" ]; then
+    QEMU_ARGS+=($QEMU_DISPLAY)
   fi
   [ "$QEMU_GDB" = "1" ] && QEMU_ARGS+=(-s -S)
   echo "[→] Launching: $QEMU_BIN ${QEMU_ARGS[*]}"

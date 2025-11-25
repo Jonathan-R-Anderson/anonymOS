@@ -562,12 +562,20 @@ private enum ushort ps2StatusPort = 0x64;
 private enum ubyte  ps2StatusOutputFull = 0x01;
 private enum ubyte  ps2StatusInputFull  = 0x02;
 private enum ubyte  ps2StatusIsMouse    = 0x20;
+private enum size_t ps2IsrQueueSize = 64;
 
 private __gshared bool g_ps2Initialized = false;
 private __gshared bool g_ps2Extended = false;
 private __gshared HIDKeyboardReport g_ps2KeyboardReport;
 private __gshared ubyte[3] g_ps2MousePacket;
 private __gshared ubyte g_ps2MouseIndex = 0;
+private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrStatus;
+private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrData;
+private __gshared size_t g_ps2IsrHead = 0;
+private __gshared size_t g_ps2IsrTail = 0;
+// Leave command-based mouse polling disabled; rely on OBF polling only.
+// Rely on streamed packets polled from the output buffer; avoid injecting extra commands per frame.
+private __gshared bool g_ps2PollingMouse = false;
 
 private ubyte inb(ushort port) @nogc nothrow
 {
@@ -661,34 +669,45 @@ private bool initializeLegacyPS2() @nogc nothrow
         return true;
     }
 
-    // Flush any pending output
+    // 1. Disable devices
+    ps2WriteCommand(0xAD); // Disable Keyboard
+    ps2WriteCommand(0xA7); // Disable Mouse
+
+    // 2. Flush buffer
     while ((inb(ps2StatusPort) & ps2StatusOutputFull) != 0)
     {
         ps2ReadData();
     }
 
-    // Enable auxiliary (mouse) port and re-enable both channels.
-    ps2WriteCommand(0xA8); // enable mouse port
-    ps2WriteCommand(0x20); // read command byte
+    // 3. Setup Config Byte
+    ps2WriteCommand(0x20); // Read Config
     if (!ps2WaitOutputFull()) return fail();
     ubyte config = ps2ReadData();
-    config &= ~(0x10 | 0x20); // ensure keyboard/mouse ports enabled
-    config |= 0x03;           // IRQ1/IRQ12 enable (even though we poll)
-    ps2WriteCommand(0x60);
+    config |= 0x40;           // Enable Translation (Bit 6)
+    config &= ~(0x10 | 0x20); // Enable Keyboard (Bit 4) and Mouse (Bit 5)
+    config |= 0x03;           // Enable IRQs (Bit 0 and 1)
+    ps2WriteCommand(0x60);    // Write Config
     ps2WriteData(config);
 
-    // Enable mouse data reporting (0xF4) via the auxiliary channel (0xD4 prefix).
-    // First reset the mouse to defaults (0xFF)
+    // 4. Enable Devices
+    ps2WriteCommand(0xAE); // Enable Keyboard
+    ps2WriteCommand(0xA8); // Enable Mouse
+
+    // 5. Initialize Mouse: defaults, stream mode, enable reporting
     ps2WriteCommand(0xD4);
-    ps2WriteData(0xFF);
-    if (ps2WaitOutputFull()) ps2ReadData(); // ack
-    if (ps2WaitOutputFull()) ps2ReadData(); // completion code (0xAA) or ID (0x00)
+    ps2WriteData(0xF6);
+    if (ps2WaitOutputFull()) ps2ReadData(); // ACK
 
     ps2WriteCommand(0xD4);
-    ps2WriteData(0xF4);
+    ps2WriteData(0xEA); // stream mode
+    if (ps2WaitOutputFull()) ps2ReadData(); // ACK
+
+    ps2WriteCommand(0xD4);
+    ps2WriteData(0xF4); // enable data reporting
     if (ps2WaitOutputFull())
     {
-        ps2ReadData(); // ack
+        ps2ReadData(); // ACK
+        printLine("[usb-hid] PS/2 mouse enabled successfully");
     }
     else
     {
@@ -700,6 +719,7 @@ private bool initializeLegacyPS2() @nogc nothrow
     if (ps2WaitOutputFull())
     {
         ps2ReadData(); // ack
+        printLine("[usb-hid] PS/2 keyboard enabled successfully");
     }
     else
     {
@@ -709,6 +729,18 @@ private bool initializeLegacyPS2() @nogc nothrow
     g_ps2Initialized = true;
     printLine("[usb-hid] PS/2 legacy input enabled");
     return true;
+}
+
+extern(C) @nogc nothrow void ps2IsrEnqueue(ubyte status, ubyte data)
+{
+    const size_t next = (g_ps2IsrTail + 1) % ps2IsrQueueSize;
+    if (next == g_ps2IsrHead)
+    {
+        return; // drop if buffer full
+    }
+    g_ps2IsrStatus[g_ps2IsrTail] = status;
+    g_ps2IsrData[g_ps2IsrTail] = data;
+    g_ps2IsrTail = next;
 }
 
 private ubyte mapSet1ToHid(ubyte code, bool extended) @nogc nothrow pure
@@ -834,6 +866,8 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
         g_ps2Extended = true;
         return;
     }
+    
+    print("[ps2] kbd: "); printHex(data); printLine("");
 
     const bool breakCode = (data & 0x80) != 0;
     const ubyte base = cast(ubyte)(data & 0x7F);
@@ -904,15 +938,14 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     }
 
     bool sawEvent = false;
-    // Debug: print status port occasionally or on change? Too spammy.
-    // Let's just print if we see data.
-    
-    while ((inb(ps2StatusPort) & ps2StatusOutputFull) != 0)
+    // Drain any bytes captured via IRQ stubs (keyboard/mouse).
+    while (g_ps2IsrHead != g_ps2IsrTail)
     {
-        const ubyte status = inb(ps2StatusPort);
-        const ubyte data = inb(ps2DataPort);
-        
-        // print("[ps2] data: "); printHex(data); print(" status: "); printHex(status); printLine("");
+        const ubyte status = g_ps2IsrStatus[g_ps2IsrHead];
+        const ubyte data = g_ps2IsrData[g_ps2IsrHead];
+        g_ps2IsrHead = (g_ps2IsrHead + 1) % ps2IsrQueueSize;
+
+        print("[ps2] irq data: "); printHex(data); print(" status: "); printHex(status); printLine("");
 
         if ((status & ps2StatusIsMouse) != 0)
         {
@@ -924,6 +957,32 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
         }
         sawEvent = true;
     }
+
+    static uint pollCount = 0;
+    if ((pollCount++ % 600) == 0) // ~10 times a second if 60fps
+    {
+        print("[ps2] poll status: "); printHex(inb(ps2StatusPort)); printLine("");
+    }
+
+    while ((inb(ps2StatusPort) & ps2StatusOutputFull) != 0)
+    {
+        const ubyte status = inb(ps2StatusPort);
+        const ubyte data = inb(ps2DataPort);
+        
+        print("[ps2] data: "); printHex(data); print(" status: "); printHex(status); printLine("");
+
+        if ((status & ps2StatusIsMouse) != 0)
+        {
+            handlePs2MouseByte(data, queue);
+        }
+        else
+        {
+            handlePs2KeyboardByte(data, queue);
+        }
+        sawEvent = true;
+    }
+
+    // Command-based mouse polling disabled; rely on streamed packets.
 
     static bool announced;
     if (sawEvent && !announced)

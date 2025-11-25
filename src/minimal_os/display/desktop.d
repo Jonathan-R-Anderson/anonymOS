@@ -159,6 +159,15 @@ void runSimpleDesktopLoop()
     import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
     initializeUSBHID();
     framebufferShowCursor();
+    // Center cursor explicitly so it is visible even before input events arrive
+    framebufferMoveCursor(cast(int)(g_fb.width / 2), cast(int)(g_fb.height / 2));
+    static bool cursorAnnounced;
+    if (!cursorAnnounced)
+    {
+        import minimal_os.console : printLine;
+        printLine("[desktop] cursor initialized/centered");
+        cursorAnnounced = true;
+    }
     
     // Render initial frame
     runSimpleDesktopOnce();
@@ -167,6 +176,10 @@ void runSimpleDesktopLoop()
     while (true)
     {
         ++g_frameCount;
+        if ((g_frameCount % 60) == 0)
+        {
+            // printLine("[desktop] heartbeat");
+        }
         
         // Poll input devices
         if (usbHIDAvailable())
@@ -184,17 +197,19 @@ void runSimpleDesktopLoop()
         // TODO: Only render when state actually changed
         runSimpleDesktopOnce();
         
-        // Draw cursor overlay
+        // Draw cursor overlay: hide then show every frame to force redraw
         int mx, my;
         getMousePosition(mx, my);
+        framebufferHideCursor();
         framebufferMoveCursor(mx, my);
+        framebufferShowCursor();
         
         // Yield to scheduler and pause briefly
         schedYield();
         
         // Target ~60 FPS: simple delay
         // TODO: More sophisticated timing
-        foreach (i; 0 .. 1000)
+        foreach (i; 0 .. 1_000_000)
         {
             asm @nogc nothrow { nop; }
         }

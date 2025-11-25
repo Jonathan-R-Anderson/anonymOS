@@ -617,7 +617,13 @@ void framebufferMoveCursor(int x, int y)
 void framebufferShowCursor()
 {
     if (!g_fbInitialized) return;
-    if (g_cursorVisible) return;
+    if (g_cursorVisible)
+    {
+        // Redraw without resaving background to avoid losing cursor when the
+        // framebuffer is overdrawn every frame.
+        framebufferDrawCursorIcon();
+        return;
+    }
 
     g_cursorVisible = true;
     framebufferSaveBackground();

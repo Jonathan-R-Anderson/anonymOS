@@ -10,6 +10,8 @@ import minimal_os.display.gpu_accel : acceleratedPresentBuffer;
 nothrow:
 @nogc:
 
+import core.stdc.string : memset;
+
 private enum uint maxCompositeWidth  = 1920;
 private enum uint maxCompositeHeight = 1080;
 private enum size_t maxCompositePixels = cast(size_t) maxCompositeWidth * maxCompositeHeight;
@@ -92,15 +94,33 @@ struct Compositor
 
     void clear(uint color)
     {
-        if (!ready)
+        if (!ready || buffer is null)
         {
             return;
         }
+        import minimal_os.console : printLine;
+        printLine("Compositor.clear start");
 
         const size_t total = cast(size_t) width * height;
-        foreach (i; 0 .. total)
+        
+        // Optimization: if color bytes are identical, use memset
+        const ubyte b0 = color & 0xFF;
+        const ubyte b1 = (color >> 8) & 0xFF;
+        const ubyte b2 = (color >> 16) & 0xFF;
+        const ubyte b3 = (color >> 24) & 0xFF;
+
+        if (b0 == b1 && b1 == b2 && b2 == b3)
+        {
+        // Simple loop is safer than memset in this environment
+        for (size_t i = 0; i < total; ++i)
         {
             buffer[i] = color;
+        }
+        }
+        else
+        {
+            // D's array assignment is often optimized to a loop or memset-equivalent
+            buffer[0 .. total] = color;
         }
     }
 
@@ -111,7 +131,18 @@ struct Compositor
             return;
         }
 
-        buffer[y * pitch + x] = color;
+        if (!ready || buffer is null || x >= width || y >= height)
+        {
+            return;
+        }
+
+        const size_t idx = cast(size_t)y * pitch + x;
+        // Extra safety check for buffer overflow
+        if (idx >= maxCompositePixels)
+        {
+            return;
+        }
+        buffer[idx] = color;
     }
 
     void fillRect(uint x, uint y, uint w, uint h, uint color)
@@ -121,21 +152,24 @@ struct Compositor
             return;
         }
 
-        const uint xEnd = x + w;
-        const uint yEnd = y + h;
-        foreach (yy; y .. yEnd)
+        // Clip to screen bounds
+        if (x >= width || y >= height) return;
+        if (x + w > width) w = width - x;
+        if (y + h > height) h = height - y;
+
+        foreach (yy; y .. y + h)
         {
-            if (yy >= height)
+            const size_t rowOffset = cast(size_t)yy * pitch;
+            const size_t startIdx = rowOffset + x;
+            const size_t endIdx = startIdx + w;
+            
+            // Safety check for buffer overflow
+            if (startIdx >= maxCompositePixels) break;
+            const size_t safeEnd = (endIdx <= maxCompositePixels) ? endIdx : maxCompositePixels;
+
+            for (size_t i = startIdx; i < safeEnd; ++i)
             {
-                break;
-            }
-            foreach (xx; x .. xEnd)
-            {
-                if (xx >= width)
-                {
-                    break;
-                }
-                putPixel(xx, yy, color);
+                buffer[i] = color;
             }
         }
     }
@@ -171,6 +205,8 @@ struct Compositor
 
     void present()
     {
+        import minimal_os.console : printLine;
+        printLine("Compositor.present start");
         if (!ready || !framebufferAvailable())
         {
             return;
@@ -181,6 +217,41 @@ struct Compositor
             return;
         }
 
+        // Fast path for 32bpp
+        auto fb = framebufferDescriptor();
+        if (fb.addr !is null && fb.bpp == 32 && fb.width == width && fb.height == height)
+        {
+            const bool isBGR = fb.isBGR;
+            uint* fbPtr = cast(uint*)fb.addr;
+            const uint fbPitchPixels = fb.pitch / 4; // pitch is bytes, we need pixels for uint* pointer math
+
+            foreach (y; 0 .. height)
+            {
+                const(uint)* srcRow = buffer + y * pitch;
+                uint* dstRow = fbPtr + y * fbPitchPixels;
+
+                if (!isBGR)
+                {
+                    // Direct copy
+                    for (uint x = 0; x < width; ++x)
+                    {
+                        dstRow[x] = srcRow[x];
+                    }
+                }
+                else
+                {
+                    // Swap R/B
+                    for (uint x = 0; x < width; ++x)
+                    {
+                        const uint c = srcRow[x];
+                        dstRow[x] = (c & 0xFF00FF00) | ((c & 0xFF) << 16) | ((c >> 16) & 0xFF);
+                    }
+                }
+            }
+            return;
+        }
+
+        // Fallback
         foreach (y; 0 .. height)
         {
             foreach (x; 0 .. width)
@@ -191,11 +262,12 @@ struct Compositor
     }
 }
 
-private __gshared uint[maxCompositePixels] g_compositorBackBuffer;
 private __gshared Compositor g_compositor;
+private __gshared uint[128] g_padding; // Safety padding to detect/prevent overflow
+private __gshared align(16) uint[maxCompositePixels] g_compositorBackBuffer;
 private __gshared Surface[WINDOW_MANAGER_CAPACITY] g_surfaces;
 private __gshared size_t g_nextSurfaceId;
-private __gshared uint[maxCompositePixels] g_surfacePool;
+private __gshared align(16) uint[maxCompositePixels] g_surfacePool;
 private __gshared PoolBlock[WINDOW_MANAGER_CAPACITY * 2] g_poolBlocks;
 private __gshared size_t g_poolBlockCount;
 
@@ -435,7 +507,8 @@ void renderWorkspaceComposited(const WindowManager* manager)
         return;
     }
 
-    drawWallpaperToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
+    // drawWallpaperToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
+    g_compositor.clear(0xFF202020);
 
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);
@@ -521,7 +594,7 @@ private void blitSurface(const Surface* surface, uint destX, uint destY, uint ma
         const uint srcOffset = y * surface.width;
         const uint dstOffset = targetY * g_compositor.pitch + destX;
 
-        foreach (x; 0 .. cols)
+        for (uint x = 0; x < cols; ++x)
         {
             const uint targetX = destX + x;
             if (targetX >= g_compositor.width)

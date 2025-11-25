@@ -1,8 +1,9 @@
 module minimal_os.kernel.interrupts;
 
-import minimal_os.console : printLine;
+import minimal_os.console : print, printLine, printHex, printUnsigned;
 import minimal_os.posix : schedYield, schedulerTick;
 import minimal_os.kernel.cpu : cpuCurrent;
+import minimal_os.drivers.usb_hid : ps2IsrEnqueue;
 
 @nogc nothrow:
 
@@ -40,6 +41,7 @@ private struct IDTEntry
 
 private struct IDTPointer
 {
+    align(1):
     ushort limit;
     ulong  base;
 }
@@ -87,8 +89,9 @@ private void picRemap(ubyte offset1, ubyte offset2) @nogc nothrow
     outb(PIC1_DATA, ICW4_8086);
     outb(PIC2_DATA, ICW4_8086);
 
-    // Unmask timer (IRQ0) and keyboard (IRQ1); mask others for now
-    outb(PIC1_DATA, 0xFC);
+    // Unmask Timer (0), Keyboard (1), Cascade (2) on Master
+    outb(PIC1_DATA, 0xF8); 
+    // Mask Mouse (12 -> 4 on Slave) on Slave to prevent storms; we poll or rely on IRQ1
     outb(PIC2_DATA, 0xFF);
 }
 
@@ -107,6 +110,8 @@ private void setIdtEntry(ubyte vector, void* handler) @nogc nothrow
 
 extern(C) @nogc nothrow void timerIsrStub(); // defined in boot.s
 extern(C) @nogc nothrow void keyboardIsrStub(); // defined in boot.s
+extern(C) @nogc nothrow void mouseIsrStub(); // defined in boot.s
+extern(C) @nogc nothrow void doubleFaultStub(); // defined in boot.s
 extern(C) @nogc nothrow void pageFaultStub(); // defined in boot.s
 extern(C) @nogc nothrow void interruptContextSwitch(ulong* oldSp, ulong newSp); // defined in boot.s
 
@@ -122,17 +127,59 @@ extern(C) @nogc nothrow void timerIsrHandler()
     }
     // EOI to PIC
     outb(PIC1_CMD, 0x20);
-    // EOI to LAPIC if present (identity-mapped)
-    auto lapic = cast(uint*)(LAPIC_DEFAULT_BASE);
-    lapic[LAPIC_EOI >> 2] = 0;
 }
 
 extern(C) @nogc nothrow void keyboardIsrHandler()
 {
-    // TODO: hook into keyboard queue once available
+    const ubyte status = inb(0x64);
+    const ubyte data = inb(0x60);
+    ps2IsrEnqueue(status, data);
+    static uint kseen;
+    ++kseen;
+    if (kseen <= 4 || (kseen & 0xFF) == 0)
+    {
+        print("[ps2-irq] kbd status=");
+        printHex(status);
+        print(" data=");
+        printHex(data);
+        print(" count=");
+        printUnsigned(kseen);
+        printLine("");
+    }
     outb(PIC1_CMD, 0x20);
-    auto lapic = cast(uint*)(LAPIC_DEFAULT_BASE);
-    lapic[LAPIC_EOI >> 2] = 0;
+}
+
+extern(C) @nogc nothrow void mouseIsrHandler()
+{
+    ubyte status = inb(0x64);
+    const ubyte data = inb(0x60);
+    // Some controllers may not set the mouse bit; force it so the handler
+    // routes bytes correctly.
+    status |= 0x20;
+    ps2IsrEnqueue(status, data);
+    static uint mseen;
+    ++mseen;
+    if (mseen <= 8 || (mseen & 0xFF) == 0)
+    {
+        print("[ps2-irq] mouse status=");
+        printHex(status);
+        print(" data=");
+        printHex(data);
+        print(" count=");
+        printUnsigned(mseen);
+        printLine("");
+    }
+    outb(PIC2_CMD, 0x20);
+    outb(PIC1_CMD, 0x20);
+}
+
+extern(C) @nogc nothrow void doubleFaultHandler()
+{
+    printLine("[irq] double fault");
+    for (;;)
+    {
+        asm @nogc nothrow { hlt; }
+    }
 }
 
 extern(C) @nogc nothrow void pageFaultHandler(void* /*frame*/)
@@ -220,6 +267,8 @@ public @nogc nothrow void initializeInterrupts()
 
     setIdtEntry(32, &timerIsrStub);     // PIT timer
     setIdtEntry(33, &keyboardIsrStub);  // Keyboard
+    setIdtEntry(44, &mouseIsrStub);     // PS/2 mouse (IRQ12) masked for now
+    setIdtEntry(8,  &doubleFaultStub);  // Double fault
     setIdtEntry(14, &pageFaultStub);    // Page fault
 
     g_idtPtr.limit = cast(ushort)(g_idt.length * IDTEntry.sizeof - 1);
@@ -229,11 +278,10 @@ public @nogc nothrow void initializeInterrupts()
 
     picRemap(32, 40);
     pitInit(100);
-    lapicInit();
-    maskPic();
-
+    // lapicInit(); // Disable LAPIC to avoid QEMU "Invalid read" errors and ensure PIC routing
+    // Enable interrupts; PIC IRQs remain masked (polling path handles input).
     asm @nogc nothrow { sti; }
-    printLine("[irq] IDT loaded, PIT started at 100 Hz");
+    printLine("[irq] IDT loaded, PIT configured (PIC unmasked; interrupt input)");
 }
 
 /// Interrupt-safe stack/context swap callable from an ISR path. Saves the

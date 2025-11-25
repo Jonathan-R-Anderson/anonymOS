@@ -298,6 +298,104 @@ keyboardIsrStub:
 
 .size keyboardIsrStub, . - keyboardIsrStub
 
+    .global doubleFaultStub
+    .type doubleFaultStub, @function
+    .extern doubleFaultHandler
+doubleFaultStub:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    subq $16, %rsp
+    mov %ds, 8(%rsp)
+    mov %es, 0(%rsp)
+    mov $DATA_SEG, %ax
+    mov %ax, %ds
+    mov %ax, %es
+
+    leaq fpu_save_area(%rip), %rax
+    fxsave64 (%rax)
+
+    call doubleFaultHandler
+
+    fxrstor64 (%rax)
+
+    mov 0(%rsp), %es
+    mov 8(%rsp), %ds
+    addq $16, %rsp
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    iretq
+
+.size doubleFaultStub, . - doubleFaultStub
+
+    .global mouseIsrStub
+    .type mouseIsrStub, @function
+    .extern mouseIsrHandler
+mouseIsrStub:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    subq $16, %rsp
+    mov %ds, 8(%rsp)
+    mov %es, 0(%rsp)
+    mov $DATA_SEG, %ax
+    mov %ax, %ds
+    mov %ax, %es
+
+    leaq fpu_save_area(%rip), %rax
+    fxsave64 (%rax)
+
+    call mouseIsrHandler
+
+    fxrstor64 (%rax)
+
+    mov 0(%rsp), %es
+    mov 8(%rsp), %ds
+    addq $16, %rsp
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    iretq
+
+.size mouseIsrStub, . - mouseIsrStub
+
     .global pageFaultStub
     .type pageFaultStub, @function
     .extern pageFaultHandler

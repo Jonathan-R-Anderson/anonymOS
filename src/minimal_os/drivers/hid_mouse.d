@@ -2,6 +2,7 @@ module minimal_os.drivers.hid_mouse;
 
 import minimal_os.display.input_pipeline : InputQueue, InputEvent, enqueue;
 import minimal_os.display.framebuffer : framebufferMoveCursor;
+import minimal_os.console : print, printLine, printUnsigned;
 
 @nogc:
 nothrow:
@@ -54,6 +55,10 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     // Update position with delta movement
     if (report.deltaX != 0 || report.deltaY != 0)
     {
+        print("[mouse] dx="); printUnsigned(cast(uint)report.deltaX);
+        print(" dy="); printUnsigned(cast(uint)report.deltaY);
+        printLine("");
+
         g_mouseState.x += report.deltaX;
         g_mouseState.y += report.deltaY;
         

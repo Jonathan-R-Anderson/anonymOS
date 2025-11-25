@@ -11,6 +11,7 @@ import minimal_os.display.input_handler : initializeInputHandler, processInputEv
 import minimal_os.display.server;
 import minimal_os.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz;
 import minimal_os.drivers.hid_mouse : initializeMouseState, getMousePosition;
+import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
 import minimal_os.posix : schedYield;
 import minimal_os.serial : pollSerialInput;
 import minimal_os.multiboot : FramebufferModeRequest;
@@ -21,6 +22,7 @@ __gshared InputQueue g_inputQueue;
 __gshared ulong g_frameCount = 0;
 __gshared DisplayServerState g_displayServer;
 __gshared bool g_displayServerReady = false;
+__gshared bool g_inputInitialized = false;
 
 private enum uint desktopTaskbarHeight = 32;
 private enum size_t desktopCount = 3;
@@ -153,24 +155,26 @@ void runSimpleDesktopLoop()
     {
         return;
     }
-    initializeMouseState(g_fb.width, g_fb.height);
-    
-    // Try to initialize USB HID
-    import minimal_os.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
-    initializeUSBHID();
-    framebufferShowCursor();
-    // Center cursor explicitly so it is visible even before input events arrive
-    framebufferMoveCursor(cast(int)(g_fb.width / 2), cast(int)(g_fb.height / 2));
-    static bool cursorAnnounced;
-    if (!cursorAnnounced)
-    {
-        import minimal_os.console : printLine;
-        printLine("[desktop] cursor initialized/centered");
-        cursorAnnounced = true;
-    }
-    
-    // Render initial frame
+    // Render initial frame before initializing input/cursor so the desktop is visible.
     runSimpleDesktopOnce();
+    
+    // Initialize input/cursor after the first frame is drawn.
+    if (!g_inputInitialized)
+    {
+        initializeMouseState(g_fb.width, g_fb.height);
+        import minimal_os.drivers.usb_hid : initializeUSBHID;
+        initializeUSBHID();
+        framebufferShowCursor();
+        framebufferMoveCursor(cast(int)(g_fb.width / 2), cast(int)(g_fb.height / 2));
+        static bool cursorAnnounced;
+        if (!cursorAnnounced)
+        {
+            import minimal_os.console : printLine;
+            printLine("[desktop] cursor initialized/centered");
+            cursorAnnounced = true;
+        }
+        g_inputInitialized = true;
+    }
 
     // Active event loop
     while (true)

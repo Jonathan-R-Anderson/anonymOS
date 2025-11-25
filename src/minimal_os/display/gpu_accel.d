@@ -88,6 +88,7 @@ bool acceleratedFillRect(uint x, uint y, uint w, uint h, uint argbColor)
 /// Accelerated copy of an ARGB buffer to the linear framebuffer.
 bool acceleratedPresentBuffer(const(uint)* src, uint width, uint height, uint pitch)
 {
+    return false; // DEBUG: Disable acceleration to test fallback
     if (!g_accel.available || !g_accel.fastBlit || src is null)
     {
         return false;

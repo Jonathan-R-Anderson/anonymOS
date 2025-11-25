@@ -17,6 +17,8 @@ private enum ushort PIT_DATA = 0x40;
 private enum ubyte ICW1_INIT = 0x10;
 private enum ubyte ICW1_ICW4 = 0x01;
 private enum ubyte ICW4_8086 = 0x01;
+public enum ubyte PIC1_DEFAULT_MASK = 0xF8; // unmask IRQ0/1/2
+public enum ubyte PIC2_DEFAULT_MASK = 0xEF; // unmask IRQ12 (mouse), mask others
 
 // Local APIC MSR and registers
 private enum ulong  IA32_APIC_BASE_MSR = 0x1B;
@@ -89,10 +91,9 @@ private void picRemap(ubyte offset1, ubyte offset2) @nogc nothrow
     outb(PIC1_DATA, ICW4_8086);
     outb(PIC2_DATA, ICW4_8086);
 
-    // Unmask Timer (0), Keyboard (1), Cascade (2) on Master
-    outb(PIC1_DATA, 0xF8); 
-    // Mask Mouse (12 -> 4 on Slave) on Slave to prevent storms; we poll or rely on IRQ1
-    outb(PIC2_DATA, 0xFF);
+    // Unmask timer/keyboard/cascade and mouse; leave others masked.
+    outb(PIC1_DATA, PIC1_DEFAULT_MASK);
+    outb(PIC2_DATA, PIC2_DEFAULT_MASK);
 }
 
 private void setIdtEntry(ubyte vector, void* handler) @nogc nothrow
@@ -279,9 +280,9 @@ public @nogc nothrow void initializeInterrupts()
     picRemap(32, 40);
     pitInit(100);
     // lapicInit(); // Disable LAPIC to avoid QEMU "Invalid read" errors and ensure PIC routing
-    // Enable interrupts; PIC IRQs remain masked (polling path handles input).
+    // Enable interrupts; PIC IRQs configured above.
     asm @nogc nothrow { sti; }
-    printLine("[irq] IDT loaded, PIT configured (PIC unmasked; interrupt input)");
+    printLine("[irq] IDT loaded, PIT configured (PIC unmasked for timer/kbd/mouse)");
 }
 
 /// Interrupt-safe stack/context swap callable from an ISR path. Saves the

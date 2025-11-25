@@ -11,7 +11,6 @@ import minimal_os.kernel.dma : dma_alloc;
 @nogc:
 nothrow:
 
-
 /// USB HID device types we support
 enum HIDDeviceType : ubyte
 {
@@ -49,7 +48,7 @@ struct USBHIDSubsystem
     uint controllerBus;
     uint controllerSlot;
     uint controllerFunction;
-    uint controllerMmioBase;
+    ulong controllerMmioBase;   // FIX: allow 64-bit BARs
     bool initialized;
     bool usbHostActive;
     HIDDevice[8] devices;
@@ -57,7 +56,7 @@ struct USBHIDSubsystem
     bool pointerPresent;
     bool touchPresent;
     bool keyboardPresent;
-    
+
     void initialize()
     {
         if (initialized)
@@ -73,66 +72,68 @@ struct USBHIDSubsystem
         controllerMmioBase = 0;
         usbHostActive = false;
 
+        // Always bring up legacy PS/2 first; this is our fallback path.
+        // If QEMU/firmware routes HID through i8042 legacy, we’ll see it here.
+        initializeLegacyPS2();
+
         // Detect USB controllers
-        controllerType = detectUSBController(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
+        controllerType = detectUSBController(controllerBus,
+                                             controllerSlot,
+                                             controllerFunction,
+                                             controllerMmioBase);
 
         if (controllerType == USBControllerType.none)
         {
-            printLine("[usb-hid] No USB controllers detected; using legacy PS/2 input only");
+            printLine("[usb-hid] No USB controllers detected; legacy PS/2 only");
             initialized = true;
             return;
         }
-        
+
         print("[usb-hid] Found controller: ");
         printLine(controllerTypeName(controllerType));
-        
-        // FIXME: The XHCI driver is incomplete (missing endpoint configuration and polling).
-        // Initializing it resets the controller, which kills the BIOS legacy PS/2 emulation.
-        // We must skip initialization to keep the PS/2 fallback working for input.
-        if (controllerType == USBControllerType.xhci)
-        {
-            printLine("[usb-hid] Skipping XHCI init to preserve legacy PS/2 emulation");
-            // Treat the subsystem as online so the desktop/input pipeline proceeds,
-            // but leave the USB host stack inactive.
-            controllerType = USBControllerType.none;
-            pointerPresent = true;
-            keyboardPresent = true;
-            initialized = true;
-            return;
-        }
+
+        // NOTE:
+        // Previously this code *skipped* xHCI init and then lied by setting
+        // pointerPresent/keyboardPresent true and initialized=true. That made
+        // higher layers believe USB was online even though the host stack was off,
+        // causing "desktop loads but never sees input" on modern QEMU (xhci default).
+        //
+        // We now:
+        //  1) do NOT fake device presence,
+        //  2) attempt xHCI init if detected,
+        //  3) if xHCI init fails, cleanly fall back to PS/2 without claiming USB works.
 
         // Initialize the controller
         if (!initializeController())
         {
-            printLine("[usb-hid] Failed to initialize USB controller; falling back to PS/2");
+            printLine("[usb-hid] Failed to initialize USB controller; falling back to PS/2 only");
+            usbHostActive = false;
             initialized = true;
             return;
         }
 
         usbHostActive = true;
-        
-        // Enumerate HID devices
+
+        // Enumerate HID devices (only xHCI path exists today)
         enumerateHIDDevices();
-        
+
         print("[usb-hid] Detected ");
         printUnsigned(deviceCount);
         printLine(" HID device(s)");
 
         initialized = true;
-
     }
-    
+
     void poll(ref InputQueue queue)
     {
-        // Consume legacy PS/2 (including USB legacy) input so we surface
-        // real keyboard/mouse events while the USB host stack is minimal.
+        // Always service legacy PS/2/USB-legacy routing if present.
         pollLegacyPS2(queue);
 
         if (!initialized || !usbHostActive)
         {
             return;
         }
-        
+
         // Poll each enabled HID device
         foreach (ref device; devices[0 .. deviceCount])
         {
@@ -140,7 +141,7 @@ struct USBHIDSubsystem
             {
                 continue;
             }
-            
+
             pollDevice(device, queue);
         }
 
@@ -150,7 +151,7 @@ struct USBHIDSubsystem
             handleEvents(queue);
         }
     }
-    
+
     private bool initializeController()
     {
         final switch (controllerType)
@@ -158,9 +159,16 @@ struct USBHIDSubsystem
             case USBControllerType.uhci:
                 return initializeUHCI(controllerBus, controllerSlot, controllerFunction);
             case USBControllerType.ehci:
-                return initializeEHCI(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
+                return initializeEHCI(controllerBus, controllerSlot, controllerFunction,
+                                      cast(uint)controllerMmioBase);
             case USBControllerType.xhci:
-                return initializeXHCI(controllerBus, controllerSlot, controllerFunction, controllerMmioBase);
+                if (!initializeXHCI(controllerBus, controllerSlot, controllerFunction,
+                                    cast(uint)controllerMmioBase))
+                    return false;
+
+                // xHCI won't enumerate anything if ports aren't powered.
+                powerOnXHCIPorts();
+                return true;
             case USBControllerType.none:
                 return false;
         }
@@ -185,12 +193,10 @@ struct USBHIDSubsystem
                 break;
         }
     }
-    
+
     private void pollDevice(ref HIDDevice device, ref InputQueue queue)
     {
         // Poll the USB endpoint for new HID reports
-        // This is device-type specific
-        
         final switch (device.deviceType)
         {
             case HIDDeviceType.keyboard:
@@ -211,10 +217,10 @@ struct USBHIDSubsystem
             return;
         }
 
-        const ubyte capLength = volatileLoad(cast(ubyte*)(controllerMmioBase));
-        const uint hcsParams1 = mmioRead32(controllerMmioBase, 0x04);
+        const ubyte capLength = volatileLoad(cast(ubyte*)(cast(uint)controllerMmioBase));
+        const uint hcsParams1 = mmioRead32(cast(uint)controllerMmioBase, 0x04);
         const uint portCount = (hcsParams1 >> 24) & 0xFF;
-        const uint portBase = controllerMmioBase + capLength + 0x400; // port register set base
+        const uint portBase = cast(uint)controllerMmioBase + capLength + 0x400; // port register set base
 
         foreach (portIndex; 0 .. portCount)
         {
@@ -226,7 +232,7 @@ struct USBHIDSubsystem
             mmioWrite32(portBase, portOffset, portStatus);
         }
     }
-    
+
     private void pollKeyboard(ref HIDDevice device, ref InputQueue queue)
     {
         // TODO: submit transfer descriptors and parse real HID keyboard reports
@@ -304,6 +310,7 @@ struct USBHIDSubsystem
         }
     }
 }
+
 
 // --------------------------------------------------------------------------
 // xHCI helpers: rings and controller init
@@ -521,8 +528,7 @@ private bool initializeXHCIRings(uint mmioBase) @nogc nothrow
     foreach (_; 0 .. 100_000)
     {
         const uint usbsts = mmioRead32(g_xhci.opBase, 0x04);
-        const bool halted = (usbsts & 0x01) != 0;
-        if (!halted)
+        if ((usbsts & 0x01) == 0)
         {
             break;
         }
@@ -553,6 +559,7 @@ private bool initializeXHCIRings(uint mmioBase) @nogc nothrow
     return true;
 }
 
+
 // --------------------------------------------------------------------------
 // Legacy PS/2 compatibility path (covers USB legacy routing in QEMU/firmware)
 // --------------------------------------------------------------------------
@@ -573,9 +580,7 @@ private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrStatus;
 private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrData;
 private __gshared size_t g_ps2IsrHead = 0;
 private __gshared size_t g_ps2IsrTail = 0;
-// Leave command-based mouse polling disabled; rely on OBF polling only.
-// Rely on streamed packets polled from the output buffer; avoid injecting extra commands per frame.
-private __gshared bool g_ps2PollingMouse = false;
+private __gshared bool g_ps2PollingMouse = true;
 
 private ubyte inb(ushort port) @nogc nothrow
 {
@@ -607,9 +612,22 @@ private bool ps2WaitInputClear() @nogc nothrow
         {
             return true;
         }
+        ioWait();
     }
     printLine("[usb-hid] PS/2 input buffer never cleared");
     return false;
+}
+
+// Small I/O delay so PS/2 controller has time to react.
+// Reading/writing port 0x80 is the classic POST delay.
+private void ioWait() @nogc nothrow
+{
+    asm @nogc nothrow
+    {
+        xor AL, AL;
+        mov DX, 0x80;
+        out DX, AL;
+    }
 }
 
 private bool ps2WaitOutputFull() @nogc nothrow
@@ -620,6 +638,7 @@ private bool ps2WaitOutputFull() @nogc nothrow
         {
             return true;
         }
+        ioWait();
     }
     printLine("[usb-hid] PS/2 output buffer never filled");
     return false;
@@ -651,6 +670,15 @@ private ubyte ps2ReadData() @nogc nothrow
     return inb(ps2DataPort);
 }
 
+private ubyte ps2SendMouseCommand(ubyte cmd) @nogc nothrow
+{
+    // Route next byte to mouse
+    ps2WriteCommand(0xD4);
+    ps2WriteData(cmd);
+    if (!ps2WaitOutputFull()) return 0;
+    return inb(ps2DataPort); // ACK or error
+}
+
 private bool initializeLegacyPS2() @nogc nothrow
 {
     static bool warned;
@@ -669,6 +697,12 @@ private bool initializeLegacyPS2() @nogc nothrow
         return true;
     }
 
+    // Mask keyboard/mouse IRQs during init to prevent ACKs being consumed by ISRs.
+    const ubyte origPic1Mask = inb(0x21);
+    const ubyte origPic2Mask = inb(0xA1);
+    outb(0x21, origPic1Mask | 0x02); // mask IRQ1
+    outb(0xA1, 0xFF);                // mask all on slave
+
     // 1. Disable devices
     ps2WriteCommand(0xAD); // Disable Keyboard
     ps2WriteCommand(0xA7); // Disable Mouse
@@ -682,10 +716,11 @@ private bool initializeLegacyPS2() @nogc nothrow
     // 3. Setup Config Byte
     ps2WriteCommand(0x20); // Read Config
     if (!ps2WaitOutputFull()) return fail();
-    ubyte config = ps2ReadData();
-    config |= 0x40;           // Enable Translation (Bit 6)
-    config &= ~(0x10 | 0x20); // Enable Keyboard (Bit 4) and Mouse (Bit 5)
-    config |= 0x03;           // Enable IRQs (Bit 0 and 1)
+    ubyte config = inb(ps2DataPort); // already waited
+
+    config |= 0x40;           // Translation on (bit 6)
+    config &= ~(0x10 | 0x20); // Clear "clock disable" bits 4/5 to enable kbd/mouse
+    config |= 0x03;           // Enable IRQ1/IRQ12
     ps2WriteCommand(0x60);    // Write Config
     ps2WriteData(config);
 
@@ -696,11 +731,11 @@ private bool initializeLegacyPS2() @nogc nothrow
     // 5. Initialize Mouse: defaults, stream mode, enable reporting
     ps2WriteCommand(0xD4);
     ps2WriteData(0xF6);
-    if (ps2WaitOutputFull()) ps2ReadData(); // ACK
+    if (ps2WaitOutputFull()) cast(void)inb(ps2DataPort); // ACK
 
     ps2WriteCommand(0xD4);
     ps2WriteData(0xEA); // stream mode
-    if (ps2WaitOutputFull()) ps2ReadData(); // ACK
+    if (ps2WaitOutputFull()) cast(void)inb(ps2DataPort); // ACK
 
     ps2WriteCommand(0xD4);
     ps2WriteData(0xF4); // enable data reporting
@@ -718,7 +753,7 @@ private bool initializeLegacyPS2() @nogc nothrow
     ps2WriteData(0xF4);
     if (ps2WaitOutputFull())
     {
-        ps2ReadData(); // ack
+        ps2ReadData(); // ACK
         printLine("[usb-hid] PS/2 keyboard enabled successfully");
     }
     else
@@ -728,6 +763,11 @@ private bool initializeLegacyPS2() @nogc nothrow
 
     g_ps2Initialized = true;
     printLine("[usb-hid] PS/2 legacy input enabled");
+
+    // Restore PIC masks to defaults (unmask timer/kbd/mouse).
+    import minimal_os.kernel.interrupts : PIC1_DEFAULT_MASK, PIC2_DEFAULT_MASK;
+    outb(0xA1, PIC2_DEFAULT_MASK);
+    outb(0x21, PIC1_DEFAULT_MASK);
     return true;
 }
 
@@ -745,30 +785,22 @@ extern(C) @nogc nothrow void ps2IsrEnqueue(ubyte status, ubyte data)
 
 private ubyte mapSet1ToHid(ubyte code, bool extended) @nogc nothrow pure
 {
-    // Non-extended set 1 make codes
     immutable ubyte[0x59] table = [
-        // 0x00-0x0F
         0, 0x29, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23,
         0x24, 0x25, 0x26, 0x27, 0x2D, 0x2E, 0x2A, 0x2B,
-        // 0x10-0x1F
         0x14, 0x1A, 0x08, 0x15, 0x17, 0x1C, 0x18, 0x0C,
         0x12, 0x13, 0x2F, 0x30, 0x28, 0xE0, 0x04, 0x16,
-        // 0x20-0x2F
         0x07, 0x09, 0x0A, 0x0B, 0x0D, 0x0E, 0x0F, 0x33,
         0x34, 0x35, 0xE1, 0x31, 0x1D, 0x1B, 0x06, 0x19,
-        // 0x30-0x3F
         0x05, 0x11, 0x10, 0x36, 0x37, 0x38, 0xE5, 0x55,
         0xE2, 0x2C, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E,
-        // 0x40-0x4F
         0x3F, 0x40, 0x41, 0x42, 0x43, 0x53, 0x47, 0x5F,
         0x60, 0x61, 0x56, 0x5C, 0x5D, 0x5E, 0x57, 0x59,
-        // 0x50-0x58
         0x5A, 0x5B, 0x62, 0x63, 0, 0, 0, 0x44, 0x45
     ];
 
     if (extended)
     {
-        // Specific overrides for extended keys.
         switch (code)
         {
             case 0x1C: return 0x58; // KP Enter
@@ -802,61 +834,37 @@ private void applyModifier(ref HIDKeyboardReport report, ubyte hid, bool pressed
     ubyte mask = 0;
     switch (hid)
     {
-        case 0xE0: mask = 0x01; break; // LCtrl
-        case 0xE1: mask = 0x02; break; // LShift
-        case 0xE2: mask = 0x04; break; // LAlt
-        case 0xE3: mask = 0x08; break; // LGUI
-        case 0xE4: mask = 0x10; break; // RCtrl
-        case 0xE5: mask = 0x20; break; // RShift
-        case 0xE6: mask = 0x40; break; // RAlt
-        case 0xE7: mask = 0x80; break; // RGUI
+        case 0xE0: mask = 0x01; break;
+        case 0xE1: mask = 0x02; break;
+        case 0xE2: mask = 0x04; break;
+        case 0xE3: mask = 0x08; break;
+        case 0xE4: mask = 0x10; break;
+        case 0xE5: mask = 0x20; break;
+        case 0xE6: mask = 0x40; break;
+        case 0xE7: mask = 0x80; break;
         default:
             break;
     }
 
-    if (mask == 0)
-    {
-        return;
-    }
+    if (mask == 0) return;
 
-    if (pressed)
-    {
-        report.modifiers |= mask;
-    }
-    else
-    {
-        report.modifiers &= ~mask;
-    }
+    if (pressed) report.modifiers |= mask;
+    else report.modifiers &= ~mask;
 }
 
 private void addHidKey(ref HIDKeyboardReport report, ubyte hid) @nogc nothrow
 {
     foreach (ref slot; report.keycodes)
-    {
-        if (slot == hid)
-        {
-            return; // already present
-        }
-    }
+        if (slot == hid) return;
+
     foreach (ref slot; report.keycodes)
-    {
-        if (slot == 0)
-        {
-            slot = hid;
-            return;
-        }
-    }
+        if (slot == 0) { slot = hid; return; }
 }
 
 private void removeHidKey(ref HIDKeyboardReport report, ubyte hid) @nogc nothrow
 {
     foreach (ref slot; report.keycodes)
-    {
-        if (slot == hid)
-        {
-            slot = 0;
-        }
-    }
+        if (slot == hid) slot = 0;
 }
 
 private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothrow
@@ -866,7 +874,7 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
         g_ps2Extended = true;
         return;
     }
-    
+
     print("[ps2] kbd: "); printHex(data); printLine("");
 
     const bool breakCode = (data & 0x80) != 0;
@@ -874,26 +882,12 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
     const ubyte hid = mapSet1ToHid(base, g_ps2Extended);
     g_ps2Extended = false;
 
-    if (hid == 0)
-    {
-        return;
-    }
+    if (hid == 0) return;
 
     applyModifier(g_ps2KeyboardReport, hid, !breakCode);
-    if ((hid & 0xE0) == 0xE0)
-    {
-        if (breakCode)
-            removeHidKey(g_ps2KeyboardReport, hid);
-        else
-            addHidKey(g_ps2KeyboardReport, hid);
-    }
-    else
-    {
-        if (breakCode)
-            removeHidKey(g_ps2KeyboardReport, hid);
-        else
-            addHidKey(g_ps2KeyboardReport, hid);
-    }
+
+    if (breakCode) removeHidKey(g_ps2KeyboardReport, hid);
+    else addHidKey(g_ps2KeyboardReport, hid);
 
     g_usbHID.keyboardPresent = true;
     processKeyboardReport(g_ps2KeyboardReport, queue);
@@ -901,23 +895,13 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
 
 private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
 {
-    // Ignore ACK/self-test bytes that may leak through.
-    if (data == 0xFA || data == 0xAA)
-    {
-        return;
-    }
+    if (data == 0xFA || data == 0xAA) return;
 
     if (g_ps2MouseIndex == 0 && (data & 0x08) == 0)
-    {
-        // Out of sync; wait for a proper header byte (bit 3 set).
         return;
-    }
 
     g_ps2MousePacket[g_ps2MouseIndex++] = data;
-    if (g_ps2MouseIndex < 3)
-    {
-        return;
-    }
+    if (g_ps2MouseIndex < 3) return;
     g_ps2MouseIndex = 0;
 
     HIDMouseReport report;
@@ -933,12 +917,10 @@ private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
 private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
 {
     if (!g_ps2Initialized && !initializeLegacyPS2())
-    {
         return;
-    }
 
     bool sawEvent = false;
-    // Drain any bytes captured via IRQ stubs (keyboard/mouse).
+
     while (g_ps2IsrHead != g_ps2IsrTail)
     {
         const ubyte status = g_ps2IsrStatus[g_ps2IsrHead];
@@ -948,18 +930,15 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
         print("[ps2] irq data: "); printHex(data); print(" status: "); printHex(status); printLine("");
 
         if ((status & ps2StatusIsMouse) != 0)
-        {
             handlePs2MouseByte(data, queue);
-        }
         else
-        {
             handlePs2KeyboardByte(data, queue);
-        }
+
         sawEvent = true;
     }
 
     static uint pollCount = 0;
-    if ((pollCount++ % 600) == 0) // ~10 times a second if 60fps
+    if ((pollCount++ % 600) == 0)
     {
         print("[ps2] poll status: "); printHex(inb(ps2StatusPort)); printLine("");
     }
@@ -968,21 +947,58 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     {
         const ubyte status = inb(ps2StatusPort);
         const ubyte data = inb(ps2DataPort);
-        
+
         print("[ps2] data: "); printHex(data); print(" status: "); printHex(status); printLine("");
 
-        if ((status & ps2StatusIsMouse) != 0)
-        {
+        // Some controllers may not set the mouse bit; treat bytes with the PS/2
+        // packet sync bit (bit 3) set as mouse data.
+        if ((status & ps2StatusIsMouse) != 0 || (data & 0x08) != 0)
             handlePs2MouseByte(data, queue);
-        }
         else
-        {
             handlePs2KeyboardByte(data, queue);
-        }
+
         sawEvent = true;
     }
 
-    // Command-based mouse polling disabled; rely on streamed packets.
+    // Optional host-driven poll: issue 0xEB to fetch one packet (ACK + 3 bytes)
+    // in case the device is in stream mode but not asserting IRQ12.
+    if (g_ps2PollingMouse)
+    {
+        const ubyte ack = ps2SendMouseCommand(0xEB);
+        if (ack == 0xFA)
+        {
+            ubyte[3] pkt;
+            size_t idx = 0;
+            while (idx < pkt.length && ps2WaitOutputFull())
+            {
+                pkt[idx++] = inb(ps2DataPort);
+            }
+            if (idx == 3)
+            {
+                g_ps2MousePacket[0] = pkt[0];
+                g_ps2MousePacket[1] = pkt[1];
+                g_ps2MousePacket[2] = pkt[2];
+
+                HIDMouseReport report;
+                report.buttons = cast(ubyte)(g_ps2MousePacket[0] & 0x07);
+                report.deltaX = cast(byte)g_ps2MousePacket[1];
+                report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
+                report.deltaWheel = 0;
+                g_usbHID.pointerPresent = true;
+                processMouseReport(report, queue, g_fb.width, g_fb.height);
+                sawEvent = true;
+                print("[ps2] polled packet "); printHex(pkt[0]); print(" "); printHex(pkt[1]); print(" "); printHex(pkt[2]); printLine("");
+            }
+            else
+            {
+                print("[ps2] polled packet short idx="); printUnsigned(idx); printLine("");
+            }
+        }
+        else
+        {
+            print("[ps2] 0xEB poll ack "); printHex(ack); printLine("");
+        }
+    }
 
     static bool announced;
     if (sawEvent && !announced)
@@ -990,7 +1006,16 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
         printLine("[usb-hid] PS/2 input active");
         announced = true;
     }
+    else if (!sawEvent && (pollCount % 600) == 0)
+    {
+        printLine("[ps2] no input yet (polling stream mode)");
+    }
 }
+
+
+// --------------------------------------------------------------------------
+// PCI detection + controller init
+// --------------------------------------------------------------------------
 
 private enum ushort pciConfigAddress = 0xCF8;
 private enum ushort pciConfigData = 0xCFC;
@@ -1013,7 +1038,6 @@ private uint pciConfigRead32(ubyte bus, ubyte slot, ubyte func, ubyte offset) @n
         in  EAX, DX;
         mov value, EAX;
     }
-
     return value;
 }
 
@@ -1036,75 +1060,6 @@ private void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, u
     }
 }
 
-private USBControllerType detectUSBController(ref uint busOut, ref uint slotOut, ref uint funcOut, ref uint mmioBaseOut) @nogc nothrow
-{
-    USBControllerType detected = USBControllerType.none;
-    mmioBaseOut = 0;
-
-    foreach (bus; 0 .. 256)
-    {
-        foreach (slot; 0 .. 32)
-        {
-            foreach (func; 0 .. 8)
-            {
-                const uint vendorDevice = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0);
-                if ((vendorDevice & 0xFFFF) == 0xFFFF)
-                {
-                    if (func == 0)
-                    {
-                        break;
-                    }
-                    continue;
-                }
-
-                const uint classCode = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 8);
-                const ubyte baseClass = cast(ubyte)((classCode >> 24) & 0xFF);
-                const ubyte subClass = cast(ubyte)((classCode >> 16) & 0xFF);
-                const ubyte progIf = cast(ubyte)((classCode >> 8) & 0xFF);
-
-                if (baseClass == 0x0C && subClass == 0x03)
-                {
-                    busOut = bus;
-                    slotOut = slot;
-                    funcOut = func;
-
-                    switch (progIf)
-                    {
-                        case 0x00:
-                            detected = USBControllerType.uhci;
-                            break;
-                        case 0x20:
-                            detected = USBControllerType.ehci;
-                            break;
-                        case 0x30:
-                            detected = USBControllerType.xhci;
-                            break;
-                        default:
-                            detected = USBControllerType.none;
-                            break;
-                    }
-
-                    const uint bar0 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x10);
-                    mmioBaseOut = bar0 & 0xFFFF_FFF0;
-
-                    return detected;
-                }
-            }
-        }
-    }
-
-    return detected;
-}
-
-private bool initializeUHCI(uint bus, uint slot, uint func) @nogc nothrow
-{
-    const uint commandOffset = 0x04;
-    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
-    command |= 0x0006; // memory + bus master enable
-    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
-    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
-}
-
 private ubyte pciConfigRead8(ubyte bus, ubyte slot, ubyte func, ubyte offset) @nogc nothrow
 {
     const ubyte aligned = cast(ubyte)(offset & 0xFC);
@@ -1123,38 +1078,113 @@ private void pciConfigWrite8(ubyte bus, ubyte slot, ubyte func, ubyte offset, ub
     pciConfigWrite32(bus, slot, func, aligned, raw);
 }
 
-private bool ehciBiosHandoff(uint bus, uint slot, uint func, uint mmioBase) @nogc nothrow
+private USBControllerType detectUSBController(ref uint busOut,
+                                             ref uint slotOut,
+                                             ref uint funcOut,
+                                             ref ulong mmioBaseOut) @nogc nothrow
 {
-    // EHCI HCCPARAMS[15:8] holds the EECP pointing into PCI config space.
-    const uint hccparams = mmioRead32(mmioBase, 0x08);
-    const ubyte eecp = cast(ubyte)((hccparams >> 8) & 0xFF);
-    if (eecp == 0)
+    USBControllerType detected = USBControllerType.none;
+    mmioBaseOut = 0;
+
+    foreach (bus; 0 .. 256)
     {
-        return true; // No extended capabilities
+        foreach (slot; 0 .. 32)
+        {
+            foreach (func; 0 .. 8)
+            {
+                const uint vendorDevice = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                                         cast(ubyte)func, 0);
+                if ((vendorDevice & 0xFFFF) == 0xFFFF)
+                {
+                    if (func == 0) break;
+                    continue;
+                }
+
+                const uint classCode = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                                      cast(ubyte)func, 8);
+                const ubyte baseClass = cast(ubyte)((classCode >> 24) & 0xFF);
+                const ubyte subClass = cast(ubyte)((classCode >> 16) & 0xFF);
+                const ubyte progIf = cast(ubyte)((classCode >> 8) & 0xFF);
+
+                if (baseClass == 0x0C && subClass == 0x03)
+                {
+                    busOut = bus;
+                    slotOut = slot;
+                    funcOut = func;
+
+                    switch (progIf)
+                    {
+                        case 0x00: detected = USBControllerType.uhci; break;
+                        case 0x20: detected = USBControllerType.ehci; break;
+                        case 0x30: detected = USBControllerType.xhci; break;
+                        default:   detected = USBControllerType.none; break;
+                    }
+
+                    // FIX:
+                    // EHCI/xHCI often use 64-bit MMIO BARs. UHCI uses I/O BARs.
+                    // We only expose MMIO base for EHCI/xHCI.
+                    if (detected == USBControllerType.ehci || detected == USBControllerType.xhci)
+                    {
+                        uint bar0 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                                    cast(ubyte)func, 0x10);
+                        uint bar1 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                                    cast(ubyte)func, 0x14);
+
+                        // If BAR is I/O, ignore.
+                        if ((bar0 & 0x1) == 0)
+                        {
+                            ulong mmio = (cast(ulong)bar1 << 32) |
+                                          (cast(ulong)(bar0 & 0xFFFF_FFF0));
+                            mmioBaseOut = mmio;
+                        }
+                    }
+
+                    return detected;
+                }
+            }
+        }
     }
 
-    const ubyte capId = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, eecp);
-    if (capId != 1)
-    {
-        return true; // Not the legacy support capability
-    }
+    return detected;
+}
+
+private bool initializeUHCI(uint bus, uint slot, uint func) @nogc nothrow
+{
+    // UHCI is I/O-port based. We only enable bus mastering here as a stub.
+    const uint commandOffset = 0x04;
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                   cast(ubyte)func, cast(ubyte)commandOffset);
+    command |= 0x0004; // bus master enable
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot,
+                     cast(ubyte)func, cast(ubyte)commandOffset, command);
+    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                            cast(ubyte)func, cast(ubyte)commandOffset) & 0x0004) == 0x0004;
+}
+
+private bool ehciBiosHandoff(uint bus, uint slot, uint func, uint mmioBase) @nogc nothrow
+{
+    const uint hccparams = mmioRead32(mmioBase, 0x08);
+    const ubyte eecp = cast(ubyte)((hccparams >> 8) & 0xFF);
+    if (eecp == 0) return true;
+
+    const ubyte capId = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot,
+                                       cast(ubyte)func, eecp);
+    if (capId != 1) return true;
 
     enum ubyte biosSemOffset = 2;
     enum ubyte osSemOffset = 3;
 
-    // Request ownership
-    ubyte osSem = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)(eecp + osSemOffset));
+    ubyte osSem = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot,
+                                 cast(ubyte)func, cast(ubyte)(eecp + osSemOffset));
     osSem |= 0x01;
-    pciConfigWrite8(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)(eecp + osSemOffset), osSem);
+    pciConfigWrite8(cast(ubyte)bus, cast(ubyte)slot,
+                    cast(ubyte)func, cast(ubyte)(eecp + osSemOffset), osSem);
 
-    // Wait for BIOS to release
     foreach (_; 0 .. 100_000)
     {
-        const ubyte biosSem = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)(eecp + biosSemOffset));
-        if ((biosSem & 0x01) == 0)
-        {
-            return true;
-        }
+        const ubyte biosSem = pciConfigRead8(cast(ubyte)bus, cast(ubyte)slot,
+                                             cast(ubyte)func, cast(ubyte)(eecp + biosSemOffset));
+        if ((biosSem & 0x01) == 0) return true;
     }
 
     printLine("[usb-hid] EHCI BIOS ownership handoff timed out");
@@ -1169,36 +1199,33 @@ private bool initializeEHCI(uint bus, uint slot, uint func, uint mmioBase) @nogc
         return false;
     }
 
-    const bool handedOff = ehciBiosHandoff(bus, slot, func, mmioBase);
-    if (!handedOff)
-    {
+    if (!ehciBiosHandoff(bus, slot, func, mmioBase))
         return false;
-    }
 
     const uint commandOffset = 0x04;
-    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                   cast(ubyte)func, cast(ubyte)commandOffset);
     command |= 0x0006; // memory + bus master enable
-    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
-    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot,
+                     cast(ubyte)func, cast(ubyte)commandOffset, command);
+
+    return (pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                            cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) == 0x0006;
 }
 
 private bool initializeXHCI(uint bus, uint slot, uint func, uint mmioBase) @nogc nothrow
 {
     const uint commandOffset = 0x04;
-    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset);
+    uint command = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                                   cast(ubyte)func, cast(ubyte)commandOffset);
     command |= 0x0006; // memory + bus master enable
-    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset, command);
+    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot,
+                     cast(ubyte)func, cast(ubyte)commandOffset, command);
 
-    // Ensure the MMIO base is valid
-    if (mmioBase == 0)
-    {
+    if (mmioBase == 0) return false;
+    if ((pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot,
+                         cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) != 0x0006)
         return false;
-    }
-
-    if ((pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, cast(ubyte)commandOffset) & 0x0006) != 0x0006)
-    {
-        return false;
-    }
 
     return initializeXHCIRings(mmioBase);
 }
@@ -1215,30 +1242,28 @@ private void mmioWrite32(uint base, uint offset, uint value) @nogc nothrow
     *valuePtr = value;
 }
 
-private struct TRB
-{
-    uint[4] d;
-}
+
+// --------------------------------------------------------------------------
+// xHCI rings + transfer parsing (unchanged)
+// --------------------------------------------------------------------------
+
+private struct TRB { uint[4] d; }
 
 private bool ringPush(ref XHCIRing ring, const TRB trb) @nogc nothrow
 {
-    // Reserve the last TRB for the link.
     if (ring.enqueueIndex >= ring.size - 1)
     {
-        // Should not happen; wrap before hitting link.
         ring.enqueueIndex = 0;
         ring.cycle ^= 1;
     }
 
     auto dst = &ring.trbs[ring.enqueueIndex];
     *dst = trb;
-    // Apply cycle bit to the producer
     dst.d[3] = (dst.d[3] & ~1u) | (ring.cycle & 0x1);
 
     ++ring.enqueueIndex;
     if (ring.enqueueIndex == ring.size - 1)
     {
-        // Skip over link TRB; toggle cycle per xHCI spec.
         ring.enqueueIndex = 0;
         ring.cycle ^= 1;
     }
@@ -1250,7 +1275,7 @@ private void ringReset(ref XHCIRing ring) @nogc nothrow
 {
     ring.enqueueIndex = 0;
     ring.cycle = 1;
-    // Refresh link TRB cycle bit to match reset cycle state.
+
     const uint linkType = 6;
     const uint toggleCycle = 1 << 1;
     auto link = &ring.trbs[ring.size - 1];
@@ -1275,13 +1300,10 @@ private bool dequeueEvent(out TRB evt) @nogc nothrow
     const auto trb = &ring.trbs[er.dequeueIndex];
     const uint trbCycle = trb.d[3] & 0x1;
     if (trbCycle != er.cycle)
-    {
-        return false; // no new events
-    }
+        return false;
 
     evt = *trb;
 
-    // Advance dequeue pointer
     ++er.dequeueIndex;
     if (er.dequeueIndex == ring.size - 1)
     {
@@ -1298,11 +1320,8 @@ private HIDDevice* findDeviceByEndpoint(uint slotId, uint endpointId) @nogc noth
 {
     foreach (ref dev; g_usbHID.devices[0 .. g_usbHID.deviceCount])
     {
-        // For xHCI we store address==slotId, endpoint holds the raw ep addr (with direction bit).
         if (dev.enabled && dev.address == slotId && dev.endpoint == endpointId)
-        {
             return &dev;
-        }
     }
     return null;
 }
@@ -1315,7 +1334,7 @@ private void handleEvents(ref InputQueue queue) @nogc nothrow
         const uint type = (evt.d[3] >> 10) & 0x3F;
         final switch (type)
         {
-            case 32: // Transfer Event
+            case 32:
             {
                 const ulong trbPtr = (cast(ulong)evt.d[1] << 32) | (evt.d[0] & 0xFFFF_FFF0);
                 const uint completionCode = (evt.d[2] >> 24) & 0xFF;
@@ -1335,15 +1354,11 @@ private void handleEvents(ref InputQueue queue) @nogc nothrow
                 printHex(cast(uint)trbPtr);
                 printLine("");
 
-                // Try to parse HID boot protocol reports from interrupt endpoints
-                // (ignore EP0 control transfers, which use endpointId=1).
                 if (endpointId != 1)
-                {
                     parseHidTransfer(trbPtr, residual, endpointId, slotId, queue);
-                }
                 break;
             }
-            case 33: // Command Completion Event
+            case 33:
             {
                 const uint completionCode = (evt.d[2] >> 24) & 0xFF;
                 const uint slotId = (evt.d[3] >> 24) & 0xFF;
@@ -1354,18 +1369,16 @@ private void handleEvents(ref InputQueue queue) @nogc nothrow
                 printLine("");
                 break;
             }
-            case 34: // Port Status Change Event
+            case 34:
             {
                 const uint portId = (evt.d[0] & 0xFF);
-                // Clear change bits on the port to re-arm events.
                 const uint portscOffset = 0x400 + 0x10 * (portId - 1);
                 uint portsc = mmioRead32(g_xhci.opBase, portscOffset);
-                // Clear the change bits by writing 1s to them.
-                portsc |= (1u << 1)  // Port Enable/Disable Change
-                       | (1u << 17) // Warm Reset Change
-                       | (1u << 21) // Over-current Change
-                       | (1u << 18) // Port Reset Change
-                       | (1u << 20); // Connect Status Change
+                portsc |= (1u << 1)
+                       | (1u << 17)
+                       | (1u << 21)
+                       | (1u << 18)
+                       | (1u << 20);
                 mmioWrite32(g_xhci.opBase, portscOffset, portsc);
 
                 print("[usb-hid] Port status change port=");
@@ -1386,24 +1399,18 @@ private bool waitForCommandCompletion(ulong cmdPhys, out uint completionCode, ou
     {
         TRB evt;
         if (!dequeueEvent(evt))
-        {
             continue;
-        }
 
         const uint type = (evt.d[3] >> 10) & 0x3F;
-        if (type != 33) // Command Completion Event
-        {
+        if (type != 33)
             continue;
-        }
 
         const ulong cmdPtr = (cast(ulong)evt.d[1] << 32) | (evt.d[0] & 0xFFFF_FFF0);
         completionCode = (evt.d[2] >> 24) & 0xFF;
         slotId = (evt.d[3] >> 24) & 0xFF;
 
         if (cmdPtr == cmdPhys)
-        {
             return true;
-        }
     }
 
     printLine("[usb-hid] Command completion timed out");
@@ -1427,16 +1434,14 @@ private bool submitEnableSlot(out uint slotId) @nogc nothrow
         return false;
     }
 
-    ringDoorbell(0, 0); // ring command doorbell
+    ringDoorbell(0, 0);
 
     uint ccode;
     uint sid;
     if (!waitForCommandCompletion(cmdPhys, ccode, sid))
-    {
         return false;
-    }
 
-    if (ccode != 1) // Success
+    if (ccode != 1)
     {
         printLine("[usb-hid] Enable Slot completion error");
         return false;
@@ -1466,9 +1471,8 @@ private bool submitAddressDevice(uint slotId, ulong inputContextPhys) @nogc noth
     uint ccode;
     uint sid;
     if (!waitForCommandCompletion(cmdPhys, ccode, sid))
-    {
         return false;
-    }
+
     if (ccode != 1 || sid != slotId)
     {
         printLine("[usb-hid] Address Device completion error");
@@ -1479,11 +1483,8 @@ private bool submitAddressDevice(uint slotId, ulong inputContextPhys) @nogc noth
 
 private bool setupEndpointContexts(uint slotId) @nogc nothrow
 {
-    // Allocate device and input contexts (1024 bytes each for simplicity)
     if (g_xhci.dcbaa is null)
-    {
         return false;
-    }
 
     if (g_xhci.deviceContextPhys == 0)
     {
@@ -1504,34 +1505,28 @@ private bool setupEndpointContexts(uint slotId) @nogc nothrow
             printLine("[usb-hid] Input context alloc failed");
             return false;
         }
-        // zeroed by dma_alloc
     }
 
-    // Allocate EP0 transfer ring
     if (!allocateTrbRing(256, g_xhci.ep0Ring))
     {
         printLine("[usb-hid] EP0 ring alloc failed");
         return false;
     }
 
-    // Populate input context: write slot context (offset 0x20) and ep0 context (offset 0x60)
     auto inp = cast(uint*)(cast(ulong)g_xhci.inputContextPhys);
-    // Input Control Context (first 8 dwords) : add slot ctx (bit0) and ep0 ctx (bit1)
     inp[0] = 0x00000003;
-    // Slot context at dword 8 (offset 0x20)
-    inp[8 + 0] = 0; // route string
-    inp[8 + 1] = (1 << 27); // context entries = 1
-    inp[8 + 3] = 0; // port number left 0
+    inp[8 + 0] = 0;
+    inp[8 + 1] = (1 << 27);
+    inp[8 + 3] = 0;
 
-    // EP0 context at dword 32 (offset 0x80) in input context
     size_t ep0Offset = 32;
     const uint epTypeControl = 4;
-    inp[ep0Offset + 0] = (8 << 16) | (3 << 10) | (1 << 0); // max packet 8, error count 3, endpoint state running?
-    inp[ep0Offset + 1] = (epTypeControl << 3); // ep type
+    inp[ep0Offset + 0] = (8 << 16) | (3 << 10) | (1 << 0);
+    inp[ep0Offset + 1] = (epTypeControl << 3);
     const ulong trDeq = g_xhci.ep0Ring.phys | (g_xhci.ep0Ring.cycle & 0x1);
     inp[ep0Offset + 2] = cast(uint)(trDeq & 0xFFFF_FFFF);
     inp[ep0Offset + 3] = cast(uint)(trDeq >> 32);
-    inp[ep0Offset + 4] = 0; // average TRB length
+    inp[ep0Offset + 4] = 0;
 
     return submitAddressDevice(slotId, g_xhci.inputContextPhys);
 }
@@ -1544,23 +1539,17 @@ private bool waitForTransferCompletion(ulong trbPhys, out uint completionCode, o
     {
         TRB evt;
         if (!dequeueEvent(evt))
-        {
             continue;
-        }
 
         const uint type = (evt.d[3] >> 10) & 0x3F;
-        if (type != 32) // Transfer Event
-        {
+        if (type != 32)
             continue;
-        }
 
         const ulong ptr = (cast(ulong)evt.d[1] << 32) | (evt.d[0] & 0xFFFF_FFF0);
         completionCode = (evt.d[2] >> 24) & 0xFF;
         residual = evt.d[2] & 0xFFFFFF;
         if (ptr == trbPhys)
-        {
             return true;
-        }
     }
     return false;
 }
@@ -1596,17 +1585,16 @@ private struct HIDEndpointInfo
     ubyte maxPacket;
 }
 
-private bool controlGetDescriptor(uint slotId, ubyte descType, ubyte descIndex, ushort length, out ubyte* outBuf, out uint outLen) @nogc nothrow
+private bool controlGetDescriptor(uint slotId, ubyte descType, ubyte descIndex,
+                                 ushort length, out ubyte* outBuf, out uint outLen) @nogc nothrow
 {
     outBuf = null;
     outLen = 0;
 
-    // Reset EP0 ring so we place a fresh Setup/Data/Status sequence.
     ringReset(g_xhci.ep0Ring);
 
-    // Setup Stage
-    const ubyte bmRequestType = 0x80; // IN, standard, device
-    const ubyte bRequest = 6;         // GET_DESCRIPTOR
+    const ubyte bmRequestType = 0x80;
+    const ubyte bRequest = 6;
     const ushort wValue = cast(ushort)((descType << 8) | descIndex);
     const ushort wIndex = 0;
 
@@ -1615,57 +1603,44 @@ private bool controlGetDescriptor(uint slotId, ubyte descType, ubyte descIndex, 
     setup.d[1] = (cast(uint)length << 16) | wIndex;
     setup.d[2] = 0;
     const uint trbTypeSetup = 2;
-    setup.d[3] = (trbTypeSetup << 10) | (1 << 6); // IDT
+    setup.d[3] = (trbTypeSetup << 10) | (1 << 6);
     if (!ringPush(g_xhci.ep0Ring, setup))
-    {
         return false;
-    }
 
-    // Data Stage (IN)
     ulong dataPhys;
     auto dataBuf = cast(ubyte*)dma_alloc(length, 64, &dataPhys);
     if (dataBuf is null)
-    {
         return false;
-    }
 
     TRB data;
     data.d[0] = cast(uint)(dataPhys & 0xFFFF_FFFF);
     data.d[1] = cast(uint)(dataPhys >> 32);
     data.d[2] = length;
     const uint trbTypeData = 3;
-    data.d[3] = (trbTypeData << 10) | (1 << 16); // DIR = IN
+    data.d[3] = (trbTypeData << 10) | (1 << 16);
     if (!ringPush(g_xhci.ep0Ring, data))
-    {
         return false;
-    }
 
-    // Status Stage (OUT)
     TRB status;
     status.d[0] = 0;
     status.d[1] = 0;
     status.d[2] = 0;
     const uint trbTypeStatus = 4;
-    status.d[3] = (trbTypeStatus << 10); // DIR = OUT
+    status.d[3] = (trbTypeStatus << 10);
 
     const ulong statusPhys = g_xhci.ep0Ring.phys + cast(ulong)(g_xhci.ep0Ring.enqueueIndex * TRB.sizeof);
     if (!ringPush(g_xhci.ep0Ring, status))
-    {
         return false;
-    }
 
-    ringDoorbell(slotId, 1); // EP0
+    ringDoorbell(slotId, 1);
 
     uint ccode;
     uint residual;
     if (!waitForTransferCompletion(statusPhys, ccode, residual))
-    {
         return false;
-    }
+
     if (ccode != 1)
-    {
         return false;
-    }
 
     const uint transferred = (length > residual) ? (length - residual) : length;
     outBuf = dataBuf;
@@ -1678,14 +1653,8 @@ private bool fetchDeviceDescriptor(uint slotId, out USBDeviceDescriptor desc) @n
     desc = USBDeviceDescriptor.init;
     ubyte* buf;
     uint len;
-    if (!controlGetDescriptor(slotId, 1, 0, 18, buf, len))
-    {
-        return false;
-    }
-    if (len < 18)
-    {
-        return false;
-    }
+    if (!controlGetDescriptor(slotId, 1, 0, 18, buf, len)) return false;
+    if (len < 18) return false;
 
     desc.bLength = buf[0];
     desc.bDescriptorType = buf[1];
@@ -1704,7 +1673,8 @@ private bool fetchDeviceDescriptor(uint slotId, out USBDeviceDescriptor desc) @n
     return true;
 }
 
-private bool fetchConfigurationDescriptor(uint slotId, ubyte configIndex, out ubyte* cfgBuf, out uint cfgLen) @nogc nothrow
+private bool fetchConfigurationDescriptor(uint slotId, ubyte configIndex,
+                                         out ubyte* cfgBuf, out uint cfgLen) @nogc nothrow
 {
     cfgBuf = null;
     cfgLen = 0;
@@ -1712,31 +1682,23 @@ private bool fetchConfigurationDescriptor(uint slotId, ubyte configIndex, out ub
     ubyte* headBuf;
     uint headLen;
     if (!controlGetDescriptor(slotId, 2, configIndex, 9, headBuf, headLen))
-    {
         return false;
-    }
     if (headLen < 9)
-    {
         return false;
-    }
 
     const uint totalLen = readLe16(headBuf + 2);
-    const uint cappedLen = (totalLen > 512) ? 512 : totalLen; // avoid pathological sizes
+    const uint cappedLen = (totalLen > 512) ? 512 : totalLen;
 
     if (!controlGetDescriptor(slotId, 2, configIndex, cast(ushort)cappedLen, cfgBuf, cfgLen))
-    {
         return false;
-    }
+
     return cfgLen >= 9;
 }
 
 private bool parseHidFromConfig(const ubyte* buf, uint len, out HIDEndpointInfo info) @nogc nothrow
 {
     info = HIDEndpointInfo.init;
-    if (buf is null || len < 9)
-    {
-        return false;
-    }
+    if (buf is null || len < 9) return false;
 
     HIDDeviceType currentType = HIDDeviceType.none;
     uint index = 0;
@@ -1744,36 +1706,24 @@ private bool parseHidFromConfig(const ubyte* buf, uint len, out HIDEndpointInfo 
     {
         const ubyte bLength = buf[index];
         const ubyte bDescriptorType = buf[index + 1];
-        if (bLength == 0 || index + bLength > len)
-        {
-            break;
-        }
+        if (bLength == 0 || index + bLength > len) break;
 
         if (bDescriptorType == 4 && bLength >= 9)
         {
-            // Interface descriptor
             const ubyte interfaceClass = buf[index + 5];
             const ubyte interfaceSub = buf[index + 6];
             const ubyte protocol = buf[index + 7];
-            if (interfaceClass == 0x03) // HID
+            if (interfaceClass == 0x03)
             {
                 if (interfaceSub == 0x01 && protocol == 0x02)
-                {
                     currentType = HIDDeviceType.mouse;
-                }
                 else
-                {
                     currentType = HIDDeviceType.keyboard;
-                }
             }
-            else
-            {
-                currentType = HIDDeviceType.none;
-            }
+            else currentType = HIDDeviceType.none;
         }
         else if (bDescriptorType == 5 && bLength >= 7 && currentType != HIDDeviceType.none)
         {
-            // Endpoint descriptor
             const ubyte epAddr = buf[index + 2];
             const ubyte attributes = buf[index + 3];
             const ubyte maxPacket = buf[index + 4];
@@ -1798,138 +1748,91 @@ private bool parseHidFromConfig(const ubyte* buf, uint len, out HIDEndpointInfo 
 
 private void parseKeyboardReportFromBuffer(const ubyte* buf, uint len, ref InputQueue queue) @nogc nothrow
 {
-    if (len < 8)
-    {
-        return;
-    }
+    if (len < 8) return;
     HIDKeyboardReport report = HIDKeyboardReport.init;
     report.modifiers = buf[0];
-    // buf[1] is reserved
     foreach (i; 0 .. report.keycodes.length)
-    {
         report.keycodes[i] = buf[2 + i];
-    }
     processKeyboardReport(report, queue);
 }
 
 private void parseMouseReportFromBuffer(const ubyte* buf, uint len, ref InputQueue queue) @nogc nothrow
 {
-    if (len < 3)
-    {
-        return;
-    }
+    if (len < 3) return;
     HIDMouseReport report = HIDMouseReport.init;
     report.buttons = cast(ubyte)(buf[0] & 0x07);
     report.deltaX = cast(byte)buf[1];
     report.deltaY = cast(byte)buf[2];
-    if (len > 3)
-    {
-        report.deltaWheel = cast(byte)buf[3];
-    }
+    if (len > 3) report.deltaWheel = cast(byte)buf[3];
     processMouseReport(report, queue, g_fb.width, g_fb.height);
 }
 
-private void parseHidTransfer(ulong trbPtr, uint residual, uint endpointId, uint slotId, ref InputQueue queue) @nogc nothrow
+private void parseHidTransfer(ulong trbPtr, uint residual, uint endpointId,
+                             uint slotId, ref InputQueue queue) @nogc nothrow
 {
     auto trb = cast(TRB*)trbPtr;
-    if (trb is null)
-    {
-        return;
-    }
+    if (trb is null) return;
 
     const uint trbType = (trb.d[3] >> 10) & 0x3F;
-    // Normal TRB (1) or Data Stage (3) carry buffer pointers we can parse.
-    if (trbType != 1 && trbType != 3)
-    {
-        return;
-    }
+    if (trbType != 1 && trbType != 3) return;
 
     const ulong bufPhys = (cast(ulong)trb.d[1] << 32) | (trb.d[0] & 0xFFFF_FFF0);
-    const uint requestedLen = trb.d[2] & 0x1FFFF; // bits 0-16
+    const uint requestedLen = trb.d[2] & 0x1FFFF;
     const uint actualLen = (requestedLen > residual) ? (requestedLen - residual) : requestedLen;
-    if (bufPhys == 0 || actualLen == 0)
-    {
-        return;
-    }
+    if (bufPhys == 0 || actualLen == 0) return;
 
     auto buf = cast(const ubyte*)bufPhys;
 
-    // Prefer device type derived from endpoint table.
     HIDDeviceType devType = HIDDeviceType.none;
     if (auto dev = findDeviceByEndpoint(slotId, endpointId))
-    {
         devType = dev.deviceType;
-    }
 
+    // Heuristic fallback if endpoint info missing.
     if (devType == HIDDeviceType.keyboard || actualLen >= 8)
-    {
         parseKeyboardReportFromBuffer(buf, actualLen, queue);
-    }
     else if (devType == HIDDeviceType.mouse || actualLen >= 3)
-    {
         parseMouseReportFromBuffer(buf, actualLen, queue);
-    }
 }
 
 private bool submitControlTransferGetDescriptor(uint slotId) @nogc nothrow
 {
-    // Build Setup -> Data (IN) -> Status (OUT) TRBs on EP0 ring
-    const ubyte bmRequestType = 0x80; // device-to-host, standard, device
-    const ubyte bRequest = 6;         // GET_DESCRIPTOR
-    const ushort wValue = 0x0100;     // DEVICE descriptor
+    const ubyte bmRequestType = 0x80;
+    const ubyte bRequest = 6;
+    const ushort wValue = 0x0100;
     const ushort wIndex = 0;
     const ushort wLength = 18;
 
-    // Setup Stage
     TRB setup;
     setup.d[0] = (cast(uint)wValue << 16) | (cast(uint)bRequest << 8) | bmRequestType;
     setup.d[1] = (cast(uint)wLength << 16) | wIndex;
     setup.d[2] = 0;
     const uint trbTypeSetup = 2;
-    setup.d[3] = (trbTypeSetup << 10) | (1 << 6); // IDT
+    setup.d[3] = (trbTypeSetup << 10) | (1 << 6);
+    if (!ringPush(g_xhci.ep0Ring, setup)) return false;
 
-    if (!ringPush(g_xhci.ep0Ring, setup))
-    {
-        return false;
-    }
-
-    // Data Stage (IN)
     ulong dataPhys;
     auto dataBuf = cast(ubyte*)dma_alloc(wLength, 64, &dataPhys);
-    if (dataBuf is null)
-    {
-        return false;
-    }
+    if (dataBuf is null) return false;
 
     TRB data;
     data.d[0] = cast(uint)(dataPhys & 0xFFFF_FFFF);
     data.d[1] = cast(uint)(dataPhys >> 32);
     data.d[2] = wLength;
     const uint trbTypeData = 3;
-    data.d[3] = (trbTypeData << 10) | (1 << 16); // DIR = IN
-    if (!ringPush(g_xhci.ep0Ring, data))
-    {
-        return false;
-    }
+    data.d[3] = (trbTypeData << 10) | (1 << 16);
+    if (!ringPush(g_xhci.ep0Ring, data)) return false;
 
-    // Status Stage (OUT)
     TRB status;
-    status.d[0] = 0;
-    status.d[1] = 0;
-    status.d[2] = 0;
+    status.d[0] = status.d[1] = status.d[2] = 0;
     const uint trbTypeStatus = 4;
-    status.d[3] = (trbTypeStatus << 10); // DIR = OUT
+    status.d[3] = (trbTypeStatus << 10);
 
     const ulong statusPhys = g_xhci.ep0Ring.phys + cast(ulong)(g_xhci.ep0Ring.enqueueIndex * TRB.sizeof);
-    if (!ringPush(g_xhci.ep0Ring, status))
-    {
-        return false;
-    }
+    if (!ringPush(g_xhci.ep0Ring, status)) return false;
 
-    ringDoorbell(slotId, 1); // EP0
+    ringDoorbell(slotId, 1);
 
-    uint ccode;
-    uint residual;
+    uint ccode, residual;
     if (!waitForTransferCompletion(statusPhys, ccode, residual))
     {
         printLine("[usb-hid] Control transfer timed out");
@@ -1946,6 +1849,7 @@ private bool submitControlTransferGetDescriptor(uint slotId) @nogc nothrow
     printLine("[usb-hid] Device descriptor received");
     return true;
 }
+
 private struct ERSTEntry
 {
     ulong ringBase;
@@ -1957,7 +1861,7 @@ private struct XHCIRing
 {
     TRB*  trbs;
     ulong phys;
-    uint  size;          // number of TRBs
+    uint  size;
     uint  enqueueIndex;
     uint  cycle;
 }
@@ -2000,51 +1904,48 @@ private const(char)[] controllerTypeName(USBControllerType type) @nogc nothrow p
 {
     final switch (type)
     {
-        case USBControllerType.none:
-            return "none";
-        case USBControllerType.uhci:
-            return "UHCI (USB 1.1)";
-        case USBControllerType.ehci:
-            return "EHCI (USB 2.0)";
-        case USBControllerType.xhci:
-            return "XHCI (USB 3.0+)";
+        case USBControllerType.none: return "none";
+        case USBControllerType.uhci: return "UHCI (USB 1.1)";
+        case USBControllerType.ehci: return "EHCI (USB 2.0)";
+        case USBControllerType.xhci: return "XHCI (USB 3.0+)";
     }
 }
 
-// Global USB HID subsystem instance
+
+// --------------------------------------------------------------------------
+// Public API
+// --------------------------------------------------------------------------
+
 __gshared USBHIDSubsystem g_usbHID;
 
-/// Initialize the USB HID subsystem
 void initializeUSBHID() @nogc nothrow
 {
     g_usbHID.initialize();
 }
 
-/// Poll all USB HID devices and fill the input queue
 void pollUSBHID(ref InputQueue queue) @nogc nothrow
 {
     g_usbHID.poll(queue);
 }
 
-/// Check if USB HID is available
 bool usbHIDAvailable() @nogc nothrow
 {
+    // “Available” now means the subsystem has been set up (USB and/or PS/2).
+    // Higher layers should use usbHIDPointerPresent/KeyboardPresent to know
+    // whether any real device is live.
     return g_usbHID.initialized;
 }
 
-/// Report whether a pointer-class HID device (mouse, touchpad, etc.) is online
 bool usbHIDPointerPresent() @nogc nothrow
 {
     return g_usbHID.pointerPresent;
 }
 
-/// Report whether a touch digitizer was enumerated
 bool usbHIDTouchPresent() @nogc nothrow
 {
     return g_usbHID.touchPresent;
 }
 
-/// Report whether a keyboard HID device was discovered
 bool usbHIDKeyboardPresent() @nogc nothrow
 {
     return g_usbHID.keyboardPresent;

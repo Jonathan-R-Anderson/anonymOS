@@ -6,6 +6,8 @@ import minimal_os.display.font_stack : activeFontStack;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToBuffer;
 import minimal_os.display.gpu_accel : acceleratedPresentBuffer;
+import minimal_os.console : printLine, printHex, printUnsigned, print;
+import std.conv : to;
 
 nothrow:
 @nogc:
@@ -205,22 +207,40 @@ struct Compositor
 
     void present()
     {
-        import minimal_os.console : printLine;
+        import minimal_os.console : printLine, printUnsigned;
+
         printLine("Compositor.present start");
-        if (!ready || !framebufferAvailable())
+
+        // Evaluate framebuffer availability once so the value matches what we print
+        const bool fbAvail = framebufferAvailable();
+        printLine("Compositor.present after fbAvail");
+
+        if (!ready || !fbAvail)
         {
+            // Use printLine only (print() may be buffered/stubbed in this environment)
+            printLine("Compositor.present not ready:");
+            printUnsigned(ready ? 1 : 0);
+            printLine(" ready flag");
+            printUnsigned(fbAvail ? 1 : 0);
+            printLine(" framebufferAvailable");
             return;
         }
 
+        printLine("Compositor.present before if");
+
         if (acceleratedPresentBuffer(buffer, width, height, pitch))
         {
+            printLine("Compositor.present accelerated");
             return;
         }
+
+        printLine("Compositor.present checking 32bpp fast path");
 
         // Fast path for 32bpp
         auto fb = framebufferDescriptor();
         if (fb.addr !is null && fb.bpp == 32 && fb.width == width && fb.height == height)
         {
+            printLine("Compositor.present entering 32bpp fast path");
             const bool isBGR = fb.isBGR;
             uint* fbPtr = cast(uint*)fb.addr;
             const uint fbPitchPixels = fb.pitch / 4; // pitch is bytes, we need pixels for uint* pointer math
@@ -232,7 +252,6 @@ struct Compositor
 
                 if (!isBGR)
                 {
-                    // Direct copy
                     for (uint x = 0; x < width; ++x)
                     {
                         dstRow[x] = srcRow[x];
@@ -240,7 +259,6 @@ struct Compositor
                 }
                 else
                 {
-                    // Swap R/B
                     for (uint x = 0; x < width; ++x)
                     {
                         const uint c = srcRow[x];
@@ -248,10 +266,12 @@ struct Compositor
                     }
                 }
             }
+            printLine("Compositor.present copy complete");
             return;
         }
 
-        // Fallback
+        // Fallback (still disabled)
+        /*
         foreach (y; 0 .. height)
         {
             foreach (x; 0 .. width)
@@ -259,7 +279,12 @@ struct Compositor
                 framebufferPutPixel(x, y, buffer[y * pitch + x]);
             }
         }
+        */
+        printLine("Compositor.present fallback complete");
     }
+
+
+
 }
 
 private __gshared Compositor g_compositor;
@@ -507,17 +532,32 @@ void renderWorkspaceComposited(const WindowManager* manager)
         return;
     }
 
+    import minimal_os.console : printLine;
+
     // drawWallpaperToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
     g_compositor.clear(0xFF202020);
 
+    printLine("[compositor] cleared buffer");
+
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);
+    printLine("[compositor] taskbar drawn");
 
+    /*
     WindowEntry[WINDOW_MANAGER_CAPACITY] ordered;
     const size_t visibleCount = collectWindows(manager, ordered);
-    drawWindows(ordered[0 .. visibleCount], taskbarHeight);
+    import minimal_os.console : printUnsigned;
+    print("[compositor] windows pending: ");
+    printUnsigned(visibleCount);
+    printLine("");
+    */
+    // Skip window blitting for now to avoid potential stalls; just present the cleared buffer + taskbar.
+    // drawWindows(ordered[0 .. visibleCount], taskbarHeight);
+    printLine("[compositor] windows drawing skipped");
 
     g_compositor.present();
+    // printLine("Skipping present for test");
+    printLine("[compositor] present done");
 }
 
 private size_t collectWindows(const WindowManager* manager, ref WindowEntry[WINDOW_MANAGER_CAPACITY] ordered)
@@ -627,6 +667,9 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
         return;
     }
 
+    import minimal_os.console : print, printLine, printUnsigned, printHex;
+    static uint windowLogs;
+
     auto canvas = compositorCanvas();
 
     const uint titleHeight = 24;
@@ -653,7 +696,17 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
         const uint contentY = window.y + titleHeight;
         const uint contentHeight = window.height - titleHeight;
         g_compositor.fillRect(window.x, contentY, window.width, contentHeight, contentFill);
-        blitSurface(findSurface(window.surfaceId), window.x, contentY, window.width, contentHeight);
+        if (windowLogs < 4)
+        {
+            print("[compositor] window surface "); printUnsigned(window.surfaceId); print(" size "); printUnsigned(window.width); print("x"); printUnsigned(window.height); printLine("");
+        }
+        // Temporarily skip blitting window content to avoid stalls if surfaces are missing.
+        // blitSurface(findSurface(window.surfaceId), window.x, contentY, window.width, contentHeight);
+    }
+
+    if (windowLogs < 4)
+    {
+        ++windowLogs;
     }
 }
 

@@ -1,13 +1,30 @@
-# Ignore build artifacts
-#build/
-#*.iso
-bin/
-dist-newstyle/
-qemu.log
+# Build artifacts
+build/
+build-builtins/
+build-x11/
+
+# Python cache
 __pycache__/
-node_modules/
-!third_party/posix/
-!third_party/posix/**
-cfwallpaper.png
-cfwallpaper.gif
-src/minimal_os/display/generated_wallpaper.d
+*.pyc
+*.pyo
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Refactoring scripts (temporary)
+refactor_imports.py
+update_syscall_imports.py
+fix_posix_mixin.py

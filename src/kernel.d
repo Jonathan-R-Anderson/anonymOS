@@ -1,4 +1,4 @@
-module minimal_os.main;
+module anonymos.main;
 
 /// Expose the kernel entry point and runtime helpers.
-public import minimal_os.kernel.kernel;
+public import anonymos.kernel.kernel;

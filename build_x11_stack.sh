@@ -75,7 +75,6 @@ BINARIES=(
     "xauth"
     "xrdb"
     "setxkbmap"
-    "xterm"
     "sh"
     "bash"
     "ls"
@@ -102,6 +101,15 @@ for bin in "${BINARIES[@]}"; do
     fi
 done
 
+# Include locally built st terminal if present
+if [ -f "$ROOT/st/st" ]; then
+  echo "[*] Including local st terminal"
+  HOST_BINARIES+=("$ROOT/st/st")
+  cp "$ROOT/st/st" "$STAGING_DIR/bin/"
+else
+  echo "Warning: st binary not found at $ROOT/st/st"
+fi
+
 # Copy dependencies
 python3 "$OUT_DIR/copy_deps.py" "$STAGING_DIR/lib" "${HOST_BINARIES[@]}"
 
@@ -116,15 +124,38 @@ if [ -d "/usr/share/X11" ]; then
     cp -r /usr/share/X11/locale "$STAGING_DIR/share/X11/" 2>/dev/null || true
 fi
 
-# i3 config
-if [ -d "/etc/i3" ]; then
-    mkdir -p "$STAGING_DIR/etc/i3"
-    cp -r /etc/i3/* "$STAGING_DIR/etc/i3/"
-fi
+# i3 config (minimal, with launcher shortcut for st)
+mkdir -p "$STAGING_DIR/etc/i3"
+cat <<'I3CONF' > "$STAGING_DIR/etc/i3/config"
+set $mod Mod4
+font pango:monospace 10
+
+floating_modifier $mod
+
+# launch terminal
+bindsym $mod+Return exec --no-startup-id /bin/st
+
+# basic navigation
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+q kill
+
+# exit i3 (logs out of the session)
+bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'Exit i3?' -B 'Yes' 'i3-msg exit'"
+I3CONF
 
 # Create a basic xinitrc
 mkdir -p "$STAGING_DIR/etc/X11/xinit"
-cat <<XINITRC > "$STAGING_DIR/etc/X11/xinit/xinitrc"
+cat <<'XINITRC' > "$STAGING_DIR/etc/X11/xinit/xinitrc"
 #!/bin/sh
 exec i3
 XINITRC

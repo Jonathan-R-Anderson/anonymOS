@@ -1,0 +1,30 @@
+{
+    "hostname": "minimal-os",
+    "timezone": "UTC",
+    "enableNetworking": true,
+    "enableSSH": true,
+    "maxUsers": 64,
+    "maxProcesses": 1024,
+    "maxMemoryMB": 4096,
+    "kernelDebug": false,
+    "kernelSecureBoot": true,
+    "enforceCapabilities": true,
+    "auditLogging": true,
+    "auditLogPath": "/writable/system-data/var/log/audit.log",
+    "security": {
+        "defaultSandboxLevel": "standard",
+        "allowUntrustedApps": false,
+        "requireSignedKernel": true
+    },
+    "network": {
+        "defaultInterface": "eth0",
+        "enableIPv6": true,
+        "enableFirewall": true
+    },
+    "storage": {
+        "enableSnapshots": true,
+        "snapshotRetention": 10,
+        "autoSnapshot": true,
+        "snapshotInterval": 86400
+    }
+}

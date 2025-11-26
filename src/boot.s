@@ -16,6 +16,9 @@
 
 .set CODE_SEG,      0x08
 .set DATA_SEG,      0x10
+.set USER_CODE_SEG, 0x18
+.set USER_DATA_SEG, 0x20
+.set TSS_SEG,       0x28
 .set IA32_EFER,     0xC0000080
 .set IA32_FS_BASE,  0xC0000100
 .set CR0_PG,        0x80000000
@@ -50,6 +53,7 @@ stack_top:
     .extern kmain
     .extern handleInvalidOpcode
     .extern __initial_tcb
+    .extern kernel_rsp
 
 _start:
     cli
@@ -76,7 +80,9 @@ _start:
     # Enable long mode (LME) in EFER.
     mov $IA32_EFER, %ecx
     rdmsr
+    orl $0x00000001, %eax       # set SCE (enable syscall/sysret)
     orl $0x00000100, %eax       # set LME
+    orl $0x00000800, %eax       # set NXE
     wrmsr
 
     # Enable paging (CR0.PG) while PE is already set by GRUB.
@@ -102,6 +108,8 @@ long_mode_entry:
 
     # 64-bit stack (must be in identity-mapped region).
     leaq stack_top(%rip), %rsp
+    mov %rsp, kernel_rsp(%rip)
+    mov %rsp, tss64_rsp0(%rip)
     xor %rbp, %rbp
 
     # --- TLS / FS base setup (can be commented out if debugging) ---
@@ -132,6 +140,22 @@ long_mode_entry:
     # Load multiboot args into 64-bit calling convention (edi, esi).
     movl saved_magic(%rip), %edi
     movl saved_info(%rip),  %esi
+
+    # Initialize TSS descriptor base address at runtime
+    leaq tss64(%rip), %rax
+    leaq gdt64_tss(%rip), %rdi
+    mov %ax, 2(%rdi)        # Base 0-15
+    shr $16, %rax
+    mov %al, 4(%rdi)        # Base 16-23
+    shr $8, %rax
+    mov %al, 7(%rdi)        # Base 24-31
+    shr $8, %rax
+    mov %eax, 8(%rdi)       # Base 32-63
+
+    # Install the task-state segment so privilege transitions land on a
+    # known-good kernel stack.
+    mov $TSS_SEG, %ax
+    ltr %ax
 
     # Call into the C/D kernel.
     call kmain
@@ -452,6 +476,15 @@ loadIDT:
 
 .size loadIDT, . - loadIDT
 
+    .global updateTssRsp0
+    .type updateTssRsp0, @function
+# void updateTssRsp0(uint64_t rsp0)
+updateTssRsp0:
+    mov %rdi, tss64_rsp0(%rip)
+    ret
+
+.size updateTssRsp0, . - updateTssRsp0
+
     .global stack_top
 
     .section .data
@@ -463,6 +496,28 @@ saved_info:
 
     .section .data
     .balign 16
+tss64:
+    .long 0
+tss64_rsp0:
+    .quad stack_top
+    .quad 0                    # rsp1
+    .quad 0                    # rsp2
+    .quad 0                    # reserved
+    .quad 0                    # ist1
+    .quad 0                    # ist2
+    .quad 0                    # ist3
+    .quad 0                    # ist4
+    .quad 0                    # ist5
+    .quad 0                    # ist6
+    .quad 0                    # ist7
+    .quad 0                    # reserved
+    .word 0                    # reserved
+tss64_iomap:
+    .word tss64_end - tss64    # iomap base set past TSS to disable bitmap
+tss64_end:
+
+    .section .data
+    .balign 16
 fpu_save_area:
     .space 512
 
@@ -471,6 +526,16 @@ gdt64:
     .quad 0x0000000000000000      # null descriptor
     .quad 0x00AF9A000000FFFF      # 64-bit code segment
     .quad 0x00AF92000000FFFF      # 64-bit data segment
+    .quad 0x00AFFA000000FFFF      # user 64-bit code segment (DPL=3)
+    .quad 0x00AFF2000000FFFF      # user data segment (DPL=3)
+gdt64_tss:
+    .word tss64_end - tss64 - 1   # limit low
+    .word 0                       # base low (runtime init)
+    .byte 0                       # base middle (runtime init)
+    .byte 0x89                    # type=available 64-bit TSS, present
+    .byte ((tss64_end - tss64 - 1) >> 16) & 0xFF # limit high
+    .byte 0                       # base high (runtime init)
+    .quad 0                       # base upper dword (runtime init)
 gdt64_end:
 
 gdt64_descriptor:

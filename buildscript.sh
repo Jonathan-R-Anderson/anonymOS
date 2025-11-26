@@ -4,13 +4,13 @@ set -euo pipefail
 # ===================== Config (override via env) =====================
 ROOT="${ROOT:-$PWD}"
 OUT_DIR="${OUT_DIR:-build}"
-LLVM_DIR="${LLVM_DIR:-$ROOT/llvm-project}"
+LLVM_DIR="${LLVM_DIR:-$ROOT/3rdparty/llvm-project}"
 SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build-builtins}"
-SH_ROOT="${SH_ROOT:-$ROOT/-sh}"
+SH_ROOT="${SH_ROOT:-$ROOT/3rdparty/-sh}"
 SH_TARGET="${SH_TARGET:-lfe-sh}"
 SHELL_DC="${SHELL_DC:-ldc2}"
-POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/src/minimal_os/kernel/posixutils}"
+POSIXUTILS_ROOT="${POSIXUTILS_ROOT:-$ROOT/src/anonymos/kernel/posixutils}"
 POSIXUTILS_DC="${POSIXUTILS_DC:-$SHELL_DC}"
 DESKTOP_ASSETS_DIR="${DESKTOP_ASSETS_DIR:-$ROOT/assets/desktop}"
 DESKTOP_STAGING_DIR="${DESKTOP_STAGING_DIR:-$OUT_DIR/desktop-stack}"
@@ -26,7 +26,7 @@ DESKTOP_ETC_DIR="$DESKTOP_STAGING_DIR/etc"
 : "${SYSROOT:=$HOME/sysroots/$TARGET}"
 
 # Kernel sources / outputs
-KERNEL_D="${KERNEL_D:-src/minimal_os/kernel/kernel.d}"
+KERNEL_D="${KERNEL_D:-src/anonymos/kernel/kernel.d}"
 STARTUP_SRC="${STARTUP_SRC:-src/boot.s}"
 LINKER_SCRIPT="${LINKER_SCRIPT:-linker.ld}"
 KERNEL_O="$OUT_DIR/kernel.o"
@@ -53,8 +53,8 @@ CROSS_TOOLCHAIN_DIR="${CROSS_TOOLCHAIN_DIR:-}"
 # build expects to find the sources under opt/toolchain/dmd when verifying the
 # toolchain build.  Default to the real tree at $ROOT/dmd when present.  Callers
 # can still override this via the DMD_SOURCE_DIR environment variable.
-if [ -z "${DMD_SOURCE_DIR:-}" ] && [ -d "$ROOT/dmd" ]; then
-  DMD_SOURCE_DIR="$ROOT/dmd"
+if [ -z "${DMD_SOURCE_DIR:-}" ] && [ -d "$ROOT/3rdparty/dmd" ]; then
+  DMD_SOURCE_DIR="$ROOT/3rdparty/dmd"
 fi
 # Destination within the ISO for the DMD sources (relative to the staging dir).
 DMD_ISO_DEST="${DMD_ISO_DEST:-$ISO_TOOLCHAIN_PATH/dmd}"
@@ -234,54 +234,59 @@ DFLAGS+=" -d-version=MinimalOsFreestanding -disable-red-zone"
 # D objects (kernel + dependencies + userland)
 KERNEL_SOURCES=(
   "$KERNEL_D"
-  "src/minimal_os/kernel/memory.d"
-  "src/minimal_os/kernel/heap.d"
-  "src/minimal_os/kernel/cpu.d"
-  "src/minimal_os/kernel/interrupts.d"
-  "src/minimal_os/kernel/posixbundle.d"
-  "src/minimal_os/kernel/compiler_builder_entry.d"
-  "src/minimal_os/kernel/shell_integration.d"
-  "src/minimal_os/kernel/exceptions.d"
-  "src/minimal_os/kernel/dma.d"
-  "src/minimal_os/console.d"
-  "src/minimal_os/serial.d"
-  "src/minimal_os/hardware.d"
-  "src/minimal_os/display/canvas.d"
-  "src/minimal_os/display/font_stack.d"
-  "src/minimal_os/display/bitmap_font.d"
-  "src/minimal_os/display/framebuffer.d"
-  "src/minimal_os/display/input_pipeline.d"
-  "src/minimal_os/display/input_handler.d"
-  "src/minimal_os/display/wallpaper_types.d"
-  "src/minimal_os/display/wallpaper_builtin.d"
-  "src/minimal_os/display/wallpaper.d"
-  "src/minimal_os/display/splash.d"
-  "src/minimal_os/display/window_manager/manager.d"
-  "src/minimal_os/display/window_manager/renderer.d"
-  "src/minimal_os/display/compositor.d"
-  "src/minimal_os/display/desktop.d"
-  "src/minimal_os/display/server.d"
-  "src/minimal_os/display/x11_stack.d"
-  "src/minimal_os/display/modesetting.d"
-  "src/minimal_os/display/gpu_accel.d"
-  "src/minimal_os/drivers/pci.d"
-  "src/minimal_os/drivers/usb_hid.d"
-  "src/minimal_os/drivers/hid_keyboard.d"
-  "src/minimal_os/drivers/hid_mouse.d"
-  "src/minimal_os/compiler.d"
-  "src/minimal_os/fallback_shell.d"
-  "src/minimal_os/posix.d"
-  "src/minimal_os/multiboot.d"
-  "src/minimal_os/kernel/posixutils/context.d"
-  "src/minimal_os/kernel/posixutils/registry.d"
-  "src/minimal_os/toolchain.d"
+  "src/anonymos/kernel/memory.d"
+  "src/anonymos/kernel/heap.d"
+  "src/anonymos/kernel/cpu.d"
+  "src/anonymos/kernel/interrupts.d"
+  "src/anonymos/kernel/posixbundle.d"
+  "src/anonymos/kernel/compiler_builder_entry.d"
+  "src/anonymos/kernel/shell_integration.d"
+  "src/anonymos/kernel/exceptions.d"
+  "src/anonymos/kernel/dma.d"
+  "src/anonymos/console.d"
+  "src/anonymos/serial.d"
+  "src/anonymos/hardware.d"
+  "src/anonymos/display/canvas.d"
+  "src/anonymos/display/font_stack.d"
+  "src/anonymos/display/bitmap_font.d"
+  "src/anonymos/display/framebuffer.d"
+  "src/anonymos/display/input_pipeline.d"
+  "src/anonymos/display/input_handler.d"
+  "src/anonymos/display/wallpaper_types.d"
+  "src/anonymos/display/wallpaper_builtin.d"
+  "src/anonymos/display/wallpaper.d"
+  "src/anonymos/display/splash.d"
+  "src/anonymos/display/window_manager/manager.d"
+  "src/anonymos/display/window_manager/renderer.d"
+  "src/anonymos/display/compositor.d"
+  "src/anonymos/display/desktop.d"
+  "src/anonymos/display/server.d"
+  "src/anonymos/display/x11_stack.d"
+  "src/anonymos/display/modesetting.d"
+  "src/anonymos/display/gpu_accel.d"
+  "src/anonymos/drivers/pci.d"
+  "src/anonymos/drivers/usb_hid.d"
+  "src/anonymos/drivers/hid_keyboard.d"
+  "src/anonymos/drivers/hid_mouse.d"
+  "src/anonymos/compiler.d"
+  "src/anonymos/fallback_shell.d"
+  "src/anonymos/syscalls/posix.d"
+  "src/anonymos/multiboot.d"
+  "src/anonymos/kernel/posixutils/context.d"
+  "src/anonymos/kernel/posixutils/registry.d"
+  "src/anonymos/toolchain.d"
   "src/sh_metadata.d"
-  "src/minimal_os/userland.d"
-  "src/minimal_os/fs.d"
-  "src/minimal_os/kernel/linux_syscalls.d"
-  "src/minimal_os/kernel/syscalls.d"
-  "src/minimal_os/elf.d"
-  "src/minimal_os/objects.d"
+  "src/anonymos/userland.d"
+  "src/anonymos/fs.d"
+  "src/anonymos/syscalls/linux.d"
+  "src/anonymos/syscalls/syscalls.d"
+  "src/anonymos/elf.d"
+  "src/anonymos/objects.d"
+  "src/anonymos/kernel/pagetable.d"
+  "src/anonymos/kernel/usermode.d"
+  "src/anonymos/kernel/physmem.d"
+  "src/anonymos/kernel/vm_map.d"
+  "src/anonymos/security_config.d"
 )
 
 # Ensure shell integration is always present (kmain registers compiler-builder).
@@ -296,14 +301,14 @@ ensure_kernel_source() {
   KERNEL_SOURCES+=("$needle")
 }
 
-ensure_kernel_source "src/minimal_os/kernel/shell_integration.d"
+ensure_kernel_source "src/anonymos/kernel/shell_integration.d"
 
 KERNEL_OBJECTS=()
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
   echo "[*] Compiling D source: $source -> $obj"
-  ldc2 -I. -Isrc -J. -Jsrc/minimal_os -mtriple="$TARGET" -betterC $DFLAGS \
+  ldc2 -I. -Isrc -J. -Jsrc/anonymos -mtriple="$TARGET" -betterC $DFLAGS \
        -c "$source" -of="$obj"
   KERNEL_OBJECTS+=("$obj")
 done
@@ -360,6 +365,14 @@ else
   echo "[!] Skipping shell build: $SH_ROOT/src missing" >&2
 fi
 
+# ===================== Build zsh and oh-my-zsh =====================
+if [ -x "$ROOT/tools/build_zsh.sh" ]; then
+  echo "[*] Building zsh..."
+  "$ROOT/tools/build_zsh.sh"
+else
+  echo "[!] tools/build_zsh.sh not found or not executable" >&2
+fi
+
 # ===================== Bundle POSIX utilities into shell staging =====================
 if [ -d "$POSIXUTILS_BIN_DIR" ]; then
   mkdir -p "$OUT_DIR/shell/bin"
@@ -401,6 +414,30 @@ if [ -d "$KERNEL_POSIX_STAGING" ]; then
   rm -rf "$POSIX_KERNEL_DEST"
   mkdir -p "$POSIX_KERNEL_DEST"
   cp -a "$KERNEL_POSIX_STAGING/." "$POSIX_KERNEL_DEST/"
+fi
+
+# Copy zsh artifacts
+ZSH_DIST="$OUT_DIR/zsh-dist"
+if [ -d "$ZSH_DIST" ]; then
+  echo "[*] Bundling zsh into ISO..."
+  mkdir -p "$ISO_STAGING_DIR/bin"
+  mkdir -p "$ISO_STAGING_DIR/etc"
+  mkdir -p "$ISO_STAGING_DIR/usr/share"
+  
+  if [ -f "$ZSH_DIST/bin/zsh" ]; then
+    cp "$ZSH_DIST/bin/zsh" "$ISO_STAGING_DIR/bin/"
+  fi
+  
+  if [ -d "$ZSH_DIST/share/oh-my-zsh" ]; then
+    # Strip git metadata to avoid permission issues with packed objects
+    rm -rf "$ZSH_DIST/share/oh-my-zsh/.git" \
+           "$ZSH_DIST/share/oh-my-zsh/ohmyzsh/.git"
+    cp -r "$ZSH_DIST/share/oh-my-zsh" "$ISO_STAGING_DIR/usr/share/"
+  fi
+  
+  if [ -f "$ZSH_DIST/etc/zshrc" ]; then
+    cp "$ZSH_DIST/etc/zshrc" "$ISO_STAGING_DIR/etc/"
+  fi
 fi
 
 # Desktop/display stack staging

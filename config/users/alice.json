@@ -1,0 +1,26 @@
+{
+    "username": "alice",
+    "shell": "/bin/sh",
+    "homePath": "/writable/user-data/alice",
+    "allowSSH": true,
+    "allowSudo": false,
+    "quotaMB": 1024,
+    "environment": {
+        "PATH": "/system/bin:/writable/system-data/bin:~/bin",
+        "EDITOR": "vi",
+        "LANG": "en_US.UTF-8",
+        "HOME": "/writable/user-data/alice"
+    },
+    "capabilities": {
+        "allowNetwork": true,
+        "allowDevices": false,
+        "sandboxLevel": "standard",
+        "maxProcesses": 100,
+        "maxMemoryMB": 512
+    },
+    "snapshots": {
+        "enableAutoSnapshot": true,
+        "snapshotInterval": 3600,
+        "retentionCount": 5
+    }
+}

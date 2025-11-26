@@ -102,7 +102,8 @@ struct MultibootContext
     @nogc nothrow
     static MultibootContext fromBootValues(ulong magic, ulong infoAddress)
     {
-        if (magic != multibootLoaderMagic || infoAddress == 0)
+        cast(void) magic; // magic is informative only; some loaders fail to set it
+        if (infoAddress == 0)
         {
             return MultibootContext.init;
         }

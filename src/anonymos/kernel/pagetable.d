@@ -5,7 +5,7 @@ import anonymos.kernel.physmem : allocFrame;
 
 @nogc nothrow:
 
-extern(C) __gshared ulong pml4_table; // defined in boot.s
+extern(C) extern __gshared ulong pml4_table; // defined in boot.s
 
 private enum ulong PAGE_PRESENT = 1UL << 0;
 private enum ulong PAGE_WRITABLE = 1UL << 1;
@@ -192,14 +192,9 @@ ulong cloneKernelPml4()
     auto dst = physToVirt(phys);
     auto src = pml4();
     
-    // Clear lower half (user space: 0x0000_0000_0000_0000 - 0x0000_7FFF_FFFF_FFFF)
-    foreach (i; 0 .. 256)
-    {
-        dst[i] = 0;
-    }
-    
-    // Copy upper half (kernel space: 0xFFFF_8000_0000_0000 - 0xFFFF_FFFF_FFFF_FFFF)
-    foreach (i; 256 .. ENTRIES)
+    // Preserve the bootstrap identity map while we are still executing from
+    // low addresses; copy the entire PML4 instead of clearing the user half.
+    foreach (i; 0 .. ENTRIES)
     {
         dst[i] = src[i];
     }

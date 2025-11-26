@@ -185,7 +185,11 @@ extern(C) @nogc nothrow void doubleFaultHandler()
 
 extern(C) @nogc nothrow void pageFaultHandler(void* /*frame*/)
 {
-    printLine("[irq] page fault");
+    ulong cr2;
+    asm @nogc nothrow { "mov %%cr2, %0" : "=r"(cr2); }
+    print("[irq] page fault @ 0x");
+    printHex(cr2, 16);
+    printLine("");
     // Halt for now; proper handler would decode frame and faulting address.
     for (;;)
     {

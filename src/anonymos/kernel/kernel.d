@@ -29,14 +29,37 @@ extern(C) void kmain(ulong magic, ulong info)
     cast(void) info;
 
     clearScreen();
-    verifySecurityConfig();
     initSerial();
+    
+    // Debug: print the magic and info values
+    import anonymos.console : printHex;
+    print("[debug] magic = 0x");
+    printHex(magic);
+    print(", info = 0x");
+    printHex(info);
+    printLine("");
+
+    verifySecurityConfig();
     initializeCPUState();
+    
     auto context = probeHardware(magic, info);
+    if (!context.valid)
+    {
+        printLine("[kernel] Multiboot info unavailable; halting.");
+        while (true)
+        {
+            asm { hlt; }
+        }
+    }
     physMemInit(cast(void*)&context);
 
     import anonymos.kernel.pagetable : initKernelLinearMapping;
-    import anonymos.kernel.physmem : totalFrames;
+    import anonymos.kernel.physmem : totalFrames, freeFrames;
+    print("[physmem] total frames: ");
+    printUnsigned(totalFrames());
+    print(", free frames: ");
+    printUnsigned(freeFrames());
+    printLine("");
     initKernelLinearMapping(totalFrames() * 4096);
 
     initializePCI();

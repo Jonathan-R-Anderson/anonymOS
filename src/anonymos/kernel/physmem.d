@@ -4,11 +4,25 @@ import anonymos.multiboot;
 
 
 
+extern(C) __gshared ubyte _kernel_end;
+
 private enum pageSize = 4096uL;
+private enum maxSupportedMemoryBytes = 4UL * 1024 * 1024 * 1024; // cap bitmap to 4 GiB for now
+private enum maxBitmapBytes = maxSupportedMemoryBytes / pageSize / 8 + 1;
 
 private __gshared ubyte[] g_bitmap; // 1 = used, 0 = free
+private __gshared ubyte[maxBitmapBytes] g_bitmapStorage;
 private __gshared size_t g_totalFrames;
 private __gshared size_t g_freeFrames;
+
+private bool mmapEntryUsable(const MultibootMmapEntry entry) @nogc @safe pure nothrow
+{
+    enum uint maxKnownType = MmapRegionType.badMemory;
+    if (entry.entrySize < MultibootMmapEntry.sizeof - uint.sizeof) return false;
+    if (entry.entryType == 0 || entry.entryType > maxKnownType) return false;
+    if (entry.length == 0) return false;
+    return true;
+}
 
 private void setUsed(size_t frame) @nogc nothrow
 {
@@ -45,6 +59,16 @@ private void reserveRange(size_t start, size_t length) @nogc nothrow
     }
 }
 
+private void freeRange(size_t start, size_t length) @nogc nothrow
+{
+    const first = start / pageSize;
+    const last  = (start + length) / pageSize;
+    foreach (f; first .. last)
+    {
+        if (f < g_totalFrames) setFree(f);
+    }
+}
+
 /// Initialise the physical memory bitmap from the firmware memory map.
 /// Marks all frames used, then frees frames in available regions, excluding
 /// low memory (first 2 MiB), multiboot modules, and framebuffer.
@@ -52,9 +76,11 @@ extern(C) pragma(inline, false) void physMemInit(void* ctxPtr)
 {
     auto ctx = cast(MultibootContext*)ctxPtr;
     const info = ctx.info;
+    assert(info !is null, "Multiboot info missing in physMemInit");
 
     // Determine max address
     size_t maxAddr = 0;
+    bool sawUsableMmap = false;
     
     // Check memory map flag (bit 6)
     if (info.flags & (1 << 6))
@@ -65,31 +91,47 @@ extern(C) pragma(inline, false) void physMemInit(void* ctxPtr)
         while (remaining > 0)
         {
             auto entry = cast(MultibootMmapEntry*)current;
-            const end = cast(size_t)(entry.address + entry.length);
-            if (end > maxAddr) maxAddr = end;
-            
             const advance = entry.entrySize + uint.sizeof;
+            if (advance == 0 || advance > remaining)
+            {
+                break;
+            }
+
+            if (mmapEntryUsable(*entry))
+            {
+                const endAddr = cast(size_t)(entry.address + entry.length);
+                if (endAddr > maxAddr) maxAddr = endAddr;
+                sawUsableMmap = true;
+            }
+            
             current += advance;
-            if (advance >= remaining) remaining = 0;
-            else remaining -= advance;
+            remaining -= advance;
         }
     }
     
     // Fallback to upper memory if no map (bit 0)
-    if (maxAddr == 0 && (info.flags & (1 << 0)))
+    if ((!sawUsableMmap || maxAddr == 0) && (info.flags & (1 << 0)))
     {
         maxAddr = (info.memLower + info.memUpper) * 1024;
+    }
+    if (maxAddr > maxSupportedMemoryBytes)
+    {
+        maxAddr = maxSupportedMemoryBytes;
     }
     assert(maxAddr > 0, "No memory map available");
 
     g_totalFrames = (maxAddr + pageSize - 1) / pageSize;
-    g_bitmap.length = (g_totalFrames + 7) / 8;
+    const size_t neededBitmapBytes = (g_totalFrames + 7) / 8;
+    assert(neededBitmapBytes <= g_bitmapStorage.length, "Physical memory exceeds bitmap storage");
+    g_bitmap = g_bitmapStorage[0 .. neededBitmapBytes];
     // Mark all used
     foreach (ref b; g_bitmap) b = 0xFF;
     g_freeFrames = 0;
 
+    const bool haveValidMmap = (info.flags & (1 << 6)) != 0 && sawUsableMmap;
+
     // Free available regions
-    if (info.flags & (1 << 6))
+    if (haveValidMmap)
     {
         size_t current = info.mmapAddr;
         size_t remaining = info.mmapLength;
@@ -97,25 +139,29 @@ extern(C) pragma(inline, false) void physMemInit(void* ctxPtr)
         while (remaining > 0)
         {
             auto entry = cast(MultibootMmapEntry*)current;
-            if (entry.entryType == MmapRegionType.available)
+            const advance = entry.entrySize + uint.sizeof;
+            if (advance == 0 || advance > remaining)
+            {
+                break;
+            }
+
+            if (mmapEntryUsable(*entry) && entry.entryType == MmapRegionType.available)
             {
                 size_t addr = cast(size_t)entry.address;
                 size_t len  = cast(size_t)entry.length;
-                const first = addr / pageSize;
-                const last  = (addr + len) / pageSize;
-                foreach (f; first .. last)
-                {
-                    if (f < g_totalFrames) setFree(f);
-                }
+                freeRange(addr, len);
             }
             
-            const advance = entry.entrySize + uint.sizeof;
             current += advance;
-            if (advance >= remaining) remaining = 0;
-            else remaining -= advance;
+            remaining -= advance;
         }
     }
-
+    else
+    {
+        freeRange(0, maxAddr);
+    }
+    // Always keep the kernel image itself reserved.
+    reserveRange(0, cast(size_t)&_kernel_end);
     // Reserve low memory (first 2 MiB) to cover kernel/boot structures.
     reserveRange(0, 2 * 1024 * 1024);
 

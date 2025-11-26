@@ -10,11 +10,30 @@ MultibootContext probeHardware(ulong magic, ulong infoAddress)
     printLine("[probe] Inspecting firmware-provided hardware tables...");
 
     const context = MultibootContext.fromBootValues(magic, infoAddress);
+    if (magic != multibootLoaderMagic)
+    {
+        print("[probe] Unexpected Multiboot magic (got 0x");
+        printHex(magic);
+        print(", expected 0x");
+        printHex(multibootLoaderMagic);
+        printLine("); continuing with provided info pointer.");
+    }
+
     if (!context.valid)
     {
-        printLine("[probe] Multiboot signature missing, skipping hardware scan.");
+        printLine("[probe] Multiboot info pointer missing, skipping hardware scan.");
         return context;
     }
+
+    print("[probe] MBI flags    : 0x");
+    printHex(context.info.flags, 8);
+    printLine("");
+    print("[probe] mmap length  : ");
+    printUnsigned(context.info.mmapLength);
+    printLine(" bytes");
+    print("[probe] mmap address : 0x");
+    printHex(context.info.mmapAddr, 8);
+    printLine("");
 
     logBasicMemory(context);
     logModules(context);
@@ -86,6 +105,12 @@ private @nogc nothrow void logMemoryMap(const MultibootContext context)
     while (!entries.empty())
     {
         const entry = entries.front();
+        enum uint maxKnownType = MmapRegionType.badMemory;
+        if (entry.entryType == 0 || entry.entryType > maxKnownType)
+        {
+            entries.popFront();
+            continue;
+        }
         logRegion(entry);
         entries.popFront();
     }

@@ -137,7 +137,10 @@ long_mode_entry:
     orq $0x600, %rax
     mov %rax, %cr4
 
-    # Load multiboot args into 64-bit calling convention (edi, esi).
+    # Load multiboot args into 64-bit calling convention (rdi, rsi).
+    # Use movl to zero-extend the 32-bit values to 64-bit.
+    xor %rdi, %rdi
+    xor %rsi, %rsi
     movl saved_magic(%rip), %edi
     movl saved_info(%rip),  %esi
 
@@ -542,6 +545,7 @@ gdt64_descriptor:
     .word gdt64_end - gdt64 - 1
     .long gdt64
 
+    .global pml4_table
     .align 4096
 pml4_table:
     .quad pdpt_table + 0x03       # present | writable

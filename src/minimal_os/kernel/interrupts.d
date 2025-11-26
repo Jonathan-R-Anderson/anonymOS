@@ -121,13 +121,13 @@ extern(C) @nogc nothrow void timerIsrHandler()
     ++g_tickCount;
     auto cpu = cpuCurrent();
     ++cpu.ticks;
+    // EOI to PIC
+    outb(PIC1_CMD, 0x20);
     // Update scheduler accounting and preempt if slice expired
     if (schedulerTick())
     {
         schedYield();
     }
-    // EOI to PIC
-    outb(PIC1_CMD, 0x20);
 }
 
 extern(C) @nogc nothrow void keyboardIsrHandler()
@@ -280,9 +280,9 @@ public @nogc nothrow void initializeInterrupts()
     picRemap(32, 40);
     pitInit(100);
     // lapicInit(); // Disable LAPIC to avoid QEMU "Invalid read" errors and ensure PIC routing
-    // Enable interrupts; PIC IRQs configured above.
-    asm @nogc nothrow { sti; }
-    printLine("[irq] IDT loaded, PIT configured (PIC unmasked for timer/kbd/mouse)");
+    // Do not enable interrupts here; let the caller enable them after the
+    // scheduler and kernel stacks are fully initialised.
+    printLine("[irq] IDT loaded, PIT configured (PIC unmasked; IRQs still masked by IF)");
 }
 
 /// Interrupt-safe stack/context swap callable from an ISR path. Saves the

@@ -22,6 +22,54 @@ public enum LayoutMode
     tiling,
 }
 
+public struct Rect
+{
+    int x, y;
+    uint width, height;
+}
+
+public struct Damage
+{
+    Rect bounds;
+    bool any;
+
+    void add(int x, int y, uint w, uint h) @nogc nothrow
+    {
+        if (!any)
+        {
+            bounds = Rect(x, y, w, h);
+            any = true;
+            return;
+        }
+
+        // Union
+        int minX = (x < bounds.x) ? x : bounds.x;
+        int minY = (y < bounds.y) ? y : bounds.y;
+        int maxX1 = x + cast(int)w;
+        int maxY1 = y + cast(int)h;
+        int maxX2 = bounds.x + cast(int)bounds.width;
+        int maxY2 = bounds.y + cast(int)bounds.height;
+        int maxX = (maxX1 > maxX2) ? maxX1 : maxX2;
+        int maxY = (maxY1 > maxY2) ? maxY1 : maxY2;
+
+        bounds.x = minX;
+        bounds.y = minY;
+        bounds.width = cast(uint)(maxX - minX);
+        bounds.height = cast(uint)(maxY - minY);
+    }
+    
+    void add(Rect r) @nogc nothrow
+    {
+        add(r.x, r.y, r.width, r.height);
+    }
+    
+    void clear() @nogc nothrow
+    {
+        any = false;
+        bounds = Rect(0,0,0,0);
+    }
+}
+
 public struct Window
 {
     size_t id;
@@ -38,6 +86,8 @@ public struct Window
     size_t zOrder;
     size_t surfaceId;
     Canvas surfaceCanvas;
+    
+    Rect rect() const @nogc nothrow { return Rect(cast(int)x, cast(int)y, width, height); }
 }
 
 public struct ShortcutBinding
@@ -96,7 +146,7 @@ public:
         _releaseSurface = releaser;
     }
 
-    size_t createWindow(immutable(char)[] title, uint width, uint height, bool floating = false, size_t desktop = INVALID_INDEX)
+    size_t createWindow(immutable(char)[] title, uint width, uint height, bool floating = false, size_t desktop = INVALID_INDEX, Damage* damage = null)
     {
         if (!_configured || !hasCapacity(_windowCount, _windows.length))
         {
@@ -125,17 +175,27 @@ public:
 
         attachSurface(w);
 
-        focusWindow(w.id);
-        applyLayout();
+        if (damage !is null && targetDesktop == _activeDesktop)
+        {
+            damage.add(w.rect());
+        }
+
+        focusWindow(w.id, damage);
+        applyLayout(damage);
         return w.id;
     }
 
-    bool destroyWindow(size_t id)
+    bool destroyWindow(size_t id, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
         {
             return false;
+        }
+
+        if (damage !is null && _windows[index].desktop == _activeDesktop && !_windows[index].minimized)
+        {
+            damage.add(_windows[index].rect());
         }
 
         const wasFocused = _windows[index].focused;
@@ -150,14 +210,14 @@ public:
 
         if (wasFocused)
         {
-            focusTopWindowOnDesktop(_activeDesktop);
+            focusTopWindowOnDesktop(_activeDesktop, damage);
         }
 
-        applyLayout();
+        applyLayout(damage);
         return true;
     }
 
-    bool focusWindow(size_t id)
+    bool focusWindow(size_t id, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
@@ -167,13 +227,27 @@ public:
 
         const desktop = _windows[index].desktop;
         _activeDesktop = desktop;
-        clearFocus(desktop);
+        clearFocus(desktop, damage);
         _windows[index].focused = true;
+        
+        if (damage !is null && desktop == _activeDesktop && !_windows[index].minimized)
+        {
+            // Redraw title bar at least
+            damage.add(_windows[index].x, _windows[index].y, _windows[index].width, 32); 
+        }
+        
         bringToFront(index);
+        
+        // Taskbar needs update on focus change
+        if (damage !is null)
+        {
+             damage.add(0, _screenHeight - _taskbarHeight, _screenWidth, _taskbarHeight);
+        }
+        
         return true;
     }
 
-    bool moveWindow(size_t id, int dx, int dy)
+    bool moveWindow(size_t id, int dx, int dy, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
@@ -187,14 +261,19 @@ public:
             return false;
         }
 
+        if (damage !is null) damage.add(w.rect());
+
         const newX = clampSigned(w.x, dx, _screenWidth, w.width);
         const newY = clampSigned(w.y, dy, _screenHeight - _taskbarHeight, w.height);
         w.x = newX;
         w.y = newY;
+        
+        if (damage !is null) damage.add(w.rect());
+        
         return true;
     }
 
-    bool resizeWindow(size_t id, int dw, int dh)
+    bool resizeWindow(size_t id, int dw, int dh, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
@@ -208,11 +287,15 @@ public:
             return false;
         }
 
+        if (damage !is null) damage.add(w.rect());
+
         uint newWidth = clampSize(w.width, dw, _screenWidth, MIN_WINDOW_WIDTH);
         uint newHeight = clampSize(w.height, dh, _screenHeight - _taskbarHeight, MIN_WINDOW_HEIGHT);
         w.width = newWidth;
         w.height = newHeight;
         enforceBounds(w);
+
+        if (damage !is null) damage.add(w.rect());
 
         if (_resizeSurface !is null && w.surfaceId != INVALID_INDEX)
         {
@@ -225,7 +308,7 @@ public:
         return true;
     }
 
-    bool toggleFloating(size_t id, bool floating)
+    bool toggleFloating(size_t id, bool floating, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
@@ -233,26 +316,32 @@ public:
             return false;
         }
         _windows[index].floating = floating;
-        applyLayout();
+        applyLayout(damage);
         return true;
     }
 
-    bool minimizeWindow(size_t id)
+    bool minimizeWindow(size_t id, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
         {
             return false;
         }
+        
+        if (damage !is null && _windows[index].desktop == _activeDesktop)
+        {
+            damage.add(_windows[index].rect());
+        }
+        
         _windows[index].minimized = true;
         if (_windows[index].focused)
         {
-            focusTopWindowOnDesktop(_windows[index].desktop);
+            focusTopWindowOnDesktop(_windows[index].desktop, damage);
         }
         return true;
     }
 
-    bool maximizeWindow(size_t id, bool maximize)
+    bool maximizeWindow(size_t id, bool maximize, Damage* damage = null)
     {
         const index = findIndex(id);
         if (index == INVALID_INDEX)
@@ -261,6 +350,9 @@ public:
         }
 
         auto w = &_windows[index];
+        
+        if (damage !is null) damage.add(w.rect());
+        
         w.maximized = maximize;
         if (maximize)
         {
@@ -274,6 +366,9 @@ public:
         {
             enforceBounds(w);
         }
+        
+        if (damage !is null) damage.add(w.rect());
+        
         bringToFront(index);
 
         if (_resizeSurface !is null && w.surfaceId != INVALID_INDEX)
@@ -287,19 +382,25 @@ public:
         return true;
     }
 
-    bool switchDesktop(size_t desktop)
+    bool switchDesktop(size_t desktop, Damage* damage = null)
     {
         if (desktop >= _desktopCount)
         {
             return false;
         }
         _activeDesktop = desktop;
-        focusTopWindowOnDesktop(desktop);
-        applyLayout();
+        focusTopWindowOnDesktop(desktop, damage);
+        applyLayout(damage);
+        
+        if (damage !is null)
+        {
+            // Full redraw on desktop switch
+            damage.add(0, 0, _screenWidth, _screenHeight);
+        }
         return true;
     }
 
-    bool setLayout(size_t desktop, LayoutMode layout)
+    bool setLayout(size_t desktop, LayoutMode layout, Damage* damage = null)
     {
         if (desktop >= _desktopCount)
         {
@@ -308,7 +409,7 @@ public:
         _layouts[desktop] = layout;
         if (desktop == _activeDesktop)
         {
-            applyLayout();
+            applyLayout(damage);
         }
         return true;
     }
@@ -325,7 +426,7 @@ public:
         return true;
     }
 
-    void applyLayout()
+    void applyLayout(Damage* damage = null)
     {
         if (!_configured)
         {
@@ -334,7 +435,7 @@ public:
 
         if (_layouts[_activeDesktop] == LayoutMode.tiling)
         {
-            layoutTiled();
+            layoutTiled(damage);
         }
     }
 
@@ -432,18 +533,23 @@ private:
         _inputQueues[_windowCount - 1] = queue;
     }
 
-    void clearFocus(size_t desktop)
+    void clearFocus(size_t desktop, Damage* damage = null)
     {
         foreach (ref window; _windows[0 .. _windowCount])
         {
             if (window.desktop == desktop)
             {
+                if (window.focused && damage !is null && !window.minimized)
+                {
+                    // Redraw title bar of previously focused window
+                    damage.add(window.x, window.y, window.width, 32);
+                }
                 window.focused = false;
             }
         }
     }
 
-    void focusTopWindowOnDesktop(size_t desktop)
+    void focusTopWindowOnDesktop(size_t desktop, Damage* damage = null)
     {
         size_t bestIndex = INVALID_INDEX;
         size_t bestZ = 0;
@@ -459,14 +565,18 @@ private:
             }
         }
 
-        clearFocus(desktop);
+        clearFocus(desktop, damage);
         if (bestIndex != INVALID_INDEX)
         {
             _windows[bestIndex].focused = true;
+            if (damage !is null)
+            {
+                damage.add(_windows[bestIndex].x, _windows[bestIndex].y, _windows[bestIndex].width, 32);
+            }
         }
     }
 
-    void layoutTiled()
+    void layoutTiled(Damage* damage = null)
     {
         size_t tileCount = 0;
         foreach (ref window; _windows[0 .. _windowCount])
@@ -497,10 +607,15 @@ private:
                 continue;
             }
 
+            if (damage !is null) damage.add(window.rect());
+
             window.x = 0;
             window.y = cast(uint) (placed * tileHeight);
             window.width = tileWidth;
             window.height = tileHeight;
+            
+            if (damage !is null) damage.add(window.rect());
+            
             ++placed;
         }
     }

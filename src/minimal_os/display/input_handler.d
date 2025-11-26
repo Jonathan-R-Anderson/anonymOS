@@ -1,7 +1,7 @@
 module minimal_os.display.input_handler;
 
 import minimal_os.display.input_pipeline : InputEvent, InputQueue, dequeue;
-import minimal_os.display.window_manager.manager : WindowManager, Window;
+import minimal_os.display.window_manager.manager : WindowManager, Window, Damage;
 import minimal_os.display.framebuffer : g_fb;
 
 @nogc:
@@ -67,7 +67,7 @@ void initializeInputHandler(uint screenWidth, uint screenHeight) @nogc nothrow
 }
 
 /// Process all pending input events and update window manager state
-void processInputEvents(ref InputQueue queue, ref WindowManager manager) @nogc nothrow
+void processInputEvents(ref InputQueue queue, ref WindowManager manager, Damage* damage = null) @nogc nothrow
 {
     InputEvent event;
     
@@ -79,29 +79,29 @@ void processInputEvents(ref InputQueue queue, ref WindowManager manager) @nogc n
                 break;
                 
             case InputEvent.Type.keyDown:
-                handleKeyDown(event, manager);
+                handleKeyDown(event, manager, damage);
                 break;
                 
             case InputEvent.Type.keyUp:
-                handleKeyUp(event, manager);
+                handleKeyUp(event, manager, damage);
                 break;
                 
             case InputEvent.Type.pointerMove:
-                handlePointerMove(event, manager);
+                handlePointerMove(event, manager, damage);
                 break;
                 
             case InputEvent.Type.buttonDown:
-                handleButtonDown(event, manager);
+                handleButtonDown(event, manager, damage);
                 break;
                 
             case InputEvent.Type.buttonUp:
-                handleButtonUp(event, manager);
+                handleButtonUp(event, manager, damage);
                 break;
         }
     }
 }
 
-private void handleKeyDown(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
+private void handleKeyDown(ref const InputEvent event, ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     const int key = event.data1;
     const int scancode = event.data2;
@@ -111,7 +111,7 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
     const bool altPressed = (modifiers & 0x44) != 0;  // Left or right Alt
     if (altPressed && key == '\t')
     {
-        cycleWindowFocus(manager);
+        cycleWindowFocus(manager, damage);
         return;
     }
     
@@ -122,7 +122,7 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
         const focusedId = manager.focusedWindowId();
         if (focusedId != size_t.max)
         {
-            manager.destroyWindow(focusedId);
+            manager.destroyWindow(focusedId, damage);
         }
         return;
     }
@@ -132,7 +132,7 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
     if (key >= 0x100 && key <= 0x102)  // F1, F2, F3
     {
         const desktop = cast(size_t)(key - 0x100);
-        manager.switchDesktop(desktop);
+        manager.switchDesktop(desktop, damage);
         return;
     }
 
@@ -145,13 +145,13 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
             const moveAmount = 16;
             
             if (key == 0x200)  // Right arrow
-                manager.moveWindow(focusedId, moveAmount, 0);
+                manager.moveWindow(focusedId, moveAmount, 0, damage);
             else if (key == 0x201)  // Left arrow
-                manager.moveWindow(focusedId, -moveAmount, 0);
+                manager.moveWindow(focusedId, -moveAmount, 0, damage);
             else if (key == 0x202)  // Down arrow
-                manager.moveWindow(focusedId, 0, moveAmount);
+                manager.moveWindow(focusedId, 0, moveAmount, damage);
             else if (key == 0x203)  // Up arrow
-                manager.moveWindow(focusedId, 0, -moveAmount);
+                manager.moveWindow(focusedId, 0, -moveAmount, damage);
         }
         return;
     }
@@ -159,12 +159,12 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
     dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
-private void handleKeyUp(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
+private void handleKeyUp(ref const InputEvent event, ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
-private void handlePointerMove(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
+private void handlePointerMove(ref const InputEvent event, ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     // g_cursor.x = event.data1;
     // g_cursor.y = event.data2;
@@ -181,7 +181,8 @@ private void handlePointerMove(ref const InputEvent event, ref WindowManager man
         
         manager.moveWindow(g_cursor.dragWindowId, 
                           deltaX, 
-                          deltaY);
+                          deltaY,
+                          damage);
         
         // Update drag start position for next frame
         g_cursor.dragStartX = g_cursor.x;
@@ -191,7 +192,7 @@ private void handlePointerMove(ref const InputEvent event, ref WindowManager man
     dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
-private void handleButtonDown(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
+private void handleButtonDown(ref const InputEvent event, ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     const int mouseX = event.data1;
     const int mouseY = event.data2;
@@ -206,7 +207,7 @@ private void handleButtonDown(ref const InputEvent event, ref WindowManager mana
         if (clickedId != size_t.max)
         {
             // Focus the clicked window
-            manager.focusWindow(clickedId);
+            manager.focusWindow(clickedId, damage);
             
             // Check if click is in title bar (for dragging)
             if (isInTitleBar(manager, clickedId, mouseX, mouseY))
@@ -222,7 +223,7 @@ private void handleButtonDown(ref const InputEvent event, ref WindowManager mana
     }
 }
 
-private void handleButtonUp(ref const InputEvent event, ref WindowManager manager) @nogc nothrow
+private void handleButtonUp(ref const InputEvent event, ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     const ubyte buttons = cast(ubyte)event.data3;
 
@@ -236,7 +237,7 @@ private void handleButtonUp(ref const InputEvent event, ref WindowManager manage
     dispatchToWindow(event, manager, manager.focusedWindowId());
 }
 
-private void cycleWindowFocus(ref WindowManager manager) @nogc nothrow
+private void cycleWindowFocus(ref WindowManager manager, Damage* damage) @nogc nothrow
 {
     const windows = manager.windows();
     if (windows.length == 0)
@@ -263,7 +264,7 @@ private void cycleWindowFocus(ref WindowManager manager) @nogc nothrow
         const idx = (nextIndex + offset) % windows.length;
         if (windows[idx].desktop == manager.activeDesktop() && !windows[idx].minimized)
         {
-            manager.focusWindow(windows[idx].id);
+            manager.focusWindow(windows[idx].id, damage);
             return;
         }
     }

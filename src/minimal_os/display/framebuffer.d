@@ -134,6 +134,8 @@ void framebufferInit(const(void)* base,
     g_fbBgColor     = fbDefaultBgColor;
     g_fbCursorX     = 0;
     g_fbCursorY     = 0;
+    
+    framebufferResetClip();
 
     framebufferClear();
     framebufferInitCursor();
@@ -207,12 +209,36 @@ Framebuffer framebufferDescriptor()
 // Low-level pixel operations (Set pixel / fill)
 // --------------------------------------------------------------------------
 
+// Clipping state
+struct ClipRect { int x, y; uint w, h; }
+__gshared ClipRect g_fbClip;
+
+@nogc nothrow @system
+void framebufferSetClip(int x, int y, uint w, uint h) {
+    g_fbClip = ClipRect(x, y, w, h);
+}
+
+@nogc nothrow @system
+void framebufferResetClip() {
+    if (g_fbInitialized) {
+        g_fbClip = ClipRect(0, 0, g_fb.width, g_fb.height);
+    } else {
+        g_fbClip = ClipRect(0, 0, 0, 0);
+    }
+}
+
 // Put a single pixel in ARGB space; handles 16/24/32bpp if initialized.
 @nogc nothrow @system
 void framebufferPutPixel(uint x, uint y, uint argbColor) {
     if (!g_fbInitialized) return;
     if (g_fb.addr is null) return;
+    
+    // Bounds check against framebuffer
     if (x >= g_fb.width || y >= g_fb.height) return;
+
+    // Clip check
+    if (cast(int)x < g_fbClip.x || cast(int)x >= g_fbClip.x + cast(int)g_fbClip.w ||
+        cast(int)y < g_fbClip.y || cast(int)y >= g_fbClip.y + cast(int)g_fbClip.h) return;
 
     const bpp   = g_fb.bpp;
     ubyte* addr = g_fb.addr;

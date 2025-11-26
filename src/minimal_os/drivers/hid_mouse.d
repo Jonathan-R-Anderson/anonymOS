@@ -55,10 +55,6 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     // Update position with delta movement
     if (report.deltaX != 0 || report.deltaY != 0)
     {
-        print("[mouse] dx="); printUnsigned(cast(uint)report.deltaX);
-        print(" dy="); printUnsigned(cast(uint)report.deltaY);
-        printLine("");
-
         g_mouseState.x += report.deltaX;
         g_mouseState.y += report.deltaY;
         

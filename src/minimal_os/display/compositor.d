@@ -6,6 +6,7 @@ import minimal_os.display.font_stack : activeFontStack;
 import minimal_os.display.window_manager.manager;
 import minimal_os.display.wallpaper : drawWallpaperToBuffer;
 import minimal_os.display.gpu_accel : acceleratedPresentBuffer;
+import core.stdc.string : memcpy;
 import minimal_os.console : printLine, printHex, printUnsigned, print;
 import std.conv : to;
 
@@ -101,7 +102,17 @@ struct Compositor
             return;
         }
         import minimal_os.console : printLine;
-        printLine("Compositor.clear start");
+        static bool loggedOnce;
+        if (!loggedOnce)
+        {
+            printLine("Compositor.clear start");
+            print("[compositor] clear width="); 
+            import minimal_os.console : printUnsigned, printHex;
+            printUnsigned(width); print(" height="); printUnsigned(height);
+            print(" pitch="); printUnsigned(pitch);
+            print(" buffer="); printHex(cast(ulong)buffer); printLine("");
+            loggedOnce = true;
+        }
 
         const size_t total = cast(size_t) width * height;
         
@@ -207,43 +218,46 @@ struct Compositor
 
     void present()
     {
-        import minimal_os.console : printLine, printUnsigned;
+        import minimal_os.console : printLine, printUnsigned, print;
 
-        printLine("Compositor.present start");
-
+        static bool loggedOnce;
         // Evaluate framebuffer availability once so the value matches what we print
         const bool fbAvail = framebufferAvailable();
-        printLine("Compositor.present after fbAvail");
 
         if (!ready || !fbAvail)
         {
-            // Use printLine only (print() may be buffered/stubbed in this environment)
-            printLine("Compositor.present not ready:");
-            printUnsigned(ready ? 1 : 0);
-            printLine(" ready flag");
-            printUnsigned(fbAvail ? 1 : 0);
-            printLine(" framebufferAvailable");
+            if (!loggedOnce)
+            {
+                print("[compositor] present early-exit ready="); print(ready ? "true" : "false");
+                print(" fbAvail="); print(fbAvail ? "true" : "false"); printLine("");
+            }
             return;
         }
 
-        printLine("Compositor.present before if");
+        if (!loggedOnce)
+        {
+            const auto fb = framebufferDescriptor();
+            print("[compositor] present start "); printUnsigned(width); print("x"); printUnsigned(height);
+            print(" pitch="); printUnsigned(pitch);
+            print(" fb="); printUnsigned(cast(uint)fb.width); print("x"); printUnsigned(cast(uint)fb.height);
+            print(" bpp="); printUnsigned(cast(uint)fb.bpp); printLine("");
+        }
 
         if (acceleratedPresentBuffer(buffer, width, height, pitch))
         {
-            printLine("Compositor.present accelerated");
+            if (!loggedOnce) printLine("[compositor] accelerated present");
+            loggedOnce = true;
             return;
         }
-
-        printLine("Compositor.present checking 32bpp fast path");
 
         // Fast path for 32bpp
         auto fb = framebufferDescriptor();
         if (fb.addr !is null && fb.bpp == 32 && fb.width == width && fb.height == height)
         {
-            printLine("Compositor.present entering 32bpp fast path");
             const bool isBGR = fb.isBGR;
             uint* fbPtr = cast(uint*)fb.addr;
             const uint fbPitchPixels = fb.pitch / 4; // pitch is bytes, we need pixels for uint* pointer math
+            const size_t copyBytes = cast(size_t)width * 4;
 
             foreach (y; 0 .. height)
             {
@@ -252,10 +266,7 @@ struct Compositor
 
                 if (!isBGR)
                 {
-                    for (uint x = 0; x < width; ++x)
-                    {
-                        dstRow[x] = srcRow[x];
-                    }
+                    memcpy(dstRow, srcRow, copyBytes);
                 }
                 else
                 {
@@ -266,12 +277,12 @@ struct Compositor
                     }
                 }
             }
-            printLine("Compositor.present copy complete");
+            if (!loggedOnce) printLine("[compositor] present memcpy path");
+            loggedOnce = true;
             return;
         }
 
-        // Fallback (still disabled)
-        /*
+        // Fallback for non-32bpp or dimension mismatch
         foreach (y; 0 .. height)
         {
             foreach (x; 0 .. width)
@@ -279,8 +290,8 @@ struct Compositor
                 framebufferPutPixel(x, y, buffer[y * pitch + x]);
             }
         }
-        */
-        printLine("Compositor.present fallback complete");
+        if (!loggedOnce) printLine("[compositor] present fallback complete");
+        loggedOnce = true;
     }
 
 
@@ -521,6 +532,7 @@ void compositorReleaseSurface(size_t id)
 
 void renderWorkspaceComposited(const WindowManager* manager)
 {
+    import minimal_os.console : printLine, print, printUnsigned;
     if (manager is null || !framebufferAvailable())
     {
         return;
@@ -532,16 +544,22 @@ void renderWorkspaceComposited(const WindowManager* manager)
         return;
     }
 
-    import minimal_os.console : printLine;
+    static bool loggedStart;
+    if (!loggedStart)
+    {
+        printLine("[compositor] renderWorkspaceComposited start");
+        loggedStart = true;
+    }
 
     // drawWallpaperToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
     g_compositor.clear(0xFF202020);
 
-    printLine("[compositor] cleared buffer");
+    static uint frameLogs;
+    if (frameLogs < 1) printLine("[compositor] cleared buffer");
 
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);
-    printLine("[compositor] taskbar drawn");
+    if (frameLogs < 1) printLine("[compositor] taskbar drawn");
 
     /*
     WindowEntry[WINDOW_MANAGER_CAPACITY] ordered;
@@ -552,12 +570,18 @@ void renderWorkspaceComposited(const WindowManager* manager)
     printLine("");
     */
     // Skip window blitting for now to avoid potential stalls; just present the cleared buffer + taskbar.
-    // drawWindows(ordered[0 .. visibleCount], taskbarHeight);
-    printLine("[compositor] windows drawing skipped");
+    if (frameLogs < 1) printLine("[compositor] windows drawing skipped");
 
     g_compositor.present();
-    // printLine("Skipping present for test");
-    printLine("[compositor] present done");
+    if (frameLogs < 1) printLine("[compositor] present done");
+    ++frameLogs;
+
+    static bool loggedEnd;
+    if (!loggedEnd)
+    {
+        printLine("[compositor] renderWorkspaceComposited end");
+        loggedEnd = true;
+    }
 }
 
 private size_t collectWindows(const WindowManager* manager, ref WindowEntry[WINDOW_MANAGER_CAPACITY] ordered)

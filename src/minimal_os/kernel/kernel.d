@@ -61,6 +61,10 @@ extern(C) void kmain(ulong magic, ulong info)
 
     posixInit();
 
+    // Ensure g_current is set before enabling interrupts so PIT/NMI don't
+    // run on an uninitialised stack.
+    schedYield();
+
     // Load initrd if present
     if (context.valid)
     {
@@ -119,12 +123,8 @@ extern(C) void kmain(ulong magic, ulong info)
         printLine("");
     }
 
-    // Idle the kernel while co-operative tasks (desktop, compiler, shell) run.
-    while (true)
-    {
-        schedYield();
-        asm { hlt; }
-    }
+    // Now that init/g_current are ready, enable interrupts.
+    asm { sti; }
 }
 
 private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext context)

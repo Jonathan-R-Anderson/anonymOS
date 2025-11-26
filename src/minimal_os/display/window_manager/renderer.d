@@ -22,14 +22,32 @@ private struct WindowEntry
     const(Window)* window;
 }
 
-void renderWorkspace(const WindowManager* manager)
+void renderWorkspace(const WindowManager* manager, const Damage* damage = null)
 {
+    import minimal_os.console : printLine;
+    import minimal_os.display.wallpaper : drawWallpaperToFramebufferRect;
+    static bool loggedStart;
+    if (!loggedStart)
+    {
+        printLine("[renderer] renderWorkspace start");
+        loggedStart = true;
+    }
+
     if (manager is null || !framebufferAvailable())
     {
         return;
     }
 
-    drawWallpaperToFramebuffer();
+    if (damage !is null && damage.any)
+    {
+        framebufferSetClip(damage.bounds.x, damage.bounds.y, damage.bounds.width, damage.bounds.height);
+        drawWallpaperToFramebufferRect(damage.bounds.x, damage.bounds.y, damage.bounds.width, damage.bounds.height);
+    }
+    else
+    {
+        framebufferResetClip();
+        drawWallpaperToFramebuffer();
+    }
 
     const uint taskbarHeight = 32;
     drawTaskbar(manager, taskbarHeight);
@@ -37,6 +55,8 @@ void renderWorkspace(const WindowManager* manager)
     WindowEntry[WINDOW_MANAGER_CAPACITY] ordered;
     const size_t visibleCount = collectWindows(manager, ordered);
     drawWindows(ordered[0 .. visibleCount], taskbarHeight);
+    
+    framebufferResetClip();
 }
 
 private size_t collectWindows(const WindowManager* manager, ref WindowEntry[WINDOW_MANAGER_CAPACITY] ordered)

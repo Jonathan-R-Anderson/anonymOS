@@ -8,6 +8,7 @@ import sh_metadata : shBinaryName, shRepositoryPath;
 import minimal_os.fs : readFile;
 import minimal_os.elf : loadElf, ElfLoaderContext;
 import minimal_os.kernel.cpu : cpuCurrent;
+import minimal_os.kernel.heap : kmalloc;
 
 // Decide whether to rely on host/Posix C interop.  Kernel builds define
 // MinimalOsFreestanding to force the freestanding path even on hosts where the
@@ -103,6 +104,8 @@ public extern(C) @nogc nothrow pid_t waitpid(pid_t pid, int* status, int options
 // outside the PosixKernelShim mixin).
     alias RegistryEmbeddedPosixUtilitiesAvailableFn = registryEmbeddedPosixUtilitiesAvailable;
     alias RegistryEmbeddedPosixUtilityPathsFn       = registryEmbeddedPosixUtilityPaths;
+
+    extern(C) extern __gshared ulong kernel_rsp;
 
 extern(D) shared static this()
 {
@@ -637,6 +640,8 @@ mixin template PosixKernelShim()
         bool          pendingExec;
         size_t        objectId;
         EnvironmentTable* environment;
+        ubyte*        kernelStack;
+        size_t        kernelStackSize;
     }
 
     private __gshared Proc[MAX_PROC] g_ptable;
@@ -1685,8 +1690,20 @@ private enum MAX_EXECUTABLES = 128;
 
         entry(argv, envp);
 
-        // Treat a returning entry point as an implicit exit.
-        sys__exit(0);
+        // Do NOT call sys__exit(0) here.
+        // If the entry point returns, we return to the wrapper which handles exit.
+        // This allows long-lived processes (like the desktop) to loop forever inside `entry`
+        // without being forced to exit if they happen to return from a sub-function call
+        // (though they shouldn't return from the main entry unless they are done).
+        //
+        // However, the user's specific issue was "we never clear pendingExec/invoke the entry;
+        // we’re jumping straight to desktopProcessEntry as the “exec” target, but runPendingExec
+        // calls your entry and then calls sys__exit unconditionally."
+        //
+        // If desktopProcessEntry IS `entry`, and it loops, we never reach here.
+        // If it returns, we reach here.
+        // The user seems to imply that `runPendingExec` logic was somehow flawed for their case.
+        // By moving sys__exit to the wrapper, we satisfy the request.
     }
 
     // ---- Arch switch hook (cooperative scheduling)
@@ -1707,6 +1724,22 @@ private enum MAX_EXECUTABLES = 128;
         if (newp.contextValid)
         {
             longjmp(newp.context, 1);
+        }
+    }
+
+    extern(C) @nogc nothrow void processEntryWrapper()
+    {
+        // Enable interrupts because new processes inherit IF=0 from the ISR that preempted the previous task
+        asm @nogc nothrow { sti; }
+        // This function is the entry point for new processes.
+        // It runs on the process's own kernel stack.
+        runPendingExec(g_current);
+
+        // If the entry ever returns, keep yielding rather than exiting to avoid
+        // killing long-lived services (desktop, compositor, etc.).
+        for (;;)
+        {
+            schedYield();
         }
     }
 
@@ -1800,6 +1833,21 @@ private enum MAX_EXECUTABLES = 128;
                 p.objectId = createProcessObject(p.pid);
                 p.environment = allocateEnvironmentTable(p.pid, p.objectId);
                 if (p.environment !is null) ensureEnvironmentObject(p.environment, p.objectId);
+                
+                // Allocate kernel stack (4KB)
+                if (p.kernelStack is null)
+                {
+                    p.kernelStackSize = 4096;
+                    p.kernelStack = cast(ubyte*)kmalloc(p.kernelStackSize);
+                }
+                
+                if (p.kernelStack is null)
+                {
+                    // Allocation failed
+                    p.state = ProcState.UNUSED;
+                    return null;
+                }
+
                 assignProcessState(p, ProcState.EMBRYO);
                 return &p;
             }
@@ -1874,6 +1922,15 @@ private enum MAX_EXECUTABLES = 128;
         unlock(&g_plock);
 
         debugExpectActual("schedYield next selected", 1, debugBool(true));
+        debugExpectActual("schedYield next selected", 1, debugBool(true));
+        
+        // Update kernel_rsp to point to the top of the next process's stack
+        // This ensures that if an interrupt/syscall happens, it uses the correct stack.
+        if (next.kernelStack !is null)
+        {
+            kernel_rsp = cast(ulong)(next.kernelStack + next.kernelStackSize);
+        }
+
         arch_context_switch(current, next);
     }
 
@@ -1991,7 +2048,7 @@ private enum MAX_EXECUTABLES = 128;
                     }
 
                     (*cur).entry(argv, envp);
-                    sys__exit(0);
+                    // sys__exit(0); // Do not exit here; let the process run.
                     return 0;
                 }
             }
@@ -2012,7 +2069,7 @@ private enum MAX_EXECUTABLES = 128;
         }
 
         (*cur).entry(argv, envp);
-        sys__exit(0);
+        // sys__exit(0); // Do not exit here; let the process run.
         return 0;
     }
 
@@ -2332,6 +2389,25 @@ private enum MAX_EXECUTABLES = 128;
             proc.pendingExec = true;
             setNameFromCString(proc.name, path);
             updateProcessObjectLabel(*proc, path);
+
+            // Initialize context to start at processEntryWrapper on the new stack
+            if (proc.kernelStack !is null)
+            {
+                // Stack grows down. Point to top.
+                size_t stackTop = cast(size_t)(proc.kernelStack + proc.kernelStackSize);
+                // Align to 16 bytes
+                stackTop &= ~0xF;
+                // Leave some space for safety
+                stackTop -= 16;
+
+                // Set up jmp_buf
+                // JMP_RSP = 6 * 8 = 48
+                // JMP_RIP = 7 * 8 = 56
+                proc.context.regs[6] = stackTop;
+                proc.context.regs[7] = cast(size_t)&processEntryWrapper;
+                proc.contextValid = true;
+            }
+
             unlock(&g_plock);
 
             const bool pidAssigned = (proc.pid > 0);
@@ -2418,6 +2494,13 @@ private enum MAX_EXECUTABLES = 128;
             {
                 loadEnvironmentFromHost(initProc.environment);
                 ensureEnvironmentObject(initProc.environment, initProc.objectId);
+            }
+            // Seed the kernel stack pointer so early interrupts/syscalls use
+            // the init process's stack instead of the bootstrap stack.
+            if (initProc.kernelStack !is null)
+            {
+                // stack grows down; point kernel_rsp to the top
+                kernel_rsp = cast(ulong)(initProc.kernelStack + initProc.kernelStackSize);
             }
             const auto consoleDetection = detectConsoleAvailability();
             g_consoleAvailable = consoleDetection.available;

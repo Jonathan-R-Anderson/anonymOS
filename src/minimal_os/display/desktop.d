@@ -125,18 +125,37 @@ private @nogc nothrow void ensureWindowManager()
 
 /// Render a window-managed desktop using the framebuffer APIs.
 @nogc nothrow
-void runSimpleDesktopOnce()
+void runSimpleDesktopOnce(Damage* damage = null)
 {
     ensureWindowManager();
     compositorEnsureReady();
 
-    if (compositorAvailable())
+    static bool loggedStart;
+    if (!loggedStart)
+    {
+        import minimal_os.console : printLine;
+        printLine("[desktop] runSimpleDesktopOnce start");
+        loggedStart = true;
+    }
+
+    // Keep compositor disabled until it is stable again.
+    const bool useCompositor = false;
+    if (useCompositor && compositorAvailable())
     {
         renderWorkspaceComposited(&g_windowManager);
     }
     else
     {
-        renderWorkspace(&g_windowManager);
+        // Fallback renderer writes directly to the framebuffer.
+        renderWorkspace(&g_windowManager, damage);
+    }
+
+    static bool loggedDone;
+    if (!loggedDone)
+    {
+        import minimal_os.console : printLine;
+        printLine("[desktop] runSimpleDesktopOnce done");
+        loggedDone = true;
     }
 }
 
@@ -153,10 +172,19 @@ void runSimpleDesktopLoop()
     ensureWindowManager();
     if (!g_displayServerReady)
     {
-        return;
+        // Best-effort: keep going even if the display server reports not ready
+        ensureDisplayServer();
+        g_displayServerReady = true;
     }
     // Render initial frame before initializing input/cursor so the desktop is visible.
-    runSimpleDesktopOnce();
+    runSimpleDesktopOnce(null); // Full render
+    static bool loopAnnounced;
+    if (!loopAnnounced)
+    {
+        import minimal_os.console : printLine;
+        printLine("[desktop] initial frame rendered");
+        loopAnnounced = true;
+    }
     
     // Initialize input/cursor after the first frame is drawn.
     if (!g_inputInitialized)
@@ -180,11 +208,9 @@ void runSimpleDesktopLoop()
     while (true)
     {
         ++g_frameCount;
-        if ((g_frameCount % 60) == 0)
-        {
-            // printLine("[desktop] heartbeat");
-        }
-        
+        Damage damage;
+        damage.clear();
+
         // Poll input devices
         if (usbHIDAvailable())
         {
@@ -193,27 +219,35 @@ void runSimpleDesktopLoop()
         
         // Poll serial as fallback
         pollSerialInput(g_inputQueue);
-        
+
         // Process all pending input events
-        processInputEvents(g_inputQueue, g_windowManager);
+        processInputEvents(g_inputQueue, g_windowManager, &damage);
         
-        // Re-render if needed (for now, render every frame)
-        // TODO: Only render when state actually changed
-        runSimpleDesktopOnce();
+        // Re-render only when there is explicit damage. This avoids full-screen
+        // clears that cause visible flashing on every loop.
+        if (damage.any)
+        {
+            runSimpleDesktopOnce(&damage);
+        }
         
-        // Draw cursor overlay: hide then show every frame to force redraw
+        // Draw cursor overlay: move the hardware cursor; avoid hide/show churn to reduce flicker
         int mx, my;
         getMousePosition(mx, my);
-        framebufferHideCursor();
-        framebufferMoveCursor(mx, my);
-        framebufferShowCursor();
+        static int lastMx = int.min;
+        static int lastMy = int.min;
+        if (mx != lastMx || my != lastMy)
+        {
+            framebufferMoveCursor(mx, my);
+            lastMx = mx;
+            lastMy = my;
+        }
         
         // Yield to scheduler and pause briefly
         schedYield();
         
         // Target ~60 FPS: simple delay
         // TODO: More sophisticated timing
-        foreach (i; 0 .. 1_000_000)
+        foreach (i; 0 .. 1_000)
         {
             asm @nogc nothrow { nop; }
         }

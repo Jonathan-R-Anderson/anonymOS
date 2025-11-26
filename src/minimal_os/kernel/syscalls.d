@@ -260,7 +260,7 @@ extern(C) void syscallEntry()
 
 // Scratch space for stack switching (very primitive, single core only)
 __gshared ulong scratch_rsp;
-__gshared ulong kernel_rsp;
+extern(C) __gshared ulong kernel_rsp;
 
 // We need to set kernel_rsp somewhere.
 // For now, let's allocate a static stack.

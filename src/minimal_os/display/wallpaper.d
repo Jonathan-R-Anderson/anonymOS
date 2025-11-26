@@ -145,6 +145,28 @@ void drawWallpaperToFramebuffer()
     }
 }
 
+void drawWallpaperToFramebufferRect(uint x, uint y, uint w, uint h)
+{
+    if (!framebufferAvailable())
+    {
+        return;
+    }
+
+    // Clip to screen
+    if (x >= g_fb.width || y >= g_fb.height) return;
+    if (x + w > g_fb.width) w = g_fb.width - x;
+    if (y + h > g_fb.height) h = g_fb.height - y;
+
+    foreach (cy; y .. y + h)
+    {
+        foreach (cx; x .. x + w)
+        {
+            auto color = sampleWallpaper(cast(uint) cx, cast(uint) cy, g_fb.width, g_fb.height);
+            framebufferPutPixel(cast(uint) cx, cast(uint) cy, color);
+        }
+    }
+}
+
 void drawWallpaperToBuffer(uint* buffer, uint surfaceWidth, uint surfaceHeight, uint surfacePitch)
 {
     if (buffer is null || surfaceWidth == 0 || surfaceHeight == 0)

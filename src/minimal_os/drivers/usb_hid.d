@@ -580,7 +580,7 @@ private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrStatus;
 private __gshared ubyte[ps2IsrQueueSize] g_ps2IsrData;
 private __gshared size_t g_ps2IsrHead = 0;
 private __gshared size_t g_ps2IsrTail = 0;
-private __gshared bool g_ps2PollingMouse = true;
+private __gshared bool g_ps2PollingMouse = false; // rely on IRQ stream by default to avoid duplicate packets
 
 private ubyte inb(ushort port) @nogc nothrow
 {
@@ -907,6 +907,7 @@ private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
     HIDMouseReport report;
     report.buttons = cast(ubyte)(g_ps2MousePacket[0] & 0x07);
     report.deltaX = cast(byte)g_ps2MousePacket[1];
+    // PS/2 packet Y is negative when moving down; flip to screen space (positive down).
     report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
     report.deltaWheel = 0;
 
@@ -919,6 +920,9 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     if (!g_ps2Initialized && !initializeLegacyPS2())
         return;
 
+    static uint pollCount = 0;
+    ++pollCount;
+
     bool sawEvent = false;
 
     while (g_ps2IsrHead != g_ps2IsrTail)
@@ -926,8 +930,6 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
         const ubyte status = g_ps2IsrStatus[g_ps2IsrHead];
         const ubyte data = g_ps2IsrData[g_ps2IsrHead];
         g_ps2IsrHead = (g_ps2IsrHead + 1) % ps2IsrQueueSize;
-
-        print("[ps2] irq data: "); printHex(data); print(" status: "); printHex(status); printLine("");
 
         if ((status & ps2StatusIsMouse) != 0)
             handlePs2MouseByte(data, queue);
@@ -937,18 +939,10 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
         sawEvent = true;
     }
 
-    static uint pollCount = 0;
-    if ((pollCount++ % 600) == 0)
-    {
-        print("[ps2] poll status: "); printHex(inb(ps2StatusPort)); printLine("");
-    }
-
     while ((inb(ps2StatusPort) & ps2StatusOutputFull) != 0)
     {
         const ubyte status = inb(ps2StatusPort);
         const ubyte data = inb(ps2DataPort);
-
-        print("[ps2] data: "); printHex(data); print(" status: "); printHex(status); printLine("");
 
         // Some controllers may not set the mouse bit; treat bytes with the PS/2
         // packet sync bit (bit 3) set as mouse data.
@@ -964,6 +958,13 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     // in case the device is in stream mode but not asserting IRQ12.
     if (g_ps2PollingMouse)
     {
+        static uint pollThrottle;
+        // Poll every 16th iteration to avoid stalling the loop if the device is quiet.
+        if ((++pollThrottle & 0x0F) != 0)
+        {
+            return;
+        }
+
         const ubyte ack = ps2SendMouseCommand(0xEB);
         if (ack == 0xFA)
         {
@@ -984,19 +985,24 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
                 report.deltaX = cast(byte)g_ps2MousePacket[1];
                 report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
                 report.deltaWheel = 0;
+                static ubyte lastButtons;
+                if (report.deltaX != 0 || report.deltaY != 0 || report.buttons != lastButtons)
+                {
+                    lastButtons = report.buttons;
+                    print("[ps2] polled packet "); printHex(pkt[0]); print(" "); printHex(pkt[1]); print(" "); printHex(pkt[2]); printLine("");
+                }
                 g_usbHID.pointerPresent = true;
                 processMouseReport(report, queue, g_fb.width, g_fb.height);
                 sawEvent = true;
-                print("[ps2] polled packet "); printHex(pkt[0]); print(" "); printHex(pkt[1]); print(" "); printHex(pkt[2]); printLine("");
             }
             else
             {
-                print("[ps2] polled packet short idx="); printUnsigned(idx); printLine("");
+                printLine("[ps2] poll: incomplete packet (timeout while reading)");
             }
         }
         else
         {
-            print("[ps2] 0xEB poll ack "); printHex(ack); printLine("");
+            print("[ps2] poll: unexpected ack "); printHex(ack); printLine("");
         }
     }
 
@@ -1005,10 +1011,6 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
     {
         printLine("[usb-hid] PS/2 input active");
         announced = true;
-    }
-    else if (!sawEvent && (pollCount % 600) == 0)
-    {
-        printLine("[ps2] no input yet (polling stream mode)");
     }
 }
 

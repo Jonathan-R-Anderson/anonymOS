@@ -21,7 +21,7 @@ private enum size_t INITIAL_PID = 2000;
 private enum immutable(char)[][] TERMINAL_CAPABILITIES =
     [ "display.x11", "posix.exec", "ipc.userland" ];
 
-__gshared ServicePlan[10] g_servicePlans;
+__gshared ServicePlan[11] g_servicePlans;
 __gshared bool g_servicePlansInitialized = false;
 
 extern(C) export pragma(inline, false)
@@ -49,6 +49,8 @@ public void initializeServicePlans()
                   SHELL_CAPABILITIES, STATE_READY, false);
     g_servicePlans[9] = ServicePlan("terminal", "/bin/terminal", "ZSH Terminal Emulator",
                   TERMINAL_CAPABILITIES, STATE_READY, true);
+    g_servicePlans[10] = ServicePlan("installer", "/bin/installer", "System Installer",
+                  TERMINAL_CAPABILITIES, STATE_RUNNING, true);
     g_servicePlansInitialized = true;
 }
 

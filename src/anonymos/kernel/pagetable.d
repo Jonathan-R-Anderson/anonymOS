@@ -29,7 +29,7 @@ private ulong* pml4()
     return &pml4_table;
 }
 
-private ulong* physToVirt(ulong phys)
+public ulong* physToVirt(ulong phys)
 {
     // Access physical memory via the linear map in the upper half
     return cast(ulong*)(phys + KERNEL_BASE_PHYS_OFFSET);

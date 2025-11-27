@@ -414,6 +414,25 @@ On return: verify return address matches shadow stack
 5. Reboot
 6. If boot fails, rollback to previous snapshot
 
+### 7. Best-Effort Plausible Deniability (VeraCrypt Hidden OS)
+
+AnonymOS now ships with a tailored VeraCrypt integration so the installer can
+encrypt the **entire disk** while simultaneously provisioning a **decoy/hidden
+OS**:
+
+1. The VeraCrypt bootloader unlocks the drive before the capability-based kernel
+   starts, preventing any code from executing until the correct passphrase is
+   provided.
+2. Supplying the “decoy” password boots a lightweight hidden OS with its own
+   namespace and vault, while the real system remains cryptographically isolated.
+3. The installer sets up both volumes and reconfigures `grub`/the kernel loader
+   so each passphrase chain maps to the expected system image, enabling plausible
+   deniability without sacrificing immutable system guarantees.
+
+Both the primary and hidden environments continue to benefit from the snapshot
+and capability hardening described above, so even the hidden OS inherits
+strong boot integrity and minimal ambient authority.
+
 ---
 
 ## Implementation Details

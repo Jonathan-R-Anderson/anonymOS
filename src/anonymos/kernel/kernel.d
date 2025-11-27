@@ -31,14 +31,6 @@ extern(C) void kmain(ulong magic, ulong info)
     clearScreen();
     initSerial();
     
-    // Debug: print the magic and info values
-    import anonymos.console : printHex;
-    print("[debug] magic = 0x");
-    printHex(magic);
-    print(", info = 0x");
-    printHex(info);
-    printLine("");
-
     verifySecurityConfig();
     initializeCPUState();
     
@@ -54,15 +46,13 @@ extern(C) void kmain(ulong magic, ulong info)
     physMemInit(cast(void*)&context);
 
     import anonymos.kernel.pagetable : initKernelLinearMapping;
-    import anonymos.kernel.physmem : totalFrames, freeFrames;
-    print("[physmem] total frames: ");
-    printUnsigned(totalFrames());
-    print(", free frames: ");
-    printUnsigned(freeFrames());
-    printLine("");
+    import anonymos.kernel.physmem : totalFrames;
     initKernelLinearMapping(totalFrames() * 4096);
 
     initializePCI();
+    
+    import anonymos.drivers.ahci : initAHCI;
+    initAHCI();
 
     const ModesetResult display = tryBringUpDisplay(context);
     const bool framebufferReady = display.framebufferReady;
@@ -153,6 +143,10 @@ extern(C) void kmain(ulong magic, ulong info)
         printLine("[kernel] Serial shell will be available after build completes");
         printLine("");
     }
+
+    // Spawn installer for testing
+    printLine("[kernel] Spawning /bin/installer...");
+    cast(void) spawnRegisteredProcess("/bin/installer", null, null);
 
     // Now that init/g_current are ready, enable interrupts.
     asm { sti; }

@@ -2207,7 +2207,7 @@ private enum MAX_EXECUTABLES = 128;
                 }
 
                 // Allocate per-process page table (clone kernel mappings)
-                import anonymos.kernel.pagetable : cloneKernelPml4;
+                import anonymos.kernel.pagetable : cloneKernelPml4, physToVirt;
                 p.cr3 = cloneKernelPml4();
                 if (p.cr3 == 0)
                 {
@@ -2215,14 +2215,31 @@ private enum MAX_EXECUTABLES = 128;
                     return null;
                 }
 
+                // Clear user space mappings (lower half) to remove kernel identity map pollution
+                // But ONLY if the system is initialized. The 'init' process (created during posixInit)
+                // might need the identity map if we are still executing from low memory.
+                // DISABLED: We'll clear this after loading the ELF to avoid issues with page table access
+                /*
+                anonymos.syscalls.posix.print("[posix] allocProc: g_initialized=");
+                anonymos.syscalls.posix.printUnsigned(g_initialized ? 1 : 0);
+                anonymos.syscalls.posix.printLine("");
+                
+                if (g_initialized)
+                {
+                    ulong* pml4 = cast(ulong*)physToVirt(p.cr3);
+                    for (size_t i = 0; i < 256; ++i)
+                    {
+                        pml4[i] = 0;
+                    }
+                }
+                */
+
                 // Initialize per-process VM map
                 const size_t idx = cast(size_t)(&p - g_ptable.ptr);
                 if (idx < g_vmMaps.length)
                 {
-                    g_vmMaps[idx]._regionCount = 0;
                     g_vmMaps[idx]._cr3 = p.cr3;
-                    g_vmMaps[idx]._physPagePoolUsed = 0;
-                    p.vmInitialized = true;
+                    g_vmMaps[idx].reset(); // Ensure clean state
                 }
 
                 assignProcessState(p, ProcState.EMBRYO);
@@ -2868,18 +2885,84 @@ private enum MAX_EXECUTABLES = 128;
             anonymos.syscalls.posix.printLine("[posix-debug] spawnRegisteredProcess: before entry call");
 
             auto slot = findExecutableSlot(path);
-            const bool slotFound = (slot !is null);
-            debugExpectActual("spawnRegisteredProcess slot found", 1, debugBool(slotFound));
-
-            static if (ENABLE_POSIX_DEBUG)
+            
+            if (slot is null)
             {
-                debugPrefix();
-                anonymos.syscalls.posix.print("spawnRegisteredProcess slot found: expected=1, actual=");
-                anonymos.syscalls.posix.printUnsigned(slotFound ? 1 : 0);
+                // Try loading ELF from VFS
+                const(ubyte)[] fileData = readFile(path);
+                if (fileData.length == 0 && path[0] == '/')
+                {
+                     fileData = readFile(path + 1);
+                }
+                anonymos.syscalls.posix.print("[posix-debug] readFile result length: ");
+                anonymos.syscalls.posix.printUnsigned(fileData.length);
                 anonymos.syscalls.posix.printLine("");
+                if (fileData.length > 0)
+                {
+                    lock(&g_plock);
+                    auto proc = allocProc();
+                    if (proc is null)
+                    {
+                        unlock(&g_plock);
+                        return setErrno(Errno.EAGAIN);
+                    }
+                    
+                    
+                    // Load ELF
+                    auto vm = &g_vmMaps[cast(size_t)(proc - g_ptable.ptr)];
+                    ulong entry = loadElfUser(fileData, proc.cr3, vm);
+                    
+                    if (entry != 0)
+                    {
+                        proc.ppid = (g_current ? g_current.pid : 0);
+                        assignProcessState(*proc, ProcState.READY);
+                        proc.userMode = true;
+                        proc.userEntry = entry;
+                        proc.userStackTop = USER_STACK_TOP;
+                        
+                        // Map stack
+                        if (!vm.mapRegion(USER_STACK_TOP - USER_STACK_SIZE, USER_STACK_SIZE, anonymos.kernel.vm_map.Prot.read | anonymos.kernel.vm_map.Prot.write | anonymos.kernel.vm_map.Prot.user))
+                        {
+                             proc.state = ProcState.UNUSED;
+                             unlock(&g_plock);
+                             return setErrno(Errno.ENOMEM);
+                        }
+                        
+                        // Now that ELF and stack are loaded, clear the kernel identity mappings from user space
+                        import anonymos.kernel.pagetable : physToVirt;
+                        ulong* pml4 = cast(ulong*)physToVirt(proc.cr3);
+                        for (size_t i = 0; i < 256; ++i)
+                        {
+                            pml4[i] = 0;
+                        }
+                        
+                        setNameFromCString(proc.name, path);
+                        updateProcessObjectLabel(*proc, path);
+                        
+                        if (proc.kernelStack !is null)
+                        {
+                            size_t stackTop = cast(size_t)(proc.kernelStack + proc.kernelStackSize);
+                            stackTop &= ~0xF;
+                            stackTop -= 16;
+                            
+                            proc.context.regs[6] = stackTop;
+                            proc.context.regs[7] = cast(size_t)&processEntryWrapper;
+                            proc.contextValid = true;
+                        }
+                        
+                        unlock(&g_plock);
+                        return proc.pid;
+                    }
+                    else
+                    {
+                        proc.state = ProcState.UNUSED;
+                        unlock(&g_plock);
+                        return setErrno(Errno.ENOEXEC);
+                    }
+                }
+                
+                return setErrno(Errno.ENOENT);
             }
-
-            if (slot is null) return setErrno(Errno.ENOENT);
 
             lock(&g_plock);
             auto proc        = allocProc();

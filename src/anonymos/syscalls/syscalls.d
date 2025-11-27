@@ -44,6 +44,66 @@ enum SYS_PRLIMIT64 = 302;
 enum SYS_RSEQ    = 334;
 enum SYS_CAP_INVOKE = 1000; // Custom syscall number for capability invocation
 enum SYS_JIT_SEAL = 1001;   // Custom syscall to seal RW -> RX
+enum SYS_BLOCK_READ = 1002;
+enum SYS_BLOCK_WRITE = 1003;
+
+import anonymos.drivers.ahci : readSector, writeSector, g_primaryPort;
+import anonymos.kernel.physmem : allocFrame, freeFrame;
+import core.stdc.string : memcpy;
+
+extern(C) long sys_block_read(ulong lba, ulong count, void* buf)
+{
+    if (g_primaryPort is null) return -1;
+    if (count == 0) return 0;
+    if (count > 8) return -22; // EINVAL (limit to 4KB for now)
+
+    // Allocate bounce buffer (1 page)
+    size_t phys = allocFrame();
+    if (phys == 0) return -12; // ENOMEM
+    
+    // Map to kernel virt
+    // We assume linear map
+    void* kbuf = cast(void*)(phys + 0xFFFF_8000_0000_0000);
+    
+    if (!readSector(g_primaryPort, lba, cast(ushort)count, kbuf))
+    {
+        freeFrame(phys);
+        return -5; // EIO
+    }
+    
+    // Copy to user
+    memcpy(buf, kbuf, count * 512);
+    
+    freeFrame(phys);
+    return 0;
+}
+
+extern(C) long sys_block_write(ulong lba, ulong count, void* buf)
+{
+    print("[syscall] sys_block_write lba=");
+    printUnsigned(lba);
+    printLine("");
+
+    if (g_primaryPort is null) return -1;
+    if (count == 0) return 0;
+    if (count > 8) return -22;
+
+    size_t phys = allocFrame();
+    if (phys == 0) return -12;
+    
+    void* kbuf = cast(void*)(phys + 0xFFFF_8000_0000_0000);
+    
+    memcpy(kbuf, buf, count * 512);
+    
+    if (!writeSector(g_primaryPort, lba, cast(ushort)count, kbuf))
+    {
+        freeFrame(phys);
+        return -5;
+    }
+    
+    freeFrame(phys);
+    return 0;
+}
 
 extern(C) long sys_cap_invoke(ulong capId, ulong method, ulong arg1, ulong arg2)
 {
@@ -217,6 +277,14 @@ extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r
 
         case SYS_JIT_SEAL:
             result = sys_jit_seal(rdi);
+            break;
+
+        case SYS_BLOCK_READ:
+            result = sys_block_read(rdi, rsi, cast(void*)rdx);
+            break;
+
+        case SYS_BLOCK_WRITE:
+            result = sys_block_write(rdi, rsi, cast(void*)rdx);
             break;
 
         default:

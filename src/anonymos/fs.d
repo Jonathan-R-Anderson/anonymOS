@@ -126,9 +126,18 @@ struct TarHeader
             
             // Let's just register as is.
             immutable(char)[] name = cast(immutable(char)[])header.name[0 .. nameLen];
+            if (name.length > 2 && name[0] == '.' && name[1] == '/')
+            {
+                name = name[2 .. $];
+            }
             const(ubyte)[] data = tarData[dataOffset .. dataOffset + size];
             
             registerFile(name, data);
+            
+            import anonymos.console : print, printLine;
+            print("[fs] Registered file: ");
+            print(name);
+            printLine("");
             
             // Create Blob Object
             import anonymos.objects : createBlob, createDirectory, addEntry, getRootObject, setRootObject, ObjectID, Capability, Rights, getObject, ObjectType;

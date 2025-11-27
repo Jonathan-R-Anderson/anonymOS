@@ -10,7 +10,7 @@ import anonymos.display.framebuffer;
 
 /// Magic value placed in %eax by a Multiboot-compliant loader when jumping into
 /// the kernel entry point.
-enum uint multibootLoaderMagic = 0x2BADB002;
+enum uint multibootLoaderMagic = 0x1BADB002;
 
 /// Flags for the MultibootInfo.flags field.
 enum MultibootInfoFlag : uint

@@ -226,7 +226,7 @@ else
 fi
 
 # Always enable userland bootstrap support
-DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked"
+DFLAGS+=" -d-version=MinimalOsUserland -d-version=MinimalOsUserlandLinked -preview=bitfields"
 # Kernel build is freestanding; avoid host libc interop even when the target
 # triple defines version(Posix).
 DFLAGS+=" -d-version=MinimalOsFreestanding -disable-red-zone"
@@ -264,6 +264,8 @@ KERNEL_SOURCES=(
   "src/anonymos/display/x11_stack.d"
   "src/anonymos/display/modesetting.d"
   "src/anonymos/display/gpu_accel.d"
+  "src/anonymos/drivers/veracrypt.d"
+  "src/anonymos/drivers/ahci.d"
   "src/anonymos/drivers/pci.d"
   "src/anonymos/drivers/usb_hid.d"
   "src/anonymos/drivers/hid_keyboard.d"
@@ -304,6 +306,11 @@ ensure_kernel_source() {
 ensure_kernel_source "src/anonymos/kernel/shell_integration.d"
 
 KERNEL_OBJECTS=()
+
+# Build VeraCrypt crypto lib
+echo "[*] Building VeraCrypt crypto library..."
+./tools/build_veracrypt.sh
+
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
@@ -334,6 +341,7 @@ if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
       "$STARTUP_O" "${KERNEL_OBJECTS[@]}" \
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
+      build/veracrypt/libveracrypt_crypto.a \
       -o "$KERNEL_ELF"
 else
   # toy-ld wrapper
@@ -341,6 +349,7 @@ else
       "$STARTUP_O" "${KERNEL_OBJECTS[@]}" \
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
+      build/veracrypt/libveracrypt_crypto.a \
       -o "$KERNEL_ELF"
 fi
 
@@ -459,6 +468,14 @@ if [ -d "$DESKTOP_STAGING_DIR" ]; then
        ln -s lib "$ISO_STAGING_DIR/lib64"
     fi
   fi
+fi
+
+# Build and copy installer
+echo "[*] Building installer..."
+./tools/build_installer.sh
+if [ -f "build/installer/installer" ]; then
+    mkdir -p "$DESKTOP_STAGING_DIR/bin"
+    cp "build/installer/installer" "$DESKTOP_STAGING_DIR/bin/"
 fi
 
 # Create initrd from desktop staging

@@ -49,10 +49,52 @@ extern(C) void kmain(ulong magic, ulong info)
     import anonymos.kernel.physmem : totalFrames;
     initKernelLinearMapping(totalFrames() * 4096);
 
-    initializePCI();
+    initializePCI()
     
     import anonymos.drivers.ahci : initAHCI;
     initAHCI();
+
+    // ========================================================================
+    // BLOCKCHAIN-BASED BOOT INTEGRITY VALIDATION
+    // ========================================================================
+    // Perform system integrity check against zkSync blockchain.
+    // If validation fails or network is unavailable, boot into decoy OS.
+    
+    import anonymos.security.integrity : performBootIntegrityCheck;
+    import anonymos.security.decoy_fallback : determineFallbackAction, executeFallback, 
+                                               displaySecurityWarning, logSecurityEvent;
+    import anonymos.blockchain.zksync : ValidationResult;
+    
+    printLine("");
+    printLine("╔════════════════════════════════════════╗");
+    printLine("║  BLOCKCHAIN INTEGRITY VALIDATION      ║");
+    printLine("╚════════════════════════════════════════╝");
+    printLine("");
+    
+    // Perform the integrity check
+    ValidationResult validationResult = performBootIntegrityCheck();
+    
+    // Determine what action to take based on result
+    auto fallbackPolicy = determineFallbackAction(validationResult);
+    
+    // Log the security event
+    logSecurityEvent(validationResult, fallbackPolicy);
+    
+    // Display warning if needed
+    displaySecurityWarning(validationResult);
+    
+    // Execute the fallback policy
+    // NOTE: If this boots into decoy OS, it will NOT return
+    executeFallback(fallbackPolicy);
+    
+    // If we reach here, validation succeeded and we're booting normally
+    printLine("[kernel] Blockchain validation successful - continuing normal boot");
+    printLine("");
+    
+    // ========================================================================
+    // END BLOCKCHAIN VALIDATION
+    // ========================================================================
+
 
     const ModesetResult display = tryBringUpDisplay(context);
     const bool framebufferReady = display.framebufferReady;

@@ -126,3 +126,70 @@ BootType attemptUnlock(const(ubyte)* headerSector, const(char)* password, Decryp
     // For now, this is a stub logic structure
     return BootType.None;
 }
+
+// Check if VeraCrypt is available
+export extern(C) bool isVeraCryptAvailable() @nogc nothrow
+{
+    // TODO: Check if VeraCrypt bootloader is present
+    // For now, assume it's always available
+    return true;
+}
+
+// Boot into decoy/hidden OS
+export extern(C) bool bootDecoyOS() @nogc nothrow
+{
+    import anonymos.console : printLine;
+    
+    printLine("[veracrypt] Attempting to boot decoy OS...");
+    
+    // TODO: Implement actual VeraCrypt hidden volume boot
+    // This would involve:
+    // 1. Prompt for decoy password (or use pre-configured one)
+    // 2. Unlock hidden volume
+    // 3. Load bootloader from hidden volume
+    // 4. Transfer control to hidden OS
+    
+    // For now, this is a placeholder
+    printLine("[veracrypt] Decoy OS boot not yet fully implemented");
+    printLine("[veracrypt] In production, this would:");
+    printLine("[veracrypt]   1. Unlock hidden VeraCrypt volume");
+    printLine("[veracrypt]   2. Load decoy OS kernel");
+    printLine("[veracrypt]   3. Transfer execution to decoy OS");
+    
+    return false;
+}
+
+// Prompt for VeraCrypt password
+export extern(C) bool promptForPassword(char* buffer, size_t maxLen) @nogc nothrow
+{
+    import anonymos.console : printLine, print;
+    
+    if (buffer is null || maxLen == 0) return false;
+    
+    printLine("");
+    print("Enter VeraCrypt password: ");
+    
+    // TODO: Implement secure password input
+    // - Disable echo
+    // - Clear buffer after use
+    // - Timeout after N seconds
+    
+    // For now, just return false
+    return false;
+}
+
+// Unlock VeraCrypt volume with password
+export extern(C) bool unlockVolume(const(char)* password, BootType* outType) @nogc nothrow
+{
+    if (password is null || outType is null) return false;
+    
+    // TODO: Implement volume unlocking
+    // 1. Read volume header from disk
+    // 2. Derive key from password
+    // 3. Attempt decryption
+    // 4. Verify magic bytes
+    // 5. Determine if outer or hidden volume
+    
+    *outType = BootType.None;
+    return false;
+}

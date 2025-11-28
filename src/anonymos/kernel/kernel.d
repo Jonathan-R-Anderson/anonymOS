@@ -232,21 +232,54 @@ extern(C) void kmain(ulong magic, ulong info)
     {
         import anonymos.console : printHex;
         import anonymos.syscalls.posix : kernel_rsp;
+        extern(C) __gshared ulong tss64_rsp0;
+
         printLine("[kernel] Testing kernel stack accessibility...");
         print("[kernel] kernel_rsp = ");
         printHex(kernel_rsp);
         printLine("");
-        
-        // Try to write to the stack
-        ulong* stackPtr = cast(ulong*)(kernel_rsp - 8);
-        *stackPtr = 0xDEADBEEF;
-        printLine("[kernel] Stack write successful");
-        
-        // Try to read it back
-        ulong value = *stackPtr;
-        print("[kernel] Stack read value = ");
-        printHex(value);
+
+        print("[kernel] TSS rsp0    = ");
+        printHex(tss64_rsp0);
         printLine("");
+
+        const bool tssMatchesKernelRsp = (tss64_rsp0 == kernel_rsp);
+        print("[kernel] TSS matches kernel_rsp: ");
+        printLine(tssMatchesKernelRsp ? "yes" : "no");
+
+        if (kernel_rsp == 0)
+        {
+            printLine("[kernel] kernel_rsp is zero - skipping stack probe");
+        }
+        else
+        {
+            // Try to write to the kernel_rsp stack and restore the original value
+            ulong* stackPtr = cast(ulong*)(kernel_rsp - ulong.sizeof);
+            const ulong originalKernelValue = *stackPtr;
+            *stackPtr = 0xDEADBEEFDEADBEEF;
+            ulong value = *stackPtr;
+            *stackPtr = originalKernelValue;
+            print("[kernel] Stack read-back value = ");
+            printHex(value);
+            printLine("");
+        }
+
+        if (tss64_rsp0 == 0)
+        {
+            printLine("[kernel] TSS rsp0 is zero - skipping stack probe");
+        }
+        else
+        {
+            // Independently validate the TSS rsp0 pointer in case it diverges
+            ulong* tssStackPtr = cast(ulong*)(tss64_rsp0 - ulong.sizeof);
+            const ulong originalTssValue = *tssStackPtr;
+            *tssStackPtr = 0xCAFEBABECAFEBABE;
+            ulong tssValue = *tssStackPtr;
+            *tssStackPtr = originalTssValue;
+            print("[kernel] TSS stack read-back value = ");
+            printHex(tssValue);
+            printLine("");
+        }
     }
     
     // Now that init/g_current are ready, enable interrupts.

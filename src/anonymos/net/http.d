@@ -37,7 +37,7 @@ private __gshared bool g_responseReady = false;
 private __gshared int g_httpSock = -1;
 
 /// HTTP data callback
-private void httpDataCallback(int sockfd, const(ubyte)* data, size_t len) @nogc nothrow {
+private extern(C) void httpDataCallback(int sockfd, const(ubyte)* data, size_t len) @nogc nothrow {
     if (len == 0) return;
     
     // Simple HTTP response parser
@@ -85,12 +85,12 @@ private void httpDataCallback(int sockfd, const(ubyte)* data, size_t len) @nogc 
 }
 
 /// HTTP connect callback
-private void httpConnectCallback(int sockfd) @nogc nothrow {
+private extern(C) void httpConnectCallback(int sockfd) @nogc nothrow {
     // Connection established
 }
 
 /// HTTP close callback
-private void httpCloseCallback(int sockfd) @nogc nothrow {
+private extern(C) void httpCloseCallback(int sockfd) @nogc nothrow {
     g_responseReady = true;
 }
 
@@ -134,7 +134,7 @@ export extern(C) bool httpSendRequest(const ref HTTPRequest request) @nogc nothr
     for (int i = 0; i < 100; i++) {
         networkStackPoll();
         for (int j = 0; j < 100000; j++) {
-            asm { nop; }
+            asm @nogc nothrow { nop; }
         }
     }
     
@@ -245,7 +245,7 @@ export extern(C) bool httpWaitResponse(HTTPResponse* outResponse, uint timeoutMs
         
         // Wait ~10ms
         for (uint j = 0; j < 1000000; j++) {
-            asm { nop; }
+            asm @nogc nothrow { nop; }
         }
     }
     

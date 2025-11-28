@@ -25,6 +25,11 @@ struct TCPPseudoHeader {
     ushort tcpLength;
 }
 
+/// TCP callback types
+alias TCPConnectCallback = extern(C) void function(int) @nogc nothrow;
+alias TCPDataCallback = extern(C) void function(int, const(ubyte)*, size_t) @nogc nothrow;
+alias TCPCloseCallback = extern(C) void function(int) @nogc nothrow;
+
 /// TCP connection
 struct TCPConnection {
     IPv4Address remoteIP;
@@ -48,9 +53,9 @@ struct TCPConnection {
     size_t recvBufferLen;
     
     // Callbacks
-    void function(int) @nogc nothrow onConnect;
-    void function(int, const(ubyte)*, size_t) @nogc nothrow onData;
-    void function(int) @nogc nothrow onClose;
+    TCPConnectCallback onConnect;
+    TCPDataCallback onData;
+    TCPCloseCallback onClose;
     
     bool active;
 }
@@ -112,6 +117,9 @@ export extern(C) int tcpSocket() @nogc nothrow {
     g_tcpConnections[sockfd].sendBufferLen = 0;
     g_tcpConnections[sockfd].recvBufferLen = 0;
     g_tcpConnections[sockfd].recvWindow = 4096;
+    g_tcpConnections[sockfd].onConnect = null;
+    g_tcpConnections[sockfd].onData = null;
+    g_tcpConnections[sockfd].onClose = null;
     g_tcpConnectionCount++;
     
     return sockfd;
@@ -198,7 +206,7 @@ private bool tcpSendPacket(int sockfd, ubyte flags,
     
     // Update sequence number if sending data or SYN/FIN
     if (dataLen > 0 || (flags & (TCPFlags.SYN | TCPFlags.FIN))) {
-        conn.sendSeq += dataLen > 0 ? dataLen : 1;
+        conn.sendSeq += dataLen > 0 ? cast(uint)dataLen : 1;
     }
     
     // Send via IPv4
@@ -311,7 +319,7 @@ export extern(C) void tcpHandlePacket(const(ubyte)* data, size_t len,
             
             if (payloadLen > 0) {
                 // Update receive sequence
-                conn.recvSeq = seqNum + payloadLen;
+                conn.recvSeq = seqNum + cast(uint)payloadLen;
                 conn.sendAck = conn.recvSeq;
                 
                 // Deliver data
@@ -387,9 +395,9 @@ export extern(C) void tcpClose(int sockfd) @nogc nothrow {
 
 /// Set TCP callbacks
 export extern(C) void tcpSetCallbacks(int sockfd,
-                                       void function(int) @nogc nothrow onConnect,
-                                       void function(int, const(ubyte)*, size_t) @nogc nothrow onData,
-                                       void function(int) @nogc nothrow onClose) @nogc nothrow {
+                                       TCPConnectCallback onConnect,
+                                       TCPDataCallback onData,
+                                       TCPCloseCallback onClose) @nogc nothrow {
     if (sockfd < 0 || sockfd >= g_tcpConnectionCount) return;
     
     g_tcpConnections[sockfd].onConnect = onConnect;

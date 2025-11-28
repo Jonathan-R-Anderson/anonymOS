@@ -826,7 +826,7 @@ bool unlockVolume(const(char)* password, BootType* outType);
 ### Build
 
 ```bash
-./buildscript.sh
+./scripts/buildscript.sh
 ```
 
 This produces `build/os.iso`.

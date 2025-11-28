@@ -51,7 +51,7 @@ import anonymos.drivers.ahci : readSector, writeSector, g_primaryPort;
 import anonymos.kernel.physmem : allocFrame, freeFrame;
 import core.stdc.string : memcpy;
 
-extern(C) long sys_block_read(ulong lba, ulong count, void* buf)
+extern(C) long sys_block_read(ulong lba, ulong count, void* buf) @nogc nothrow
 {
     if (g_primaryPort is null) return -1;
     if (count == 0) return 0;
@@ -78,11 +78,11 @@ extern(C) long sys_block_read(ulong lba, ulong count, void* buf)
     return 0;
 }
 
-extern(C) long sys_block_write(ulong lba, ulong count, void* buf)
+extern(C) long sys_block_write(ulong lba, ulong count, void* buf) @nogc nothrow
 {
-    print("[syscall] sys_block_write lba=");
-    printUnsigned(lba);
-    printLine("");
+    // print("[syscall] sys_block_write lba=");
+    // printUnsigned(lba);
+    // printLine("");
 
     if (g_primaryPort is null) return -1;
     if (count == 0) return 0;
@@ -163,10 +163,14 @@ void initSyscalls()
     wrmsr(MSR_STAR, starValue);
 }
 
-extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r10, ulong r8, ulong r9)
+extern(C) void handleSyscall(ulong rax, ulong rdi, ulong rsi, ulong rdx, ulong r10, ulong r8, ulong r9, ulong userRsp, ulong userRbp)
 {
+    // import anonymos.console : printLine, printHex;
     // printLine("[syscall] Dispatching...");
     // printHex(rax);
+    // print(" RSP="); printHex(userRsp);
+    // print(" RBP="); printHex(userRbp);
+    // printLine("");
 
     import anonymos.syscalls.posix : syscallAllowed;
     if (!syscallAllowed(rax))
@@ -308,13 +312,28 @@ extern(C) void syscallEntry()
         // Save user return context and switch to the kernel stack.
         mov [scratch_rsp], RSP;
         mov RSP, [kernel_rsp];
+        
+        // Save User RSP on the kernel stack so it survives context switches
+        push qword ptr [scratch_rsp];
+
         push R11;      // user RFLAGS for sysret
         push RCX;      // user RIP for sysret
 
         // Preserve the 6th argument (r9) before shuffling for the D ABI.
-        push R9;
+        push R9; // Arg7
 
-        // handleSyscall(rax, rdi, rsi, rdx, r10, r8, r9)
+        // Push extra debug args
+        push qword ptr [scratch_rsp]; // Arg8: User RSP
+        push RBP;                     // Arg9: User RBP
+        
+        // Stack alignment:
+        // Pushed: SavedRSP, R11, RCX, Arg7, Arg8, Arg9 = 6 items = 48 bytes.
+        // call pushes 8 bytes. Total 56 bytes.
+        // Need 16-byte alignment. 56 is not divisible by 16.
+        // Need 8 bytes padding.
+        push 0;
+
+        // handleSyscall(rax, rdi, rsi, rdx, r10, r8, r9, userRsp, userRbp)
         mov R9, R8;    // sixth arg becomes r9
         mov R8, R10;   // fifth arg becomes r8
         mov RCX, RDX;  // fourth arg becomes rcx
@@ -324,11 +343,11 @@ extern(C) void syscallEntry()
 
         call handleSyscall;
 
-        add RSP, 8;    // drop saved arg6
+        add RSP, 32;   // drop padding, Arg9, Arg8, Arg7
         pop RCX;       // restore user RIP
         pop R11;       // restore user RFLAGS
-
-        mov RSP, [scratch_rsp];
+        
+        pop RSP;       // Restore User RSP directly from stack
 
         sysretq;
     }

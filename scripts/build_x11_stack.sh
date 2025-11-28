@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${ROOT:-$PWD}"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+ROOT="${ROOT:-$SCRIPT_DIR/..}"
+cd "$ROOT"
 OUT_DIR="${OUT_DIR:-build}"
 # This matches DESKTOP_STAGING_DIR in buildscript.sh
 STAGING_DIR="$OUT_DIR/desktop-stack"

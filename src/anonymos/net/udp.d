@@ -11,11 +11,14 @@ struct UDPHeader {
     ushort checksum;
 }
 
+/// UDP receive callback type
+alias UDPCallback = extern(C) void function(const(ubyte)*, size_t, const ref IPv4Address, ushort) @nogc nothrow;
+
 /// UDP socket
 struct UDPSocket {
     ushort localPort;
     bool bound;
-    void function(const(ubyte)*, size_t, const ref IPv4Address, ushort) @nogc nothrow callback;
+    UDPCallback callback;
 }
 
 private __gshared UDPSocket[256] g_udpSockets;
@@ -53,9 +56,7 @@ export extern(C) bool udpBind(int sockfd, ushort port) @nogc nothrow {
 }
 
 /// Set UDP receive callback
-export extern(C) void udpSetCallback(int sockfd,
-                                      void function(const(ubyte)*, size_t,
-                                                   const ref IPv4Address, ushort) @nogc nothrow callback) @nogc nothrow {
+export extern(C) void udpSetCallback(int sockfd, UDPCallback callback) @nogc nothrow {
     if (sockfd < 0 || sockfd >= g_udpSocketCount) return;
     g_udpSockets[sockfd].callback = callback;
 }

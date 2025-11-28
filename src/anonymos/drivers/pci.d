@@ -48,44 +48,71 @@ void pciConfigWrite32(ubyte bus, ubyte slot, ubyte func, ubyte offset, uint valu
     }
 }
 
-/// Basic bus walk that logs every present device/function with IDs and class.
-void initializePCI()
-{
-    printLine("[pci] Enumerating devices");
+/// PCI Device structure
+struct PCIDevice {
+    ubyte bus;
+    ubyte slot;
+    ubyte func;
+    ushort vendorId;
+    ushort deviceId;
+    ubyte classCode;
+    ubyte subClass;
+    ubyte progIf;
+}
 
-    foreach (bus; 0 .. 256)
-    {
-        foreach (slot; 0 .. 32)
-        {
-            foreach (func; 0 .. 8)
-            {
+private __gshared PCIDevice[32] g_pciDevices;
+private __gshared size_t g_pciDeviceCount = 0;
+
+/// Scan PCI bus and return list of devices
+PCIDevice[] scanPCIDevices() {
+    g_pciDeviceCount = 0;
+    
+    foreach (bus; 0 .. 256) {
+        foreach (slot; 0 .. 32) {
+            foreach (func; 0 .. 8) {
                 const uint vendorDevice = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0);
-                if ((vendorDevice & 0xFFFF) == 0xFFFF)
-                {
-                    if (func == 0)
-                    {
-                        break;
-                    }
+                if ((vendorDevice & 0xFFFF) == 0xFFFF) {
+                    if (func == 0) break;
                     continue;
                 }
 
                 const ushort vendorId = cast(ushort)(vendorDevice & 0xFFFF);
                 const ushort deviceId = cast(ushort)((vendorDevice >> 16) & 0xFFFF);
-                const uint classCode = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 8);
-                const ubyte baseClass = cast(ubyte)((classCode >> 24) & 0xFF);
-                const ubyte subClass  = cast(ubyte)((classCode >> 16) & 0xFF);
-                const ubyte progIf    = cast(ubyte)((classCode >> 8) & 0xFF);
+                const uint classRev = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 8);
+                const ubyte baseClass = cast(ubyte)((classRev >> 24) & 0xFF);
+                const ubyte subClass  = cast(ubyte)((classRev >> 16) & 0xFF);
+                const ubyte progIf    = cast(ubyte)((classRev >> 8) & 0xFF);
 
-                print("[pci] ");
-                printHex(bus); print(":"); printHex(slot); print("."); printHex(func);
-                print(" vid:"); printHex(vendorId);
-                print(" did:"); printHex(deviceId);
-                print(" class:"); printHex(baseClass);
-                print("."); printHex(subClass);
-                print("."); printHex(progIf);
-                printLine("");
+                if (g_pciDeviceCount < g_pciDevices.length) {
+                    g_pciDevices[g_pciDeviceCount] = PCIDevice(
+                        cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func,
+                        vendorId, deviceId, baseClass, subClass, progIf
+                    );
+                    g_pciDeviceCount++;
+                }
             }
         }
+    }
+    
+    return g_pciDevices[0 .. g_pciDeviceCount];
+}
+
+/// Basic bus walk that logs every present device/function with IDs and class.
+void initializePCI()
+{
+    printLine("[pci] Enumerating devices");
+    
+    auto devices = scanPCIDevices();
+    
+    foreach (dev; devices) {
+        print("[pci] ");
+        printHex(dev.bus); print(":"); printHex(dev.slot); print("."); printHex(dev.func);
+        print(" vid:"); printHex(dev.vendorId);
+        print(" did:"); printHex(dev.deviceId);
+        print(" class:"); printHex(dev.classCode);
+        print("."); printHex(dev.subClass);
+        print("."); printHex(dev.progIf);
+        printLine("");
     }
 
     printLine("[pci] enumeration complete");

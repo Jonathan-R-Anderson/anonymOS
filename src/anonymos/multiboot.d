@@ -157,6 +157,25 @@ struct MultibootContext
 
         return MultibootMmapRange(info.mmapAddr, info.mmapLength);
     }
+
+    /// Retrieve the command line string.
+    @nogc pure nothrow
+    const(char)[] cmdline() const
+    {
+        if (!valid || !(info.flags & (1u << 2)))
+        {
+            return null;
+        }
+
+        const char* ptr = ptrFromAddress!char(info.cmdline);
+        if (ptr is null) return null;
+
+        // Find length (bounded to avoid infinite loop on bad data)
+        size_t len = 0;
+        while (len < 1024 && ptr[len] != '\0') len++;
+
+        return ptr[0 .. len];
+    }
 }
 
 /// Identify which firmware path delivered the framebuffer description.

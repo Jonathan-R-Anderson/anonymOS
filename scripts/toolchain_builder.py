@@ -463,7 +463,7 @@ class ToolchainBuilder:
 
     @staticmethod
     def _repo_root() -> Path:
-        return Path(__file__).resolve().parent
+        return Path(__file__).resolve().parent.parent
 
 
 def resolve_source_root(path: Path) -> Path:

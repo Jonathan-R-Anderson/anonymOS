@@ -45,7 +45,7 @@ export extern(C) bool initNetworkStack(const IPv4Address* localIP,
 }
 
 /// Protocol handler for IPv4
-private void handleIPv4Protocol(ubyte protocol, const(ubyte)* data, size_t len,
+private extern(C) void handleIPv4Protocol(ubyte protocol, const(ubyte)* data, size_t len,
                                  const ref IPv4Address srcIP) @nogc nothrow {
     switch (protocol) {
         case IPProtocol.ICMP:

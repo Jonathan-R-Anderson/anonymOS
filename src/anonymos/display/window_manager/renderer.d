@@ -141,6 +141,8 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
 
     canvasText(canvas, activeFontStack(), window.x + padding, window.y + (titleHeight > glyphHeight ? (titleHeight - glyphHeight) / 2 : 0), window.title, textColor, barColor);
 
+
+
     if (window.height > titleHeight)
     {
         const uint contentY = window.y + titleHeight;

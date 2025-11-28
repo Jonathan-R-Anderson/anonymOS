@@ -2,7 +2,12 @@ module anonymos.security.integrity;
 
 import anonymos.console : printLine, print;
 import anonymos.blockchain.zksync : SystemFingerprint, ValidationResult, validateSystemIntegrity, initZkSync;
-import anonymos.drivers.network : initNetwork, isNetworkAvailable;
+import anonymos.net.stack : configureNetwork;
+import anonymos.drivers.network : isNetworkAvailable;
+
+extern(C) ubyte __kernel_start;
+extern(C) ubyte __kernel_end;
+extern(C) void _start();
 
 /// Compute SHA-256 hash of a memory region
 export extern(C) void sha256(const(ubyte)* data, size_t len, ubyte* outHash) @nogc nothrow {
@@ -43,7 +48,7 @@ export extern(C) void sha256(const(ubyte)* data, size_t len, ubyte* outHash) @no
                 chunk[i] = 0x80;  // Append '1' bit
             } else if (offset + i >= paddedLen - 8) {
                 // Append length in bits (big-endian)
-                int shiftAmount = (paddedLen - 1 - offset - i) * 8;
+                int shiftAmount = cast(int)((paddedLen - 1 - offset - i) * 8);
                 chunk[i] = cast(ubyte)((bitLen >> shiftAmount) & 0xFF);
             } else {
                 chunk[i] = 0;
@@ -127,15 +132,11 @@ export extern(C) void computeSystemFingerprint(SystemFingerprint* outFingerprint
     
     // Hash kernel (assume it's loaded at known location)
     // In reality, we'd read from /system/kernel/kernel.elf
-    extern(C) ubyte __kernel_start;
-    extern(C) ubyte __kernel_end;
-    
     ulong kernelSize = cast(ulong)(&__kernel_end) - cast(ulong)(&__kernel_start);
     sha256(&__kernel_start, kernelSize, outFingerprint.kernelHash.ptr);
     printLine("[integrity]   - Kernel hash computed");
     
     // Hash bootloader (boot.s compiled code)
-    extern(C) void _start();
     sha256(cast(ubyte*)&_start, 4096, outFingerprint.bootloaderHash.ptr);
     printLine("[integrity]   - Bootloader hash computed");
     
@@ -155,7 +156,7 @@ export extern(C) void computeSystemFingerprint(SystemFingerprint* outFingerprint
     
     // Set timestamp (use RDTSC for now)
     ulong tsc;
-    asm {
+    asm @nogc nothrow {
         rdtsc;
         shl RDX, 32;
         or RAX, RDX;
@@ -203,17 +204,25 @@ export extern(C) ValidationResult performBootIntegrityCheck() @nogc nothrow {
     printLine("========================================");
     printLine("");
     
-    // Step 1: Initialize network
-    printLine("[boot-check] Step 1: Initializing network...");
-    initNetwork();
+    // Step 1: Initialize network stack
+    printLine("[boot-check] Step 1: Initializing network stack...");
     
-    if (!isNetworkAvailable()) {
-        printLine("[boot-check] WARNING: No network connectivity");
+    // Default QEMU network configuration
+    // IP: 10.0.2.15, Gateway: 10.0.2.2, Netmask: 255.255.255.0, DNS: 8.8.8.8
+    bool netInit = configureNetwork(
+        10, 0, 2, 15,       // IP
+        10, 0, 2, 2,        // Gateway
+        255, 255, 255, 0,   // Netmask
+        8, 8, 8, 8          // DNS
+    );
+    
+    if (!netInit) {
+        printLine("[boot-check] WARNING: Network initialization failed");
         printLine("[boot-check] Cannot validate against blockchain");
         return ValidationResult.NetworkUnavailable;
     }
     
-    printLine("[boot-check] Network initialized successfully");
+    printLine("[boot-check] Network stack initialized successfully");
     printLine("");
     
     // Step 2: Initialize zkSync client

@@ -572,6 +572,35 @@ void renderWorkspaceComposited(const WindowManager* manager)
     // Skip window blitting for now to avoid potential stalls; just present the cleared buffer + taskbar.
     if (frameLogs < 1) printLine("[compositor] windows drawing skipped");
 
+    // Render installer if active
+    import anonymos.display.installer : g_installer, renderInstallerWindow;
+    if (g_installer.active)
+    {
+        if (frameLogs < 1) printLine("[compositor] rendering installer");
+        
+        // Create canvas pointing to compositor buffer
+        import anonymos.display.canvas : Canvas;
+        import anonymos.display.framebuffer : g_fb;
+        
+        Canvas c;
+        c.pixels = g_compositor.buffer;
+        c.width = g_compositor.width;
+        c.height = g_compositor.height;
+        c.pitch = g_compositor.pitch;
+        c.targetsFramebuffer = false;
+        c.available = true;
+        
+        // Calculate installer window position (centered)
+        uint w = 800;
+        uint h = 500;
+        uint x = (g_fb.width - w) / 2;
+        uint y = (g_fb.height - h) / 2;
+        
+        renderInstallerWindow(&c, cast(int)x, cast(int)y, cast(int)w, cast(int)h);
+        
+        if (frameLogs < 1) printLine("[compositor] installer rendered");
+    }
+
     g_compositor.present();
     if (frameLogs < 1) printLine("[compositor] present done");
     ++frameLogs;

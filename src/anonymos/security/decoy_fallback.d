@@ -125,12 +125,12 @@ private void haltSystem() @nogc nothrow {
     printLine("");
     
     // Disable interrupts and halt
-    asm {
+    asm @nogc nothrow {
         cli;
     }
     
     while (true) {
-        asm {
+        asm @nogc nothrow {
             hlt;
         }
     }
@@ -145,7 +145,7 @@ private void emergencyWipe() @nogc nothrow {
     // TODO: Zero out sensitive kernel data structures
     
     printLine("[wipe] Clearing CPU caches...");
-    asm {
+    asm @nogc nothrow {
         wbinvd;  // Write back and invalidate cache
     }
     
@@ -206,7 +206,7 @@ private void busyWait(uint milliseconds) @nogc nothrow {
     ulong cycles = milliseconds * 1_000_000UL;
     
     for (ulong i = 0; i < cycles; i++) {
-        asm {
+        asm @nogc nothrow {
             nop;
         }
     }

@@ -30,7 +30,7 @@ struct MouseState
     int x;              // Absolute X position
     int y;              // Absolute Y position
     ubyte buttons;      // Current button state
-    ubyte lastButtons;  // Previous button state
+
     int wheelDelta;     // Accumulated wheel movement
 }
 
@@ -42,7 +42,7 @@ void initializeMouseState(uint screenWidth, uint screenHeight) @nogc nothrow
     g_mouseState.x = cast(int)(screenWidth / 2);
     g_mouseState.y = cast(int)(screenHeight / 2);
     g_mouseState.buttons = 0;
-    g_mouseState.lastButtons = 0;
+
     g_mouseState.wheelDelta = 0;
 }
 
@@ -50,11 +50,58 @@ void initializeMouseState(uint screenWidth, uint screenHeight) @nogc nothrow
 void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue, 
                        uint screenWidth, uint screenHeight) @nogc nothrow
 {
+    import anonymos.console : print, printLine, printUnsigned, printHex;
+    
+    static uint reportCount = 0;
+    static uint moveCount = 0;
+    static uint buttonDownCount = 0;
+    static uint buttonUpCount = 0;
+    
+    reportCount++;
+    
+    // Log every report for debugging
+    if (reportCount % 10 == 1 || report.deltaX != 0 || report.deltaY != 0 || report.buttons != g_mouseState.buttons)
+    {
+        print("[mouse] Report #");
+        printUnsigned(reportCount);
+        print(": delta=(");
+        if (report.deltaX < 0)
+        {
+            print("-");
+            printUnsigned(cast(uint)(-report.deltaX));
+        }
+        else
+        {
+            printUnsigned(cast(uint)report.deltaX);
+        }
+        print(", ");
+        if (report.deltaY < 0)
+        {
+            print("-");
+            printUnsigned(cast(uint)(-report.deltaY));
+        }
+        else
+        {
+            printUnsigned(cast(uint)report.deltaY);
+        }
+        print(") buttons=0x");
+        printHex(report.buttons);
+        print(" pos=(");
+        printUnsigned(cast(uint)g_mouseState.x);
+        print(", ");
+        printUnsigned(cast(uint)g_mouseState.y);
+        print(")");
+        printLine("");
+    }
+    
     bool stateChanged = false;
     
     // Update position with delta movement
     if (report.deltaX != 0 || report.deltaY != 0)
     {
+        int oldX = g_mouseState.x;
+        int oldY = g_mouseState.y;
+        
         g_mouseState.x += report.deltaX;
         g_mouseState.y += report.deltaY;
         
@@ -64,6 +111,29 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
         if (g_mouseState.x >= screenWidth) g_mouseState.x = cast(int)screenWidth - 1;
         if (g_mouseState.y >= screenHeight) g_mouseState.y = cast(int)screenHeight - 1;
 
+        moveCount++;
+        
+        // Log significant movements
+        int dx = g_mouseState.x - oldX;
+        int dy = g_mouseState.y - oldY;
+        int absDelta = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
+        
+        if (absDelta > 50)
+        {
+            print("[mouse] LARGE MOVE #");
+            printUnsigned(moveCount);
+            print(": (");
+            printUnsigned(cast(uint)oldX);
+            print(", ");
+            printUnsigned(cast(uint)oldY);
+            print(") -> (");
+            printUnsigned(cast(uint)g_mouseState.x);
+            print(", ");
+            printUnsigned(cast(uint)g_mouseState.y);
+            print(") delta=");
+            printUnsigned(cast(uint)absDelta);
+            printLine("");
+        }
 
         // Generate pointer move event
         InputEvent event;
@@ -77,9 +147,21 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     }
     
     // Detect button presses
-    ubyte pressedButtons = report.buttons & ~g_mouseState.lastButtons;
+    ubyte pressedButtons = report.buttons & ~g_mouseState.buttons;
     if (pressedButtons != 0)
     {
+        buttonDownCount++;
+        print("[mouse] BUTTON DOWN #");
+        printUnsigned(buttonDownCount);
+        print(": buttons=0x");
+        printHex(pressedButtons);
+        print(" at (");
+        printUnsigned(cast(uint)g_mouseState.x);
+        print(", ");
+        printUnsigned(cast(uint)g_mouseState.y);
+        print(")");
+        printLine("");
+        
         InputEvent event;
         event.type = InputEvent.Type.buttonDown;
         event.data1 = g_mouseState.x;
@@ -91,9 +173,21 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     }
     
     // Detect button releases
-    ubyte releasedButtons = g_mouseState.lastButtons & ~report.buttons;
+    ubyte releasedButtons = g_mouseState.buttons & ~report.buttons;
     if (releasedButtons != 0)
     {
+        buttonUpCount++;
+        print("[mouse] BUTTON UP #");
+        printUnsigned(buttonUpCount);
+        print(": buttons=0x");
+        printHex(releasedButtons);
+        print(" at (");
+        printUnsigned(cast(uint)g_mouseState.x);
+        print(", ");
+        printUnsigned(cast(uint)g_mouseState.y);
+        print(")");
+        printLine("");
+        
         InputEvent event;
         event.type = InputEvent.Type.buttonUp;
         event.data1 = g_mouseState.x;
@@ -105,7 +199,6 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     }
     
     // Update button state
-    g_mouseState.lastButtons = g_mouseState.buttons;
     g_mouseState.buttons = report.buttons;
     
     // Handle scroll wheel (if present)
@@ -135,6 +228,6 @@ void resetMouseState() @nogc nothrow
     g_mouseState.x = 0;
     g_mouseState.y = 0;
     g_mouseState.buttons = 0;
-    g_mouseState.lastButtons = 0;
+
     g_mouseState.wheelDelta = 0;
 }

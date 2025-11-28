@@ -904,11 +904,52 @@ private void handlePs2MouseByte(ubyte data, ref InputQueue queue) @nogc nothrow
     if (g_ps2MouseIndex < 3) return;
     g_ps2MouseIndex = 0;
 
+    const ubyte flags = g_ps2MousePacket[0];
+    const ubyte rawX = g_ps2MousePacket[1];
+    const ubyte rawY = g_ps2MousePacket[2];
+    
+    // Check overflow bits - if set, discard this packet
+    const bool xOverflow = (flags & 0x40) != 0;
+    const bool yOverflow = (flags & 0x80) != 0;
+    if (xOverflow || yOverflow)
+    {
+        // Discard packet with overflow
+        return;
+    }
+    
+    // Get sign bits
+    const bool xNegative = (flags & 0x10) != 0;
+    const bool yNegative = (flags & 0x20) != 0;
+    
+    // Convert to signed values with proper sign extension
+    int deltaX = rawX;
+    int deltaY = rawY;
+    
+    if (xNegative)
+    {
+        // Sign extend: if negative, set upper bits
+        deltaX = cast(int)(rawX | 0xFFFFFF00);
+    }
+    
+    if (yNegative)
+    {
+        // Sign extend: if negative, set upper bits  
+        deltaY = cast(int)(rawY | 0xFFFFFF00);
+    }
+    
+    // PS/2 packet Y is negative when moving down; flip to screen space (positive down)
+    deltaY = -deltaY;
+    
+    // Clamp to reasonable values to prevent jumps
+    if (deltaX < -127) deltaX = -127;
+    if (deltaX > 127) deltaX = 127;
+    if (deltaY < -127) deltaY = -127;
+    if (deltaY > 127) deltaY = 127;
+
     HIDMouseReport report;
-    report.buttons = cast(ubyte)(g_ps2MousePacket[0] & 0x07);
-    report.deltaX = cast(byte)g_ps2MousePacket[1];
-    // PS/2 packet Y is negative when moving down; flip to screen space (positive down).
-    report.deltaY = cast(byte)-cast(byte)g_ps2MousePacket[2];
+    report.buttons = cast(ubyte)(flags & 0x07);
+    report.deltaX = cast(byte)deltaX;
+    report.deltaY = cast(byte)deltaY;
     report.deltaWheel = 0;
 
     g_usbHID.pointerPresent = true;

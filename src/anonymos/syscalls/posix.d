@@ -2910,6 +2910,15 @@ private enum MAX_EXECUTABLES = 128;
                     
                     // Load ELF
                     auto vm = &g_vmMaps[cast(size_t)(proc - g_ptable.ptr)];
+
+                    // Clear the kernel identity mappings from user space (lower half) BEFORE loading user code
+                    import anonymos.kernel.pagetable : physToVirt;
+                    ulong* pml4 = cast(ulong*)physToVirt(proc.cr3);
+                    for (size_t i = 0; i < 256; ++i)
+                    {
+                        pml4[i] = 0;
+                    }
+
                     ulong entry = loadElfUser(fileData, proc.cr3, vm);
                     
                     if (entry != 0)
@@ -2920,6 +2929,8 @@ private enum MAX_EXECUTABLES = 128;
                         proc.userEntry = entry;
                         proc.userStackTop = USER_STACK_TOP;
                         
+
+
                         // Map stack
                         if (!vm.mapRegion(USER_STACK_TOP - USER_STACK_SIZE, USER_STACK_SIZE, anonymos.kernel.vm_map.Prot.read | anonymos.kernel.vm_map.Prot.write | anonymos.kernel.vm_map.Prot.user))
                         {
@@ -2928,13 +2939,8 @@ private enum MAX_EXECUTABLES = 128;
                              return setErrno(Errno.ENOMEM);
                         }
                         
-                        // Now that ELF and stack are loaded, clear the kernel identity mappings from user space
-                        import anonymos.kernel.pagetable : physToVirt;
-                        ulong* pml4 = cast(ulong*)physToVirt(proc.cr3);
-                        for (size_t i = 0; i < 256; ++i)
-                        {
-                            pml4[i] = 0;
-                        }
+                        // Now that ELF and stack are loaded, we are ready.
+                        // (Identity mappings were cleared before loading)
                         
                         setNameFromCString(proc.name, path);
                         updateProcessObjectLabel(*proc, path);

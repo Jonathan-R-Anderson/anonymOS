@@ -117,6 +117,8 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
     
     // Check for Ctrl+W (close window)
     const bool ctrlPressed = (modifiers & 0x11) != 0;  // Left or right Ctrl
+    const bool shiftPressed = (modifiers & 0x22) != 0;  // Left or right Shift
+    
     if (ctrlPressed && (key == 'w' || key == 'W'))
     {
         const focusedId = manager.focusedWindowId();
@@ -124,6 +126,22 @@ private void handleKeyDown(ref const InputEvent event, ref WindowManager manager
         {
             manager.destroyWindow(focusedId, damage);
         }
+        return;
+    }
+    
+    // Check for Ctrl+Shift+T (run cursor tests)
+    if (ctrlPressed && shiftPressed && (key == 't' || key == 'T'))
+    {
+        import anonymos.console : printLine;
+        printLine("[input] Running cursor movement tests...");
+        
+        // Import and run cursor tests
+        import tests.cursor_movement_test : runCursorTests;
+        import anonymos.display.cursor_diagnostics : printCursorDiagnostics;
+        
+        runCursorTests();
+        printCursorDiagnostics();
+        
         return;
     }
     

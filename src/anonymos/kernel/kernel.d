@@ -21,6 +21,8 @@ import anonymos.kernel.shell_integration : compilerBuilderProcessEntry;
 import anonymos.syscalls.syscalls : initSyscalls;
 import anonymos.security_config : verifySecurityConfig;
 
+private __gshared const(char)*[3] g_desktopArgv;
+
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
 extern(C) void kmain(ulong magic, ulong info)
@@ -49,7 +51,7 @@ extern(C) void kmain(ulong magic, ulong info)
     import anonymos.kernel.physmem : totalFrames;
     initKernelLinearMapping(totalFrames() * 4096);
 
-    initializePCI()
+    initializePCI();
     
     import anonymos.drivers.ahci : initAHCI;
     initAHCI();
@@ -60,36 +62,62 @@ extern(C) void kmain(ulong magic, ulong info)
     // Perform system integrity check against zkSync blockchain.
     // If validation fails or network is unavailable, boot into decoy OS.
     
-    import anonymos.security.integrity : performBootIntegrityCheck;
-    import anonymos.security.decoy_fallback : determineFallbackAction, executeFallback, 
-                                               displaySecurityWarning, logSecurityEvent;
-    import anonymos.blockchain.zksync : ValidationResult;
-    
-    printLine("");
-    printLine("╔════════════════════════════════════════╗");
-    printLine("║  BLOCKCHAIN INTEGRITY VALIDATION      ║");
-    printLine("╚════════════════════════════════════════╝");
-    printLine("");
-    
-    // Perform the integrity check
-    ValidationResult validationResult = performBootIntegrityCheck();
-    
-    // Determine what action to take based on result
-    auto fallbackPolicy = determineFallbackAction(validationResult);
-    
-    // Log the security event
-    logSecurityEvent(validationResult, fallbackPolicy);
-    
-    // Display warning if needed
-    displaySecurityWarning(validationResult);
-    
-    // Execute the fallback policy
-    // NOTE: If this boots into decoy OS, it will NOT return
-    executeFallback(fallbackPolicy);
-    
-    // If we reach here, validation succeeded and we're booting normally
-    printLine("[kernel] Blockchain validation successful - continuing normal boot");
-    printLine("");
+    // Check for install mode in command line
+    bool installMode = false;
+    const(char)[] cmdline = context.cmdline();
+    if (cmdline.length > 0)
+    {
+        // Simple substring check for "install_mode"
+        for (size_t i = 0; i < cmdline.length; i++)
+        {
+            if (cmdline[i] == 'i' && i + 12 <= cmdline.length)
+            {
+                if (cmdline[i .. i + 12] == "install_mode")
+                {
+                    installMode = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!installMode)
+    {
+        import anonymos.security.integrity : performBootIntegrityCheck;
+        import anonymos.security.decoy_fallback : determineFallbackAction, executeFallback, 
+                                                   displaySecurityWarning, logSecurityEvent;
+        import anonymos.blockchain.zksync : ValidationResult;
+        
+        printLine("");
+        printLine("╔════════════════════════════════════════╗");
+        printLine("║  BLOCKCHAIN INTEGRITY VALIDATION      ║");
+        printLine("╚════════════════════════════════════════╝");
+        printLine("");
+        
+        // Perform the integrity check
+        ValidationResult validationResult = performBootIntegrityCheck();
+        
+        // Determine what action to take based on result
+        auto fallbackPolicy = determineFallbackAction(validationResult);
+        
+        // Log the security event
+        logSecurityEvent(validationResult, fallbackPolicy);
+        
+        // Display warning if needed
+        displaySecurityWarning(validationResult);
+        
+        // Execute the fallback policy
+        // NOTE: If this boots into decoy OS, it will NOT return
+        executeFallback(fallbackPolicy);
+        
+        // If we reach here, validation succeeded and we're booting normally
+        printLine("[kernel] Blockchain validation successful - continuing normal boot");
+        printLine("");
+    }
+    else
+    {
+        printLine("[kernel] Install mode detected - skipping blockchain validation");
+    }
     
     // ========================================================================
     // END BLOCKCHAIN VALIDATION
@@ -176,7 +204,17 @@ extern(C) void kmain(ulong magic, ulong info)
             &desktopProcessEntry);
         if (desktopRegistration == 0)
         {
-            cast(void) spawnRegisteredProcess("/sbin/desktop", null, null);
+            // Pass install_mode flag if active
+            g_desktopArgv[0] = "/sbin/desktop";
+            size_t argc = 1;
+            
+            if (installMode)
+            {
+                g_desktopArgv[argc++] = "--install";
+            }
+            g_desktopArgv[argc] = null;
+            
+            cast(void) spawnRegisteredProcess("/sbin/desktop", g_desktopArgv.ptr, null);
         }
     }
     else
@@ -187,8 +225,8 @@ extern(C) void kmain(ulong magic, ulong info)
     }
 
     // Spawn installer for testing
-    printLine("[kernel] Spawning /bin/installer...");
-    cast(void) spawnRegisteredProcess("/bin/installer", null, null);
+    // printLine("[kernel] Spawning /bin/installer...");
+    // cast(void) spawnRegisteredProcess("/bin/installer", null, null);
 
     // Now that init/g_current are ready, enable interrupts.
     asm { sti; }

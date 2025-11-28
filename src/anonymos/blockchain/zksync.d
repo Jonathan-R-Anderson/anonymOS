@@ -1,7 +1,9 @@
 module anonymos.blockchain.zksync;
 
 import anonymos.console : printLine, print;
-import anonymos.drivers.network : isNetworkAvailable, sendEthFrame, receiveEthFrame;
+import anonymos.drivers.network : isNetworkAvailable;
+import anonymos.net.https;
+import anonymos.net.http;
 
 /// zkSync Era network configuration
 struct ZkSyncConfig {
@@ -63,7 +65,7 @@ export extern(C) void initZkSync(const(ubyte)* rpcIp, ushort rpcPort,
     g_zkSyncInitialized = true;
     
     print("[zksync] RPC endpoint: ");
-    printIpAddress(g_zkSyncConfig.rpcIpAddress);
+    printIpAddress(g_zkSyncConfig.rpcIpAddress.ptr);
     print(":");
     printUint(g_zkSyncConfig.rpcPort);
     printLine("");
@@ -87,13 +89,6 @@ export extern(C) ValidationResult validateSystemIntegrity(const SystemFingerprin
     if (!isNetworkAvailable()) {
         printLine("[zksync] WARNING: Network unavailable");
         return ValidationResult.NetworkUnavailable;
-    }
-    
-    // Attempt to connect to zkSync RPC
-    printLine("[zksync] Connecting to zkSync Era RPC...");
-    if (!connectToZkSync()) {
-        printLine("[zksync] ERROR: Cannot reach zkSync blockchain");
-        return ValidationResult.BlockchainUnreachable;
     }
     
     // Query smart contract for stored fingerprint
@@ -130,10 +125,7 @@ export extern(C) bool storeSystemFingerprint(const SystemFingerprint* fingerprin
         return false;
     }
     
-    if (!connectToZkSync()) {
-        printLine("[zksync] ERROR: Cannot reach zkSync blockchain");
-        return false;
-    }
+
     
     // Construct transaction to update contract
     if (!sendUpdateTransaction(fingerprint)) {
@@ -149,42 +141,7 @@ export extern(C) bool storeSystemFingerprint(const SystemFingerprint* fingerprin
 // Internal Implementation
 // ============================================================================
 
-private bool connectToZkSync() @nogc nothrow {
-    // TODO: Implement TCP connection to zkSync RPC
-    // For now, simulate connection attempt
-    
-    // Build TCP SYN packet
-    ubyte[64] synPacket;
-    buildTcpSynPacket(synPacket.ptr, 64, g_zkSyncConfig.rpcIpAddress.ptr, 
-                      g_zkSyncConfig.rpcPort);
-    
-    // Send SYN
-    if (!sendEthFrame(synPacket.ptr, 64)) {
-        return false;
-    }
-    
-    // Wait for SYN-ACK (with timeout)
-    ubyte[1500] rxBuffer;
-    int attempts = 0;
-    while (attempts < 100) {  // ~1 second timeout
-        int received = receiveEthFrame(rxBuffer.ptr, 1500);
-        if (received > 0) {
-            // Check if it's a SYN-ACK
-            if (isTcpSynAck(rxBuffer.ptr, received)) {
-                printLine("[zksync] TCP connection established");
-                return true;
-            }
-        }
-        
-        // Busy wait ~10ms
-        for (int i = 0; i < 1000000; i++) {
-            asm { nop; }
-        }
-        attempts++;
-    }
-    
-    return false;
-}
+
 
 private bool queryStoredFingerprint(SystemFingerprint* outFingerprint) @nogc nothrow {
     if (outFingerprint is null) return false;
@@ -194,20 +151,19 @@ private bool queryStoredFingerprint(SystemFingerprint* outFingerprint) @nogc not
     int jsonLen = buildJsonRpcRequest(jsonRequest.ptr, 512, 
         "eth_call", g_zkSyncConfig.contractAddress.ptr);
     
-    // Send HTTP POST request
-    if (!sendHttpPost(jsonRequest.ptr, jsonLen)) {
+    char[64] hostStr;
+    ipToString(g_zkSyncConfig.rpcIpAddress.ptr, hostStr.ptr);
+    
+    HTTPResponse response;
+    if (!httpsPost(hostStr.ptr, g_zkSyncConfig.rpcPort, "/", 
+                   jsonRequest.ptr, jsonLen, &response, true)) {
         return false;
     }
     
-    // Receive response
-    ubyte[2048] response;
-    int responseLen = receiveHttpResponse(response.ptr, 2048);
-    if (responseLen <= 0) {
-        return false;
-    }
+    if (response.statusCode != 200) return false;
     
     // Parse JSON response and extract fingerprint
-    return parseFingerprint(response.ptr, responseLen, outFingerprint);
+    return parseFingerprint(response.body.ptr, response.bodyLen, outFingerprint);
 }
 
 private bool sendUpdateTransaction(const SystemFingerprint* fingerprint) @nogc nothrow {
@@ -262,19 +218,7 @@ private void printFingerprintDiff(const SystemFingerprint* current,
 // Network Protocol Helpers
 // ============================================================================
 
-private void buildTcpSynPacket(ubyte* buffer, size_t maxLen, 
-                                const(ubyte)* destIp, ushort destPort) @nogc nothrow {
-    // TODO: Build proper Ethernet + IP + TCP SYN packet
-    // For now, just zero the buffer
-    for (size_t i = 0; i < maxLen; i++) {
-        buffer[i] = 0;
-    }
-}
 
-private bool isTcpSynAck(const(ubyte)* packet, int len) @nogc nothrow {
-    // TODO: Parse Ethernet/IP/TCP headers and check for SYN-ACK
-    return false;
-}
 
 private int buildJsonRpcRequest(ubyte* buffer, size_t maxLen, 
                                  const(char)* method, const(ubyte)* contractAddr) @nogc nothrow {
@@ -282,17 +226,9 @@ private int buildJsonRpcRequest(ubyte* buffer, size_t maxLen,
     return 0;
 }
 
-private bool sendHttpPost(const(ubyte)* data, int len) @nogc nothrow {
-    // TODO: Send HTTP POST request over established TCP connection
-    return false;
-}
 
-private int receiveHttpResponse(ubyte* buffer, size_t maxLen) @nogc nothrow {
-    // TODO: Receive HTTP response
-    return 0;
-}
 
-private bool parseFingerprint(const(ubyte)* jsonData, int len, 
+private bool parseFingerprint(const(ubyte)* jsonData, size_t len, 
                                SystemFingerprint* outFingerprint) @nogc nothrow {
     // TODO: Parse JSON response and extract fingerprint fields
     return false;
@@ -301,6 +237,26 @@ private bool parseFingerprint(const(ubyte)* jsonData, int len,
 // ============================================================================
 // Utility Functions
 // ============================================================================
+
+private void ipToString(const(ubyte)* ip, char* buffer) @nogc nothrow {
+    size_t idx = 0;
+    for (int i = 0; i < 4; i++) {
+        ubyte val = ip[i];
+        if (val >= 100) {
+            buffer[idx++] = cast(char)('0' + (val / 100));
+            val %= 100;
+            buffer[idx++] = cast(char)('0' + (val / 10));
+            val %= 10;
+        } else if (val >= 10) {
+            buffer[idx++] = cast(char)('0' + (val / 10));
+            val %= 10;
+        }
+        buffer[idx++] = cast(char)('0' + val);
+        
+        if (i < 3) buffer[idx++] = '.';
+    }
+    buffer[idx] = '\0';
+}
 
 private void printIpAddress(const(ubyte)* ip) @nogc nothrow {
     import anonymos.console : printUnsigned;

@@ -120,10 +120,12 @@ export extern(C) bool ipv4Send(const ref IPv4Address destIP,
                              packetBuffer.ptr, packetSize);
 }
 
+/// IPv4 protocol handler callback
+alias IPv4ProtocolHandler = extern(C) void function(ubyte, const(ubyte)*, size_t, const ref IPv4Address) @nogc nothrow;
+
 /// Handle received IPv4 packet
 export extern(C) void ipv4HandlePacket(const(ubyte)* data, size_t len,
-                                        void function(ubyte, const(ubyte)*, size_t,
-                                                     const ref IPv4Address) @nogc nothrow callback) @nogc nothrow {
+                                        IPv4ProtocolHandler callback) @nogc nothrow {
     if (data is null || len < IPv4Header.sizeof) return;
     
     const IPv4Header* header = cast(const IPv4Header*)data;

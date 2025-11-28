@@ -22,7 +22,7 @@ struct NetworkDevice {
     uint irq;
 }
 
-private __gshared NetworkDevice g_netDevice;
+export __gshared NetworkDevice g_netDevice;
 private __gshared bool g_networkAvailable = false;
 
 /// Initialize network driver
@@ -157,13 +157,25 @@ private void initE1000Rings(NetworkDevice* dev) @nogc nothrow {
 }
 
 private uint readE1000Reg(NetworkDevice* dev, uint offset) @nogc nothrow {
-    volatile uint* reg = cast(uint*)(dev.memBase + offset);
-    return *reg;
+    uint* reg = cast(uint*)(dev.memBase + offset);
+    uint val;
+    // Volatile read using inline assembly
+    asm @nogc nothrow {
+        mov RDX, reg;
+        mov EAX, [RDX];
+        mov val, EAX;
+    }
+    return val;
 }
 
 private void writeE1000Reg(NetworkDevice* dev, uint offset, uint value) @nogc nothrow {
-    volatile uint* reg = cast(uint*)(dev.memBase + offset);
-    *reg = value;
+    uint* reg = cast(uint*)(dev.memBase + offset);
+    // Volatile write using inline assembly
+    asm @nogc nothrow {
+        mov RDX, reg;
+        mov EAX, value;
+        mov [RDX], EAX;
+    }
 }
 
 private bool e1000Send(const(ubyte)* data, size_t len) @nogc nothrow {

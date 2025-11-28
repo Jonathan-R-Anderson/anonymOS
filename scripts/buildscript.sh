@@ -2,7 +2,9 @@
 set -euo pipefail
 
 # ===================== Config (override via env) =====================
-ROOT="${ROOT:-$PWD}"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+ROOT="${ROOT:-$SCRIPT_DIR/..}"
+cd "$ROOT"
 OUT_DIR="${OUT_DIR:-build}"
 LLVM_DIR="${LLVM_DIR:-$ROOT/3rdparty/llvm-project}"
 SRC_DIR="${SRC_DIR:-$LLVM_DIR/compiler-rt/lib/builtins}"
@@ -260,16 +262,36 @@ KERNEL_SOURCES=(
   "src/anonymos/display/window_manager/renderer.d"
   "src/anonymos/display/compositor.d"
   "src/anonymos/display/desktop.d"
+  "src/anonymos/display/installer.d"
   "src/anonymos/display/server.d"
   "src/anonymos/display/x11_stack.d"
   "src/anonymos/display/modesetting.d"
   "src/anonymos/display/gpu_accel.d"
+  "src/anonymos/display/cursor_diagnostics.d"
+  "tests/cursor_movement_test.d"
   "src/anonymos/drivers/veracrypt.d"
   "src/anonymos/drivers/ahci.d"
   "src/anonymos/drivers/pci.d"
   "src/anonymos/drivers/usb_hid.d"
   "src/anonymos/drivers/hid_keyboard.d"
   "src/anonymos/drivers/hid_mouse.d"
+  "src/anonymos/drivers/network.d"
+  "src/anonymos/net/types.d"
+  "src/anonymos/net/ethernet.d"
+  "src/anonymos/net/arp.d"
+  "src/anonymos/net/ipv4.d"
+  "src/anonymos/net/icmp.d"
+  "src/anonymos/net/udp.d"
+  "src/anonymos/net/tcp.d"
+  "src/anonymos/net/dns.d"
+  "src/anonymos/net/tls.d"
+  "src/anonymos/net/openssl_stubs.d"
+  "src/anonymos/net/http.d"
+  "src/anonymos/net/https.d"
+  "src/anonymos/net/stack.d"
+  "src/anonymos/blockchain/zksync.d"
+  "src/anonymos/security/integrity.d"
+  "src/anonymos/security/decoy_fallback.d"
   "src/anonymos/compiler.d"
   "src/anonymos/fallback_shell.d"
   "src/anonymos/syscalls/posix.d"
@@ -481,7 +503,74 @@ fi
 # Create initrd from desktop staging
 INITRD_IMG="$ISO_STAGING_DIR/boot/initrd.tar"
 if [ -d "$DESKTOP_STAGING_DIR" ]; then
-    echo "[*] Creating initrd from $DESKTOP_STAGING_DIR"
+    # Ensure kernel is available in initrd
+    mkdir -p "$DESKTOP_STAGING_DIR/boot"
+    cp "$KERNEL_ELF" "$DESKTOP_STAGING_DIR/boot/kernel.elf"
+    
+    # ---------------------------------------------------------
+    # Prepare Installation Assets
+    # ---------------------------------------------------------
+    INSTALL_DIR="$DESKTOP_STAGING_DIR/usr/share/install"
+    mkdir -p "$INSTALL_DIR"
+    
+    echo "[*] Preparing installation assets..."
+    
+    # 1. Create the "Payload" Initrd (The one that will be installed)
+    # This initrd should NOT contain the installation assets (to save space and avoid recursion).
+    # We create it temporarily.
+    PAYLOAD_INITRD="/tmp/anonymos_payload_initrd.tar"
+    # Exclude the install directory itself
+    tar -cf "$PAYLOAD_INITRD" -C "$DESKTOP_STAGING_DIR" --exclude="usr/share/install" .
+    
+    # 2. Base Filesystem Image (Partition Content)
+    # Size needs to be enough for Kernel (2MB) + Initrd (20-30MB) + Overhead.
+    # Let's make it 100MB to be safe.
+    BASE_FS_IMG="$INSTALL_DIR/base_fs.img"
+    dd if=/dev/zero of="$BASE_FS_IMG" bs=1M count=100
+    mke2fs -t ext2 -F "$BASE_FS_IMG"
+    
+    # Populate base fs
+    debugfs -w -R "mkdir /boot" "$BASE_FS_IMG"
+    debugfs -w -R "mkdir /boot/grub" "$BASE_FS_IMG"
+    debugfs -w -R "write $KERNEL_ELF /boot/kernel.elf" "$BASE_FS_IMG"
+    debugfs -w -R "write $PAYLOAD_INITRD /boot/initrd.tar" "$BASE_FS_IMG"
+    rm "$PAYLOAD_INITRD"
+    
+    # Grub config for the INSTALLED system
+    cat > installed_grub.cfg <<EOF
+set timeout=5
+set default=0
+menuentry "AnonymOS" {
+    multiboot /boot/kernel.elf
+    module /boot/initrd.tar initrd
+    boot
+}
+EOF
+    debugfs -w -R "write installed_grub.cfg /boot/grub/grub.cfg" "$BASE_FS_IMG"
+    rm installed_grub.cfg
+    
+    # 3. GRUB Bootloader Components
+    GRUB_LIB="/usr/lib/grub/i386-pc"
+    if [ ! -d "$GRUB_LIB" ]; then
+        GRUB_LIB="/usr/lib/grub/i386-pc" # Fallback
+    fi
+    
+    cp "$GRUB_LIB/boot.img" "$INSTALL_DIR/boot.img"
+    
+    cat > grub_prefix.cfg <<EOF
+set root=(hd0,msdos1)
+configfile /boot/grub/grub.cfg
+EOF
+    grub-mkimage -d "$GRUB_LIB" -O i386-pc -o "$INSTALL_DIR/core.img" \
+        -p "(hd0,msdos1)/boot/grub" -c grub_prefix.cfg \
+        biosdisk part_msdos ext2
+    rm grub_prefix.cfg
+    
+    echo "[*] Installation assets prepared in $INSTALL_DIR"
+    
+    # 4. Create the Final Initrd (for the ISO)
+    # This INCLUDES the installation assets we just created.
+    echo "[*] Creating ISO initrd from $DESKTOP_STAGING_DIR"
     tar -cf "$INITRD_IMG" -C "$DESKTOP_STAGING_DIR" .
 fi
 
@@ -493,7 +582,7 @@ set timeout=0
 set default=0
 
 menuentry "AnonymOS" {
-    multiboot /boot/kernel.elf
+    multiboot /boot/kernel.elf install_mode
     module /boot/initrd.tar initrd
     boot
 }
@@ -533,7 +622,20 @@ echo "[✓] ISO image: $ISO_IMAGE"
 # ===================== Optional: QEMU autolaunch =====================
 if [ "$QEMU_RUN" = "1" ]; then
   need "$QEMU_BIN"
+  
+  # Create a dummy disk image for installation testing
+  if [ ! -f "disk.img" ]; then
+      echo "[*] Creating 100MB disk image..."
+      dd if=/dev/zero of=disk.img bs=1M count=100
+  fi
+  
   QEMU_ARGS=(-cdrom "$ISO_IMAGE" -serial stdio -machine pc,i8042=on)
+  
+  # Add AHCI controller and disk
+  QEMU_ARGS+=(-device ahci,id=ahci)
+  QEMU_ARGS+=(-device ide-hd,drive=disk,bus=ahci.0)
+  QEMU_ARGS+=(-drive id=disk,file=disk.img,if=none,format=raw)
+  
   if [ "$QEMU_USB" = "1" ]; then
     echo "[!] QEMU_USB=1: guest xHCI driver is partially stubbed; USB input may be routed via legacy PS/2" >&2
     # Provide an xHCI controller with USB HID devices so the guest can enumerate

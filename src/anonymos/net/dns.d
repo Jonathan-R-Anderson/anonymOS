@@ -242,7 +242,7 @@ export extern(C) void dnsAddCache(const(char)* hostname, const ref IPv4Address i
             g_dnsCache[i].ttl = ttl;
             
             ulong tsc;
-            asm {
+            asm @nogc nothrow {
                 rdtsc;
                 shl RDX, 32;
                 or RAX, RDX;
@@ -266,7 +266,7 @@ export extern(C) void dnsAddCache(const(char)* hostname, const ref IPv4Address i
         g_dnsCache[g_dnsCacheSize].valid = true;
         
         ulong tsc;
-        asm {
+        asm @nogc nothrow {
             rdtsc;
             shl RDX, 32;
             or RAX, RDX;
@@ -333,7 +333,7 @@ export extern(C) bool dnsResolve(const(char)* hostname, IPv4Address* outIP, uint
         
         // Wait ~10ms
         for (uint j = 0; j < 1000000; j++) {
-            asm { nop; }
+            asm @nogc nothrow { nop; }
         }
     }
     

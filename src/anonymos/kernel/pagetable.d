@@ -121,8 +121,10 @@ private bool mapPageAt(ulong* root, ulong virt, ulong phys, bool writable, bool 
     }
     else
     {
-        // ensure not 2MB page
-        assert((pd[pdeIndex] & PAGE_PS) == 0, "Huge page present at target");
+        if ((pd[pdeIndex] & PAGE_PS) != 0)
+        {
+            return false;
+        }
         ptPhys = pd[pdeIndex] & 0x000FFFFFFFFFF000;
     }
 

@@ -71,7 +71,7 @@ export extern(C) void arpCacheAdd(const ref IPv4Address ip, const ref MACAddress
             g_arpCache[i].mac = mac;
             // Update timestamp (use RDTSC)
             ulong tsc;
-            asm {
+            asm @nogc nothrow {
                 rdtsc;
                 shl RDX, 32;
                 or RAX, RDX;
@@ -89,7 +89,7 @@ export extern(C) void arpCacheAdd(const ref IPv4Address ip, const ref MACAddress
         g_arpCache[g_arpCacheSize].valid = true;
         
         ulong tsc;
-        asm {
+        asm @nogc nothrow {
             rdtsc;
             shl RDX, 32;
             or RAX, RDX;
@@ -193,7 +193,7 @@ export extern(C) bool arpResolve(const ref IPv4Address ip, MACAddress* outMac,
         
         // Busy wait ~10ms
         for (uint j = 0; j < 1000000; j++) {
-            asm { nop; }
+            asm @nogc nothrow { nop; }
         }
     }
     

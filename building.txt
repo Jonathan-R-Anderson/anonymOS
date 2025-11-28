@@ -9,6 +9,8 @@ https://codeberg.org/Calamares/calamares.git
 https://github.com/sahibjotsaggu/San-Francisco-Pro-Fonts.git
 https://github.com/freetype/freetype.git
 https://github.com/harfbuzz/harfbuzz.git
+https://git.torproject.org/tor.git
+
 
 python3 toolchain_builder.py --config toolchain_config.toml
  

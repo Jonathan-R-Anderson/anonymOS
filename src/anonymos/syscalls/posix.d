@@ -675,9 +675,12 @@ mixin template PosixKernelShim()
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
+    private __gshared ubyte[16384]   g_debugStack; // Static stack for debugging
     private enum size_t INVALID_INDEX = size_t.max;
     private __gshared size_t         g_runQueueHead = INVALID_INDEX;
     private struct SyscallPolicy { bool used; char[16] name; ulong[16] mask; }
+    
+    extern(C) extern __gshared ulong stack_top; // from boot.s
     private __gshared SyscallPolicy[MAX_POLICIES] g_sysPolicies;
     package(anonymos) __gshared bool g_initialized = false;
     package(anonymos) __gshared bool g_consoleAvailable = false;
@@ -1992,6 +1995,12 @@ private enum MAX_EXECUTABLES = 128;
 
     @nogc nothrow private void runPendingExec(Proc* proc)
     {
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.printLine("runPendingExec: entered");
+        }
+
         if (proc is null) return;
 
         if (proc.userMode)
@@ -2046,8 +2055,31 @@ private enum MAX_EXECUTABLES = 128;
         // Load per-process CR3
         if (newp.cr3 != 0)
         {
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("arch_context_switch: about to load CR3=");
+                anonymos.syscalls.posix.printHex(newp.cr3);
+                anonymos.syscalls.posix.printLine("");
+                
+                // Verify the PML4 has the identity mapping
+                import anonymos.kernel.pagetable : physToVirt;
+                ulong* pml4 = cast(ulong*)physToVirt(newp.cr3);
+                anonymos.syscalls.posix.print("arch_context_switch: PML4[0]=");
+                anonymos.syscalls.posix.printHex(pml4[0]);
+                anonymos.syscalls.posix.print(" PML4[256]=");
+                anonymos.syscalls.posix.printHex(pml4[256]);
+                anonymos.syscalls.posix.printLine("");
+            }
+            
             import anonymos.kernel.pagetable : loadCr3;
             loadCr3(newp.cr3);
+            
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.printLine("arch_context_switch: CR3 loaded successfully");
+            }
         }
 
         if (newp.pendingExec)
@@ -2058,14 +2090,93 @@ private enum MAX_EXECUTABLES = 128;
 
         if (newp.contextValid)
         {
-            longjmp(newp.context, 1);
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("arch_context_switch: restoring context RSP=");
+                anonymos.syscalls.posix.printHex(newp.context.regs[6]);
+                anonymos.syscalls.posix.print(" RIP=");
+                anonymos.syscalls.posix.printHex(newp.context.regs[7]);
+                anonymos.syscalls.posix.printLine("");
+            }
+
+            auto ctx = &newp.context;
+            
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("arch_context_switch: about to restore context RSP=");
+                anonymos.syscalls.posix.printHex(newp.context.regs[6]);
+                anonymos.syscalls.posix.print(" RIP=");
+                anonymos.syscalls.posix.printHex(newp.context.regs[7]);
+                anonymos.syscalls.posix.printLine("");
+            }
+
+            asm @nogc nothrow
+            {
+                mov RDX, ctx;
+                mov RBX, [RDX + 0];
+                mov RBP, [RDX + 8];
+                mov R12, [RDX + 16];
+                mov R13, [RDX + 24];
+                mov R14, [RDX + 32];
+                mov R15, [RDX + 40];
+                mov RSP, [RDX + 48];
+                mov R11, [RDX + 56];
+                mov RAX, 1; // Return 1 from setjmp
+                jmp R11;
+            }
         }
+    }
+
+    extern(C) @nogc nothrow void processEntryTrampoline()
+    {
+        // This is the actual entry point for new processes
+        // It's called via jmp from arch_context_switch
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.printLine("processEntryTrampoline: entered");
+        }
+        
+        // Set up a proper stack frame and call processEntryWrapper
+        asm @nogc nothrow
+        {
+            // Set RBP to 0 to mark the bottom of the call stack
+            xor RBP, RBP;
+            // Align stack to 16 bytes (required by System V ABI)
+            and RSP, -16;
+            // Call processEntryWrapper (this will push a return address)
+            call processEntryWrapper;
+            // If it returns, halt
+        Lhalt:
+            hlt;
+            jmp Lhalt;
+        }
+    }
+
+    extern(C) @nogc nothrow void dummyEntry()
+    {
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.printLine("dummyEntry: entered");
+        }
+        for (;;) { asm @nogc nothrow { hlt; } }
     }
 
     extern(C) @nogc nothrow void processEntryWrapper()
     {
+        // ...
         // Enable interrupts because new processes inherit IF=0 from the ISR that preempted the previous task
         asm @nogc nothrow { sti; }
+        
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.printLine("processEntryWrapper: entered");
+        }
+
         // This function is the entry point for new processes.
         // It runs on the process's own kernel stack.
         runPendingExec(g_current);
@@ -2192,11 +2303,21 @@ private enum MAX_EXECUTABLES = 128;
                 p.environment = allocateEnvironmentTable(p.pid, p.objectId);
                 if (p.environment !is null) ensureEnvironmentObject(p.environment, p.objectId);
                 
-                // Allocate kernel stack (4KB)
+                // Allocate kernel stack (16KB)
                 if (p.kernelStack is null)
                 {
-                    p.kernelStackSize = 4096;
-                    p.kernelStack = cast(ubyte*)kmalloc(p.kernelStackSize);
+                    // Use static stack for the first allocated process (after init) to debug
+                    if (p.pid == 2)
+                    {
+                        p.kernelStackSize = 16384;
+                        p.kernelStack = g_debugStack.ptr;
+                        anonymos.syscalls.posix.printLine("[posix-debug] Using static debug stack for PID 2");
+                    }
+                    else
+                    {
+                        p.kernelStackSize = 16384;
+                        p.kernelStack = cast(ubyte*)kmalloc(p.kernelStackSize);
+                    }
                 }
                 
                 if (p.kernelStack is null)
@@ -2249,11 +2370,20 @@ private enum MAX_EXECUTABLES = 128;
         return null;
     }
 
+    pragma(inline, false)
     @nogc nothrow private bool saveProcessContext(Proc* proc)
     {
         if (proc is null) return false;
 
         const auto result = setjmp(proc.context);
+        if (result != 0)
+        {
+             static if (ENABLE_POSIX_DEBUG)
+             {
+                 debugPrefix();
+                 anonymos.syscalls.posix.printLine("saveProcessContext: returned from longjmp");
+             }
+        }
         proc.contextValid = true;
         return result != 0;
     }
@@ -2266,6 +2396,18 @@ private enum MAX_EXECUTABLES = 128;
     // ---- Very small round-robin scheduler ----
     public @nogc nothrow void schedYield()
     {
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            static uint yieldCount = 0;
+            if ((yieldCount++ & 0xF) == 0) // Print every 16th call
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("schedYield: call #");
+                anonymos.syscalls.posix.printUnsigned(yieldCount);
+                anonymos.syscalls.posix.printLine("");
+            }
+        }
+        
         debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
         if (!g_initialized) return;
 
@@ -2300,6 +2442,29 @@ private enum MAX_EXECUTABLES = 128;
         }
 
         auto current = g_current;
+        
+        // Check if there are any other processes to switch to
+        // If not, just return without context switching
+        bool hasOtherReady = false;
+        foreach (ref proc; g_ptable)
+        {
+            if (proc.state == ProcState.READY && &proc != current)
+            {
+                hasOtherReady = true;
+                break;
+            }
+        }
+        
+        if (!hasOtherReady)
+        {
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.printLine("schedYield: no other ready processes, staying on current");
+            }
+            return;
+        }
+        
         if (saveProcessContext(current))
         {
             return;
@@ -2320,6 +2485,20 @@ private enum MAX_EXECUTABLES = 128;
         }
 
         auto next = selectNextReadyProcess(current);
+        
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.print("schedYield: selected next=");
+            anonymos.syscalls.posix.printHex(cast(size_t)next);
+            if (next !is null)
+            {
+                anonymos.syscalls.posix.print(" PID=");
+                anonymos.syscalls.posix.printUnsigned(next.pid);
+            }
+            anonymos.syscalls.posix.printLine("");
+        }
+        
         if (next is null)
         {
             if (current.state != ProcState.ZOMBIE)
@@ -2347,6 +2526,16 @@ private enum MAX_EXECUTABLES = 128;
             {
                 updateTssRsp0(kernel_rsp);
             }
+        }
+
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.print("schedYield: switching from PID ");
+            anonymos.syscalls.posix.printUnsigned(current.pid);
+            anonymos.syscalls.posix.print(" to PID ");
+            anonymos.syscalls.posix.printUnsigned(next.pid);
+            anonymos.syscalls.posix.printLine("");
         }
 
         arch_context_switch(current, next);
@@ -2916,7 +3105,7 @@ private enum MAX_EXECUTABLES = 128;
                     ulong* pml4 = cast(ulong*)physToVirt(proc.cr3);
                     for (size_t i = 0; i < 256; ++i)
                     {
-                        pml4[i] = 0;
+                        // pml4[i] = 0;
                     }
 
                     ulong entry = loadElfUser(fileData, proc.cr3, vm);
@@ -2954,6 +3143,16 @@ private enum MAX_EXECUTABLES = 128;
                             proc.context.regs[6] = stackTop;
                             proc.context.regs[7] = cast(size_t)&processEntryWrapper;
                             proc.contextValid = true;
+
+                            static if (ENABLE_POSIX_DEBUG)
+                            {
+                                debugPrefix();
+                                anonymos.syscalls.posix.print("spawnRegisteredProcess context: RSP=");
+                                anonymos.syscalls.posix.printHex(proc.context.regs[6]);
+                                anonymos.syscalls.posix.print(" RIP=");
+                                anonymos.syscalls.posix.printHex(proc.context.regs[7]);
+                                anonymos.syscalls.posix.printLine("");
+                            }
                         }
                         
                         unlock(&g_plock);
@@ -3008,15 +3207,35 @@ private enum MAX_EXECUTABLES = 128;
                 size_t stackTop = cast(size_t)(proc.kernelStack + proc.kernelStackSize);
                 // Align to 16 bytes
                 stackTop &= ~0xF;
-                // Leave some space for safety
-                stackTop -= 16;
+                
+                // Leave some space and set up return address
+                // When we jump to processEntryWrapper, RSP will point here
+                // and there should be a return address just above it
+                stackTop -= 16; // Space for alignment
+                
+                // Write a dummy return address at [RSP+8]
+                // (the location where a 'call' instruction would have pushed it)
+                *cast(ulong*)(stackTop + 8) = 0;
 
                 // Set up jmp_buf
+                // JMP_RBX = 0 * 8 = 0
+                // JMP_RBP = 1 * 8 = 8
                 // JMP_RSP = 6 * 8 = 48
                 // JMP_RIP = 7 * 8 = 56
-                proc.context.regs[6] = stackTop;
-                proc.context.regs[7] = cast(size_t)&processEntryWrapper;
+                proc.context.regs[1] = 0; // RBP = 0 (bottom of stack)
+                proc.context.regs[6] = stackTop; // RSP
+                proc.context.regs[7] = cast(size_t)&processEntryTrampoline; // RIP
                 proc.contextValid = true;
+
+                static if (ENABLE_POSIX_DEBUG)
+                {
+                    debugPrefix();
+                    anonymos.syscalls.posix.print("spawnRegisteredProcess (reg) context: RSP=");
+                    anonymos.syscalls.posix.printHex(proc.context.regs[6]);
+                    anonymos.syscalls.posix.print(" RIP=");
+                    anonymos.syscalls.posix.printHex(proc.context.regs[7]);
+                    anonymos.syscalls.posix.printLine("");
+                }
             }
 
             unlock(&g_plock);
@@ -3080,6 +3299,30 @@ private enum MAX_EXECUTABLES = 128;
         debugLog("posixInit invoked");
         debugExpectActual("posixInit already initialized", 0, debugBool(g_initialized));
         if(g_initialized) return;
+        
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            debugPrefix();
+            anonymos.syscalls.posix.print("posixInit: setjmp addr=");
+            anonymos.syscalls.posix.printHex(cast(size_t)&setjmp);
+            anonymos.syscalls.posix.print(" saveProcessContext addr=");
+            anonymos.syscalls.posix.printHex(cast(size_t)&saveProcessContext);
+            anonymos.syscalls.posix.printLine("");
+            
+            anonymos.syscalls.posix.print("posixInit: stack_top addr=");
+            anonymos.syscalls.posix.printHex(cast(size_t)&stack_top);
+            anonymos.syscalls.posix.printLine("");
+            
+            import anonymos.kernel.heap : g_kernelHeap;
+            anonymos.syscalls.posix.print("posixInit: g_kernelHeap addr=");
+            anonymos.syscalls.posix.printHex(cast(size_t)g_kernelHeap.ptr);
+            anonymos.syscalls.posix.printLine("");
+
+            anonymos.syscalls.posix.print("posixInit: g_ptable addr=");
+            anonymos.syscalls.posix.printHex(cast(size_t)g_ptable.ptr);
+            anonymos.syscalls.posix.printLine("");
+        }
+
         initializeObjectRegistry();
         foreach(ref p; g_ptable) resetProc(p);
         foreach(ref slot; g_execTable){ slot = ExecutableSlot.init; slot.objectId = INVALID_OBJECT_ID; }
@@ -3093,6 +3336,16 @@ private enum MAX_EXECUTABLES = 128;
         debugExpectActual("posixInit init process", 1, debugBool(initProc !is null));
         if(initProc !is null)
         {
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("posixInit: initProc addr=");
+                anonymos.syscalls.posix.printHex(cast(size_t)initProc);
+                anonymos.syscalls.posix.print(" context addr=");
+                anonymos.syscalls.posix.printHex(cast(size_t)&initProc.context);
+                anonymos.syscalls.posix.printLine("");
+            }
+
             initProc.ppid  = 0;
             assignProcessState(*initProc, ProcState.RUNNING);
             setNameFromLiteral(initProc.name, "kernel");

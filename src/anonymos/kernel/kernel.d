@@ -228,8 +228,31 @@ extern(C) void kmain(ulong magic, ulong info)
     // printLine("[kernel] Spawning /bin/installer...");
     // cast(void) spawnRegisteredProcess("/bin/installer", null, null);
 
+    // Test that the kernel stack is accessible
+    {
+        import anonymos.console : printHex;
+        import anonymos.syscalls.posix : kernel_rsp;
+        printLine("[kernel] Testing kernel stack accessibility...");
+        print("[kernel] kernel_rsp = ");
+        printHex(kernel_rsp);
+        printLine("");
+        
+        // Try to write to the stack
+        ulong* stackPtr = cast(ulong*)(kernel_rsp - 8);
+        *stackPtr = 0xDEADBEEF;
+        printLine("[kernel] Stack write successful");
+        
+        // Try to read it back
+        ulong value = *stackPtr;
+        print("[kernel] Stack read value = ");
+        printHex(value);
+        printLine("");
+    }
+    
     // Now that init/g_current are ready, enable interrupts.
     asm { sti; }
+    printLine("[kernel] Interrupts enabled, entering idle loop");
+    for (;;) { asm { hlt; } }
 }
 
 private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext context)

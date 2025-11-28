@@ -118,6 +118,12 @@ extern(C) @nogc nothrow void interruptContextSwitch(ulong* oldSp, ulong newSp); 
 
 extern(C) @nogc nothrow void timerIsrHandler()
 {
+    static uint timerCount = 0;
+    if ((timerCount++ & 0xF) == 0) // Print every 16th timer
+    {
+        printLine("[irq] timer ISR entered");
+    }
+    
     ++g_tickCount;
     auto cpu = cpuCurrent();
     ++cpu.ticks;
@@ -126,6 +132,7 @@ extern(C) @nogc nothrow void timerIsrHandler()
     // Update scheduler accounting and preempt if slice expired
     if (schedulerTick())
     {
+        printLine("[irq] timer tick preempt");
         schedYield();
     }
 }

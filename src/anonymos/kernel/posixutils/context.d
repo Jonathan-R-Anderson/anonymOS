@@ -22,6 +22,7 @@ version (X86_64)
     private enum size_t JMP_RSP = 6 * size_t.sizeof;
     private enum size_t JMP_RIP = 7 * size_t.sizeof;
 
+    pragma(inline, false)
     extern(C) @nogc nothrow int setjmp(ref jmp_buf env)
     {
         int result;

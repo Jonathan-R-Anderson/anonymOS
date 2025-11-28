@@ -875,7 +875,7 @@ private void handlePs2KeyboardByte(ubyte data, ref InputQueue queue) @nogc nothr
         return;
     }
 
-    print("[ps2] kbd: "); printHex(data); printLine("");
+    // print("[ps2] kbd: "); printHex(data); printLine("");
 
     const bool breakCode = (data & 0x80) != 0;
     const ubyte base = cast(ubyte)(data & 0x7F);
@@ -1030,7 +1030,7 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
                 if (report.deltaX != 0 || report.deltaY != 0 || report.buttons != lastButtons)
                 {
                     lastButtons = report.buttons;
-                    print("[ps2] polled packet "); printHex(pkt[0]); print(" "); printHex(pkt[1]); print(" "); printHex(pkt[2]); printLine("");
+                    // print("[ps2] polled packet "); printHex(pkt[0]); print(" "); printHex(pkt[1]); print(" "); printHex(pkt[2]); printLine("");
                 }
                 g_usbHID.pointerPresent = true;
                 processMouseReport(report, queue, g_fb.width, g_fb.height);
@@ -1038,19 +1038,19 @@ private void pollLegacyPS2(ref InputQueue queue) @nogc nothrow
             }
             else
             {
-                printLine("[ps2] poll: incomplete packet (timeout while reading)");
+                // printLine("[ps2] poll: incomplete packet (timeout while reading)");
             }
         }
         else
         {
-            print("[ps2] poll: unexpected ack "); printHex(ack); printLine("");
+            // print("[ps2] poll: unexpected ack "); printHex(ack); printLine("");
         }
     }
 
     static bool announced;
     if (sawEvent && !announced)
     {
-        printLine("[usb-hid] PS/2 input active");
+        // printLine("[usb-hid] PS/2 input active");
         announced = true;
     }
 }

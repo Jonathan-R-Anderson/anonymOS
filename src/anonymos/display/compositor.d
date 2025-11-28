@@ -595,6 +595,10 @@ void renderWorkspaceComposited(const WindowManager* manager)
         uint h = 500;
         uint x = (g_fb.width - w) / 2;
         uint y = (g_fb.height - h) / 2;
+        g_installer.windowX = cast(int)x;
+        g_installer.windowY = cast(int)y;
+        g_installer.windowW = cast(int)w;
+        g_installer.windowH = cast(int)h;
         
         renderInstallerWindow(&c, cast(int)x, cast(int)y, cast(int)w, cast(int)h);
         

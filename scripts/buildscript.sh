@@ -218,6 +218,129 @@ else
   echo "[!] Desktop assets directory not found: $DESKTOP_ASSETS_DIR" >&2
 fi
 
+# ===================== Build FreeType and HarfBuzz font libraries =====================
+echo ""
+echo "[*] Building FreeType and HarfBuzz for kernel..."
+
+FONT_BUILD_DIR="$OUT_DIR/font-libs"
+FONT_INSTALL_DIR="$FONT_BUILD_DIR/install"
+
+FREETYPE_SRC="$ROOT/3rdparty/freetype"
+HARFBUZZ_SRC="$ROOT/3rdparty/harfbuzz"
+
+# Compiler flags for freestanding kernel environment
+FONT_CFLAGS="-fno-stack-protector -fno-pic -mno-red-zone -mcmodel=kernel -ffreestanding -nostdlib -O2"
+FONT_CXXFLAGS="$FONT_CFLAGS -fno-exceptions -fno-rtti"
+HARFBUZZ_CFLAGS="-Wall -Wextra -O2 -fvisibility-inlines-hidden"
+HARFBUZZ_CXXFLAGS="-Wall -Wextra -O2 -fvisibility-inlines-hidden -fno-exceptions -fno-rtti -fno-threadsafe-statics"
+
+if [ -d "$FREETYPE_SRC" ] && [ -d "$HARFBUZZ_SRC" ]; then
+    mkdir -p "$FONT_BUILD_DIR" "$FONT_INSTALL_DIR"
+    FONT_INSTALL_DIR_ABS="$(cd "$FONT_INSTALL_DIR" && pwd)"
+    
+    # Build FreeType
+    if [ ! -f "$FONT_INSTALL_DIR/lib/libfreetype.a" ]; then
+        echo "[*] Building FreeType..."
+        FREETYPE_BUILD="$FONT_BUILD_DIR/freetype-build"
+        mkdir -p "$FREETYPE_BUILD"
+        cd "$FREETYPE_BUILD"
+        
+        cmake "$FREETYPE_SRC" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$FONT_INSTALL_DIR_ABS" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_C_FLAGS="$FONT_CFLAGS" \
+            -DCMAKE_SYSTEM_NAME=Generic \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DFT_DISABLE_ZLIB=ON \
+            -DFT_DISABLE_BZIP2=ON \
+            -DFT_DISABLE_PNG=ON \
+            -DFT_DISABLE_HARFBUZZ=ON \
+            -DFT_DISABLE_BROTLI=ON \
+            -DFT_REQUIRE_ZLIB=OFF \
+            -DFT_REQUIRE_BZIP2=OFF \
+            -DFT_REQUIRE_PNG=OFF \
+            -DFT_REQUIRE_HARFBUZZ=OFF \
+            -DFT_REQUIRE_BROTLI=OFF
+        
+        cmake --build . --target freetype
+        cmake --install .
+        cd "$ROOT"
+        echo "[✓] FreeType built: $FONT_INSTALL_DIR/lib/libfreetype.a"
+    else
+        echo "[✓] FreeType already built"
+    fi
+    
+    # Build HarfBuzz
+    if [ ! -f "$FONT_INSTALL_DIR/lib/libharfbuzz.a" ]; then
+        echo "[*] Building HarfBuzz..."
+        HARFBUZZ_BUILD="$FONT_BUILD_DIR/harfbuzz-build"
+        mkdir -p "$HARFBUZZ_BUILD"
+        cd "$HARFBUZZ_BUILD"
+        
+        HARFBUZZ_CROSS_FILE="$ROOT/scripts/harfbuzz-cross.ini"
+        CFLAGS="$HARFBUZZ_CFLAGS" \
+        CXXFLAGS="$HARFBUZZ_CXXFLAGS" \
+        meson setup "$HARFBUZZ_SRC" \
+            --prefix="$FONT_INSTALL_DIR_ABS" \
+            --buildtype=release \
+            --default-library=static \
+            -Dfreetype=enabled \
+            -Dglib=disabled \
+            -Dgobject=disabled \
+            -Dcairo=disabled \
+            -Dicu=disabled \
+            -Dgraphite=disabled \
+            -Dgraphite2=disabled \
+            -Dchafa=disabled \
+            -Dtests=disabled \
+            -Dintrospection=disabled \
+            -Ddocs=disabled \
+            -Dbenchmark=disabled \
+            -Dc_args="$HARFBUZZ_CFLAGS" \
+            -Dcpp_args="$HARFBUZZ_CXXFLAGS" \
+            -Dpkg_config_path="$FONT_INSTALL_DIR/lib/pkgconfig" \
+            --cross-file="$HARFBUZZ_CROSS_FILE"
+        
+        meson compile
+        meson install
+        cd "$ROOT"
+        echo "[✓] HarfBuzz built: $FONT_INSTALL_DIR/lib/libharfbuzz.a"
+    else
+        echo "[✓] HarfBuzz already built"
+    fi
+    
+    # Copy to sysroot
+    mkdir -p "$SYSROOT/usr/lib" "$SYSROOT/usr/include"
+    
+    # Copy FreeType
+    if [ -f "$FONT_INSTALL_DIR/lib/libfreetype.a" ]; then
+        cp -f "$FONT_INSTALL_DIR/lib/libfreetype.a" "$SYSROOT/usr/lib/"
+    elif [ -f "$FONT_BUILD_DIR/freetype-build/libfreetype.a" ]; then
+        echo "[!] Copying libfreetype.a from build dir (install failed?)"
+        cp -f "$FONT_BUILD_DIR/freetype-build/libfreetype.a" "$SYSROOT/usr/lib/"
+    else
+        echo "[!] libfreetype.a not found!" >&2
+        exit 1
+    fi
+    
+    # Copy HarfBuzz
+    if [ -f "$FONT_INSTALL_DIR/lib/libharfbuzz.a" ]; then
+        cp -f "$FONT_INSTALL_DIR/lib/libharfbuzz.a" "$SYSROOT/usr/lib/"
+    else
+        echo "[!] libharfbuzz.a not found!" >&2
+        exit 1
+    fi
+
+    cp -rf "$FONT_INSTALL_DIR/include/freetype2" "$SYSROOT/usr/include/"
+    cp -rf "$FONT_INSTALL_DIR/include/harfbuzz" "$SYSROOT/usr/include/"
+    
+    echo "[✓] Font libraries installed to sysroot"
+else
+    echo "[!] FreeType or HarfBuzz source not found in 3rdparty/" >&2
+    echo "[!] Skipping font library build (will use bitmap fonts only)" >&2
+fi
+
 # ===================== Compile kernel (freestanding D) =====================
 mkdir -p "$OUT_DIR"
 
@@ -250,6 +373,10 @@ KERNEL_SOURCES=(
   "src/anonymos/hardware.d"
   "src/anonymos/display/canvas.d"
   "src/anonymos/display/font_stack.d"
+  "src/anonymos/display/freetype_bindings.d"
+  "src/anonymos/display/harfbuzz_bindings.d"
+  "src/anonymos/display/truetype_font.d"
+  "src/anonymos/kernel/libc_stubs.d"
   "src/anonymos/display/bitmap_font.d"
   "src/anonymos/display/framebuffer.d"
   "src/anonymos/display/input_pipeline.d"
@@ -364,6 +491,7 @@ if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       build/veracrypt/libveracrypt_crypto.a \
+      -lfreetype -lharfbuzz \
       -o "$KERNEL_ELF"
 else
   # toy-ld wrapper
@@ -372,6 +500,7 @@ else
       -L"$LIBDIR" \
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       build/veracrypt/libveracrypt_crypto.a \
+      -lfreetype -lharfbuzz \
       -o "$KERNEL_ELF"
 fi
 
@@ -506,6 +635,18 @@ if [ -d "$DESKTOP_STAGING_DIR" ]; then
     # Ensure kernel is available in initrd
     mkdir -p "$DESKTOP_STAGING_DIR/boot"
     cp "$KERNEL_ELF" "$DESKTOP_STAGING_DIR/boot/kernel.elf"
+    
+    # Bundle SF Pro fonts
+    SF_PRO_SRC="$ROOT/3rdparty/San-Francisco-Pro-Fonts"
+    if [ -d "$SF_PRO_SRC" ]; then
+        echo "[*] Bundling SF Pro fonts..."
+        mkdir -p "$DESKTOP_STAGING_DIR/usr/share/fonts"
+        cp -f "$SF_PRO_SRC/SF-Pro.ttf" "$DESKTOP_STAGING_DIR/usr/share/fonts/" 2>/dev/null || true
+        cp -f "$SF_PRO_SRC/SF-Pro-Italic.ttf" "$DESKTOP_STAGING_DIR/usr/share/fonts/" 2>/dev/null || true
+        echo "[✓] SF Pro fonts bundled"
+    else
+        echo "[!] SF Pro fonts not found in 3rdparty/" >&2
+    fi
     
     # ---------------------------------------------------------
     # Prepare Installation Assets

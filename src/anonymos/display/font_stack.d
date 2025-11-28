@@ -4,9 +4,7 @@ import anonymos.display.bitmap_font;
 import anonymos.display.framebuffer : glyphHeight, glyphWidth;
 
 /// Simple bookkeeping structure describing which font rendering backends have
-/// been wired up. Real integrations would link against FreeType and HarfBuzz,
-/// but this scaffold lets the kernel track readiness and provides a single
-/// status object for the desktop to consult.
+/// been wired up. Now includes actual TrueType support via FreeType/HarfBuzz.
 struct FontStack
 {
     bool freetypeEnabled;
@@ -15,6 +13,10 @@ struct FontStack
     bool fallbackGlyphAvailable = true;
     size_t registeredFonts;
     BitmapFont bitmapFont;
+    
+    // TrueType font support
+    void* truetypeFont;  // Pointer to TrueTypeFont struct (to avoid circular dependency)
+    bool truetypeFontLoaded;
 }
 
 /// Initialize the stack with only the built-in fallback glyph renderer.
@@ -90,6 +92,18 @@ bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyph
         return false;
     }
 
+    // Try TrueType font first (best quality)
+    if (stack.truetypeFontLoaded && stack.truetypeFont !is null)
+    {
+        import anonymos.display.truetype_font : TrueTypeFont, renderGlyph;
+        auto ttFont = cast(TrueTypeFont*)stack.truetypeFont;
+        if (ttFont.available && renderGlyph(*ttFont, codepoint, mask))
+        {
+            return true;
+        }
+    }
+
+    // Fall back to bitmap font
     if (stack.bitmapEnabled && glyphMask(&stack.bitmapFont, codepoint, mask))
     {
         return true;
@@ -126,4 +140,38 @@ FontStack* activeFontStack() @nogc nothrow
         initialized = true;
     }
     return &stack;
+}
+
+/// Load a TrueType font into the font stack
+bool loadTrueTypeFontIntoStack(ref FontStack stack, const(char)[] path, uint pixelSize = 16) @nogc nothrow
+{
+    import anonymos.display.truetype_font : TrueTypeFont, loadTrueTypeFont, initFreeType;
+    import anonymos.console : printLine;
+    
+    // Initialize FreeType if not already done
+    if (!initFreeType())
+    {
+        printLine("[font_stack] Failed to initialize FreeType");
+        return false;
+    }
+    
+    // Allocate TrueType font (static storage to avoid heap allocation)
+    static TrueTypeFont ttFont;
+    
+    // Load the font
+    if (!loadTrueTypeFont(ttFont, path, pixelSize))
+    {
+        printLine("[font_stack] Failed to load TrueType font");
+        return false;
+    }
+    
+    // Register with font stack
+    stack.truetypeFont = &ttFont;
+    stack.truetypeFontLoaded = true;
+    stack.freetypeEnabled = true;
+    stack.harfbuzzEnabled = true;
+    ++stack.registeredFonts;
+    
+    printLine("[font_stack] TrueType font loaded successfully");
+    return true;
 }

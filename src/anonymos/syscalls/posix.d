@@ -921,7 +921,7 @@ mixin template PosixKernelShim()
         return rand64() ^ g_current.heapSeed;
     }
 
-    extern(C) @nogc nothrow void* malloc(size_t size)
+    extern(C) @nogc nothrow void* posix_malloc(size_t size)
     {
         if (size == 0 || g_current is null) return null;
         auto vm = currentVmMap();
@@ -960,7 +960,7 @@ mixin template PosixKernelShim()
         return userPtr;
     }
 
-    extern(C) @nogc nothrow void free(void* ptr)
+    extern(C) @nogc nothrow void posix_free(void* ptr)
     {
         if (ptr is null) return;
         auto vm = currentVmMap();
@@ -989,10 +989,10 @@ mixin template PosixKernelShim()
         }
     }
 
-    extern(C) @nogc nothrow void* calloc(size_t n, size_t elemSize)
+    extern(C) @nogc nothrow void* posix_calloc(size_t n, size_t elemSize)
     {
         const auto total = n * elemSize;
-        auto p = malloc(total);
+        auto p = posix_malloc(total);
         if (p !is null)
         {
             memset(p, 0, total);
@@ -1000,15 +1000,15 @@ mixin template PosixKernelShim()
         return p;
     }
 
-    extern(C) @nogc nothrow void* realloc(void* ptr, size_t newSize)
+    extern(C) @nogc nothrow void* posix_realloc(void* ptr, size_t newSize)
     {
         if (ptr is null)
         {
-            return malloc(newSize);
+            return posix_malloc(newSize);
         }
         if (newSize == 0)
         {
-            free(ptr);
+            posix_free(ptr);
             return null;
         }
 
@@ -1016,12 +1016,12 @@ mixin template PosixKernelShim()
         auto hdr = cast(HardenedAllocHeader*)(cast(ubyte*)ptr - headerSize);
         const size_t oldSize = hdr.userSize;
 
-        auto nptr = malloc(newSize);
+        auto nptr = posix_malloc(newSize);
         if (nptr is null) return null;
 
         const size_t copySize = (oldSize < newSize) ? oldSize : newSize;
         memcpy(nptr, ptr, copySize);
-        free(ptr);
+        posix_free(ptr);
         return nptr;
     }
 

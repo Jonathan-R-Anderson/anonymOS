@@ -36,7 +36,6 @@ DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000
 DR6=00000000ffff0ff0 DR7=0000000000000400
 CCS=00000044 CCD=00000000 CCO=EFLAGS
 EFER=0000000000000000
-Servicing hardware INT=0x08
 SMM: enter
 EAX=000000b5 EBX=000f7e0e ECX=00001234 EDX=00006cff
 ESI=00006cb4 EDI=1effec55 EBP=00006c74 ESP=00006c74
@@ -417,17 +416,14 @@ DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000
 DR6=00000000ffff0ff0 DR7=0000000000000400
 CCS=00000004 CCD=00000001 CCO=EFLAGS
 EFER=0000000000000000
-Servicing hardware INT=0x08
-Servicing hardware INT=0x0e
-Servicing hardware INT=0x0e
 Servicing hardware INT=0x0e
 Servicing hardware INT=0x08
 Servicing hardware INT=0x0e
 Servicing hardware INT=0x0e
 Servicing hardware INT=0x0e
 Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
+Servicing hardware INT=0x0e
+Servicing hardware INT=0x0e
 Servicing hardware INT=0x08
 Servicing hardware INT=0x08
 Servicing hardware INT=0x08
@@ -594,161 +590,16 @@ Servicing hardware INT=0x08
 Servicing hardware INT=0x08
 Servicing hardware INT=0x08
 Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
-Servicing hardware INT=0x08
 
 [probe] Inspecting firmware-provided hardware tables...
-[probe] Unexpected Multiboot magic (got 0x00000000001662A8, expected 0x000000001BADB002); continuing with provided info pointer.
+[probe] Unexpected Multiboot magic (got 0x00000000003062A8, expected 0x000000001BADB002); continuing with provided info pointer.
 [probe] MBI flags    : 0x00001A6F
 [probe] mmap length  : 168 bytes
 [probe] mmap address : 0x000100C8
 [probe] Lower memory : 639 KiB
 [probe] Upper memory : 523136 KiB
 [probe] Modules      : 1
-           [0] 0x05BBF000 - 0x0DC54800
+           [0] 0x05DAC000 - 0x0EC45000
 [probe] Physical memory map:
 [probe] Framebuffer  : 0x00000000000B8000  80x25x16 @ 160 bytes/scanline (mode 3, backend: VBE)
 [pci] Enumerating devices
@@ -777,6 +628,8 @@ Servicing hardware INT=0x08
 [fs] Registered file: usr/share/install/base_fs.img
 [fs] Registered file: usr/share/install/core.img
 [fs] Registered file: usr/share/install/boot.img
+[fs] Registered file: usr/share/fonts/SF-Pro-Italic.ttf
+[fs] Registered file: usr/share/fonts/SF-Pro.ttf
 [fs] Registered file: bin/st
 [fs] Registered file: bin/i3-config-wizard
 [fs] Registered file: bin/id
@@ -825,183 +678,187 @@ Servicing hardware INT=0x08
 [posix-debug] spawnRegisteredProcess pid assigned: expected=1, actual=1
 [posix-debug] spawnRegisteredProcess: after entry call
 Servicing hardware INT=0x20
-     0: v=20 e=0000 i=0 cpl=0 IP=0008:00000000001008c6 pc=00000000001008c6 SP=0010:00000000004c8ff0 env->regs[R_EAX]=0000000000000003
+     0: v=20 e=0000 i=0 cpl=0 IP=0008:00000000001008c6 pc=00000000001008c6 SP=0010:0000000000669ff0 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=00000000004c8ff0 RSP=00000000004c8ff0
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000669ff0 RSP=0000000000669ff0
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=00000000001008c6 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b29000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005cca000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=00000000000000e0 CCD=00000000004c8ff0 CCO=ADDQ
+CCS=00000000000000e0 CCD=0000000000669ff0 CCO=ADDQ
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     1: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     1: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b29000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005cca000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f70 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f70 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     2: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     2: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b29000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005cca000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     3: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     3: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b29000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005cca000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     4: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     4: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b2a000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005ccb000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     5: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     5: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b2a000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005ccb000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     6: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     6: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b2a000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005ccb000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 Servicing hardware INT=0x20
-     7: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:00000000004c9000 env->regs[R_EAX]=0000000000000003
+     7: v=20 e=0000 i=0 cpl=0 IP=0008:0000000000100125 pc=0000000000100125 SP=0010:000000000066a000 env->regs[R_EAX]=0000000000000003
 RAX=0000000000000003 RBX=0000000000010000 RCX=00000000000003f8 RDX=00000000000b03f8
-RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=00000000004c9000
-R8 =000000000000000c R9 =0000000000000000 R10=00000000ffffffff R11=00000000001391f5
+RSI=000000000000000a RDI=00000000000003f8 RBP=0000000000000000 RSP=000000000066a000
+R8 =000000000000000c R9 =0000000000000000 R10=0000000000000000 R11=000000000013a565
 R12=0000000000000000 R13=0000000000000000 R14=0000000000000000 R15=0000000000000000
 RIP=0000000000100125 RFL=00000206 [-----P-] CPL=0 II=0 A20=1 SMM=0 HLT=0
 ES =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 CS =0008 0000000000000000 ffffffff 00af9a00 DPL=0 CS64 [-R-]
 SS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 DS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
-FS =0010 00000000001655d8 ffffffff 00af9300 DPL=0 DS   [-WA]
+FS =0010 0000000000305c80 ffffffff 00af9300 DPL=0 DS   [-WA]
 GS =0010 0000000000000000 ffffffff 00af9300 DPL=0 DS   [-WA]
 LDT=0000 0000000000000000 0000ffff 00008200 DPL=0 LDT
-TR =0028 0000000000166010 00000067 00008900 DPL=0 TSS64-avl
-GDT=     0000000000166280 00000037
-IDT=     00000000008c90a0 00000fff
-CR0=80000033 CR2=0000000000000000 CR3=0000000005b2a000 CR4=00000620
+TR =0028 0000000000306010 00000067 00008900 DPL=0 TSS64-avl
+GDT=     0000000000306280 00000037
+IDT=     0000000000a6a0a0 00000fff
+CR0=80000033 CR2=0000000000000000 CR3=0000000005ccb000 CR4=00000620
 DR0=0000000000000000 DR1=0000000000000000 DR2=0000000000000000 DR3=0000000000000000 
 DR6=00000000ffff0ff0 DR7=0000000000000400
-CCS=0000000000000004 CCD=00000000004c8f80 CCO=EFLAGS
+CCS=0000000000000004 CCD=0000000000669f80 CCO=EFLAGS
 EFER=0000000000000d01
 [desktop] entering main loop
 [desktop] Starting in INSTALL MODE
+[freetype] FreeType initialized successfully
+[freetype] Loaded font from memory
+[font_stack] TrueType font loaded successfully
+[desktop] SF Pro font loaded
 [usb-hid] Initializing USB HID subsystem...
 [usb-hid] PS/2 mouse enabled successfully
 [usb-hid] PS/2 keyboard enabled successfully
@@ -1009,464 +866,25 @@ EFER=0000000000000d01
 [usb-hid] No USB controllers detected; legacy PS/2 only
 [desktop] display server ready
 [desktop] Installer window initialized
-Compositor.clear start
-[compositor] clear width=1024 height=768 pitch=1024 buffer=00000000008CFC40
-[desktop] runSimpleDesktopOnce start
-[desktop] framebuffer console disabled - logs go to serial only
-[compositor] renderWorkspaceComposited start
+[installer] Click at (812, 598) Next button: (792, 574) to (892, 610)
+[installer] NEXT button clicked!
 [compositor] cleared buffer
 [compositor] taskbar drawn
 [compositor] windows drawing skipped
 [compositor] rendering installer
 [compositor] installer rendered
-[compositor] present start 1024x768 pitch=1024 fb=1024x768 bpp=32
-[compositor] present memcpy path
 [compositor] present done
-[compositor] renderWorkspaceComposited end
-[desktop] runSimpleDesktopOnce done
-[desktop] initial frame rendered
-[fb-cursor] Show #1 at (0, 0) was_visible=no
-[fb-cursor] Move #1: (512, 384) visible=yes
-[desktop] cursor initialized/centered
-[desktop] Frame 1: CURSOR MOVE (0, 0) -> (512, 384)
-[mouse] Report #1: delta=(0, 0) buttons=0x0000000000000000 pos=(512, 384)
-[usb-hid] PS/2 input active
-[mouse] Report #2: delta=(3, 5) buttons=0x0000000000000000 pos=(512, 384)
-[mouse] Report #3: delta=(0, 1) buttons=0x0000000000000000 pos=(515, 389)
-[mouse] Report #4: delta=(4, 2) buttons=0x0000000000000000 pos=(515, 390)
-[mouse] Report #5: delta=(1, 1) buttons=0x0000000000000000 pos=(519, 392)
-[mouse] Report #6: delta=(15, 13) buttons=0x0000000000000000 pos=(520, 393)
-[mouse] Report #7: delta=(2, 0) buttons=0x0000000000000000 pos=(535, 406)
-[mouse] Report #8: delta=(3, 2) buttons=0x0000000000000000 pos=(537, 406)
-[mouse] Report #9: delta=(2, 1) buttons=0x0000000000000000 pos=(540, 408)
-[mouse] Report #10: delta=(3, 2) buttons=0x0000000000000000 pos=(542, 409)
-[mouse] Report #11: delta=(19, 12) buttons=0x0000000000000000 pos=(545, 411)
-[fb-cursor] Move #4: (564, 423) visible=yes
-[mouse] Report #12: delta=(37, 24) buttons=0x0000000000000000 pos=(564, 423)
-[mouse] LARGE MOVE #11: (564, 423) -> (601, 447) delta=61
-[mouse] Report #13: delta=(0, 1) buttons=0x0000000000000000 pos=(601, 447)
-[mouse] Report #14: delta=(9, 5) buttons=0x0000000000000000 pos=(601, 448)
-[mouse] Report #15: delta=(8, 5) buttons=0x0000000000000000 pos=(610, 453)
-[mouse] Report #16: delta=(15, 9) buttons=0x0000000000000000 pos=(618, 458)
-[mouse] Report #17: delta=(0, 2) buttons=0x0000000000000000 pos=(633, 467)
-[mouse] Report #18: delta=(1, 0) buttons=0x0000000000000000 pos=(633, 469)
-[fb-cursor] Move #5: (634, 469) visible=yes
-[mouse] Report #19: delta=(24, 14) buttons=0x0000000000000000 pos=(634, 469)
-[mouse] Report #20: delta=(13, 11) buttons=0x0000000000000000 pos=(658, 483)
-[mouse] Report #21: delta=(12, 9) buttons=0x0000000000000000 pos=(671, 494)
-[mouse] Report #22: delta=(6, 3) buttons=0x0000000000000000 pos=(683, 503)
-[mouse] Report #23: delta=(10, 127) buttons=0x0000000000000000 pos=(689, 506)
-[mouse] LARGE MOVE #22: (689, 506) -> (699, 633) delta=137
-[fb-cursor] Move #6: (699, 633) visible=yes
-[mouse] Report #24: delta=(5, 3) buttons=0x0000000000000000 pos=(699, 633)
-[mouse] Report #25: delta=(1, 0) buttons=0x0000000000000000 pos=(704, 636)
-[mouse] Report #26: delta=(2, 2) buttons=0x0000000000000000 pos=(705, 636)
-[mouse] Report #27: delta=(1, 1) buttons=0x0000000000000000 pos=(707, 638)
-[mouse] Report #28: delta=(10, 11) buttons=0x0000000000000000 pos=(708, 639)
-[mouse] Report #29: delta=(1, 0) buttons=0x0000000000000000 pos=(718, 650)
-[mouse] Report #30: delta=(3, 1) buttons=0x0000000000000000 pos=(719, 650)
-[mouse] Report #31: delta=(7, 4) buttons=0x0000000000000000 pos=(722, 651)
-[mouse] Report #32: delta=(4, -4) buttons=0x0000000000000000 pos=(729, 655)
-[mouse] Report #33: delta=(4, -4) buttons=0x0000000000000000 pos=(733, 651)
-[mouse] Report #34: delta=(1, -1) buttons=0x0000000000000000 pos=(737, 647)
-[mouse] Report #35: delta=(3, -3) buttons=0x0000000000000000 pos=(738, 646)
-[mouse] Report #36: delta=(3, -6) buttons=0x0000000000000000 pos=(741, 643)
-[mouse] Report #37: delta=(0, -2) buttons=0x0000000000000000 pos=(744, 637)
-[mouse] Report #38: delta=(0, -1) buttons=0x0000000000000000 pos=(744, 635)
-[mouse] Report #39: delta=(1, -4) buttons=0x0000000000000000 pos=(744, 634)
-[mouse] Report #40: delta=(1, 0) buttons=0x0000000000000000 pos=(745, 630)
-[mouse] Report #41: delta=(6, -12) buttons=0x0000000000000000 pos=(746, 630)
-[mouse] Report #42: delta=(1, -4) buttons=0x0000000000000000 pos=(752, 618)
-[mouse] Report #43: delta=(0, -1) buttons=0x0000000000000000 pos=(753, 614)
-[mouse] Report #44: delta=(1, -1) buttons=0x0000000000000000 pos=(753, 613)
-[mouse] Report #45: delta=(0, -2) buttons=0x0000000000000000 pos=(754, 612)
-[mouse] Report #46: delta=(1, -2) buttons=0x0000000000000000 pos=(754, 610)
-[mouse] Report #47: delta=(1, -2) buttons=0x0000000000000000 pos=(755, 608)
-[mouse] Report #48: delta=(1, 0) buttons=0x0000000000000000 pos=(756, 606)
-[mouse] Report #49: delta=(1, 0) buttons=0x0000000000000000 pos=(757, 606)
-[mouse] Report #50: delta=(1, 1) buttons=0x0000000000000000 pos=(758, 606)
-[mouse] Report #51: delta=(1, 1) buttons=0x0000000000000000 pos=(759, 607)
-[mouse] Report #52: delta=(1, 0) buttons=0x0000000000000000 pos=(760, 608)
-[mouse] Report #53: delta=(1, 0) buttons=0x0000000000000000 pos=(761, 608)
-[mouse] Report #55: delta=(2, 0) buttons=0x0000000000000000 pos=(762, 608)
-[mouse] Report #56: delta=(4, 0) buttons=0x0000000000000000 pos=(764, 608)
-[mouse] Report #58: delta=(1, 0) buttons=0x0000000000000000 pos=(768, 608)
-[mouse] Report #59: delta=(2, 0) buttons=0x0000000000000000 pos=(769, 608)
-[mouse] Report #60: delta=(1, -1) buttons=0x0000000000000000 pos=(771, 608)
-[mouse] Report #61: delta=(7, 0) buttons=0x0000000000000000 pos=(772, 607)
-[mouse] Report #62: delta=(2, 0) buttons=0x0000000000000000 pos=(779, 607)
-[mouse] Report #63: delta=(1, 0) buttons=0x0000000000000000 pos=(781, 607)
-[mouse] Report #64: delta=(2, 0) buttons=0x0000000000000000 pos=(782, 607)
-[mouse] Report #65: delta=(6, -1) buttons=0x0000000000000000 pos=(784, 607)
-[mouse] Report #66: delta=(3, 0) buttons=0x0000000000000000 pos=(790, 606)
-[mouse] Report #67: delta=(2, -1) buttons=0x0000000000000000 pos=(793, 606)
-[mouse] Report #68: delta=(1, 0) buttons=0x0000000000000000 pos=(795, 605)
-[mouse] Report #69: delta=(2, 0) buttons=0x0000000000000000 pos=(796, 605)
-[mouse] Report #70: delta=(3, 0) buttons=0x0000000000000000 pos=(798, 605)
-[mouse] Report #71: delta=(2, -1) buttons=0x0000000000000000 pos=(801, 605)
-[mouse] Report #72: delta=(2, 0) buttons=0x0000000000000000 pos=(803, 604)
-[mouse] Report #73: delta=(1, 0) buttons=0x0000000000000000 pos=(805, 604)
-[mouse] Report #75: delta=(3, 0) buttons=0x0000000000000000 pos=(806, 604)
-[mouse] Report #77: delta=(1, -1) buttons=0x0000000000000000 pos=(809, 604)
-[mouse] Report #78: delta=(1, 0) buttons=0x0000000000000000 pos=(810, 603)
-[mouse] Report #79: delta=(0, -1) buttons=0x0000000000000000 pos=(811, 603)
-[mouse] Report #81: delta=(1, 0) buttons=0x0000000000000000 pos=(811, 602)
-[mouse] Report #83: delta=(1, 0) buttons=0x0000000000000000 pos=(812, 602)
-[mouse] Report #84: delta=(1, 0) buttons=0x0000000000000000 pos=(813, 602)
-[mouse] Report #85: delta=(1, 0) buttons=0x0000000000000000 pos=(814, 602)
-[mouse] Report #88: delta=(0, -1) buttons=0x0000000000000000 pos=(815, 602)
-[mouse] Report #89: delta=(1, 0) buttons=0x0000000000000000 pos=(815, 601)
-[mouse] Report #90: delta=(1, 0) buttons=0x0000000000000000 pos=(816, 601)
-[mouse] Report #91: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #0: buttons=0x0000000000000001 at (817, 601)
-[fb-cursor] Forget #1
-[mouse] Report #92: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #0: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #93: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #1: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #94: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #1: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #95: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #2: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #96: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #2: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #97: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #3: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #98: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #3: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #99: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #4: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #100: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #4: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #101: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #5: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #102: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #5: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #103: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #6: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #104: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #6: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #105: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #7: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #106: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #7: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #107: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #8: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #108: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #8: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #109: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #9: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #110: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #9: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #111: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #10: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #112: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #10: buttons=0x0000000000000001 at (817, 601)
-[fb-cursor] Show #11 at (817, 601) was_visible=no
-[mouse] Report #113: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #11: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #114: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #11: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #115: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #12: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #116: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #12: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #117: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #13: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #118: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #13: buttons=0x0000000000000001 at (817, 601)
-[fb-cursor] Forget #11
-[mouse] Report #119: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #14: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #120: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #14: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #121: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #15: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #122: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #15: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #123: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #16: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #124: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #16: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #125: delta=(0, 0) buttons=0x0000000000000001 pos=(817, 601)
-[mouse] BUTTON DOWN #17: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #126: delta=(0, 0) buttons=0x0000000000000000 pos=(817, 601)
-[mouse] BUTTON UP #17: buttons=0x0000000000000001 at (817, 601)
-[mouse] Report #127: delta=(-127, -127) buttons=0x0000000000000005 pos=(817, 601)
-[mouse] LARGE MOVE #82: (817, 601) -> (690, 474) delta=254
-[mouse] BUTTON DOWN #18: buttons=0x0000000000000005 at (690, 474)
-[fb-cursor] Move #41: (690, 474) visible=no
-[mouse] Report #128: delta=(-2, 4) buttons=0x0000000000000000 pos=(690, 474)
-[mouse] BUTTON UP #18: buttons=0x0000000000000005 at (688, 478)
-[mouse] Report #129: delta=(-1, 1) buttons=0x0000000000000000 pos=(688, 478)
-[mouse] Report #130: delta=(-1, 2) buttons=0x0000000000000000 pos=(687, 479)
-[mouse] Report #131: delta=(-1, 1) buttons=0x0000000000000000 pos=(686, 481)
-[mouse] Report #132: delta=(-1, -14) buttons=0x0000000000000000 pos=(685, 482)
-[mouse] Report #133: delta=(0, -3) buttons=0x0000000000000000 pos=(684, 468)
-[mouse] Report #134: delta=(-5, -16) buttons=0x0000000000000000 pos=(684, 465)
-[mouse] Report #135: delta=(0, -1) buttons=0x0000000000000000 pos=(679, 449)
-[mouse] Report #136: delta=(-41, -81) buttons=0x0000000000000000 pos=(679, 448)
-[mouse] LARGE MOVE #91: (679, 448) -> (638, 367) delta=122
-[mouse] Report #137: delta=(0, -1) buttons=0x0000000000000000 pos=(638, 367)
-[mouse] Report #138: delta=(-17, -24) buttons=0x0000000000000000 pos=(638, 366)
-[mouse] Report #139: delta=(-127, -24) buttons=0x0000000000000000 pos=(621, 342)
-[mouse] LARGE MOVE #94: (621, 342) -> (494, 318) delta=151
-[mouse] Report #140: delta=(-8, -14) buttons=0x0000000000000000 pos=(494, 318)
-[fb-cursor] Move #45: (486, 304) visible=yes
-[mouse] Report #141: delta=(-15, -27) buttons=0x0000000000000000 pos=(486, 304)
-[mouse] Report #142: delta=(-58, -72) buttons=0x0000000000000000 pos=(471, 277)
-[mouse] LARGE MOVE #97: (471, 277) -> (413, 205) delta=130
-[mouse] Report #143: delta=(-2, -2) buttons=0x0000000000000000 pos=(413, 205)
-[mouse] Report #144: delta=(-8, -10) buttons=0x0000000000000000 pos=(411, 203)
-[fb-cursor] Move #46: (403, 193) visible=yes
-[mouse] Report #145: delta=(-127, -24) buttons=0x0000000000000000 pos=(403, 193)
-[mouse] LARGE MOVE #100: (403, 193) -> (276, 169) delta=151
-[mouse] Report #146: delta=(-1, -1) buttons=0x0000000000000000 pos=(276, 169)
-[fb-cursor] Move #47: (275, 168) visible=yes
-[mouse] Report #147: delta=(0, -1) buttons=0x0000000000000000 pos=(275, 168)
-[mouse] Report #148: delta=(0, -1) buttons=0x0000000000000000 pos=(275, 167)
-[mouse] Report #149: delta=(0, -2) buttons=0x0000000000000000 pos=(275, 166)
-[mouse] Report #150: delta=(0, -1) buttons=0x0000000000000000 pos=(275, 164)
-[mouse] Report #151: delta=(4, 2) buttons=0x0000000000000000 pos=(275, 163)
-[mouse] Report #152: delta=(6, 2) buttons=0x0000000000000000 pos=(279, 165)
-[mouse] Report #153: delta=(1, 0) buttons=0x0000000000000000 pos=(285, 167)
-[mouse] Report #154: delta=(2, 2) buttons=0x0000000000000000 pos=(286, 167)
-[mouse] Report #155: delta=(2, 1) buttons=0x0000000000000000 pos=(288, 169)
-[mouse] Report #156: delta=(1, 0) buttons=0x0000000000000000 pos=(290, 170)
-[mouse] Report #157: delta=(5, 2) buttons=0x0000000000000000 pos=(291, 170)
-[mouse] Report #158: delta=(3, 1) buttons=0x0000000000000000 pos=(296, 172)
-[mouse] Report #159: delta=(3, 0) buttons=0x0000000000000000 pos=(299, 173)
-[mouse] Report #160: delta=(4, 1) buttons=0x0000000000000000 pos=(302, 173)
-[mouse] Report #161: delta=(2, 0) buttons=0x0000000000000000 pos=(306, 174)
-[mouse] Report #162: delta=(2, 1) buttons=0x0000000000000000 pos=(308, 174)
-[mouse] Report #163: delta=(3, 0) buttons=0x0000000000000000 pos=(310, 175)
-[mouse] Report #164: delta=(1, 0) buttons=0x0000000000000000 pos=(313, 175)
-[mouse] Report #165: delta=(1, 0) buttons=0x0000000000000000 pos=(314, 175)
-[mouse] Report #167: delta=(1, 0) buttons=0x0000000000000000 pos=(315, 175)
-[mouse] Report #168: delta=(9, -2) buttons=0x0000000000000000 pos=(316, 175)
-[mouse] Report #169: delta=(2, 0) buttons=0x0000000000000000 pos=(325, 173)
-[mouse] Report #170: delta=(3, -1) buttons=0x0000000000000000 pos=(327, 173)
-[mouse] Report #171: delta=(1, 0) buttons=0x0000000000000000 pos=(330, 172)
-[mouse] Report #172: delta=(1, 1) buttons=0x0000000000000000 pos=(331, 172)
-[mouse] Report #173: delta=(3, 2) buttons=0x0000000000000000 pos=(332, 173)
-[mouse] Report #174: delta=(2, 1) buttons=0x0000000000000000 pos=(335, 175)
-[mouse] Report #175: delta=(3, 2) buttons=0x0000000000000000 pos=(337, 176)
-[mouse] Report #176: delta=(0, 1) buttons=0x0000000000000000 pos=(340, 178)
-[mouse] Report #177: delta=(6, 127) buttons=0x0000000000000000 pos=(340, 179)
-[mouse] LARGE MOVE #131: (340, 179) -> (346, 306) delta=133
-[fb-cursor] Move #56: (346, 306) visible=yes
-[mouse] Report #178: delta=(0, 2) buttons=0x0000000000000000 pos=(346, 306)
-[mouse] Report #179: delta=(1, 1) buttons=0x0000000000000000 pos=(346, 308)
-[mouse] Report #180: delta=(1, 0) buttons=0x0000000000000000 pos=(347, 309)
-[mouse] Report #181: delta=(0, 1) buttons=0x0000000000000000 pos=(348, 309)
-[mouse] Report #182: delta=(2, -5) buttons=0x0000000000000000 pos=(348, 310)
-[mouse] Report #183: delta=(1, -1) buttons=0x0000000000000000 pos=(350, 305)
-[mouse] Report #186: delta=(3, -6) buttons=0x0000000000000000 pos=(351, 304)
-[mouse] Report #187: delta=(1, -2) buttons=0x0000000000000000 pos=(354, 298)
-[mouse] Report #188: delta=(1, -2) buttons=0x0000000000000000 pos=(355, 296)
-[mouse] Report #189: delta=(0, -1) buttons=0x0000000000000000 pos=(356, 294)
-[mouse] Report #190: delta=(2, -4) buttons=0x0000000000000000 pos=(356, 293)
-[mouse] Report #191: delta=(0, -1) buttons=0x0000000000000000 pos=(358, 289)
-[mouse] Report #192: delta=(1, -1) buttons=0x0000000000000000 pos=(358, 288)
-[mouse] Report #193: delta=(1, -1) buttons=0x0000000000000000 pos=(359, 287)
-[mouse] Report #194: delta=(1, -2) buttons=0x0000000000000000 pos=(360, 286)
-[mouse] Report #196: delta=(0, -1) buttons=0x0000000000000000 pos=(361, 284)
-[mouse] Report #197: delta=(1, 0) buttons=0x0000000000000000 pos=(361, 283)
-[mouse] Report #200: delta=(1, -1) buttons=0x0000000000000000 pos=(362, 283)
-[mouse] Report #201: delta=(2, -1) buttons=0x0000000000000000 pos=(363, 282)
-[mouse] Report #203: delta=(1, 0) buttons=0x0000000000000000 pos=(365, 281)
-[mouse] Report #204: delta=(1, -1) buttons=0x0000000000000000 pos=(366, 281)
-[mouse] Report #205: delta=(1, -1) buttons=0x0000000000000000 pos=(367, 280)
-[mouse] Report #206: delta=(1, 0) buttons=0x0000000000000000 pos=(368, 279)
-[mouse] Report #208: delta=(1, -2) buttons=0x0000000000000000 pos=(369, 279)
-[mouse] Report #209: delta=(1, 0) buttons=0x0000000000000000 pos=(370, 277)
-[mouse] Report #210: delta=(1, 0) buttons=0x0000000000000000 pos=(371, 277)
-[mouse] Report #211: delta=(0, -1) buttons=0x0000000000000000 pos=(372, 277)
-[mouse] Report #212: delta=(1, 0) buttons=0x0000000000000000 pos=(372, 276)
-[mouse] Report #213: delta=(1, -1) buttons=0x0000000000000000 pos=(373, 276)
-[mouse] Report #214: delta=(0, 0) buttons=0x0000000000000001 pos=(374, 275)
-[mouse] BUTTON DOWN #19: buttons=0x0000000000000001 at (374, 275)
-[mouse] Report #215: delta=(0, 0) buttons=0x0000000000000000 pos=(374, 275)
-[mouse] BUTTON UP #19: buttons=0x0000000000000001 at (374, 275)
-[mouse] Report #216: delta=(2, 0) buttons=0x0000000000000000 pos=(374, 275)
-[mouse] Report #217: delta=(3, 0) buttons=0x0000000000000000 pos=(376, 275)
-[mouse] Report #218: delta=(5, 0) buttons=0x0000000000000000 pos=(379, 275)
-[mouse] Report #219: delta=(2, 0) buttons=0x0000000000000000 pos=(384, 275)
-[mouse] Report #220: delta=(2, 0) buttons=0x0000000000000000 pos=(386, 275)
-[mouse] Report #221: delta=(6, 0) buttons=0x0000000000000000 pos=(388, 275)
-[mouse] Report #222: delta=(12, -1) buttons=0x0000000000000000 pos=(394, 275)
-[mouse] Report #223: delta=(4, 0) buttons=0x0000000000000000 pos=(406, 274)
-[mouse] Report #224: delta=(2, 0) buttons=0x0000000000000000 pos=(410, 274)
-[mouse] Report #225: delta=(3, 0) buttons=0x0000000000000000 pos=(412, 274)
-[mouse] Report #226: delta=(1, 0) buttons=0x0000000000000000 pos=(415, 274)
-[mouse] Report #227: delta=(4, -1) buttons=0x0000000000000000 pos=(416, 274)
-[mouse] Report #228: delta=(4, 0) buttons=0x0000000000000000 pos=(420, 273)
-[mouse] Report #229: delta=(5, 0) buttons=0x0000000000000000 pos=(424, 273)
-[mouse] Report #230: delta=(2, 0) buttons=0x0000000000000000 pos=(429, 273)
-[mouse] Report #231: delta=(0, 0) buttons=0x0000000000000000 pos=(431, 273)
-[mouse] Report #232: delta=(7, 0) buttons=0x0000000000000000 pos=(431, 273)
-[mouse] Report #233: delta=(0, 0) buttons=0x0000000000000001 pos=(438, 273)
-[mouse] BUTTON DOWN #20: buttons=0x0000000000000001 at (438, 273)
-[mouse] Report #234: delta=(0, 0) buttons=0x0000000000000000 pos=(438, 273)
-[mouse] BUTTON UP #20: buttons=0x0000000000000001 at (438, 273)
-[mouse] Report #235: delta=(0, 0) buttons=0x0000000000000001 pos=(438, 273)
-[mouse] BUTTON DOWN #21: buttons=0x0000000000000001 at (438, 273)
-[mouse] Report #236: delta=(1, 0) buttons=0x0000000000000001 pos=(438, 273)
-[fb-cursor] Show #21 at (439, 273) was_visible=no
-[mouse] Report #237: delta=(0, 0) buttons=0x0000000000000000 pos=(439, 273)
-[mouse] BUTTON UP #21: buttons=0x0000000000000001 at (439, 273)
-[mouse] Report #238: delta=(1, 2) buttons=0x0000000000000000 pos=(439, 273)
-[mouse] Report #239: delta=(0, 3) buttons=0x0000000000000000 pos=(440, 275)
-[mouse] Report #240: delta=(0, 2) buttons=0x0000000000000000 pos=(440, 278)
-[mouse] Report #241: delta=(0, 3) buttons=0x0000000000000000 pos=(440, 280)
-[mouse] Report #242: delta=(0, 3) buttons=0x0000000000000000 pos=(440, 283)
-[mouse] Report #243: delta=(-3, 127) buttons=0x0000000000000000 pos=(440, 286)
-[mouse] LARGE MOVE #183: (440, 286) -> (437, 413) delta=130
-[fb-cursor] Move #75: (437, 413) visible=yes
-[mouse] Report #246: delta=(0, -1) buttons=0x0000000000000000 pos=(437, 413)
-[mouse] Report #247: delta=(2, -1) buttons=0x0000000000000000 pos=(437, 412)
-[mouse] Report #248: delta=(0, -1) buttons=0x0000000000000000 pos=(439, 411)
-[mouse] Report #249: delta=(2, -3) buttons=0x0000000000000000 pos=(439, 410)
-[mouse] Report #250: delta=(3, -5) buttons=0x0000000000000000 pos=(441, 407)
-[mouse] Report #251: delta=(0, -1) buttons=0x0000000000000000 pos=(444, 402)
-[mouse] Report #252: delta=(2, -1) buttons=0x0000000000000000 pos=(444, 401)
-[mouse] Report #253: delta=(1, -2) buttons=0x0000000000000000 pos=(446, 400)
-[mouse] Report #254: delta=(5, -8) buttons=0x0000000000000000 pos=(447, 398)
-[mouse] Report #255: delta=(1, -2) buttons=0x0000000000000000 pos=(452, 390)
-[mouse] Report #256: delta=(4, -8) buttons=0x0000000000000000 pos=(453, 388)
-[mouse] Report #257: delta=(1, -2) buttons=0x0000000000000000 pos=(457, 380)
-[mouse] Report #258: delta=(1, -2) buttons=0x0000000000000000 pos=(458, 378)
-[mouse] Report #259: delta=(0, -1) buttons=0x0000000000000000 pos=(459, 376)
-[mouse] Report #261: delta=(3, -5) buttons=0x0000000000000000 pos=(459, 375)
-[mouse] Report #262: delta=(1, 0) buttons=0x0000000000000000 pos=(462, 370)
-[mouse] Report #263: delta=(0, -2) buttons=0x0000000000000000 pos=(463, 370)
-[mouse] Report #264: delta=(4, -5) buttons=0x0000000000000000 pos=(463, 368)
-[mouse] Report #265: delta=(1, -1) buttons=0x0000000000000000 pos=(467, 363)
-[mouse] Report #266: delta=(5, -8) buttons=0x0000000000000000 pos=(468, 362)
-[mouse] Report #267: delta=(5, -7) buttons=0x0000000000000000 pos=(473, 354)
-[mouse] Report #268: delta=(1, -1) buttons=0x0000000000000000 pos=(478, 347)
-[mouse] Report #269: delta=(0, 0) buttons=0x0000000000000001 pos=(479, 346)
-[mouse] BUTTON DOWN #22: buttons=0x0000000000000001 at (479, 346)
-[mouse] Report #270: delta=(0, 0) buttons=0x0000000000000000 pos=(479, 346)
-[mouse] BUTTON UP #22: buttons=0x0000000000000001 at (479, 346)
-[mouse] Report #271: delta=(0, 0) buttons=0x0000000000000001 pos=(479, 346)
-[mouse] BUTTON DOWN #23: buttons=0x0000000000000001 at (479, 346)
-[fb-cursor] Forget #21
-[mouse] Report #272: delta=(0, 0) buttons=0x0000000000000000 pos=(479, 346)
-[mouse] BUTTON UP #23: buttons=0x0000000000000001 at (479, 346)
-[mouse] Report #274: delta=(0, 1) buttons=0x0000000000000000 pos=(479, 346)
-[mouse] Report #275: delta=(2, 1) buttons=0x0000000000000000 pos=(479, 347)
-[mouse] Report #276: delta=(1, 1) buttons=0x0000000000000000 pos=(481, 348)
-[mouse] Report #277: delta=(0, 0) buttons=0x0000000000000001 pos=(482, 349)
-[mouse] BUTTON DOWN #24: buttons=0x0000000000000001 at (482, 349)
-[mouse] Report #278: delta=(0, 0) buttons=0x0000000000000000 pos=(482, 349)
-[mouse] BUTTON UP #24: buttons=0x0000000000000001 at (482, 349)
-[mouse] Report #279: delta=(7, 9) buttons=0x0000000000000000 pos=(482, 349)
-[mouse] Report #280: delta=(1, 0) buttons=0x0000000000000000 pos=(489, 358)
-[mouse] Report #281: delta=(3, 2) buttons=0x0000000000000000 pos=(490, 358)
-[mouse] Report #282: delta=(8, 7) buttons=0x0000000000000000 pos=(493, 360)
-[mouse] Report #283: delta=(1, 1) buttons=0x0000000000000000 pos=(501, 367)
-[mouse] Report #284: delta=(0, 0) buttons=0x0000000000000001 pos=(502, 368)
-[mouse] BUTTON DOWN #25: buttons=0x0000000000000001 at (502, 368)
-[mouse] Report #285: delta=(0, 0) buttons=0x0000000000000000 pos=(502, 368)
-[mouse] BUTTON UP #25: buttons=0x0000000000000001 at (502, 368)
-[mouse] Report #286: delta=(12, -1) buttons=0x0000000000000000 pos=(502, 368)
-[mouse] Report #287: delta=(11, -3) buttons=0x0000000000000000 pos=(514, 367)
-[mouse] Report #288: delta=(30, -9) buttons=0x0000000000000000 pos=(525, 364)
-[mouse] Report #289: delta=(2, 0) buttons=0x0000000000000000 pos=(555, 355)
-[mouse] Report #290: delta=(5, -2) buttons=0x0000000000000000 pos=(557, 355)
-[mouse] Report #291: delta=(0, 0) buttons=0x0000000000000001 pos=(562, 353)
-[mouse] BUTTON DOWN #26: buttons=0x0000000000000001 at (562, 353)
-[fb-cursor] Move #86: (562, 353) visible=no
-[mouse] Report #292: delta=(0, 0) buttons=0x0000000000000000 pos=(562, 353)
-[mouse] BUTTON UP #26: buttons=0x0000000000000001 at (562, 353)
-[mouse] Report #293: delta=(0, 3) buttons=0x0000000000000000 pos=(562, 353)
-[mouse] Report #294: delta=(8, 3) buttons=0x0000000000000000 pos=(562, 356)
-[mouse] Report #295: delta=(1, 0) buttons=0x0000000000000000 pos=(570, 359)
-[mouse] Report #296: delta=(5, 4) buttons=0x0000000000000000 pos=(571, 359)
-[mouse] Report #297: delta=(0, 2) buttons=0x0000000000000000 pos=(576, 363)
-[mouse] Report #298: delta=(0, 1) buttons=0x0000000000000000 pos=(576, 365)
-[mouse] Report #299: delta=(0, 127) buttons=0x0000000000000000 pos=(576, 366)
-[mouse] LARGE MOVE #225: (576, 366) -> (576, 493) delta=127
-[fb-cursor] Move #88: (576, 493) visible=yes
-[mouse] Report #300: delta=(10, 11) buttons=0x0000000000000000 pos=(576, 493)
-[mouse] Report #301: delta=(8, 13) buttons=0x0000000000000000 pos=(586, 504)
-[mouse] Report #302: delta=(0, 1) buttons=0x0000000000000000 pos=(594, 517)
-[mouse] Report #303: delta=(2, 2) buttons=0x0000000000000000 pos=(594, 518)
-[mouse] Report #304: delta=(0, 1) buttons=0x0000000000000000 pos=(596, 520)
-[mouse] Report #305: delta=(0, 1) buttons=0x0000000000000000 pos=(596, 521)
-[mouse] Report #306: delta=(1, 0) buttons=0x0000000000000000 pos=(596, 522)
-[mouse] Report #307: delta=(1, 0) buttons=0x0000000000000000 pos=(597, 522)
-[mouse] Report #308: delta=(1, 0) buttons=0x0000000000000000 pos=(598, 522)
-[mouse] Report #309: delta=(1, 0) buttons=0x0000000000000000 pos=(599, 522)
-[mouse] Report #310: delta=(1, 0) buttons=0x0000000000000000 pos=(600, 522)
-[mouse] Report #311: delta=(5, 0) buttons=0x0000000000000000 pos=(601, 522)
-[mouse] Report #312: delta=(18, 0) buttons=0x0000000000000000 pos=(606, 522)
-[mouse] Report #313: delta=(1, 0) buttons=0x0000000000000000 pos=(624, 522)
-[mouse] Report #314: delta=(3, 1) buttons=0x0000000000000000 pos=(625, 522)
-[mouse] Report #315: delta=(1, 1) buttons=0x0000000000000000 pos=(628, 523)
-[mouse] Report #316: delta=(2, 0) buttons=0x0000000000000000 pos=(629, 524)
-[mouse] Report #317: delta=(21, 7) buttons=0x0000000000000000 pos=(631, 524)
-[mouse] Report #318: delta=(14, 1) buttons=0x0000000000000000 pos=(652, 531)
-[mouse] Report #319: delta=(2, 0) buttons=0x0000000000000000 pos=(666, 532)
-[mouse] Report #320: delta=(17, 7) buttons=0x0000000000000000 pos=(668, 532)
-[mouse] Report #321: delta=(15, 5) buttons=0x0000000000000000 pos=(685, 539)
-[mouse] Report #322: delta=(10, 1) buttons=0x0000000000000000 pos=(700, 544)
-[mouse] Report #323: delta=(1, 0) buttons=0x0000000000000000 pos=(710, 545)
-[mouse] Report #324: delta=(2, 1) buttons=0x0000000000000000 pos=(711, 545)
-[fb-cursor] Move #94: (713, 546) visible=yes
-[mouse] Report #325: delta=(16, 3) buttons=0x0000000000000000 pos=(713, 546)
-[mouse] Report #326: delta=(2, 0) buttons=0x0000000000000000 pos=(729, 549)
-[mouse] Report #327: delta=(6, 4) buttons=0x0000000000000000 pos=(731, 549)
-[mouse] Report #328: delta=(5, 3) buttons=0x0000000000000000 pos=(737, 553)
-[mouse] Report #329: delta=(1, 0) buttons=0x0000000000000000 pos=(742, 556)
-[mouse] Report #330: delta=(7, 5) buttons=0x0000000000000000 pos=(743, 556)
-[mouse] Report #331: delta=(3, 1) buttons=0x0000000000000000 pos=(750, 561)
-[mouse] Report #332: delta=(2, 1) buttons=0x0000000000000000 pos=(753, 562)
-[mouse] Report #333: delta=(1, 0) buttons=0x0000000000000000 pos=(755, 563)
-[mouse] Report #334: delta=(1, 0) buttons=0x0000000000000000 pos=(756, 563)
-[mouse] Report #335: delta=(2, 0) buttons=0x0000000000000000 pos=(757, 563)
-[mouse] Report #336: delta=(0, 1) buttons=0x0000000000000000 pos=(759, 563)
-[mouse] Report #337: delta=(2, 1) buttons=0x0000000000000000 pos=(759, 564)
-[mouse] Report #338: delta=(1, 0) buttons=0x0000000000000000 pos=(761, 565)
-[mouse] Report #339: delta=(1, 1) buttons=0x0000000000000000 pos=(762, 565)
-[mouse] Report #340: delta=(4, 3) buttons=0x0000000000000000 pos=(763, 566)
-[mouse] Report #341: delta=(2, 2) buttons=0x0000000000000000 pos=(767, 569)
-[mouse] Report #342: delta=(2, 1) buttons=0x0000000000000000 pos=(769, 571)
-[mouse] Report #343: delta=(0, 1) buttons=0x0000000000000000 pos=(771, 572)
-[mouse] Report #344: delta=(1, 0) buttons=0x0000000000000000 pos=(771, 573)
-[mouse] Report #345: delta=(2, 2) buttons=0x0000000000000000 pos=(772, 573)
-[mouse] Report #346: delta=(3, 2) buttons=0x0000000000000000 pos=(774, 575)
-[mouse] Report #347: delta=(1, 1) buttons=0x0000000000000000 pos=(777, 577)
-[mouse] Report #348: delta=(1, 0) buttons=0x0000000000000000 pos=(778, 578)
-[mouse] Report #349: delta=(1, 0) buttons=0x0000000000000000 pos=(779, 578)
-[mouse] Report #350: delta=(2, 1) buttons=0x0000000000000000 pos=(780, 578)
-[mouse] Report #351: delta=(5, 1) buttons=0x0000000000000000 pos=(782, 579)
-[mouse] Report #352: delta=(3, 0) buttons=0x0000000000000000 pos=(787, 580)
-[mouse] Report #353: delta=(0, 0) buttons=0x0000000000000001 pos=(790, 580)
-[mouse] BUTTON DOWN #27: buttons=0x0000000000000001 at (790, 580)
-[fb-cursor] Move #101: (790, 580) visible=no
-[mouse] Report #354: delta=(0, 0) buttons=0x0000000000000000 pos=(790, 580)
-[mouse] BUTTON UP #27: buttons=0x0000000000000001 at (790, 580)
-[mouse] Report #355: delta=(4, 2) buttons=0x0000000000000000 pos=(790, 580)
-[mouse] Report #356: delta=(1, 0) buttons=0x0000000000000000 pos=(794, 582)
-[mouse] Report #357: delta=(3, 1) buttons=0x0000000000000000 pos=(795, 582)
-[mouse] Report #358: delta=(1, 0) buttons=0x0000000000000000 pos=(798, 583)
-[mouse] Report #359: delta=(1, 0) buttons=0x0000000000000000 pos=(799, 583)
-[mouse] Report #360: delta=(1, 1) buttons=0x0000000000000000 pos=(800, 583)
-[mouse] Report #361: delta=(0, 1) buttons=0x0000000000000000 pos=(801, 584)
-[mouse] Report #362: delta=(0, 0) buttons=0x0000000000000001 pos=(801, 585)
-[mouse] BUTTON DOWN #28: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #363: delta=(0, 0) buttons=0x0000000000000000 pos=(801, 585)
-[mouse] BUTTON UP #28: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #364: delta=(0, 0) buttons=0x0000000000000001 pos=(801, 585)
-[mouse] BUTTON DOWN #29: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #365: delta=(0, 0) buttons=0x0000000000000000 pos=(801, 585)
-[mouse] BUTTON UP #29: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #366: delta=(0, 0) buttons=0x0000000000000001 pos=(801, 585)
-[mouse] BUTTON DOWN #30: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #367: delta=(0, 0) buttons=0x0000000000000000 pos=(801, 585)
-[mouse] BUTTON UP #30: buttons=0x0000000000000001 at (801, 585)
-[mouse] Report #368: delta=(-127, 99) buttons=0x0000000000000000 pos=(801, 585)
-[mouse] LARGE MOVE #286: (801, 585) -> (674, 684) delta=226
-[fb-cursor] Move #107: (674, 684) visible=yes
+[installer] Click at (818, 581) Next button: (792, 574) to (892, 610)
+[installer] NEXT button clicked!
+[installer] Click at (818, 581) Next button: (792, 574) to (892, 610)
+[installer] NEXT button clicked!
+[installer] Click at (818, 581) Next button: (792, 574) to (892, 610)
+[installer] NEXT button clicked!
+[installer] Click at (818, 581) Next button: (792, 574) to (892, 610)
+[installer] NEXT button clicked!
+[installer] Starting installation...
+[installer] Configuration:
+[installer]   Dual Boot: YES
+[installer]   Decoy OS: YES (Veracrypt Outer)
+[installer]   Hidden OS: YES (Veracrypt Hidden)
+[installer] Click at (771, 0) Next button: (792, 574) to (892, 610)

@@ -6,14 +6,17 @@ https://github.com/zsh-users/zsh.git
 https://github.com/Shourai/st.git
 https://github.com/veracrypt/VeraCrypt.git
 https://codeberg.org/Calamares/calamares.git
+https://github.com/sahibjotsaggu/San-Francisco-Pro-Fonts.git
+https://github.com/freetype/freetype.git
+https://github.com/harfbuzz/harfbuzz.git
 
-python3 scripts/toolchain_builder.py --config toolchain_config.toml
+python3 toolchain_builder.py --config toolchain_config.toml
  
-bash scripts/build_x11_stack.sh 2>&1 | tee build-x11-full.log
+bash ./build_x11_stack.sh 2>&1 | tee build-x11-full.log
 
 SYSROOT=$PWD/build/toolchain/sysroot \
 CROSS_TOOLCHAIN_DIR=$PWD/build/toolchain \
-./scripts/buildscript.sh
+./buildscript.sh
 
 
 qemu-system-x86_64 -cdrom build/os.iso -m 512 -serial stdio -no-reboot -no-shutdown -d guest_errors,int -vga std -display gtk &> logs.txt

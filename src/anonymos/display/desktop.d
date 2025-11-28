@@ -9,7 +9,7 @@ import anonymos.display.compositor : renderWorkspaceComposited, compositorAvaila
 import anonymos.display.input_pipeline : InputQueue;
 import anonymos.display.input_handler : initializeInputHandler, processInputEvents;
 import anonymos.display.server;
-import anonymos.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz;
+import anonymos.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz, loadTrueTypeFontIntoStack;
 import anonymos.drivers.hid_mouse : initializeMouseState, getMousePosition;
 import anonymos.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
 import anonymos.syscalls.posix : schedYield;
@@ -53,8 +53,19 @@ private @nogc nothrow void ensureDisplayServer()
     // bitmap fallback, but also flag the intended FreeType/HarfBuzz path so
     // higher layers can rely on shaping logic immediately.
     auto stack = activeFontStack();
-    enableFreetype(*stack);
-    enableHarfBuzz(*stack);
+    
+    // Try to load SF Pro font
+    if (loadTrueTypeFontIntoStack(*stack, "/usr/share/fonts/SF-Pro.ttf", 16))
+    {
+        printLine("[desktop] SF Pro font loaded");
+    }
+    else
+    {
+        printLine("[desktop] Failed to load SF Pro font, falling back to bitmap");
+        enableFreetype(*stack);
+        enableHarfBuzz(*stack);
+    }
+    
     attachFontStack(g_displayServer, stack);
 
     attachInputPipeline(g_displayServer);
@@ -495,19 +506,17 @@ void runSimpleDesktopLoop()
             size_t idx = g_inputQueue.head;
             while (idx != g_inputQueue.tail)
             {
-                const ref event = g_inputQueue.events[idx];
-                
                 // Log button events for debugging
-                if (event.type == InputEvent.Type.buttonDown)
+                if (g_inputQueue.events[idx].type == InputEvent.Type.buttonDown)
                 {
-                    print("[desktop] Installer received BUTTON DOWN at (");
-                    printUnsigned(cast(uint)event.data2);
-                    print(", ");
-                    printUnsigned(cast(uint)event.data3);
-                    printLine(")");
+                    // print("[desktop] Installer received BUTTON DOWN at (");
+                    // printUnsigned(cast(uint)g_inputQueue.events[idx].data1);
+                    // print(", ");
+                    // printUnsigned(cast(uint)g_inputQueue.events[idx].data2);
+                    // printLine(")");
                 }
                 
-                if (handleInstallerInput(event))
+                if (handleInstallerInput(g_inputQueue.events[idx]))
                 {
                     damage.add(0, 0, g_fb.width, g_fb.height); // Redraw on state change
                 }
@@ -536,17 +545,17 @@ void runSimpleDesktopLoop()
         {
             if (shouldLog)
             {
-                print("[desktop] Frame ");
-                printUnsigned(cast(uint)g_frameCount);
-                print(": DAMAGE at (");
-                printUnsigned(cast(uint)damage.bounds.x);
-                print(", ");
-                printUnsigned(cast(uint)damage.bounds.y);
-                print(") size ");
-                printUnsigned(cast(uint)damage.bounds.width);
-                print("x");
-                printUnsigned(cast(uint)damage.bounds.height);
-                printLine("");
+                // print("[desktop] Frame ");
+                // printUnsigned(cast(uint)g_frameCount);
+                // print(": DAMAGE at (");
+                // printUnsigned(cast(uint)damage.bounds.x);
+                // print(", ");
+                // printUnsigned(cast(uint)damage.bounds.y);
+                // print(") size ");
+                // printUnsigned(cast(uint)damage.bounds.width);
+                // print("x");
+                // printUnsigned(cast(uint)damage.bounds.height);
+                // printLine("");
             }
             
             // Hide cursor before redraw to prevent corruption
@@ -580,18 +589,18 @@ void runSimpleDesktopLoop()
         {
             if (shouldLog)
             {
-                print("[desktop] Frame ");
-                printUnsigned(cast(uint)g_frameCount);
-                print(": CURSOR MOVE (");
-                printUnsigned(cast(uint)lastMx);
-                print(", ");
-                printUnsigned(cast(uint)lastMy);
-                print(") -> (");
-                printUnsigned(cast(uint)mx);
-                print(", ");
-                printUnsigned(cast(uint)my);
-                print(")");
-                printLine("");
+                // print("[desktop] Frame ");
+                // printUnsigned(cast(uint)g_frameCount);
+                // print(": CURSOR MOVE (");
+                // printUnsigned(cast(uint)lastMx);
+                // print(", ");
+                // printUnsigned(cast(uint)lastMy);
+                // print(") -> (");
+                // printUnsigned(cast(uint)mx);
+                // print(", ");
+                // printUnsigned(cast(uint)my);
+                // print(")");
+                // printLine("");
             }
             
             // Cursor moved but no damage - just update cursor position
@@ -612,9 +621,9 @@ void runSimpleDesktopLoop()
         {
             if (shouldLog)
             {
-                print("[desktop] Frame ");
-                printUnsigned(cast(uint)g_frameCount);
-                printLine(": SHOW CURSOR (was hidden)");
+                // print("[desktop] Frame ");
+                // printUnsigned(cast(uint)g_frameCount);
+                // printLine(": SHOW CURSOR (was hidden)");
             }
             
             // No movement, no damage, but cursor not visible - show it
@@ -686,4 +695,3 @@ extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* argv, const(char*
 
 // I need to inject the installer logic into runSimpleDesktopLoop and ensureWindowManager.
 // Since I can't easily replace the whole file, I will use multi_replace.
-

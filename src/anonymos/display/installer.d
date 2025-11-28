@@ -2,6 +2,7 @@ module anonymos.display.installer;
 
 import anonymos.display.canvas;
 import anonymos.display.font_stack;
+import anonymos.display.framebuffer : g_fb;
 
 import anonymos.display.input_pipeline;
 import anonymos.console : printLine;
@@ -56,6 +57,11 @@ public struct CalamaresInstaller
     int selectedIndex; 
     bool editingField; 
     int fieldCursor;
+    
+    int windowX;
+    int windowY;
+    int windowW;
+    int windowH;
 }
 
 __gshared CalamaresInstaller g_installer;
@@ -143,13 +149,13 @@ public @nogc nothrow void renderInstallerWindow(Canvas* c, int x, int y, int w, 
 // Input Handling
 public @nogc nothrow bool handleInstallerInput(InputEvent event)
 {
-    import anonymos.display.framebuffer : g_fb;
+    import anonymos.console : print, printLine, printUnsigned;
     
-    // Recalculate window geometry to match renderInstallerWindow
-    int w = 800;
-    int h = 500;
-    int winX = (g_fb.width - w) / 2;
-    int winY = (g_fb.height - h) / 2;
+    // Use stored window geometry from compositor
+    int w = g_installer.windowW != 0 ? g_installer.windowW : 800;
+    int h = g_installer.windowH != 0 ? g_installer.windowH : 500;
+    int winX = g_installer.windowX != 0 ? g_installer.windowX : (g_fb.width - w) / 2;
+    int winY = g_installer.windowY != 0 ? g_installer.windowY : (g_fb.height - h) / 2;
 
     if (event.type == InputEvent.Type.keyDown)
     {
@@ -205,8 +211,8 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         // event.data2 = x
         // event.data3 = y
         
-        int mx = event.data2;
-        int my = event.data3;
+        int mx = event.data1;
+        int my = event.data2;
         
         // Check Navigation Buttons
         // Back: winX + w - 240, winY + h - 60, 100x36
@@ -218,8 +224,24 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         int nextX = winX + w - 120;
         int nextY = winY + h - 60;
         
+        // Debug logging
+        print("[installer] Click at (");
+        printUnsigned(cast(uint)mx);
+        print(", ");
+        printUnsigned(cast(uint)my);
+        print(") Next button: (");
+        printUnsigned(cast(uint)nextX);
+        print(", ");
+        printUnsigned(cast(uint)nextY);
+        print(") to (");
+        printUnsigned(cast(uint)(nextX + 100));
+        print(", ");
+        printUnsigned(cast(uint)(nextY + 36));
+        printLine(")");
+        
         if (mx >= nextX && mx <= nextX + 100 && my >= nextY && my <= nextY + 36)
         {
+            printLine("[installer] NEXT button clicked!");
             nextModule();
             return true;
         }
@@ -487,11 +509,11 @@ private @nogc nothrow void drawString(Canvas* c, int x, int y, const(char)* s, u
     import anonymos.display.canvas : canvasText;
     int len = 0;
     while (s[len] != 0) len++;
-    (*c).canvasText(null, x, y, s[0..len], color, 0); 
+    (*c).canvasText(null, x, y, s[0..len], color, 0, false); // opaqueBg = false for transparent
 }
 
 private @nogc nothrow void drawString(Canvas* c, int x, int y, char[] s, uint color, int scale = 1)
 {
     import anonymos.display.canvas : canvasText;
-    (*c).canvasText(null, x, y, s, color, 0);
+    (*c).canvasText(null, x, y, s, color, 0, false); // opaqueBg = false for transparent
 }

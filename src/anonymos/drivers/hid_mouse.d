@@ -50,6 +50,8 @@ void initializeMouseState(uint screenWidth, uint screenHeight) @nogc nothrow
 void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue, 
                        uint screenWidth, uint screenHeight) @nogc nothrow
 {
+    // Logging disabled to prevent screen scrolling/corruption
+    /*
     import anonymos.console : print, printLine, printUnsigned, printHex;
     
     static uint reportCount = 0;
@@ -62,37 +64,9 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     // Log every report for debugging
     if (reportCount % 10 == 1 || report.deltaX != 0 || report.deltaY != 0 || report.buttons != g_mouseState.buttons)
     {
-        print("[mouse] Report #");
-        printUnsigned(reportCount);
-        print(": delta=(");
-        if (report.deltaX < 0)
-        {
-            print("-");
-            printUnsigned(cast(uint)(-report.deltaX));
-        }
-        else
-        {
-            printUnsigned(cast(uint)report.deltaX);
-        }
-        print(", ");
-        if (report.deltaY < 0)
-        {
-            print("-");
-            printUnsigned(cast(uint)(-report.deltaY));
-        }
-        else
-        {
-            printUnsigned(cast(uint)report.deltaY);
-        }
-        print(") buttons=0x");
-        printHex(report.buttons);
-        print(" pos=(");
-        printUnsigned(cast(uint)g_mouseState.x);
-        print(", ");
-        printUnsigned(cast(uint)g_mouseState.y);
-        print(")");
-        printLine("");
+        // ...
     }
+    */
     
     bool stateChanged = false;
     
@@ -111,6 +85,8 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
         if (g_mouseState.x >= screenWidth) g_mouseState.x = cast(int)screenWidth - 1;
         if (g_mouseState.y >= screenHeight) g_mouseState.y = cast(int)screenHeight - 1;
 
+        // Logging disabled
+        /*
         moveCount++;
         
         // Log significant movements
@@ -120,20 +96,9 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
         
         if (absDelta > 50)
         {
-            print("[mouse] LARGE MOVE #");
-            printUnsigned(moveCount);
-            print(": (");
-            printUnsigned(cast(uint)oldX);
-            print(", ");
-            printUnsigned(cast(uint)oldY);
-            print(") -> (");
-            printUnsigned(cast(uint)g_mouseState.x);
-            print(", ");
-            printUnsigned(cast(uint)g_mouseState.y);
-            print(") delta=");
-            printUnsigned(cast(uint)absDelta);
-            printLine("");
+            // ...
         }
+        */
 
         // Generate pointer move event
         InputEvent event;
@@ -150,17 +115,12 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     ubyte pressedButtons = report.buttons & ~g_mouseState.buttons;
     if (pressedButtons != 0)
     {
+        // Logging disabled
+        /*
         buttonDownCount++;
         print("[mouse] BUTTON DOWN #");
-        printUnsigned(buttonDownCount);
-        print(": buttons=0x");
-        printHex(pressedButtons);
-        print(" at (");
-        printUnsigned(cast(uint)g_mouseState.x);
-        print(", ");
-        printUnsigned(cast(uint)g_mouseState.y);
-        print(")");
-        printLine("");
+        // ...
+        */
         
         InputEvent event;
         event.type = InputEvent.Type.buttonDown;
@@ -176,17 +136,12 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     ubyte releasedButtons = g_mouseState.buttons & ~report.buttons;
     if (releasedButtons != 0)
     {
+        // Logging disabled
+        /*
         buttonUpCount++;
         print("[mouse] BUTTON UP #");
-        printUnsigned(buttonUpCount);
-        print(": buttons=0x");
-        printHex(releasedButtons);
-        print(" at (");
-        printUnsigned(cast(uint)g_mouseState.x);
-        print(", ");
-        printUnsigned(cast(uint)g_mouseState.y);
-        print(")");
-        printLine("");
+        // ...
+        */
         
         InputEvent event;
         event.type = InputEvent.Type.buttonUp;

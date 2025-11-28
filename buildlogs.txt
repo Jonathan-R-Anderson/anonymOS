@@ -1,0 +1,848 @@
+-- The C compiler identification is Clang 18.1.3
+-- The CXX compiler identification is GNU 13.3.0
+-- The ASM compiler identification is Clang with GNU-like command-line
+-- Found assembler: /usr/bin/clang
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/clang - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Looking for unwind.h
+-- Looking for unwind.h - found
+-- Looking for rpc/xdr.h
+-- Looking for rpc/xdr.h - not found
+-- Could NOT find FFI (missing: FFI_LIBRARIES HAVE_FFI_CALL) 
+-- Could NOT find LibEdit (missing: LibEdit_INCLUDE_DIRS LibEdit_LIBRARIES) 
+-- Could NOT find Terminfo (missing: Terminfo_LIBRARIES Terminfo_LINKABLE) 
+-- Could NOT find ZLIB (missing: ZLIB_LIBRARY ZLIB_INCLUDE_DIR) 
+-- Could NOT find zstd (missing: zstd_LIBRARY zstd_INCLUDE_DIR) 
+-- Found LibXml2: /usr/lib/x86_64-linux-gnu/libxml2.so (found version "2.9.14") 
+-- Found CURL: /usr/lib/x86_64-linux-gnu/libcurl.so (found version "8.5.0")  
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1467 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1474 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1477 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1480 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1489 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1497 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1500 (add_library):
+  ADD_LIBRARY called with MODULE option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1822 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1859 (add_library):
+  ADD_LIBRARY called with SHARED option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning (dev) at /usr/lib/llvm-18/lib/cmake/llvm/LLVMExports.cmake:1884 (add_library):
+  ADD_LIBRARY called with MODULE option but the target platform does not
+  support dynamic linking.  Building a STATIC library instead.  This may lead
+  to problems.
+Call Stack (most recent call first):
+  /usr/lib/llvm-18/cmake/LLVMConfig.cmake:375 (include)
+  /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:312 (find_package)
+  CMakeLists.txt:29 (load_llvm_config)
+This warning is for project developers.  Use -Wno-dev to suppress it.
+
+CMake Warning at /home/jonny/Documents/internetcomputer/3rdparty/llvm-project/compiler-rt/cmake/Modules/CompilerRTUtils.cmake:335 (message):
+  LLVMTestingSupport not found in LLVM_AVAILABLE_LIBS
+Call Stack (most recent call first):
+  CMakeLists.txt:29 (load_llvm_config)
+
+
+-- LLVM_MAIN_SRC_DIR: "/home/jonny/Documents/internetcomputer/3rdparty/llvm-project/llvm"
+-- cmake c compiler target: x86_64-unknown-linux-gnu
+-- Performing Test COMPILER_RT_HAS_FPIC_FLAG
+-- Performing Test COMPILER_RT_HAS_FPIC_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FPIE_FLAG
+-- Performing Test COMPILER_RT_HAS_FPIE_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FNO_BUILTIN_FLAG
+-- Performing Test COMPILER_RT_HAS_FNO_BUILTIN_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_STD_C11_FLAG
+-- Performing Test COMPILER_RT_HAS_STD_C11_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG
+-- Performing Test COMPILER_RT_HAS_VISIBILITY_HIDDEN_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_OMIT_FRAME_POINTER_FLAG
+-- Performing Test COMPILER_RT_HAS_OMIT_FRAME_POINTER_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FFREESTANDING_FLAG
+-- Performing Test COMPILER_RT_HAS_FFREESTANDING_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_XRAY_COMPILER_FLAG
+-- Performing Test COMPILER_RT_HAS_XRAY_COMPILER_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FNO_LTO_FLAG
+-- Performing Test COMPILER_RT_HAS_FNO_LTO_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_GENERATE_FLAG
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_GENERATE_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_INSTR_GENERATE_FLAG
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_INSTR_GENERATE_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_INSTR_USE_FLAG
+-- Performing Test COMPILER_RT_HAS_FNO_PROFILE_INSTR_USE_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_WNO_PEDANTIC
+-- Performing Test COMPILER_RT_HAS_WNO_PEDANTIC - Success
+-- Performing Test COMPILER_RT_HAS_NOGPULIB_FLAG
+-- Performing Test COMPILER_RT_HAS_NOGPULIB_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FLTO_FLAG
+-- Performing Test COMPILER_RT_HAS_FLTO_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_FCONVERGENT_FUNCTIONS_FLAG
+-- Performing Test COMPILER_RT_HAS_FCONVERGENT_FUNCTIONS_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_CODE_OBJECT_VERSION_FLAG
+-- Performing Test COMPILER_RT_HAS_CODE_OBJECT_VERSION_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_WBUILTIN_DECLARATION_MISMATCH_FLAG
+-- Performing Test COMPILER_RT_HAS_WBUILTIN_DECLARATION_MISMATCH_FLAG - Failed
+-- Performing Test COMPILER_RT_HAS_ZL_FLAG
+-- Performing Test COMPILER_RT_HAS_ZL_FLAG - Failed
+-- Performing Test COMPILER_RT_HAS_FCF_PROTECTION_FLAG
+-- Performing Test COMPILER_RT_HAS_FCF_PROTECTION_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_NOSTDINCXX_FLAG
+-- Performing Test COMPILER_RT_HAS_NOSTDINCXX_FLAG - Success
+-- Performing Test COMPILER_RT_HAS_ATOMIC_KEYWORD
+-- Performing Test COMPILER_RT_HAS_ATOMIC_KEYWORD - Success
+-- Performing Test COMPILER_RT_HAS_ASM_LSE
+-- Performing Test COMPILER_RT_HAS_ASM_LSE - Failed
+-- Performing Test COMPILER_RT_HAS_AARCH64_SME
+-- Performing Test COMPILER_RT_HAS_AARCH64_SME - Failed
+-- Performing Test COMPILER_RT_HAS_ARM_UNALIGNED
+-- Performing Test COMPILER_RT_HAS_ARM_UNALIGNED - Failed
+-- Performing Test COMPILER_RT_HAS_ARM_FP
+-- Performing Test COMPILER_RT_HAS_ARM_FP - Failed
+-- Looking for include file sys/auxv.h
+-- Looking for include file sys/auxv.h - found
+-- Builtin supported architectures: x86_64
+-- Performing additional configure checks with target flags: -nostdinc++ -fPIC -fno-builtin -fvisibility=hidden -fomit-frame-pointer
+-- Performing Test COMPILER_RT_HAS_x86_64_FLOAT16
+-- Performing Test COMPILER_RT_HAS_x86_64_FLOAT16 - Success
+-- Performing Test COMPILER_RT_HAS_x86_64_BFLOAT16
+-- Performing Test COMPILER_RT_HAS_x86_64_BFLOAT16 - Success
+-- For x86_64 builtins preferring i386/fp_mode.c to fp_mode.c
+-- For x86_64 builtins preferring x86_64/floatdidf.c to floatdidf.c
+-- For x86_64 builtins preferring x86_64/floatdisf.c to floatdisf.c
+-- For x86_64 builtins preferring x86_64/floatundidf.S to floatundidf.c
+-- For x86_64 builtins preferring x86_64/floatundisf.S to floatundisf.c
+-- For x86_64 builtins preferring x86_64/floatdixf.c to floatdixf.c
+-- For x86_64 builtins preferring x86_64/floatundixf.S to floatundixf.c
+-- Configuring done (1.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/jonny/Documents/internetcomputer/build-builtins
+ninja: Entering directory `/home/jonny/Documents/internetcomputer/scripts/../build-builtins'
+[1/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/apple_versioning.c.obj
+[2/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/absvsi2.c.obj
+[3/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/addvdi3.c.obj
+[4/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/addvsi3.c.obj
+[5/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ashrdi3.c.obj
+[6/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ashrti3.c.obj
+[7/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/clzdi2.c.obj
+[8/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/absvti2.c.obj
+[9/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/addvti3.c.obj
+[10/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/bswapsi2.c.obj
+[11/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/adddf3.c.obj
+[12/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/addsf3.c.obj
+[13/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ashldi3.c.obj
+[14/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ashlti3.c.obj
+[15/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/clzsi2.c.obj
+[16/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/clzti2.c.obj
+[17/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/absvdi2.c.obj
+[18/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/bswapdi2.c.obj
+[19/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ctzdi2.c.obj
+[20/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divmoddi4.c.obj
+[21/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/comparesf2.c.obj
+[22/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ctzsi2.c.obj
+[23/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/cmpti2.c.obj
+[24/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ctzti2.c.obj
+[25/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divdc3.c.obj
+[26/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/cmpdi2.c.obj
+[27/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divmodsi4.c.obj
+[28/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divdi3.c.obj
+[29/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divti3.c.obj
+[30/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divmodti4.c.obj
+[31/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ffssi2.c.obj
+[32/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divsc3.c.obj
+[33/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/comparedf2.c.obj
+[34/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendsfdf2.c.obj
+[35/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ffsdi2.c.obj
+[36/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divsi3.c.obj
+[37/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendhfsf2.c.obj
+[38/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ffsti2.c.obj
+[39/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divdf3.c.obj
+[40/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divsf3.c.obj
+[41/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixdfti.c.obj
+[42/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixsfdi.c.obj
+[43/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixsfsi.c.obj
+[44/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendhfdf2.c.obj
+[45/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixdfdi.c.obj
+[46/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixdfsi.c.obj
+[47/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsdfdi.c.obj
+[48/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixsfti.c.obj
+[49/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatsisf.c.obj
+[50/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floattidf.c.obj
+[51/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatunsisf.c.obj
+[52/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/lshrdi3.c.obj
+[53/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floattisf.c.obj
+[54/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsdfsi.c.obj
+[55/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunssfdi.c.obj
+[56/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunssfsi.c.obj
+[57/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatsidf.c.obj
+[58/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatunsidf.c.obj
+[59/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsdfti.c.obj
+[60/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunssfti.c.obj
+[61/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/int_util.c.obj
+[62/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/lshrti3.c.obj
+[63/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatuntisf.c.obj
+[64/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/modsi3.c.obj
+[65/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatuntidf.c.obj
+[66/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/modti3.c.obj
+[67/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/moddi3.c.obj
+[68/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulodi4.c.obj
+[69/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/muldc3.c.obj
+[70/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulsc3.c.obj
+[71/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/muldf3.c.obj
+[72/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/muldi3.c.obj
+[73/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulsf3.c.obj
+[74/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/muloti4.c.obj
+[75/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulvsi3.c.obj
+[76/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negdf2.c.obj
+[77/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulosi4.c.obj
+[78/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulvdi3.c.obj
+[79/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulvti3.c.obj
+[80/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/multi3.c.obj
+[81/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negti2.c.obj
+[82/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negvsi2.c.obj
+[83/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negsf2.c.obj
+[84/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negdi2.c.obj
+[85/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negvdi2.c.obj
+[86/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/os_version_check.c.obj
+[87/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/paritydi2.c.obj
+[88/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/parityti2.c.obj
+[89/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/paritysi2.c.obj
+[90/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/popcountti2.c.obj
+[91/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/negvti2.c.obj
+[92/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/popcountdi2.c.obj
+[93/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subvdi3.c.obj
+[94/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/powidf2.c.obj
+[95/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subdf3.c.obj
+[96/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/powisf2.c.obj
+[97/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subsf3.c.obj
+[98/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subvti3.c.obj
+[99/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subvsi3.c.obj
+[100/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncdfhf2.c.obj
+[101/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncsfhf2.c.obj
+[102/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trampoline_setup.c.obj
+[103/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/popcountsi2.c.obj
+[104/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivmodti4.c.obj
+[105/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivmodsi4.c.obj
+[106/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivdi3.c.obj
+[107/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ucmpti2.c.obj
+[108/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivsi3.c.obj
+[109/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncdfsf2.c.obj
+[110/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/umodsi3.c.obj
+[111/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivti3.c.obj
+[112/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/umoddi3.c.obj
+[113/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/ucmpdi2.c.obj
+[114/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/clear_cache.c.obj
+[115/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/udivmoddi4.c.obj
+[116/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/gcc_personality_v0.c.obj
+[117/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divtc3.c.obj
+[118/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/addtf3.c.obj
+[119/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extenddftf2.c.obj
+[120/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendhftf2.c.obj
+[121/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/umodti3.c.obj
+[122/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/comparetf2.c.obj
+[123/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixtfsi.c.obj
+[124/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divtf3.c.obj
+[125/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixtfdi.c.obj
+[126/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunstfsi.c.obj
+[127/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunstfti.c.obj
+[128/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatditf.c.obj
+[129/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatunditf.c.obj
+[130/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendsftf2.c.obj
+[131/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunstfdi.c.obj
+[132/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatsitf.c.obj
+[133/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/subtf3.c.obj
+[134/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatuntitf.c.obj
+[135/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/powitf2.c.obj
+[136/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixtfti.c.obj
+[137/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floattitf.c.obj
+[138/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatunsitf.c.obj
+[139/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/multf3.c.obj
+[140/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trunctfdf2.c.obj
+[141/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/multc3.c.obj
+[142/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trunctfhf2.c.obj
+[143/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trunctfsf2.c.obj
+[144/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatdisf.c.obj
+[145/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/i386/fp_mode.c.obj
+[146/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatdidf.c.obj
+[147/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendhfxf2.c.obj
+[148/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/cpu_model/x86.c.obj
+[149/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendxftf2.c.obj
+[150/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsxfdi.c.obj
+[151/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsxfti.c.obj
+[152/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixxfti.c.obj
+[153/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floattixf.c.obj
+[154/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixxfdi.c.obj
+[155/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/floatuntixf.c.obj
+[156/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/fixunsxfsi.c.obj
+[157/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/divxc3.c.obj
+[158/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/extendbfsf2.c.obj
+[159/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/powixf2.c.obj
+[160/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncxfbf2.c.obj
+[161/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncsfbf2.c.obj
+[162/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncxfhf2.c.obj
+[163/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatdixf.c.obj
+[164/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/truncdfbf2.c.obj
+[165/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/mulxc3.c.obj
+[166/171] Building ASM object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatundisf.S.obj
+[167/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trunctfxf2.c.obj
+[168/171] Building ASM object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatundidf.S.obj
+[169/171] Building C object CMakeFiles/clang_rt.builtins-x86_64.dir/trunctfbf2.c.obj
+[170/171] Building ASM object CMakeFiles/clang_rt.builtins-x86_64.dir/x86_64/floatundixf.S.obj
+[171/171] Linking C static library lib/generic/libclang_rt.builtins-x86_64.a
+ninja: Entering directory `/home/jonny/Documents/internetcomputer/scripts/../build-builtins'
+[0/1] Install the project...
+-- Install configuration: ""
+-- Installing: /home/jonny/Documents/internetcomputer/build/toolchain/sysroot/usr/lib/generic/libclang_rt.builtins-x86_64.a
+[✓] Builtins:
+lrwxrwxrwx 1 jonny jonny 108 Nov 26 13:45 /home/jonny/Documents/internetcomputer/build/toolchain/sysroot/usr/lib/libclang_rt.builtins-x86_64.a -> /home/jonny/Documents/internetcomputer/build/toolchain/sysroot/usr/lib/generic/libclang_rt.builtins-x86_64.a
+[*] Building POSIX utilities from /home/jonny/Documents/internetcomputer/scripts/../src/anonymos/kernel/posixutils
+[build] asa
+[build] basename
+[build] cat
+[build] chown
+[build] cksum
+[build] cmp
+[build] comm
+[build] compress
+[build] date
+[build] df
+[build] diff
+[build] dirname
+[build] echo
+[build] env
+[build] expand
+[build] expr
+[build] false
+[build] getconf
+[build] grep
+[build] head
+[build] id
+[build] ipcrm
+[build] ipcs
+[build] kill
+[build] link
+[build] ln
+[build] logger
+[build] logname
+[build] mesg
+[build] mkdir
+[build] mkfifo
+[build] mv
+[build] nice
+[build] nohup
+[build] pathchk
+[build] pwd
+[build] renice
+[build] rm
+[build] rmdir
+[build] sort
+[build] split
+[build] strings
+[build] stty
+[build] tabs
+[build] tee
+[build] terminal
+[build] time
+[build] touch
+[build] tput
+[build] true
+[build] tsort
+[build] tty
+[build] uname
+[build] uniq
+[build] unlink
+[build] uuencode
+[build] waitpid
+[build] wc
+[build] what
+[build] xclip
+[build] xrandr
+[build] xsel
+[build] xset
+[ok] Wrote manifest: build/posixutils/manifest.txt
+[ok] Wrote object manifest: build/posixutils/objects.tsv
+[ok] Built 63 POSIX utilities into build/posixutils/bin
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[!] Desktop stub source missing: /home/jonny/Documents/internetcomputer/scripts/../assets/desktop/stubs/display-component.sh
+[*] Installed session script: build/desktop-stack/etc/X11/xinit/minimal-i3-session
+
+[*] Building FreeType and HarfBuzz for kernel...
+[*] Building FreeType...
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build
+[100%] Built target freetype
+-- Install configuration: "Release"
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/ft2build.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftadvanc.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/fttrigon.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftrender.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftbdf.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ttnameid.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftchapters.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/tttables.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftmodapi.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftgzip.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftbbox.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftbzip2.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftimage.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftmm.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftcid.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftfntfmt.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftsynth.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftcolor.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftcache.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftpfr.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftotval.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftoutln.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftdriver.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftmac.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftlist.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/ftheader.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/ftstdlib.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/integer-types.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/ftmodule.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/mac-support.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/public-macros.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftgasp.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftsnames.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftsystem.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/fterrdef.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftmoderr.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/freetype.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftgxval.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftlcdfil.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftbitmap.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/fttypes.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftlzw.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/t1tables.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/otsvg.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/tttags.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftstroke.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftincrem.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftlogging.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftglyph.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftwinfnt.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/fterrors.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftsizes.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/ftparams.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/ftconfig.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/include/freetype2/freetype/config/ftoption.h
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/lib/pkgconfig/freetype2.pc
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/lib/libfreetype.a
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/lib/cmake/freetype/freetype-config.cmake
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/lib/cmake/freetype/freetype-config-release.cmake
+-- Up-to-date: /home/jonny/Documents/internetcomputer/build/font-libs/freetype-build/build/font-libs/install/lib/cmake/freetype/freetype-config-version.cmake
+[✓] FreeType built: build/font-libs/install/lib/libfreetype.a
+[*] Building HarfBuzz...
+Directory already configured.
+
+Just run your build command (e.g. ninja) and Meson will regenerate as necessary.
+Run "meson setup --reconfigure" to force Meson to regenerate.
+
+If build failures persist, run "meson setup --wipe" to rebuild from scratch
+using the same options as passed when configuring the build.
+[0/1] Regenerating build files
+DEPRECATION: "pkgconfig" entry is deprecated and should be replaced by "pkg-config"
+The Meson build system
+Version: 1.9.1
+Source dir: /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz
+Build dir: /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build
+Build type: cross build
+Project name: harfbuzz
+Project version: 12.2.0
+C compiler for the host machine: clang (clang 18.1.3 "Ubuntu clang version 18.1.3 (1ubuntu1)")
+C linker for the host machine: clang ld.bfd 2.42
+C++ compiler for the host machine: clang++ (clang 18.1.3 "Ubuntu clang version 18.1.3 (1ubuntu1)")
+C++ linker for the host machine: clang++ ld.bfd 2.42
+C compiler for the build machine: cc (gcc 13.3.0 "cc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0")
+C linker for the build machine: cc ld.bfd 2.42
+C++ compiler for the build machine: c++ (gcc 13.3.0 "c++ (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0")
+C++ linker for the build machine: c++ ld.bfd 2.42
+Build machine cpu family: x86_64
+Build machine cpu: x86_64
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Target machine cpu family: x86_64
+Target machine cpu: x86_64
+Compiler for C++ supports link arguments -Bsymbolic-functions: YES 
+Compiler for C++ supports arguments -fno-exceptions: YES 
+Compiler for C++ supports arguments -fno-rtti: YES 
+Compiler for C++ supports arguments -fno-threadsafe-statics: YES 
+Compiler for C++ supports arguments -fvisibility-inlines-hidden: YES 
+Library m found: YES
+Dependency freetype2 found: YES 26.1.20 (cached)
+Dependency glib-2.0 skipped: feature glib disabled
+Dependency gobject-2.0 skipped: feature gobject disabled
+Dependency graphite2 skipped: feature graphite2 disabled
+Dependency graphite2 skipped: feature graphite disabled
+Library iwasm skipped: feature wasm disabled
+Dependency icu-uc skipped: feature icu disabled
+Dependency chafa skipped: feature chafa disabled
+Dependency threads found: YES unknown (cached)
+Has header "unistd.h" : YES 
+Has header "sys/mman.h" : YES 
+Has header "stdbool.h" : YES 
+Has header "xlocale.h" : NO 
+Checking for function "atexit" : YES 
+Checking for function "mprotect" : YES 
+Checking for function "sysconf" : YES 
+Checking for function "getpagesize" : YES 
+Checking for function "mmap" : YES 
+Checking for function "isatty" : YES 
+Checking for function "uselocale" : YES 
+Checking for function "newlocale" : YES 
+Checking for function "sincos" : YES 
+Checking for function "sincosf" : YES 
+Checking for function "FT_Get_Var_Blend_Coordinates" with dependency freetype2: YES 
+Checking for function "FT_Set_Var_Blend_Coordinates" with dependency freetype2: YES 
+Checking for function "FT_Done_MM_Var" with dependency freetype2: YES 
+Checking for function "FT_Get_Transform" with dependency freetype2: YES 
+Program gen-hb-version.py found: YES (/home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/gen-hb-version.py)
+Configuring hb-version.h with command
+Program ragel found: NO
+../../../3rdparty/harfbuzz/src/meson.build:452: WARNING: You have to install ragel if you are going to develop HarfBuzz itself
+Program gen-harfbuzzcc.py found: YES (/home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/gen-harfbuzzcc.py)
+Configuring hb-features.h using configuration
+Configuring hb-supported-features.h using configuration
+Program gen-def.py found: YES (/home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/gen-def.py)
+Program gen-harfbuzzcc.py found: YES (/home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/gen-harfbuzzcc.py)
+Found pkg-config: YES (/usr/bin/pkg-config) 1.8.1
+Configuring harfbuzz-config.cmake using configuration
+Configuring config.h using configuration
+Build targets in project: 8
+
+harfbuzz 12.2.0
+
+  Directories
+    prefix                    : /home/jonny/Documents/internetcomputer/build/font-libs/install
+    bindir                    : bin
+    libdir                    : lib
+    includedir                : include
+    datadir                   : share
+    cmakepackagedir           : lib/cmake
+
+  Unicode callbacks (you want at least one)
+    Builtin                   : YES
+    Glib                      : NO
+    ICU                       : NO
+
+  Font callbacks (the more the merrier)
+    Builtin                   : YES
+    FreeType                  : YES
+    Fontations                : NO
+
+  Dependencies used for command-line utilities
+    Cairo                     : NO
+    Chafa                     : NO
+
+  Additional shapers
+    Graphite2                 : NO
+    WebAssembly (experimental): NO
+
+  Platform / other shapers (not normally needed)
+    CoreText                  : NO
+    DirectWrite               : NO
+    GDI/Uniscribe             : NO
+    HarfRust                  : NO
+    kbts                      : NO
+
+  Other features
+    Utilities                 : YES
+    Documentation             : NO
+    GObject bindings          : NO
+    Cairo integration         : NO
+    Introspection             : NO
+    Experimental APIs         : NO
+
+  Testing
+    Tests                     : NO
+    Benchmark                 : NO
+
+  User defined options
+    Cross files               : /home/jonny/Documents/internetcomputer/scripts/harfbuzz-cross.ini
+    benchmark                 : disabled
+    buildtype                 : release
+    c_args                    : -Wall -Wextra -O2 -fvisibility-inlines-hidden
+    cairo                     : disabled
+    chafa                     : disabled
+    cpp_args                  : -Wall -Wextra -O2 -fvisibility-inlines-hidden -fno-exceptions -fno-rtti -fno-threadsafe-statics
+    default_library           : static
+    docs                      : disabled
+    freetype                  : enabled
+    glib                      : disabled
+    gobject                   : disabled
+    graphite                  : disabled
+    graphite2                 : disabled
+    icu                       : disabled
+    introspection             : disabled
+    pkg_config_path           : build/font-libs/install/lib/pkgconfig
+    prefix                    : /home/jonny/Documents/internetcomputer/build/font-libs/install
+    tests                     : disabled
+
+Found ninja-1.11.1 at /usr/bin/ninja
+Generating targets:   0%|          | 0/8 eta ?Generating targets:  38%|███▊      | 3/8 eta 00:00                                                  WARNING: Cross file does not specify strip binary, result will not be stripped.
+Writing build.ninja:   0%|          | 0/115 eta ?                                                 Cleaning... 0 files.
+WARNING: Cross file does not specify strip binary, result will not be stripped.
+[1/80] Compiling C++ object src/libharfbuzz.a.p/hb-paint-bounded.cc.o
+[2/80] Compiling C++ object src/libharfbuzz.a.p/hb-number.cc.o
+[3/80] Compiling C++ object src/libharfbuzz.a.p/hb-buffer-verify.cc.o
+[4/80] Compiling C++ object src/libharfbuzz.a.p/hb-common.cc.o
+[5/80] Compiling C++ object src/libharfbuzz.a.p/hb-fallback-shape.cc.o
+[6/80] Compiling C++ object src/libharfbuzz.a.p/hb-paint-extents.cc.o
+[7/80] Compiling C++ object src/libharfbuzz.a.p/hb-draw.cc.o
+[8/80] Compiling C++ object src/libharfbuzz.a.p/hb-blob.cc.o
+[9/80] Compiling C++ object src/libharfbuzz.a.p/hb-buffer-serialize.cc.o
+[10/80] Compiling C++ object src/libharfbuzz.a.p/hb-map.cc.o
+[11/80] Compiling C++ object src/libharfbuzz.a.p/hb-paint.cc.o
+[12/80] Compiling C++ object src/libharfbuzz.a.p/hb-outline.cc.o
+[13/80] Compiling C++ object src/libharfbuzz.a.p/hb-buffer.cc.o
+[14/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-cff2-table.cc.o
+[15/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-map.cc.o
+[16/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-meta.cc.o
+[17/80] Compiling C++ object src/libharfbuzz.a.p/hb-aat-map.cc.o
+[18/80] Compiling C++ object src/libharfbuzz.a.p/hb-face-builder.cc.o
+[19/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-math.cc.o
+[20/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-cff1-table.cc.o
+[21/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-name.cc.o
+[22/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-default.cc.o
+[23/80] Compiling C++ object src/libharfbuzz.a.p/hb-face.cc.o
+[24/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-indic-table.cc.o
+[25/80] Compiling C++ object src/libharfbuzz.a.p/hb-font.cc.o
+[26/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-hebrew.cc.o
+[27/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-metrics.cc.o
+[28/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-hangul.cc.o
+[29/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-khmer.cc.o
+[30/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-color.cc.o
+[31/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-myanmar.cc.o
+[32/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-syllabic.cc.o
+[33/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-indic.cc.o
+[34/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-thai.cc.o
+[35/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shape-normalize.cc.o
+[36/80] Compiling C++ object src/libharfbuzz.a.p/hb-shaper.cc.o
+[37/80] Compiling C++ object src/libharfbuzz.a.p/hb-shape-plan.cc.o
+[38/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-vowel-constraints.cc.o
+[39/80] Compiling C++ object src/libharfbuzz.a.p/hb-shape.cc.o
+[40/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-use.cc.o
+[41/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-tag.cc.o
+[42/80] Compiling C++ object src/libharfbuzz.a.p/hb-ucd.cc.o
+[43/80] Compiling C++ object src/libharfbuzz.a.p/hb-unicode.cc.o
+[44/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-number.cc.o
+[45/80] Compiling C++ object src/libharfbuzz.a.p/hb-set.cc.o
+[46/80] Compiling C++ object src/libharfbuzz.a.p/OT_Var_VARC_VARC.cc.o
+[47/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-var.cc.o
+[48/80] Compiling C++ object src/libharfbuzz.a.p/hb-style.cc.o
+[49/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shape.cc.o
+[50/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-ot-cff2-table.cc.o
+[51/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-instancer-solver.cc.o
+[52/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-instancer-iup.cc.o
+[53/80] Compiling C++ object src/libharfbuzz.a.p/hb-ft.cc.o
+[54/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-ot-cff1-table.cc.o
+[55/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-cff-common.cc.o
+[56/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-input.cc.o
+[57/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-face.cc.o
+[58/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shaper-arabic.cc.o
+[59/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-shape-fallback.cc.o
+[60/80] Compiling C++ object src/libharfbuzz.a.p/hb-static.cc.o
+[61/80] Generating src/harfbuzz-subset.cc with a custom command
+[62/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-static.cc.o
+[63/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-font.cc.o
+[64/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-cff2.cc.o
+[65/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-cff1.cc.o
+[66/80] Compiling C++ object src/libharfbuzz.a.p/hb-aat-layout.cc.o
+[67/80] Compiling C++ object src/libharfbuzz-subset.a.p/graph_gsubgpos-context.cc.o
+[68/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-plan-var.cc.o
+[69/80] Compiling C++ object src/libharfbuzz.a.p/hb-ot-layout.cc.o
+[70/80] Linking static target src/libharfbuzz.a
+[71/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-plan.cc.o
+[72/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-plan-layout.cc.o
+[73/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-serialize.cc.o
+[74/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-table-cff.cc.o
+[75/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset.cc.o
+[76/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-table-var.cc.o
+[77/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-table-other.cc.o
+[78/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-table-color.cc.o
+[79/80] Compiling C++ object src/libharfbuzz-subset.a.p/hb-subset-table-layout.cc.o
+[80/80] Linking static target src/libharfbuzz-subset.a
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /usr/bin/ninja
+ninja: Entering directory `/home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build'
+ninja: no work to do.
+Installing src/libharfbuzz.a to /home/jonny/Documents/internetcomputer/build/font-libs/install/lib
+Installing src/libharfbuzz-subset.a to /home/jonny/Documents/internetcomputer/build/font-libs/install/lib
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-aat-layout.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-aat.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-blob.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-buffer.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-common.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-cplusplus.hh to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-deprecated.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-draw.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-paint.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-face.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-font.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-map.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-color.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-deprecated.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-font.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-layout.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-math.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-meta.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-metrics.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-name.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-shape.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot-var.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ot.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-script-list.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-set.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-shape-plan.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-shape.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-style.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-unicode.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/src/hb-version.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-ft.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-subset.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/3rdparty/harfbuzz/src/hb-subset-serialize.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/src/hb-version.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/src/hb-features.h to /home/jonny/Documents/internetcomputer/build/font-libs/install/include/harfbuzz
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/meson-private/harfbuzz.pc to /home/jonny/Documents/internetcomputer/build/font-libs/install/lib/pkgconfig
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/meson-private/harfbuzz-subset.pc to /home/jonny/Documents/internetcomputer/build/font-libs/install/lib/pkgconfig
+Installing /home/jonny/Documents/internetcomputer/build/font-libs/harfbuzz-build/src/harfbuzz-config.cmake to /home/jonny/Documents/internetcomputer/build/font-libs/install/lib/cmake/harfbuzz
+[✓] HarfBuzz built: build/font-libs/install/lib/libharfbuzz.a
+[✓] Font libraries installed to sysroot
+[*] Building VeraCrypt crypto library...
+Compiling 3rdparty/veracrypt/src/Crypto/Aescrypt.c...
+Compiling 3rdparty/veracrypt/src/Crypto/Aeskey.c...
+Compiling 3rdparty/veracrypt/src/Crypto/Aestab.c...
+Compiling 3rdparty/veracrypt/src/Crypto/Twofish.c...
+Compiling 3rdparty/veracrypt/src/Crypto/Serpent.c...
+Compiling 3rdparty/veracrypt/src/Crypto/Sha2Small.c...
+3rdparty/veracrypt/src/Crypto/Sha2Small.c: In function ‘sha256_compress’:
+3rdparty/veracrypt/src/Crypto/Sha2Small.c:27:19: warning: implicit declaration of function ‘_lrotr’ [-Wimplicit-function-declaration]
+   27 | #define RORc(x,n) _lrotr(x,n)
+      |                   ^~~~~~
+3rdparty/veracrypt/src/Crypto/Sha2Small.c:56:33: note: in expansion of macro ‘RORc’
+   56 | #define S(x, n)                 RORc((x),(n))
+      |                                 ^~~~
+3rdparty/veracrypt/src/Crypto/Sha2Small.c:61:42: note: in expansion of macro ‘S’
+   61 | #define Gamma1(x)                       (S(x, 17) ^ S(x, 19) ^ R(x, 10))
+      |                                          ^
+3rdparty/veracrypt/src/Crypto/Sha2Small.c:107:24: note: in expansion of macro ‘Gamma1’
+  107 |                 W[i] = Gamma1(w2) + W[i - 7] + Gamma0(w15) + W[i - 16];
+      |                        ^~~~~~
+3rdparty/veracrypt/src/Crypto/Sha2Small.c: In function ‘sha256_hash’:
+3rdparty/veracrypt/src/Crypto/Sha2Small.c:168:29: warning: implicit declaration of function ‘min’ [-Wimplicit-function-declaration]
+  168 |                         n = min(len, 64 - ctx->curlen);
+      |                             ^~~
+Created build/veracrypt/libveracrypt_crypto.a
+[*] Compiling D source: src/anonymos/kernel/kernel.d -> build/kernel.o
+[*] Compiling D source: src/anonymos/kernel/memory.d -> build/memory.o
+[*] Compiling D source: src/anonymos/kernel/heap.d -> build/heap.o
+[*] Compiling D source: src/anonymos/kernel/cpu.d -> build/cpu.o
+[*] Compiling D source: src/anonymos/kernel/interrupts.d -> build/interrupts.o
+[*] Compiling D source: src/anonymos/kernel/posixbundle.d -> build/posixbundle.o
+[*] Compiling D source: src/anonymos/kernel/compiler_builder_entry.d -> build/compiler_builder_entry.o
+[*] Compiling D source: src/anonymos/kernel/shell_integration.d -> build/shell_integration.o
+[*] Compiling D source: src/anonymos/kernel/exceptions.d -> build/exceptions.o
+[*] Compiling D source: src/anonymos/kernel/dma.d -> build/dma.o
+[*] Compiling D source: src/anonymos/console.d -> build/console.o
+[*] Compiling D source: src/anonymos/serial.d -> build/serial.o
+[*] Compiling D source: src/anonymos/hardware.d -> build/hardware.o
+[*] Compiling D source: src/anonymos/display/canvas.d -> build/canvas.o
+[*] Compiling D source: src/anonymos/display/font_stack.d -> build/font_stack.o
+src/anonymos/display/freetype_bindings.d(32): Error: undefined identifier `c_long`
+src/anonymos/display/freetype_bindings.d(31): Error: undefined identifier `c_long`
+src/anonymos/display/freetype_bindings.d(23): Error: undefined identifier `c_long`
+src/anonymos/display/freetype_bindings.d(24): Error: undefined identifier `c_ulong`

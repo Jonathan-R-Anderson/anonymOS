@@ -618,34 +618,19 @@ void framebufferSetCursorIcon(uint width, uint height, const(uint)* pixels)
 @nogc nothrow @system
 void framebufferMoveCursor(int x, int y)
 {
-    import anonymos.console : print, printLine, printUnsigned;
-    
-    static uint moveCount = 0;
     static int lastX = -1;
     static int lastY = -1;
     
     if (!g_fbInitialized) return;
 
-    // Log cursor moves
+    // Log cursor moves - DISABLED to prevent screen corruption/scrolling
+    /*
     moveCount++;
     if (moveCount % 100 == 1 || (x != lastX || y != lastY))
     {
-        int dx = x - lastX;
-        int dy = y - lastY;
-        int absDelta = (dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy);
-        
-        if (absDelta > 50 || moveCount % 100 == 1)
-        {
-            print("[fb-cursor] Move #");
-            printUnsigned(moveCount);
-            print(": (");
-            printUnsigned(cast(uint)x);
-            print(", ");
-            printUnsigned(cast(uint)y);
-            print(") visible=");
-            printLine(g_cursorVisible ? "yes" : "no");
-        }
+        // ...
     }
+    */
     
     lastX = x;
     lastY = y;
@@ -672,23 +657,6 @@ void framebufferMoveCursor(int x, int y)
 @nogc nothrow @system
 void framebufferShowCursor()
 {
-    import anonymos.console : print, printLine, printUnsigned;
-    
-    static uint showCount = 0;
-    showCount++;
-    
-    if (showCount % 10 == 1)
-    {
-        print("[fb-cursor] Show #");
-        printUnsigned(showCount);
-        print(" at (");
-        printUnsigned(cast(uint)g_cursorX);
-        print(", ");
-        printUnsigned(cast(uint)g_cursorY);
-        print(") was_visible=");
-        printLine(g_cursorVisible ? "yes" : "no");
-    }
-    
     if (!g_fbInitialized) return;
     if (g_cursorVisible)
     {
@@ -706,19 +674,6 @@ void framebufferShowCursor()
 @nogc nothrow @system
 void framebufferHideCursor()
 {
-    import anonymos.console : print, printLine, printUnsigned;
-    
-    static uint hideCount = 0;
-    hideCount++;
-    
-    if (hideCount % 10 == 1)
-    {
-        print("[fb-cursor] Hide #");
-        printUnsigned(hideCount);
-        print(" was_visible=");
-        printLine(g_cursorVisible ? "yes" : "no");
-    }
-    
     if (!g_fbInitialized) return;
     if (!g_cursorVisible) return;
 
@@ -729,18 +684,6 @@ void framebufferHideCursor()
 @nogc nothrow @system
 void framebufferForgetCursor()
 {
-    import anonymos.console : print, printLine, printUnsigned;
-    
-    static uint forgetCount = 0;
-    forgetCount++;
-    
-    if (forgetCount % 10 == 1)
-    {
-        print("[fb-cursor] Forget #");
-        printUnsigned(forgetCount);
-        printLine("");
-    }
-    
     g_cursorVisible = false;
     g_cursorSaveBufferValid = false;
 }

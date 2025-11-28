@@ -110,7 +110,17 @@ void newline()
 
 void putChar(char c)
 {
-    if (framebufferAvailable() && g_framebufferConsoleEnabled)
+    // If framebuffer console is disabled, we assume we are in graphical mode
+    // and should NOT touch the VGA text buffer or scroll the screen, as that
+    // might corrupt the framebuffer or cause hardware scrolling artifacts.
+    // We strictly mirror to serial only.
+    if (!g_framebufferConsoleEnabled)
+    {
+        mirrorToSerial(c);
+        return;
+    }
+
+    if (framebufferAvailable())
     {
         framebufferWriteChar(c);
     }

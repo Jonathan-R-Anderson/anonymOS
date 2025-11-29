@@ -675,6 +675,9 @@ mixin template PosixKernelShim()
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
+    // Prevent nested scheduler invocations (e.g., timer preemption while a
+    // process voluntarily yields) from corrupting saved contexts.
+    private __gshared bool           g_inScheduler = false;
     private __gshared ubyte[65536]   g_debugStack; // Static stack for debugging
     private enum size_t INVALID_INDEX = size_t.max;
     private __gshared size_t         g_runQueueHead = INVALID_INDEX;
@@ -2412,7 +2415,23 @@ private enum MAX_EXECUTABLES = 128;
                 anonymos.syscalls.posix.printLine("");
             }
         }
-        
+
+        // Do not allow the scheduler to run reentrantly. Timer interrupts can
+        // preempt a running process and call schedYield while an earlier
+        // invocation is still unwinding, which risks clobbering the in-memory
+        // jump buffer that arch_context_switch will later consume.
+        if (g_inScheduler)
+        {
+            static if (ENABLE_POSIX_DEBUG)
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.printLine("schedYield: reentrant call ignored");
+            }
+            return;
+        }
+        g_inScheduler = true;
+        scope (exit) g_inScheduler = false;
+
         debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
         if (!g_initialized) return;
 

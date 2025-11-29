@@ -53,6 +53,55 @@ struct IPv4Address {
     }
 }
 
+/// IPv6 address
+struct IPv6Address {
+    union {
+        ubyte[16] bytes;
+        ushort[8] words;
+        uint[4] dwords;
+    }
+
+    this(const(ubyte)* data) @nogc nothrow {
+        for (int i = 0; i < 16; i++) {
+            bytes[i] = data[i];
+        }
+    }
+
+    this(ushort w0, ushort w1, ushort w2, ushort w3,
+         ushort w4, ushort w5, ushort w6, ushort w7) @nogc nothrow {
+        words[0] = htons(w0);
+        words[1] = htons(w1);
+        words[2] = htons(w2);
+        words[3] = htons(w3);
+        words[4] = htons(w4);
+        words[5] = htons(w5);
+        words[6] = htons(w6);
+        words[7] = htons(w7);
+    }
+
+    bool isEqual(const ref IPv6Address other) const @nogc nothrow {
+        for (int i = 0; i < 16; i++) {
+            if (bytes[i] != other.bytes[i]) return false;
+        }
+        return true;
+    }
+
+    bool isLinkLocal() const @nogc nothrow {
+        return bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80;
+    }
+
+    bool isMulticast() const @nogc nothrow {
+        return bytes[0] == 0xFF;
+    }
+    
+    bool isLoopback() const @nogc nothrow {
+        for (int i = 0; i < 15; i++) {
+            if (bytes[i] != 0) return false;
+        }
+        return bytes[15] == 1;
+    }
+}
+
 /// MAC address
 struct MACAddress {
     ubyte[6] bytes;
@@ -86,6 +135,7 @@ enum IPProtocol : ubyte {
     ICMP = 1,
     TCP = 6,
     UDP = 17,
+    IPv6ICMP = 58,
 }
 
 /// Ethernet types

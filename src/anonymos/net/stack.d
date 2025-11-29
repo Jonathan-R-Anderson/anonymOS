@@ -9,6 +9,8 @@ import anonymos.net.udp;
 import anonymos.net.tcp;
 import anonymos.net.dns;
 import anonymos.net.tls;
+import anonymos.net.ipv6;
+import anonymos.net.icmpv6;
 import anonymos.drivers.network : initNetwork, isNetworkAvailable;
 
 private __gshared bool g_stackInitialized = false;
@@ -31,6 +33,7 @@ export extern(C) bool initNetworkStack(const IPv4Address* localIP,
     // Initialize layers
     initEthernet();
     initIPv4(localIP, gateway, netmask);
+    initIPv6(null); // Initialize with default/link-local
     
     // Initialize DNS
     initDNS(dnsServer);
@@ -66,6 +69,27 @@ private extern(C) void handleIPv4Protocol(ubyte protocol, const(ubyte)* data, si
     }
 }
 
+/// Protocol handler for IPv6
+private extern(C) void handleIPv6Protocol(ubyte protocol, const(ubyte)* data, size_t len,
+                                 const ref IPv6Address srcIP) @nogc nothrow {
+    switch (protocol) {
+        case IPProtocol.IPv6ICMP:
+            icmpv6HandlePacket(data, len, srcIP);
+            break;
+            
+        case IPProtocol.UDP:
+            // TODO: Handle UDP over IPv6
+            break;
+            
+        case IPProtocol.TCP:
+            // TODO: Handle TCP over IPv6
+            break;
+            
+        default:
+            break;
+    }
+}
+
 /// Process incoming packets (call this regularly from main loop)
 export extern(C) void networkStackPoll() @nogc nothrow {
     if (!g_stackRunning) return;
@@ -89,6 +113,10 @@ export extern(C) void networkStackPoll() @nogc nothrow {
             
         case EtherType.IPv4:
             ipv4HandlePacket(frame.payload, frame.payloadLength, &handleIPv4Protocol);
+            break;
+
+        case EtherType.IPv6:
+            ipv6HandlePacket(frame.payload, frame.payloadLength, &handleIPv6Protocol);
             break;
             
         default:

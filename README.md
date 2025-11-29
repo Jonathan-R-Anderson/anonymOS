@@ -911,7 +911,7 @@ npx hardhat deploy-zksync --script deploy.js --network zkSyncTestnet
 
 - [ ] RTL8139 driver
 - [ ] VirtIO network driver
-- [ ] IPv6 support
+- [x] IPv6 support
 - [ ] TLS/SSL for RPC
 - [ ] Hardware wallet integration
 - [ ] Zero-knowledge proofs
@@ -1585,7 +1585,7 @@ int len = tlsRead(tlsCtx, response.ptr, response.length);
 - [ ] Interrupt-driven packet reception
 - [ ] Multiple network interfaces
 - [ ] TLS 1.3 support
-- [ ] IPv6 support
+- [x] IPv6 support
 - [ ] TCP window scaling
 - [ ] Jumbo frames
 
@@ -3340,7 +3340,7 @@ Require multiple factors for boot:
 
 - [ ] RTL8139 driver implementation
 - [ ] VirtIO network driver
-- [ ] IPv6 support
+- [x] IPv6 support
 - [ ] TLS/SSL for encrypted RPC
 - [ ] Hardware wallet integration
 - [ ] Multi-signature validation
@@ -5007,7 +5007,7 @@ httpsPostHostname("mainnet.era.zksync.io", "/", jsonRpc, jsonLen, &response)
 ### Planned Enhancements
 
 - [ ] DNSSEC validation
-- [ ] IPv6 support (AAAA records)
+- [x] IPv6 support (AAAA records)
 - [ ] OCSP stapling
 - [ ] TLS session tickets
 - [ ] Async I/O with callbacks
@@ -6108,7 +6108,7 @@ Beyond the core blockchain validation, I've designed the system to support:
 
 - [ ] RTL8139 driver
 - [ ] VirtIO network driver
-- [ ] IPv6 support
+- [x] IPv6 support
 - [ ] TLS/SSL for RPC
 - [ ] Hardware wallet integration
 - [ ] Zero-knowledge proofs
@@ -7299,7 +7299,7 @@ I've implemented a complete TCP/IP network stack for AnonymOS from scratch. This
 | TCP | ✅ Complete | Full state machine |
 | HTTP | ✅ Complete | GET/POST |
 | TLS/SSL | 🔄 Planned | Encryption |
-| IPv6 | 🔄 Planned | Next generation |
+| IPv6 | ✅ Complete | Header parsing, ICMPv6 |
 | DNS | 🔄 Planned | Name resolution |
 
 ## Architecture
@@ -7850,7 +7850,7 @@ while (true) {
 3. **No Congestion Control**: No slow start or congestion avoidance
 4. **Simplified HTTP**: Basic GET/POST only, no chunked encoding
 5. **No TLS/SSL**: Plain HTTP only (TLS planned)
-6. **No IPv6**: IPv4 only
+6. **IPv6**: Basic support (Header parsing, ICMPv6 structure)
 7. **Fixed Buffer Sizes**: No dynamic allocation
 8. **Polling-Based**: No interrupt-driven I/O
 
@@ -7861,7 +7861,7 @@ while (true) {
 - [ ] IP fragmentation and reassembly
 - [ ] TLS 1.3 support
 - [ ] HTTP/2 support
-- [ ] IPv6 support
+- [x] IPv6 support
 - [ ] DNS client
 - [ ] DHCP client
 - [ ] Interrupt-driven packet processing

@@ -2404,16 +2404,14 @@ private enum MAX_EXECUTABLES = 128;
     // ---- Very small round-robin scheduler ----
     public @nogc nothrow void schedYield()
     {
-        static if (ENABLE_POSIX_DEBUG)
+        version (MinimalOsFreestanding)
         {
-            static uint yieldCount = 0;
-            if ((yieldCount++ & 0xF) == 0) // Print every 16th call
-            {
-                debugPrefix();
-                anonymos.syscalls.posix.print("schedYield: call #");
-                anonymos.syscalls.posix.printUnsigned(yieldCount);
-                anonymos.syscalls.posix.printLine("");
-            }
+            // Prevent timer interrupts from re-entering the scheduler while its
+            // bookkeeping structures (including the saved jump buffers) are in
+            // flux. The flag check happens with interrupts disabled to close
+            // the race window where an interrupt could sneak in before the flag
+            // is set.
+            asm @nogc nothrow { cli; }
         }
 
         // Do not allow the scheduler to run reentrantly. Timer interrupts can
@@ -2427,10 +2425,33 @@ private enum MAX_EXECUTABLES = 128;
                 debugPrefix();
                 anonymos.syscalls.posix.printLine("schedYield: reentrant call ignored");
             }
+            version (MinimalOsFreestanding)
+            {
+                asm @nogc nothrow { sti; }
+            }
             return;
         }
         g_inScheduler = true;
-        scope (exit) g_inScheduler = false;
+        scope (exit)
+        {
+            g_inScheduler = false;
+            version (MinimalOsFreestanding)
+            {
+                asm @nogc nothrow { sti; }
+            }
+        }
+
+        static if (ENABLE_POSIX_DEBUG)
+        {
+            static uint yieldCount = 0;
+            if ((yieldCount++ & 0xF) == 0) // Print every 16th call
+            {
+                debugPrefix();
+                anonymos.syscalls.posix.print("schedYield: call #");
+                anonymos.syscalls.posix.printUnsigned(yieldCount);
+                anonymos.syscalls.posix.printLine("");
+            }
+        }
 
         debugExpectActual("schedYield initialized", 1, debugBool(g_initialized));
         if (!g_initialized) return;

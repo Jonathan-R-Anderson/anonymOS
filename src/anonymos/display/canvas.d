@@ -186,11 +186,12 @@ private const(ShapedRun)* shapeRun(const(FontStack)* stack, const(char)[] text) 
 
         cursor += consumed;
         auto glyph = &run.glyphs[run.count];
-        if (!glyphMaskFromStack(stack, cp, glyph.mask))
+        uint advance;
+        if (!glyphMaskFromStack(stack, cp, glyph.mask, advance))
         {
             continue;
         }
-        glyph.advance = glyphWidth;
+        glyph.advance = advance;
         ++run.count;
         run.width += glyph.advance;
     }

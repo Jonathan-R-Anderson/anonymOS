@@ -85,8 +85,11 @@ bool fontStackReady(const FontStack* stack) @nogc nothrow
 }
 
 /// Lookup helper used by the canvas/text rendering path.
-bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyphWidth * glyphHeight] mask) @nogc nothrow
+/// Lookup helper used by the canvas/text rendering path.
+bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyphWidth * glyphHeight] mask, out uint advance) @nogc nothrow
 {
+    advance = glyphWidth; // Default fallback advance
+
     if (stack is null)
     {
         return false;
@@ -97,7 +100,7 @@ bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyph
     {
         import anonymos.display.truetype_font : TrueTypeFont, renderGlyph;
         auto ttFont = cast(TrueTypeFont*)stack.truetypeFont;
-        if (ttFont.available && renderGlyph(*ttFont, codepoint, mask))
+        if (ttFont.available && renderGlyph(*ttFont, codepoint, mask, advance))
         {
             return true;
         }
@@ -106,6 +109,8 @@ bool glyphMaskFromStack(const FontStack* stack, dchar codepoint, ref ubyte[glyph
     // Fall back to bitmap font
     if (stack.bitmapEnabled && glyphMask(&stack.bitmapFont, codepoint, mask))
     {
+        // Bitmap font is fixed width (8px)
+        advance = 8;
         return true;
     }
 

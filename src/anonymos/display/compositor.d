@@ -605,6 +605,10 @@ void renderWorkspaceComposited(const WindowManager* manager)
         if (frameLogs < 1) printLine("[compositor] installer rendered");
     }
 
+    // Draw cursor on top of everything in the backbuffer
+    import anonymos.display.framebuffer : framebufferDrawCursorToBuffer;
+    framebufferDrawCursorToBuffer(g_compositor.buffer, g_compositor.width, g_compositor.height, g_compositor.pitch);
+
     g_compositor.present();
     if (frameLogs < 1) printLine("[compositor] present done");
     ++frameLogs;

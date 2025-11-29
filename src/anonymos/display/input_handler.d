@@ -3,6 +3,7 @@ module anonymos.display.input_handler;
 import anonymos.display.input_pipeline : InputEvent, InputQueue, dequeue;
 import anonymos.display.window_manager.manager : WindowManager, Window, Damage;
 import anonymos.display.framebuffer : g_fb;
+import anonymos.display.installer : g_installer, handleInstallerInput;
 
 @nogc:
 nothrow:
@@ -73,6 +74,15 @@ void processInputEvents(ref InputQueue queue, ref WindowManager manager, Damage*
     
     while (dequeue(queue, event))
     {
+        // Give installer priority if active
+        if (g_installer.active)
+        {
+            if (handleInstallerInput(event))
+            {
+                continue;
+            }
+        }
+
         final switch (event.type)
         {
             case InputEvent.Type.unknown:

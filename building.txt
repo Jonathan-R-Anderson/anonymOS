@@ -10,7 +10,7 @@ https://github.com/sahibjotsaggu/San-Francisco-Pro-Fonts.git
 https://github.com/freetype/freetype.git
 https://github.com/harfbuzz/harfbuzz.git
 https://git.torproject.org/tor.git
-
+https://github.com/KhronosGroup/Vulkan-Hpp.git
 
 python3 toolchain_builder.py --config toolchain_config.toml
  

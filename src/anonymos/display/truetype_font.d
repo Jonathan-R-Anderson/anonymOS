@@ -155,8 +155,8 @@ void unloadTrueTypeFont(ref TrueTypeFont font) @nogc nothrow
     font.available = false;
 }
 
-/// Render a single glyph to a bitmap
-bool renderGlyph(ref TrueTypeFont font, dchar codepoint, ref ubyte[glyphWidth * glyphHeight] mask) @nogc nothrow
+/// Render a single glyph to a bitmap and get its advance width
+bool renderGlyph(ref TrueTypeFont font, dchar codepoint, ref ubyte[glyphWidth * glyphHeight] mask, out uint advance) @nogc nothrow
 {
     if (!font.available)
         return false;
@@ -173,6 +173,9 @@ bool renderGlyph(ref TrueTypeFont font, dchar codepoint, ref ubyte[glyphWidth * 
     
     FT_GlyphSlot slot = font.ftFace.glyph;
     FT_Bitmap* bitmap = &slot.bitmap;
+    
+    // Get advance width (26.6 fixed point -> pixels)
+    advance = cast(uint)(slot.advance.x >> 6);
     
     // Clear the mask
     foreach (ref b; mask)

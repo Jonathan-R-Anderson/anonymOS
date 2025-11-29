@@ -15,6 +15,7 @@ private __gshared size_t cursorRow = 0;
 private __gshared size_t cursorCol = 0;
 private __gshared bool   g_consoleReady = false;
 private __gshared bool   g_framebufferConsoleEnabled = true;
+private __gshared bool   g_debugLoggingEnabled = false; // Toggle for verbose debug output
 
 struct StageSummary
 {
@@ -46,6 +47,17 @@ void setFramebufferConsoleEnabled(bool enabled)
 bool framebufferConsoleEnabled()
 {
     return g_framebufferConsoleEnabled;
+}
+
+/// Enable or disable verbose debug logging to screen
+void setDebugLoggingEnabled(bool enabled)
+{
+    g_debugLoggingEnabled = enabled;
+}
+
+bool debugLoggingEnabled()
+{
+    return g_debugLoggingEnabled;
 }
 
 void clearActiveStage()
@@ -296,6 +308,37 @@ void printLine(const(char)[] text)
 {
     print(text);
     putChar('\n');
+}
+
+/// Print debug message - only shows on screen if debug logging is enabled
+/// Always outputs to serial for logging
+void printDebug(const(char)[] text)
+{
+    if (!g_debugLoggingEnabled)
+    {
+        // Still output to serial even if screen debug is disabled
+        for (size_t index = 0; index < text.length; ++index)
+        {
+            mirrorToSerial(text[index]);
+        }
+        return;
+    }
+    print(text);
+}
+
+void printDebugLine(const(char)[] text)
+{
+    if (!g_debugLoggingEnabled)
+    {
+        // Still output to serial even if screen debug is disabled
+        for (size_t index = 0; index < text.length; ++index)
+        {
+            mirrorToSerial(text[index]);
+        }
+        mirrorToSerial('\n');
+        return;
+    }
+    printLine(text);
 }
 
 void printDivider()

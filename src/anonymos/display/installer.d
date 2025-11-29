@@ -13,6 +13,7 @@ public enum CalamaresModule
 {
     Welcome,
     NetInstall,
+    Blockchain,
     Partition,
     Users,
     Summary,
@@ -29,6 +30,11 @@ public struct InstallerConfig
     char[32] gateway;
     char[64] zkSyncEndpoint;
     char[64] zkSyncOperatorKey;
+
+    // Blockchain
+    char[64] walletAddress;
+    char[64] contractAddress;
+    bool contractDeployed;
 
     // Partition (Veracrypt Dual ISO)
     bool dualBoot = true;
@@ -66,6 +72,21 @@ public struct CalamaresInstaller
 
 __gshared CalamaresInstaller g_installer;
 
+// Network activity tracking
+private __gshared uint g_lastTxPackets = 0;
+private __gshared uint g_lastRxPackets = 0;
+private __gshared uint g_txPackets = 0;
+private __gshared uint g_rxPackets = 0;
+private __gshared bool g_networkLinkUp = false;
+private __gshared ulong g_lastNetworkUpdate = 0;
+
+// Public function to update packet counts (called by network stack)
+public @nogc nothrow void updateInstallerNetworkActivity(uint txPackets, uint rxPackets)
+{
+    g_txPackets = txPackets;
+    g_rxPackets = rxPackets;
+}
+
 // Calamares Branding Colors
 private enum uint COL_SIDEBAR_BG   = 0xFF292F34; // Dark Slate
 private enum uint COL_MAIN_BG      = 0xFFEFF0F1; // Light Grey
@@ -88,6 +109,7 @@ public @nogc nothrow void initInstaller()
     setStr(g_installer.config.decoyIsoPath, "Scanning...");
     setStr(g_installer.config.hiddenIsoPath, "Scanning...");
     setStr(g_installer.config.hostname, "anonymos-box");
+    setStr(g_installer.config.walletAddress, "0x71C7656EC7ab88b098defB751B7401B5f6d8976F");
     
     // Simulate detecting USBs
     g_installer.config.usbDecoyDetected = true;
@@ -103,6 +125,14 @@ public @nogc nothrow void renderInstallerWindow(Canvas* c, int x, int y, int w, 
     // Draw Window Frame
     (*c).canvasRect(x, y, w, h, COL_MAIN_BG);
     
+    // Network Status Bar (Top)
+    renderNetworkStatusBar(c, x, y, w);
+    
+    // Adjust content area to account for status bar
+    int statusBarHeight = 30;
+    y += statusBarHeight;
+    h -= statusBarHeight;
+    
     // Sidebar (Left)
     int sidebarW = 220;
     (*c).canvasRect(x, y, sidebarW, h, COL_SIDEBAR_BG);
@@ -115,10 +145,12 @@ public @nogc nothrow void renderInstallerWindow(Canvas* c, int x, int y, int w, 
     int menuY = y + 80;
     drawSidebarItem(c, x, menuY, "Welcome", g_installer.currentModule == CalamaresModule.Welcome);
     drawSidebarItem(c, x, menuY + 40, "Network & ZkSync", g_installer.currentModule == CalamaresModule.NetInstall);
-    drawSidebarItem(c, x, menuY + 80, "Partitions (Veracrypt)", g_installer.currentModule == CalamaresModule.Partition);
-    drawSidebarItem(c, x, menuY + 120, "Users", g_installer.currentModule == CalamaresModule.Users);
-    drawSidebarItem(c, x, menuY + 160, "Summary", g_installer.currentModule == CalamaresModule.Summary);
-    drawSidebarItem(c, x, menuY + 200, "Install", g_installer.currentModule == CalamaresModule.Exec || g_installer.currentModule == CalamaresModule.Finished);
+    drawSidebarItem(c, x, menuY + 40, "Network & ZkSync", g_installer.currentModule == CalamaresModule.NetInstall);
+    drawSidebarItem(c, x, menuY + 80, "Blockchain Identity", g_installer.currentModule == CalamaresModule.Blockchain);
+    drawSidebarItem(c, x, menuY + 120, "Partitions (Veracrypt)", g_installer.currentModule == CalamaresModule.Partition);
+    drawSidebarItem(c, x, menuY + 160, "Users", g_installer.currentModule == CalamaresModule.Users);
+    drawSidebarItem(c, x, menuY + 200, "Summary", g_installer.currentModule == CalamaresModule.Summary);
+    drawSidebarItem(c, x, menuY + 240, "Install", g_installer.currentModule == CalamaresModule.Exec || g_installer.currentModule == CalamaresModule.Finished);
 
     // Main Content Area
     int contentX = x + sidebarW + 30;
@@ -129,6 +161,7 @@ public @nogc nothrow void renderInstallerWindow(Canvas* c, int x, int y, int w, 
     {
         case CalamaresModule.Welcome: renderWelcome(c, contentX, contentY, contentW); break;
         case CalamaresModule.NetInstall: renderNetInstall(c, contentX, contentY, contentW); break;
+        case CalamaresModule.Blockchain: renderBlockchain(c, contentX, contentY, contentW); break;
         case CalamaresModule.Partition: renderPartition(c, contentX, contentY, contentW); break;
         case CalamaresModule.Users: renderUsers(c, contentX, contentY, contentW); break;
         case CalamaresModule.Summary: renderSummary(c, contentX, contentY, contentW); break;
@@ -156,6 +189,9 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
     int h = g_installer.windowH != 0 ? g_installer.windowH : 500;
     int winX = g_installer.windowX != 0 ? g_installer.windowX : (g_fb.width - w) / 2;
     int winY = g_installer.windowY != 0 ? g_installer.windowY : (g_fb.height - h) / 2;
+
+    // Initialize network status
+    updateNetworkStatus();
 
     if (event.type == InputEvent.Type.keyDown)
     {
@@ -225,23 +261,23 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         int nextY = winY + h - 60;
         
         // Debug logging
-        print("[installer] Click at (");
-        printUnsigned(cast(uint)mx);
-        print(", ");
-        printUnsigned(cast(uint)my);
-        print(") Next button: (");
-        printUnsigned(cast(uint)nextX);
-        print(", ");
-        printUnsigned(cast(uint)nextY);
-        print(") to (");
-        printUnsigned(cast(uint)(nextX + 100));
-        print(", ");
-        printUnsigned(cast(uint)(nextY + 36));
-        printLine(")");
+        // print("[installer] Click at (");
+        // printUnsigned(cast(uint)mx);
+        // print(", ");
+        // printUnsigned(cast(uint)my);
+        // print(") Next button: (");
+        // printUnsigned(cast(uint)nextX);
+        // print(", ");
+        // printUnsigned(cast(uint)nextY);
+        // print(") to (");
+        // printUnsigned(cast(uint)(nextX + 100));
+        // print(", ");
+        // printUnsigned(cast(uint)(nextY + 36));
+        // printLine(")");
         
         if (mx >= nextX && mx <= nextX + 100 && my >= nextY && my <= nextY + 36)
         {
-            printLine("[installer] NEXT button clicked!");
+            // printLine("[installer] NEXT button clicked!");
             nextModule();
             return true;
         }
@@ -256,10 +292,29 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         {
             if (my >= sidebarY && my < sidebarY + itemH) { g_installer.currentModule = CalamaresModule.Welcome; return true; }
             if (my >= sidebarY + itemH && my < sidebarY + itemH*2) { g_installer.currentModule = CalamaresModule.NetInstall; return true; }
-            if (my >= sidebarY + itemH*2 && my < sidebarY + itemH*3) { g_installer.currentModule = CalamaresModule.Partition; return true; }
-            if (my >= sidebarY + itemH*3 && my < sidebarY + itemH*4) { g_installer.currentModule = CalamaresModule.Users; return true; }
-            if (my >= sidebarY + itemH*4 && my < sidebarY + itemH*5) { g_installer.currentModule = CalamaresModule.Summary; return true; }
-            if (my >= sidebarY + itemH*5 && my < sidebarY + itemH*6) { g_installer.currentModule = CalamaresModule.Exec; return true; }
+            if (my >= sidebarY + itemH && my < sidebarY + itemH*2) { g_installer.currentModule = CalamaresModule.NetInstall; return true; }
+            if (my >= sidebarY + itemH*2 && my < sidebarY + itemH*3) { g_installer.currentModule = CalamaresModule.Blockchain; return true; }
+            if (my >= sidebarY + itemH*3 && my < sidebarY + itemH*4) { g_installer.currentModule = CalamaresModule.Partition; return true; }
+            if (my >= sidebarY + itemH*4 && my < sidebarY + itemH*5) { g_installer.currentModule = CalamaresModule.Users; return true; }
+            if (my >= sidebarY + itemH*5 && my < sidebarY + itemH*6) { g_installer.currentModule = CalamaresModule.Summary; return true; }
+            if (my >= sidebarY + itemH*6 && my < sidebarY + itemH*7) { g_installer.currentModule = CalamaresModule.Exec; return true; }
+        }
+
+        // Handle Deploy Button in Blockchain Module
+        if (g_installer.currentModule == CalamaresModule.Blockchain && !g_installer.config.contractDeployed)
+        {
+            // Button at contentX, contentY + 160
+            // contentX = winX + 250, contentY = winY + 30
+            // Button X: winX + 250, Y: winY + 190, W: 200, H: 40
+            int btnX = winX + 250;
+            int btnY = winY + 190;
+            if (mx >= btnX && mx <= btnX + 200 && my >= btnY && my <= btnY + 40)
+            {
+                // printLine("[installer] Deploying contract...");
+                g_installer.config.contractDeployed = true;
+                setStr(g_installer.config.contractAddress, "0x89205A3A3b2A69De6Dbf7f01ED13B2108B2c43e7");
+                return true;
+            }
         }
         
         // Field Hit Testing (Simplified)
@@ -268,9 +323,9 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         // For now, let's just say clicking in the content area toggles edit mode if a field is selected.
         if (mx > winX + 220 && mx < winX + w && my > winY && my < winY + h)
         {
-             // Placeholder: clicking content area enables editing of currently selected field
-             // g_installer.editingField = true;
-             // return true;
+             // Enable editing of currently selected field
+             g_installer.editingField = true;
+             return true;
         }
     }
     
@@ -314,6 +369,34 @@ private @nogc nothrow void renderNetInstall(Canvas* c, int x, int y, int w)
     drawString(c, x, y + 200, "IP Configuration", COL_ACCENT);
     drawField(c, x, y + 230, "Static IP:", g_installer.config.staticIp, 2);
     drawField(c, x, y + 270, "Gateway:", g_installer.config.gateway, 3);
+}
+
+private @nogc nothrow void renderBlockchain(Canvas* c, int x, int y, int w)
+{
+    drawString(c, x, y, "Blockchain Identity Setup", COL_TEXT_MAIN, 2);
+    
+    drawString(c, x, y + 40, "Wallet Connected:", COL_TEXT_MAIN);
+    drawString(c, x + 160, y + 40, cast(char[])g_installer.config.walletAddress, 0xFF27AE60);
+    
+    drawString(c, x, y + 80, "Smart Contract:", COL_ACCENT);
+    
+    if (!g_installer.config.contractDeployed)
+    {
+        drawString(c, x, y + 110, "Deploy your Identity Contract to the ZkSync network.", COL_TEXT_MAIN);
+        drawString(c, x, y + 130, "This contract will track your file fingerprints.", COL_TEXT_MAIN);
+        
+        // Draw Deploy Button
+        (*c).canvasRect(x, y + 160, 200, 40, COL_BUTTON);
+        drawString(c, x + 40, y + 170, "Deploy Contract", COL_BUTTON_TEXT);
+    }
+    else
+    {
+        drawString(c, x, y + 110, "Contract Deployed Successfully!", 0xFF27AE60);
+        drawString(c, x, y + 140, "Address:", COL_TEXT_MAIN);
+        drawString(c, x + 80, y + 140, cast(char[])g_installer.config.contractAddress, COL_TEXT_MAIN);
+        
+        drawString(c, x, y + 180, "Status: Waiting for first fingerprint...", 0xFFE67E22); // Orange
+    }
 }
 
 private @nogc nothrow void renderPartition(Canvas* c, int x, int y, int w)
@@ -468,7 +551,8 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
 private @nogc nothrow void nextModule()
 {
     if (g_installer.currentModule == CalamaresModule.Welcome) g_installer.currentModule = CalamaresModule.NetInstall;
-    else if (g_installer.currentModule == CalamaresModule.NetInstall) g_installer.currentModule = CalamaresModule.Partition;
+    else if (g_installer.currentModule == CalamaresModule.NetInstall) g_installer.currentModule = CalamaresModule.Blockchain;
+    else if (g_installer.currentModule == CalamaresModule.Blockchain) g_installer.currentModule = CalamaresModule.Partition;
     else if (g_installer.currentModule == CalamaresModule.Partition) g_installer.currentModule = CalamaresModule.Users;
     else if (g_installer.currentModule == CalamaresModule.Users) g_installer.currentModule = CalamaresModule.Summary;
     else if (g_installer.currentModule == CalamaresModule.Summary) 
@@ -486,7 +570,49 @@ private @nogc nothrow void handleTextInput(ulong key)
     else if (key >= 16 && key <= 25) c = cast(char)('q' + (key - 16)); // q-p
     else if (key >= 30 && key <= 38) c = cast(char)('a' + (key - 30)); // a-l
     
-    // TODO: Append to buffer
+    // Append to buffer
+    if (c != 0)
+    {
+        // Find active buffer based on current module and selected index
+        // This is a bit hacky without pointers, but works for the fixed layout
+        char[] buf = getActiveBuffer();
+        if (buf.length > 0)
+        {
+            int len = 0;
+            while(len < buf.length && buf[len] != 0) len++;
+            
+            if (len < buf.length - 1)
+            {
+                buf[len] = c;
+                buf[len+1] = 0;
+            }
+        }
+    }
+}
+
+private @nogc nothrow char[] getActiveBuffer()
+{
+    // Return slice to the active config field
+    if (g_installer.currentModule == CalamaresModule.NetInstall)
+    {
+        if (g_installer.selectedIndex == 0) return g_installer.config.zkSyncEndpoint[];
+        if (g_installer.selectedIndex == 1) return g_installer.config.zkSyncOperatorKey[];
+        if (g_installer.selectedIndex == 2) return g_installer.config.staticIp[];
+        if (g_installer.selectedIndex == 3) return g_installer.config.gateway[];
+    }
+    else if (g_installer.currentModule == CalamaresModule.Partition)
+    {
+        if (g_installer.selectedIndex == 0) return g_installer.config.decoyPassword[];
+        if (g_installer.selectedIndex == 1) return g_installer.config.hiddenPassword[];
+    }
+    else if (g_installer.currentModule == CalamaresModule.Users)
+    {
+        if (g_installer.selectedIndex == 0) return g_installer.config.username[];
+        if (g_installer.selectedIndex == 1) return g_installer.config.username[]; // Duplicate?
+        if (g_installer.selectedIndex == 2) return g_installer.config.hostname[];
+        if (g_installer.selectedIndex == 3) return g_installer.config.userPassword[];
+    }
+    return null;
 }
 
 private @nogc nothrow void setStr(ref char[32] buf, const(char)* s)
@@ -507,13 +633,184 @@ private @nogc nothrow int stringLen(ref char[64] buf) { int i=0; while(i<64 && b
 private @nogc nothrow void drawString(Canvas* c, int x, int y, const(char)* s, uint color, int scale = 1)
 {
     import anonymos.display.canvas : canvasText;
+    import anonymos.display.font_stack : activeFontStack;
     int len = 0;
     while (s[len] != 0) len++;
-    (*c).canvasText(null, x, y, s[0..len], color, 0, false); // opaqueBg = false for transparent
+    (*c).canvasText(activeFontStack(), x, y, s[0..len], color, 0, false); // opaqueBg = false for transparent
 }
 
 private @nogc nothrow void drawString(Canvas* c, int x, int y, char[] s, uint color, int scale = 1)
 {
     import anonymos.display.canvas : canvasText;
-    (*c).canvasText(null, x, y, s, color, 0, false); // opaqueBg = false for transparent
+    import anonymos.display.font_stack : activeFontStack;
+}
+
+// Helper: Copy string
+private @nogc nothrow void copyStr(ref char[128] buf, int offset, const(char)[] s)
+{
+    for (int i = 0; i < s.length && offset + i < 128; i++) {
+        buf[offset + i] = s[i];
+    }
+}
+
+private @nogc nothrow void copyStr(ref char[64] buf, int offset, const(char)[] s)
+{
+    for (int i = 0; i < s.length && offset + i < 64; i++) {
+        buf[offset + i] = s[i];
+    }
+}
+
+// Helper: Convert uint to string
+private @nogc nothrow int uintToStr(uint val, ref char[128] buf, int offset)
+{
+    if (val == 0) {
+        buf[offset] = '0';
+        return 1;
+    }
+    
+    char[16] temp;
+    int tempLen = 0;
+    uint v = val;
+    
+    while (v > 0) {
+        temp[tempLen++] = cast(char)('0' + (v % 10));
+        v /= 10;
+    }
+    
+    // Reverse into buffer
+    for (int i = 0; i < tempLen; i++) {
+        buf[offset + i] = temp[tempLen - 1 - i];
+    }
+    
+    return tempLen;
+}
+
+private @nogc nothrow int uintToStr(uint val, ref char[64] buf, int offset)
+{
+    if (val == 0) {
+        buf[offset] = '0';
+        return 1;
+    }
+    
+    char[16] temp;
+    int tempLen = 0;
+    uint v = val;
+    
+    while (v > 0) {
+        temp[tempLen++] = cast(char)('0' + (v % 10));
+        v /= 10;
+    }
+    
+    // Reverse into buffer
+    for (int i = 0; i < tempLen; i++) {
+        buf[offset + i] = temp[tempLen - 1 - i];
+    }
+    
+    return tempLen;
+}
+
+// Update network status
+private @nogc nothrow void updateNetworkStatus()
+{
+    import anonymos.drivers.network : isNetworkAvailable, g_netDevice;
+    
+    // Get TSC for rate limiting updates
+    ulong tsc;
+    asm @nogc nothrow {
+        rdtsc;
+        shl RDX, 32;
+        or RAX, RDX;
+        mov tsc, RAX;
+    }
+    
+    // Update every ~100ms (assuming 2GHz CPU = 200M cycles)
+    if (tsc - g_lastNetworkUpdate < 200_000_000) return;
+    g_lastNetworkUpdate = tsc;
+    
+    if (isNetworkAvailable()) {
+        g_networkLinkUp = g_netDevice.initialized;
+        
+        // In a real implementation, we'd read actual packet counters from the NIC
+        // For now, we'll simulate activity
+        g_lastTxPackets = g_txPackets;
+        g_lastRxPackets = g_rxPackets;
+    } else {
+        g_networkLinkUp = false;
+    }
+}
+
+// Render network status bar
+private @nogc nothrow void renderNetworkStatusBar(Canvas* c, int x, int y, int w)
+{
+    updateNetworkStatus();
+    
+    // Status bar background
+    uint bgColor = g_networkLinkUp ? 0xFF1B5E20 : 0xFFB71C1C; // Green or Red
+    (*c).canvasRect(x, y, w, 30, bgColor);
+    
+    // Network icon/status text
+    int textX = x + 10;
+    int textY = y + 8;
+    
+    if (isNetworkAvailable()) {
+        import anonymos.drivers.network : g_netDevice, NetworkDeviceType;
+        
+        // Device type
+        const(char)[] deviceName;
+        if (g_netDevice.type == NetworkDeviceType.E1000) {
+            deviceName = "E1000";
+        } else if (g_netDevice.type == NetworkDeviceType.VirtIO) {
+            deviceName = "VirtIO";
+        } else if (g_netDevice.type == NetworkDeviceType.RTL8139) {
+            deviceName = "RTL8139";
+        } else {
+            deviceName = "Unknown";
+        }
+        
+        // Status message
+        char[128] statusMsg;
+        int offset = 0;
+        
+        // "Network: "
+        copyStr(statusMsg, offset, "Network: ");
+        offset += 9;
+        
+        // Device name
+        for (int i = 0; i < deviceName.length; i++) {
+            statusMsg[offset++] = deviceName[i];
+        }
+        
+        // Link status
+        if (g_networkLinkUp) {
+            copyStr(statusMsg, offset, " - Link UP");
+            offset += 10;
+        } else {
+            copyStr(statusMsg, offset, " - Link DOWN");
+            offset += 12;
+        }
+        
+        // Activity indicator
+        if (g_txPackets != g_lastTxPackets || g_rxPackets != g_lastRxPackets) {
+            copyStr(statusMsg, offset, " [ACTIVE]");
+            offset += 9;
+        }
+        
+        statusMsg[offset] = 0;
+        drawString(c, textX, textY, statusMsg.ptr, 0xFFFFFFFF, 1);
+        
+        // Packet counters (right side)
+        char[64] counterMsg;
+        offset = 0;
+        copyStr(counterMsg, offset, "TX: ");
+        offset += 4;
+        offset += uintToStr(g_txPackets, counterMsg, offset);
+        copyStr(counterMsg, offset, " RX: ");
+        offset += 5;
+        offset += uintToStr(g_rxPackets, counterMsg, offset);
+        counterMsg[offset] = 0;
+        
+        drawString(c, x + w - 200, textY, counterMsg.ptr, 0xFFFFFFFF, 1);
+    } else {
+        drawString(c, textX, textY, "Network: Not Available", 0xFFFFFFFF, 1);
+    }
 }

@@ -313,7 +313,7 @@ alias ProcessEntry = PosixProcessEntry;
 // reference `private` symbols from this module.  Use package visibility so the
 // debug flag is still internal to minimal_os while remaining accessible to the
 // mixin expansion.
-package(anonymos) enum bool ENABLE_POSIX_DEBUG = true;
+package(anonymos) enum bool ENABLE_POSIX_DEBUG = false;
 
 @nogc nothrow package(anonymos) long debugBool(bool value)
 {

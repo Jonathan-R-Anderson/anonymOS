@@ -254,6 +254,7 @@ timerIsrStub:
 
     call timerIsrHandler
 
+    leaq fpu_save_area(%rip), %rax  # Reload address since handler may have clobbered RAX
     fxrstor64 (%rax)
 
     mov 0(%rsp), %es
@@ -304,6 +305,7 @@ keyboardIsrStub:
 
     call keyboardIsrHandler
 
+    leaq fpu_save_area(%rip), %rax  # Reload address since handler may have clobbered RAX
     fxrstor64 (%rax)
 
     mov 0(%rsp), %es
@@ -353,6 +355,7 @@ doubleFaultStub:
 
     call doubleFaultHandler
 
+    leaq fpu_save_area(%rip), %rax  # Reload address since handler may have clobbered RAX
     fxrstor64 (%rax)
 
     mov 0(%rsp), %es
@@ -402,6 +405,7 @@ mouseIsrStub:
 
     call mouseIsrHandler
 
+    leaq fpu_save_area(%rip), %rax  # Reload address since handler may have clobbered RAX
     fxrstor64 (%rax)
 
     mov 0(%rsp), %es
@@ -458,6 +462,42 @@ pageFaultStub:
     iretq
 
 .size pageFaultStub, . - pageFaultStub
+
+    .global gpfStub
+    .type gpfStub, @function
+    .extern gpfHandler
+gpfStub:
+    # CPU has pushed error code + interrupt frame already.
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    pushq %rbx
+    pushq %rbp
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+
+    movq %rsp, %rdi          # arg0: pointer to saved regs + fault frame
+    call gpfHandler
+
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rbp
+    popq %rbx
+    popq %rdx
+    popq %rcx
+    popq %rax
+    addq $8, %rsp            # skip error code pushed by CPU
+    iretq
+
+.size gpfStub, . - gpfStub
 
     .global interruptContextSwitch
     .type interruptContextSwitch, @function

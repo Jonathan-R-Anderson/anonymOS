@@ -395,10 +395,15 @@ KERNEL_SOURCES=(
   "src/anonymos/display/modesetting.d"
   "src/anonymos/display/gpu_accel.d"
   "src/anonymos/display/cursor_diagnostics.d"
+  "src/anonymos/display/vulkan.d"
+  "src/anonymos/display/drm_sim.d"
   "tests/cursor_movement_test.d"
   "src/anonymos/drivers/veracrypt.d"
   "src/anonymos/drivers/ahci.d"
   "src/anonymos/drivers/pci.d"
+  "src/anonymos/drivers/io.d"
+  "src/anonymos/drivers/virtio.d"
+  "src/anonymos/drivers/virtio_gpu.d"
   "src/anonymos/drivers/usb_hid.d"
   "src/anonymos/drivers/hid_keyboard.d"
   "src/anonymos/drivers/hid_mouse.d"
@@ -411,6 +416,7 @@ KERNEL_SOURCES=(
   "src/anonymos/net/udp.d"
   "src/anonymos/net/tcp.d"
   "src/anonymos/net/dns.d"
+  "src/anonymos/net/dhcp.d"
   "src/anonymos/net/tls.d"
   "src/anonymos/net/openssl_stubs.d"
   "src/anonymos/net/http.d"
@@ -460,6 +466,14 @@ KERNEL_OBJECTS=()
 echo "[*] Building VeraCrypt crypto library..."
 ./tools/build_veracrypt.sh
 
+# Build mbedTLS
+if [ -x "./tools/build_mbedtls.sh" ]; then
+    echo "[*] Building mbedTLS..."
+    ./tools/build_mbedtls.sh || echo "[!] mbedTLS build failed, continuing without TLS support"
+else
+    echo "[!] mbedTLS build script not found, skipping TLS library"
+fi
+
 for source in "${KERNEL_SOURCES[@]}"; do
   base="$(basename "${source%.d}")"
   obj="$OUT_DIR/${base}.o"
@@ -483,6 +497,15 @@ clang "${CLANGFLAGS[@]}" -c "$STARTUP_SRC" -o "$STARTUP_O"
 LIBDIR="$SYSROOT/usr/lib"
 [ -f "$FLAT" ] || LIBDIR="$SYSROOT/usr/lib/generic"
 
+# Check if mbedTLS is available
+MBEDTLS_LIB=""
+if [ -f "$SYSROOT/usr/lib/libmbedtls.a" ]; then
+    MBEDTLS_LIB="-lmbedtls"
+    echo "[*] mbedTLS library found, enabling TLS support"
+else
+    echo "[!] mbedTLS library not found, TLS support disabled"
+fi
+
 echo "[*] Linking kernel: $KERNEL_ELF"
 if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
   # Native linker path
@@ -492,6 +515,7 @@ if [ "$LINK_BACKEND" = "ld.lld" ] || [ "$LINK_BACKEND" = "ld" ]; then
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       build/veracrypt/libveracrypt_crypto.a \
       -lfreetype -lharfbuzz \
+      $MBEDTLS_LIB \
       -o "$KERNEL_ELF"
 else
   # toy-ld wrapper
@@ -501,6 +525,7 @@ else
       -l:libclang_rt.builtins-${LIBSUFFIX}.a \
       build/veracrypt/libveracrypt_crypto.a \
       -lfreetype -lharfbuzz \
+      $MBEDTLS_LIB \
       -o "$KERNEL_ELF"
 fi
 
@@ -776,6 +801,9 @@ if [ "$QEMU_RUN" = "1" ]; then
   QEMU_ARGS+=(-device ahci,id=ahci)
   QEMU_ARGS+=(-device ide-hd,drive=disk,bus=ahci.0)
   QEMU_ARGS+=(-drive id=disk,file=disk.img,if=none,format=raw)
+  
+  # Add Network Device (e1000)
+  QEMU_ARGS+=(-netdev user,id=u1 -device e1000,netdev=u1)
   
   if [ "$QEMU_USB" = "1" ]; then
     echo "[!] QEMU_USB=1: guest xHCI driver is partially stubbed; USB input may be routed via legacy PS/2" >&2

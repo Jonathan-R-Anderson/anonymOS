@@ -11,12 +11,14 @@ import anonymos.display.input_handler : initializeInputHandler, processInputEven
 import anonymos.display.server;
 import anonymos.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz, loadTrueTypeFontIntoStack;
 import anonymos.drivers.hid_mouse : initializeMouseState, getMousePosition;
+import anonymos.display.framebuffer : framebufferHideCursor, framebufferShowCursor, framebufferMoveCursor;
 import anonymos.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
 import anonymos.syscalls.posix : schedYield;
 import anonymos.serial : pollSerialInput;
 import anonymos.multiboot : FramebufferModeRequest;
 import anonymos.display.canvas;
 import anonymos.display.installer;
+import anonymos.display.vulkan;
 
 __gshared WindowManager g_windowManager;
 __gshared bool g_windowManagerReady = false;
@@ -80,6 +82,26 @@ private @nogc nothrow void ensureDisplayServer()
     {
         printLine("[desktop] display server not ready");
     }
+}
+
+private @nogc nothrow void ensureVulkan()
+{
+    VkInstance instance;
+    VkInstanceCreateInfo createInfo;
+    vkCreateInstance(&createInfo, null, &instance);
+    
+    VkPhysicalDevice physDev;
+    vkEnumeratePhysicalDevices(instance, null, &physDev);
+    
+    VkDevice device;
+    VkDeviceCreateInfo devInfo;
+    vkCreateDevice(physDev, &devInfo, null, &device);
+    
+    VkSwapchainKHR swapchain;
+    VkSwapchainCreateInfoKHR swapInfo;
+    vkCreateSwapchainKHR(device, &swapInfo, null, &swapchain);
+    
+    printLine("[desktop] Vulkan initialized (Software Rasterizer)");
 }
 
 private @nogc nothrow void ensureWindowManager()
@@ -172,12 +194,12 @@ void runSimpleDesktopOnce(Damage* damage = null)
     static bool loggedStart;
     if (!loggedStart)
     {
-        import anonymos.console : printLine, setFramebufferConsoleEnabled;
+        import anonymos.console : printLine, setFramebufferConsoleEnabled, printDebugLine;
         printLine("[desktop] runSimpleDesktopOnce start");
         
         // Disable console output to framebuffer so logs don't appear on screen
         setFramebufferConsoleEnabled(false);
-        printLine("[desktop] framebuffer console disabled - logs go to serial only");
+        printDebugLine("[desktop] framebuffer console disabled - logs go to serial only");
         
         loggedStart = true;
     }
@@ -214,8 +236,8 @@ void runSimpleDesktopOnce(Damage* damage = null)
     static bool loggedDone;
     if (!loggedDone)
     {
-        import anonymos.console : printLine;
-        printLine("[desktop] runSimpleDesktopOnce done");
+        import anonymos.console : printDebugLine;
+        printDebugLine("[desktop] runSimpleDesktopOnce done");
         loggedDone = true;
     }
 }
@@ -435,6 +457,8 @@ void performInstallation() @nogc nothrow
 @nogc nothrow
 void runSimpleDesktopLoop()
 {
+    import anonymos.console : printDebugLine;
+    
     if (!framebufferAvailable())
     {
         return;
@@ -445,55 +469,184 @@ void runSimpleDesktopLoop()
     if (!g_displayServerReady)
     {
         // Best-effort: keep going even if the display server reports not ready
-        // ensureDisplayServer();
+        ensureDisplayServer();
         g_displayServerReady = true;
     }
+
+    if (useCompositor)
+    {
+        compositorEnsureReady();
+    }
+    
+    // Initialize Vulkan
+    ensureVulkan();
+
     // Render initial frame before initializing input/cursor so the desktop is visible.
     runSimpleDesktopOnce(null); // Full render
     static bool loopAnnounced;
     if (!loopAnnounced)
     {
-        import anonymos.console : printLine;
-        printLine("[desktop] initial frame rendered");
+        import anonymos.console : printDebugLine;
+        printDebugLine("[desktop] initial frame rendered");
         loopAnnounced = true;
     }
     
     // Initialize input/cursor after the first frame is drawn.
     if (!g_inputInitialized)
     {
-        import anonymos.console : printLine;
-        printLine("Before input init");
+        import anonymos.console : printDebugLine;
+        printDebugLine("Before input init");
         initializeMouseState(g_fb.width, g_fb.height);
         import anonymos.drivers.usb_hid : initializeUSBHID;
         initializeUSBHID();
         framebufferShowCursor();
         framebufferMoveCursor(cast(int)(g_fb.width / 2), cast(int)(g_fb.height / 2));
+        
+        if (useCompositor && compositorAvailable())
+        {
+            framebufferSetCursorDirectDraw(false);
+        }
         static bool cursorAnnounced;
         if (!cursorAnnounced)
         {
-            printLine("[desktop] cursor initialized/centered");
+            printDebugLine("[desktop] cursor initialized/centered");
             cursorAnnounced = true;
         }
         g_inputInitialized = true;
-        printLine("After input init");
+        printDebugLine("After input init");
     }
 
-    printLine("Before loop");
+    printDebugLine("Before loop");
+    
+    int lastCursorX = -1;
+    int lastCursorY = -1;
+    
     // Active event loop
     while (true)
     {
-        import anonymos.console : printLine;
-        printLine("Loop iteration");
-        
-        // Yield to scheduler and pause briefly
-        printLine("Calling schedYield");
-        schedYield();
-        printLine("Returned from schedYield");
-        
-        foreach (i; 0 .. 20_000_000)
+        // Check compositor state
+        const bool usingCompositor = useCompositor && compositorAvailable();
+        framebufferSetCursorDirectDraw(!usingCompositor);
+
+        // 1. Hide cursor only if using software rendering directly to FB
+        // If using compositor, we want the cursor flag to remain TRUE so the compositor draws it.
+        if (!usingCompositor)
         {
-            asm @nogc nothrow { nop; }
+            framebufferHideCursor();
         }
+
+        // Poll for input events from USB HID devices
+        if (usbHIDAvailable())
+        {
+            pollUSBHID(g_inputQueue);
+        }
+        
+        // Poll serial input as well
+        pollSerialInput(g_inputQueue);
+        
+        // Process input events and update window manager
+        Damage damage;
+        processInputEvents(g_inputQueue, g_windowManager, &damage);
+        
+        // Handle installer logic if in install mode
+        if (g_installer.active)
+        {
+            // Check if user is on Summary page and clicked Next to start installation
+            if (g_installer.currentModule == CalamaresModule.Exec && g_installer.progress == 0.0f)
+            {
+                g_installer.statusMessage = "Starting installation...";
+                performInstallation();
+            }
+        }
+        
+        // Render the desktop/installer
+        // Only redraw if there is damage or if the installer is active (animations)
+        if (damage.any || g_installer.active)
+        {
+            runSimpleDesktopOnce(&damage);
+        }
+        
+        // 2. Update and Show Cursor
+        // Get authoritative mouse position
+        int cx, cy;
+        getMousePosition(cx, cy);
+        
+        // Move cursor to new position (saves new background, draws cursor)
+        framebufferMoveCursor(cx, cy);
+        framebufferShowCursor(); // Ensure visible
+
+        // Calculate Damage for Presentation
+        // Union of Window Damage and Cursor Damage (Old + New positions)
+        int minX = g_fb.width;
+        int minY = g_fb.height;
+        int maxX = 0;
+        int maxY = 0;
+        bool hasDamage = false;
+        
+        if (g_installer.active)
+        {
+            // Installer active: assume full screen redraw for now
+            minX = 0;
+            minY = 0;
+            maxX = g_fb.width;
+            maxY = g_fb.height;
+            hasDamage = true;
+        }
+        else if (damage.any)
+        {
+            minX = damage.bounds.x;
+            minY = damage.bounds.y;
+            maxX = damage.bounds.x + damage.bounds.width;
+            maxY = damage.bounds.y + damage.bounds.height;
+            hasDamage = true;
+        }
+        
+        // Check cursor movement
+        if (cx != lastCursorX || cy != lastCursorY)
+        {
+            // Add old cursor pos (approx 32x32 to be safe)
+            if (lastCursorX != -1)
+            {
+                if (lastCursorX < minX) minX = lastCursorX;
+                if (lastCursorY < minY) minY = lastCursorY;
+                if (lastCursorX + 32 > maxX) maxX = lastCursorX + 32;
+                if (lastCursorY + 32 > maxY) maxY = lastCursorY + 32;
+                hasDamage = true;
+            }
+            
+            // Add new cursor pos
+            if (cx < minX) minX = cx;
+            if (cy < minY) minY = cy;
+            if (cx + 32 > maxX) maxX = cx + 32;
+            if (cy + 32 > maxY) maxY = cy + 32;
+            hasDamage = true;
+            
+            lastCursorX = cx;
+            lastCursorY = cy;
+        }
+        
+        // Clamp to screen
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > g_fb.width) maxX = g_fb.width;
+        if (maxY > g_fb.height) maxY = g_fb.height;
+        
+        if (hasDamage)
+        {
+            if (maxX > minX && maxY > minY)
+            {
+                vkSetPresentDamage(minX, minY, maxX - minX, maxY - minY);
+            }
+
+            // Present via Vulkan (Simulated)
+            VkPresentInfoKHR presentInfo;
+            vkQueuePresentKHR(null, &presentInfo);
+        }
+
+        // Yield to scheduler to allow other processes to run
+        schedYield();
+        
+        // Removed busy-wait loop to improve responsiveness
     }
 }
 

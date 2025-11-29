@@ -11,7 +11,7 @@ import core.stdc.string : memmove; // for scrolling
 enum fbDefaultFgColor = 0xFFFFFFFF; // ARGB: white
 enum fbDefaultBgColor = 0x00000000; // ARGB: black
 
-enum glyphWidth  = 8;
+enum glyphWidth  = 16;
 enum glyphHeight = 16;
 
 enum MaxSupportedBpp = 32;
@@ -271,6 +271,47 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
     }
 }
 
+// Put a raw pixel value (already in native format)
+@nogc nothrow @system
+void framebufferPutPixelRaw(uint x, uint y, uint rawPixel) {
+    if (!g_fbInitialized) return;
+    if (g_fb.addr is null) return;
+    
+    // Bounds check against framebuffer
+    if (x >= g_fb.width || y >= g_fb.height) return;
+
+    // Clip check
+    if (cast(int)x < g_fbClip.x || cast(int)x >= g_fbClip.x + cast(int)g_fbClip.w ||
+        cast(int)y < g_fbClip.y || cast(int)y >= g_fbClip.y + cast(int)g_fbClip.h) return;
+
+    const bpp   = g_fb.bpp;
+    ubyte* addr = g_fb.addr;
+
+    const byteOffset = y * g_fb.pitch + x * (bpp / 8);
+
+    switch (bpp) {
+        case 16: {
+            auto px = cast(ushort*) (addr + byteOffset);
+            *px = cast(ushort) rawPixel;
+            break;
+        }
+        case 24: {
+            auto p = addr + byteOffset;
+            p[0] = cast(ubyte)( rawPixel        & 0xFF);
+            p[1] = cast(ubyte)((rawPixel >> 8)  & 0xFF);
+            p[2] = cast(ubyte)((rawPixel >> 16) & 0xFF);
+            break;
+        }
+        case 32: {
+            auto px = cast(uint*) (addr + byteOffset);
+            *px = rawPixel;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
 // Fill entire screen with a given color
 @nogc nothrow @system
 void framebufferFill(uint argbColor) {
@@ -407,6 +448,12 @@ private void drawGlyph(uint px, uint py, uint fg, uint bg) {
     foreach (row; 0 .. glyphHeight) {
         const bits = fallbackGlyph[row];
         foreach (col; 0 .. glyphWidth) {
+            // Fallback glyph is only 8 pixels wide.
+            // We draw it in the first 8 columns.
+            if (col >= 8) {
+                framebufferPutPixel(px + col, py + row, bg);
+                continue;
+            }
             const mask = cast(ubyte)(0x80 >> col);
             const isOn = (bits & mask) != 0;
             const color = isOn ? fg : bg;
@@ -564,6 +611,7 @@ private __gshared CursorIcon g_currentCursorIcon;
 private __gshared int        g_cursorX = 0;
 private __gshared int        g_cursorY = 0;
 private __gshared bool       g_cursorVisible = false;
+private __gshared bool       g_cursorDirectDraw = true;
 private __gshared uint[64 * 64] g_cursorSaveBuffer; // Max 64x64 cursor
 private __gshared bool       g_cursorSaveBufferValid = false;
 
@@ -641,11 +689,14 @@ void framebufferMoveCursor(int x, int y)
     // 3. Draw cursor at new position
     if (g_cursorVisible)
     {
-        framebufferRestoreBackground();
+        if (g_cursorDirectDraw) framebufferRestoreBackground();
         g_cursorX = x;
         g_cursorY = y;
-        framebufferSaveBackground();
-        framebufferDrawCursorIcon();
+        if (g_cursorDirectDraw)
+        {
+            framebufferSaveBackground();
+            framebufferDrawCursorIcon();
+        }
     }
     else
     {
@@ -660,15 +711,16 @@ void framebufferShowCursor()
     if (!g_fbInitialized) return;
     if (g_cursorVisible)
     {
-        // Redraw without resaving background to avoid losing cursor when the
-        // framebuffer is overdrawn every frame.
-        framebufferDrawCursorIcon();
+        if (g_cursorDirectDraw) framebufferDrawCursorIcon();
         return;
     }
 
     g_cursorVisible = true;
-    framebufferSaveBackground();
-    framebufferDrawCursorIcon();
+    if (g_cursorDirectDraw)
+    {
+        framebufferSaveBackground();
+        framebufferDrawCursorIcon();
+    }
 }
 
 @nogc nothrow @system
@@ -677,7 +729,7 @@ void framebufferHideCursor()
     if (!g_fbInitialized) return;
     if (!g_cursorVisible) return;
 
-    framebufferRestoreBackground();
+    if (g_cursorDirectDraw) framebufferRestoreBackground();
     g_cursorVisible = false;
 }
 
@@ -727,9 +779,6 @@ private void framebufferSaveBackground()
             const byteOffset = cy * g_fb.pitch + cx * (g_fb.bpp / 8);
             uint pixelVal = 0;
             
-            // We only support 32bpp read-back easily here for simplicity, 
-            // or we assume we can just cast to uint* if 32bpp.
-            // For 16/24bpp it's more complex. Let's support 32bpp primarily for now.
             if (g_fb.bpp == 32)
             {
                 pixelVal = *(cast(uint*)(g_fb.addr + byteOffset));
@@ -738,7 +787,12 @@ private void framebufferSaveBackground()
             {
                 pixelVal = *(cast(ushort*)(g_fb.addr + byteOffset));
             }
-            // 24bpp is messy to read back efficiently without a helper
+            else if (g_fb.bpp == 24)
+            {
+                // Read 3 bytes
+                ubyte* p = g_fb.addr + byteOffset;
+                pixelVal = p[0] | (p[1] << 8) | (p[2] << 16);
+            }
             
             g_cursorSaveBuffer[row * 64 + col] = pixelVal;
         }
@@ -767,22 +821,8 @@ private void framebufferRestoreBackground()
             if (cx < 0 || cx >= fbW) continue;
 
             const saved = g_cursorSaveBuffer[row * 64 + col];
-            framebufferPutPixel(cx, cy, saved); // PutPixel handles format conversion if 'saved' was ARGB? 
-            // WAIT: We saved the RAW pixel value. framebufferPutPixel expects ARGB.
-            // We need a 'putRawPixel' or we need to convert back.
-            // Actually, since we read the raw value, we should write the raw value back.
-            // But framebufferPutPixel takes ARGB.
-            // We should implement a 'putPixelRaw' or just write directly here.
-            
-            const byteOffset = cy * g_fb.pitch + cx * (g_fb.bpp / 8);
-            if (g_fb.bpp == 32)
-            {
-                *(cast(uint*)(g_fb.addr + byteOffset)) = saved;
-            }
-            else if (g_fb.bpp == 16)
-            {
-                *(cast(ushort*)(g_fb.addr + byteOffset)) = cast(ushort)saved;
-            }
+            // Use PutPixelRaw to write back exactly what we read
+            framebufferPutPixelRaw(cx, cy, saved);
         }
     }
 }
@@ -820,4 +860,70 @@ private void framebufferDrawCursorIcon()
             }
         }
     }
+}
+
+// Draw cursor to an external buffer (e.g. compositor backbuffer)
+// pitch is in pixels (uint elements)
+@nogc nothrow @system
+void framebufferDrawCursorToBuffer(uint* buffer, uint width, uint height, uint pitch)
+{
+    if (!g_fbInitialized) return;
+    
+    // Debug logging
+    // import anonymos.console : print, printLine, printUnsigned;
+    // static int logCount = 0;
+    // if (logCount++ < 20)
+    // {
+    //     print("[cursor] drawToBuffer visible=");
+    //     print(g_cursorVisible ? "true" : "false");
+    //     print(" x="); printUnsigned(cast(uint)g_cursorX);
+    //     print(" y="); printUnsigned(cast(uint)g_cursorY);
+    //     print(" w="); printUnsigned(width);
+    //     print(" h="); printUnsigned(height);
+    //     printLine("");
+    // }
+
+    if (!g_cursorVisible) return;
+    if (buffer is null) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const pixels = g_currentCursorIcon.pixels;
+
+    foreach (row; 0 .. h)
+    {
+        const int cy = g_cursorY + cast(int)row;
+        if (cy < 0 || cy >= height) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const int cx = g_cursorX + cast(int)col;
+            if (cx < 0 || cx >= width) continue;
+
+            const argb = pixels[row * w + col];
+            
+            if ((argb & 0xFF000000) != 0)
+            {
+                buffer[cy * pitch + cx] = argb;
+            }
+        }
+    }
+}
+
+@nogc nothrow @system
+void framebufferSetCursorDirectDraw(bool enabled)
+{
+    if (g_cursorDirectDraw == enabled) return;
+    
+    if (!enabled && g_cursorVisible)
+    {
+        framebufferRestoreBackground();
+    }
+    else if (enabled && g_cursorVisible)
+    {
+        framebufferSaveBackground();
+        framebufferDrawCursorIcon();
+    }
+    
+    g_cursorDirectDraw = enabled;
 }

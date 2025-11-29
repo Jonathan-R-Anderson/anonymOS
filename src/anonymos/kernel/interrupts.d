@@ -1,6 +1,6 @@
 module anonymos.kernel.interrupts;
 
-import anonymos.console : print, printLine, printHex, printUnsigned;
+import anonymos.console : print, printLine, printHex, printUnsigned, printDebugLine;
 import anonymos.syscalls.posix : schedYield, schedulerTick;
 import anonymos.kernel.cpu : cpuCurrent;
 import anonymos.drivers.usb_hid : ps2IsrEnqueue;
@@ -114,15 +114,16 @@ extern(C) @nogc nothrow void keyboardIsrStub(); // defined in boot.s
 extern(C) @nogc nothrow void mouseIsrStub(); // defined in boot.s
 extern(C) @nogc nothrow void doubleFaultStub(); // defined in boot.s
 extern(C) @nogc nothrow void pageFaultStub(); // defined in boot.s
+extern(C) @nogc nothrow void gpfStub(); // defined in boot.s
 extern(C) @nogc nothrow void interruptContextSwitch(ulong* oldSp, ulong newSp); // defined in boot.s
 
 extern(C) @nogc nothrow void timerIsrHandler()
 {
     static uint timerCount = 0;
-    if ((timerCount++ & 0xF) == 0) // Print every 16th timer
-    {
-        printLine("[irq] timer ISR entered");
-    }
+    // if ((timerCount++ & 0xF) == 0) // Print every 16th timer
+    // {
+    //     printDebugLine("[irq] timer ISR entered");
+    // }
     
     ++g_tickCount;
     auto cpu = cpuCurrent();
@@ -132,7 +133,7 @@ extern(C) @nogc nothrow void timerIsrHandler()
     // Update scheduler accounting and preempt if slice expired
     if (schedulerTick())
     {
-        printLine("[irq] timer tick preempt");
+        // printDebugLine("[irq] timer tick preempt");
         schedYield();
     }
 }
@@ -144,16 +145,16 @@ extern(C) @nogc nothrow void keyboardIsrHandler()
     ps2IsrEnqueue(status, data);
     static uint kseen;
     ++kseen;
-    if (kseen <= 4 || (kseen & 0xFF) == 0)
-    {
-        print("[ps2-irq] kbd status=");
-        printHex(status);
-        print(" data=");
-        printHex(data);
-        print(" count=");
-        printUnsigned(kseen);
-        printLine("");
-    }
+    // if (kseen <= 4 || (kseen & 0xFF) == 0)
+    // {
+    //     print("[ps2-irq] kbd status=");
+    //     printHex(status);
+    //     print(" data=");
+    //     printHex(data);
+    //     print(" count=");
+    //     printUnsigned(kseen);
+    //     printLine("");
+    // }
     outb(PIC1_CMD, 0x20);
 }
 
@@ -167,16 +168,16 @@ extern(C) @nogc nothrow void mouseIsrHandler()
     ps2IsrEnqueue(status, data);
     static uint mseen;
     ++mseen;
-    if (mseen <= 8 || (mseen & 0xFF) == 0)
-    {
-        print("[ps2-irq] mouse status=");
-        printHex(status);
-        print(" data=");
-        printHex(data);
-        print(" count=");
-        printUnsigned(mseen);
-        printLine("");
-    }
+    // if (mseen <= 8 || (mseen & 0xFF) == 0)
+    // {
+    //     print("[ps2-irq] mouse status=");
+    //     printHex(status);
+    //     print(" data=");
+    //     printHex(data);
+    //     print(" count=");
+    //     printUnsigned(mseen);
+    //     printLine("");
+    // }
     outb(PIC2_CMD, 0x20);
     outb(PIC1_CMD, 0x20);
 }
@@ -198,6 +199,40 @@ extern(C) @nogc nothrow void pageFaultHandler(void* /*frame*/)
     printHex(cr2, 16);
     printLine("");
     // Halt for now; proper handler would decode frame and faulting address.
+    for (;;)
+    {
+        asm @nogc nothrow { hlt; }
+    }
+}
+
+extern(C) @nogc nothrow void gpfHandler(void* frame)
+{
+    // Frame layout (from bottom to top on stack):
+    // r11, r10, r9, r8, rdi, rsi, rbp, rbx, rdx, rcx, rax, error_code, rip, cs, rflags, rsp, ss
+    ulong* regs = cast(ulong*)frame;
+    ulong errorCode = regs[11];  // error code is after the 11 saved registers
+    ulong rip = regs[12];
+    ulong cs = regs[13];
+    ulong rflags = regs[14];
+    
+    printLine("[irq] General Protection Fault!");
+    print("  Error Code: 0x");
+    printHex(errorCode, 16);
+    printLine("");
+    print("  RIP: 0x");
+    printHex(rip, 16);
+    printLine("");
+    print("  CS: 0x");
+    printHex(cs, 16);
+    printLine("");
+    print("  RFLAGS: 0x");
+    printHex(rflags, 16);
+    printLine("");
+    print("  RAX: 0x");
+    printHex(regs[0], 16);
+    printLine("");
+    
+    // Halt for now
     for (;;)
     {
         asm @nogc nothrow { hlt; }
@@ -281,6 +316,7 @@ public @nogc nothrow void initializeInterrupts()
     setIdtEntry(33, &keyboardIsrStub);  // Keyboard
     setIdtEntry(44, &mouseIsrStub);     // PS/2 mouse (IRQ12) masked for now
     setIdtEntry(8,  &doubleFaultStub);  // Double fault
+    setIdtEntry(13, &gpfStub);          // General Protection Fault
     setIdtEntry(14, &pageFaultStub);    // Page fault
 
     g_idtPtr.limit = cast(ushort)(g_idt.length * IDTEntry.sizeof - 1);

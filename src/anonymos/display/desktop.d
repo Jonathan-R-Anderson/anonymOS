@@ -194,8 +194,8 @@ void runSimpleDesktopOnce(Damage* damage = null)
         
         if (g_installer.active)
         {
-            // Render installer on top
-            // We need to find the window rect.
+            // Render the desktop
+            // runSimpleDesktopOnce(&damage);
             // For now, hardcode to center as defined in ensureWindowManager
             uint w = 800;
             uint h = 500;
@@ -441,11 +441,11 @@ void runSimpleDesktopLoop()
     }
 
     // Initial setup
-    ensureWindowManager();
+    // ensureWindowManager();
     if (!g_displayServerReady)
     {
         // Best-effort: keep going even if the display server reports not ready
-        ensureDisplayServer();
+        // ensureDisplayServer();
         g_displayServerReady = true;
     }
     // Render initial frame before initializing input/cursor so the desktop is visible.
@@ -461,6 +461,8 @@ void runSimpleDesktopLoop()
     // Initialize input/cursor after the first frame is drawn.
     if (!g_inputInitialized)
     {
+        import anonymos.console : printLine;
+        printLine("Before input init");
         initializeMouseState(g_fb.width, g_fb.height);
         import anonymos.drivers.usb_hid : initializeUSBHID;
         initializeUSBHID();
@@ -469,180 +471,25 @@ void runSimpleDesktopLoop()
         static bool cursorAnnounced;
         if (!cursorAnnounced)
         {
-            import anonymos.console : printLine;
             printLine("[desktop] cursor initialized/centered");
             cursorAnnounced = true;
         }
         g_inputInitialized = true;
+        printLine("After input init");
     }
 
+    printLine("Before loop");
     // Active event loop
     while (true)
     {
-        import anonymos.console : print, printLine, printUnsigned;
-        
-        ++g_frameCount;
-        Damage damage;
-        damage.clear();
-        
-        static uint logThrottle = 0;
-        bool shouldLog = (++logThrottle % 1000 == 1);
-
-        // Poll input devices
-        if (usbHIDAvailable())
-        {
-            pollUSBHID(g_inputQueue);
-        }
-        
-        // Poll serial as fallback
-        pollSerialInput(g_inputQueue);
-
-        // Installer Input Logic - process BEFORE window manager
-        if (g_installer.active)
-        {
-            import anonymos.display.input_pipeline : InputEvent;
-            import anonymos.console : print, printLine, printUnsigned;
-            
-            size_t idx = g_inputQueue.head;
-            while (idx != g_inputQueue.tail)
-            {
-                // Log button events for debugging
-                if (g_inputQueue.events[idx].type == InputEvent.Type.buttonDown)
-                {
-                    // print("[desktop] Installer received BUTTON DOWN at (");
-                    // printUnsigned(cast(uint)g_inputQueue.events[idx].data1);
-                    // print(", ");
-                    // printUnsigned(cast(uint)g_inputQueue.events[idx].data2);
-                    // printLine(")");
-                }
-                
-                if (handleInstallerInput(g_inputQueue.events[idx]))
-                {
-                    damage.add(0, 0, g_fb.width, g_fb.height); // Redraw on state change
-                }
-                idx = (idx + 1) % g_inputQueue.capacity;
-            }
-            
-            // Clear the queue so window manager doesn't process installer events
-            g_inputQueue.head = g_inputQueue.tail;
-        }
-        else
-        {
-            // Process all pending input events for window manager
-            processInputEvents(g_inputQueue, g_windowManager, &damage);
-        }
-        
-        // Get latest mouse position
-        int mx, my;
-        getMousePosition(mx, my);
-        
-        static int lastMx = int.min;
-        static int lastMy = int.min;
-        static bool cursorCurrentlyVisible = false;
-
-        // Only redraw if there's damage
-        if (damage.any)
-        {
-            if (shouldLog)
-            {
-                // print("[desktop] Frame ");
-                // printUnsigned(cast(uint)g_frameCount);
-                // print(": DAMAGE at (");
-                // printUnsigned(cast(uint)damage.bounds.x);
-                // print(", ");
-                // printUnsigned(cast(uint)damage.bounds.y);
-                // print(") size ");
-                // printUnsigned(cast(uint)damage.bounds.width);
-                // print("x");
-                // printUnsigned(cast(uint)damage.bounds.height);
-                // printLine("");
-            }
-            
-            // Hide cursor before redraw to prevent corruption
-            if (cursorCurrentlyVisible)
-            {
-                if (useCompositor && compositorAvailable())
-                {
-                    // Compositor mode: just mark cursor as invalid, don't restore background
-                    framebufferForgetCursor();
-                }
-                else
-                {
-                    // Direct mode: restore background before redraw
-                    framebufferHideCursor();
-                }
-                cursorCurrentlyVisible = false;
-            }
-            
-            // Render the desktop
-            runSimpleDesktopOnce(&damage);
-            
-            // Show cursor at current position after redraw
-            framebufferMoveCursor(mx, my);
-            framebufferShowCursor();
-            cursorCurrentlyVisible = true;
-            
-            lastMx = mx;
-            lastMy = my;
-        }
-        else if (mx != lastMx || my != lastMy)
-        {
-            if (shouldLog)
-            {
-                // print("[desktop] Frame ");
-                // printUnsigned(cast(uint)g_frameCount);
-                // print(": CURSOR MOVE (");
-                // printUnsigned(cast(uint)lastMx);
-                // print(", ");
-                // printUnsigned(cast(uint)lastMy);
-                // print(") -> (");
-                // printUnsigned(cast(uint)mx);
-                // print(", ");
-                // printUnsigned(cast(uint)my);
-                // print(")");
-                // printLine("");
-            }
-            
-            // Cursor moved but no damage - just update cursor position
-            // framebufferMoveCursor handles save/restore internally
-            framebufferMoveCursor(mx, my);
-            
-            // Ensure cursor is visible
-            if (!cursorCurrentlyVisible)
-            {
-                framebufferShowCursor();
-                cursorCurrentlyVisible = true;
-            }
-            
-            lastMx = mx;
-            lastMy = my;
-        }
-        else if (!cursorCurrentlyVisible)
-        {
-            if (shouldLog)
-            {
-                // print("[desktop] Frame ");
-                // printUnsigned(cast(uint)g_frameCount);
-                // printLine(": SHOW CURSOR (was hidden)");
-            }
-            
-            // No movement, no damage, but cursor not visible - show it
-            framebufferShowCursor();
-            cursorCurrentlyVisible = true;
-        }
+        import anonymos.console : printLine;
+        printLine("Loop iteration");
         
         // Yield to scheduler and pause briefly
+        printLine("Calling schedYield");
         schedYield();
+        printLine("Returned from schedYield");
         
-        // Installer Execution Logic
-        if (g_installer.active && g_installer.currentModule == CalamaresModule.Exec)
-        {
-            performInstallation();
-            damage.add(0, 0, g_fb.width, g_fb.height);
-        }
-        
-        // Target ~30-60 FPS: simple delay
-        // TODO: More sophisticated timing
         foreach (i; 0 .. 20_000_000)
         {
             asm @nogc nothrow { nop; }
@@ -660,6 +507,8 @@ void runSimpleDesktopLoop()
 /// Process entrypoint that keeps the desktop running alongside other tasks.
 extern(C) @nogc nothrow void desktopProcessEntry(const(char*)* argv, const(char*)* envp)
 {
+    import anonymos.console : printLine;
+    printLine("[desktop] desktopProcessEntry called");
     printLine("[desktop] entering main loop");
     
     // Check for install mode flag

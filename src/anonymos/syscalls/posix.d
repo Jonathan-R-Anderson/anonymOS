@@ -675,12 +675,13 @@ mixin template PosixKernelShim()
     private __gshared Proc[MAX_PROC] g_ptable;
     private __gshared pid_t          g_nextPid    = 1;
     private __gshared Proc*          g_current    = null;
-    private __gshared ubyte[16384]   g_debugStack; // Static stack for debugging
+    private __gshared ubyte[65536]   g_debugStack; // Static stack for debugging
     private enum size_t INVALID_INDEX = size_t.max;
     private __gshared size_t         g_runQueueHead = INVALID_INDEX;
     private struct SyscallPolicy { bool used; char[16] name; ulong[16] mask; }
     
     extern(C) extern __gshared ulong stack_top; // from boot.s
+    extern(C) extern __gshared ubyte _kernel_end; // from linker script
     private __gshared SyscallPolicy[MAX_POLICIES] g_sysPolicies;
     package(anonymos) __gshared bool g_initialized = false;
     package(anonymos) __gshared bool g_consoleAvailable = false;
@@ -2025,6 +2026,9 @@ private enum MAX_EXECUTABLES = 128;
             return;
         }
 
+        anonymos.syscalls.posix.print("runPendingExec: calling entry at ");
+        anonymos.syscalls.posix.printHex(cast(size_t)entry);
+        anonymos.syscalls.posix.printLine("");
         entry(argv, envp);
 
         // Do NOT call sys__exit(0) here.
@@ -2307,15 +2311,15 @@ private enum MAX_EXECUTABLES = 128;
                 if (p.kernelStack is null)
                 {
                     // Use static stack for the first allocated process (after init) to debug
-                    if (p.pid == 2)
+                    if (p.pid == 3)
                     {
-                        p.kernelStackSize = 16384;
+                        p.kernelStackSize = 65536;
                         p.kernelStack = g_debugStack.ptr;
-                        anonymos.syscalls.posix.printLine("[posix-debug] Using static debug stack for PID 2");
+                        anonymos.syscalls.posix.printLine("[posix-debug] Using static debug stack for PID 3");
                     }
                     else
                     {
-                        p.kernelStackSize = 16384;
+                        p.kernelStackSize = 65536;
                         p.kernelStack = cast(ubyte*)kmalloc(p.kernelStackSize);
                     }
                 }
@@ -2376,6 +2380,7 @@ private enum MAX_EXECUTABLES = 128;
         if (proc is null) return false;
 
         const auto result = setjmp(proc.context);
+        
         if (result != 0)
         {
              static if (ENABLE_POSIX_DEBUG)
@@ -2465,10 +2470,41 @@ private enum MAX_EXECUTABLES = 128;
             return;
         }
         
+        // Verify g_current is valid
+        if (current < g_ptable.ptr || current >= g_ptable.ptr + MAX_PROC)
+        {
+            anonymos.syscalls.posix.printLine("schedYield: FATAL: g_current out of bounds!");
+            for(;;){}
+        }
+
+        static if (ENABLE_POSIX_DEBUG)
+        {
+             // Check if context looks valid before saving (it might be stale, but shouldn't be garbage if initialized)
+             // Actually, if it's running, the context in memory is stale.
+        }
+
         if (saveProcessContext(current))
         {
             return;
         }
+
+        // Verify context RIP after saving
+        if (current.context.regs[7] < 0x100000 || current.context.regs[7] > cast(size_t)&_kernel_end)
+        {
+             static if (ENABLE_POSIX_DEBUG)
+             {
+                 debugPrefix();
+                 anonymos.syscalls.posix.print("schedYield: FATAL: Saved RIP corrupted: ");
+                 anonymos.syscalls.posix.printHex(current.context.regs[7]);
+                 anonymos.syscalls.posix.printLine("");
+             }
+             // Don't loop, let it crash to see double fault if it happens later?
+             // Or loop to catch it here.
+             for(;;){}
+        }
+
+        // Capture saved RIP
+        ulong savedRip = current.context.regs[7];
 
         // Do not context-switch away from a running ring3 task unless it has
         // changed state (e.g., exited) in kernel mode.
@@ -2528,7 +2564,7 @@ private enum MAX_EXECUTABLES = 128;
             }
         }
 
-        static if (ENABLE_POSIX_DEBUG)
+        // static if (ENABLE_POSIX_DEBUG)
         {
             debugPrefix();
             anonymos.syscalls.posix.print("schedYield: switching from PID ");
@@ -2538,7 +2574,28 @@ private enum MAX_EXECUTABLES = 128;
             anonymos.syscalls.posix.printLine("");
         }
 
+        // Check for corruption
+        if (current.context.regs[7] != savedRip)
+        {
+             anonymos.syscalls.posix.print("schedYield: FATAL: RIP changed from ");
+             anonymos.syscalls.posix.printHex(savedRip);
+             anonymos.syscalls.posix.print(" to ");
+             anonymos.syscalls.posix.printHex(current.context.regs[7]);
+             anonymos.syscalls.posix.printLine("");
+             for(;;){}
+        }
+
         arch_context_switch(current, next);
+
+        // We are back!
+        ulong retAddr;
+        asm @nogc nothrow {
+            mov RAX, [RBP + 8];
+            mov retAddr, RAX;
+        }
+        anonymos.syscalls.posix.print("schedYield: returned, retAddr=");
+        anonymos.syscalls.posix.printHex(retAddr);
+        anonymos.syscalls.posix.printLine("");
     }
 
     // ---- POSIX core syscalls (kernel-side) ----

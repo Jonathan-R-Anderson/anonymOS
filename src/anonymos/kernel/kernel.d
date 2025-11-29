@@ -23,6 +23,8 @@ import anonymos.security_config : verifySecurityConfig;
 
 private __gshared const(char)*[3] g_desktopArgv;
 
+extern(C) extern __gshared ulong tss64_rsp0;
+
 /// Entry point invoked from boot.s once the CPU is ready to run D code.
 /// Initialises the VGA output and runs the compiler build program.
 extern(C) void kmain(ulong magic, ulong info)
@@ -189,7 +191,7 @@ extern(C) void kmain(ulong magic, ulong info)
         );
         if (builderRegistration == 0)
         {
-            cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
+            // cast(void) spawnRegisteredProcess("/sbin/compiler-builder", null, null);
         }
     }
     else
@@ -198,6 +200,8 @@ extern(C) void kmain(ulong magic, ulong info)
     }
 
     // Only spawn desktop if framebuffer is available
+    print("[kernel] framebufferReady: ");
+    if (framebufferReady) printLine("true"); else printLine("false");
     if (framebufferReady)
     {
         const int desktopRegistration = registerProcessExecutable("/sbin/desktop",
@@ -232,7 +236,7 @@ extern(C) void kmain(ulong magic, ulong info)
     {
         import anonymos.console : printHex;
         import anonymos.syscalls.posix : kernel_rsp;
-        extern(C) __gshared ulong tss64_rsp0;
+        import anonymos.syscalls.posix : kernel_rsp;
 
         printLine("[kernel] Testing kernel stack accessibility...");
         print("[kernel] kernel_rsp = ");

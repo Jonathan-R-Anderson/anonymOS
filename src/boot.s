@@ -483,7 +483,10 @@ loadIDT:
     .type updateTssRsp0, @function
 # void updateTssRsp0(uint64_t rsp0)
 updateTssRsp0:
+    # Update both the variable (for debugging) and the actual TSS structure
     mov %rdi, tss64_rsp0(%rip)
+    # TSS RSP0 is at offset 4 in the TSS structure
+    mov %rdi, tss64+4(%rip)
     ret
 
 .size updateTssRsp0, . - updateTssRsp0
@@ -499,8 +502,10 @@ saved_info:
 
     .section .data
     .balign 16
+    .global tss64
 tss64:
     .long 0
+    .global tss64_rsp0
 tss64_rsp0:
     .quad stack_top
     .quad 0                    # rsp1

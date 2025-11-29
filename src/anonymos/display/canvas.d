@@ -16,6 +16,7 @@ struct Canvas
     uint* pixels;
     bool targetsFramebuffer;
     bool available;
+    int clipX, clipY, clipW, clipH;
 }
 
 private enum size_t maxCachedRuns = 8;
@@ -57,6 +58,10 @@ Canvas createFramebufferCanvas() @nogc nothrow
         canvas.pitch = (g_fb.bpp > 0) ? g_fb.pitch / (g_fb.bpp / 8) : 0;
         canvas.pixels = cast(uint*) g_fb.addr;
         canvas.targetsFramebuffer = true;
+        canvas.clipX = 0;
+        canvas.clipY = 0;
+        canvas.clipW = g_fb.width;
+        canvas.clipH = g_fb.height;
     }
     return canvas;
 }
@@ -76,6 +81,10 @@ Canvas createBufferCanvas(uint* pixels, uint width, uint height, uint pitch) @no
     canvas.pixels = pixels;
     canvas.targetsFramebuffer = false;
     canvas.available = true;
+    canvas.clipX = 0;
+    canvas.clipY = 0;
+    canvas.clipW = width;
+    canvas.clipH = height;
     return canvas;
 }
 
@@ -204,6 +213,34 @@ private const(ShapedRun)* shapeRun(const(FontStack)* stack, const(char)[] text) 
     return storeCachedRun(text, &run);
 }
 
+/// Set the clipping rectangle for subsequent draw operations.
+void canvasSetClip(ref Canvas canvas, int x, int y, int w, int h) @nogc nothrow
+{
+    // Intersect with canvas bounds
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    
+    if (x >= cast(int)canvas.width) { x = canvas.width; w = 0; }
+    if (y >= cast(int)canvas.height) { y = canvas.height; h = 0; }
+    
+    if (x + w > cast(int)canvas.width) w = canvas.width - x;
+    if (y + h > cast(int)canvas.height) h = canvas.height - y;
+    
+    canvas.clipX = x;
+    canvas.clipY = y;
+    canvas.clipW = w;
+    canvas.clipH = h;
+}
+
+/// Reset clipping to the full canvas size.
+void canvasResetClip(ref Canvas canvas) @nogc nothrow
+{
+    canvas.clipX = 0;
+    canvas.clipY = 0;
+    canvas.clipW = canvas.width;
+    canvas.clipH = canvas.height;
+}
+
 private void canvasBlitMask(ref Canvas canvas, uint dstX, uint dstY,
                             const(ubyte)* mask,
                             uint maskWidth, uint maskHeight,
@@ -216,9 +253,38 @@ private void canvasBlitMask(ref Canvas canvas, uint dstX, uint dstY,
         return;
     }
 
+    // Clip against canvas.clip*
+    int cx = canvas.clipX;
+    int cy = canvas.clipY;
+    int cw = canvas.clipW;
+    int ch = canvas.clipH;
+    
+    // Intersection of (dstX, dstY, maskWidth, maskHeight) and (cx, cy, cw, ch)
+    int x1 = cast(int)dstX;
+    int y1 = cast(int)dstY;
+    int x2 = x1 + cast(int)maskWidth;
+    int y2 = y1 + cast(int)maskHeight;
+    
+    int ix1 = (x1 > cx) ? x1 : cx;
+    int iy1 = (y1 > cy) ? y1 : cy;
+    int ix2 = (x2 < cx + cw) ? x2 : cx + cw;
+    int iy2 = (y2 < cy + ch) ? y2 : cy + ch;
+    
+    if (ix1 >= ix2 || iy1 >= iy2) return; // Fully clipped
+    
+    // Adjust mask pointer
+    int skipX = ix1 - x1;
+    int skipY = iy1 - y1;
+    
+    const(ubyte)* clippedMask = mask + (skipY * maskStride) + skipX;
+    
+    // New dimensions
+    uint drawW = ix2 - ix1;
+    uint drawH = iy2 - iy1;
+
     if (canvas.targetsFramebuffer)
     {
-        framebufferBlitMask(dstX, dstY, mask, maskWidth, maskHeight, maskStride, fgARGB, bgARGB, useBg);
+        framebufferBlitMask(ix1, iy1, clippedMask, drawW, drawH, maskStride, fgARGB, bgARGB, useBg);
         return;
     }
 
@@ -227,21 +293,12 @@ private void canvasBlitMask(ref Canvas canvas, uint dstX, uint dstY,
         return;
     }
 
-    if (dstX >= canvas.width || dstY >= canvas.height)
+    // Software blit using clipped coordinates
+    foreach (row; 0 .. drawH)
     {
-        return;
-    }
-
-    uint maxW = canvas.width - dstX;
-    uint maxH = canvas.height - dstY;
-    uint blitW = (maskWidth < maxW) ? maskWidth : maxW;
-    uint blitH = (maskHeight < maxH) ? maskHeight : maxH;
-
-    foreach (row; 0 .. blitH)
-    {
-        const(ubyte)* srcRow = mask + row * maskStride;
-        const uint dstOffset = (dstY + row) * canvas.pitch + dstX;
-        foreach (col; 0 .. blitW)
+        const(ubyte)* srcRow = clippedMask + row * maskStride;
+        const uint dstOffset = (iy1 + row) * canvas.pitch + ix1;
+        foreach (col; 0 .. drawW)
         {
             const ubyte m = srcRow[col];
             if (m == 0 && !useBg)
@@ -287,6 +344,7 @@ void canvasFill(ref Canvas canvas, uint argbColor) @nogc nothrow
 }
 
 /// Draw a rectangle with optional fill using framebuffer helpers.
+/// Draw a rectangle with optional fill using framebuffer helpers.
 void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColor, bool filled = true) @nogc nothrow
 {
     if (!canvas.available)
@@ -294,11 +352,34 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
         return;
     }
 
+    // Clip rect
+    int x1 = cast(int)x;
+    int y1 = cast(int)y;
+    int x2 = x1 + cast(int)w;
+    int y2 = y1 + cast(int)h;
+    
+    int cx = canvas.clipX;
+    int cy = canvas.clipY;
+    int cw = canvas.clipW;
+    int ch = canvas.clipH;
+    
+    int ix1 = (x1 > cx) ? x1 : cx;
+    int iy1 = (y1 > cy) ? y1 : cy;
+    int ix2 = (x2 < cx + cw) ? x2 : cx + cw;
+    int iy2 = (y2 < cy + ch) ? y2 : cy + ch;
+    
+    if (ix1 >= ix2 || iy1 >= iy2) return;
+    
+    uint drawX = ix1;
+    uint drawY = iy1;
+    uint drawW = ix2 - ix1;
+    uint drawH = iy2 - iy1;
+
     if (canvas.targetsFramebuffer)
     {
-        if (!(filled && acceleratedFillRect(x, y, w, h, argbColor)))
+        if (!(filled && acceleratedFillRect(drawX, drawY, drawW, drawH, argbColor)))
         {
-            framebufferDrawRect(x, y, w, h, argbColor, filled);
+            framebufferDrawRect(drawX, drawY, drawW, drawH, argbColor, filled);
         }
         return;
     }
@@ -308,26 +389,25 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
         return;
     }
 
-    const uint xEnd = x + w;
-    const uint yEnd = y + h;
+    const uint xEnd = drawX + drawW;
+    const uint yEnd = drawY + drawH;
+    
+    // Original bounds for outline check
+    const uint origXEnd = x + w;
+    const uint origYEnd = y + h;
 
-    foreach (yy; y .. yEnd)
+    foreach (yy; drawY .. yEnd)
     {
-        if (yy >= canvas.height)
+        foreach (xx; drawX .. xEnd)
         {
-            break;
-        }
-
-        foreach (xx; x .. xEnd)
-        {
-            if (xx >= canvas.width)
+            if (!filled)
             {
-                break;
-            }
-
-            if (!filled && xx > x && xx < xEnd - 1 && yy > y && yy < yEnd - 1)
-            {
-                continue;
+                bool onLeft   = (xx == x);
+                bool onRight  = (xx == origXEnd - 1);
+                bool onTop    = (yy == y);
+                bool onBottom = (yy == origYEnd - 1);
+                
+                if (!onLeft && !onRight && !onTop && !onBottom) continue;
             }
 
             canvas.pixels[yy * canvas.pitch + xx] = argbColor;

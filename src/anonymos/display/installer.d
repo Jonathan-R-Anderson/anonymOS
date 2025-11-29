@@ -233,10 +233,22 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
                 return true;
             }
         }
+        else if (event.data1 == 9) // Tab
+        {
+            if (!g_installer.editingField)
+            {
+                g_installer.selectedIndex++;
+                return true;
+            }
+        }
         else if (g_installer.editingField)
         {
             // Handle text input for active field
-            handleTextInput(event.data1);
+            // import anonymos.console : print, printLine, printUnsigned;
+            // print("[installer] Key pressed: ");
+            // printUnsigned(cast(uint)event.data1);
+            // printLine("");
+            handleTextInput(event.data2); // Use raw scancode
             return true;
         }
     }
@@ -317,15 +329,17 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
             }
         }
         
-        // Field Hit Testing (Simplified)
-        // We just check if we clicked in the content area and cycle focus for now, 
-        // or we could implement precise hit testing if we knew the field layout per page.
-        // For now, let's just say clicking in the content area toggles edit mode if a field is selected.
-        if (mx > winX + 220 && mx < winX + w && my > winY && my < winY + h)
+        // Field Hit Testing - enable editing when clicking in content area
+        if (mx > winX + 220 && mx < winX + w && my > winY + 30 && my < winY + h - 60)
         {
-             // Enable editing of currently selected field
-             g_installer.editingField = true;
-             return true;
+             // If not already editing, enable editing mode
+             if (!g_installer.editingField)
+             {
+                 import anonymos.console : printLine;
+                 printLine("[installer] Enabling edit mode");
+                 g_installer.editingField = true;
+                 return true;
+             }
         }
     }
     
@@ -358,17 +372,28 @@ private @nogc nothrow void renderNetInstall(Canvas* c, int x, int y, int w)
     else
     {
         drawString(c, x + 160, y + 40, "Not Connected", 0xFFC0392B);
+        
+        // Show help text for connecting
+        (*c).canvasRect(x, y + 65, w - 40, 120, 0xFFFFF3CD);
+        (*c).canvasRect(x, y + 65, w - 40, 120, 0xFFF39C12, false);
+        drawString(c, x + 10, y + 75, "⚠ Network Configuration Required", 0xFFE67E22);
+        drawString(c, x + 10, y + 95, "To enable internet access:", 0xFF7F8C8D);
+        drawString(c, x + 10, y + 110, "• For QEMU: Add -netdev user,id=net0 -device e1000,netdev=net0", 0xFF7F8C8D);
+        drawString(c, x + 10, y + 125, "• For VirtualBox: Enable Network Adapter in VM settings", 0xFF7F8C8D);
+        drawString(c, x + 10, y + 140, "• For VMware: Ensure network adapter is set to NAT or Bridged", 0xFF7F8C8D);
+        drawString(c, x + 10, y + 155, "• For bare metal: Check physical network cable connection", 0xFF7F8C8D);
     }
     
-    // ZkSync Config
-    drawString(c, x, y + 80, "ZkSync Access Point", COL_ACCENT);
-    drawField(c, x, y + 110, "RPC Endpoint:", g_installer.config.zkSyncEndpoint, 0);
-    drawField(c, x, y + 150, "Operator Key (Optional):", g_installer.config.zkSyncOperatorKey, 1, true);
+    // ZkSync Config (adjusted Y positions)
+    int configY = isNetworkAvailable() ? y + 80 : y + 200;
+    drawString(c, x, configY, "ZkSync Access Point", COL_ACCENT);
+    drawField(c, x, configY + 30, "RPC Endpoint:", g_installer.config.zkSyncEndpoint, 0);
+    drawField(c, x, configY + 95, "Operator Key (Optional):", g_installer.config.zkSyncOperatorKey, 1, true);
     
-    // IP Config
-    drawString(c, x, y + 200, "IP Configuration", COL_ACCENT);
-    drawField(c, x, y + 230, "Static IP:", g_installer.config.staticIp, 2);
-    drawField(c, x, y + 270, "Gateway:", g_installer.config.gateway, 3);
+    // IP Config (adjusted Y positions)
+    drawString(c, x, configY + 170, "IP Configuration", COL_ACCENT);
+    drawField(c, x, configY + 200, "Static IP:", g_installer.config.staticIp, 2);
+    drawField(c, x, configY + 265, "Gateway:", g_installer.config.gateway, 3);
 }
 
 private @nogc nothrow void renderBlockchain(Canvas* c, int x, int y, int w)
@@ -410,15 +435,15 @@ private @nogc nothrow void renderPartition(Canvas* c, int x, int y, int w)
     uint colDecoy = g_installer.config.usbDecoyDetected ? 0xFF27AE60 : 0xFFC0392B;
     drawString(c, x, y + 90, "1. Decoy OS Source:", COL_TEXT_MAIN);
     drawString(c, x + 180, y + 90, cast(char[])g_installer.config.decoyIsoPath, colDecoy);
-    drawField(c, x, y + 110, "Decoy Password:", g_installer.config.decoyPassword, 0, true);
+    drawField(c, x, y + 115, "Decoy Password:", g_installer.config.decoyPassword, 0, true);
     
     // Hidden
     uint colHidden = g_installer.config.usbHiddenDetected ? 0xFF27AE60 : 0xFFC0392B;
-    drawString(c, x, y + 160, "2. Hidden OS Source:", COL_TEXT_MAIN);
-    drawString(c, x + 180, y + 160, cast(char[])g_installer.config.hiddenIsoPath, colHidden);
-    drawField(c, x, y + 180, "Hidden Password:", g_installer.config.hiddenPassword, 1, true);
+    drawString(c, x, y + 175, "2. Hidden OS Source:", COL_TEXT_MAIN);
+    drawString(c, x + 180, y + 175, cast(char[])g_installer.config.hiddenIsoPath, colHidden);
+    drawField(c, x, y + 200, "Hidden Password:", g_installer.config.hiddenPassword, 1, true);
     
-    drawString(c, x, y + 240, "This will create a hidden volume partition layout.", COL_TEXT_MAIN);
+    drawString(c, x, y + 260, "This will create a hidden volume partition layout.", COL_TEXT_MAIN);
 }
 
 private @nogc nothrow void renderUsers(Canvas* c, int x, int y, int w)
@@ -426,9 +451,9 @@ private @nogc nothrow void renderUsers(Canvas* c, int x, int y, int w)
     drawString(c, x, y, "Create User Account", COL_TEXT_MAIN, 2);
     
     drawField(c, x, y + 60, "What is your name?", g_installer.config.username, 0);
-    drawField(c, x, y + 100, "What name do you want to use to log in?", g_installer.config.username, 1);
-    drawField(c, x, y + 140, "What is the name of this computer?", g_installer.config.hostname, 2);
-    drawField(c, x, y + 180, "Choose a password:", g_installer.config.userPassword, 3, true);
+    drawField(c, x, y + 105, "What name do you want to use to log in?", g_installer.config.username, 1);
+    drawField(c, x, y + 150, "What is the name of this computer?", g_installer.config.hostname, 2);
+    drawField(c, x, y + 195, "Choose a password:", g_installer.config.userPassword, 3, true);
 }
 
 private @nogc nothrow void renderSummary(Canvas* c, int x, int y, int w)
@@ -511,19 +536,37 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
     uint bgCol = (g_installer.selectedIndex == index) ? 0xFFFFFFFF : 0xFFFCFCFC;
     uint borderCol = (g_installer.selectedIndex == index) ? COL_ACCENT : 0xFFBDC3C7;
     
-    (*c).canvasRect(x, y + 20, 300, 30, borderCol);
-    (*c).canvasRect(x + 1, y + 21, 298, 28, bgCol);
+    // Increased spacing: label at y, box at y + 30 to prevent overlap
+    (*c).canvasRect(x, y + 30, 300, 30, borderCol);
+    (*c).canvasRect(x + 1, y + 31, 298, 28, bgCol);
     
-    if (password)
-        drawString(c, x + 5, y + 25, "********", COL_TEXT_MAIN);
-    else
-        drawString(c, x + 5, y + 25, cast(char[])buffer, COL_TEXT_MAIN);
+    // Clip text content to the box
+    canvasSetClip(*c, x + 1, y + 31, 298, 28);
+
+    // Check if buffer is empty
+    bool isEmpty = (buffer[0] == 0);
+    
+    if (password && !isEmpty)
+    {
+        drawString(c, x + 5, y + 35, "********", COL_TEXT_MAIN);
+    }
+    else if (!isEmpty)
+    {
+        drawString(c, x + 5, y + 35, cast(char[])buffer, COL_TEXT_MAIN);
+    }
+    else if (isEmpty && g_installer.selectedIndex != index)
+    {
+        // Show placeholder text in gray when field is empty and not selected
+        drawString(c, x + 5, y + 35, cast(char[])buffer, 0xFFBDC3C7);
+    }
         
     if (g_installer.selectedIndex == index && g_installer.editingField)
     {
         // Draw cursor
-        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 25, 2, 14, COL_TEXT_MAIN);
+        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 35, 2, 14, COL_TEXT_MAIN);
     }
+    
+    canvasResetClip(*c);
 }
 
 private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label, ref char[64] buffer, int index, bool password = false)
@@ -534,18 +577,36 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
     uint bgCol = (g_installer.selectedIndex == index) ? 0xFFFFFFFF : 0xFFFCFCFC;
     uint borderCol = (g_installer.selectedIndex == index) ? COL_ACCENT : 0xFFBDC3C7;
     
-    (*c).canvasRect(x, y + 20, 300, 30, borderCol);
-    (*c).canvasRect(x + 1, y + 21, 298, 28, bgCol);
+    // Increased spacing: label at y, box at y + 30 to prevent overlap
+    (*c).canvasRect(x, y + 30, 300, 30, borderCol);
+    (*c).canvasRect(x + 1, y + 31, 298, 28, bgCol);
     
-    if (password)
-        drawString(c, x + 5, y + 25, "********", COL_TEXT_MAIN);
-    else
-        drawString(c, x + 5, y + 25, cast(char[])buffer, COL_TEXT_MAIN);
+    // Clip text content to the box
+    canvasSetClip(*c, x + 1, y + 31, 298, 28);
+
+    // Check if buffer is empty
+    bool isEmpty = (buffer[0] == 0);
+    
+    if (password && !isEmpty)
+    {
+        drawString(c, x + 5, y + 35, "********", COL_TEXT_MAIN);
+    }
+    else if (!isEmpty)
+    {
+        drawString(c, x + 5, y + 35, cast(char[])buffer, COL_TEXT_MAIN);
+    }
+    else if (isEmpty && g_installer.selectedIndex != index)
+    {
+        // Show placeholder text in gray when field is empty and not selected
+        drawString(c, x + 5, y + 35, cast(char[])buffer, 0xFFBDC3C7);
+    }
         
     if (g_installer.selectedIndex == index && g_installer.editingField)
     {
-        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 25, 2, 14, COL_TEXT_MAIN);
+        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 35, 2, 14, COL_TEXT_MAIN);
     }
+    
+    canvasResetClip(*c);
 }
 
 private @nogc nothrow void nextModule()
@@ -563,30 +624,67 @@ private @nogc nothrow void nextModule()
 
 private @nogc nothrow void handleTextInput(ulong key)
 {
-    // Basic text input handler
-    char c = 0;
-    if (key >= 0x02 && key <= 0x0B) c = cast(char)('0' + (key - 1) % 10); // 1-9, 0
-    if (key == 57) c = ' ';
-    else if (key >= 16 && key <= 25) c = cast(char)('q' + (key - 16)); // q-p
-    else if (key >= 30 && key <= 38) c = cast(char)('a' + (key - 30)); // a-l
+    char[] buf = getActiveBuffer();
+    if (buf.length == 0) return;
     
-    // Append to buffer
-    if (c != 0)
+    int len = 0;
+    while(len < buf.length && buf[len] != 0) len++;
+    
+    // Handle backspace
+    if (key == 14) // Backspace
     {
-        // Find active buffer based on current module and selected index
-        // This is a bit hacky without pointers, but works for the fixed layout
-        char[] buf = getActiveBuffer();
-        if (buf.length > 0)
+        if (len > 0)
         {
-            int len = 0;
-            while(len < buf.length && buf[len] != 0) len++;
-            
-            if (len < buf.length - 1)
-            {
-                buf[len] = c;
-                buf[len+1] = 0;
-            }
+            buf[len - 1] = 0;
         }
+        return;
+    }
+    
+    // Convert scancode to character
+    char c = 0;
+    
+    // Numbers (1-9, 0)
+    if (key >= 0x02 && key <= 0x0B)
+    {
+        const char[10] nums = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
+        c = nums[key - 0x02];
+    }
+    // Letters (QWERTY layout)
+    else if (key >= 16 && key <= 25) // Q-P row
+    {
+        const char[10] chars = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'];
+        c = chars[key - 16];
+    }
+    else if (key >= 30 && key <= 38) // A-L row
+    {
+        const char[9] chars = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
+        c = chars[key - 30];
+    }
+    else if (key >= 44 && key <= 50) // Z-M row
+    {
+        const char[7] chars = ['z', 'x', 'c', 'v', 'b', 'n', 'm'];
+        c = chars[key - 44];
+    }
+    // Special characters
+    else if (key == 57) c = ' ';  // Space
+    else if (key == 12) c = '-';  // Minus/underscore
+    else if (key == 13) c = '=';  // Equals/plus
+    else if (key == 26) c = '[';  // Left bracket
+    else if (key == 27) c = ']';  // Right bracket
+    else if (key == 39) c = ';';  // Semicolon
+    else if (key == 40) c = '\''; // Apostrophe
+    else if (key == 41) c = '`';  // Grave accent
+    else if (key == 43) c = '\\'; // Backslash
+    else if (key == 51) c = ',';  // Comma
+    else if (key == 52) c = '.';  // Period
+    else if (key == 53) c = '/';  // Slash
+    else if (key == 11) c = '0';  // 0 key (alternative)
+    
+    // Append character to buffer
+    if (c != 0 && len < buf.length - 1)
+    {
+        buf[len] = c;
+        buf[len + 1] = 0;
     }
 }
 
@@ -643,6 +741,15 @@ private @nogc nothrow void drawString(Canvas* c, int x, int y, char[] s, uint co
 {
     import anonymos.display.canvas : canvasText;
     import anonymos.display.font_stack : activeFontStack;
+    
+    // Find null terminator
+    int len = 0;
+    while (len < s.length && s[len] != 0) len++;
+    
+    if (len > 0)
+    {
+        (*c).canvasText(activeFontStack(), x, y, s[0..len], color, 0, false);
+    }
 }
 
 // Helper: Copy string

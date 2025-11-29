@@ -57,6 +57,10 @@ extern(C) void kmain(ulong magic, ulong info)
     
     import anonymos.drivers.ahci : initAHCI;
     initAHCI();
+    
+    // Initialize network driver (E1000, RTL8139, VirtIO)
+    import anonymos.drivers.network : initNetwork;
+    initNetwork();
 
     // ========================================================================
     // BLOCKCHAIN-BASED BOOT INTEGRITY VALIDATION

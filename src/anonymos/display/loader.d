@@ -4,6 +4,21 @@ import anonymos.display.canvas;
 import anonymos.display.font_stack;
 import anonymos.console : printLine;
 
+/**
+ * AnonymOS Kinetic Loader Framework
+ * 
+ * This module implements the native runtime for the Web3 Kinetic Loader.
+ * It translates the React/Canvas/SVG primitives from the original TypeScript project
+ * into optimized D kernel graphics calls.
+ * 
+ * Features:
+ * - Particle Network Animation (mimics ParticleNetwork.jsx)
+ * - Hexagonal Logo Animation (mimics Logo.jsx)
+ * - Scroll Jacking Input (mimics scrollJack.js)
+ * - Progress State Management
+ */
+
+
 // Colors from the web3 theme approximation
 private enum uint COL_BG = 0xFF0F172A; // Slate 900
 private enum uint COL_PRIMARY = 0xFF3B82F6; // Blue 500
@@ -25,6 +40,7 @@ struct LoaderState
     int timer;
     Particle[20] particles;
     bool initialized;
+    char[64] statusText;
 }
 
 __gshared LoaderState g_loader;
@@ -35,6 +51,9 @@ public @nogc nothrow void initLoader(int width, int height)
     g_loader.progress = 0.0f;
     g_loader.timer = 0;
     g_loader.initialized = true;
+    
+    // Set initial status
+    setStatusText("Initializing system...");
     
     // Initialize particles
     // Pseudo-random seeding since we don't have a full RNG
@@ -58,42 +77,36 @@ public @nogc nothrow void initLoader(int width, int height)
     }
 }
 
+public @nogc nothrow void setLoaderStatus(float progress, const(char)* text)
+{
+    g_loader.progress = progress;
+    setStatusText(text);
+    
+    if (g_loader.progress >= 1.0f)
+    {
+        // Keep active for a moment? Or let the caller handle it?
+        // Caller should handle transition.
+    }
+}
+
+private @nogc nothrow void setStatusText(const(char)* text)
+{
+    int i = 0;
+    while (text[i] != 0 && i < 63)
+    {
+        g_loader.statusText[i] = text[i];
+        i++;
+    }
+    g_loader.statusText[i] = 0;
+}
+
 public @nogc nothrow void updateLoader()
 {
     if (!g_loader.active) return;
     
     g_loader.timer++;
     
-    // Progress simulation - Correlate with steps
-    // 0-20%: Initializing blockchain connection
-    // 20-40%: Establishing peer connection
-    // 40-60%: Fetching block headers
-    // 60-80%: Verifying smart contracts
-    // 80-95%: Loading decentralized content
-    // 95-100%: Connection established
-    
-    float target = 0.0f;
-    if (g_loader.timer < 120) target = 0.25f;       // 2s
-    else if (g_loader.timer < 240) target = 0.45f;  // 4s
-    else if (g_loader.timer < 360) target = 0.65f;  // 6s
-    else if (g_loader.timer < 480) target = 0.85f;  // 8s
-    else if (g_loader.timer < 600) target = 0.98f;  // 10s
-    else target = 1.0f;
-    
-    // Smooth approach
-    g_loader.progress += (target - g_loader.progress) * 0.05f;
-    
-    if (g_loader.progress >= 0.99f && g_loader.timer > 600)
-    {
-        g_loader.progress = 1.0f;
-        g_loader.active = false;
-    }
-    
     // Update particles
-    // We need screen dimensions, assume 1024x768 for update logic or pass them in.
-    // For simplicity, we'll wrap at arbitrary bounds if we don't have them, 
-    // but renderLoader has dimensions. Let's just update positions blindly here 
-    // and wrap in render.
     for (int i = 0; i < g_loader.particles.length; i++)
     {
         g_loader.particles[i].x += g_loader.particles[i].vx;
@@ -261,12 +274,7 @@ public @nogc nothrow void renderLoader(Canvas* fbCanvas, int width, int height)
     drawString(&c, cx - 15, cy + 20, pctBuf[0 .. len+1], COL_PRIMARY);
     
     // Status Text
-    const(char)* status = "Initializing blockchain connection...";
-    if (g_loader.progress > 0.2f) status = "Establishing peer connection...";
-    if (g_loader.progress > 0.4f) status = "Fetching block headers...";
-    if (g_loader.progress > 0.6f) status = "Verifying smart contracts...";
-    if (g_loader.progress > 0.8f) status = "Loading decentralized content...";
-    if (g_loader.progress >= 1.0f) status = "Connection established";
+    const(char)* status = g_loader.statusText.ptr;
     
     // Centering text roughly (assuming 8px char width)
     int statusLen = 0;

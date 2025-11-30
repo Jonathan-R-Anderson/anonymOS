@@ -163,6 +163,14 @@ void processMouseReport(ref const HIDMouseReport report, ref InputQueue queue,
     if (report.deltaWheel != 0)
     {
         g_mouseState.wheelDelta += report.deltaWheel;
+        
+        InputEvent event;
+        event.type = InputEvent.Type.scroll;
+        event.data1 = g_mouseState.x;
+        event.data2 = g_mouseState.y;
+        event.data3 = report.deltaWheel;
+        enqueue(queue, event);
+        
         stateChanged = true;
     }
 }

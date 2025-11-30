@@ -11,7 +11,7 @@ import anonymos.display.input_handler : initializeInputHandler, processInputEven
 import anonymos.display.server;
 import anonymos.display.font_stack : activeFontStack, enableFreetype, enableHarfBuzz, loadTrueTypeFontIntoStack;
 import anonymos.drivers.hid_mouse : initializeMouseState, getMousePosition;
-import anonymos.display.framebuffer : framebufferHideCursor, framebufferShowCursor, framebufferMoveCursor;
+import anonymos.display.framebuffer : framebufferHideCursor, framebufferShowCursor, framebufferMoveCursor, framebufferResetClip, framebufferPutPixel;
 import anonymos.drivers.usb_hid : initializeUSBHID, pollUSBHID, usbHIDAvailable;
 import anonymos.syscalls.posix : schedYield;
 import anonymos.serial : pollSerialInput;
@@ -19,7 +19,9 @@ import anonymos.multiboot : FramebufferModeRequest;
 import anonymos.display.canvas;
 import anonymos.display.installer;
 import anonymos.display.vulkan;
+import anonymos.display.vulkan;
 import anonymos.display.loader;
+import anonymos.display.cursor : initCursorSystem, updateCursorAnimation, getCurrentCursorData;
 
 __gshared WindowManager g_windowManager;
 __gshared bool g_windowManagerReady = false;
@@ -479,39 +481,70 @@ void runSimpleDesktopLoop()
         return;
     }
 
-    // Initial setup
-    // ensureWindowManager();
+    // ===== STEP 1: Initialize Loader FIRST =====
+    // This must happen before anything else renders
+    initLoader(g_fb.width, g_fb.height);
+    
+    // Disable console output to framebuffer immediately to prevent log spam
+    import anonymos.console : setFramebufferConsoleEnabled;
+    setFramebufferConsoleEnabled(false);
+    
+    // Render initial loader frame
+    Canvas loaderCanvas = createFramebufferCanvas();
+    setLoaderStatus(0.05f, "Initializing System...");
+    renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+    updateLoader();
+    
+    // ===== STEP 2: Initialize Display Server =====
     if (!g_displayServerReady)
     {
-        // Best-effort: keep going even if the display server reports not ready
+        setLoaderStatus(0.15f, "Starting Display Server...");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
+        
         ensureDisplayServer();
         g_displayServerReady = true;
+        
+        setLoaderStatus(0.30f, "Display Server Ready");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
     }
 
+    // ===== STEP 3: Initialize Compositor =====
     if (useCompositor)
     {
+        setLoaderStatus(0.45f, "Initializing Compositor...");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
+        
         compositorEnsureReady();
+        
+        setLoaderStatus(0.55f, "Compositor Ready");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
     }
     
-    // Initialize Vulkan
+    // ===== STEP 4: Initialize Vulkan =====
+    setLoaderStatus(0.65f, "Initializing Graphics...");
+    renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+    updateLoader();
+    
     ensureVulkan();
-
-    // Render initial frame before initializing input/cursor so the desktop is visible.
-    runSimpleDesktopOnce(null); // Full render
-    static bool loopAnnounced;
-    if (!loopAnnounced)
-    {
-        import anonymos.console : printDebugLine;
-        printDebugLine("[desktop] initial frame rendered");
-        loopAnnounced = true;
-    }
     
-    // Initialize input/cursor after the first frame is drawn.
+    setLoaderStatus(0.75f, "Graphics Ready");
+    renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+    updateLoader();
+
+    // ===== STEP 5: Initialize Input System =====
     if (!g_inputInitialized)
     {
-        import anonymos.console : printDebugLine;
+        setLoaderStatus(0.85f, "Initializing Input Devices...");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
+        
         printDebugLine("Before input init");
         initializeMouseState(g_fb.width, g_fb.height);
+        initCursorSystem(); // Initialize the new cursor system
         import anonymos.drivers.usb_hid : initializeUSBHID;
         initializeUSBHID();
         framebufferShowCursor();
@@ -521,24 +554,31 @@ void runSimpleDesktopLoop()
         {
             framebufferSetCursorDirectDraw(false);
         }
-        static bool cursorAnnounced;
-        if (!cursorAnnounced)
-        {
-            printDebugLine("[desktop] cursor initialized/centered");
-            cursorAnnounced = true;
-        }
+        
         g_inputInitialized = true;
         printDebugLine("After input init");
+        
+        setLoaderStatus(0.95f, "Input Devices Ready");
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        updateLoader();
     }
-
+    
+    // ===== STEP 6: Complete Loading =====
+    setLoaderStatus(1.0f, "Ready");
+    renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+    
+    // Hold the "Ready" screen for a moment so user can see completion
+    for (int i = 0; i < 30; i++)
+    {
+        updateLoader();
+        renderLoader(&loaderCanvas, g_fb.width, g_fb.height);
+        schedYield();
+    }
+    
+    // Mark loader as inactive
+    g_loader.active = false;
+    
     printDebugLine("Before loop");
-    
-    // Initialize Loader
-    initLoader(g_fb.width, g_fb.height);
-    
-    // Disable console output to framebuffer immediately to prevent log spam
-    import anonymos.console : setFramebufferConsoleEnabled;
-    setFramebufferConsoleEnabled(false);
     
     int lastCursorX = -1;
     int lastCursorY = -1;
@@ -548,19 +588,55 @@ void runSimpleDesktopLoop()
     while (true)
     {
         loopCounter++;
-        if (loopCounter % 60 == 0)
+        
+        // Debug: Always print first few iterations
+        if (loopCounter <= 10 || loopCounter % 60 == 0)
         {
              import anonymos.console : printDebugLine, printUnsigned, print;
-             print("[desktop] loop heartbeat "); printUnsigned(loopCounter); printLine("");
+             print("[desktop] loop iteration "); printUnsigned(loopCounter); printLine("");
         }
 
         // Check compositor state
         const bool usingCompositor = useCompositor && compositorAvailable();
-        framebufferSetCursorDirectDraw(!usingCompositor);
+        // Force direct draw if installer is active, as it bypasses the compositor
+        framebufferSetCursorDirectDraw(!usingCompositor || g_installer.active);
+
+        // Update cursor animation
+        // Approximate time based on loop counter (assuming ~60Hz)
+        updateCursorAnimation(loopCounter * 16);
+        
+        // Update framebuffer cursor icon from current animation frame
+        uint curW, curH, curHotX, curHotY;
+        const(uint)* curPixels;
+        getCurrentCursorData(curW, curH, curPixels, curHotX, curHotY);
+        
+        static const(uint)* lastCursorPixels = null;
+        if (curPixels !is null && curPixels != lastCursorPixels)
+        {
+            import anonymos.console : print, printUnsigned, printLine;
+            print("[desktop] Updating cursor icon. W=");
+            printUnsigned(curW);
+            print(" H=");
+            printUnsigned(curH);
+            printLine("");
+            
+            framebufferSetCursorIcon(curW, curH, curPixels);
+            lastCursorPixels = curPixels;
+        }
+        else if (curPixels is null)
+        {
+             static bool loggedNull = false;
+             if (!loggedNull) {
+                 import anonymos.console : printLine;
+                 printLine("[desktop] curPixels is NULL!");
+                 loggedNull = true;
+             }
+        }
 
         // 1. Hide cursor only if using software rendering directly to FB
         // If using compositor, we want the cursor flag to remain TRUE so the compositor draws it.
-        if (!usingCompositor)
+        // ALSO: Don't hide cursor when installer is active - it causes flashing if done globally
+        if (!usingCompositor && !g_installer.active)
         {
             framebufferHideCursor();
         }
@@ -573,6 +649,22 @@ void runSimpleDesktopLoop()
         
         // Poll serial input as well
         pollSerialInput(g_inputQueue);
+        
+        // Debug: Log queue state
+        static int queueLogCounter = 0;
+        queueLogCounter++;
+        if (queueLogCounter % 300 == 0 || g_inputQueue.head != g_inputQueue.tail)
+        {
+            import anonymos.console : print, printUnsigned, printLine;
+            if (g_inputQueue.head != g_inputQueue.tail)
+            {
+                print("[desktop] Input queue has events: head=");
+                printUnsigned(g_inputQueue.head);
+                print(" tail=");
+                printUnsigned(g_inputQueue.tail);
+                printLine("");
+            }
+        }
         
         // Process input events and update window manager
         Damage damage;
@@ -600,80 +692,124 @@ void runSimpleDesktopLoop()
         int maxY = 0;
         bool hasDamage = false;
 
-        if (g_loader.active)
-        {
-            updateLoader();
-            
-            // Create a temporary canvas for the loader
-            Canvas c = createFramebufferCanvas();
-            renderLoader(&c, g_fb.width, g_fb.height);
-            
-            // Mark full screen damage for presentation
-            minX = 0; minY = 0; maxX = g_fb.width; maxY = g_fb.height;
-            hasDamage = true;
-        }
-        else if (g_installer.active)
-        {
-             // Transition logic: Fade up
-             // We can't easily do alpha blending of full screens without a compositor buffer.
-             // But we can simulate "sliding up" by rendering the loader background 
-             // and then the installer window at an offset.
-             
-             // For now, just render the installer directly.
-             // To support "fade upward", we would need a transition state in the loader.
-             // Let's modify the loader to handle the transition out.
-             
-             // If we just render the installer, it will pop in.
-             // The user wants "fade upward overtop of kinetic".
-             
-             // Since we don't have a complex scene graph, let's just render the installer.
-             // The loader logic handles the "active" state.
-             
-             // If we are here, loader is done.
-             // Render installer background (solid color or gradient) instead of desktop wallpaper.
-             
-             Canvas c = createFramebufferCanvas();
-             // Clear to dark background
-             c.canvasFill(0xFF0F172A); // Match loader BG
-             
-             // Render installer window
-             // Center it
-             uint w = 800;
-             uint h = 500;
-             uint x = (g_fb.width - w) / 2;
-             uint y = (g_fb.height - h) / 2;
-             
-             renderInstallerWindow(&c, x, y, w, h);
-             
-             minX = 0; minY = 0; maxX = g_fb.width; maxY = g_fb.height;
-             hasDamage = true;
-        }
-        else if (damage.any)
-        {
-            runSimpleDesktopOnce(&damage);
-        }
+        // Loader is only shown during boot initialization, not in main loop
+        // If we reach here, loader is already complete
         
-        // 2. Update and Show Cursor
-        // Get authoritative mouse position
+        // Get cursor position early to track movement
         int cx, cy;
         getMousePosition(cx, cy);
         
-        // Move cursor to new position (saves new background, draws cursor)
-        framebufferMoveCursor(cx, cy);
-        framebufferShowCursor(); // Ensure visible
-
-        // (Damage variables already declared above)
+        // Check if cursor moved (this creates damage)
+        bool cursorMoved = (cx != lastCursorX || cy != lastCursorY);
         
+        // Debug logging for cursor
+        static int cursorLogCounter = 0;
+        cursorLogCounter++;
+        if (cursorMoved || cursorLogCounter % 300 == 0)
+        {
+            import anonymos.console : print, printUnsigned, printLine;
+            print("[desktop] cursor: (");
+            printUnsigned(cx);
+            print(", ");
+            printUnsigned(cy);
+            print(") last=(");
+            printUnsigned(lastCursorX);
+            print(", ");
+            printUnsigned(lastCursorY);
+            print(") moved=");
+            printUnsigned(cursorMoved ? 1 : 0);
+            print(" damage.any=");
+            printUnsigned(damage.any ? 1 : 0);
+            printLine("");
+        }
+        
+        // Track if we need to render installer
+        bool needsInstallerRender = false;
+        
+        // Installer Logic
         if (g_installer.active)
         {
-            // Installer active: assume full screen redraw for now
-            minX = 0;
-            minY = 0;
-            maxX = g_fb.width;
-            maxY = g_fb.height;
-            hasDamage = true;
+            // Determine if we need to render
+            static bool firstInstallerFrame = true;
+            // Only redraw window if damage or first frame. Cursor movement is handled separately.
+            bool shouldRenderWindow = firstInstallerFrame || damage.any;
+            
+            if (shouldRenderWindow)
+            {
+                // 1. Hide cursor first. 
+                // This restores the background from the previous frame.
+                // We need to do this so that the cursor system is in a "hidden" state.
+                framebufferHideCursor();
+                
+                // 2. Render the installer window (overwriting the screen)
+                Canvas c = createFramebufferCanvas();
+                
+                // Clear screen only on first frame
+                static bool installerScreenCleared = false;
+                if (!installerScreenCleared)
+                {
+                    c.canvasFill(0xFF0F172A); 
+                    installerScreenCleared = true;
+                }
+                
+                // Render installer window
+                // Center it
+                uint w = 800;
+                uint h = 500;
+                uint x = (g_fb.width - w) / 2;
+                uint y = (g_fb.height - h) / 2;
+                renderInstallerWindow(&c, x, y, w, h);
+                
+                // 3. Move cursor to new position (updates internal coords only since hidden)
+                framebufferMoveCursor(cx, cy);
+                
+                // 4. Show cursor
+                // Ensure clip is full screen so cursor isn't clipped
+                framebufferResetClip();
+                
+                framebufferShowCursor();
+                
+                // 5. Mark for flush
+                minX = 0; minY = 0; maxX = g_fb.width; maxY = g_fb.height;
+                hasDamage = true;
+                firstInstallerFrame = false;
+                
+                // Debug log
+                static int renderCounter = 0;
+                renderCounter++;
+                if (renderCounter <= 5 || renderCounter % 60 == 0)
+                {
+                    import anonymos.console : print, printUnsigned, printLine;
+                    print("[desktop] Installer Render Cycle: Hide->Render->Show. Counter=");
+                    printUnsigned(renderCounter);
+                    printLine("");
+                }
+            }
+            else
+            {
+                // Not rendering installer this frame.
+                // Just ensure cursor is updated/visible.
+                // Since we didn't wipe the screen, standard move logic is fine.
+                framebufferMoveCursor(cx, cy);
+                framebufferShowCursor();
+            }
         }
-        else if (damage.any)
+        else
+        {
+            // Normal desktop mode
+            if (damage.any)
+            {
+                runSimpleDesktopOnce(&damage);
+            }
+            framebufferMoveCursor(cx, cy);
+            framebufferShowCursor();
+        }
+        
+        // (Damage variables already declared above)
+        
+        // (Damage variables already declared above)
+        
+        if (damage.any && !g_installer.active)
         {
             minX = damage.bounds.x;
             minY = damage.bounds.y;
@@ -681,26 +817,32 @@ void runSimpleDesktopLoop()
             maxY = damage.bounds.y + damage.bounds.height;
             hasDamage = true;
         }
-        
-        // Check cursor movement
+
+        // Check cursor movement logic (Restored)
+        // We need to update lastCursorX/Y and track damage for non-installer cases
+        // For installer, we handle full-screen damage in the installer block, but we still need to update lastCursorX/Y
         if (cx != lastCursorX || cy != lastCursorY)
         {
-            // Add old cursor pos (approx 32x32 to be safe)
-            if (lastCursorX != -1)
+            // Only add damage if NOT installer (installer handles its own damage)
+            if (!g_installer.active)
             {
-                if (lastCursorX < minX) minX = lastCursorX;
-                if (lastCursorY < minY) minY = lastCursorY;
-                if (lastCursorX + 32 > maxX) maxX = lastCursorX + 32;
-                if (lastCursorY + 32 > maxY) maxY = lastCursorY + 32;
+                // Add old cursor pos
+                if (lastCursorX != -1)
+                {
+                    if (lastCursorX < minX) minX = lastCursorX;
+                    if (lastCursorY < minY) minY = lastCursorY;
+                    if (lastCursorX + 32 > maxX) maxX = lastCursorX + 32;
+                    if (lastCursorY + 32 > maxY) maxY = lastCursorY + 32;
+                    hasDamage = true;
+                }
+                
+                // Add new cursor pos
+                if (cx < minX) minX = cx;
+                if (cy < minY) minY = cy;
+                if (cx + 32 > maxX) maxX = cx + 32;
+                if (cy + 32 > maxY) maxY = cy + 32;
                 hasDamage = true;
             }
-            
-            // Add new cursor pos
-            if (cx < minX) minX = cx;
-            if (cy < minY) minY = cy;
-            if (cx + 32 > maxX) maxX = cx + 32;
-            if (cy + 32 > maxY) maxY = cy + 32;
-            hasDamage = true;
             
             lastCursorX = cx;
             lastCursorY = cy;

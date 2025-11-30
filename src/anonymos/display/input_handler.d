@@ -107,6 +107,10 @@ void processInputEvents(ref InputQueue queue, ref WindowManager manager, Damage*
             case InputEvent.Type.buttonUp:
                 handleButtonUp(event, manager, damage);
                 break;
+                
+            case InputEvent.Type.scroll:
+                // Scroll events are currently not used
+                break;
         }
     }
 }

@@ -240,6 +240,18 @@ void framebufferPutPixel(uint x, uint y, uint argbColor) {
     if (cast(int)x < g_fbClip.x || cast(int)x >= g_fbClip.x + cast(int)g_fbClip.w ||
         cast(int)y < g_fbClip.y || cast(int)y >= g_fbClip.y + cast(int)g_fbClip.h) return;
 
+    // Debug pixel write
+    static int pixelLogCount = 0;
+    if (pixelLogCount < 10 && argbColor == 0xFFFF0000) // Log only Red pixels
+    {
+        pixelLogCount++;
+        import anonymos.console : print, printUnsigned, printLine;
+        print("[fb] PutPixel Red at (");
+        printUnsigned(x); print(", "); printUnsigned(y);
+        print(") BPP="); printUnsigned(g_fb.bpp);
+        printLine("");
+    }
+
     const bpp   = g_fb.bpp;
     ubyte* addr = g_fb.addr;
 
@@ -618,7 +630,7 @@ private __gshared bool       g_cursorSaveBufferValid = false;
 // Default 12x19 arrow cursor (ARGB)
 // Simple pixel art arrow
 private __gshared uint[12 * 19] g_defaultCursorPixels = [
-    0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000,
     0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
     0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
     0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
@@ -652,6 +664,9 @@ void framebufferInitCursor()
 @nogc nothrow @system
 void framebufferSetCursorIcon(uint width, uint height, const(uint)* pixels)
 {
+    import anonymos.console : print, printUnsigned, printLine;
+    print("[fb] SetCursorIcon W="); printUnsigned(width); print(" H="); printUnsigned(height); printLine("");
+
     // Hide old cursor first to restore background
     bool wasVisible = g_cursorVisible;
     if (wasVisible) framebufferHideCursor();
@@ -660,42 +675,225 @@ void framebufferSetCursorIcon(uint width, uint height, const(uint)* pixels)
     g_currentCursorIcon.height = height;
     g_currentCursorIcon.pixels = pixels;
 
-    if (wasVisible) framebufferShowCursor();
+    if (wasVisible) 
+    {
+        print("[fb] Restoring visibility...");
+        framebufferShowCursor();
+    }
+    else
+    {
+        print("[fb] Cursor was NOT visible. Showing it now.");
+        framebufferShowCursor();
+    }
 }
+
+@nogc nothrow @system
+private __gshared uint[256 * 256] g_atomicCursorBuffer; // Buffer for atomic cursor updates
 
 @nogc nothrow @system
 void framebufferMoveCursor(int x, int y)
 {
-    static int lastX = -1;
-    static int lastY = -1;
-    
     if (!g_fbInitialized) return;
 
-    // Log cursor moves - DISABLED to prevent screen corruption/scrolling
-    /*
-    moveCount++;
-    if (moveCount % 100 == 1 || (x != lastX || y != lastY))
-    {
-        // ...
-    }
-    */
+    int oldX = g_cursorX;
+    int oldY = g_cursorY;
     
-    lastX = x;
-    lastY = y;
+    // Update global state
+    g_cursorX = x;
+    g_cursorY = y;
 
-    // If visible, we must:
-    // 1. Restore background at old position
-    // 2. Save background at new position
-    // 3. Draw cursor at new position
-    if (g_cursorVisible)
+    // If visible and direct draw is enabled, perform atomic update
+    if (g_cursorVisible && g_cursorDirectDraw)
     {
-        if (g_cursorDirectDraw) framebufferRestoreBackground();
-        g_cursorX = x;
-        g_cursorY = y;
-        if (g_cursorDirectDraw)
+        // Debug log occasionally
+        static int moveLog = 0;
+        moveLog++;
+        if (moveLog % 100 == 0) {
+             import anonymos.console : printLine;
+             printLine("[fb] Atomic Move Cursor");
+        }
+        
+        // Dimensions of the cursor
+        const w = g_currentCursorIcon.width;
+        const h = g_currentCursorIcon.height;
+        
+        // 1. Calculate bounding box of the update (Union of old and new positions)
+        int minX = (oldX < x) ? oldX : x;
+        int minY = (oldY < y) ? oldY : y;
+        int maxX = ((oldX + cast(int)w) > (x + cast(int)w)) ? (oldX + cast(int)w) : (x + cast(int)w);
+        int maxY = ((oldY + cast(int)h) > (y + cast(int)h)) ? (oldY + cast(int)h) : (y + cast(int)h);
+        
+        // Clip to framebuffer
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > cast(int)g_fb.width) maxX = g_fb.width;
+        if (maxY > cast(int)g_fb.height) maxY = g_fb.height;
+        
+        if (minX >= maxX || minY >= maxY) return; // Nothing to update
+        
+        int updateW = maxX - minX;
+        int updateH = maxY - minY;
+        
+        // Safety check for buffer size
+        if (updateW * updateH > g_atomicCursorBuffer.length)
         {
+            // Fallback to non-atomic if too large (shouldn't happen with normal cursors)
+            framebufferRestoreBackground(); // Uses oldX, oldY (but we updated g_cursorX... wait)
+            // We updated g_cursorX already. We need to restore at oldX, oldY.
+            // But framebufferRestoreBackground uses g_cursorX/Y.
+            // So we must temporarily revert g_cursorX/Y for the restore.
+            g_cursorX = oldX; g_cursorY = oldY;
+            framebufferRestoreBackground();
+            g_cursorX = x; g_cursorY = y;
             framebufferSaveBackground();
             framebufferDrawCursorIcon();
+            return;
+        }
+        
+        // 2. Read current framebuffer content into atomic buffer
+        // This contains the "Old Cursor" drawn over the "Background".
+        // We want to erase the old cursor and draw the new one.
+        // Actually, it's better to:
+        //   a. Restore the old background into the FB (but this flickers).
+        //   b. Read the FB (now clean) into buffer.
+        //   c. Draw new cursor into buffer.
+        //   d. Blit buffer.
+        // BUT step (a) causes flicker.
+        
+        // Better approach:
+        //   a. Read FB (with old cursor) into buffer.
+        //   b. "Erase" old cursor from buffer using g_cursorSaveBuffer.
+        //   c. Save "new background" from buffer (at new pos) into g_cursorSaveBuffer.
+        //   d. Draw new cursor into buffer.
+        //   e. Blit buffer to FB.
+        
+        // Step 2a: Read FB
+        ubyte* fbAddr = g_fb.addr;
+        uint pitch = g_fb.pitch;
+        uint bpp = g_fb.bpp;
+        
+        for (int r = 0; r < updateH; r++)
+        {
+            int fy = minY + r;
+            for (int c = 0; c < updateW; c++)
+            {
+                int fx = minX + c;
+                size_t offset = fy * pitch + fx * (bpp / 8);
+                uint val = 0;
+                if (bpp == 32) val = *(cast(uint*)(fbAddr + offset));
+                else if (bpp == 16) val = *(cast(ushort*)(fbAddr + offset));
+                
+                g_atomicCursorBuffer[r * updateW + c] = val;
+            }
+        }
+        
+        // Step 2b: Erase old cursor from buffer
+        // We iterate over the OLD cursor bounds, find where they map to the buffer, and restore from g_cursorSaveBuffer.
+        if (g_cursorSaveBufferValid)
+        {
+            for (int r = 0; r < h; r++)
+            {
+                int cy = oldY + r;
+                if (cy < minY || cy >= maxY) continue;
+                
+                for (int c = 0; c < w; c++)
+                {
+                    int cx = oldX + c;
+                    if (cx < minX || cx >= maxX) continue;
+                    
+                    // Buffer coordinates
+                    int bufX = cx - minX;
+                    int bufY = cy - minY;
+                    
+                    // Restore pixel
+                    g_atomicCursorBuffer[bufY * updateW + bufX] = g_cursorSaveBuffer[r * w + c];
+                }
+            }
+        }
+        
+        // Step 2c: Save new background from buffer
+        // We iterate over the NEW cursor bounds, read from buffer, save to g_cursorSaveBuffer.
+        // Note: g_cursorSaveBuffer size is fixed max 64x64.
+        for (int r = 0; r < h; r++)
+        {
+            int cy = y + r;
+            for (int c = 0; c < w; c++)
+            {
+                int cx = x + c;
+                // If out of bounds of screen, save black/0?
+                uint val = 0;
+                
+                // Map to buffer
+                if (cy >= minY && cy < maxY && cx >= minX && cx < maxX)
+                {
+                    int bufX = cx - minX;
+                    int bufY = cy - minY;
+                    val = g_atomicCursorBuffer[bufY * updateW + bufX];
+                }
+                else
+                {
+                    // Should be covered by buffer unless clipping logic is wrong or cursor is partially offscreen
+                    // If offscreen, read from FB directly? Or just 0.
+                    // For now, 0.
+                }
+                g_cursorSaveBuffer[r * w + c] = val;
+            }
+        }
+        g_cursorSaveBufferValid = true;
+        
+        // Step 2d: Draw new cursor into buffer
+        const(uint)* iconPixels = g_currentCursorIcon.pixels;
+        for (int r = 0; r < h; r++)
+        {
+            int cy = y + r;
+            if (cy < minY || cy >= maxY) continue;
+            
+            for (int c = 0; c < w; c++)
+            {
+                int cx = x + c;
+                if (cx < minX || cx >= maxX) continue;
+                
+                uint argb = iconPixels[r * w + c];
+                uint alpha = (argb >> 24) & 0xFF;
+                
+                if (alpha == 0) continue;
+                
+                int bufX = cx - minX;
+                int bufY = cy - minY;
+                uint bg = g_atomicCursorBuffer[bufY * updateW + bufX];
+                
+                if (alpha == 255)
+                {
+                    g_atomicCursorBuffer[bufY * updateW + bufX] = argbToNative(argb);
+                }
+                else
+                {
+                    // Blend (assuming bg is native, argb is ARGB)
+                    // We need to convert bg to ARGB to blend, or convert argb to native and blend?
+                    // argbToNative handles format. But blending needs components.
+                    // Simplified: just use argbToNative for now (no alpha blending on cursor for speed/simplicity in atomic path)
+                    // Or implement simple blend.
+                    // Let's assume 32bpp for simplicity of blend, or just opaque.
+                    // For now: threshold alpha.
+                    if (alpha > 128)
+                        g_atomicCursorBuffer[bufY * updateW + bufX] = argbToNative(argb);
+                }
+            }
+        }
+        
+        // Step 2e: Blit buffer to FB
+        for (int r = 0; r < updateH; r++)
+        {
+            int fy = minY + r;
+            for (int c = 0; c < updateW; c++)
+            {
+                int fx = minX + c;
+                size_t offset = fy * pitch + fx * (bpp / 8);
+                uint val = g_atomicCursorBuffer[r * updateW + c];
+                
+                if (bpp == 32) *(cast(uint*)(fbAddr + offset)) = val;
+                else if (bpp == 16) *(cast(ushort*)(fbAddr + offset)) = cast(ushort)val;
+            }
         }
     }
     else
@@ -794,7 +992,8 @@ private void framebufferSaveBackground()
                 pixelVal = p[0] | (p[1] << 8) | (p[2] << 16);
             }
             
-            g_cursorSaveBuffer[row * 64 + col] = pixelVal;
+            // Use width as stride to match atomic update logic
+            g_cursorSaveBuffer[row * w + col] = pixelVal;
         }
     }
     g_cursorSaveBufferValid = true;
@@ -820,7 +1019,8 @@ private void framebufferRestoreBackground()
             const cx = g_cursorX + col;
             if (cx < 0 || cx >= fbW) continue;
 
-            const saved = g_cursorSaveBuffer[row * 64 + col];
+            // Use width as stride
+            const saved = g_cursorSaveBuffer[row * w + col];
             // Use PutPixelRaw to write back exactly what we read
             framebufferPutPixelRaw(cx, cy, saved);
         }

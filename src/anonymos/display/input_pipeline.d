@@ -4,7 +4,7 @@ module anonymos.display.input_pipeline;
 /// the flow of keyboard/mouse data without tying directly into hardware yet.
 struct InputEvent
 {
-    enum Type { unknown, keyDown, keyUp, pointerMove, buttonDown, buttonUp }
+    enum Type { unknown, keyDown, keyUp, pointerMove, buttonDown, buttonUp, scroll }
     Type type;
     int  data1;
     int  data2;

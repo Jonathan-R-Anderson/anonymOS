@@ -394,6 +394,7 @@ KERNEL_SOURCES=(
   "src/anonymos/display/x11_stack.d"
   "src/anonymos/display/modesetting.d"
   "src/anonymos/display/gpu_accel.d"
+  "src/anonymos/display/cursor.d"
   "src/anonymos/display/cursor_diagnostics.d"
   "src/anonymos/display/vulkan.d"
   "src/anonymos/display/drm_sim.d"

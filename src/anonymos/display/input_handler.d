@@ -79,6 +79,10 @@ void processInputEvents(ref InputQueue queue, ref WindowManager manager, Damage*
         {
             if (handleInstallerInput(event))
             {
+                if (damage !is null)
+                {
+                    damage.add(0, 0, g_fb.width, g_fb.height);
+                }
                 continue;
             }
         }

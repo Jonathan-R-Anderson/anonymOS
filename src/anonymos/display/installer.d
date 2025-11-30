@@ -269,9 +269,9 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
     else if (event.type == InputEvent.Type.buttonDown)
     {
         // Mouse Click Handling
-        // event.data1 = button (1=left, 2=right, 3=middle)
-        // event.data2 = x
-        // event.data3 = y
+        // event.data1 = X
+        // event.data2 = Y
+        // event.data3 = Buttons
         
         int mx = event.data1;
         int my = event.data2;
@@ -287,24 +287,32 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
         int nextY = winY + h - 60;
         
         // Debug logging
-        // print("[installer] Click at (");
-        // printUnsigned(cast(uint)mx);
-        // print(", ");
-        // printUnsigned(cast(uint)my);
-        // print(") Next button: (");
-        // printUnsigned(cast(uint)nextX);
-        // print(", ");
-        // printUnsigned(cast(uint)nextY);
-        // print(") to (");
-        // printUnsigned(cast(uint)(nextX + 100));
-        // print(", ");
-        // printUnsigned(cast(uint)(nextY + 36));
-        // printLine(")");
+        import anonymos.console : print, printLine, printUnsigned;
+        print("[installer] Click at (");
+        printUnsigned(cast(uint)mx);
+        print(", ");
+        printUnsigned(cast(uint)my);
+        print(") Next button: (");
+        printUnsigned(cast(uint)nextX);
+        print(", ");
+        printUnsigned(cast(uint)nextY);
+        print(") to (");
+        printUnsigned(cast(uint)(nextX + 100));
+        print(", ");
+        printUnsigned(cast(uint)(nextY + 36));
+        printLine(")");
         
         if (mx >= nextX && mx <= nextX + 100 && my >= nextY && my <= nextY + 36)
         {
-            // printLine("[installer] NEXT button clicked!");
+            printLine("[installer] NEXT button clicked!");
             nextModule();
+            return true;
+        }
+
+        if (mx >= backX && mx <= backX + 100 && my >= backY && my <= backY + 36)
+        {
+            printLine("[installer] BACK button clicked!");
+            prevModule();
             return true;
         }
         
@@ -684,6 +692,15 @@ private @nogc nothrow void nextModule()
     {
         g_installer.currentModule = CalamaresModule.Exec;
     }
+}
+
+private @nogc nothrow void prevModule()
+{
+    if (g_installer.currentModule == CalamaresModule.NetInstall) g_installer.currentModule = CalamaresModule.Welcome;
+    else if (g_installer.currentModule == CalamaresModule.Blockchain) g_installer.currentModule = CalamaresModule.NetInstall;
+    else if (g_installer.currentModule == CalamaresModule.Partition) g_installer.currentModule = CalamaresModule.Blockchain;
+    else if (g_installer.currentModule == CalamaresModule.Users) g_installer.currentModule = CalamaresModule.Partition;
+    else if (g_installer.currentModule == CalamaresModule.Summary) g_installer.currentModule = CalamaresModule.Users;
 }
 
 private @nogc nothrow void handleTextInput(ulong key)

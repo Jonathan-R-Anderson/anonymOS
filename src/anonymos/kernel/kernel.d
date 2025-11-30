@@ -310,9 +310,9 @@ private @nogc nothrow ModesetResult tryBringUpDisplay(const MultibootContext con
     {
         configureAccelerationFromModeset(result);
         renderBootSplash();
-        // Keep framebuffer console enabled so kernel logs remain visible during
-        // desktop bring-up and debugging.
-        setFramebufferConsoleEnabled(true);
+        // Disable framebuffer console to prevent text flooding over the GUI
+        // Logs will still go to serial
+        setFramebufferConsoleEnabled(false);
     }
     else
     {

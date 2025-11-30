@@ -343,7 +343,125 @@ void canvasFill(ref Canvas canvas, uint argbColor) @nogc nothrow
     }
 }
 
-/// Draw a rectangle with optional fill using framebuffer helpers.
+/// Draw a line using Bresenham's algorithm
+void canvasLine(ref Canvas canvas, int x0, int y0, int x1, int y1, uint argbColor) @nogc nothrow
+{
+    if (!canvas.available || canvas.pixels is null) return;
+
+    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
+    int dy = (y1 > y0) ? (y1 - y0) : (y0 - y1);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    while (true)
+    {
+        canvasPutPixel(canvas, x0, y0, argbColor);
+
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy)
+        {
+            err -= dy;
+            x0 += sx;
+        }
+        if (e2 < dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+/// Draw a circle using Midpoint algorithm
+void canvasCircle(ref Canvas canvas, int cx, int cy, int radius, uint argbColor, bool filled = true) @nogc nothrow
+{
+    if (!canvas.available || canvas.pixels is null) return;
+
+    int x = radius;
+    int y = 0;
+    int err = 0;
+
+    while (x >= y)
+    {
+        if (filled)
+        {
+            canvasLine(canvas, cx - x, cy + y, cx + x, cy + y, argbColor);
+            canvasLine(canvas, cx - x, cy - y, cx + x, cy - y, argbColor);
+            canvasLine(canvas, cx - y, cy + x, cx + y, cy + x, argbColor);
+            canvasLine(canvas, cx - y, cy - x, cx + y, cy - x, argbColor);
+        }
+        else
+        {
+            canvasPutPixel(canvas, cx + x, cy + y, argbColor);
+            canvasPutPixel(canvas, cx + y, cy + x, argbColor);
+            canvasPutPixel(canvas, cx - y, cy + x, argbColor);
+            canvasPutPixel(canvas, cx - x, cy + y, argbColor);
+            canvasPutPixel(canvas, cx - x, cy - y, argbColor);
+            canvasPutPixel(canvas, cx - y, cy - x, argbColor);
+            canvasPutPixel(canvas, cx + y, cy - x, argbColor);
+            canvasPutPixel(canvas, cx + x, cy - y, argbColor);
+        }
+
+        if (err <= 0)
+        {
+            y += 1;
+            err += 2 * y + 1;
+        }
+        if (err > 0)
+        {
+            x -= 1;
+            err -= 2 * x + 1;
+        }
+    }
+}
+
+/// Helper to plot a single pixel with alpha blending and clipping
+private void canvasPutPixel(ref Canvas canvas, int x, int y, uint argbColor) @nogc nothrow
+{
+    // Clipping
+    if (x < canvas.clipX || x >= canvas.clipX + canvas.clipW ||
+        y < canvas.clipY || y >= canvas.clipY + canvas.clipH)
+    {
+        return;
+    }
+
+    // Check bounds (redundant if clip is correct, but safe)
+    if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
+
+    uint* pixelPtr = &canvas.pixels[y * canvas.pitch + x];
+    
+    // Alpha blending
+    uint alpha = (argbColor >> 24) & 0xFF;
+    if (alpha == 0) return;
+    
+    if (alpha == 255)
+    {
+        *pixelPtr = argbColor;
+    }
+    else
+    {
+        uint bg = *pixelPtr;
+        uint bgR = (bg >> 16) & 0xFF;
+        uint bgG = (bg >> 8) & 0xFF;
+        uint bgB = bg & 0xFF;
+        
+        uint fgR = (argbColor >> 16) & 0xFF;
+        uint fgG = (argbColor >> 8) & 0xFF;
+        uint fgB = argbColor & 0xFF;
+        
+        // Simple alpha blend: out = (fg * alpha + bg * (255 - alpha)) / 255
+        // Approximation: (fg * alpha + bg * (256 - alpha)) >> 8
+        uint invAlpha = 256 - alpha;
+        
+        uint outR = (fgR * alpha + bgR * invAlpha) >> 8;
+        uint outG = (fgG * alpha + bgG * invAlpha) >> 8;
+        uint outB = (fgB * alpha + bgB * invAlpha) >> 8;
+        
+        *pixelPtr = 0xFF000000 | (outR << 16) | (outG << 8) | outB;
+    }
+}
+
 /// Draw a rectangle with optional fill using framebuffer helpers.
 void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColor, bool filled = true) @nogc nothrow
 {
@@ -375,7 +493,9 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
     uint drawW = ix2 - ix1;
     uint drawH = iy2 - iy1;
 
-    if (canvas.targetsFramebuffer)
+    // Use accelerated path ONLY for opaque colors
+    uint alpha = (argbColor >> 24) & 0xFF;
+    if (canvas.targetsFramebuffer && alpha == 255)
     {
         if (!(filled && acceleratedFillRect(drawX, drawY, drawW, drawH, argbColor)))
         {
@@ -410,7 +530,7 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
                 if (!onLeft && !onRight && !onTop && !onBottom) continue;
             }
 
-            canvas.pixels[yy * canvas.pitch + xx] = argbColor;
+            canvasPutPixel(canvas, xx, yy, argbColor);
         }
     }
 }
@@ -420,13 +540,22 @@ void canvasRect(ref Canvas canvas, uint x, uint y, uint w, uint h, uint argbColo
 /// building UI layouts.
 uint canvasText(ref Canvas canvas, const(FontStack)* stack, uint x, uint y, const(char)[] text, uint fg, uint bg, bool opaqueBg = true) @nogc nothrow
 {
+    import anonymos.console : printLine, print, printUnsigned;
+    
     if (stack is null)
     {
         stack = activeFontStack();
     }
 
-    if (!canvas.available || !fontStackReady(stack))
+    if (!canvas.available)
     {
+        // printLine("[canvas] canvasText: canvas not available");
+        return 0;
+    }
+
+    if (!fontStackReady(stack))
+    {
+        printLine("[canvas] canvasText: font stack not ready");
         return 0;
     }
 
@@ -442,6 +571,28 @@ uint canvasText(ref Canvas canvas, const(FontStack)* stack, uint x, uint y, cons
         const auto glyph = &run.glyphs[i];
         canvasBlitMask(canvas, cursorX, y, glyph.mask.ptr, glyphWidth, glyphHeight, glyphWidth, fg, bg, opaqueBg);
         cursorX += glyph.advance;
+    }
+
+    return run.width;
+}
+
+/// Measure the width of a text string without rendering it.
+uint measureText(const(FontStack)* stack, const(char)[] text) @nogc nothrow
+{
+    if (stack is null)
+    {
+        stack = activeFontStack();
+    }
+
+    if (!fontStackReady(stack))
+    {
+        return 0;
+    }
+
+    const run = shapeRun(stack, text);
+    if (run is null)
+    {
+        return 0;
     }
 
     return run.width;

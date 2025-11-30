@@ -167,9 +167,15 @@ bool renderGlyph(ref TrueTypeFont font, dchar codepoint, ref ubyte[glyphWidth * 
         return false;  // Glyph not found
     
     // Load and render the glyph
-    FT_Error error = FT_Load_Glyph(font.ftFace, glyphIndex, FT_LOAD_RENDER | FT_LOAD_MONOCHROME);
+    // Error 64 (0x40) is FT_Err_Too_Many_Hints. Disabling hinting fixes this for some fonts/sizes.
+    FT_Error error = FT_Load_Glyph(font.ftFace, glyphIndex, FT_LOAD_RENDER | FT_LOAD_MONOCHROME | FT_LOAD_NO_HINTING);
     if (error != 0)
+    {
+        import anonymos.console : print, printUnsigned, printLine;
+        print("[freetype] FT_Load_Glyph failed for char "); printUnsigned(cast(uint)codepoint);
+        print(" error="); printUnsigned(cast(uint)error); printLine("");
         return false;
+    }
     
     FT_GlyphSlot slot = font.ftFace.glyph;
     FT_Bitmap* bitmap = &slot.bitmap;

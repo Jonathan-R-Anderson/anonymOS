@@ -19,6 +19,7 @@ import anonymos.multiboot : FramebufferModeRequest;
 import anonymos.display.canvas;
 import anonymos.display.installer;
 import anonymos.display.vulkan;
+import anonymos.display.loader;
 
 __gshared WindowManager g_windowManager;
 __gshared bool g_windowManagerReady = false;
@@ -67,6 +68,20 @@ private @nogc nothrow void ensureDisplayServer()
         enableFreetype(*stack);
         enableHarfBuzz(*stack);
     }
+    
+    // Ensure at least one font is registered
+    if (stack.registeredFonts == 0)
+    {
+        printLine("[desktop] Warning: No fonts registered, forcing bitmap fallback");
+        stack.bitmapEnabled = true;
+        stack.registeredFonts = 1;
+    }
+
+    import anonymos.console : print, printUnsigned;
+    print("[desktop] Font Stack State: registered="); printUnsigned(stack.registeredFonts);
+    print(" bitmap="); printUnsigned(stack.bitmapEnabled ? 1 : 0);
+    print(" freetype="); printUnsigned(stack.freetypeEnabled ? 1 : 0);
+    printLine("");
     
     attachFontStack(g_displayServer, stack);
 
@@ -518,12 +533,27 @@ void runSimpleDesktopLoop()
 
     printDebugLine("Before loop");
     
+    // Initialize Loader
+    initLoader(g_fb.width, g_fb.height);
+    
+    // Disable console output to framebuffer immediately to prevent log spam
+    import anonymos.console : setFramebufferConsoleEnabled;
+    setFramebufferConsoleEnabled(false);
+    
     int lastCursorX = -1;
     int lastCursorY = -1;
     
     // Active event loop
+    int loopCounter = 0;
     while (true)
     {
+        loopCounter++;
+        if (loopCounter % 60 == 0)
+        {
+             import anonymos.console : printDebugLine, printUnsigned, print;
+             print("[desktop] loop heartbeat "); printUnsigned(loopCounter); printLine("");
+        }
+
         // Check compositor state
         const bool usingCompositor = useCompositor && compositorAvailable();
         framebufferSetCursorDirectDraw(!usingCompositor);
@@ -561,7 +591,64 @@ void runSimpleDesktopLoop()
         
         // Render the desktop/installer
         // Only redraw if there is damage or if the installer is active (animations)
-        if (damage.any || g_installer.active)
+        
+        // Calculate Damage for Presentation
+        // Union of Window Damage and Cursor Damage (Old + New positions)
+        int minX = g_fb.width;
+        int minY = g_fb.height;
+        int maxX = 0;
+        int maxY = 0;
+        bool hasDamage = false;
+
+        if (g_loader.active)
+        {
+            updateLoader();
+            
+            // Create a temporary canvas for the loader
+            Canvas c = createFramebufferCanvas();
+            renderLoader(&c, g_fb.width, g_fb.height);
+            
+            // Mark full screen damage for presentation
+            minX = 0; minY = 0; maxX = g_fb.width; maxY = g_fb.height;
+            hasDamage = true;
+        }
+        else if (g_installer.active)
+        {
+             // Transition logic: Fade up
+             // We can't easily do alpha blending of full screens without a compositor buffer.
+             // But we can simulate "sliding up" by rendering the loader background 
+             // and then the installer window at an offset.
+             
+             // For now, just render the installer directly.
+             // To support "fade upward", we would need a transition state in the loader.
+             // Let's modify the loader to handle the transition out.
+             
+             // If we just render the installer, it will pop in.
+             // The user wants "fade upward overtop of kinetic".
+             
+             // Since we don't have a complex scene graph, let's just render the installer.
+             // The loader logic handles the "active" state.
+             
+             // If we are here, loader is done.
+             // Render installer background (solid color or gradient) instead of desktop wallpaper.
+             
+             Canvas c = createFramebufferCanvas();
+             // Clear to dark background
+             c.canvasFill(0xFF0F172A); // Match loader BG
+             
+             // Render installer window
+             // Center it
+             uint w = 800;
+             uint h = 500;
+             uint x = (g_fb.width - w) / 2;
+             uint y = (g_fb.height - h) / 2;
+             
+             renderInstallerWindow(&c, x, y, w, h);
+             
+             minX = 0; minY = 0; maxX = g_fb.width; maxY = g_fb.height;
+             hasDamage = true;
+        }
+        else if (damage.any)
         {
             runSimpleDesktopOnce(&damage);
         }
@@ -575,13 +662,7 @@ void runSimpleDesktopLoop()
         framebufferMoveCursor(cx, cy);
         framebufferShowCursor(); // Ensure visible
 
-        // Calculate Damage for Presentation
-        // Union of Window Damage and Cursor Damage (Old + New positions)
-        int minX = g_fb.width;
-        int minY = g_fb.height;
-        int maxX = 0;
-        int maxY = 0;
-        bool hasDamage = false;
+        // (Damage variables already declared above)
         
         if (g_installer.active)
         {

@@ -589,6 +589,10 @@ void renderWorkspaceComposited(const WindowManager* manager)
         c.pitch = g_compositor.pitch;
         c.targetsFramebuffer = false;
         c.available = true;
+        c.clipX = 0;
+        c.clipY = 0;
+        c.clipW = g_compositor.width;
+        c.clipH = g_compositor.height;
         
         // Calculate installer window position (centered)
         uint w = 800;

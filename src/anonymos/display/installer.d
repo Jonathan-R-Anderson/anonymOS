@@ -122,6 +122,20 @@ public @nogc nothrow void initInstaller()
 // Main render function
 public @nogc nothrow void renderInstallerWindow(Canvas* c, int x, int y, int w, int h)
 {
+    import anonymos.console : printLine, print, printUnsigned;
+    static int frameCount = 0;
+    frameCount++;
+    if (frameCount % 60 == 0)
+    {
+        print("[installer] render frame "); printUnsigned(frameCount);
+        print(" x="); printUnsigned(x);
+        print(" y="); printUnsigned(y);
+        print(" w="); printUnsigned(w);
+        print(" h="); printUnsigned(h);
+        print(" module="); printUnsigned(cast(uint)g_installer.currentModule);
+        print(" clip="); printUnsigned(c.clipW); print("x"); printUnsigned(c.clipH);
+        printLine("");
+    }
     // Draw Window Frame
     (*c).canvasRect(x, y, w, h, COL_MAIN_BG);
     
@@ -248,7 +262,7 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
             // print("[installer] Key pressed: ");
             // printUnsigned(cast(uint)event.data1);
             // printLine("");
-            handleTextInput(event.data2); // Use raw scancode
+            handleTextInput(event.data1); // Use translated ASCII
             return true;
         }
     }
@@ -336,9 +350,22 @@ public @nogc nothrow bool handleInstallerInput(InputEvent event)
              if (!g_installer.editingField)
              {
                  import anonymos.console : printLine;
-                 printLine("[installer] Enabling edit mode");
-                 g_installer.editingField = true;
-                 return true;
+                 
+                 // Perform precise hit testing to select the correct field
+                 if (hitTestFields(mx, my, winX, winY))
+                 {
+                     printLine("[installer] Enabling edit mode");
+                     g_installer.editingField = true;
+                     return true;
+                 }
+             }
+             else
+             {
+                 // Already editing, but maybe clicked a different field?
+                 if (hitTestFields(mx, my, winX, winY))
+                 {
+                     return true;
+                 }
              }
         }
     }
@@ -531,6 +558,18 @@ private @nogc nothrow void drawNavButtons(Canvas* c, int x, int y)
 
 private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label, ref char[32] buffer, int index, bool password = false)
 {
+    import anonymos.console : printLine, print, printUnsigned;
+    // Log field state occasionally
+    static int fieldLogCounter = 0;
+    fieldLogCounter++;
+    if (fieldLogCounter % 300 == 0 && g_installer.selectedIndex == index)
+    {
+        import anonymos.console : printCString;
+        print("[installer] drawField "); printCString(label);
+        print(" len="); printUnsigned(stringLen(buffer));
+        print(" editing="); printUnsigned(g_installer.editingField ? 1 : 0);
+        printLine("");
+    }
     drawString(c, x, y, label, COL_TEXT_MAIN);
     
     uint bgCol = (g_installer.selectedIndex == index) ? 0xFFFFFFFF : 0xFFFCFCFC;
@@ -563,7 +602,22 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
     if (g_installer.selectedIndex == index && g_installer.editingField)
     {
         // Draw cursor
-        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 35, 2, 14, COL_TEXT_MAIN);
+        import anonymos.display.canvas : measureText;
+        uint textWidth = 0;
+        if (password && !isEmpty)
+        {
+             // Measure asterisks
+             // We don't have a string of asterisks, so we approximate or construct one?
+             // Or just measure "********" if that's what we drew.
+             // The draw code draws "********" if password && !isEmpty.
+             textWidth = measureText(null, "********");
+        }
+        else if (!isEmpty)
+        {
+            textWidth = measureText(null, cast(char[])buffer[0..stringLen(buffer)]);
+        }
+        
+        (*c).canvasRect(x + 5 + textWidth, y + 35, 2, 14, COL_TEXT_MAIN);
     }
     
     canvasResetClip(*c);
@@ -603,7 +657,17 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
         
     if (g_installer.selectedIndex == index && g_installer.editingField)
     {
-        (*c).canvasRect(x + 5 + (stringLen(buffer) * 8), y + 35, 2, 14, COL_TEXT_MAIN);
+        import anonymos.display.canvas : measureText;
+        uint textWidth = 0;
+        if (password && !isEmpty)
+        {
+             textWidth = measureText(null, "********");
+        }
+        else if (!isEmpty)
+        {
+            textWidth = measureText(null, cast(char[])buffer[0..stringLen(buffer)]);
+        }
+        (*c).canvasRect(x + 5 + textWidth, y + 35, 2, 14, COL_TEXT_MAIN);
     }
     
     canvasResetClip(*c);
@@ -631,7 +695,7 @@ private @nogc nothrow void handleTextInput(ulong key)
     while(len < buf.length && buf[len] != 0) len++;
     
     // Handle backspace
-    if (key == 14) // Backspace
+    if (key == 8) // Backspace (ASCII)
     {
         if (len > 0)
         {
@@ -640,51 +704,14 @@ private @nogc nothrow void handleTextInput(ulong key)
         return;
     }
     
-    // Convert scancode to character
-    char c = 0;
-    
-    // Numbers (1-9, 0)
-    if (key >= 0x02 && key <= 0x0B)
+    // Printable characters
+    if (key >= 32 && key <= 126)
     {
-        const char[10] nums = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
-        c = nums[key - 0x02];
-    }
-    // Letters (QWERTY layout)
-    else if (key >= 16 && key <= 25) // Q-P row
-    {
-        const char[10] chars = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p'];
-        c = chars[key - 16];
-    }
-    else if (key >= 30 && key <= 38) // A-L row
-    {
-        const char[9] chars = ['a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l'];
-        c = chars[key - 30];
-    }
-    else if (key >= 44 && key <= 50) // Z-M row
-    {
-        const char[7] chars = ['z', 'x', 'c', 'v', 'b', 'n', 'm'];
-        c = chars[key - 44];
-    }
-    // Special characters
-    else if (key == 57) c = ' ';  // Space
-    else if (key == 12) c = '-';  // Minus/underscore
-    else if (key == 13) c = '=';  // Equals/plus
-    else if (key == 26) c = '[';  // Left bracket
-    else if (key == 27) c = ']';  // Right bracket
-    else if (key == 39) c = ';';  // Semicolon
-    else if (key == 40) c = '\''; // Apostrophe
-    else if (key == 41) c = '`';  // Grave accent
-    else if (key == 43) c = '\\'; // Backslash
-    else if (key == 51) c = ',';  // Comma
-    else if (key == 52) c = '.';  // Period
-    else if (key == 53) c = '/';  // Slash
-    else if (key == 11) c = '0';  // 0 key (alternative)
-    
-    // Append character to buffer
-    if (c != 0 && len < buf.length - 1)
-    {
-        buf[len] = c;
-        buf[len + 1] = 0;
+        if (len < buf.length - 1)
+        {
+            buf[len] = cast(char)key;
+            buf[len + 1] = 0;
+        }
     }
 }
 
@@ -711,6 +738,64 @@ private @nogc nothrow char[] getActiveBuffer()
         if (g_installer.selectedIndex == 3) return g_installer.config.userPassword[];
     }
     return null;
+}
+
+private @nogc nothrow bool hitTestFields(int mx, int my, int winX, int winY)
+{
+    // Content area offset logic from renderInstallerWindow
+    int sidebarW = 220;
+    int contentX = winX + sidebarW + 30;
+    int contentY = winY + 30;
+    
+    if (g_installer.currentModule == CalamaresModule.NetInstall)
+    {
+        int configY = isNetworkAvailable() ? contentY + 80 : contentY + 200;
+        
+        // Field 0: RPC Endpoint (y + 30) -> Box at y + 60
+        if (checkFieldHit(mx, my, contentX, configY + 30)) { g_installer.selectedIndex = 0; return true; }
+        
+        // Field 1: Operator Key (y + 95) -> Box at y + 125
+        if (checkFieldHit(mx, my, contentX, configY + 95)) { g_installer.selectedIndex = 1; return true; }
+        
+        // Field 2: Static IP (y + 200) -> Box at y + 230
+        if (checkFieldHit(mx, my, contentX, configY + 200)) { g_installer.selectedIndex = 2; return true; }
+        
+        // Field 3: Gateway (y + 265) -> Box at y + 295
+        if (checkFieldHit(mx, my, contentX, configY + 265)) { g_installer.selectedIndex = 3; return true; }
+    }
+    else if (g_installer.currentModule == CalamaresModule.Partition)
+    {
+        // Field 0: Decoy Password (y + 115)
+        if (checkFieldHit(mx, my, contentX, contentY + 115)) { g_installer.selectedIndex = 0; return true; }
+        
+        // Field 1: Hidden Password (y + 200)
+        if (checkFieldHit(mx, my, contentX, contentY + 200)) { g_installer.selectedIndex = 1; return true; }
+    }
+    else if (g_installer.currentModule == CalamaresModule.Users)
+    {
+        // Field 0: Name (y + 60)
+        if (checkFieldHit(mx, my, contentX, contentY + 60)) { g_installer.selectedIndex = 0; return true; }
+        
+        // Field 1: Login Name (y + 105)
+        if (checkFieldHit(mx, my, contentX, contentY + 105)) { g_installer.selectedIndex = 1; return true; }
+        
+        // Field 2: Hostname (y + 150)
+        if (checkFieldHit(mx, my, contentX, contentY + 150)) { g_installer.selectedIndex = 2; return true; }
+        
+        // Field 3: Password (y + 195)
+        if (checkFieldHit(mx, my, contentX, contentY + 195)) { g_installer.selectedIndex = 3; return true; }
+    }
+    
+    return false;
+}
+
+private @nogc nothrow bool checkFieldHit(int mx, int my, int x, int y)
+{
+    // drawField draws the label at 'y', and the box at 'y + 30'.
+    // The box height is 30.
+    // So the hit target is from y+30 to y+60.
+    // Width is 300.
+    return (mx >= x && mx <= x + 300 && my >= y + 30 && my <= y + 60);
 }
 
 private @nogc nothrow void setStr(ref char[32] buf, const(char)* s)

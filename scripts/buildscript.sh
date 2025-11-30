@@ -398,6 +398,7 @@ KERNEL_SOURCES=(
   "src/anonymos/display/vulkan.d"
   "src/anonymos/display/drm_sim.d"
   "tests/cursor_movement_test.d"
+  "src/anonymos/display/loader.d"
   "src/anonymos/drivers/veracrypt.d"
   "src/anonymos/drivers/ahci.d"
   "src/anonymos/drivers/pci.d"

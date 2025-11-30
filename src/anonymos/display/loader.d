@@ -64,22 +64,29 @@ public @nogc nothrow void updateLoader()
     
     g_loader.timer++;
     
-    // Progress simulation
-    if (g_loader.progress < 1.0f)
-    {
-        // Non-linear progress
-        if (g_loader.progress < 0.3f) g_loader.progress += 0.005f;
-        else if (g_loader.progress < 0.7f) g_loader.progress += 0.002f;
-        else g_loader.progress += 0.008f;
-    }
-    else
+    // Progress simulation - Correlate with steps
+    // 0-20%: Initializing blockchain connection
+    // 20-40%: Establishing peer connection
+    // 40-60%: Fetching block headers
+    // 60-80%: Verifying smart contracts
+    // 80-95%: Loading decentralized content
+    // 95-100%: Connection established
+    
+    float target = 0.0f;
+    if (g_loader.timer < 120) target = 0.25f;       // 2s
+    else if (g_loader.timer < 240) target = 0.45f;  // 4s
+    else if (g_loader.timer < 360) target = 0.65f;  // 6s
+    else if (g_loader.timer < 480) target = 0.85f;  // 8s
+    else if (g_loader.timer < 600) target = 0.98f;  // 10s
+    else target = 1.0f;
+    
+    // Smooth approach
+    g_loader.progress += (target - g_loader.progress) * 0.05f;
+    
+    if (g_loader.progress >= 0.99f && g_loader.timer > 600)
     {
         g_loader.progress = 1.0f;
-        // Keep active for a moment after 100%
-        if (g_loader.timer > 600) // Approx 10 seconds total
-        {
-            g_loader.active = false;
-        }
+        g_loader.active = false;
     }
     
     // Update particles
@@ -94,10 +101,57 @@ public @nogc nothrow void updateLoader()
     }
 }
 
-public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
+public @nogc nothrow void renderLoader(Canvas* fbCanvas, int width, int height)
 {
+    import anonymos.kernel.physmem : allocFrame, freeFrame;
+    import anonymos.kernel.memory : memset;
+    
+    // Allocate backbuffer for double buffering to prevent flickering
+    // We need a contiguous buffer of size width*height*4.
+    // allocFrame returns 4KB. That's not enough.
+    // We need ~3MB for 1024x768.
+    // Since we don't have a general purpose heap allocator exposed here easily (kmalloc was a guess),
+    // we will use a static buffer in BSS if it fits, or just allocate multiple frames.
+    // But allocating multiple contiguous frames is hard without a proper allocator.
+    
+    // ALTERNATIVE: Render directly to FB but minimize clearing.
+    // OR: Use a smaller backbuffer and scale up? No, looks bad.
+    // OR: Just accept we need a heap.
+    // Wait, we are in kernel mode. We can just use a large static array?
+    // 3MB is large for BSS but maybe okay.
+    // Let's try a static array.
+    
+    // Actually, let's look at `src/anonymos/display/compositor.d`. It likely has surface allocation.
+    // But for now, to fix the build error and get it working:
+    // We will use a simplified approach:
+    // 1. Clear only the dirty regions? Hard with particles.
+    // 2. Use a static buffer.
+    
+    static uint[] backBuffer;
+    
+    if (backBuffer.length != width * height)
+    {
+        // We can't easily allocate 3MB contiguous physically without a proper allocator.
+        // However, we are in identity mapped mode (mostly).
+        // Let's try to grab a range of frames.
+        // For now, let's just use the framebuffer directly but try to be smart?
+        // No, flickering is due to clear + draw.
+        
+        // Let's use a smaller buffer for the "active" area? No, particles are full screen.
+        
+        // HACK: Use a fixed large static buffer.
+        // __gshared uint[1024*768] g_loaderBuffer; 
+        // This adds 3MB to the kernel image size. That's fine for a demo OS.
+    }
+    
+    // Use the global static buffer defined below
+    if (width * height > g_loaderBuffer.length) return; // Screen too big
+    
+    // Create canvas for backbuffer
+    Canvas c = createBufferCanvas(g_loaderBuffer.ptr, width, height, width); // Pitch = width (pixels)
+    
     // Clear background
-    (*c).canvasRect(0, 0, width, height, COL_BG);
+    c.canvasRect(0, 0, width, height, COL_BG);
     
     // Render Particles & Connections
     for (int i = 0; i < g_loader.particles.length; i++)
@@ -113,9 +167,9 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
         
         // Draw particle (filled circle with some transparency for glow effect simulation)
         // Core
-        (*c).canvasCircle(px, py, 2, COL_PRIMARY | 0xFF000000, true);
+        c.canvasCircle(px, py, 2, COL_PRIMARY | 0xFF000000, true);
         // Glow (faint larger circle)
-        (*c).canvasCircle(px, py, 4, (COL_PRIMARY & 0x00FFFFFF) | 0x40000000, true);
+        c.canvasCircle(px, py, 4, (COL_PRIMARY & 0x00FFFFFF) | 0x40000000, true);
         
         // Draw connections to nearby particles
         for (int j = i + 1; j < g_loader.particles.length; j++)
@@ -130,17 +184,24 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
                 int py2 = cast(int)g_loader.particles[j].y;
                 
                 // Calculate opacity based on distance
-                float dist = 0; // sqrt is expensive, approximate or just use linear falloff based on distSq
                 // Opacity: 1.0 at 0, 0.0 at 150
                 // alpha = 255 * (1 - dist/150)
-                // Let's just use a fixed faint color for now to save cycles, or simple math
                 
-                uint alpha = 64;
-                if (distSq < 50*50) alpha = 128;
-                else if (distSq < 100*100) alpha = 96;
+                int alpha = 0;
+                if (distSq < 150*150)
+                {
+                    // Approximate sqrt or just linear falloff
+                    // Let's use linear falloff based on distSq for speed
+                    // alpha = 255 * (1 - distSq / (150*150))
+                    float ratio = 1.0f - (distSq / (150.0f*150.0f));
+                    alpha = cast(int)(128.0f * ratio); // Max alpha 128
+                }
                 
-                uint lineColor = (COL_SECONDARY & 0x00FFFFFF) | (alpha << 24);
-                (*c).canvasLine(px, py, px2, py2, lineColor);
+                if (alpha > 0)
+                {
+                    uint lineColor = (COL_SECONDARY & 0x00FFFFFF) | (alpha << 24);
+                    c.canvasLine(px, py, px2, py2, lineColor);
+                }
             }
         }
     }
@@ -154,12 +215,6 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
     int hexY = cy - 50;
     
     // Draw Hexagon
-    // Points: (cx + r*cos(a), cy + r*sin(a)) for a = 0, 60, 120...
-    // 0 deg is right.
-    // P0: (cx + r, cy)
-    // P1: (cx + r/2, cy + r*sqrt(3)/2)
-    // ...
-    // Integer approx: sqrt(3)/2 ~= 0.866
     int h = cast(int)(hexSize * 0.866f);
     int r = hexSize;
     int r2 = r / 2;
@@ -177,7 +232,7 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
     for (int i = 0; i < 6; i++)
     {
         int j = (i + 1) % 6;
-        (*c).canvasLine(pts[i*2], pts[i*2+1], pts[j*2], pts[j*2+1], hexColor);
+        c.canvasLine(pts[i*2], pts[i*2+1], pts[j*2], pts[j*2+1], hexColor);
     }
     
     // Inner rotating element (simple triangle)
@@ -191,9 +246,9 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
     int ix3 = cx + cast(int)(ir * cos(angle + 4.18f)); // +240 deg
     int iy3 = hexY + cast(int)(ir * sin(angle + 4.18f));
     
-    (*c).canvasLine(ix1, iy1, ix2, iy2, COL_SECONDARY);
-    (*c).canvasLine(ix2, iy2, ix3, iy3, COL_SECONDARY);
-    (*c).canvasLine(ix3, iy3, ix1, iy1, COL_SECONDARY);
+    c.canvasLine(ix1, iy1, ix2, iy2, COL_SECONDARY);
+    c.canvasLine(ix2, iy2, ix3, iy3, COL_SECONDARY);
+    c.canvasLine(ix3, iy3, ix1, iy1, COL_SECONDARY);
     
     // Progress Text
     char[32] pctBuf;
@@ -202,7 +257,8 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
     pctBuf[len] = '%';
     pctBuf[len+1] = 0;
     
-    drawString(c, cx - 15, cy + 20, pctBuf, COL_PRIMARY);
+    // Fix: Pass the correct slice length to drawString
+    drawString(&c, cx - 15, cy + 20, pctBuf[0 .. len+1], COL_PRIMARY);
     
     // Status Text
     const(char)* status = "Initializing blockchain connection...";
@@ -217,23 +273,40 @@ public @nogc nothrow void renderLoader(Canvas* c, int width, int height)
     while (status[statusLen] != 0) statusLen++;
     int statusWidth = statusLen * 8;
     
-    drawString(c, cx - statusWidth/2, cy + 50, status, COL_TEXT_DIM);
+    drawString(&c, cx - statusWidth/2, cy + 50, status, COL_TEXT_DIM);
     
     // Progress Bar
     int barW = 300;
     int barH = 4;
-    (*c).canvasRect(cx - barW/2, cy + 80, barW, barH, 0xFF1E293B); // Background
-    (*c).canvasRect(cx - barW/2, cy + 80, cast(int)(barW * g_loader.progress), barH, COL_PRIMARY); // Fill
+    c.canvasRect(cx - barW/2, cy + 80, barW, barH, 0xFF1E293B); // Background
+    c.canvasRect(cx - barW/2, cy + 80, cast(int)(barW * g_loader.progress), barH, COL_PRIMARY); // Fill
     
     // Corner Decorations
     // Top Left
-    (*c).canvasRect(20, 20, 2, 40, COL_PRIMARY);
-    (*c).canvasRect(20, 20, 40, 2, COL_PRIMARY);
+    c.canvasRect(20, 20, 2, 40, COL_PRIMARY);
+    c.canvasRect(20, 20, 40, 2, COL_PRIMARY);
     
     // Bottom Right
-    (*c).canvasRect(width - 22, height - 60, 2, 40, COL_SECONDARY);
-    (*c).canvasRect(width - 62, height - 22, 40, 2, COL_SECONDARY);
+    c.canvasRect(width - 22, height - 60, 2, 40, COL_SECONDARY);
+    c.canvasRect(width - 62, height - 22, 40, 2, COL_SECONDARY);
+    
+    // Blit backbuffer to framebuffer
+    if (fbCanvas.pixels !is null)
+    {
+        uint* dest = fbCanvas.pixels;
+        uint* src = g_loaderBuffer.ptr;
+        size_t count = width * height;
+        
+        // Simple copy
+        for (size_t i = 0; i < count; i++)
+        {
+            dest[i] = src[i];
+        }
+    }
 }
+
+// Static buffer for double buffering (max 1920x1080)
+private __gshared uint[1920*1080] g_loaderBuffer;
 
 // Simple math helpers since we might not have std.math linked in kernel mode
 private @nogc nothrow float cos(float x)

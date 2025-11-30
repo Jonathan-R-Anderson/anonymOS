@@ -626,6 +626,14 @@ private @nogc nothrow void drawField(Canvas* c, int x, int y, const(char)* label
         }
         
         (*c).canvasRect(x + 5 + textWidth, y + 35, 2, 14, COL_TEXT_MAIN);
+        
+        static int cursorDrawLog = 0;
+        cursorDrawLog++;
+        if (cursorDrawLog % 60 == 0)
+        {
+             import anonymos.console : printLine;
+             printLine("[installer] Drawing cursor rect");
+        }
     }
     
     canvasResetClip(*c);
@@ -728,6 +736,8 @@ private @nogc nothrow void handleTextInput(ulong key)
         {
             buf[len] = cast(char)key;
             buf[len + 1] = 0;
+            import anonymos.console : print, printLine;
+            print("[installer] Appended char: "); print(cast(char)key); printLine("");
         }
     }
 }
@@ -764,21 +774,39 @@ private @nogc nothrow bool hitTestFields(int mx, int my, int winX, int winY)
     int contentX = winX + sidebarW + 30;
     int contentY = winY + 30;
     
+    import anonymos.console : print, printLine, printUnsigned;
+    
     if (g_installer.currentModule == CalamaresModule.NetInstall)
     {
         int configY = isNetworkAvailable() ? contentY + 80 : contentY + 200;
         
+        // print("[installer] HitTest NetInstall. mx="); printUnsigned(mx); print(" my="); printUnsigned(my);
+        // print(" contentX="); printUnsigned(contentX); print(" configY="); printUnsigned(configY);
+        // printLine("");
+
         // Field 0: RPC Endpoint (y + 30) -> Box at y + 60
-        if (checkFieldHit(mx, my, contentX, configY + 30)) { g_installer.selectedIndex = 0; return true; }
+        if (checkFieldHit(mx, my, contentX, configY + 30)) { 
+            printLine("[installer] Hit Field 0");
+            g_installer.selectedIndex = 0; return true; 
+        }
         
         // Field 1: Operator Key (y + 95) -> Box at y + 125
-        if (checkFieldHit(mx, my, contentX, configY + 95)) { g_installer.selectedIndex = 1; return true; }
+        if (checkFieldHit(mx, my, contentX, configY + 95)) { 
+            printLine("[installer] Hit Field 1");
+            g_installer.selectedIndex = 1; return true; 
+        }
         
         // Field 2: Static IP (y + 200) -> Box at y + 230
-        if (checkFieldHit(mx, my, contentX, configY + 200)) { g_installer.selectedIndex = 2; return true; }
+        if (checkFieldHit(mx, my, contentX, configY + 200)) { 
+            printLine("[installer] Hit Field 2");
+            g_installer.selectedIndex = 2; return true; 
+        }
         
         // Field 3: Gateway (y + 265) -> Box at y + 295
-        if (checkFieldHit(mx, my, contentX, configY + 265)) { g_installer.selectedIndex = 3; return true; }
+        if (checkFieldHit(mx, my, contentX, configY + 265)) { 
+            printLine("[installer] Hit Field 3");
+            g_installer.selectedIndex = 3; return true; 
+        }
     }
     else if (g_installer.currentModule == CalamaresModule.Partition)
     {

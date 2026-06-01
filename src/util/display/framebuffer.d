@@ -1,0 +1,1100 @@
+module anonymos_display.framebuffer;
+
+@safe: // default, we drop to @system in the few places we need pointer math
+
+import core.stdc.string : memmove; // for scrolling
+
+// --------------------------------------------------------------------------
+// Types and globals
+// --------------------------------------------------------------------------
+
+enum fbDefaultFgColor = 0xFFFFFFFF; // ARGB: white
+enum fbDefaultBgColor = 0x00000000; // ARGB: black
+
+import anonymos_display.common : glyphHeight, glyphWidth;
+import anonymos_display.fonts.font_stack : activeFontStack, glyphMaskFromStack;
+
+enum MaxSupportedBpp = 32;
+
+struct Framebuffer {
+    ubyte* addr;     // linear framebuffer base
+    uint   width;    // pixels
+    uint   height;   // pixels
+    uint   pitch;    // bytes per scanline
+    uint   bpp;      // bits per pixel (16/24/32 supported)
+    bool   isBGR;    // true if hardware expects BGR ordering instead of RGB
+    ushort modeNumber; // firmware-reported mode number (VBE or GOP-like), 0 when unknown
+    bool   fromFirmware; // true when imported from Multiboot/VBE/EFI tables
+}
+
+// Global state
+__gshared Framebuffer g_fb;
+__gshared bool        g_fbInitialized   = false;
+__gshared uint        g_fbFgColor       = fbDefaultFgColor;
+__gshared uint        g_fbBgColor       = fbDefaultBgColor;
+__gshared uint        g_fbCursorX       = 0; // in character cells
+__gshared uint        g_fbCursorY       = 0; // in character cells
+
+// --------------------------------------------------------------------------
+// Fallback 8x16 glyph
+// All characters use the same simple box glyph so we don't need a full font.
+// You can later replace drawChar() with a real font module.
+// --------------------------------------------------------------------------
+
+
+
+// --------------------------------------------------------------------------
+// Helpers: color conversion
+// --------------------------------------------------------------------------
+
+// Convert ARGB (0xAARRGGBB) to native 16-bit RGB565
+@nogc nothrow @system
+private uint argbToRgb565(uint argb) {
+    auto r = (argb >> 16) & 0xFF;
+    auto g = (argb >> 8)  & 0xFF;
+    auto b =  argb        & 0xFF;
+
+    uint r5 = (r * 31) / 255;
+    uint g6 = (g * 63) / 255;
+    uint b5 = (b * 31) / 255;
+
+    return (r5 << 11) | (g6 << 5) | b5;
+}
+
+// Convert ARGB to native 24/32-bit pixel for RGB/BGR (alpha ignored)
+@nogc nothrow @system
+private uint argbToNative(uint argb) {
+    auto r = (argb >> 16) & 0xFF;
+    auto g = (argb >> 8)  & 0xFF;
+    auto b =  argb        & 0xFF;
+
+    if (!g_fb.isBGR) {
+        // 0x00RRGGBB
+        return (r << 16) | (g << 8) | b;
+    } else {
+        // 0x00BBGGRR
+        return (b << 16) | (g << 8) | r;
+    }
+}
+
+// --------------------------------------------------------------------------
+// Initialization
+// Call this once from your multiboot / hardware probe code.
+// --------------------------------------------------------------------------
+
+// C-ABI init hook so you can call it from C/ASM if desired
+extern(C) @nogc nothrow @system
+void framebufferInit(const(void)* base,
+                     uint        width,
+                     uint        height,
+                     uint        pitchBytes,
+                     uint        bpp,
+                     bool        isBGR,
+                     ushort      modeNumber = 0,
+                     bool        fromFirmware = true)
+{
+    if (!framebufferModeSupported(base, width, height, pitchBytes, bpp)) {
+        g_fbInitialized = false;
+        return;
+    }
+
+    g_fb.addr   = cast(ubyte*) base;
+    g_fb.width  = width;
+    g_fb.height = height;
+    g_fb.pitch  = pitchBytes;
+    g_fb.bpp    = bpp;
+    g_fb.isBGR  = isBGR;
+    g_fb.modeNumber = modeNumber;
+    g_fb.fromFirmware = fromFirmware;
+
+    g_fbInitialized = true;
+    g_fbFgColor     = fbDefaultFgColor;
+    g_fbBgColor     = fbDefaultBgColor;
+    g_fbCursorX     = 0;
+    g_fbCursorY     = 0;
+    
+    framebufferResetClip();
+
+    framebufferClear();
+    framebufferInitCursor();
+}
+
+// D-friendly wrapper (same as above, just nicer to call)
+@nogc nothrow @system
+void initFramebuffer(const(void)* base,
+                     uint        width,
+                     uint        height,
+                     uint        pitchBytes,
+                     uint        bpp,
+                     bool        isBGR,
+                     ushort      modeNumber = 0,
+                     bool        fromFirmware = true)
+{
+    framebufferInit(base, width, height, pitchBytes, bpp, isBGR, modeNumber, fromFirmware);
+}
+
+// Query
+@nogc nothrow @system
+bool framebufferAvailable() {
+    return g_fbInitialized;
+}
+
+/// Validate a framebuffer mode before enabling it. This keeps callers honest
+/// about stride alignment and supported pixel formats.
+@nogc nothrow @system
+bool framebufferModeSupported(const(void)* base,
+                              uint width,
+                              uint height,
+                              uint pitchBytes,
+                              uint bpp)
+{
+    if (base is null || width == 0 || height == 0) {
+        return false;
+    }
+
+    // Only the canonical RGB565/RGB888/RGBA8888 layouts are supported.
+    if (bpp != 16 && bpp != 24 && bpp != 32) {
+        return false;
+    }
+
+    const uint bytesPerPixel = bpp / 8;
+    if (bytesPerPixel == 0) {
+        return false;
+    }
+
+    // Pitch must be large enough to hold an entire scanline and aligned to the
+    // pixel size so putPixel math remains correct.
+    if (pitchBytes < width * bytesPerPixel) {
+        return false;
+    }
+
+    if ((pitchBytes % bytesPerPixel) != 0) {
+        return false;
+    }
+
+    return true;
+}
+
+/// Expose the active framebuffer descriptor so higher layers (display server,
+/// compositor experiments) can understand the chosen mode.
+@nogc nothrow @system
+Framebuffer framebufferDescriptor()
+{
+    return g_fb;
+}
+
+// --------------------------------------------------------------------------
+// Low-level pixel operations (Set pixel / fill)
+// --------------------------------------------------------------------------
+
+// Clipping state
+struct ClipRect { int x, y; uint w, h; }
+__gshared ClipRect g_fbClip;
+
+@nogc nothrow @system
+void framebufferSetClip(int x, int y, uint w, uint h) {
+    g_fbClip = ClipRect(x, y, w, h);
+}
+
+@nogc nothrow @system
+void framebufferResetClip() {
+    if (g_fbInitialized) {
+        g_fbClip = ClipRect(0, 0, g_fb.width, g_fb.height);
+    } else {
+        g_fbClip = ClipRect(0, 0, 0, 0);
+    }
+}
+
+// Put a single pixel in ARGB space; handles 16/24/32bpp if initialized.
+@nogc nothrow @system
+void framebufferPutPixel(uint x, uint y, uint argbColor) {
+    if (!g_fbInitialized) return;
+    if (g_fb.addr is null) return;
+    
+    // Bounds check against framebuffer
+    if (x >= g_fb.width || y >= g_fb.height) return;
+
+    // Clip check
+    if (cast(int)x < g_fbClip.x || cast(int)x >= g_fbClip.x + cast(int)g_fbClip.w ||
+        cast(int)y < g_fbClip.y || cast(int)y >= g_fbClip.y + cast(int)g_fbClip.h) return;
+
+    // Debug pixel write
+    static int pixelLogCount = 0;
+    if (pixelLogCount < 10 && argbColor == 0xFFFF0000) // Log only Red pixels
+    {
+        pixelLogCount++;
+        import anonymos_userland.shell.console : print, printUnsigned, printLine;
+        print("[fb] PutPixel Red at (");
+        printUnsigned(x); print(", "); printUnsigned(y);
+        print(") BPP="); printUnsigned(g_fb.bpp);
+        printLine("");
+    }
+
+    const bpp   = g_fb.bpp;
+    ubyte* addr = g_fb.addr;
+
+    const byteOffset = y * g_fb.pitch + x * (bpp / 8);
+
+    switch (bpp) {
+        case 16: {
+            auto px = cast(ushort*) (addr + byteOffset);
+            *px = cast(ushort) argbToRgb565(argbColor);
+            break;
+        }
+        case 24: {
+            const native = argbToNative(argbColor);
+            auto p = addr + byteOffset;
+            // 24bpp: lowest 3 bytes are the pixel.
+            p[0] = cast(ubyte)( native        & 0xFF);
+            p[1] = cast(ubyte)((native >> 8)  & 0xFF);
+            p[2] = cast(ubyte)((native >> 16) & 0xFF);
+            break;
+        }
+        case 32: {
+            auto px = cast(uint*) (addr + byteOffset);
+            *px = argbToNative(argbColor); // ignore alpha
+            break;
+        }
+        default:
+            // Unsupported format
+            break;
+    }
+}
+
+// Put a raw pixel value (already in native format)
+@nogc nothrow @system
+void framebufferPutPixelRaw(uint x, uint y, uint rawPixel) {
+    if (!g_fbInitialized) return;
+    if (g_fb.addr is null) return;
+    
+    // Bounds check against framebuffer
+    if (x >= g_fb.width || y >= g_fb.height) return;
+
+    // Clip check
+    if (cast(int)x < g_fbClip.x || cast(int)x >= g_fbClip.x + cast(int)g_fbClip.w ||
+        cast(int)y < g_fbClip.y || cast(int)y >= g_fbClip.y + cast(int)g_fbClip.h) return;
+
+    const bpp   = g_fb.bpp;
+    ubyte* addr = g_fb.addr;
+
+    const byteOffset = y * g_fb.pitch + x * (bpp / 8);
+
+    switch (bpp) {
+        case 16: {
+            auto px = cast(ushort*) (addr + byteOffset);
+            *px = cast(ushort) rawPixel;
+            break;
+        }
+        case 24: {
+            auto p = addr + byteOffset;
+            p[0] = cast(ubyte)( rawPixel        & 0xFF);
+            p[1] = cast(ubyte)((rawPixel >> 8)  & 0xFF);
+            p[2] = cast(ubyte)((rawPixel >> 16) & 0xFF);
+            break;
+        }
+        case 32: {
+            auto px = cast(uint*) (addr + byteOffset);
+            *px = rawPixel;
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+// Fill entire screen with a given color
+@nogc nothrow @system
+void framebufferFill(uint argbColor) {
+    if (!g_fbInitialized) return;
+
+    foreach (y; 0 .. g_fb.height) {
+        foreach (x; 0 .. g_fb.width) {
+            framebufferPutPixel(x, y, argbColor);
+        }
+    }
+}
+
+// Clear to background color
+@nogc nothrow @system
+void framebufferClear() {
+    framebufferFill(g_fbBgColor);
+}
+
+// Draw a rectangle (filled or outline)
+@nogc nothrow @system
+void framebufferDrawRect(uint x, uint y, uint w, uint h, uint argbColor, bool filled = true) {
+    if (!g_fbInitialized) return;
+    if (w == 0 || h == 0) return;
+
+    const xEnd = x + w;
+    const yEnd = y + h;
+
+    if (filled) {
+        foreach (yy; y .. yEnd) {
+            foreach (xx; x .. xEnd) {
+                framebufferPutPixel(xx, yy, argbColor);
+            }
+        }
+    } else {
+        // Top and bottom
+        foreach (xx; x .. xEnd) {
+            framebufferPutPixel(xx, y,        argbColor);
+            framebufferPutPixel(xx, yEnd - 1, argbColor);
+        }
+        // Left and right
+        foreach (yy; y .. yEnd) {
+            framebufferPutPixel(x,        yy, argbColor);
+            framebufferPutPixel(xEnd - 1, yy, argbColor);
+        }
+    }
+}
+
+// Convenience: fill rectangle wrapper (explicit "fill rect" op)
+@nogc nothrow @system
+void framebufferFillRect(uint x, uint y, uint w, uint h, uint argbColor) {
+    framebufferDrawRect(x, y, w, h, argbColor, true);
+}
+
+// --------------------------------------------------------------------------
+// Bitmap blit: 8-bit mask (for fonts/icons)
+// --------------------------------------------------------------------------
+//
+// We treat the source as an 8-bit per pixel mask:
+//   - mask == 0   -> transparent (or background if useBg == true)
+//   - mask != 0   -> draw foreground color
+//
+// This is generic and independent of your fallback font; you can use it
+// for icons or higher-res fonts later.
+
+@nogc nothrow @system
+void framebufferBlitMask(uint dstX, uint dstY,
+                         const(ubyte)* mask,
+                         uint maskWidth, uint maskHeight,
+                         uint maskStride,
+                         uint fgARGB,
+                         uint bgARGB = 0,
+                         bool useBg = false)
+{
+    if (!g_fbInitialized) return;
+    if (mask is null) return;
+    if (maskWidth == 0 || maskHeight == 0) return;
+
+    // Clip against framebuffer bounds.
+    if (dstX >= g_fb.width || dstY >= g_fb.height) return;
+
+    uint maxW = g_fb.width  - dstX;
+    uint maxH = g_fb.height - dstY;
+
+    uint blitW = maskWidth;
+    uint blitH = maskHeight;
+    if (blitW > maxW) blitW = maxW;
+    if (blitH > maxH) blitH = maxH;
+
+    foreach (row; 0 .. blitH) {
+        const(ubyte)* srcRow = mask + row * maskStride;
+
+        foreach (col; 0 .. blitW) {
+            const ubyte m = srcRow[col];
+
+            // Fully transparent and no background requested
+            if (m == 0 && !useBg) {
+                continue;
+            }
+
+            const uint color = (m == 0) ? bgARGB : fgARGB;
+            framebufferPutPixel(dstX + col, dstY + row, color);
+        }
+    }
+}
+
+// --------------------------------------------------------------------------
+// Text rendering (simple 8x16 cell-based "console")
+// --------------------------------------------------------------------------
+
+@nogc nothrow @system
+void framebufferSetTextColors(uint fg, uint bg) {
+    g_fbFgColor = fg;
+    g_fbBgColor = bg;
+}
+
+// Number of character cells horizontally/vertically
+@nogc nothrow @system
+uint framebufferCols() {
+    if (!g_fbInitialized) return 0;
+    return g_fb.width / glyphWidth;
+}
+
+@nogc nothrow @system
+uint framebufferRows() {
+    if (!g_fbInitialized) return 0;
+    return g_fb.height / glyphHeight;
+}
+
+
+// Draw glyph for character c at pixel position (px, py)
+@nogc nothrow @system
+private void drawGlyph(uint px, uint py, uint fg, uint bg, dchar c) {
+    if (!g_fbInitialized) return;
+
+    ubyte[glyphWidth * glyphHeight] mask;
+    uint advance;
+
+    // Get mask from stack
+    if (glyphMaskFromStack(activeFontStack(), c, mask, advance)) {
+        framebufferBlitMask(px, py, mask.ptr, glyphWidth, glyphHeight, glyphWidth, fg, bg, true);
+    }
+}
+
+// Scroll text console up by one glyph row (16 pixels)
+@nogc nothrow @system
+private void scrollUpOneRow() {
+    if (!g_fbInitialized) return;
+
+    const glyphPixels = glyphHeight;
+    const visibleRows = framebufferRows();
+    if (visibleRows == 0) return;
+
+    // total pixel height occupied by the text grid
+    const textHeightPixels = visibleRows * glyphPixels;
+
+    // If the framebuffer is taller than text grid, we'll just scroll the grid area.
+    const bytesPerRow = g_fb.pitch;
+    auto src = g_fb.addr + glyphPixels * bytesPerRow;
+    auto dst = g_fb.addr;
+    const bytesToMove = (textHeightPixels - glyphPixels) * bytesPerRow;
+
+    memmove(dst, src, bytesToMove);
+
+    // Clear the last glyph row area
+    const startClearY = (visibleRows - 1) * glyphPixels;
+    foreach (y; startClearY .. startClearY + glyphPixels) {
+        foreach (x; 0 .. g_fb.width) {
+            framebufferPutPixel(x, y, g_fbBgColor);
+        }
+    }
+}
+
+// Place glyph for character at current cell (cx, cy)
+@nogc nothrow @system
+private void putCharAtCell(uint cx, uint cy, uint fg, uint bg, dchar c) {
+    const px = cx * glyphWidth;
+    const py = cy * glyphHeight;
+    drawGlyph(px, py, fg, bg, c);
+}
+
+// Advance cursor, scroll if needed
+@nogc nothrow @system
+private void advanceCursor() {
+    ++g_fbCursorX;
+    const cols = framebufferCols();
+    const rows = framebufferRows();
+
+    if (cols == 0 || rows == 0) return;
+
+    if (g_fbCursorX >= cols) {
+        g_fbCursorX = 0;
+        ++g_fbCursorY;
+    }
+
+    if (g_fbCursorY >= rows) {
+        scrollUpOneRow();
+        g_fbCursorY = rows - 1;
+    }
+}
+
+@nogc nothrow @system
+private void newLine() {
+    g_fbCursorX = 0;
+    ++g_fbCursorY;
+
+    const rows = framebufferRows();
+    if (rows == 0) return;
+
+    if (g_fbCursorY >= rows) {
+        scrollUpOneRow();
+        g_fbCursorY = rows - 1;
+    }
+}
+
+// Public: write a single character (uses same glyph for every printable)
+// Recognizes '\n', '\r', '\t', '\b'.
+@nogc nothrow @system
+void framebufferWriteChar(char c) {
+    if (!g_fbInitialized) return;
+
+    switch (c) {
+        case '\n':
+            newLine();
+            break;
+        case '\r':
+            g_fbCursorX = 0;
+            break;
+        case '\t':
+            // simple 4-space tabs
+            foreach (_; 0 .. 4) {
+                framebufferWriteChar(' ');
+            }
+            break;
+        case '\b':
+            if (g_fbCursorX > 0) {
+                --g_fbCursorX;
+                putCharAtCell(g_fbCursorX, g_fbCursorY, g_fbBgColor, g_fbBgColor, ' ');
+            }
+            break;
+        default:
+            putCharAtCell(g_fbCursorX, g_fbCursorY, g_fbFgColor, g_fbBgColor, c);
+            advanceCursor();
+            break;
+    }
+}
+
+// Public: write a D string
+@nogc nothrow @system
+void framebufferWriteString(const(char)[] s) {
+    if (!g_fbInitialized) return;
+    foreach (c; s) {
+        framebufferWriteChar(c);
+    }
+}
+
+// C-ABI helper: write a null-terminated C string
+extern(C) @nogc nothrow @system
+void framebufferWriteCString(const(char)* s) {
+    if (!g_fbInitialized || s is null) return;
+    for (; *s != 0; ++s) {
+        framebufferWriteChar(*s);
+    }
+}
+
+// Convenience: draw a simple "boot banner"
+@nogc nothrow @system
+void framebufferBootBanner(const(char)[] msg) {
+    if (!g_fbInitialized) return;
+
+    g_fbCursorX = 0;
+    g_fbCursorY = 0;
+    framebufferClear();
+
+    framebufferSetTextColors(0xFFFFFFFF, 0x00000000); // white on black
+    framebufferWriteString(msg);
+    framebufferWriteChar('\n');
+}
+
+// --------------------------------------------------------------------------
+// Software Cursor
+// --------------------------------------------------------------------------
+
+struct CursorIcon {
+    uint width;
+    uint height;
+    const(uint)* pixels; // ARGB
+}
+
+private __gshared CursorIcon g_currentCursorIcon;
+private __gshared int        g_cursorX = 0;
+private __gshared int        g_cursorY = 0;
+private __gshared bool       g_cursorVisible = false;
+private __gshared bool       g_cursorDirectDraw = true;
+private __gshared uint[64 * 64] g_cursorSaveBuffer; // Max 64x64 cursor
+private __gshared bool       g_cursorSaveBufferValid = false;
+
+// Default 12x19 arrow cursor (ARGB)
+// Simple pixel art arrow
+private __gshared uint[12 * 19] g_defaultCursorPixels = [
+    0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000, 0xFFFF0000,
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+];
+
+@nogc nothrow @system
+void framebufferInitCursor()
+{
+    g_currentCursorIcon.width  = 12;
+    g_currentCursorIcon.height = 19;
+    g_currentCursorIcon.pixels = g_defaultCursorPixels.ptr;
+    g_cursorVisible = false;
+    g_cursorSaveBufferValid = false;
+}
+
+@nogc nothrow @system
+void framebufferSetCursorIcon(uint width, uint height, const(uint)* pixels)
+{
+    import anonymos_userland.shell.console : print, printUnsigned, printLine;
+    print("[fb] SetCursorIcon W="); printUnsigned(width); print(" H="); printUnsigned(height); printLine("");
+
+    // Hide old cursor first to restore background
+    bool wasVisible = g_cursorVisible;
+    if (wasVisible) framebufferHideCursor();
+
+    g_currentCursorIcon.width  = width;
+    g_currentCursorIcon.height = height;
+    g_currentCursorIcon.pixels = pixels;
+
+    if (wasVisible) 
+    {
+        print("[fb] Restoring visibility...");
+        framebufferShowCursor();
+    }
+    else
+    {
+        print("[fb] Cursor was NOT visible. Showing it now.");
+        framebufferShowCursor();
+    }
+}
+
+@nogc nothrow @system
+private __gshared uint[256 * 256] g_atomicCursorBuffer; // Buffer for atomic cursor updates
+
+@nogc nothrow @system
+void framebufferMoveCursor(int x, int y)
+{
+    if (!g_fbInitialized) return;
+
+    int oldX = g_cursorX;
+    int oldY = g_cursorY;
+    
+    // Update global state
+    g_cursorX = x;
+    g_cursorY = y;
+
+    // If visible and direct draw is enabled, perform atomic update
+    if (g_cursorVisible && g_cursorDirectDraw)
+    {
+        // Debug log occasionally
+        static int moveLog = 0;
+        moveLog++;
+        if (moveLog % 100 == 0) {
+             // import anonymos_userland.shell.console : printLine;
+             // printLine("[fb] Atomic Move Cursor");
+        }
+        
+        // Dimensions of the cursor
+        const w = g_currentCursorIcon.width;
+        const h = g_currentCursorIcon.height;
+        
+        // 1. Calculate bounding box of the update (Union of old and new positions)
+        int minX = (oldX < x) ? oldX : x;
+        int minY = (oldY < y) ? oldY : y;
+        int maxX = ((oldX + cast(int)w) > (x + cast(int)w)) ? (oldX + cast(int)w) : (x + cast(int)w);
+        int maxY = ((oldY + cast(int)h) > (y + cast(int)h)) ? (oldY + cast(int)h) : (y + cast(int)h);
+        
+        // Clip to framebuffer
+        if (minX < 0) minX = 0;
+        if (minY < 0) minY = 0;
+        if (maxX > cast(int)g_fb.width) maxX = g_fb.width;
+        if (maxY > cast(int)g_fb.height) maxY = g_fb.height;
+        
+        if (minX >= maxX || minY >= maxY) return; // Nothing to update
+        
+        int updateW = maxX - minX;
+        int updateH = maxY - minY;
+        
+        // Safety check for buffer size
+        if (updateW * updateH > g_atomicCursorBuffer.length)
+        {
+            // Fallback to non-atomic if too large (shouldn't happen with normal cursors)
+            framebufferRestoreBackground(); // Uses oldX, oldY (but we updated g_cursorX... wait)
+            // We updated g_cursorX already. We need to restore at oldX, oldY.
+            // But framebufferRestoreBackground uses g_cursorX/Y.
+            // So we must temporarily revert g_cursorX/Y for the restore.
+            g_cursorX = oldX; g_cursorY = oldY;
+            framebufferRestoreBackground();
+            g_cursorX = x; g_cursorY = y;
+            framebufferSaveBackground();
+            framebufferDrawCursorIcon();
+            return;
+        }
+        
+        // 2. Read current framebuffer content into atomic buffer
+        // This contains the "Old Cursor" drawn over the "Background".
+        // We want to erase the old cursor and draw the new one.
+        // Actually, it's better to:
+        //   a. Restore the old background into the FB (but this flickers).
+        //   b. Read the FB (now clean) into buffer.
+        //   c. Draw new cursor into buffer.
+        //   d. Blit buffer.
+        // BUT step (a) causes flicker.
+        
+        // Better approach:
+        //   a. Read FB (with old cursor) into buffer.
+        //   b. "Erase" old cursor from buffer using g_cursorSaveBuffer.
+        //   c. Save "new background" from buffer (at new pos) into g_cursorSaveBuffer.
+        //   d. Draw new cursor into buffer.
+        //   e. Blit buffer to FB.
+        
+        // Step 2a: Read FB
+        ubyte* fbAddr = g_fb.addr;
+        uint pitch = g_fb.pitch;
+        uint bpp = g_fb.bpp;
+        
+        for (int r = 0; r < updateH; r++)
+        {
+            int fy = minY + r;
+            for (int c = 0; c < updateW; c++)
+            {
+                int fx = minX + c;
+                size_t offset = fy * pitch + fx * (bpp / 8);
+                uint val = 0;
+                if (bpp == 32) val = *(cast(uint*)(fbAddr + offset));
+                else if (bpp == 16) val = *(cast(ushort*)(fbAddr + offset));
+                
+                g_atomicCursorBuffer[r * updateW + c] = val;
+            }
+        }
+        
+        // Step 2b: Erase old cursor from buffer
+        // We iterate over the OLD cursor bounds, find where they map to the buffer, and restore from g_cursorSaveBuffer.
+        if (g_cursorSaveBufferValid)
+        {
+            for (int r = 0; r < h; r++)
+            {
+                int cy = oldY + r;
+                if (cy < minY || cy >= maxY) continue;
+                
+                for (int c = 0; c < w; c++)
+                {
+                    int cx = oldX + c;
+                    if (cx < minX || cx >= maxX) continue;
+                    
+                    // Buffer coordinates
+                    int bufX = cx - minX;
+                    int bufY = cy - minY;
+                    
+                    // Restore pixel
+                    g_atomicCursorBuffer[bufY * updateW + bufX] = g_cursorSaveBuffer[r * w + c];
+                }
+            }
+        }
+        
+        // Step 2c: Save new background from buffer
+        // We iterate over the NEW cursor bounds, read from buffer, save to g_cursorSaveBuffer.
+        // Note: g_cursorSaveBuffer size is fixed max 64x64.
+        for (int r = 0; r < h; r++)
+        {
+            int cy = y + r;
+            for (int c = 0; c < w; c++)
+            {
+                int cx = x + c;
+                // If out of bounds of screen, save black/0?
+                uint val = 0;
+                
+                // Map to buffer
+                if (cy >= minY && cy < maxY && cx >= minX && cx < maxX)
+                {
+                    int bufX = cx - minX;
+                    int bufY = cy - minY;
+                    val = g_atomicCursorBuffer[bufY * updateW + bufX];
+                }
+                else
+                {
+                    // Should be covered by buffer unless clipping logic is wrong or cursor is partially offscreen
+                    // If offscreen, read from FB directly? Or just 0.
+                    // For now, 0.
+                }
+                g_cursorSaveBuffer[r * w + c] = val;
+            }
+        }
+        g_cursorSaveBufferValid = true;
+        
+        // Step 2d: Draw new cursor into buffer
+        const(uint)* iconPixels = g_currentCursorIcon.pixels;
+        for (int r = 0; r < h; r++)
+        {
+            int cy = y + r;
+            if (cy < minY || cy >= maxY) continue;
+            
+            for (int c = 0; c < w; c++)
+            {
+                int cx = x + c;
+                if (cx < minX || cx >= maxX) continue;
+                
+                uint argb = iconPixels[r * w + c];
+                uint alpha = (argb >> 24) & 0xFF;
+                
+                if (alpha == 0) continue;
+                
+                int bufX = cx - minX;
+                int bufY = cy - minY;
+                uint bg = g_atomicCursorBuffer[bufY * updateW + bufX];
+                
+                if (alpha == 255)
+                {
+                    g_atomicCursorBuffer[bufY * updateW + bufX] = argbToNative(argb);
+                }
+                else
+                {
+                    // Blend (assuming bg is native, argb is ARGB)
+                    // We need to convert bg to ARGB to blend, or convert argb to native and blend?
+                    // argbToNative handles format. But blending needs components.
+                    // Simplified: just use argbToNative for now (no alpha blending on cursor for speed/simplicity in atomic path)
+                    // Or implement simple blend.
+                    // Let's assume 32bpp for simplicity of blend, or just opaque.
+                    // For now: threshold alpha.
+                    if (alpha > 128)
+                        g_atomicCursorBuffer[bufY * updateW + bufX] = argbToNative(argb);
+                }
+            }
+        }
+        
+        // Step 2e: Blit buffer to FB
+        for (int r = 0; r < updateH; r++)
+        {
+            int fy = minY + r;
+            for (int c = 0; c < updateW; c++)
+            {
+                int fx = minX + c;
+                size_t offset = fy * pitch + fx * (bpp / 8);
+                uint val = g_atomicCursorBuffer[r * updateW + c];
+                
+                if (bpp == 32) *(cast(uint*)(fbAddr + offset)) = val;
+                else if (bpp == 16) *(cast(ushort*)(fbAddr + offset)) = cast(ushort)val;
+            }
+        }
+    }
+    else
+    {
+        g_cursorX = x;
+        g_cursorY = y;
+    }
+}
+
+@nogc nothrow @system
+void framebufferShowCursor()
+{
+    if (!g_fbInitialized) return;
+    if (g_cursorVisible)
+    {
+        if (g_cursorDirectDraw) framebufferDrawCursorIcon();
+        return;
+    }
+
+    g_cursorVisible = true;
+    if (g_cursorDirectDraw)
+    {
+        framebufferSaveBackground();
+        framebufferDrawCursorIcon();
+    }
+}
+
+@nogc nothrow @system
+void framebufferHideCursor()
+{
+    if (!g_fbInitialized) return;
+    if (!g_cursorVisible) return;
+
+    if (g_cursorDirectDraw) framebufferRestoreBackground();
+    g_cursorVisible = false;
+}
+
+@nogc nothrow @system
+void framebufferForgetCursor()
+{
+    g_cursorVisible = false;
+    g_cursorSaveBufferValid = false;
+}
+
+// Internal helpers
+
+@nogc nothrow @system
+private void framebufferSaveBackground()
+{
+    if (!g_fbInitialized) return;
+    
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    if (w > 64 || h > 64) return; // Safety cap
+
+    // Read pixels from framebuffer into g_cursorSaveBuffer
+    // We need a 'getPixel' equivalent, but for speed we'll just calc offsets
+    // Note: This is slow if done pixel-by-pixel. 
+    // Ideally we'd have a blitRead, but we'll implement a simple loop here.
+    
+    // We must clip against screen bounds
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            // Read pixel
+            // This requires reading from video memory, which can be slow, but necessary for software cursor.
+            // We'll implement a fast read helper if needed, but for now we assume direct access is okay.
+            // WARNING: Reading from LFB is very slow on some hardware.
+            
+            // Calculate offset
+            const byteOffset = cy * g_fb.pitch + cx * (g_fb.bpp / 8);
+            uint pixelVal = 0;
+            
+            if (g_fb.bpp == 32)
+            {
+                pixelVal = *(cast(uint*)(g_fb.addr + byteOffset));
+            }
+            else if (g_fb.bpp == 16)
+            {
+                pixelVal = *(cast(ushort*)(g_fb.addr + byteOffset));
+            }
+            else if (g_fb.bpp == 24)
+            {
+                // Read 3 bytes
+                ubyte* p = g_fb.addr + byteOffset;
+                pixelVal = p[0] | (p[1] << 8) | (p[2] << 16);
+            }
+            
+            // Use width as stride to match atomic update logic
+            g_cursorSaveBuffer[row * w + col] = pixelVal;
+        }
+    }
+    g_cursorSaveBufferValid = true;
+}
+
+@nogc nothrow @system
+private void framebufferRestoreBackground()
+{
+    if (!g_fbInitialized || !g_cursorSaveBufferValid) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            // Use width as stride
+            const saved = g_cursorSaveBuffer[row * w + col];
+            // Use PutPixelRaw to write back exactly what we read
+            framebufferPutPixelRaw(cx, cy, saved);
+        }
+    }
+}
+
+@nogc nothrow @system
+private void framebufferDrawCursorIcon()
+{
+    if (!g_fbInitialized) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const pixels = g_currentCursorIcon.pixels;
+    const fbW = g_fb.width;
+    const fbH = g_fb.height;
+
+    foreach (row; 0 .. h)
+    {
+        const cy = g_cursorY + row;
+        if (cy < 0 || cy >= fbH) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const cx = g_cursorX + col;
+            if (cx < 0 || cx >= fbW) continue;
+
+            const argb = pixels[row * w + col];
+            
+            // Simple alpha blending: if alpha > 0, draw.
+            // Ideally we'd do proper blending, but for a basic cursor, 
+            // 0 alpha = transparent, anything else = opaque is a good start.
+            // Or simple threshold.
+            if ((argb & 0xFF000000) != 0)
+            {
+                framebufferPutPixel(cx, cy, argb);
+            }
+        }
+    }
+}
+
+// Draw cursor to an external buffer (e.g. compositor backbuffer)
+// pitch is in pixels (uint elements)
+@nogc nothrow @system
+void framebufferDrawCursorToBuffer(uint* buffer, uint width, uint height, uint pitch)
+{
+    if (!g_fbInitialized) return;
+    
+    // Debug logging
+    // import anonymos_userland.shell.console : print, printLine, printUnsigned;
+    // static int logCount = 0;
+    // if (logCount++ < 20)
+    // {
+    //     print("[cursor] drawToBuffer visible=");
+    //     print(g_cursorVisible ? "true" : "false");
+    //     print(" x="); printUnsigned(cast(uint)g_cursorX);
+    //     print(" y="); printUnsigned(cast(uint)g_cursorY);
+    //     print(" w="); printUnsigned(width);
+    //     print(" h="); printUnsigned(height);
+    //     printLine("");
+    // }
+
+    if (!g_cursorVisible) return;
+    if (buffer is null) return;
+
+    const w = g_currentCursorIcon.width;
+    const h = g_currentCursorIcon.height;
+    const pixels = g_currentCursorIcon.pixels;
+
+    foreach (row; 0 .. h)
+    {
+        const int cy = g_cursorY + cast(int)row;
+        if (cy < 0 || cy >= height) continue;
+
+        foreach (col; 0 .. w)
+        {
+            const int cx = g_cursorX + cast(int)col;
+            if (cx < 0 || cx >= width) continue;
+
+            const argb = pixels[row * w + col];
+            
+            if ((argb & 0xFF000000) != 0)
+            {
+                buffer[cy * pitch + cx] = argb;
+            }
+        }
+    }
+}
+
+@nogc nothrow @system
+void framebufferSetCursorDirectDraw(bool enabled)
+{
+    if (g_cursorDirectDraw == enabled) return;
+    
+    if (!enabled && g_cursorVisible)
+    {
+        framebufferRestoreBackground();
+    }
+    else if (enabled && g_cursorVisible)
+    {
+        framebufferSaveBackground();
+        framebufferDrawCursorIcon();
+    }
+    
+    g_cursorDirectDraw = enabled;
+}

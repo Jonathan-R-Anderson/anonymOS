@@ -1,0 +1,1254 @@
+diff -Naur jhc-0.8.2/drift_processed/C/FromGrin2.hs jhc-0.8.2-patched/drift_processed/C/FromGrin2.hs
+--- jhc-0.8.2/drift_processed/C/FromGrin2.hs	2014-06-01 10:35:33.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/C/FromGrin2.hs	2026-01-29 17:14:49.469011224 -0600
+@@ -77,7 +77,7 @@
+ rInscope_u f r@Env{rInscope  = x} = r{rInscope = f x}
+ 
+ newtype C a = C (RWST Env Written HcHash Uniq a)
+-    deriving(Monad,UniqueProducer,MonadState HcHash,MonadWriter Written,MonadReader Env,Functor)
++    deriving(Applicative, Monad,UniqueProducer,MonadState HcHash,MonadWriter Written,MonadReader Env,Functor)
+ 
+ runC :: Grin -> C a -> ((a,HcHash,Written),Map.Map Atom TyRep)
+ runC grin (C m) =  (execUniq1 (runRWST m startEnv emptyHcHash),ityrep) where
+diff -Naur jhc-0.8.2/drift_processed/DataConstructors.hs jhc-0.8.2-patched/drift_processed/DataConstructors.hs
+--- jhc-0.8.2/drift_processed/DataConstructors.hs	2014-06-01 10:35:33.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/DataConstructors.hs	2026-01-29 17:14:49.358991325 -0600
+@@ -47,7 +47,7 @@
+ import Control.Monad.Identity
+ import Control.Monad.Writer(tell,execWriter)
+ import Data.Maybe
+-import Data.Monoid hiding(getProduct)
++import Data.Monoid hiding(getProduct, Alt)
+ import List(sortBy)
+ import qualified Data.Map as Map hiding(map)
+ import qualified Data.Set as Set hiding(map)
+diff -Naur jhc-0.8.2/drift_processed/E/Demand.hs jhc-0.8.2-patched/drift_processed/E/Demand.hs
+--- jhc-0.8.2/drift_processed/E/Demand.hs	2014-06-01 10:35:33.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/E/Demand.hs	2026-01-29 17:14:49.466183111 -0600
+@@ -11,7 +11,7 @@
+     ) where
+ 
+ import Control.Monad.Reader
+-import Control.Monad.Writer hiding(Product(..))
++import Control.Monad.Writer hiding(Product(..), Alt)
+ import Data.Binary
+ import Data.List hiding(union,delete)
+ import Data.Typeable
+@@ -184,7 +184,7 @@
+         m = fromList [ (x,lenv x d1 `glb` lenv x d2) | x <- keys (m1 `union` m2)]
+ 
+ newtype IM a = IM (Reader (Env,DataTable) a)
+-    deriving(Monad,Functor,MonadReader (Env,DataTable))
++    deriving(Applicative, Monad,Functor,MonadReader (Env,DataTable))
+ 
+ type Env = IdMap (Either DemandSignature E)
+ 
+diff -Naur jhc-0.8.2/drift_processed/E/SSimplify.hs jhc-0.8.2-patched/drift_processed/E/SSimplify.hs
+--- jhc-0.8.2/drift_processed/E/SSimplify.hs	2014-06-01 10:35:33.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/E/SSimplify.hs	2026-01-29 17:14:49.463526832 -0600
+@@ -48,8 +48,8 @@
+ import Util.Graph
+ import Util.HasSize
+ import Util.NameMonad
+-import Util.RWS
+-import Util.ReaderWriter
++import Util.RWS hiding (Alt)
++import Util.ReaderWriter hiding (Alt)
+ import Util.SetLike as S
+ import qualified E.Demand as Demand
+ import qualified FlagDump as FD
+@@ -84,7 +84,7 @@
+        (progCombinators_s dsIn' prog) { progFreeIds = idMapToIdSet fvs, progUsedIds = uids }
+ 
+ newtype OM a = OM (ReaderWriter IdSet (OMap,IdSet) a)
+-    deriving(Monad,Functor,MonadWriter (OMap,IdSet),MonadReader IdSet)
++    deriving(Applicative, Monad,Functor,MonadWriter (OMap,IdSet),MonadReader IdSet)
+ 
+ unOM (OM a) = a
+ 
+@@ -1028,7 +1028,7 @@
+ smState = SmState { idsSeed = 1, idsUsed = mempty, idsBound = mempty }
+ 
+ newtype SM a = SM (RWS Env Stats.Stat SmState a)
+-    deriving(Monad,Functor,MonadReader Env, MonadState SmState)
++    deriving(Applicative, Monad,Functor,MonadReader Env, MonadState SmState)
+ 
+ localEnv f (SM action) = SM $ local (cacheSubst . f) action
+ 
+diff -Naur jhc-0.8.2/drift_processed/E/ToHs.hs jhc-0.8.2-patched/drift_processed/E/ToHs.hs
+--- jhc-0.8.2/drift_processed/E/ToHs.hs	2014-06-01 10:35:33.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/E/ToHs.hs	2026-01-29 17:14:49.459952022 -0600
+@@ -2,13 +2,14 @@
+ {-# LINE 1 "src/E/ToHs.hs" #-}
+ module E.ToHs(compileToHs) where
+ 
++import Prelude hiding ((<$>))
+ import Char
+ import Control.Monad
+ import Control.Monad.Identity
+ import Control.Monad.RWS
+ import Control.Monad.Trans
+ import Control.Monad.Writer
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import System.IO
+ import Text.PrettyPrint.HughesPJ(render,($$),nest,Doc())
+ import qualified Data.Set as Set
+@@ -163,7 +164,7 @@
+     {-! derive: Monoid !-}
+ 
+ newtype TM a = TM { fromTM :: RWST Environment Collect Int IO a }
+-    deriving(MonadState Int,MonadReader Environment,MonadWriter Collect,Monad,Functor,MonadIO)
++    deriving(Applicative, MonadState Int,MonadReader Environment,MonadWriter Collect,Monad,Functor,MonadIO)
+ 
+ mparen xs = do
+     Env { envParen = p } <- ask
+diff -Naur jhc-0.8.2/drift_processed/FrontEnd/Class.hs jhc-0.8.2-patched/drift_processed/FrontEnd/Class.hs
+--- jhc-0.8.2/drift_processed/FrontEnd/Class.hs	2014-06-01 20:30:19.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/FrontEnd/Class.hs	2026-01-29 17:14:49.413720367 -0600
+@@ -30,6 +30,7 @@
+     scatterAliasInstances
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.Identity
+ import Control.Monad.Writer(Monoid(..))
+ import Data.Generics(mkQ,something)
+@@ -71,7 +72,7 @@
+     } deriving(Eq,Ord,Show)
+     {-! derive: Binary !-}
+ 
+-instance PPrint a (Qual Pred) => PPrint a Inst where
++instance (DocLike a, PPrint a (Qual Pred)) => PPrint a Inst where
+     pprint Inst { instHead = h, instAssocs = [], instDerived = d } = (if d then text "*" else text " ") <> pprint h
+     pprint Inst { instHead = h, instAssocs = as, instDerived = d } = (if d then text "*" else text " ") <> pprint h <+> text "where" <$> vcat [ text "    type" <+> pprint n <+> text "_" <+> hsep (map pprint ts) <+> text "=" <+> pprint sigma  | (n,_,ts,sigma) <- as]
+ 
+diff -Naur jhc-0.8.2/drift_processed/Grin/SSimplify.hs jhc-0.8.2-patched/drift_processed/Grin/SSimplify.hs
+--- jhc-0.8.2/drift_processed/Grin/SSimplify.hs	2014-06-01 10:35:34.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/Grin/SSimplify.hs	2026-01-29 17:14:49.472063862 -0600
+@@ -22,7 +22,7 @@
+ import Util.GMap
+ import Util.Gen
+ import Util.HasSize
+-import Util.RWS
++import Util.RWS hiding (Alt)
+ import Util.SetLike
+ import qualified Stats
+ 
+@@ -61,7 +61,7 @@
+ -}
+ 
+ newtype S a = S (RWS SEnv SCol SState a)
+-    deriving(Monad,Functor,MonadWriter SCol, MonadReader SEnv,MonadState SState)
++    deriving(Applicative, Monad,Functor,MonadWriter SCol, MonadReader SEnv,MonadState SState)
+ 
+ instance Stats.MonadStats S where
+     mtickStat s = S (tell mempty { colStats = s })
+diff -Naur jhc-0.8.2/drift_processed/Options.hs jhc-0.8.2-patched/drift_processed/Options.hs
+--- jhc-0.8.2/drift_processed/Options.hs	2014-06-01 10:35:34.000000000 -0500
++++ jhc-0.8.2-patched/drift_processed/Options.hs	2026-01-29 17:14:49.456709703 -0600
+@@ -507,7 +507,7 @@
+ instance OptionMonad IO
+ 
+ newtype OptT m a = OptT (ReaderT Opt m a)
+-    deriving(MonadIO,Monad,Functor,MonadTrans)
++    deriving(Applicative, MonadIO,Monad,Functor,MonadTrans)
+ 
+ type OptM = OptT Identity
+ 
+diff -Naur jhc-0.8.2/Makefile.in jhc-0.8.2-patched/Makefile.in
+--- jhc-0.8.2/Makefile.in	2014-06-02 13:00:03.000000000 -0500
++++ jhc-0.8.2-patched/Makefile.in	2026-01-29 17:14:49.316437667 -0600
+@@ -527,7 +527,7 @@
+ 	       src/FlagOpts.hs src/Name/Prim.hs src/Info/Properties.hs $(DRIFTFILES) \
+ 	       src/FrontEnd/Lex/Parser.hs src/FrontEnd/Lex/Lexer.hs
+ 
+-MY_CINCLUDES = -I$(srcdir)/src/data -I$(srcdir)/src/StringTable -I$(srcdir)/src/cbits -I$(builddir)/src/cbits
++MY_CINCLUDES = 
+ MY_CFLAGS = $(MY_CINCLUDES) -optc-std=c99 -optc-O2 -optc-Wall
+ HSFILES = src/C/Generate.hs src/Cmm/Number.hs src/Cmm/OpEval.hs src/DerivingDrift/DataP.hs \
+ 	src/DerivingDrift/Drift.hs src/DerivingDrift/RuleUtils.hs src/Doc/Attr.hs src/Doc/Chars.hs src/Doc/DocLike.hs \
+diff -Naur jhc-0.8.2/rts/jhc_rts_header.h jhc-0.8.2-patched/rts/jhc_rts_header.h
+--- jhc-0.8.2/rts/jhc_rts_header.h	2014-06-01 13:25:31.000000000 -0500
++++ jhc-0.8.2-patched/rts/jhc_rts_header.h	2026-01-29 17:14:49.316728259 -0600
+@@ -4,7 +4,7 @@
+ #include <limits.h>
+ #include <locale.h>
+ #include <math.h>
+-#include <stdio.h>
++#include "/usr/include/stdio.h"
+ #include <stdlib.h>
+ #include <string.h>
+ #include <time.h>
+diff -Naur jhc-0.8.2/rts/rts/gc_none.c jhc-0.8.2-patched/rts/rts/gc_none.c
+--- jhc-0.8.2/rts/rts/gc_none.c	2014-06-01 13:21:57.000000000 -0500
++++ jhc-0.8.2-patched/rts/rts/gc_none.c	2026-01-29 17:14:49.318526422 -0600
+@@ -1,4 +1,4 @@
+-#include <stdio.h>
++#include "/usr/include/stdio.h"
+ #include <stdlib.h>
+ 
+ #include "rts/gc.h"
+diff -Naur jhc-0.8.2/rts/rts/profile.c jhc-0.8.2-patched/rts/rts/profile.c
+--- jhc-0.8.2/rts/rts/profile.c	2014-06-01 13:23:59.000000000 -0500
++++ jhc-0.8.2-patched/rts/rts/profile.c	2026-01-29 17:14:49.319758474 -0600
+@@ -6,7 +6,7 @@
+ #define HAVE_TIMES 1
+ #endif
+ 
+-#include <stdio.h>
++#include "/usr/include/stdio.h"
+ #include <stdlib.h>
+ #if HAVE_TIMES
+ #include <sys/times.h>
+diff -Naur jhc-0.8.2/rts/rts/profile.h jhc-0.8.2-patched/rts/rts/profile.h
+--- jhc-0.8.2/rts/rts/profile.h	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/rts/rts/profile.h	2026-01-29 17:14:49.322175229 -0600
+@@ -1,7 +1,7 @@
+ #ifndef RTS_PROFILE_H
+ #define RTS_PROFILE_H
+ 
+-#include <stdio.h>
++#include "/usr/include/stdio.h"
+ #include "rts/cdefs.h"
+ 
+ #ifndef JHC_VALGRIND
+diff -Naur jhc-0.8.2/rts/rts/rts_support.c jhc-0.8.2-patched/rts/rts/rts_support.c
+--- jhc-0.8.2/rts/rts/rts_support.c	2014-06-01 13:23:33.000000000 -0500
++++ jhc-0.8.2-patched/rts/rts/rts_support.c	2026-01-29 17:14:49.320959388 -0600
+@@ -1,5 +1,5 @@
+ #include <locale.h>
+-#include <stdio.h>
++#include "/usr/include/stdio.h"
+ #include <stdlib.h>
+ 
+ #include "HsFFI.h"
+diff -Naur jhc-0.8.2/src/C/Generate.hs jhc-0.8.2-patched/src/C/Generate.hs
+--- jhc-0.8.2/src/C/Generate.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/C/Generate.hs	2026-01-29 17:14:49.426330885 -0600
+@@ -71,6 +71,7 @@
+     voidStarType
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Char
+ import Control.Monad
+ import Control.Monad.RWS(RWS,MonadState(..),MonadWriter(..),MonadReader(..),runRWS,asks,MonadFix(..))
+@@ -100,7 +101,7 @@
+ emptyEnv = Env { envUsedLabels = mempty, envInScope = mempty }
+ 
+ newtype G a = G (RWS Env [(Name,Type)] (Int,Map.Map [Type] Name) a)
+-    deriving(Monad,MonadWriter [(Name,Type)],MonadState (Int,Map.Map [Type] Name),MonadReader Env,MonadFix)
++    deriving(Functor, Applicative, Monad,MonadWriter [(Name,Type)],MonadState (Int,Map.Map [Type] Name),MonadReader Env,MonadFix)
+ 
+ newtype Name = Name String
+     deriving(Eq,Ord)
+diff -Naur jhc-0.8.2/src/Doc/DocLike.hs jhc-0.8.2-patched/src/Doc/DocLike.hs
+--- jhc-0.8.2/src/Doc/DocLike.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Doc/DocLike.hs	2026-01-29 17:14:49.235357046 -0600
+@@ -1,5 +1,6 @@
+ {-# LANGUAGE CPP,UndecidableInstances,OverlappingInstances #-}
+ module Doc.DocLike where
++import Prelude hiding ((<>), (<$>))
+ 
+ #include "hs_src_config.h"
+ 
+diff -Naur jhc-0.8.2/src/Doc/PPrint.hs jhc-0.8.2-patched/src/Doc/PPrint.hs
+--- jhc-0.8.2/src/Doc/PPrint.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Doc/PPrint.hs	2026-01-29 17:14:49.417728061 -0600
+@@ -6,6 +6,7 @@
+ -- in more places.
+ 
+ module Doc.PPrint where
++import Prelude hiding ((<>), (<$>))
+ 
+ import Doc.DocLike
+ import qualified Data.Map as Map
+@@ -47,7 +48,7 @@
+ 
+ pprintPrec n a = pprintAssoc AssocNone n  a
+ 
+-instance PPrint d a => PPrint d [a] where
++instance (DocLike d, PPrint d a) => PPrint d [a] where
+     pprint  = pplist
+ 
+ instance DocLike d => PPrint d Char where
+@@ -69,7 +70,7 @@
+ instance DocLike d => PPrint d () where
+     pprint () = text "()"
+ 
+-instance (PPrint d a, PPrint d b) => PPrint d (a,b) where
++instance (DocLike d, PPrint d a, PPrint d b) => PPrint d (a,b) where
+   pprint (x,y) = parens (hsep [pprint x <> comma, pprint y])
+ 
+ checkAssoc a1 n1 a2 n2 | n2 < n1 = id
+@@ -82,16 +83,16 @@
+     l = if a1 == AssocLeft then AssocLeft else AssocNone
+     r = if a1 == AssocRight then AssocRight else AssocNone
+ 
+-instance (PPrint d a, PPrint d b) => PPrint d (Either a b) where
++instance (DocLike d, PPrint d a, PPrint d b) => PPrint d (Either a b) where
+   pprintAssoc a n (Left x)  = checkAssocApp a n $ text "Left" <+> pprintPrec 10 x
+   pprintAssoc a n (Right x) = checkAssocApp a n $ text "Right" <+> pprintPrec 10 x
+ 
+-instance (PPrint d a, PPrint d b, PPrint d c) => PPrint d (a,b,c) where
++instance (DocLike d, PPrint d a, PPrint d b, PPrint d c) => PPrint d (a,b,c) where
+   pprint (x,y,z) = parens (hsep [pprint x <> comma,
+                                 pprint y <> comma,
+                                 pprint z])
+ 
+-instance (PPrint d a, PPrint d b) => PPrint d (Map.Map a b) where
++instance (DocLike d, PPrint d a, PPrint d b) => PPrint d (Map.Map a b) where
+     pprint m = vcat [ pprint x <+> text "=>" <+> pprint y | (x,y) <- Map.toList m]
+ 
+ 
+diff -Naur jhc-0.8.2/src/E/Annotate.hs jhc-0.8.2-patched/src/E/Annotate.hs
+--- jhc-0.8.2/src/E/Annotate.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Annotate.hs	2026-01-29 17:14:49.362758590 -0600
+@@ -1,7 +1,7 @@
+ module E.Annotate where
+ 
+ import Control.Monad.Reader
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import qualified Data.Traversable as T
+ 
+ import E.E
+diff -Naur jhc-0.8.2/src/E/Binary.hs jhc-0.8.2-patched/src/E/Binary.hs
+--- jhc-0.8.2/src/E/Binary.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Binary.hs	2026-01-29 17:14:49.346812912 -0600
+@@ -4,7 +4,7 @@
+ import E.Type
+ import FrontEnd.HsSyn()
+ import Name.Binary()
+-import Support.MapBinaryInstance
++import qualified Support.MapBinaryInstance as MB
+ import {-# SOURCE #-} Info.Binary(putInfo,getInfo)
+ 
+ instance Binary TVr where
+@@ -39,18 +39,18 @@
+ instance Data.Binary.Binary Rule where
+     put (Rule aa ab ac ad ae af ag ah) = do
+ 	    Data.Binary.put aa
+-	    putList ab
+-	    putList ac
+-	    putLEB128 $ fromIntegral ad
++	    MB.putList ab
++	    MB.putList ac
++	    MB.putLEB128 $ fromIntegral ad
+ 	    Data.Binary.put ae
+ 	    Data.Binary.put af
+ 	    Data.Binary.put ag
+ 	    Data.Binary.put ah
+     get = do
+     aa <- get
+-    ab <- getList
+-    ac <- getList
+-    ad <- fromIntegral `fmap` getLEB128
++    ab <- MB.getList
++    ac <- MB.getList
++    ad <- fromIntegral `fmap` MB.getLEB128
+     ae <- get
+     af <- get
+     ag <- get
+@@ -60,10 +60,10 @@
+ instance Data.Binary.Binary ARules where
+     put (ARules aa ab) = do
+ 	    Data.Binary.put aa
+-	    putList ab
++	    MB.putList ab
+     get = do
+     aa <- get
+-    ab <- getList
++    ab <- MB.getList
+     return (ARules aa ab)
+ 
+ instance (Data.Binary.Binary e,
+@@ -75,7 +75,7 @@
+     put (LitCons ac ad ae af) = do
+ 	    Data.Binary.putWord8 1
+ 	    Data.Binary.put ac
+-	    putList ad
++	    MB.putList ad
+ 	    Data.Binary.put ae
+ 	    Data.Binary.put af
+     get = do
+@@ -87,7 +87,7 @@
+ 		    return (LitInt aa ab)
+ 	      1 -> do
+ 		    ac <- Data.Binary.get
+-		    ad <- getList
++		    ad <- MB.getList
+ 		    ae <- Data.Binary.get
+ 		    af <- Data.Binary.get
+ 		    return (LitCons ac ad ae af)
+@@ -155,7 +155,7 @@
+ 	    Data.Binary.put ai
+     put (ELetRec aj ak) = do
+ 	    Data.Binary.putWord8 7
+-	    putList aj
++	    MB.putList aj
+ 	    Data.Binary.put ak
+     put (EPrim al am an) = do
+ 	    Data.Binary.putWord8 8
+@@ -171,7 +171,7 @@
+ 	    Data.Binary.put aq
+ 	    Data.Binary.put ar
+ 	    Data.Binary.put as
+-	    putList at
++	    MB.putList at
+ 	    Data.Binary.put au
+ 	    Data.Binary.put av
+     get = do
+@@ -201,7 +201,7 @@
+ 		    ai <- Data.Binary.get
+ 		    return (ELit ai)
+ 	      7 -> do
+-		    aj <- getList
++		    aj <- MB.getList
+ 		    ak <- Data.Binary.get
+ 		    return (ELetRec aj ak)
+ 	      8 -> do
+@@ -217,7 +217,7 @@
+ 		    aq <- Data.Binary.get
+ 		    ar <- Data.Binary.get
+ 		    as <- Data.Binary.get
+-		    at <- getList
++		    at <- MB.getList
+ 		    au <- Data.Binary.get
+ 		    av <- Data.Binary.get
+ 		    return (ECase aq ar as at au av)
+diff -Naur jhc-0.8.2/src/E/Eval.hs jhc-0.8.2-patched/src/E/Eval.hs
+--- jhc-0.8.2/src/E/Eval.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Eval.hs	2026-01-29 17:14:49.353728187 -0600
+@@ -3,6 +3,7 @@
+ -- Simple lambda Calculus interpreter
+ -- does not handle recursive Let or Case statements, but those don't appear in types anyway.
+ 
++import Prelude hiding ((<$>))
+ import Data.Monoid
+ import qualified Data.Map as Map
+ 
+diff -Naur jhc-0.8.2/src/E/FreeVars.hs jhc-0.8.2-patched/src/E/FreeVars.hs
+--- jhc-0.8.2/src/E/FreeVars.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/FreeVars.hs	2026-01-29 17:14:49.388037710 -0600
+@@ -5,7 +5,7 @@
+     freeIds
+     ) where
+ 
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ 
+ import E.Type
+ import GenUtil
+@@ -29,7 +29,7 @@
+ instance FreeVars E t => FreeVars TVr t where
+     freeVars tvr = freeVars (tvrType tvr :: E)
+ 
+-instance (FreeVars E x) => FreeVars (Lit TVr E) x where
++instance (Monoid x, FreeVars E x) => FreeVars (Lit TVr E) x where
+     freeVars l =  mconcat $ freeVars (getLitTyp l :: E ):(map (freeVars . (tvrType :: TVr -> E) ) $ litBinds l)
+ 
+ instance FreeVars (Alt E) IdSet where
+diff -Naur jhc-0.8.2/src/E/FromHs.hs jhc-0.8.2-patched/src/E/FromHs.hs
+--- jhc-0.8.2/src/E/FromHs.hs	2014-06-01 19:38:51.000000000 -0500
++++ jhc-0.8.2-patched/src/E/FromHs.hs	2026-01-29 17:14:49.400711393 -0600
+@@ -10,9 +10,9 @@
+ import Control.Applicative(Applicative)
+ import Control.Monad.Error
+ import Control.Monad.Identity
+-import Control.Monad.RWS
++import Control.Monad.RWS hiding (Alt)
+ import List(isPrefixOf,nub)
+-import Prelude
++import Prelude hiding ((<$>))
+ import Text.Printf
+ import qualified Data.Map as Map
+ import qualified Data.Traversable as T
+@@ -93,7 +93,7 @@
+     f (TCon (Tycon n k)) =  ELit litCons { litName = n, litType = kind k }
+     f (TVar tv) = EVar (cvar [] tv)
+     f (TMetaVar mv) = cmvar mv
+-    f (TForAll vs (ps :=> t)) = foldr EPi (f t) (map (cvar $ freeVars ps) vs)
++    f (TForAll vs (ps :=> t)) = foldr EPi (f t) (map (cvar $ (freeVars ps :: [Tyvar])) vs)
+     f (TExists xs (_ :=> t)) = let
+         xs' = map (kind . tyvarKind) xs
+         in ELit litCons { litName = unboxedNameTuple TypeConstructor (length xs' + 1), litArgs = f t:xs', litType = eHash }
+@@ -1029,6 +1029,6 @@
+ 
+ extractUnboxedTup :: E -> ([E] -> C E) -> C E
+ extractUnboxedTup e f = do
+-    vs <- newVars $ concat (fromTuple_ (getType e))
++    vs <- newVars $ concat (fromTuple_ (getType e) :: [[E]])
+     a <- f (map EVar vs)
+     return $ eCaseTup' e vs a
+diff -Naur jhc-0.8.2/src/E/LambdaLift.hs jhc-0.8.2-patched/src/E/LambdaLift.hs
+--- jhc-0.8.2/src/E/LambdaLift.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/LambdaLift.hs	2026-01-29 17:14:49.382044581 -0600
+@@ -1,7 +1,7 @@
+ module E.LambdaLift(lambdaLift,staticArgumentTransform)  where
+ 
+ import Control.Monad.Reader
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import Data.IORef
+ import Data.Maybe
+ import Text.Printf
+diff -Naur jhc-0.8.2/src/E/LetFloat.hs jhc-0.8.2-patched/src/E/LetFloat.hs
+--- jhc-0.8.2/src/E/LetFloat.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/LetFloat.hs	2026-01-29 17:14:49.383124061 -0600
+@@ -8,7 +8,7 @@
+ 
+ import Control.Monad.Identity
+ import Control.Monad.Reader
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import Data.Typeable
+ import List  hiding(delete,insert)
+ import qualified Data.Map as Map
+diff -Naur jhc-0.8.2/src/E/Lint.hs jhc-0.8.2-patched/src/E/Lint.hs
+--- jhc-0.8.2/src/E/Lint.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Lint.hs	2026-01-29 17:14:49.350311903 -0600
+@@ -13,7 +13,7 @@
+ import Support.Compat
+ import qualified Data.Set as Set
+ 
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import Doc.DocLike
+ import Doc.PPrint
+ import Doc.Pretty
+diff -Naur jhc-0.8.2/src/E/Program.hs jhc-0.8.2-patched/src/E/Program.hs
+--- jhc-0.8.2/src/E/Program.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Program.hs	2026-01-29 17:14:49.363715335 -0600
+@@ -1,7 +1,7 @@
+ module E.Program where
+ 
+ import Control.Monad.Identity
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import List
+ import Maybe
+ import qualified Data.Map as Map
+diff -Naur jhc-0.8.2/src/E/Show.hs jhc-0.8.2-patched/src/E/Show.hs
+--- jhc-0.8.2/src/E/Show.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Show.hs	2026-01-29 17:14:49.423462675 -0600
+@@ -1,5 +1,6 @@
+ module E.Show(ePretty,render,prettyE) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.Identity
+ import Data.Char(chr)
+ import Data.Maybe
+@@ -46,7 +47,7 @@
+                       | otherwise = parens (prettyE (ELit x))
+ 
+ newtype SEM a = SEM { _unSEM :: VarNameT E Id String Identity a }
+-    deriving(Monad,Functor)
++    deriving(Applicative, Monad,Functor)
+ 
+ enumList = [
+     (tc_Bool_,["False#","True#"]),
+diff -Naur jhc-0.8.2/src/E/Subst.hs jhc-0.8.2-patched/src/E/Subst.hs
+--- jhc-0.8.2/src/E/Subst.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Subst.hs	2026-01-29 17:14:49.353498881 -0600
+@@ -136,7 +136,7 @@
+         alts <- local r (mapM da $ eCaseAlts ec)
+         nty <- f (eCaseType ec)
+         return  $ caseUpdate ec { eCaseScrutinee = e', eCaseDefault = d, eCaseBind = b', eCaseAlts = alts, eCaseType = nty }
+-    lp lam tvr@(TVr { tvrIdent = n, tvrType = t}) e | n == emptyId || (allShadow && n `notElem` freeVars e) = do
++    lp lam tvr@(TVr { tvrIdent = n, tvrType = t}) e | n == emptyId || (allShadow && n `notElem` (freeVars e :: [Id])) = do
+         t' <- f t
+         e' <- local (\(s,m) -> (Set.insert n s, delete n m)) $ f e
+         return $ lam (tvr { tvrIdent =  emptyId, tvrType =  t'}) e'
+diff -Naur jhc-0.8.2/src/E/Traverse.hs jhc-0.8.2-patched/src/E/Traverse.hs
+--- jhc-0.8.2/src/E/Traverse.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Traverse.hs	2026-01-29 17:14:49.349007073 -0600
+@@ -11,7 +11,7 @@
+     ) where
+ 
+ import Control.Monad.Reader
+-import Control.Monad.Writer.Strict
++import Control.Monad.Writer.Strict hiding (Alt)
+ import Data.Maybe
+ import qualified Data.Traversable as T
+ 
+diff -Naur jhc-0.8.2/src/E/TypeAnalysis.hs jhc-0.8.2-patched/src/E/TypeAnalysis.hs
+--- jhc-0.8.2/src/E/TypeAnalysis.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/TypeAnalysis.hs	2026-01-29 17:14:49.361647595 -0600
+@@ -7,7 +7,7 @@
+ import Control.Monad.Identity
+ import Control.Monad.State
+ import Data.Maybe
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import qualified Data.Foldable as T
+ import qualified Data.Map as Map
+ import qualified Data.Set as Set
+diff -Naur jhc-0.8.2/src/E/TypeCheck.hs jhc-0.8.2-patched/src/E/TypeCheck.hs
+--- jhc-0.8.2/src/E/TypeCheck.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/TypeCheck.hs	2026-01-29 17:14:49.421098251 -0600
+@@ -14,7 +14,7 @@
+     ) where
+ 
+ import Control.Monad.Reader
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import qualified Data.Map as Map
+ 
+ import Doc.DocLike
+@@ -428,7 +428,7 @@
+ tcContext_u f r@TcEnv{tcContext  = x} = r{tcContext = f x}
+ 
+ newtype Tc a = Tc (Reader TcEnv a)
+-    deriving(Monad,Functor,MonadReader TcEnv)
++    deriving(Applicative, Monad,Functor,MonadReader TcEnv)
+ 
+ instance ContextMonad Tc where
+     type ContextOf Tc = String
+diff -Naur jhc-0.8.2/src/E/Values.hs jhc-0.8.2-patched/src/E/Values.hs
+--- jhc-0.8.2/src/E/Values.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/Values.hs	2026-01-29 17:14:49.357689912 -0600
+@@ -1,7 +1,7 @@
+ module E.Values where
+ 
+ import Control.Monad.Identity
+-import Data.Monoid
++import Data.Monoid hiding (Alt)
+ import List
+ import Ratio
+ 
+diff -Naur jhc-0.8.2/src/E/WorkerWrapper.hs jhc-0.8.2-patched/src/E/WorkerWrapper.hs
+--- jhc-0.8.2/src/E/WorkerWrapper.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/E/WorkerWrapper.hs	2026-01-29 17:14:49.380947727 -0600
+@@ -1,6 +1,6 @@
+ module E.WorkerWrapper(performWorkWrap,workWrapProgram) where
+ 
+-import Control.Monad.Writer.Strict hiding(Product(..))
++import Control.Monad.Writer.Strict hiding(Product(..), Alt)
+ import Maybe
+ 
+ import DataConstructors
+diff -Naur jhc-0.8.2/src/FindFixpoint.hs jhc-0.8.2-patched/src/FindFixpoint.hs
+--- jhc-0.8.2/src/FindFixpoint.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/FindFixpoint.hs	2026-01-29 17:14:49.351728190 -0600
+@@ -1,5 +1,6 @@
+ module FindFixpoint(Ms, getVal, solve) where
+ 
++import Control.Monad
+ import Array
+ import Control.Monad.Writer
+ import Data.Array.IO
+@@ -10,6 +11,7 @@
+ data Env b  = Env {-# UNPACK #-} !(IOArray Int b) {-# UNPACK #-} !(IOArray Int (IntSet)) {-# UNPACK #-} !Int
+ newtype Ms b c = Ms' (Env b -> IO c)
+ 
++instance Applicative (Ms b) where { pure = return; (<*>) = ap }
+ instance Monad (Ms b) where
+     return a = Ms' (\_ -> return a)
+     Ms' comp >>= fun
+diff -Naur jhc-0.8.2/src/FrontEnd/DeclsDepends.hs jhc-0.8.2-patched/src/FrontEnd/DeclsDepends.hs
+--- jhc-0.8.2/src/FrontEnd/DeclsDepends.hs	2014-06-01 20:26:09.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/DeclsDepends.hs	2026-01-29 17:14:49.384145168 -0600
+@@ -12,7 +12,7 @@
+ 
+ module FrontEnd.DeclsDepends (getDeclDeps, debugDeclBindGroups) where
+ 
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ 
+ import FrontEnd.DependAnalysis(debugBindGroups)
+ import FrontEnd.HsSyn
+diff -Naur jhc-0.8.2/src/FrontEnd/HsPretty.hs jhc-0.8.2-patched/src/FrontEnd/HsPretty.hs
+--- jhc-0.8.2/src/FrontEnd/HsPretty.hs	2014-06-01 19:30:52.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/HsPretty.hs	2026-01-29 17:14:49.409758758 -0600
+@@ -20,6 +20,8 @@
+                 ppHsGuardedRhs
+ 		) where
+ 
++import Prelude hiding ((<$>))
++import Control.Monad
+ import Data.Char
+ import qualified Text.PrettyPrint.HughesPJ as P
+ 
+@@ -75,8 +77,9 @@
+ newtype DocM s a = DocM (s -> a)
+ 
+ instance Functor (DocM s) where
+-	 fmap f xs = do x <- xs; return (f x)
++	 fmap f (DocM xs) = DocM (\s -> f (xs s))
+ 
++instance Applicative (DocM s) where { pure = retDocM; (<*>) = ap }
+ instance Monad (DocM s) where
+ 	(>>=) = thenDocM
+ 	(>>) = then_DocM
+diff -Naur jhc-0.8.2/src/FrontEnd/Lex/Lexer.x jhc-0.8.2-patched/src/FrontEnd/Lex/Lexer.x
+--- jhc-0.8.2/src/FrontEnd/Lex/Lexer.x	2014-06-02 08:13:35.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Lex/Lexer.x	2026-01-29 17:14:49.326864312 -0600
+@@ -3,6 +3,8 @@
+ module FrontEnd.Lex.Lexer (scanner,Lexeme(..),LexemeClass(..),AlexPosn(..)) where
+ 
+ import Control.Monad
++import Control.Applicative
++import Data.Char (ord)
+ import Data.Word (Word8)
+ import FrontEnd.SrcLoc
+ import Name.Name
+@@ -371,6 +373,13 @@
+ 
+ newtype Alex a = Alex { unAlex :: AlexState -> Either String (AlexState, a) }
+ 
++instance Functor Alex where
++  fmap = liftM
++
++instance Applicative Alex where
++  pure = return
++  (<*>) = ap
++
+ instance Monad Alex where
+   m >>= k  = Alex $ \s -> case unAlex m s of
+                                 Left msg -> Left msg
+diff -Naur jhc-0.8.2/src/FrontEnd/Rename.hs jhc-0.8.2-patched/src/FrontEnd/Rename.hs
+--- jhc-0.8.2/src/FrontEnd/Rename.hs	2014-06-01 19:24:04.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Rename.hs	2026-01-29 17:14:49.403281832 -0600
+@@ -7,8 +7,9 @@
+     renameStatement
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.RWS
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import Data.Char
+ import Util.Std hiding(union)
+ import qualified Data.Foldable as Seq
+diff -Naur jhc-0.8.2/src/FrontEnd/Syn/Traverse.hs jhc-0.8.2-patched/src/FrontEnd/Syn/Traverse.hs
+--- jhc-0.8.2/src/FrontEnd/Syn/Traverse.hs	2014-06-01 20:36:44.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Syn/Traverse.hs	2026-01-29 17:14:49.386068037 -0600
+@@ -1,7 +1,7 @@
+ {-# OPTIONS_GHC -fwarn-unused-matches  -fwarn-incomplete-patterns -fwarn-type-defaults #-}
+ module FrontEnd.Syn.Traverse where
+ 
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import Util.Std
+ import qualified Data.Set as Set
+ import qualified Data.Traversable as T
+diff -Naur jhc-0.8.2/src/FrontEnd/Tc/Class.hs jhc-0.8.2-patched/src/FrontEnd/Tc/Class.hs
+--- jhc-0.8.2/src/FrontEnd/Tc/Class.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Tc/Class.hs	2026-01-29 17:14:49.401536143 -0600
+@@ -12,6 +12,7 @@
+     Preds
+     )where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.Trans
+ import Data.Monoid
+ import List
+diff -Naur jhc-0.8.2/src/FrontEnd/Tc/Main.hs jhc-0.8.2-patched/src/FrontEnd/Tc/Main.hs
+--- jhc-0.8.2/src/FrontEnd/Tc/Main.hs	2014-06-01 20:31:05.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Tc/Main.hs	2026-01-29 17:14:49.387091289 -0600
+@@ -1,7 +1,7 @@
+ module FrontEnd.Tc.Main (tiExpr, tiProgram, makeProgram, isTypePlaceholder ) where
+ 
+ import Control.Monad.Reader
+-import Control.Monad.Writer
++import Control.Monad.Writer hiding (Alt)
+ import Data.Graph(stronglyConnComp, SCC(..))
+ import System.IO(hPutStr,stderr)
+ import Text.Printf
+diff -Naur jhc-0.8.2/src/FrontEnd/Tc/Type.hs jhc-0.8.2-patched/src/FrontEnd/Tc/Type.hs
+--- jhc-0.8.2/src/FrontEnd/Tc/Type.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Tc/Type.hs	2026-01-29 17:14:49.390470753 -0600
+@@ -247,10 +247,10 @@
+ instance FreeVars Type (S.Set MetaVar) where
+     freeVars t = freeMetaVars t
+ 
+-instance (FreeVars t b,FreeVars Pred b) => FreeVars (Qual t) b where
++instance (Monoid b, FreeVars t b,FreeVars Pred b) => FreeVars (Qual t) b where
+     freeVars (ps :=> t)  = freeVars t `mappend` freeVars ps
+ 
+-instance FreeVars Type b =>  FreeVars Pred b where
++instance (Monoid b, FreeVars Type b) =>  FreeVars Pred b where
+     freeVars (IsIn _c t)  = freeVars t
+     freeVars (IsEq t1 t2)  = freeVars (t1,t2)
+ 
+diff -Naur jhc-0.8.2/src/FrontEnd/Tc/Unify.hs jhc-0.8.2-patched/src/FrontEnd/Tc/Unify.hs
+--- jhc-0.8.2/src/FrontEnd/Tc/Unify.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/FrontEnd/Tc/Unify.hs	2026-01-29 17:14:49.411016300 -0600
+@@ -214,7 +214,7 @@
+     -- Associated type
+     bm ta@TAssoc {} (TMetaVar mv) = do
+         ta' <- evalFullType ta
+-        if mv `elem` freeVars ta' then do
++        if mv `elem`  (freeVars ta' :: [MetaVar]) then do
+             printRule "ASSOC-OCCURS"
+             addPreds [IsEq ta' (TMetaVar mv)]
+          else do
+diff -Naur jhc-0.8.2/src/Grin/Devolve.hs jhc-0.8.2-patched/src/Grin/Devolve.hs
+--- jhc-0.8.2/src/Grin/Devolve.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/Devolve.hs	2026-01-29 17:14:49.448788194 -0600
+@@ -74,7 +74,7 @@
+     }
+ 
+ newtype R a = R (RWS Env (Set.Set Var) () a)
+-    deriving(Monad,Functor,MonadReader Env,MonadWriter (Set.Set Var))
++    deriving(Applicative, Monad,Functor,MonadReader Env,MonadWriter (Set.Set Var))
+ 
+ runR (R x) = fst $ evalRWS x Env { envRoots = mempty, envMap = mempty, envVar = v1 } ()
+ 
+@@ -141,7 +141,7 @@
+ 
+ instance Twiddle Lam where
+     twiddle (vs :-> y) = do
+-        let fvs = freeVars vs
++        let fvs = freeVars vs :: Set.Set Var
+         (y,uv) <- censor (Set.filter (`notElem` fvs)) $ listen (twiddle y)
+         let fvp' = Map.fromList $ concatMap (\v -> if v `Set.member` uv then [] else [(v,v0)]) fvs
+         vs <- censor (const mempty) . local (\e -> e { envMap = fvp' }) $ twiddle vs
+diff -Naur jhc-0.8.2/src/Grin/FromE.hs jhc-0.8.2-patched/src/Grin/FromE.hs
+--- jhc-0.8.2/src/Grin/FromE.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/FromE.hs	2026-01-29 17:14:49.439464810 -0600
+@@ -1,6 +1,7 @@
+ {-# LANGUAGE OverloadedStrings #-}
+ module Grin.FromE(compile) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.Reader
+ import Data.Graph(stronglyConnComp, SCC(..))
+ import Data.IORef
+@@ -69,7 +70,7 @@
+     ]
+ 
+ newtype C a = C (ReaderT LEnv IO a)
+-    deriving(Monad,MonadReader LEnv,UniqueProducer,Functor,MonadIO,Stats.MonadStats)
++    deriving(Applicative, Monad,MonadReader LEnv,UniqueProducer,Functor,MonadIO,Stats.MonadStats)
+ 
+ runC :: LEnv -> C a -> IO a
+ runC lenv (C x) = runReaderT x lenv
+@@ -180,7 +181,7 @@
+         os <- onceMapToList errorOnce
+         mapM_ print os
+     let tf a = a:tagToFunction a
+-    ds <- return $ flattenScc $ stronglyConnComp [ (a,x, concatMap tf (freeVars z)) | a@(x,(_ :-> z)) <- ds]
++    ds <- return $ flattenScc $ stronglyConnComp [ (a,x, concatMap tf (freeVars z :: [Atom])) | a@(x,(_ :-> z)) <- ds]
+ 
+     -- FFI
+     let tvrAtom t  = liftM convertName (fromId $ tvrIdent t)
+diff -Naur jhc-0.8.2/src/Grin/Grin.hs jhc-0.8.2-patched/src/Grin/Grin.hs
+--- jhc-0.8.2/src/Grin/Grin.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/Grin.hs	2026-01-29 17:14:49.404915759 -0600
+@@ -53,6 +53,7 @@
+     valIsNF
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Monad.Identity
+ import Data.Char
+ import Data.Monoid(Monoid(..))
+@@ -523,7 +524,7 @@
+ instance FreeVars FuncProps (Set.Set Tag) where
+     freeVars FuncProps { funcTags = fv } = fv
+ 
+-instance FreeVars FuncProps a => FreeVars FuncDef a where
++instance (Monoid a, FreeVars FuncProps a) => FreeVars FuncDef a where
+     freeVars fd = freeVars (funcDefProps fd)
+ 
+ instance FreeVars Exp (Set.Set Var) where
+diff -Naur jhc-0.8.2/src/Grin/Lint.hs jhc-0.8.2-patched/src/Grin/Lint.hs
+--- jhc-0.8.2/src/Grin/Lint.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/Lint.hs	2026-01-29 17:14:49.446415367 -0600
+@@ -5,6 +5,7 @@
+     dumpGrin
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Control.Exception
+ import Control.Monad.Reader
+ import Data.Monoid
+@@ -215,7 +216,7 @@
+ }
+ 
+ newtype Tc a = Tc (ReaderT TcEnv (Either String) a)
+-    deriving(Monad,MonadReader TcEnv)
++    deriving(Functor, Applicative, Monad,MonadReader TcEnv)
+ 
+ tcErr :: String -> Tc a
+ tcErr s = Tc $ lift (Left s)
+diff -Naur jhc-0.8.2/src/Grin/NodeAnalyze.hs jhc-0.8.2-patched/src/Grin/NodeAnalyze.hs
+--- jhc-0.8.2/src/Grin/NodeAnalyze.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/NodeAnalyze.hs	2026-01-29 17:14:49.442662113 -0600
+@@ -94,7 +94,7 @@
+     showsPrec _ VIgnore = showString "IGN"
+ 
+ newtype M a = M (RWS TyEnv (C N V) Int a)
+-    deriving(Monad,Functor,MonadWriter (C N V))
++    deriving(Applicative, Monad,Functor,MonadWriter (C N V))
+ 
+ runM :: Grin -> M a -> C N V
+ runM grin (M w) = case runRWS w (grinTypeEnv grin) 1 of
+diff -Naur jhc-0.8.2/src/Grin/Optimize.hs jhc-0.8.2-patched/src/Grin/Optimize.hs
+--- jhc-0.8.2/src/Grin/Optimize.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/Optimize.hs	2026-01-29 17:14:49.277516643 -0600
+@@ -188,7 +188,7 @@
+ findSpeculatable :: Grin -> [Atom]
+ findSpeculatable grin = ans where
+     ans = [ x | Left (x,_) <- scc graph ]
+-    graph = newGraph [ (a,concatMap f (freeVars l)) | (a,_ :-> l) <- grinFuncs grin, isSpeculatable l, getType l == [TyNode] ] fst snd
++    graph = newGraph [ (a,concatMap f (freeVars l :: Set.Set Atom)) | (a,_ :-> l) <- grinFuncs grin, isSpeculatable l, getType l == [TyNode] ] fst snd
+     f t | tagIsSuspFunction t = [tagFlipFunction t]
+         | tagIsFunction t = [t]
+         | otherwise = []
+diff -Naur jhc-0.8.2/src/Grin/Show.hs jhc-0.8.2-patched/src/Grin/Show.hs
+--- jhc-0.8.2/src/Grin/Show.hs	2014-06-01 10:29:17.000000000 -0500
++++ jhc-0.8.2-patched/src/Grin/Show.hs	2026-01-29 17:14:49.404062605 -0600
+@@ -7,6 +7,7 @@
+     render
+     ) where
+ 
++import Prelude hiding ((<$>))
+ import Char
+ import Control.Monad.Writer(tell,when,forM_,execWriter)
+ import Data.Maybe
+diff -Naur jhc-0.8.2/src/Ho/Binary.hs jhc-0.8.2-patched/src/Ho/Binary.hs
+--- jhc-0.8.2/src/Ho/Binary.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Ho/Binary.hs	2026-01-29 17:14:49.315190325 -0600
+@@ -1,4 +1,4 @@
+-{-# LANGUAGE ImpredicativeTypes #-}
++{-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
+ module Ho.Binary(readHoFile,recordHoFile,readHlFile,recordHlFile) where
+ 
+ import Codec.Compression.Zlib
+@@ -18,8 +18,9 @@
+ import Support.CFF
+ import Support.MapBinaryInstance
+ import Version.Config(ho_version)
++newtype ChunkFetcher = ChunkFetcher { runChunkFetcher :: forall a. Binary a => ChunkType -> a }
+ 
+-readHFile :: FilePath -> IO (FilePath,HoHeader,forall a . Binary a => ChunkType -> a)
++readHFile :: FilePath -> IO (FilePath, HoHeader, ChunkFetcher)
+ readHFile fn = do
+     bs <- BS.readFile fn
+     fn' <- shortenPath fn
+@@ -30,13 +31,13 @@
+             Just x -> decode . decompress $ LBS.fromChunks [x]
+     let hoh = fc cff_jhdr
+     when (hohVersion hoh /= ho_version) $ fail "invalid version in hofile"
+-    return (fn',hoh,fc)
++    return (fn',hoh,ChunkFetcher fc)
+ 
+ readHoFile :: FilePath -> IO (HoHeader,HoIDeps,Ho)
+ readHoFile fn = do
+     (_fn,hoh,fc) <- readHFile fn
+     let Left modGroup = hohName hoh
+-    return (hoh,fc cff_idep,Ho { hoModuleGroup = modGroup, hoTcInfo = fc cff_defs, hoBuild = fc cff_core})
++    return (hoh,runChunkFetcher fc cff_idep,Ho { hoModuleGroup = modGroup, hoTcInfo = runChunkFetcher fc cff_defs, hoBuild = runChunkFetcher fc cff_core})
+ 
+ recordHoFile ::
+     Ho               -- ^ File to record
+@@ -101,9 +102,9 @@
+ readHlFile :: FilePath -> IO Library
+ readHlFile fn = do
+     (_fn',hoh,fc) <- readHFile fn
+-    return Library { libHoHeader = hoh, libHoLib =  fc cff_libr,
+-        libTcMap = fc cff_ldef, libBuildMap = fc cff_lcor,
+-        libFileName = fn, libExtraFiles = fc cff_file }
++    return Library { libHoHeader = hoh, libHoLib = runChunkFetcher fc cff_libr,
++        libTcMap = runChunkFetcher fc cff_ldef, libBuildMap = runChunkFetcher fc cff_lcor,
++        libFileName = fn, libExtraFiles = runChunkFetcher fc cff_file }
+ 
+ instance Binary ExtraFile where
+     put (ExtraFile a b) = put (a,b)
+@@ -161,9 +162,6 @@
+     ad <- get
+     return (HoLib aa ab ac ad)
+ 
+-instance Binary Data.Version.Version where
+-    put (Data.Version.Version a b) = put a >> put b
+-    get = liftM2 Data.Version.Version get get
+ 
+ instance Data.Binary.Binary HoTcInfo where
+     put (HoTcInfo aa ab ac ad ae af ag ah) = do
+diff -Naur jhc-0.8.2/src/Name/Binary.hs jhc-0.8.2-patched/src/Name/Binary.hs
+--- jhc-0.8.2/src/Name/Binary.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Name/Binary.hs	2026-01-29 17:14:49.337174086 -0600
+@@ -7,22 +7,22 @@
+ import GenUtil(replicateM)
+ import Name.Id
+ import Name.Internals
+-import Support.MapBinaryInstance
++import qualified Support.MapBinaryInstance as MB
+ 
+ instance Binary IdSet where
+     put ids = do
+-        putList [ id | id <- idSetToList ids, isNothing (fromId id)]
+-        putList [ n | id <- idSetToList ids, n <- fromId id]
++        MB.putList [ id | id <- idSetToList ids, isNothing (fromId id)]
++        MB.putList [ n | id <- idSetToList ids, n <- fromId id]
+     get = do
+-        (idl:: [Id])   <- getList
+-        (ndl:: [Name]) <- getList
++        (idl:: [Id])   <- MB.getList
++        (ndl:: [Name]) <- MB.getList
+         return (idSetFromDistinctAscList idl `mappend` idSetFromList (map toId ndl))
+ 
+ instance Binary a => Binary (IdMap a) where
+     put ids = do
+-        putList [ x | x@(id,_) <- idMapToList ids, isNothing (fromId id)]
+-        putList [ (n,v) | (id,v) <- idMapToList ids, n <- fromId id]
++        MB.putList [ x | x@(id,_) <- idMapToList ids, isNothing (fromId id)]
++        MB.putList [ (n,v) | (id,v) <- idMapToList ids, n <- fromId id]
+     get = do
+-        idl <- getList
+-        ndl <- getList
++        idl <- MB.getList
++        ndl <- MB.getList
+         return (idMapFromDistinctAscList idl `mappend` idMapFromList [ (toId n,v) | (n,v) <- ndl ])
+diff -Naur jhc-0.8.2/src/Name/Id.hs jhc-0.8.2-patched/src/Name/Id.hs
+--- jhc-0.8.2/src/Name/Id.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Name/Id.hs	2026-01-29 17:14:49.429447489 -0600
+@@ -35,6 +35,7 @@
+     runIdNameT
+     )where
+ 
++import Control.Applicative
+ import Control.Monad.Reader
+ import Control.Monad.State
+ import Data.Bits
+@@ -170,7 +171,7 @@
+ 
+ -- | Name monad transformer.
+ newtype IdNameT m a = IdNameT (StateT (IdSet, IdSet) m a)
+-    deriving(Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
++    deriving(Applicative, Alternative, Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
+ 
+ instance (MonadReader r m) => MonadReader r (IdNameT m) where
+ 	ask       = lift ask
+diff -Naur jhc-0.8.2/src/Name/Name.hs jhc-0.8.2-patched/src/Name/Name.hs
+--- jhc-0.8.2/src/Name/Name.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Name/Name.hs	2026-01-29 17:14:49.486280249 -0600
+@@ -70,10 +70,10 @@
+ -- name definiton
+ -----------------
+ 
+-isConstructorLike n =  isUpper x || x `elem` ":("  || xs == "->" || xs == "[]" where
++isConstructorLike n =  isUpper x || x `elem` (":(" :: String)  || xs == "->" || xs == "[]" where
+     (_,_,xs@(x:_)) = nameParts n
+ 
+-isOpLike n  = x `elem` "!#$%&*+./<=>?@\\^-~:|" where
++isOpLike n  = x `elem` ("!#$%&*+./<=>?@\\^-~:|" :: String) where
+     (_,_,(x:_)) = nameParts n
+ 
+ fromTypishHsName, fromValishHsName :: Name -> Name
+@@ -156,7 +156,7 @@
+ parseName t name = toName t (intercalate "." ms, intercalate "." (ns ++ [last sn])) where
+     sn = (split (== '.') name)
+     (ms,ns) = span validMod (init sn)
+-    validMod (c:cs) = isUpper c && all (\c -> isAlphaNum c || c `elem` "_'") cs
++    validMod (c:cs) = isUpper c && all (\c -> isAlphaNum c || c `elem` ("_'" :: String)) cs
+     validMod _ = False
+ 
+ nameType :: Name -> NameType
+diff -Naur jhc-0.8.2/src/Options.hs jhc-0.8.2-patched/src/Options.hs
+--- jhc-0.8.2/src/Options.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Options.hs	2026-01-29 17:14:49.453910969 -0600
+@@ -505,7 +505,7 @@
+ instance OptionMonad IO
+ 
+ newtype OptT m a = OptT (ReaderT Opt m a)
+-    deriving(MonadIO,Monad,Functor,MonadTrans)
++    deriving(Applicative, MonadIO,Monad,Functor,MonadTrans)
+ 
+ type OptM = OptT Identity
+ 
+diff -Naur jhc-0.8.2/src/Stats.hs jhc-0.8.2-patched/src/Stats.hs
+--- jhc-0.8.2/src/Stats.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Stats.hs	2026-01-29 17:14:49.451291525 -0600
+@@ -33,6 +33,8 @@
+     readStat
+     ) where
+ 
++import Control.Applicative
++import Control.Monad
+ import Util.Std
+ import Control.Monad.Reader
+ import Control.Monad.Writer.Strict
+@@ -117,7 +119,7 @@
+     mtickStat :: Stat -> m ()
+ 
+ newtype StatT m a = StatT (WriterT Stat m a)
+-    deriving(MonadIO, Functor, MonadFix, MonadTrans, Monad)
++    deriving(Applicative, MonadIO, Functor, MonadFix, MonadTrans, Monad)
+ 
+ runStatT :: Monad m => StatT m a -> m (a,Stat)
+ runStatT (StatT m) =  runWriterT m
+@@ -127,6 +129,7 @@
+ instance Functor StatM where
+     fmap f (StatM a s) = StatM (f a) s
+ 
++instance Applicative StatM where { pure = return; (<*>) = ap }
+ instance Monad StatM where
+     StatM _ s1 >> StatM y s2 = StatM y (s1 `mappend` s2)
+     return x = StatM x mempty
+diff -Naur jhc-0.8.2/src/Support/FreeVars.hs jhc-0.8.2-patched/src/Support/FreeVars.hs
+--- jhc-0.8.2/src/Support/FreeVars.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Support/FreeVars.hs	2026-01-29 17:14:49.396607306 -0600
+@@ -8,19 +8,19 @@
+ instance  Monoid x => FreeVars () x where
+     freeVars () = mempty
+ 
+-instance (FreeVars x b, FreeVars y b) => FreeVars (x,y) b where
++instance (Monoid b, FreeVars x b, FreeVars y b) => FreeVars (x,y) b where
+     freeVars (x,y) = freeVars x `mappend` freeVars y
+ 
+-instance (FreeVars x b, FreeVars y b, FreeVars z b) => FreeVars (x,y,z) b where
++instance (Monoid b, FreeVars x b, FreeVars y b, FreeVars z b) => FreeVars (x,y,z) b where
+     freeVars (x,y,z) = freeVars x `mappend` freeVars y `mappend` freeVars z
+ 
+-instance FreeVars a b => FreeVars [a] b where
++instance (Monoid b, FreeVars a b) => FreeVars [a] b where
+     freeVars as = mconcat (map freeVars as)
+ 
+-instance FreeVars a b => FreeVars (Maybe a) b where
++instance (Monoid b, FreeVars a b) => FreeVars (Maybe a) b where
+     freeVars (Just x) = freeVars x
+     freeVars Nothing = mempty
+ 
+-instance (FreeVars x b, FreeVars y b) => FreeVars (Either x y) b where
++instance (Monoid b, FreeVars x b, FreeVars y b) => FreeVars (Either x y) b where
+     freeVars (Left x) = freeVars x
+     freeVars (Right y) = freeVars y
+diff -Naur jhc-0.8.2/src/Support/IniParse.hs jhc-0.8.2-patched/src/Support/IniParse.hs
+--- jhc-0.8.2/src/Support/IniParse.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Support/IniParse.hs	2026-01-29 17:14:49.431800208 -0600
+@@ -13,7 +13,7 @@
+ type St = (Int,FilePath,String)
+ 
+ newtype P a = P (State St a)
+-    deriving(Monad,MonadState St)
++    deriving(Functor, Applicative, Monad,MonadState St)
+ 
+ third (_,_,x) = x
+ 
+diff -Naur jhc-0.8.2/src/Util/ContextMonad.hs jhc-0.8.2-patched/src/Util/ContextMonad.hs
+--- jhc-0.8.2/src/Util/ContextMonad.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/ContextMonad.hs	2026-01-29 17:14:49.248479359 -0600
+@@ -1,5 +1,7 @@
+ module Util.ContextMonad where
+ 
++import Control.Applicative
++import Control.Monad
+ import Control.Monad.Error
+ 
+ class Monad m => ContextMonad m where
+@@ -30,3 +32,5 @@
+ runSimpleContextMonad :: ContextEither a -> a
+ runSimpleContextMonad (ContextEither (Left ss)) = error $ unlines ss
+ runSimpleContextMonad (ContextEither (Right x)) = x
++instance Applicative ContextEither where { pure = return; (<*>) = ap }
++instance Alternative ContextEither where { empty = ContextEither (Left []); ContextEither (Left _) <|> r = r; l <|> _ = l }
+diff -Naur jhc-0.8.2/src/Util/NameMonad.hs jhc-0.8.2-patched/src/Util/NameMonad.hs
+--- jhc-0.8.2/src/Util/NameMonad.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/NameMonad.hs	2026-01-29 17:14:49.436563538 -0600
+@@ -1,5 +1,7 @@
+ module Util.NameMonad(NameMonad(..),GenName(..),NameMT,runNameMT,runNameMT',freeNames,mixInt,mixInt3,hashInt) where
+ 
++import Control.Applicative
++import Control.Monad
+ import Control.Monad.State
+ import Data.Bits
+ import Data.Word
+@@ -48,7 +50,7 @@
+ 
+ -- | Name monad transformer.
+ newtype NameMT n m a = NameMT (StateT (Set.Set n, Set.Set n) m a)
+-    deriving(Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
++    deriving(Applicative, Alternative, Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
+ 
+ -- | Run the name monad transformer.
+ runNameMT :: (Monad m) => NameMT a1 m a -> m a
+diff -Naur jhc-0.8.2/src/Util/ReaderWriter.hs jhc-0.8.2-patched/src/Util/ReaderWriter.hs
+--- jhc-0.8.2/src/Util/ReaderWriter.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/ReaderWriter.hs	2026-01-29 17:14:49.240903728 -0600
+@@ -1,6 +1,8 @@
+ {-# LANGUAGE UnboxedTuples #-}
+ module Util.ReaderWriter(ReaderWriter(),runReaderWriter) where
+ 
++import Control.Applicative
++import Control.Monad
+ import Data.Monoid
+ import Control.Monad.Reader
+ import Control.Monad.Writer
+@@ -36,3 +38,4 @@
+ instance Monoid w => MonadReader r (ReaderWriter r w) where
+ 	ask       = ReaderWriter $ \r -> (# r, mempty #)
+ 	local f (ReaderWriter m) = ReaderWriter $ \r -> m (f r)
++instance Monoid w => Applicative (ReaderWriter r w) where pure = return; (<*>) = ap
+diff -Naur jhc-0.8.2/src/Util/RWS.hs jhc-0.8.2-patched/src/Util/RWS.hs
+--- jhc-0.8.2/src/Util/RWS.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/RWS.hs	2026-01-29 17:14:49.242303603 -0600
+@@ -19,6 +19,8 @@
+ 	module Control.Monad.State,
+   ) where
+ 
++import Control.Applicative
++import Control.Monad
+ import Prelude
+ 
+ import Control.Monad
+@@ -146,3 +148,4 @@
+ withRWST :: (r' -> s -> (r, s)) -> RWST r w s m a -> RWST r' w s m a
+ withRWST f m = RWST $ \r s -> uncurry (runRWST m) (f r s)
+ -}
++instance Monoid w => Applicative (RWS r w s) where pure = return; (<*>) = ap
+diff -Naur jhc-0.8.2/src/Util/Seq.hs jhc-0.8.2-patched/src/Util/Seq.hs
+--- jhc-0.8.2/src/Util/Seq.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/Seq.hs	2026-01-29 17:14:49.239496746 -0600
+@@ -11,9 +11,11 @@
+           , Util.Seq.concat
+           ) where
+ 
++import Prelude hiding (toList)
++import Control.Applicative
++import Control.Monad
+ import Control.Applicative
+ import Control.Monad
+-import Data.Foldable(Foldable(..))
+ import Data.Monoid(Monoid(..))
+ import Data.Traversable(Traversable(..))
+ 
+@@ -67,3 +69,4 @@
+ instance Monoid (Seq a) where
+     mempty = Seq (\xs -> xs)
+     Seq f `mappend` Seq g = Seq (\xs -> f (g xs))
++instance Alternative Seq where empty = mzero; (<|>) = mplus
+diff -Naur jhc-0.8.2/src/Util/UniqueMonad.hs jhc-0.8.2-patched/src/Util/UniqueMonad.hs
+--- jhc-0.8.2/src/Util/UniqueMonad.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/UniqueMonad.hs	2026-01-29 17:14:49.251805410 -0600
+@@ -42,7 +42,7 @@
+ 
+ -- | Unique integer generator monad transformer.
+ newtype UniqT m a = UniqT (StateT Int m a)
+-    deriving(Monad, Applicative, MonadTrans, Functor, MonadFix, MonadPlus)
++    deriving(Monad, Applicative, Alternative, MonadTrans, Functor, MonadFix, MonadPlus)
+ 
+ instance MonadReader s m => MonadReader s (UniqT m) where
+     ask = UniqT $  ask
+diff -Naur jhc-0.8.2/src/Util/VarName.hs jhc-0.8.2-patched/src/Util/VarName.hs
+--- jhc-0.8.2/src/Util/VarName.hs	2014-06-01 10:29:16.000000000 -0500
++++ jhc-0.8.2-patched/src/Util/VarName.hs	2026-01-29 17:14:49.434154310 -0600
+@@ -9,12 +9,13 @@
+     maybeLookupName,
+     newLookupName) where
+ 
++import Control.Applicative
+ import Control.Monad.State
+ import Control.Monad.Identity
+ import qualified Data.Map as Map
+ 
+ newtype VarNameT nc ni no m a = VarName (StateT (Map.Map ni no, Map.Map nc Int) m a)
+-    deriving(Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
++    deriving(Applicative, Alternative, Monad, MonadTrans, Functor, MonadFix, MonadPlus, MonadIO)
+ 
+ type VarName ni no a = VarNameT () ni no Identity a
+ 

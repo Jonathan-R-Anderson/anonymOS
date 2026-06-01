@@ -1,0 +1,42 @@
+qemu.log
+qemu-verify.log
+*.log
+.claude/
+.build-home/
+.venv/
+deps/.host-tools/
+build/
+dist-newstyle/
+template_tmp/
+*.iso
+/deps/cxxrt/downloads/
+.aider*
+build/
+bin/
+out/
+target/
+.cache/
+*.o
+*.a
+*.so
+*.elf
+*.img
+*.iso
+*.symbols
+
+# Logs/temp
+nohup.out
+*.log
+*.tmp
+
+# Editor
+.vscode/
+
+# Huge third-party deps
+deps/
+jhc-0.8.2/
+
+# Local scripts/artifacts
+hello
+kernel.elf
+kernel.symbols

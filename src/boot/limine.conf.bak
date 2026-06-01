@@ -1,0 +1,29 @@
+timeout: 0
+verbose: yes
+serial: yes
+textmode: no
+interface_branding: HaskellOS
+
+/HaskellOS
+    protocol: limine
+    path: boot():/boot/kernel.elf
+    framebuffer_width: 1920
+    framebuffer_height: 1080
+    framebuffer_bpp: 32
+    module_path: boot():/hos.bundle
+    module_path: boot():/storage.elf
+    module_path: boot():/init.elf
+    module_path: boot():/busybox
+    module_path: boot():/openrc
+    module_path: boot():/sbin/dbus-daemon
+    module_path: boot():/sbin/dconf-service
+    module_path: boot():/sbin/NetworkManager
+    module_path: boot():/elogind
+    module_path: boot():/sbin/logind
+    module_path: boot():/sbin/pipewire
+    module_path: boot():/sbin/pipewire-pulse
+    module_path: boot():/sbin/wireplumber
+    module_path: boot():/sbin/mutter
+    module_path: boot():/sbin/gnome-shell
+    module_path: boot():/sbin/gdm
+    module_path: boot():/sbin/desktop-stage

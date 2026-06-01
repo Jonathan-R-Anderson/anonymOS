@@ -1,0 +1,96 @@
+# Project Structure
+SRC_ROOT=$(PROJECT_ROOT)/src
+BUILD_ROOT=$(PROJECT_ROOT)/build
+
+# Host Configuration
+CROSSCOMPILE_PREFIX ?= /usr
+LLVM_PREFIX ?= /usr/lib/llvm-18
+HOST_TOOLS_ROOT ?= $(PROJECT_ROOT)/deps/.host-tools
+HOST_TOOLS_BIN ?= $(HOST_TOOLS_ROOT)/bin
+export PATH := $(HOST_TOOLS_BIN):$(PATH)
+
+# Tools
+CROSSCOMPILE_LD ?= ld
+CROSSCOMPILE_STRIP ?= strip
+CROSSCOMPILE_AS ?= as
+CROSSCOMPILE_AR ?= ar
+CROSSCOMPILE_CLANG ?= clang
+XORRISO ?= xorriso
+DC ?= ldc2
+MESON ?= meson
+NINJA ?= ninja
+
+# Build parallelism
+# Default to serial builds unless the caller opts in. Several dependency
+# builds in this tree are memory-heavy enough to OOM smaller machines when
+# they auto-expand to all host cores.
+# Keep top-level and in-tree recursive makefiles serialized by default.
+# Set LOW_RESOURCE_BUILD=0 and raise BUILD_JOBS explicitly when you want a
+# faster build on a machine with enough RAM.
+LOW_RESOURCE_BUILD ?= 1
+BUILD_JOBS ?= 1
+BUILD_LOAD_LIMIT ?=
+BUILD_NICE ?= 15
+BUILD_IONICE_CLASS ?= 3
+BUILD_MEMORY_LIMIT_KB ?= 0
+BUILD_CPU_LIMIT_SECONDS ?= 0
+BUILD_TAIL_LINES ?= 80
+
+ifeq ($(LOW_RESOURCE_BUILD),1)
+.NOTPARALLEL:
+BUILD_RESOURCE_RUN ?= bash $(PROJECT_ROOT)/src/util/bin/hos-low-resource-run
+MAKEFLAGS += --silent
+else
+BUILD_RESOURCE_RUN ?=
+endif
+
+MAKEFLAGS += --output-sync=target --no-print-directory
+
+MAKE_BUILD_FLAGS := -j$(BUILD_JOBS)
+ifneq ($(strip $(BUILD_LOAD_LIMIT)),)
+MAKE_BUILD_FLAGS += -l$(BUILD_LOAD_LIMIT)
+endif
+NINJA_BUILD_FLAGS := -j$(BUILD_JOBS)
+export LOW_RESOURCE_BUILD BUILD_JOBS BUILD_LOAD_LIMIT MAKE_BUILD_FLAGS NINJA_BUILD_FLAGS
+export BUILD_NICE BUILD_IONICE_CLASS BUILD_MEMORY_LIMIT_KB BUILD_CPU_LIMIT_SECONDS BUILD_TAIL_LINES BUILD_RESOURCE_RUN
+
+# JHC Configuration
+ifneq ($(wildcard $(PROJECT_ROOT)/jhc-0.8.2/jhc),)
+JHC ?= $(PROJECT_ROOT)/jhc-0.8.2/jhc
+else
+JHC ?= jhc
+endif
+JHC_LIBS_PREFIX ?= /usr/local/lib/jhc-0.8.2
+JHC_CACHE ?= $(PROJECT_ROOT)/.build-home/.jhc/cache
+export JHC_CACHE
+
+TARGET ?= x86_64
+HOST ?= i386
+
+# Include Paths
+RTS_INC=-I$(SRC_ROOT)/libs/rts -I$(SRC_ROOT)/libs/rts/rts
+CBITS_INC=-I$(SRC_ROOT)/kernel/d
+PROGS_INC=-I$(SRC_ROOT)/progs/runtime/cbits -I$(SRC_ROOT)/progs/runtime/hos
+
+CFLAGS_COMMON=-D _JHC_GC=1 -D _JHC_DEBUG=0 -D _JHC_BAREBONES -fno-pic -fno-pie -fno-addrsig
+JHC_COMMON=-DTARGET=$(TARGET) -papplicative -fforall
+
+# Optimization defaults.
+# Lowering OPT_LEVEL can materially reduce host memory pressure during
+# `make hos.iso`, especially while compiling the giant JHC-generated C files.
+OPT_LEVEL ?= -O0
+D_OPT_LEVEL ?= $(OPT_LEVEL)
+KERNEL_OPT_LEVEL ?= $(OPT_LEVEL)
+USER_OPT_LEVEL ?= $(OPT_LEVEL)
+KERNEL_EXTRA_CFLAGS ?=
+USER_EXTRA_CFLAGS ?=
+
+DFLAGS=-betterC -mtriple=x86_64-unknown-none-elf $(D_OPT_LEVEL) -code-model=large
+
+# Kernel CFLAGS
+KERNEL_CFLAGS=-m64 $(CFLAGS_COMMON) -ffreestanding $(RTS_INC) $(CBITS_INC) -include d_exports.h -DCOMPILING_HS_KERNEL -mno-red-zone -mcmodel=large -D TARGET=$(TARGET) -D KERNEL=1 $(KERNEL_OPT_LEVEL) $(KERNEL_EXTRA_CFLAGS)
+
+# User CFLAGS
+USER_CFLAGS=-m64 $(CFLAGS_COMMON) $(RTS_INC) $(PROGS_INC) -include hos.h -D TARGET=$(TARGET) -D HOS_USER=1 -D__HaskellOS__ $(USER_OPT_LEVEL) $(USER_EXTRA_CFLAGS)
+
+TEST_CFLAGS=$(CFLAGS_COMMON) -D TARGET=$(HOST)

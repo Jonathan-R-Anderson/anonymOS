@@ -1,0 +1,1083 @@
+module implementation.kernel.syscalls.linux_compat;
+
+import core.syscalls.posix : setErrno, Errno, currentProcess, FD, FDFlags, MAX_FD, schedYield;
+import anonymos_userland.core.objects;
+import anonymos_userland.shell.console : printLine;
+import implementation.kernel.syscalls.linux : stat_t, timespec;
+
+// Import object_methods with D linkage before extern(C) block
+import anonymos_userland.core.object_methods : 
+    blobRead, blobWrite, channelSend, channelRecv,
+    socketSend, socketRecv, socketConnect, socketBind, socketListen, socketAccept, socketClose, processWait;
+
+extern(C) @nogc nothrow:
+
+struct sockaddr {
+    ushort sa_family;
+    char[14] sa_data;
+}
+
+struct in_addr {
+    uint s_addr;
+}
+
+struct sockaddr_in {
+    short sin_family;
+    ushort sin_port;
+    in_addr sin_addr;
+    char[8] sin_zero;
+}
+
+enum AF_INET = 2;
+
+struct iovec {
+    void* iov_base;
+    size_t iov_len;
+}
+
+struct msghdr {
+    void* msg_name;
+    uint msg_namelen;
+    iovec* msg_iov;
+    size_t msg_iovlen;
+    void* msg_control;
+    size_t msg_controllen;
+    int msg_flags;
+}
+
+// Helper to find a free file descriptor
+package int allocFd()
+{
+    auto proc = currentProcess();
+    if (proc is null) return -1;
+    
+    for (int i = 0; i < MAX_FD; ++i)
+    {
+        if (proc.fds[i].num == -1)
+        {
+            proc.fds[i].num = i;
+            proc.fds[i].flags = FDFlags.NONE;
+            return i;
+        }
+    }
+    return -1; // EMFILE
+}
+
+// sys_open implementation
+int linux_sys_open(const(char)* path, int flags, int mode)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    // Convert C string to D slice
+    size_t len = 0;
+    while (path[len] != 0) len++;
+    const(char)[] pathStr = path[0..len];
+    
+    // Resolve path relative to CWD (which is an ObjectID in Proc)
+    // We need a Capability for CWD. 
+    // In a real system, Proc would hold a Capability for CWD, not just ObjectID.
+    // For now, we assume full rights on CWD if we have the ID.
+    Capability cwdCap = Capability(proc.cwd, Rights.Read | Rights.Enumerate | Rights.Execute);
+    
+    // If path starts with /, use root
+    Capability startCap = cwdCap;
+    if (len > 0 && path[0] == '/')
+    {
+        startCap = proc.rootCap;
+    }
+    
+    // Resolve
+    Capability targetCap = resolvePath(startCap.oid, pathStr);
+    
+    // If not found and O_CREAT (flags & 64), create it
+    if (targetCap.oid.low == 0 && (flags & 64))
+    {
+        // We need to find the parent directory to create the file in
+        // This is tricky with just resolvePath. 
+        // For simplicity, let's assume the file is being created in the current directory if no slashes
+        // Or we'd need a resolveParentPath helper.
+        
+        // Simplified: Create in CWD if simple name
+        bool isSimple = true;
+        for (size_t i = 0; i < len; ++i) if (path[i] == '/') isSimple = false;
+        
+        if (isSimple)
+        {
+            // Create empty blob
+            ObjectID newBlob = createBlob([]);
+            if (newBlob.low != 0)
+            {
+                Capability newCap = Capability(newBlob, Rights.Read | Rights.Write);
+                if (insert(cwdCap.oid, pathStr, newCap))
+                {
+                    targetCap = newCap;
+                }
+            }
+        }
+    }
+    
+    if (targetCap.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    // Allocate FD
+    int fd = allocFd();
+    if (fd < 0) return setErrno(Errno.EMFILE);
+    
+    proc.fds[fd].cap = targetCap;
+    proc.fds[fd].statusFlags = flags;
+    
+    return fd;
+}
+
+// sys_close implementation
+int linux_sys_close(int fd)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    // Release capability (refcounting would happen here)
+    auto slot = getObject(proc.fds[fd].cap.oid);
+    if (slot !is null && slot.type == ObjectType.Socket) {
+        socketClose(proc.fds[fd].cap.oid);
+    }
+    
+    proc.fds[fd].num = -1;
+    proc.fds[fd].cap = Capability(ObjectID(0,0), Rights.None);
+    
+    return 0;
+}
+
+// sys_read implementation
+long linux_sys_read(int fd, void* buf, size_t count)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    Capability cap = proc.fds[fd].cap;
+    auto slot = getObject(cap.oid);
+    if (slot is null) return setErrno(Errno.EBADF);
+    
+    // Check rights
+    if (!(cap.rights & Rights.Read)) return setErrno(Errno.EACCES);
+    
+    // Dispatch based on object type
+    switch (slot.type)
+    {
+        case ObjectType.Blob:
+            long bytesRead = blobRead(cap.oid, proc.fds[fd].offset, count, cast(ubyte*)buf);
+            if (bytesRead > 0) proc.fds[fd].offset += bytesRead;
+            return bytesRead;
+            
+        case ObjectType.Channel:
+            return channelRecv(cap.oid, cast(ubyte*)buf, count, null, 0, null);
+            
+        case ObjectType.Socket:
+            return socketRecv(cap.oid, cast(ubyte*)buf, count);
+
+        case ObjectType.Pipe:
+            // Pipe Read Logic
+            auto pipe = &slot.pipe;
+            size_t bytesRead = 0;
+            ubyte* dest = cast(ubyte*)buf;
+            
+            while (bytesRead < count)
+            {
+                if (pipe.head == pipe.tail)
+                {
+                    // Empty
+                    if (pipe.writerCount == 0) break; // EOF
+                    
+                    // Block (simplified: yield loop)
+                    // In real implementation: sleep on wait queue
+                    import implementation.kernel.syscalls.posix : schedYield;
+                    schedYield();
+                    continue;
+                }
+                
+                dest[bytesRead++] = pipe.buffer[pipe.tail % pipe.capacity];
+                pipe.tail++;
+            }
+            return bytesRead;
+            
+        default:
+            return setErrno(Errno.EINVAL);
+    }
+}
+
+// sys_write implementation
+long linux_sys_write(int fd, const(void)* buf, size_t count)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    Capability cap = proc.fds[fd].cap;
+    auto slot = getObject(cap.oid);
+    if (slot is null) return setErrno(Errno.EBADF);
+    
+    // Check rights
+    if (!(cap.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    switch (slot.type)
+    {
+        case ObjectType.Blob:
+            long bytesWritten = blobWrite(cap.oid, proc.fds[fd].offset, cast(const(ubyte)*)buf, count);
+            if (bytesWritten > 0) proc.fds[fd].offset += bytesWritten;
+            return bytesWritten;
+            
+        case ObjectType.Channel:
+            return channelSend(cap.oid, cast(const(ubyte)*)buf, count, null, 0);
+            
+        case ObjectType.Socket:
+            return socketSend(cap.oid, cast(const(ubyte)*)buf, count);
+            
+        case ObjectType.Window:
+             // Write to window could mean drawing or logging
+             return count;
+
+        case ObjectType.Pipe:
+            // Pipe Write Logic
+            auto pipe = &slot.pipe;
+            size_t bytesWritten = 0;
+            const(ubyte)* src = cast(const(ubyte)*)buf;
+            
+            while (bytesWritten < count)
+            {
+                if (pipe.head - pipe.tail >= pipe.capacity)
+                {
+                    // Full
+                    if (pipe.readerCount == 0) return setErrno(Errno.EPIPE); // SIGPIPE
+                    
+                    // Block
+                    import implementation.kernel.syscalls.posix : schedYield;
+                    schedYield();
+                    continue;
+                }
+                
+                pipe.buffer[pipe.head % pipe.capacity] = src[bytesWritten++];
+                pipe.head++;
+            }
+            return bytesWritten;
+             
+        default:
+            return setErrno(Errno.EINVAL);
+    }
+}
+
+// sys_socket implementation
+int linux_sys_socket(int domain, int type, int protocol)
+{
+    // Map Linux constants to ObjectType
+    // AF_INET = 2, SOCK_STREAM = 1
+    
+    SocketType sockType = SocketType.Stream;
+    if (type == 2) sockType = SocketType.Datagram; // SOCK_DGRAM
+    
+    ObjectID sockId = createSocket(sockType);
+    if (sockId.low == 0) return setErrno(Errno.ENOMEM);
+    
+    int fd = allocFd();
+    if (fd < 0) return setErrno(Errno.EMFILE);
+    
+    auto proc = currentProcess();
+    proc.fds[fd].cap = Capability(sockId, Rights.Read | Rights.Write | Rights.Call);
+    
+    return fd;
+}
+
+// sys_connect implementation
+
+
+// sys_bind implementation
+int linux_sys_bind(int fd, const(void)* addr, int addrlen)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[fd].cap;
+    
+    const(ubyte)* addrBytes = cast(const(ubyte)*)addr;
+    ushort port = (cast(ushort)addrBytes[2] << 8) | addrBytes[3];
+    
+    ubyte[16] ip;
+    ip[0] = addrBytes[4];
+    ip[1] = addrBytes[5];
+    ip[2] = addrBytes[6];
+    ip[3] = addrBytes[7];
+    
+    return cast(int)socketBind(cap.oid, ip.ptr, port);
+}
+
+int linux_sys_connect(int fd, const(void)* addr, int addrlen)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[fd].cap;
+    
+    const(ubyte)* addrBytes = cast(const(ubyte)*)addr;
+    ushort port = (cast(ushort)addrBytes[2] << 8) | addrBytes[3];
+    
+    ubyte[16] ip;
+    ip[0] = addrBytes[4];
+    ip[1] = addrBytes[5];
+    ip[2] = addrBytes[6];
+    ip[3] = addrBytes[7];
+    
+    return cast(int)socketConnect(cap.oid, ip.ptr, port);
+}
+
+// sys_mkdir implementation
+int sys_mkdir(const(char)* path, int mode)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    size_t len = 0;
+    while (path[len] != 0) len++;
+    const(char)[] pathStr = path[0..len];
+    
+    // Assume creating in CWD for simplicity
+    Capability cwdCap = Capability(proc.cwd, Rights.Write);
+    
+    ObjectID newDir = createDirectory();
+    if (newDir.low == 0) return setErrno(Errno.ENOMEM);
+    
+    Capability newCap = Capability(newDir, Rights.Read | Rights.Write | Rights.Enumerate);
+    
+    if (!insert(cwdCap.oid, pathStr, newCap))
+    {
+        return setErrno(Errno.EEXIST);
+    }
+    
+    return 0;
+}
+
+// Stubs for other socket functions
+int linux_sys_listen(int sockfd, int backlog)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    return cast(int)socketListen(cap.oid, backlog);
+}
+
+int linux_sys_accept(int sockfd, sockaddr* addr, uint* addrlen)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    // Blocking accept
+    ObjectID newSocketId;
+    while (true) {
+        newSocketId = socketAccept(cap.oid);
+        if (newSocketId.low != 0) break;
+        
+        // TODO: Check for signals/interrupts
+        schedYield();
+    }
+    
+    // Find free FD
+    int newFd = allocFd();
+    if (newFd < 0) {
+        return setErrno(Errno.EMFILE);
+    }
+    
+    proc.fds[newFd].cap = Capability(newSocketId, Rights.Read | Rights.Write);
+    proc.fds[newFd].offset = 0;
+    
+    // Fill addr if provided
+    if (addr !is null && addrlen !is null) {
+        auto slot = getObject(newSocketId);
+        if (slot !is null) {
+            sockaddr_in* sin = cast(sockaddr_in*)addr;
+            sin.sin_family = AF_INET;
+            sin.sin_port = (cast(ushort)(slot.socket.remotePort >> 8)) | (cast(ushort)(slot.socket.remotePort << 8)); // htons
+            
+            // Copy IP
+            ubyte* ipPtr = cast(ubyte*)&sin.sin_addr;
+            ipPtr[0] = slot.socket.remoteAddr[0];
+            ipPtr[1] = slot.socket.remoteAddr[1];
+            ipPtr[2] = slot.socket.remoteAddr[2];
+            ipPtr[3] = slot.socket.remoteAddr[3];
+            
+            *addrlen = sockaddr_in.sizeof;
+        }
+    }
+    
+    return newFd;
+}
+
+long linux_sys_sendto(int sockfd, const(void)* buf, size_t len, int flags, const(sockaddr)* dest_addr, int addrlen)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    return socketSend(cap.oid, cast(const(ubyte)*)buf, len);
+}
+
+long linux_sys_recvfrom(int sockfd, void* buf, size_t len, int flags, sockaddr* src_addr, int* addrlen)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    // Blocking read
+    long ret;
+    while (true) {
+        ret = socketRecv(cap.oid, cast(ubyte*)buf, len);
+        if (ret > 0) break;
+        if (ret < 0) return ret;
+        
+        auto slot = getObject(cap.oid);
+        if (slot !is null && slot.socket.state == SocketState.Closed) return 0; // EOF
+        
+        schedYield();
+    }
+    
+    return ret;
+}
+
+long linux_sys_send(int sockfd, const(void)* buf, size_t len, int flags)
+{
+    return linux_sys_sendto(sockfd, buf, len, flags, null, 0);
+}
+
+long linux_sys_recv(int sockfd, void* buf, size_t len, int flags)
+{
+    return linux_sys_recvfrom(sockfd, buf, len, flags, null, null);
+}
+
+long linux_sys_sendmsg(int sockfd, const(msghdr)* msg, int flags)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    long totalSent = 0;
+    for (size_t i = 0; i < msg.msg_iovlen; ++i)
+    {
+        const(iovec)* iov = &msg.msg_iov[i];
+        long sent = socketSend(cap.oid, cast(const(ubyte)*)iov.iov_base, iov.iov_len);
+        if (sent < 0) return sent;
+        totalSent += sent;
+    }
+    return totalSent;
+}
+
+long linux_sys_recvmsg(int sockfd, msghdr* msg, int flags)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    if (sockfd < 0 || sockfd >= MAX_FD) return setErrno(Errno.EBADF);
+    Capability cap = proc.fds[sockfd].cap;
+    
+    long totalRead = 0;
+    
+    // Simple implementation: try to fill iovecs
+    for (size_t i = 0; i < msg.msg_iovlen; ++i)
+    {
+        iovec* iov = &msg.msg_iov[i];
+        if (iov.iov_len == 0) continue;
+        
+        // For the first read, block if needed
+        if (totalRead == 0)
+        {
+            while (true)
+            {
+                long ret = socketRecv(cap.oid, cast(ubyte*)iov.iov_base, iov.iov_len);
+                if (ret > 0)
+                {
+                    totalRead += ret;
+                    // If we didn't fill the buffer, we're done for now
+                    if (ret < iov.iov_len) return totalRead;
+                    break; 
+                }
+                if (ret < 0) return ret;
+                
+                auto slot = getObject(cap.oid);
+                if (slot !is null && slot.socket.state == SocketState.Closed) return 0; // EOF
+                
+                schedYield();
+            }
+        }
+        else
+        {
+            // For subsequent reads, don't block
+            long ret = socketRecv(cap.oid, cast(ubyte*)iov.iov_base, iov.iov_len);
+            if (ret > 0)
+            {
+                totalRead += ret;
+                if (ret < iov.iov_len) return totalRead;
+            }
+            else
+            {
+                return totalRead;
+            }
+        }
+    }
+    
+    return totalRead;
+}
+
+
+
+// Directory entry types
+enum DT_UNKNOWN = 0;
+enum DT_FIFO = 1;
+enum DT_CHR = 2;
+enum DT_DIR = 4;
+enum DT_BLK = 6;
+enum DT_REG = 8;
+enum DT_LNK = 10;
+enum DT_SOCK = 12;
+enum DT_WHT = 14;
+
+struct linux_dirent64 {
+    ulong  d_ino;
+    long   d_off;
+    ushort d_reclen;
+    ubyte  d_type;
+    char[0] d_name;
+}
+
+// Helper to resolve parent and name
+private struct PathSplit {
+    Capability parent;
+    const(char)[] name;
+}
+
+private PathSplit resolveParentAndName(const(char)[] path)
+{
+    auto proc = currentProcess();
+    if (proc is null) return PathSplit(Capability(ObjectID(0,0), Rights.None), null);
+    
+    Capability startCap = Capability(proc.cwd, Rights.Read | Rights.Write | Rights.Enumerate);
+    const(char)[] lookupPath = path;
+    
+    if (path.length > 0 && path[0] == '/')
+    {
+        startCap = proc.rootCap;
+    }
+    
+    // Find last slash
+    long lastSlash = -1;
+    for (size_t i = 0; i < path.length; ++i)
+    {
+        if (path[i] == '/') lastSlash = i;
+    }
+    
+    if (lastSlash == -1)
+    {
+        // No slash, parent is startCap (CWD), name is path
+        return PathSplit(startCap, path);
+    }
+    
+    if (lastSlash == 0)
+    {
+        // "/foo" -> parent is root, name is "foo"
+        return PathSplit(proc.rootCap, path[1..$]);
+    }
+    
+    const(char)[] parentPath = path[0..lastSlash];
+    const(char)[] name = path[lastSlash+1..$];
+    
+    // Resolve parent
+    Capability parentStart = startCap;
+    if (parentPath.length > 0 && parentPath[0] == '/')
+    {
+        parentStart = proc.rootCap;
+    }
+    
+    Capability parentCap = resolvePath(parentStart.oid, parentPath);
+    return PathSplit(parentCap, name);
+}
+
+int sys_unlink(const(char)* pathname)
+{
+    size_t len = 0;
+    while (pathname[len] != 0) len++;
+    const(char)[] pathStr = pathname[0..len];
+    
+    auto split = resolveParentAndName(pathStr);
+    if (split.parent.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    if (!(split.parent.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    Capability target = lookup(split.parent.oid, split.name);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    auto slot = getObject(target.oid);
+    if (slot !is null && slot.type == ObjectType.Directory) return setErrno(Errno.EISDIR);
+    
+    if (remove(split.parent.oid, split.name))
+        return 0;
+        
+    return setErrno(Errno.ENOENT);
+}
+
+int sys_rmdir(const(char)* pathname)
+{
+    size_t len = 0;
+    while (pathname[len] != 0) len++;
+    const(char)[] pathStr = pathname[0..len];
+    
+    auto split = resolveParentAndName(pathStr);
+    if (split.parent.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    if (!(split.parent.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    Capability target = lookup(split.parent.oid, split.name);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    auto slot = getObject(target.oid);
+    if (slot is null || slot.type != ObjectType.Directory) return setErrno(Errno.ENOTDIR);
+    
+    if (slot.directory.count > 0) return setErrno(Errno.ENOTEMPTY);
+    
+    if (remove(split.parent.oid, split.name))
+        return 0;
+        
+    return setErrno(Errno.ENOENT);
+}
+
+int sys_chdir(const(char)* path)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    size_t len = 0;
+    while (path[len] != 0) len++;
+    const(char)[] pathStr = path[0..len];
+    
+    Capability startCap = Capability(proc.cwd, Rights.Read | Rights.Execute);
+    if (len > 0 && path[0] == '/') startCap = proc.rootCap;
+    
+    Capability target = resolvePath(startCap.oid, pathStr);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    auto slot = getObject(target.oid);
+    if (slot is null || slot.type != ObjectType.Directory) return setErrno(Errno.ENOTDIR);
+    
+    if (!(target.rights & Rights.Execute)) return setErrno(Errno.EACCES);
+    
+    proc.cwd = target.oid;
+    return 0;
+}
+
+int sys_chown(const(char)* path, uint owner, uint group)
+{
+    return 0;
+}
+
+int sys_nanosleep(const(timespec)* req, timespec* rem)
+{
+    if (req is null) return setErrno(Errno.EFAULT);
+    long cycles = req.tv_sec * 2_000_000_000 + req.tv_nsec * 2;
+    while (cycles > 0)
+    {
+        asm @nogc nothrow { rep; nop; }
+        cycles--;
+    }
+    return 0;
+}
+
+long sys_getdents64(uint fd, void* dirp, uint count)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    Capability cap = proc.fds[fd].cap;
+    auto slot = getObject(cap.oid);
+    if (slot is null || slot.type != ObjectType.Directory) return setErrno(Errno.ENOTDIR);
+    
+    size_t offset = cast(size_t)proc.fds[fd].offset;
+    
+    DirListEntry[16] entries;
+    size_t n = list(cap.oid, entries.ptr, 16, offset);
+    
+    if (n == 0) return 0;
+    
+    ubyte* buf = cast(ubyte*)dirp;
+    size_t bpos = 0;
+    
+    size_t i;
+    for (i = 0; i < n; ++i)
+    {
+        size_t nameLen = 0;
+        while (entries[i].name[nameLen] != 0) nameLen++;
+        
+        ushort reclen = cast(ushort)(19 + nameLen + 1);
+        reclen = cast(ushort)((reclen + 7) & ~7);
+        
+        if (bpos + reclen > count) break;
+        
+        linux_dirent64* d = cast(linux_dirent64*)(buf + bpos);
+        d.d_ino = 1;
+        d.d_off = cast(long)(offset + i + 1);
+        d.d_reclen = reclen;
+        
+        switch (entries[i].type)
+        {
+            case ObjectType.Directory: d.d_type = DT_DIR; break;
+            case ObjectType.Blob: d.d_type = DT_REG; break;
+            default: d.d_type = DT_UNKNOWN; break;
+        }
+        
+        for (size_t k = 0; k < nameLen; ++k) d.d_name.ptr[k] = entries[i].name[k];
+        d.d_name.ptr[nameLen] = 0;
+        
+        bpos += reclen;
+    }
+    
+    proc.fds[fd].offset += i; // Update offset by number of entries processed
+    
+    return cast(long)bpos;
+}
+
+int sys_link(const(char)* oldpath, const(char)* newpath)
+{
+    size_t len = 0;
+    while (oldpath[len] != 0) len++;
+    const(char)[] oldStr = oldpath[0..len];
+    
+    len = 0;
+    while (newpath[len] != 0) len++;
+    const(char)[] newStr = newpath[0..len];
+    
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    // Resolve oldpath
+    Capability startCap = Capability(proc.cwd, Rights.Read);
+    if (oldStr.length > 0 && oldStr[0] == '/') startCap = proc.rootCap;
+    
+    Capability target = resolvePath(startCap.oid, oldStr);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    // Resolve newpath parent
+    auto split = resolveParentAndName(newStr);
+    if (split.parent.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    if (!(split.parent.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    // Insert (hard link)
+    if (insert(split.parent.oid, split.name, target))
+        return 0;
+        
+    return setErrno(Errno.EEXIST);
+}
+
+int sys_rename(const(char)* oldpath, const(char)* newpath)
+{
+    size_t len = 0;
+    while (oldpath[len] != 0) len++;
+    const(char)[] oldStr = oldpath[0..len];
+    
+    len = 0;
+    while (newpath[len] != 0) len++;
+    const(char)[] newStr = newpath[0..len];
+    
+    auto oldSplit = resolveParentAndName(oldStr);
+    if (oldSplit.parent.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    if (!(oldSplit.parent.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    Capability target = lookup(oldSplit.parent.oid, oldSplit.name);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    auto newSplit = resolveParentAndName(newStr);
+    if (newSplit.parent.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    if (!(newSplit.parent.rights & Rights.Write)) return setErrno(Errno.EACCES);
+    
+    if (!insert(newSplit.parent.oid, newSplit.name, target))
+        return setErrno(Errno.EEXIST);
+        
+    remove(oldSplit.parent.oid, oldSplit.name);
+    
+    return 0;
+}
+
+int linux_sys_getpid()
+{
+    auto proc = currentProcess();
+    if (proc is null) return -1;
+    return proc.pid;
+}
+
+int sys_wait4(int pid, int* status, int options, void* rusage)
+{
+    // If pid == -1, wait for any child.
+    // If pid > 0, wait for specific child.
+    
+    ObjectID procId;
+    if (pid > 0)
+    {
+        procId = findProcessByPid(cast(ulong)pid);
+        if (procId.low == 0) return setErrno(Errno.ECHILD);
+    }
+    else
+    {
+        return setErrno(Errno.ECHILD);
+    }
+    
+    long exitCode = processWait(procId);
+    if (status !is null)
+    {
+        *status = (cast(int)exitCode & 0xFF) << 8;
+    }
+    
+    return pid;
+}
+
+int sys_stat(const(char)* path, stat_t* buf)
+{
+    size_t len = 0;
+    while (path[len] != 0) len++;
+    const(char)[] pathStr = path[0..len];
+    
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    Capability startCap = Capability(proc.cwd, Rights.Read);
+    if (len > 0 && path[0] == '/') startCap = proc.rootCap;
+    
+    Capability target = resolvePath(startCap.oid, pathStr);
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    auto slot = getObject(target.oid);
+    if (slot is null) return setErrno(Errno.ENOENT);
+    
+    if (buf is null) return setErrno(Errno.EFAULT);
+    
+    buf.st_dev = 1;
+    buf.st_ino = target.oid.low;
+    buf.st_nlink = 1;
+    buf.st_uid = 0;
+    buf.st_gid = 0;
+    buf.st_rdev = 0;
+    buf.st_blksize = 0x1000;
+    buf.st_blocks = 0;
+    
+    switch (slot.type)
+    {
+        case ObjectType.Directory:
+            buf.st_mode = 0x41FF; // Dir, 0777
+            buf.st_size = 0x1000;
+            break;
+        case ObjectType.Blob:
+            buf.st_mode = 0x81FF; // File, 0777
+            buf.st_size = cast(long)slot.blob.size;
+            break;
+        default:
+            buf.st_mode = 0;
+            buf.st_size = 0;
+            break;
+    }
+    
+    return 0;
+}
+
+int sys_lstat(const(char)* path, stat_t* buf)
+{
+    return sys_stat(path, buf);
+}
+
+int linux_sys_fstat(int fd, stat_t* buf)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    Capability cap = proc.fds[fd].cap;
+    auto slot = getObject(cap.oid);
+    if (slot is null) return setErrno(Errno.EBADF);
+    
+    if (buf is null) return setErrno(Errno.EFAULT);
+    
+    buf.st_dev = 1;
+    buf.st_ino = cap.oid.low;
+    buf.st_nlink = 1;
+    buf.st_uid = 0;
+    buf.st_gid = 0;
+    buf.st_rdev = 0;
+    buf.st_blksize = 0x1000;
+    buf.st_blocks = 0;
+    
+    switch (slot.type)
+    {
+        case ObjectType.Directory:
+            buf.st_mode = 0x41FF; // Dir, 0777
+            buf.st_size = 0x1000;
+            break;
+        case ObjectType.Blob:
+            buf.st_mode = 0x81FF; // File, 0777
+            buf.st_size = cast(long)slot.blob.size;
+            break;
+        default:
+            buf.st_mode = 0;
+            buf.st_size = 0;
+            break;
+    }
+    
+    return 0;
+}
+
+int sys_fchdir(int fd)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+    
+    Capability cap = proc.fds[fd].cap;
+    auto slot = getObject(cap.oid);
+    if (slot is null || slot.type != ObjectType.Directory) return setErrno(Errno.ENOTDIR);
+    
+    if (!(cap.rights & Rights.Execute)) return setErrno(Errno.EACCES);
+    
+    proc.cwd = cap.oid;
+    return 0;
+}
+
+uint sys_geteuid() { return 0; }
+uint sys_getegid() { return 0; }
+
+int sys_utimensat(int dirfd, const(char)* pathname, const(timespec)* times, int flags)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+
+    Capability target;
+    
+    if (pathname is null)
+    {
+        // Operate on dirfd
+        if (dirfd < 0 || dirfd >= MAX_FD) return setErrno(Errno.EBADF);
+        if (proc.fds[dirfd].num == -1) return setErrno(Errno.EBADF);
+        target = proc.fds[dirfd].cap;
+    }
+    else
+    {
+        // Resolve path
+        size_t len = 0;
+        while (pathname[len] != 0) len++;
+        const(char)[] pathStr = pathname[0..len];
+        
+        Capability startCap;
+        if (len > 0 && pathStr[0] == '/')
+        {
+            startCap = proc.rootCap;
+        }
+        else if (dirfd == -100) // AT_FDCWD
+        {
+            startCap = Capability(proc.cwd, Rights.Read);
+        }
+        else
+        {
+             if (dirfd < 0 || dirfd >= MAX_FD) return setErrno(Errno.EBADF);
+             if (proc.fds[dirfd].num == -1) return setErrno(Errno.EBADF);
+             startCap = proc.fds[dirfd].cap;
+        }
+        
+        target = resolvePath(startCap.oid, pathStr);
+    }
+
+    if (target.oid.low == 0) return setErrno(Errno.ENOENT);
+    
+    // We don't actually set time yet, but we verified existence.
+    return 0;
+}
+
+int sys_fcntl(int fd, int cmd, long arg)
+{
+    auto proc = currentProcess();
+    if (proc is null) return setErrno(Errno.EINVAL);
+    
+    if (fd < 0 || fd >= MAX_FD) return setErrno(Errno.EBADF);
+    if (proc.fds[fd].num == -1) return setErrno(Errno.EBADF);
+
+    if (cmd == 0) // F_DUPFD
+    {
+        int minFd = cast(int)arg;
+        if (minFd < 0 || minFd >= MAX_FD) return setErrno(Errno.EINVAL);
+        
+        // Find free FD >= minFd
+        int newFd = -1;
+        for (int i = minFd; i < MAX_FD; ++i)
+        {
+            if (proc.fds[i].num == -1)
+            {
+                newFd = i;
+                break;
+            }
+        }
+        
+        if (newFd == -1) return setErrno(Errno.EMFILE);
+        
+        proc.fds[newFd].num = newFd;
+        proc.fds[newFd].flags = FDFlags.NONE; // Cleared on dup
+        proc.fds[newFd].cap = proc.fds[fd].cap; // Share capability
+        
+        return newFd;
+    }
+    else if (cmd == 1) // F_GETFD
+    {
+        return cast(int)proc.fds[fd].flags;
+    }
+    else if (cmd == 2) // F_SETFD
+    {
+        proc.fds[fd].flags = cast(FDFlags)arg;
+        return 0;
+    }
+    else if (cmd == 3) // F_GETFL
+    {
+        return proc.fds[fd].statusFlags;
+    }
+    else if (cmd == 4) // F_SETFL
+    {
+        proc.fds[fd].statusFlags = cast(int)arg;
+        return 0;
+    }
+    
+    return 0;
+}
+
+
+
+int linux_sys_ioctl(int fd, ulong cmd, void* arg)
+{
+    if (cmd == 0x5401) // TCGETS
+    {
+        // Check if it's a TTY.
+        // For now, check if fd is 0, 1, 2.
+        if (fd >= 0 && fd <= 2) return 0;
+        return setErrno(Errno.ENOTTY);
+    }
+    return setErrno(Errno.EINVAL);
+}

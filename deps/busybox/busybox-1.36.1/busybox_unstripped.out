@@ -1,0 +1,1080 @@
+Output of:
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/bin/musl-clang -Wall -Wshadow -Wwrite-strings -Wundef -Wstrict-prototypes -Wunused -Wunused-parameter -Wunused-function -Wunused-value -Wmissing-prototypes -Wmissing-declarations -Wno-format-security -Wdeclaration-after-statement -Wold-style-definition -finline-limit=0 -fno-builtin-strlen -fomit-frame-pointer -ffunction-sections -fdata-sections -funsigned-char -falign-functions=1 -falign-jumps=1 -falign-labels=1 -falign-loops=1 -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-builtin-printf -Oz -O2 -pipe -static --static -o busybox_unstripped -Wl,--sort-common -Wl,--sort-section,alignment -Wl,--gc-sections -Wl,--start-group applets/built-in.o archival/lib.a archival/libarchive/lib.a console-tools/lib.a coreutils/lib.a coreutils/libcoreutils/lib.a debianutils/lib.a klibc-utils/lib.a e2fsprogs/lib.a editors/lib.a findutils/lib.a init/lib.a libbb/lib.a libpwdgrp/lib.a loginutils/lib.a mailutils/lib.a miscutils/lib.a modutils/lib.a networking/lib.a networking/libiproute/lib.a networking/udhcp/lib.a printutils/lib.a procps/lib.a runit/lib.a selinux/lib.a shell/lib.a sysklogd/lib.a util-linux/lib.a util-linux/volume_id/lib.a archival/built-in.o archival/libarchive/built-in.o console-tools/built-in.o coreutils/built-in.o coreutils/libcoreutils/built-in.o debianutils/built-in.o klibc-utils/built-in.o e2fsprogs/built-in.o editors/built-in.o findutils/built-in.o init/built-in.o libbb/built-in.o libpwdgrp/built-in.o loginutils/built-in.o mailutils/built-in.o miscutils/built-in.o modutils/built-in.o networking/built-in.o networking/libiproute/built-in.o networking/udhcp/built-in.o printutils/built-in.o procps/built-in.o runit/built-in.o selinux/built-in.o shell/built-in.o sysklogd/built-in.o util-linux/built-in.o util-linux/volume_id/built-in.o -Wl,--end-group -Wl,--warn-common -Wl,-Map,busybox_unstripped.map -Wl,--verbose
+==========
+GNU ld (GNU Binutils for Ubuntu) 2.42
+  Supported emulations:
+   elf_x86_64
+   elf32_x86_64
+   elf_i386
+   elf_iamcu
+   i386pep
+   i386pe
+using internal linker script:
+==================================================
+/* Script for -z combreloc -z separate-code */
+/* Copyright (C) 2014-2024 Free Software Foundation, Inc.
+   Copying and distribution of this script, with or without modification,
+   are permitted in any medium without royalty provided the copyright
+   notice and this notice are preserved.  */
+OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64",
+	      "elf64-x86-64")
+OUTPUT_ARCH(i386:x86-64)
+ENTRY(_start)
+SEARCH_DIR("=/usr/local/lib/x86_64-linux-gnu"); SEARCH_DIR("=/lib/x86_64-linux-gnu"); SEARCH_DIR("=/usr/lib/x86_64-linux-gnu"); SEARCH_DIR("=/usr/lib/x86_64-linux-gnu64"); SEARCH_DIR("=/usr/local/lib64"); SEARCH_DIR("=/lib64"); SEARCH_DIR("=/usr/lib64"); SEARCH_DIR("=/usr/local/lib"); SEARCH_DIR("=/lib"); SEARCH_DIR("=/usr/lib"); SEARCH_DIR("=/usr/x86_64-linux-gnu/lib64"); SEARCH_DIR("=/usr/x86_64-linux-gnu/lib");
+SECTIONS
+{
+  PROVIDE (__executable_start = SEGMENT_START("text-segment", 0x400000)); . = SEGMENT_START("text-segment", 0x400000) + SIZEOF_HEADERS;
+  .interp         : { *(.interp) }
+  .note.gnu.build-id  : { *(.note.gnu.build-id) }
+  .hash           : { *(.hash) }
+  .gnu.hash       : { *(.gnu.hash) }
+  .dynsym         : { *(.dynsym) }
+  .dynstr         : { *(.dynstr) }
+  .gnu.version    : { *(.gnu.version) }
+  .gnu.version_d  : { *(.gnu.version_d) }
+  .gnu.version_r  : { *(.gnu.version_r) }
+  .rela.dyn       :
+    {
+      *(.rela.init)
+      *(.rela.text .rela.text.* .rela.gnu.linkonce.t.*)
+      *(.rela.fini)
+      *(.rela.rodata .rela.rodata.* .rela.gnu.linkonce.r.*)
+      *(.rela.data .rela.data.* .rela.gnu.linkonce.d.*)
+      *(.rela.tdata .rela.tdata.* .rela.gnu.linkonce.td.*)
+      *(.rela.tbss .rela.tbss.* .rela.gnu.linkonce.tb.*)
+      *(.rela.ctors)
+      *(.rela.dtors)
+      *(.rela.got)
+      *(.rela.bss .rela.bss.* .rela.gnu.linkonce.b.*)
+      *(.rela.ldata .rela.ldata.* .rela.gnu.linkonce.l.*)
+      *(.rela.lbss .rela.lbss.* .rela.gnu.linkonce.lb.*)
+      *(.rela.lrodata .rela.lrodata.* .rela.gnu.linkonce.lr.*)
+      *(.rela.ifunc)
+    }
+  .rela.plt       :
+    {
+      *(.rela.plt)
+      PROVIDE_HIDDEN (__rela_iplt_start = .);
+      *(.rela.iplt)
+      PROVIDE_HIDDEN (__rela_iplt_end = .);
+    }
+  .relr.dyn : { *(.relr.dyn) }
+  . = ALIGN(CONSTANT (MAXPAGESIZE));
+  .init           :
+  {
+    KEEP (*(SORT_NONE(.init)))
+  }
+  .plt            : { *(.plt) *(.iplt) }
+.plt.got        : { *(.plt.got) }
+.plt.sec        : { *(.plt.sec) }
+  .text           :
+  {
+    *(.text.unlikely .text.*_unlikely .text.unlikely.*)
+    *(.text.exit .text.exit.*)
+    *(.text.startup .text.startup.*)
+    *(.text.hot .text.hot.*)
+    *(SORT(.text.sorted.*))
+    *(.text .stub .text.* .gnu.linkonce.t.*)
+    /* .gnu.warning sections are handled specially by elf.em.  */
+    *(.gnu.warning)
+  }
+  .fini           :
+  {
+    KEEP (*(SORT_NONE(.fini)))
+  }
+  PROVIDE (__etext = .);
+  PROVIDE (_etext = .);
+  PROVIDE (etext = .);
+  . = ALIGN(CONSTANT (MAXPAGESIZE));
+  /* Adjust the address for the rodata segment.  We want to adjust up to
+     the same address within the page on the next page up.  */
+  . = SEGMENT_START("rodata-segment", ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)));
+  .rodata         : { *(.rodata .rodata.* .gnu.linkonce.r.*) }
+  .rodata1        : { *(.rodata1) }
+  .eh_frame_hdr   : { *(.eh_frame_hdr) *(.eh_frame_entry .eh_frame_entry.*) }
+  .eh_frame       : ONLY_IF_RO { KEEP (*(.eh_frame)) *(.eh_frame.*) }
+  .sframe         : ONLY_IF_RO { *(.sframe) *(.sframe.*) }
+  .gcc_except_table   : ONLY_IF_RO { *(.gcc_except_table .gcc_except_table.*) }
+  .gnu_extab   : ONLY_IF_RO { *(.gnu_extab*) }
+  /* These sections are generated by the Sun/Oracle C++ compiler.  */
+  .exception_ranges   : ONLY_IF_RO { *(.exception_ranges*) }
+  /* Adjust the address for the data segment.  We want to adjust up to
+     the same address within the page on the next page up.  */
+  . = DATA_SEGMENT_ALIGN (CONSTANT (MAXPAGESIZE), CONSTANT (COMMONPAGESIZE));
+  /* Exception handling  */
+  .eh_frame       : ONLY_IF_RW { KEEP (*(.eh_frame)) *(.eh_frame.*) }
+  .sframe         : ONLY_IF_RW { *(.sframe) *(.sframe.*) }
+  .gnu_extab      : ONLY_IF_RW { *(.gnu_extab) }
+  .gcc_except_table   : ONLY_IF_RW { *(.gcc_except_table .gcc_except_table.*) }
+  .exception_ranges   : ONLY_IF_RW { *(.exception_ranges*) }
+  /* Thread Local Storage sections  */
+  .tdata	  :
+   {
+     PROVIDE_HIDDEN (__tdata_start = .);
+     *(.tdata .tdata.* .gnu.linkonce.td.*)
+   }
+  .tbss		  : { *(.tbss .tbss.* .gnu.linkonce.tb.*) *(.tcommon) }
+  .preinit_array    :
+  {
+    PROVIDE_HIDDEN (__preinit_array_start = .);
+    KEEP (*(.preinit_array))
+    PROVIDE_HIDDEN (__preinit_array_end = .);
+  }
+  .init_array    :
+  {
+    PROVIDE_HIDDEN (__init_array_start = .);
+    KEEP (*(SORT_BY_INIT_PRIORITY(.init_array.*) SORT_BY_INIT_PRIORITY(.ctors.*)))
+    KEEP (*(.init_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .ctors))
+    PROVIDE_HIDDEN (__init_array_end = .);
+  }
+  .fini_array    :
+  {
+    PROVIDE_HIDDEN (__fini_array_start = .);
+    KEEP (*(SORT_BY_INIT_PRIORITY(.fini_array.*) SORT_BY_INIT_PRIORITY(.dtors.*)))
+    KEEP (*(.fini_array EXCLUDE_FILE (*crtbegin.o *crtbegin?.o *crtend.o *crtend?.o ) .dtors))
+    PROVIDE_HIDDEN (__fini_array_end = .);
+  }
+  .ctors          :
+  {
+    /* gcc uses crtbegin.o to find the start of
+       the constructors, so we make sure it is
+       first.  Because this is a wildcard, it
+       doesn't matter if the user does not
+       actually link against crtbegin.o; the
+       linker won't look for a file to match a
+       wildcard.  The wildcard also means that it
+       doesn't matter which directory crtbegin.o
+       is in.  */
+    KEEP (*crtbegin.o(.ctors))
+    KEEP (*crtbegin?.o(.ctors))
+    /* We don't want to include the .ctor section from
+       the crtend.o file until after the sorted ctors.
+       The .ctor section from the crtend file contains the
+       end of ctors marker and it must be last */
+    KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .ctors))
+    KEEP (*(SORT(.ctors.*)))
+    KEEP (*(.ctors))
+  }
+  .dtors          :
+  {
+    KEEP (*crtbegin.o(.dtors))
+    KEEP (*crtbegin?.o(.dtors))
+    KEEP (*(EXCLUDE_FILE (*crtend.o *crtend?.o ) .dtors))
+    KEEP (*(SORT(.dtors.*)))
+    KEEP (*(.dtors))
+  }
+  .jcr            : { KEEP (*(.jcr)) }
+  .data.rel.ro : { *(.data.rel.ro.local* .gnu.linkonce.d.rel.ro.local.*) *(.data.rel.ro .data.rel.ro.* .gnu.linkonce.d.rel.ro.*) }
+  .dynamic        : { *(.dynamic) }
+  .got            : { *(.got) *(.igot) }
+  . = DATA_SEGMENT_RELRO_END (SIZEOF (.got.plt) >= 24 ? 24 : 0, .);
+  .got.plt        : { *(.got.plt) *(.igot.plt) }
+  .data           :
+  {
+    *(.data .data.* .gnu.linkonce.d.*)
+    SORT(CONSTRUCTORS)
+  }
+  .data1          : { *(.data1) }
+  _edata = .; PROVIDE (edata = .);
+  . = ALIGN(ALIGNOF(NEXT_SECTION));
+  __bss_start = .;
+  .bss            :
+  {
+   *(.dynbss)
+   *(.bss .bss.* .gnu.linkonce.b.*)
+   *(COMMON)
+   /* Align here to ensure that the .bss section occupies space up to
+      _end.  Align after .bss to ensure correct alignment even if the
+      .bss section disappears because there are no input sections.
+      FIXME: Why do we need it? When there is no .bss section, we do not
+      pad the .data section.  */
+   . = ALIGN(. != 0 ? 64 / 8 : 1);
+  }
+  .lbss   :
+  {
+    *(.dynlbss)
+    *(.lbss .lbss.* .gnu.linkonce.lb.*)
+    *(LARGE_COMMON)
+  }
+  . = ALIGN(64 / 8);
+  . = SEGMENT_START("ldata-segment", .);
+  .lrodata   ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)) :
+  {
+    *(.lrodata .lrodata.* .gnu.linkonce.lr.*)
+  }
+  .ldata   ALIGN(CONSTANT (MAXPAGESIZE)) + (. & (CONSTANT (MAXPAGESIZE) - 1)) :
+  {
+    *(.ldata .ldata.* .gnu.linkonce.l.*)
+    . = ALIGN(. != 0 ? 64 / 8 : 1);
+  }
+  . = ALIGN(64 / 8);
+  _end = .; PROVIDE (end = .);
+  . = DATA_SEGMENT_END (.);
+  /* Stabs debugging sections.  */
+  .stab          0 : { *(.stab) }
+  .stabstr       0 : { *(.stabstr) }
+  .stab.excl     0 : { *(.stab.excl) }
+  .stab.exclstr  0 : { *(.stab.exclstr) }
+  .stab.index    0 : { *(.stab.index) }
+  .stab.indexstr 0 : { *(.stab.indexstr) }
+  .comment 0 (INFO) : { *(.comment); LINKER_VERSION; }
+  .gnu.build.attributes : { *(.gnu.build.attributes .gnu.build.attributes.*) }
+  /* DWARF debug sections.
+     Symbols in the DWARF debugging sections are relative to the beginning
+     of the section so we begin them at 0.  */
+  /* DWARF 1.  */
+  .debug          0 : { *(.debug) }
+  .line           0 : { *(.line) }
+  /* GNU DWARF 1 extensions.  */
+  .debug_srcinfo  0 : { *(.debug_srcinfo) }
+  .debug_sfnames  0 : { *(.debug_sfnames) }
+  /* DWARF 1.1 and DWARF 2.  */
+  .debug_aranges  0 : { *(.debug_aranges) }
+  .debug_pubnames 0 : { *(.debug_pubnames) }
+  /* DWARF 2.  */
+  .debug_info     0 : { *(.debug_info .gnu.linkonce.wi.*) }
+  .debug_abbrev   0 : { *(.debug_abbrev) }
+  .debug_line     0 : { *(.debug_line .debug_line.* .debug_line_end) }
+  .debug_frame    0 : { *(.debug_frame) }
+  .debug_str      0 : { *(.debug_str) }
+  .debug_loc      0 : { *(.debug_loc) }
+  .debug_macinfo  0 : { *(.debug_macinfo) }
+  /* SGI/MIPS DWARF 2 extensions.  */
+  .debug_weaknames 0 : { *(.debug_weaknames) }
+  .debug_funcnames 0 : { *(.debug_funcnames) }
+  .debug_typenames 0 : { *(.debug_typenames) }
+  .debug_varnames  0 : { *(.debug_varnames) }
+  /* DWARF 3.  */
+  .debug_pubtypes 0 : { *(.debug_pubtypes) }
+  .debug_ranges   0 : { *(.debug_ranges) }
+  /* DWARF 5.  */
+  .debug_addr     0 : { *(.debug_addr) }
+  .debug_line_str 0 : { *(.debug_line_str) }
+  .debug_loclists 0 : { *(.debug_loclists) }
+  .debug_macro    0 : { *(.debug_macro) }
+  .debug_names    0 : { *(.debug_names) }
+  .debug_rnglists 0 : { *(.debug_rnglists) }
+  .debug_str_offsets 0 : { *(.debug_str_offsets) }
+  .debug_sup      0 : { *(.debug_sup) }
+  .gnu.attributes 0 : { KEEP (*(.gnu.attributes)) }
+  /DISCARD/ : { *(.note.GNU-stack) *(.gnu_debuglink) *(.gnu.lto_*) }
+}
+
+
+==================================================
+/usr/bin/ld: mode elf_x86_64
+attempt to open /home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crt1.o succeeded
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crt1.o
+attempt to open /home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crti.o succeeded
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crti.o
+attempt to open /usr/bin/../lib/gcc/x86_64-linux-gnu/13/crtbeginT.o succeeded
+/usr/bin/../lib/gcc/x86_64-linux-gnu/13/crtbeginT.o
+attempt to open applets/built-in.o succeeded
+applets/built-in.o
+attempt to open archival/lib.a succeeded
+archival/lib.a
+attempt to open archival/libarchive/lib.a succeeded
+archival/libarchive/lib.a
+attempt to open console-tools/lib.a succeeded
+console-tools/lib.a
+attempt to open coreutils/lib.a succeeded
+coreutils/lib.a
+attempt to open coreutils/libcoreutils/lib.a succeeded
+coreutils/libcoreutils/lib.a
+attempt to open debianutils/lib.a succeeded
+debianutils/lib.a
+attempt to open klibc-utils/lib.a succeeded
+klibc-utils/lib.a
+attempt to open e2fsprogs/lib.a succeeded
+e2fsprogs/lib.a
+attempt to open editors/lib.a succeeded
+editors/lib.a
+attempt to open findutils/lib.a succeeded
+findutils/lib.a
+attempt to open init/lib.a succeeded
+init/lib.a
+attempt to open libbb/lib.a succeeded
+libbb/lib.a
+(libbb/lib.a)appletlib.o
+(libbb/lib.a)compare_string_array.o
+(libbb/lib.a)default_error_retval.o
+(libbb/lib.a)get_last_path_component.o
+(libbb/lib.a)last_char_is.o
+(libbb/lib.a)ptr_to_globals.o
+(libbb/lib.a)xfunc_die.o
+(libbb/lib.a)xfuncs.o
+(libbb/lib.a)full_write.o
+(libbb/lib.a)messages.o
+(libbb/lib.a)safe_write.o
+attempt to open libpwdgrp/lib.a succeeded
+libpwdgrp/lib.a
+attempt to open loginutils/lib.a succeeded
+loginutils/lib.a
+attempt to open mailutils/lib.a succeeded
+mailutils/lib.a
+attempt to open miscutils/lib.a succeeded
+miscutils/lib.a
+(miscutils/lib.a)less.o
+attempt to open modutils/lib.a succeeded
+modutils/lib.a
+attempt to open networking/lib.a succeeded
+networking/lib.a
+(networking/lib.a)hostname.o
+(networking/lib.a)ifconfig.o
+(networking/lib.a)ping.o
+(networking/lib.a)wget.o
+(networking/lib.a)tls.o
+(networking/lib.a)tls_aes.o
+(networking/lib.a)tls_aesgcm.o
+(networking/lib.a)tls_fe.o
+(networking/lib.a)tls_pstm.o
+(networking/lib.a)tls_pstm_montgomery_reduce.o
+(networking/lib.a)tls_pstm_mul_comba.o
+(networking/lib.a)tls_pstm_sqr_comba.o
+(networking/lib.a)tls_rsa.o
+(networking/lib.a)tls_sp_c32.o
+attempt to open networking/libiproute/lib.a succeeded
+networking/libiproute/lib.a
+attempt to open networking/udhcp/lib.a succeeded
+networking/udhcp/lib.a
+attempt to open printutils/lib.a succeeded
+printutils/lib.a
+attempt to open procps/lib.a succeeded
+procps/lib.a
+(procps/lib.a)kill.o
+(procps/lib.a)ps.o
+(procps/lib.a)sysctl.o
+attempt to open runit/lib.a succeeded
+runit/lib.a
+attempt to open selinux/lib.a succeeded
+selinux/lib.a
+attempt to open shell/lib.a succeeded
+shell/lib.a
+(shell/lib.a)ash.o
+(shell/lib.a)ash_ptr_hack.o
+(shell/lib.a)math.o
+(shell/lib.a)shell_common.o
+attempt to open sysklogd/lib.a succeeded
+sysklogd/lib.a
+attempt to open util-linux/lib.a succeeded
+util-linux/lib.a
+(util-linux/lib.a)dmesg.o
+attempt to open util-linux/volume_id/lib.a succeeded
+util-linux/volume_id/lib.a
+attempt to open archival/built-in.o succeeded
+archival/built-in.o
+attempt to open archival/libarchive/built-in.o succeeded
+archival/libarchive/built-in.o
+attempt to open console-tools/built-in.o succeeded
+console-tools/built-in.o
+attempt to open coreutils/built-in.o succeeded
+coreutils/built-in.o
+attempt to open coreutils/libcoreutils/built-in.o succeeded
+coreutils/libcoreutils/built-in.o
+attempt to open debianutils/built-in.o succeeded
+debianutils/built-in.o
+attempt to open klibc-utils/built-in.o succeeded
+klibc-utils/built-in.o
+attempt to open e2fsprogs/built-in.o succeeded
+e2fsprogs/built-in.o
+attempt to open editors/built-in.o succeeded
+editors/built-in.o
+attempt to open findutils/built-in.o succeeded
+findutils/built-in.o
+attempt to open init/built-in.o succeeded
+init/built-in.o
+attempt to open libbb/built-in.o succeeded
+libbb/built-in.o
+attempt to open libpwdgrp/built-in.o succeeded
+libpwdgrp/built-in.o
+attempt to open loginutils/built-in.o succeeded
+loginutils/built-in.o
+attempt to open mailutils/built-in.o succeeded
+mailutils/built-in.o
+attempt to open miscutils/built-in.o succeeded
+miscutils/built-in.o
+attempt to open modutils/built-in.o succeeded
+modutils/built-in.o
+attempt to open networking/built-in.o succeeded
+networking/built-in.o
+attempt to open networking/libiproute/built-in.o succeeded
+networking/libiproute/built-in.o
+attempt to open networking/udhcp/built-in.o succeeded
+networking/udhcp/built-in.o
+attempt to open printutils/built-in.o succeeded
+printutils/built-in.o
+attempt to open procps/built-in.o succeeded
+procps/built-in.o
+attempt to open runit/built-in.o succeeded
+runit/built-in.o
+attempt to open selinux/built-in.o succeeded
+selinux/built-in.o
+attempt to open shell/built-in.o succeeded
+shell/built-in.o
+attempt to open sysklogd/built-in.o succeeded
+sysklogd/built-in.o
+attempt to open util-linux/built-in.o succeeded
+util-linux/built-in.o
+attempt to open util-linux/volume_id/built-in.o succeeded
+util-linux/volume_id/built-in.o
+archival/lib.a
+(archival/lib.a)bbunzip.o
+(archival/lib.a)bzip2.o
+(archival/lib.a)gzip.o
+(archival/lib.a)tar.o
+archival/libarchive/lib.a
+(archival/libarchive/lib.a)data_extract_all.o
+(archival/libarchive/lib.a)data_extract_to_stdout.o
+(archival/libarchive/lib.a)data_skip.o
+(archival/libarchive/lib.a)decompress_bunzip2.o
+(archival/libarchive/lib.a)decompress_gunzip.o
+(archival/libarchive/lib.a)decompress_unxz.o
+(archival/libarchive/lib.a)filter_accept_reject_list.o
+(archival/libarchive/lib.a)find_list_entry.o
+(archival/libarchive/lib.a)get_header_tar.o
+(archival/libarchive/lib.a)header_list.o
+(archival/libarchive/lib.a)header_verbose_list.o
+(archival/libarchive/lib.a)init_handle.o
+(archival/libarchive/lib.a)open_transformer.o
+(archival/libarchive/lib.a)seek_by_jump.o
+(archival/libarchive/lib.a)seek_by_read.o
+(archival/libarchive/lib.a)unsafe_prefix.o
+(archival/libarchive/lib.a)unsafe_symlink_target.o
+(archival/libarchive/lib.a)data_align.o
+(archival/libarchive/lib.a)filter_accept_all.o
+(archival/libarchive/lib.a)header_skip.o
+console-tools/lib.a
+coreutils/lib.a
+(coreutils/lib.a)basename.o
+(coreutils/lib.a)cat.o
+(coreutils/lib.a)comm.o
+(coreutils/lib.a)cp.o
+(coreutils/lib.a)cut.o
+(coreutils/lib.a)date.o
+(coreutils/lib.a)dd.o
+(coreutils/lib.a)df.o
+(coreutils/lib.a)dirname.o
+(coreutils/lib.a)du.o
+(coreutils/lib.a)echo.o
+(coreutils/lib.a)env.o
+(coreutils/lib.a)expr.o
+(coreutils/lib.a)false.o
+(coreutils/lib.a)head.o
+(coreutils/lib.a)id.o
+(coreutils/lib.a)ln.o
+(coreutils/lib.a)ls.o
+(coreutils/lib.a)mkdir.o
+(coreutils/lib.a)mktemp.o
+(coreutils/lib.a)mv.o
+(coreutils/lib.a)paste.o
+(coreutils/lib.a)printenv.o
+(coreutils/lib.a)printf.o
+(coreutils/lib.a)readlink.o
+(coreutils/lib.a)realpath.o
+(coreutils/lib.a)rm.o
+(coreutils/lib.a)rmdir.o
+(coreutils/lib.a)seq.o
+(coreutils/lib.a)sleep.o
+(coreutils/lib.a)sort.o
+(coreutils/lib.a)stat.o
+(coreutils/lib.a)sync.o
+(coreutils/lib.a)tail.o
+(coreutils/lib.a)tee.o
+(coreutils/lib.a)test.o
+(coreutils/lib.a)test_ptr_hack.o
+(coreutils/lib.a)touch.o
+(coreutils/lib.a)tr.o
+(coreutils/lib.a)true.o
+(coreutils/lib.a)uname.o
+(coreutils/lib.a)uniq.o
+(coreutils/lib.a)wc.o
+(coreutils/lib.a)whoami.o
+(coreutils/lib.a)yes.o
+coreutils/libcoreutils/lib.a
+(coreutils/libcoreutils/lib.a)cp_mv_stat.o
+debianutils/lib.a
+klibc-utils/lib.a
+e2fsprogs/lib.a
+editors/lib.a
+(editors/lib.a)awk.o
+(editors/lib.a)diff.o
+(editors/lib.a)patch.o
+(editors/lib.a)sed.o
+(editors/lib.a)vi.o
+findutils/lib.a
+(findutils/lib.a)find.o
+(findutils/lib.a)grep.o
+(findutils/lib.a)xargs.o
+init/lib.a
+libbb/lib.a
+(libbb/lib.a)ask_confirmation.o
+(libbb/lib.a)bb_cat.o
+(libbb/lib.a)bb_getgroups.o
+(libbb/lib.a)bb_pwd.o
+(libbb/lib.a)bb_strtonum.o
+(libbb/lib.a)common_bufsiz.o
+(libbb/lib.a)concat_path_file.o
+(libbb/lib.a)concat_subpath_file.o
+(libbb/lib.a)const_hack.o
+(libbb/lib.a)copy_file.o
+(libbb/lib.a)copyfd.o
+(libbb/lib.a)crc32.o
+(libbb/lib.a)endofname.o
+(libbb/lib.a)executable.o
+(libbb/lib.a)fclose_nonstdin.o
+(libbb/lib.a)fflush_stdout_and_exit.o
+(libbb/lib.a)find_mount_point.o
+(libbb/lib.a)find_pid_by_name.o
+(libbb/lib.a)get_line_from_file.o
+(libbb/lib.a)getopt32.o
+(libbb/lib.a)getopt_allopts.o
+(libbb/lib.a)hash_md5_sha.o
+(libbb/lib.a)human_readable.o
+(libbb/lib.a)inet_cksum.o
+(libbb/lib.a)inode_hash.o
+(libbb/lib.a)isdirectory.o
+(libbb/lib.a)isqrt.o
+(libbb/lib.a)llist.o
+(libbb/lib.a)make_directory.o
+(libbb/lib.a)mode_string.o
+(libbb/lib.a)parse_config.o
+(libbb/lib.a)parse_mode.o
+(libbb/lib.a)percent_decode.o
+(libbb/lib.a)perror_msg.o
+(libbb/lib.a)perror_nomsg_and_die.o
+(libbb/lib.a)printable_string.o
+(libbb/lib.a)process_escape_sequence.o
+(libbb/lib.a)procps.o
+(libbb/lib.a)read.o
+(libbb/lib.a)read_key.o
+(libbb/lib.a)read_printf.o
+(libbb/lib.a)recursive_action.o
+(libbb/lib.a)remove_file.o
+(libbb/lib.a)replace.o
+(libbb/lib.a)safe_gethostname.o
+(libbb/lib.a)safe_poll.o
+(libbb/lib.a)safe_strncpy.o
+(libbb/lib.a)signals.o
+(libbb/lib.a)single_argv.o
+(libbb/lib.a)skip_whitespace.o
+(libbb/lib.a)str_tolower.o
+(libbb/lib.a)sysconf.o
+(libbb/lib.a)time.o
+(libbb/lib.a)trim.o
+(libbb/lib.a)u_signal_names.o
+(libbb/lib.a)verror_msg.o
+(libbb/lib.a)vfork_daemon_rexec.o
+(libbb/lib.a)wfopen.o
+(libbb/lib.a)wfopen_input.o
+(libbb/lib.a)xatonum.o
+(libbb/lib.a)xconnect.o
+(libbb/lib.a)xfuncs_printf.o
+(libbb/lib.a)xgethostbyname.o
+(libbb/lib.a)xreadlink.o
+(libbb/lib.a)xrealloc_vector.o
+(libbb/lib.a)xregcomp.o
+(libbb/lib.a)auto_string.o
+(libbb/lib.a)herror_msg.o
+(libbb/lib.a)xgetcwd.o
+libpwdgrp/lib.a
+loginutils/lib.a
+mailutils/lib.a
+miscutils/lib.a
+modutils/lib.a
+networking/lib.a
+networking/libiproute/lib.a
+networking/udhcp/lib.a
+printutils/lib.a
+procps/lib.a
+runit/lib.a
+selinux/lib.a
+shell/lib.a
+sysklogd/lib.a
+util-linux/lib.a
+util-linux/volume_id/lib.a
+archival/built-in.o
+archival/libarchive/built-in.o
+console-tools/built-in.o
+coreutils/built-in.o
+coreutils/libcoreutils/built-in.o
+debianutils/built-in.o
+klibc-utils/built-in.o
+e2fsprogs/built-in.o
+editors/built-in.o
+findutils/built-in.o
+init/built-in.o
+libbb/built-in.o
+libpwdgrp/built-in.o
+loginutils/built-in.o
+mailutils/built-in.o
+miscutils/built-in.o
+modutils/built-in.o
+networking/built-in.o
+networking/libiproute/built-in.o
+networking/udhcp/built-in.o
+printutils/built-in.o
+procps/built-in.o
+runit/built-in.o
+selinux/built-in.o
+shell/built-in.o
+sysklogd/built-in.o
+util-linux/built-in.o
+util-linux/volume_id/built-in.o
+archival/lib.a
+archival/libarchive/lib.a
+console-tools/lib.a
+coreutils/lib.a
+coreutils/libcoreutils/lib.a
+debianutils/lib.a
+klibc-utils/lib.a
+e2fsprogs/lib.a
+editors/lib.a
+findutils/lib.a
+init/lib.a
+libbb/lib.a
+libpwdgrp/lib.a
+loginutils/lib.a
+mailutils/lib.a
+miscutils/lib.a
+modutils/lib.a
+networking/lib.a
+networking/libiproute/lib.a
+networking/udhcp/lib.a
+printutils/lib.a
+procps/lib.a
+runit/lib.a
+selinux/lib.a
+shell/lib.a
+sysklogd/lib.a
+util-linux/lib.a
+util-linux/volume_id/lib.a
+archival/built-in.o
+archival/libarchive/built-in.o
+console-tools/built-in.o
+coreutils/built-in.o
+coreutils/libcoreutils/built-in.o
+debianutils/built-in.o
+klibc-utils/built-in.o
+e2fsprogs/built-in.o
+editors/built-in.o
+findutils/built-in.o
+init/built-in.o
+libbb/built-in.o
+libpwdgrp/built-in.o
+loginutils/built-in.o
+mailutils/built-in.o
+miscutils/built-in.o
+modutils/built-in.o
+networking/built-in.o
+networking/libiproute/built-in.o
+networking/udhcp/built-in.o
+printutils/built-in.o
+procps/built-in.o
+runit/built-in.o
+selinux/built-in.o
+shell/built-in.o
+sysklogd/built-in.o
+util-linux/built-in.o
+util-linux/volume_id/built-in.o
+attempt to open /usr/bin/../lib/gcc/x86_64-linux-gnu/13/libgcc.a succeeded
+/usr/bin/../lib/gcc/x86_64-linux-gnu/13/libgcc.a
+attempt to open /usr/bin/../lib/gcc/x86_64-linux-gnu/13/libgcc_eh.a succeeded
+/usr/bin/../lib/gcc/x86_64-linux-gnu/13/libgcc_eh.a
+attempt to open /usr/bin/../lib/gcc/x86_64-linux-gnu/13/crtend.o succeeded
+/usr/bin/../lib/gcc/x86_64-linux-gnu/13/crtend.o
+attempt to open /home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crtn.o succeeded
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/crtn.o
+attempt to open /home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a succeeded
+/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sysconf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)closedir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)opendir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)readdir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__environ.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__libc_start_main.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clearenv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getenv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)putenv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setenv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)unsetenv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__errno_location.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strerror.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)abort.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)abort_lock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)exit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fcntl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)open.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)defsysinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)libc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)syscall_ret.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)chroot.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)klogctl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)prctl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sethostname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)settimeofday.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sysinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)utimes.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__lctrans.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)calloc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)free.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lite_malloc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)free.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)malloc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)realloc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)replaced.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dirname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getauxval.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getopt.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getopt_long.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getrlimit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ioctl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mntent.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)realpath.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setrlimit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)uname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mmap.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mprotect.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)munmap.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mblen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mbtowc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)bind.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)connect.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)freeaddrinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getaddrinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)gethostbyname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)gethostbyname2.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)gethostbyname2_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getnameinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpeername.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getservbyname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getservbyname_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getsockname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)h_errno.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)hstrerror.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)htonl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)htons.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)if_indextoname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)inet_aton.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)inet_ntoa.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)inet_ntop.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)listen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lookup_ipliteral.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lookup_name.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lookup_serv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ntohs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)recv.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)recvfrom.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)res_mkquery.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)res_msend.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)res_send.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)resolvconf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sendmsg.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sendto.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setsockopt.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)shutdown.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)socket.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)socketpair.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgrent.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgrent_a.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgrouplist.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpwent.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpwent_a.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)nscd_query.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)rand.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)execve.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)execvp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fork.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)wait.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)waitpid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vfork.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fnmatch.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)glob.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)regcomp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)regerror.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)regexec.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tre-mem.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sched_yield.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)poll.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)longjmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setjmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)block.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)kill.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)killpg.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)raise.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigaction.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigaddset.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigemptyset.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigfillset.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)signal.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigprocmask.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigsuspend.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)restore.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)chmod.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fchmod.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fstat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fstatat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)futimesat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lstat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mkdir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mknod.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)statvfs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)umask.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)utimensat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__fclose_ca.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__fdopen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__fopen_rb_ca.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__lockfile.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdio_close.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdio_read.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdio_seek.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdio_write.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clearerr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fclose.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)feof.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ferror.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fflush.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fgets.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fileno.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fopen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fputs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fread.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fscanf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fseek.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fwrite.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getc_unlocked.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getchar_unlocked.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getline.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ofl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ofl_add.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pclose.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)popen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)printf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)putc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)putc_unlocked.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)putchar_unlocked.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)puts.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)rename.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setbuf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setvbuf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)snprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sscanf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stderr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stdin.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stdout.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ungetc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vasprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vdprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vfprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vfscanf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vsnprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vsprintf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vsscanf.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)atof.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)atoi.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)bsearch.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)qsort_nr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strtod.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strtol.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memchr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memcmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memrchr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stpcpy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)stpncpy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcasecmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcasestr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcat.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strchr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strchrnul.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcpy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strcspn.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strdup.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strlen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strncasecmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strncmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strncpy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strndup.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strnlen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strpbrk.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strrchr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strsep.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strsignal.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strspn.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strstr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strtok_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strverscmp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memcpy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memmove.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)memset.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mkdtemp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mkstemp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mktemp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tcgetattr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tcsetattr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__lock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__syscall_cp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lock_ptc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_cleanup_push.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_rdlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_timedrdlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_tryrdlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_unlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_wrlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_setcancelstate.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_sigmask.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)synccall.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clock_gettime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clock_settime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ctime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)gettimeofday.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)localtime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)localtime_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mktime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strftime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)strptime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)time.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)times.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)_exit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)access.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)alarm.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)chdir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)chown.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)close.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dup.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dup2.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fchdir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fchown.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ftruncate.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getcwd.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getegid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)geteuid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgroups.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpgrp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getppid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getuid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)isatty.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lchown.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)link.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)lseek.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pipe.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pipe2.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)read.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)readlink.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)rmdir.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setegid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)seteuid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setgid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setpgid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setsid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setuid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setxid.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sleep.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)symlink.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sync.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tcgetpgrp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tcsetpgrp.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)ttyname_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)unlink.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)write.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)isalnum.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswalnum.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswalpha.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswctype.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswgraph.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswlower.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswprint.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswpunct.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswspace.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswupper.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswxdigit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)tolower.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)towctrans.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__init_tls.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)_Exit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)floatscan.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)intscan.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)procfdname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)shgetc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)vdso.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)langinfo.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)realloc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__fpclassifyl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__signbitl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)copysignl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)frexpl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)scalbn.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)scalbnl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fabsl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)fmodl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mremap.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)internal.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mbrtowc.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mbsinit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mbstowcs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)wctomb.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dn_expand.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)dns_parse.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)if_nametoindex.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)inet_pton.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)recvmsg.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getgr_a.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpw_a.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getpw_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)_Fork.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)posix_spawn.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)posix_spawn_file_actions_addclose.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)posix_spawn_file_actions_adddup2.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)posix_spawn_file_actions_destroy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)posix_spawn_file_actions_init.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)setitimer.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sigismember.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__fmodeflags.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__overflow.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdout_write.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__toread.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__towrite.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__uflow.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)getdelim.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)qsort.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)wcschr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)wcslen.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__randname.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mkostemps.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__timedwait.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)default_attr.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_timedwrlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_rwlock_trywrlock.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_destroy.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_init.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_post.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_wait.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__set_thread_area.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clone.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__secs_to_tm.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__tm_to_secs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__tz.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__year_to_secs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)asctime.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)asctime_r.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)nanosleep.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswblank.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)iswcntrl.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)c_locale.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)mbsrtowcs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)wcrtomb.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__stdio_exit.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_timedwait.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)sem_trywait.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__map_file.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)__month_to_secs.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)clock_nanosleep.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)isblank.lo
+(/home/bruns/Documents/EpinAnonymOS/deps/musl/install/lib/libc.a)pthread_testcancel.lo

@@ -1,0 +1,11 @@
+qemu-system-x86_64 \
+  -boot d \
+  -cdrom hos.iso \
+  -serial file:serial.log \
+  -m 512 \
+  -no-reboot \
+  -no-shutdown \
+  -d int,cpu_reset,guest_errors \
+  -D qemu-debug.log \
+  -cpu qemu64,-smap,-smep \
+  -display gtk,show-cursor=on

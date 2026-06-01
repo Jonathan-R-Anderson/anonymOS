@@ -1,0 +1,298 @@
+# ===== Project Setup =====
+PROJECT_ROOT=$(CURDIR)
+export PROJECT_ROOT
+
+include build.opts
+
+MAKEFLAGS += --no-print-directory
+
+.PHONY: all clean common rts hos d progs test util deps deps-desktop gnome
+
+# ===== Progress Bar Config =====
+TOTAL_STEPS := 9
+CURRENT_STEP := 0
+
+define progress
+	@CURRENT=$$(($(CURRENT_STEP)+1)); \
+	echo -ne "\r[ $$CURRENT / $(TOTAL_STEPS) ] ["; \
+	FILLED=$$(( $$CURRENT * 20 / $(TOTAL_STEPS) )); \
+	for i in $$(seq 1 $$FILLED); do echo -n "#"; done; \
+	for i in $$(seq $$FILLED 20); do echo -n "-"; done; \
+	printf "] %s\n" "$1"; \
+	export CURRENT_STEP=$$CURRENT
+endef
+
+
+# ===== Main Build =====
+all:
+	$(call progress,Building RTS)
+	@$(MAKE) rts
+
+	$(call progress,Building Common)
+	@$(MAKE) common
+
+	$(call progress,Building D Kernel)
+	@$(MAKE) d
+
+	$(call progress,Building Util)
+	@$(MAKE) util
+
+	$(call progress,Building HOS)
+	@$(MAKE) hos
+
+	$(call progress,Building Programs)
+	@$(MAKE) progs
+
+	$(call progress,Building Core Deps)
+	@$(MAKE) deps
+
+	$(call progress,Linking Kernel)
+	@$(MAKE) kernel.elf
+
+	$(call progress,Creating ISO)
+	@$(MAKE) hos.iso
+
+	@echo "\n✅ Build complete!"
+
+
+# ===== ISO =====
+BUSYBOX_BIN    := deps/busybox/busybox
+OPENRC_BIN     := deps/openrc/rc
+DBUS_BIN       := deps/dbus/dbus-daemon
+DCONF_BIN      := deps/dconf/dconf-service
+NETWORKMANAGER_BIN := deps/networkmanager/NetworkManager
+ELOGIND_BIN    := deps/elogind/elogind
+LOGIND_BIN     := deps/elogind/logind
+PIPEWIRE_BIN   := deps/pipewire/pipewire
+PIPEWIRE_PULSE_BIN := deps/pipewire/pipewire-pulse
+WIREPLUMBER_BIN := deps/wireplumber/wireplumber
+GTK_HELLO_BIN  := deps/gtk-stack/gtk-hello
+STAGED_DESKTOP_BIN := deps/staged-desktop/desktop-stage
+GSD_BIN        := deps/gnome-settings-daemon/gnome-settings-daemon
+GCC_BIN        := deps/gnome-control-center/gnome-control-center
+MUTTER_BIN     := deps/mutter/mutter
+GNOME_SHELL_BIN:= deps/gnome-shell/gnome-shell
+GDM_BIN        := deps/gdm/gdm
+
+hos.iso: kernel.elf progs
+	@echo "Building ISO image..."
+	mkdir -p cd/boot/limine cd/sbin
+	cp kernel.elf cd/boot/kernel.elf
+	cp src/boot/limine.conf cd/boot/limine/limine.conf
+
+	# Limine binaries
+	cp src/boot/limine-bios.sys src/boot/limine-bios-cd.bin src/boot/limine-uefi-cd.bin cd/boot/limine/ || echo "Warning: Limine binaries missing in src/boot/"
+
+	# Modules
+	cp build/hos.bundle cd/
+	cp build/progs/storage.elf cd/storage.elf
+	cp build/progs/init.elf cd/init.elf
+
+	# GNU tools: copy static busybox if built
+	@if [ -f $(BUSYBOX_BIN) ]; then \
+		cp $(BUSYBOX_BIN) cd/busybox; \
+		echo "Included busybox in ISO ($(shell wc -c < $(BUSYBOX_BIN)) bytes)"; \
+	else \
+		echo "Warning: busybox not built yet — run 'make deps' first"; \
+	fi
+
+	# Init system: copy OpenRC if built
+	@if [ -f $(OPENRC_BIN) ]; then \
+		cp $(OPENRC_BIN) cd/openrc; \
+		echo "Included openrc in ISO ($(shell wc -c < $(OPENRC_BIN)) bytes)"; \
+	else \
+		echo "Note: openrc not built — run 'make deps' to build (optional)"; \
+	fi
+
+	# D-Bus daemon: copy if built
+	@if [ -f $(DBUS_BIN) ]; then \
+		cp $(DBUS_BIN) cd/sbin/dbus-daemon; \
+		echo "Included dbus-daemon in ISO as /sbin/dbus-daemon ($(shell wc -c < $(DBUS_BIN)) bytes)"; \
+	else \
+		echo "Note: dbus-daemon not built — desktop middleware buses will be unavailable"; \
+	fi
+
+	# dconf service: copy if built
+	@if [ -f $(DCONF_BIN) ]; then \
+		cp $(DCONF_BIN) cd/sbin/dconf-service; \
+		echo "Included dconf-service in ISO as /sbin/dconf-service ($(shell wc -c < $(DCONF_BIN)) bytes)"; \
+	else \
+		echo "Note: dconf-service not built — GSettings writes will remain inert"; \
+	fi
+
+	# NetworkManager daemon: copy if built
+	@if [ -f $(NETWORKMANAGER_BIN) ]; then \
+		cp $(NETWORKMANAGER_BIN) cd/sbin/NetworkManager; \
+		echo "Included NetworkManager in ISO as /sbin/NetworkManager ($(shell wc -c < $(NETWORKMANAGER_BIN)) bytes)"; \
+	else \
+		echo "Note: NetworkManager not built — GNOME network services will remain unavailable"; \
+	fi
+
+	# Session manager: copy elogind if built
+	@if [ -f $(ELOGIND_BIN) ]; then \
+		cp $(ELOGIND_BIN) cd/elogind; \
+		echo "Included elogind in ISO ($(shell wc -c < $(ELOGIND_BIN)) bytes)"; \
+	else \
+		echo "Note: elogind not built — run 'make deps' to build (optional)"; \
+	fi
+
+	# login1 daemon: copy if built
+	@if [ -f $(LOGIND_BIN) ]; then \
+		cp $(LOGIND_BIN) cd/sbin/logind; \
+		echo "Included logind in ISO as /sbin/logind ($(shell wc -c < $(LOGIND_BIN)) bytes)"; \
+	else \
+		echo "Note: logind not built — GDM/login1 integration will be unavailable"; \
+	fi
+
+	# PipeWire audio daemon: copy if built
+	@if [ -f $(PIPEWIRE_BIN) ]; then \
+		cp $(PIPEWIRE_BIN) cd/sbin/pipewire; \
+		echo "Included pipewire in ISO as /sbin/pipewire ($(shell wc -c < $(PIPEWIRE_BIN)) bytes)"; \
+	else \
+		echo "Note: pipewire not built — media graph daemon will be unavailable"; \
+	fi
+
+	# PipeWire PulseAudio compatibility daemon: copy if built
+	@if [ -f $(PIPEWIRE_PULSE_BIN) ]; then \
+		cp $(PIPEWIRE_PULSE_BIN) cd/sbin/pipewire-pulse; \
+		echo "Included pipewire-pulse in ISO as /sbin/pipewire-pulse ($(shell wc -c < $(PIPEWIRE_PULSE_BIN)) bytes)"; \
+	else \
+		echo "Note: pipewire-pulse not built — PulseAudio compatibility will be unavailable"; \
+	fi
+
+	# WirePlumber session manager: copy if built
+	@if [ -f $(WIREPLUMBER_BIN) ]; then \
+		cp $(WIREPLUMBER_BIN) cd/sbin/wireplumber; \
+		echo "Included wireplumber in ISO as /sbin/wireplumber ($(shell wc -c < $(WIREPLUMBER_BIN)) bytes)"; \
+	else \
+		echo "Note: wireplumber not built — PipeWire session policy will be unavailable"; \
+	fi
+
+	# GTK3 hello app: copy if built
+	@if [ -f $(GTK_HELLO_BIN) ]; then \
+		cp $(GTK_HELLO_BIN) cd/gtk-hello; \
+		echo "Included gtk-hello in ISO ($(shell wc -c < $(GTK_HELLO_BIN)) bytes)"; \
+	else \
+		echo "Note: gtk-hello not built — run 'make deps-desktop' to build (optional)"; \
+	fi
+
+	# Staged desktop shell: copy if built
+	@if [ -f $(STAGED_DESKTOP_BIN) ]; then \
+		cp $(STAGED_DESKTOP_BIN) cd/sbin/desktop-stage; \
+		echo "Included desktop-stage in ISO as /sbin/desktop-stage ($(shell wc -c < $(STAGED_DESKTOP_BIN)) bytes)"; \
+	else \
+		echo "Note: desktop-stage not built — run 'make deps-desktop' to build (optional)"; \
+	fi
+
+	# GNOME settings daemon: copy if built
+	@if [ -f $(GSD_BIN) ]; then \
+		cp $(GSD_BIN) cd/sbin/gnome-settings-daemon; \
+		echo "Included gnome-settings-daemon in ISO as /sbin/gnome-settings-daemon ($(shell wc -c < $(GSD_BIN)) bytes)"; \
+	else \
+		echo "Note: gnome-settings-daemon not built — GNOME session settings services will be unavailable"; \
+	fi
+
+	# GNOME control center: copy if built
+	@if [ -f $(GCC_BIN) ]; then \
+		cp $(GCC_BIN) cd/sbin/gnome-control-center; \
+		echo "Included gnome-control-center in ISO as /sbin/gnome-control-center ($(shell wc -c < $(GCC_BIN)) bytes)"; \
+	else \
+		echo "Note: gnome-control-center not built — settings UI entrypoint will be unavailable"; \
+	fi
+
+	# GNOME Shell: copy if a dedicated build exists
+	@if [ -f $(GNOME_SHELL_BIN) ]; then \
+		cp $(GNOME_SHELL_BIN) cd/sbin/gnome-shell; \
+		echo "Included gnome-shell in ISO as /sbin/gnome-shell ($(shell wc -c < $(GNOME_SHELL_BIN)) bytes)"; \
+	else \
+		echo "Note: gnome-shell not built — GNOME sessions will probe mutter instead"; \
+	fi
+
+	# GDM display manager: copy if built
+	@if [ -f $(GDM_BIN) ]; then \
+		cp $(GDM_BIN) cd/sbin/gdm; \
+		echo "Included gdm in ISO as /sbin/gdm ($(shell wc -c < $(GDM_BIN)) bytes)"; \
+	else \
+		echo "Note: gdm not built — GNOME sessions will launch the shell directly"; \
+	fi
+
+	# Mutter Wayland compositor: copy if built
+	@if [ -f $(MUTTER_BIN) ]; then \
+		cp $(MUTTER_BIN) cd/sbin/mutter; \
+		echo "Included mutter in ISO as /sbin/mutter ($(shell wc -c < $(MUTTER_BIN)) bytes)"; \
+	else \
+		echo "Note: mutter not built — run 'make deps-desktop' to build (optional)"; \
+	fi
+
+	# Create ISO
+	$(XORRISO) -as mkisofs -b boot/limine/limine-bios-cd.bin \
+		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		--efi-boot boot/limine/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
+		cd -o hos.iso
+
+
+# ===== Kernel Build =====
+build/hos.o: hos
+	@:
+
+build/libkernel_d.a: d
+	@:
+
+build/librts.a: rts
+	@:
+
+kernel.elf: build/libkernel_d.a build/librts.a build/hos.o src/kernel/d/linker.ld
+	$(CROSSCOMPILE_LD) -T src/kernel/d/linker.ld --whole-archive build/libkernel_d.a --no-whole-archive build/hos.o -lrts -Lbuild -o kernel.elf
+
+
+# ===== Subprojects =====
+deps:
+	$(MAKE) -C deps all
+
+deps-desktop:
+	$(MAKE) -C deps desktop
+
+gnome:
+	$(MAKE) -C deps/gnome iso
+
+progs: util common
+	$(MAKE) -C src/progs
+
+d:
+	$(MAKE) -C src/kernel/d
+
+rts:
+	$(MAKE) -C src/libs/rts
+
+common:
+	$(MAKE) -C src/libs/common
+
+hos: common d rts
+	$(MAKE) -C src/kernel/hs
+
+util: common
+	$(MAKE) -C src/util
+
+
+# ===== Testing =====
+test:
+	$(MAKE) -C src/libs/rts test
+	$(MAKE) -C src/kernel/hs test
+
+
+# ===== Cleanup =====
+clean:
+	rm -rf build cd hos.iso kernel.elf
+	$(MAKE) -C src/util clean
+	$(MAKE) -C src/libs/common clean
+	$(MAKE) -C src/libs/rts clean
+	$(MAKE) -C src/kernel/hs clean
+	$(MAKE) -C src/kernel/d clean
+	$(MAKE) -C src/progs clean
+
+clean-deps:
+	$(MAKE) -C deps clean
+
+distclean: clean
+	$(MAKE) -C deps distclean

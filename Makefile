@@ -117,8 +117,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		cp $(HYPRLAND_BIN) cd/Hyprland; \
 		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \
 		cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/kms_swrast_dri.so; \
-		printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
-		echo "Included Hyprland (dynamic) + ld-musl + kms_swrast_dri.so"; \
+		cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/swrast_dri.so; \
+		printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n    module_path: boot():/swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
+		echo "Included Hyprland (dynamic) + ld-musl + kms_swrast/swrast _dri.so"; \
 	else \
 		echo "Hyprland not built — run: make deps-hyprland"; \
 	fi

@@ -859,7 +859,7 @@ ulong linux_seed_initial_stack(
     ulong strCursor = platformPhysOff;
     ulong execFnVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, execName);
 
-    enum bootEnvCount = 21;
+    enum bootEnvCount = 24;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -897,16 +897,32 @@ ulong linux_seed_initial_stack(
     // backend instead of failing to reach /run/seatd.sock.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBSEAT_BACKEND=builtin\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // Software rendering: no GPU, force Mesa's software gallium driver (llvmpipe,
-    // self-contained in kms_swrast_dri.so) so EGL/GLES comes up on dumb buffers.
+    // Software rendering: no GPU, force Mesa's software gallium driver. Our
+    // kms_swrast_dri.so was built -Dllvm=disabled, so the ONLY gallium sw driver
+    // it contains is softpipe (NOT llvmpipe) — selecting llvmpipe makes screen
+    // creation fail and eglInitialize return EGL_FALSE.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBGL_ALWAYS_SOFTWARE=1\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GALLIUM_DRIVER=llvmpipe\0".ptr);
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GALLIUM_DRIVER=softpipe\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Force GBM's *software* path (gbm_dri->software=true). Without this, our
+    // MESA_LOADER_DRIVER_OVERRIDE=kms_swrast makes GBM's HARDWARE path succeed and
+    // leave software=false, so dri2_initialize_drm runs the PRIME render-GPU code:
+    // loader_is_device_render_capable(card0)==false (dumb KMS node, no render node)
+    // → it calls gbm_dri->mesa->queryCompatibleRenderOnlyDeviceFd, which is NULL →
+    // call-through-NULL (rip=0). GBM_ALWAYS_SOFTWARE=1 takes the sw branch and
+    // skips that block entirely.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GBM_ALWAYS_SOFTWARE=1\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     // Verbose aquamarine logging to surface the first EGL/DRM backend failures.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "AQ_TRACE=1\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Make Mesa's EGL core log its initialize path to stderr so we can see WHY
+    // eglInitialize fails (driver/screen/config) instead of only the downstream
+    // strlen(NULL) crash. Trim once EGL comes up.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "EGL_LOG_LEVEL=debug\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
 
     bool isHyprland =

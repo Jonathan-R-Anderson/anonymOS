@@ -1377,6 +1377,17 @@ private void kernelLoop() {
                 klog("[kernel] fatal PF tid="); klog_hex(tid);
                 klog(" cr2="); klog_hex(cr2);
                 klog(" rip="); klog_hex(task.regs[REG_RIP]);
+                klog(" rsp="); klog_hex(task.regs[REG_RSP]);
+                // For a fault on the first instruction of a leaf like strlen(),
+                // [rsp] holds the return address into the caller — log it (and a
+                // few stack slots) to locate the offending call site.
+                {
+                    ulong rsp = task.regs[REG_RSP];
+                    if (rsp >= 0x1000) {
+                        klog(" ret0="); klog_hex(*cast(ulong*)(rsp));
+                        klog(" ret1="); klog_hex(*cast(ulong*)(rsp + 8));
+                    }
+                }
                 klog(" err="); klog_hex(x64TrapErrorCode); klog("\n");
                 exitTask(tid, 11); // SIGSEGV
             }

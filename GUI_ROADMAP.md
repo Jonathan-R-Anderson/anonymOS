@@ -1,24 +1,67 @@
 # GUI Desktop Roadmap
 
-## Current status (2026-06-01) — Hyprland's EGL initializes
+## Current status (2026-06-01) — GL renderer up, blocked in input (xkb)
 
 Hyprland boots **dynamically** (ld.so) all the way through: `CCompositor()` →
 Aquamarine headless backend → Wayland socket bind → DRM/GPU enumeration → Mesa
-**softpipe driver loads and initializes** (parses `/etc/drirc`) → its GL renderer
-`CHyprOpenGLImpl::initEGL`, where `eglGetPlatformDisplayEXT(GBM)` returns a valid
-display and **`eglInitialize` SUCCEEDS**.
+**softpipe driver loads** → `CHyprOpenGLImpl::initEGL`, and after this session's
+fixes **`eglInitialize` SUCCEEDS** with valid GBM configs (ARGB8888/XRGB8888).
 
-**Current blocker (F.4k):** right after init, `eglQueryString(dpy, EGL_EXTENSIONS)`
-returns **NULL**, and Hyprland does `std::string(NULL)` → `strlen(NULL)` SIGSEGV
-([OpenGL.cpp:170](deps/hyprland/src/render/OpenGL.cpp#L170); caller located via
-the page-fault handler's `rsp/ret0` logging). So Mesa's software EGL initializes
-but yields a NULL display-extension string. Next: find why the swrast/GBM EGL
-platform returns NULL `EGL_EXTENSIONS` post-`eglInitialize` (check `major/minor`,
-Mesa `_eglQueryString`/`disp->Extensions`; or make the GBM device valid enough
-that Mesa populates extensions). Then GLES context → first frame → Phase G.
+**F.4k chain solved this session** (the previous "eglInitialize SUCCEEDS" note was
+wrong — it was *failing*; the non-killing `raise(SIGABRT)` in Hyprland's `RASSERT`
+let each failed assertion fall through into a confusing downstream
+`strlen(NULL)`/`std::string=NULL` crash, masking the real cause). Diagnosed via
+Mesa's `EGL_LOG_LEVEL=debug` output (`libEGL debug:` lines on stderr — note the
+serial log has binary bytes, so use `grep -a`). Two env fixes landed
+([exports.d](src/kernel/d/core/exports.d)):
+1. `GALLIUM_DRIVER=llvmpipe` → **`softpipe`** — our driver is `-Dllvm=disabled`, so
+   llvmpipe doesn't exist and screen creation failed.
+2. **`GBM_ALWAYS_SOFTWARE=1`** — `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` made GBM's
+   *hardware* path succeed (`gbm_dri->software=false`), so `dri2_initialize_drm`
+   ran the PRIME render-GPU code: `loader_is_device_render_capable(card0)` is false
+   (dumb KMS node, no render node) → it called
+   `gbm_dri->mesa->queryCompatibleRenderOnlyDeviceFd` = **NULL** → call-through-0.
+   `GBM_ALWAYS_SOFTWARE=1` forces the sw path and skips that block.
+
+**F.4k.2 dual-glapi — FIXED 2026-06-01.** Symptom: `eglCreateContext` GLES3.2 fails
+(softpipe caps below 3.2 → `EGL_BAD_MATCH`, expected), 3.0 retry succeeds, but
+`glGetString(GL_EXTENSIONS)` (OpenGL.cpp:359) returned **NULL** → `RASSERT` → fall
+through → `m_extensions = NULL` crash. Root cause (readelf): the driver's
+`_glapi_tls_Dispatch`/`_glapi_tls_Context`/`_glapi_set_dispatch` were **`LOCAL`**
+(glapi is built as a static `libglapi.a` with `gnu_symbol_visibility: 'hidden'`,
+then localized by the driver's `--version-script dri.sym` `local: *`), while
+Hyprland **exports** those TLS vars `GLOBAL`. So `eglMakeCurrent` set the *driver's*
+dispatch table but Hyprland's `glGetString` read *Hyprland's* (empty) → NULL.
+**Fix (driver-side, no full Mesa rebuild):** in
+`deps/mutter/build/mesa-23.3.5-epin`, patched `src/mapi/shared-glapi/meson.build`
+`gnu_symbol_visibility: 'hidden'` → `'default'` (so glapi's TLS access is the
+interposable general-dynamic model, not local-exec) and added
+`_glapi_tls_Dispatch`/`_glapi_tls_Context`/`_glapi_set_dispatch`/`_glapi_get_dispatch`
+to `src/gallium/targets/dri/dri.sym` `global:`, then `ninja` the driver. The
+driver's `_glapi_tls_*` are now `GLOBAL TLS` (exported, interposable) → bind to
+Hyprland's exported defs at dlopen → one shared dispatch. Installed as both
+`kms_swrast_dri.so` and `swrast_dri.so`. **Result: `glGetString` works, the GL
+renderer initializes, and Hyprland advances ~5000 log lines deeper** (past EGL into
+backend/input setup).
+
+**Current blocker (F.4l) — xkb keymap data.** Crash now in input setup:
+`xkbcommon: ERROR: failed to add default include path …/share/X11/xkb`, then
+`xkb_context_new`/keymap returns NULL and `xkb_context_ref(NULL)` SIGSEGVs
+(cr2=0, `rip`=xkb_context_ref, `ret0=0xedc92d`). Fix: ship xkeyboard-config data
+(`share/X11/xkb/*`) or a precompiled keymap, or set `XKB_*` env so xkbcommon
+finds/builds a keymap, or make the input path tolerate a NULL keymap.
+
+**Also seen (Phase-G prep):** aquamarine logs `failed to map a drm_dumb buffer:
+Operation not permitted` — the kernel's `DRM_IOCTL_MODE_MAP_DUMB` (or the
+subsequent `mmap`) returns `EPERM`. Needed before we can present.
 
 > Debug logging is currently on (`[sc] t=`, `[drm] nr=`, `[mmap-so]`, `[futex-*]`,
-> PF `rsp/ret0`). Trim once rendering works.
+> PF `rsp/ret0`) plus `EGL_LOG_LEVEL=debug`. Trim once rendering works.
+>
+> NOTE: Hyprland's `RASSERT` does `raise(SIGABRT)`, which our kernel does NOT turn
+> into task death, so a failed assertion *continues* and crashes downstream. When
+> reading a crash, find the FIRST `Assertion failed!` + the matching `libEGL
+> debug:`/EGL error, not just the final `[pf]`.
 
 ---
 

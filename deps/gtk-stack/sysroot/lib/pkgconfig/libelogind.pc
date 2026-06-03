@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: libelogind
+Description: HanonymOS elogind compatibility shim for Mutter
+Version: 255.4-shim
+Libs: -L${libdir} -lelogind
+Cflags: -I${includedir}

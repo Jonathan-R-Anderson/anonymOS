@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: glesv2
+Description: Mesa OpenGL ES 2.0 library
+Version: 23.3.5
+Requires: zlib >=  1.2.3, libdrm >= 2.4.109
+Libs: -L${libdir} -lGLESv2 -pthread -lm -lglapi
+Libs.private: -lpthread
+Cflags: -I${includedir} -pthread

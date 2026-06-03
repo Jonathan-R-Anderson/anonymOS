@@ -1,0 +1,9 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: libevdev
+Description: Handler library for evdev events
+Version: 1.13.2
+Libs: -L${libdir} -levdev -lrt
+Cflags: -I${includedir}/libevdev-1.0

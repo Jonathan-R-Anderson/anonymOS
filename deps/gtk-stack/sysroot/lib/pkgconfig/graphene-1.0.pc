@@ -1,0 +1,16 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+graphene_has_sse2=1
+graphene_has_gcc=0
+graphene_has_neon=0
+graphene_has_scalar=1
+
+Name: Graphene
+Description: Math classes for graphic libraries
+URL: https://ebassi.github.io/graphene
+Version: 1.10.8
+Requires: gobject-2.0 >=  2.30.0
+Libs: -L${libdir} -lgraphene-1.0 -lm -pthread
+Cflags: -I${includedir}/graphene-1.0 -pthread -I${libdir}/graphene-1.0/include -mfpmath=sse -msse -msse2

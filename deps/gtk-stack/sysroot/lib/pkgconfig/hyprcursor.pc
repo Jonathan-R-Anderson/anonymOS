@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+
+Name: hyprcursor
+URL: https://github.com/hyprwm/hyprcursor
+Description: A library and toolkit for the Hyprland cursor format
+Version: 0.1.13
+Cflags: -I${includedir}
+Libs: -L${libdir} -lhyprcursor

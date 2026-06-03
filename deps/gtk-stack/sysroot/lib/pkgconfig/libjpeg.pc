@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+
+Name: libjpeg
+Description: A SIMD-accelerated JPEG codec that provides the libjpeg API
+Version: 3.0.2
+Libs: -L${libdir} -ljpeg
+Cflags: -I${includedir}

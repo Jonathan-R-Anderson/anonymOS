@@ -1,0 +1,13 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+
+Name: hyprwire
+URL: https://github.com/hyprwm/hyprwire
+Description: A fast and consistent wire protocol for IPC 
+Version: 0.3.1
+Cflags: -I${includedir}
+Libs: -L${libdir} -lhyprwire
+
+Requires.private: hyprutils libffi
+Libs.private: -lhyprutils -lffi

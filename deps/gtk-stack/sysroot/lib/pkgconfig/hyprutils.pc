@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+
+Name: hyprutils
+URL: https://github.com/hyprwm/hyprutils
+Description: Hyprland utilities library used across the ecosystem 
+Version: 0.13.1
+Cflags: -I${includedir}
+Libs: -L${libdir} -lhyprutils

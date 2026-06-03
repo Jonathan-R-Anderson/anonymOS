@@ -1,0 +1,29 @@
+#pragma once
+
+#include <hyprutils/os/Process.hpp>
+#include <hyprutils/memory/WeakPtr.hpp>
+#include <sys/types.h>
+
+#include "../Log.hpp"
+
+//NOLINTNEXTLINE
+namespace Tests {
+    Hyprutils::Memory::CUniquePointer<Hyprutils::OS::CProcess> spawnKitty(const std::string& class_ = "", const std::vector<std::string> args = {});
+    Hyprutils::Memory::CUniquePointer<Hyprutils::OS::CProcess> spawnLayerKitty(const std::string& namespace_ = "", const std::vector<std::string> args = {});
+    bool                                                       processAlive(pid_t pid);
+    int                                                        windowCount();
+    int                                                        countOccurrences(const std::string& in, const std::string& what);
+    bool                                                       killAllWindows();
+    void                                                       waitUntilWindowsN(int n);
+    int                                                        layerCount();
+    bool                                                       killAllLayers();
+    std::string                                                execAndGet(const std::string& cmd);
+    bool                                                       writeFile(const std::string& name, const std::string& contents);
+    /**
+     * Extracts the given attribute from Hyprland's response to requests such as `/clients`, `/workspaces`, etc.
+     * Automatically appends `: ` to `attr`.
+     *
+     * For example, `Tests::getAttribute(getFromSocket("/activewindow"), "at")` returns the active window's coordinates, e.g., `"2,32"`
+     */
+    std::string getAttribute(const std::string& hyprlandResponse, std::string attr);
+};

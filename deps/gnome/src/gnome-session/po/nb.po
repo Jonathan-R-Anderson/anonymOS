@@ -1,0 +1,220 @@
+# Norwegian bokmål translation of gnome-session.
+# Copyright (C) 1998-2004 Free Software Foundation, Inc.
+# Kjartan Maraas <kmaraas@gnome.org>, 1998-2026.
+# Torstein Adolf Winterseth <kvikende@fsfe.org>, 2010.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session 4.4\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-11-10 18:32+0000\n"
+"PO-Revision-Date: 2026-01-19 14:11+0100\n"
+"Last-Translator: Brage Fuglseth <bragefuglseth@gnome.org>\n"
+"Language-Team: Norwegian bokmål <i18n-nb@lister.ping.uio.no>\n"
+"Language: nb\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.4.2\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Denne økten logger deg inn i GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME på Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME på Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Utloggingsvindu"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Hvis denne innstillingen er slått på, vil gnome-session be brukeren om "
+"bekreftelse før økten avsluttes."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Vis advarsel for reserveløsning"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Hvis denne innstillingen er slått på, vil gnome-session vise et "
+"advarselsvindu etter innlogging hvis en reserveløsning for økten ble tatt i "
+"bruk."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Svarer ikke"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Logg ut"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Økt som skal brukes"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: gnome-session/leader-main.c:193
+msgid "Enable debugging code"
+msgstr "Slå på feilsøkingskode"
+
+#: gnome-session/leader-main.c:194
+msgid "Version of this application"
+msgstr "Versjon av dette programmet"
+
+#: gnome-session/leader-main.c:195
+msgid "This option is ignored"
+msgstr "Dette alternativet ignoreres"
+
+#: gnome-session/leader-main.c:196
+msgid "Don't re-exec into a login shell"
+msgstr "Ikke kjør på nytt med innloggingsskall"
+
+#: gnome-session/leader-main.c:210 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — GNOME sin øktstyrer"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Start gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Start gnome-session-shutdown.target når EOF eller en enkelt byte mottas på "
+"stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Signaliser initiering ferdig til gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Start dbus.service på nytt hvis den kjører"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Kjør fra ExecStopPost for å starte gnome-session-shutdown.target ved feil på "
+"tjenesten"
+
+#: tools/gnome-session-ctl.c:281
+#, c-format
+msgid "Program needs exactly one parameter"
+msgstr "Programmet trenger nøyaktig ett parameter"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Ukjent argument for begrensning: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Klarte ikke å kjøre %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Vis programversjon"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Applikasjons-ID som skal brukes ved begrensning (valgfri)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Årsak for begrensning (valgfri)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "ÅRSAK"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Legg til handling som skal begrenses (repeterbar)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "HANDLING"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Ikke start KOMMANDO og vent i stedet"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Vis eksisterende begrensninger og avslutt"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "KOMMANDO"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Kjør KOMMANDO mens noe av øktens funksjonalitet begrenses."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr ""
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Logg ut"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Slå av"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Start på nytt"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Overser eventuelle hindringer"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ikke spør etter bekreftelse fra bruker"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Kunne ikke koble til økthåndterer"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program kjørt med motstridende alternativer"

@@ -1,0 +1,1264 @@
+# gnome-session's Portuguese translation
+# Copyright © 1999 2025 gnome-session
+# Distributed under the same licence as the gnome-session package
+# Nuno Ferreira <nmrf@rnl.ist.utl.pt>, 1999
+# Duarte Loreto <happyguy_pt@hotmail.com>, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013.
+# António Lima <amrlima@gmail.com>, 2013.
+# Pedro Albuquerque <palbuquerque73@gmail.com>, 2015.
+# Sérgio Cardeira <cardeira.sergio@gmail.com>, 2016.
+# Juliano Camargo <julianosc@pm.me>, 2020.
+# José Vieira <jvieira33@sapo.pt>, 2020-2021.
+# Hugo Carvalho <hugokarvalho@hotmail.com>, 2020, 2021, 2022, 2023, 2024, 2025.
+# João Carvalhinho <joao.carvalhinho@gmail.com>, 2024, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: 3.18\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-16 01:29+0000\n"
+"PO-Revision-Date: 2025-09-22 15:13+0100\n"
+"Last-Translator: Hugo Carvalho <hugokarvalho@hotmail.com>\n"
+"Language-Team: Português <https://l10n.gnome.org/teams/pt/>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.7\n"
+"X-Project-Style: gnome\n"
+"X-Language: pt_PT\n"
+"X-Source-Language: C\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Esta sessão usa o GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME em Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME em Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Perguntar ao sair"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Se ativo, o \"gnome-session\" questionará o utilizador antes de terminar uma "
+"sessão."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Mostrar aviso do modo de recurso"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Se ativado e se a sessão foi recuperada automaticamente, o \"gnome-session\" "
+"irá exibir uma janela de aviso depois de entrar."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Não está a responder"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Sair"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Sessão a utilizar"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NOME_DA_SESSAO"
+
+#: gnome-session/leader-main.c:187
+msgid "Enable debugging code"
+msgstr "Ativar o código de depuração"
+
+#: gnome-session/leader-main.c:188
+msgid "Version of this application"
+msgstr "Versão desta aplicação"
+
+#: gnome-session/leader-main.c:189
+msgid "This option is ignored"
+msgstr "Esta opção é ignorada"
+
+#: gnome-session/leader-main.c:190
+msgid "Don't re-exec into a login shell"
+msgstr "Não execute novamente num shell de login"
+
+#: gnome-session/leader-main.c:208 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — o gestor de sessões do GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Iniciar \"gnome-session-shutdown.target\""
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Iniciar \"gnome-session-shutdown.target\" quando receber EOF ou um único "
+"byte em stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Inicialização de sinal efetuada para a \"gnome-session\""
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Reiniciar \"dbus.service\" se estiver em execução"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Na falha do serviço, executar a partir de ExecStopPost para o \"gnome-"
+"session-shutdown.target”"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "O programa precisa exatamente de um parâmetro"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Argumento de inibição desconhecido: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Falha ao executar %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Mostrar versão de programa"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "O id da aplicação a usar aquando da inibição (opcional)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "A razão de inibição (opcional)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "RAZÃO"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Adicionar ação a inibir (repetível)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "AÇÃO"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Não lançar COMMAND e em vez ficar à espera para sempre"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Listar as inibições existentes, e sair"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "COMMAND"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Executar COMMAND enquanto inibe algumas funcionalidades da sessão."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"As AÇÕES válidas são: logout, switch-user, suspend, idle, e automount..\n"
+"Se nenhuma opção for especificada para o --inhibit, será assumido o estado "
+"ide."
+
+#: tools/gnome-session-inhibit.c:408
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Nem COMMAND nem --inhibit-only foram especificados."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Sair"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Desligar"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Reiniciar"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "A ignorar quaisquer inibidores existentes"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Não solicitar confirmação ao utilizador"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Não foi possível ligar ao gestor de sessões"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "O programa foi invocado com conflito de opções"
+
+#~ msgid "Custom"
+#~ msgstr "Personalizado"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Esta entrada permite selecionar uma sessão gravada"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "GNOME de teste"
+
+#~ msgid "Save sessions"
+#~ msgstr "Guardar sessões"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Se ativo, o \"gnome-session\" irá guardar a sessão automaticamente."
+
+#~ msgid "Save this session"
+#~ msgstr "Guardar esta sessão"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Se ativado, \"gnome-session\" irá guardar automaticamente a próxima "
+#~ "sessão ao terminar a sessão se o guardar automático estiver desativado."
+
+#~ msgid "Custom Session"
+#~ msgstr "Sessão Personalizada"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Selecione uma sessão personalizada para executar"
+
+#~ msgid "_New Session"
+#~ msgstr "_Nova Sessão"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Remover Sessão"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Renomear _Sessão"
+
+#~ msgid "_Continue"
+#~ msgstr "_Continuar"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "Ocorreu algo de errado."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Ocorreu um problema e o sistema não consegue recuperar. Contacte um "
+#~ "administrador do sistema"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Ocorreu um problema e o sistema não consegue recuperar. Por precaução, "
+#~ "foram desativadas todas as extensões."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Ocorreu um problema e o sistema não consegue recuperar.\n"
+#~ "Termine a sessão e tente novamente."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Sair"
+
+#~ msgid "Allow logout"
+#~ msgstr "Permitir a saída"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Mostrar aviso de extensão"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Aplicação Memorizada"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Esta aplicação está a impedir a saída."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr ""
+#~ "A recusar uma nova ligação de cliente porque a sessão está atualmente a "
+#~ "ser terminada\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Não foi possível criar tomada de escuta ICE: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "A executar como serviço do \"systemd\""
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Ignorar os diretórios de arranque automático padrão"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "AUTOSTART_DIR"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Não carregar aplicações especificadas pelo utilizador"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Mostrar a janela de falha total para testar"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Desativar a verificação de aceleração de hardware"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [OPÇÃO...] COMANDO\n"
+#~ "\n"
+#~ "Executar 'COMANDO' enquanto inibe alguma funcionalidade da sessão.\n"
+#~ "\n"
+#~ "  -h, --help        Mostrar esta ajuda\n"
+#~ "  --version         Mostrar a versão do programa\n"
+#~ "  --app-id ID       A id de aplicação a utilizar\n"
+#~ "                    quando inibir (opcional)\n"
+#~ "  --reason REASON   O motivo para inibir (opcional)\n"
+#~ "  --inhibit ARG     Funcionalidades a inibir, lista separada por vírgulas "
+#~ "de:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Não iniciar 'COMANDO' e esperar indefinidamente\n"
+#~ "  -l, --list        Listar as inibições existentes e sair\n"
+#~ "\n"
+#~ "Se não for especificada nenhuma opção --inhibit, é assumida idle.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Erro ao criar o ligação: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Erro na leitura da ligação\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s requer um argumento\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Sessão %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr ""
+#~ "Não são permitidos nomes de sessão que comecem por \".\" ou contenham o "
+#~ "caráter \"/\""
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Não são permitidos os nomes de sessão que comecem por \".\""
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Não são permitidos os nomes de sessão que contenham o caráter \"/\""
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "Já existe uma sessão designada \"%s\""
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Utilizar a gestão de sessões do \"systemd\""
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr ""
+#~ "Utilizar a gestão de sessões integrada (em vez da baseada no sistema)"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "A_plicações de arranque adicionais:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Aplicações de arranque"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr ""
+#~ "Recordar _automaticamente as aplicações em execução ao terminar a sessão"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Recordar as aplicações atualmente em execução"
+
+#~ msgid "Options"
+#~ msgstr "Opções"
+
+#~ msgid "Browse…"
+#~ msgstr "Navegar…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "Com_entário:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "Co_mando:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Nome:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Esta sessão faz com que entre no GNOME, utilizando o Wayland"
+
+#~ msgid "Select Command"
+#~ msgstr "Selecionar o Comando"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Adicionar Aplicação de Arranque"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Editar Aplicação de Arranque"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "O comando de arranque não pode ser vazio"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "O comando de arranque não é válido"
+
+#~ msgid "Enabled"
+#~ msgstr "Ativo"
+
+#~ msgid "Icon"
+#~ msgstr "Ícone"
+
+#~ msgid "Program"
+#~ msgstr "Aplicação"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Preferências das Aplicações de Arranque"
+
+#~ msgid "No name"
+#~ msgstr "Sem nome"
+
+#~ msgid "No description"
+#~ msgstr "Sem descrição"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Incapaz de apresentar o documento de ajuda"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Aplicações de Arranque"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Selecione que aplicações arrancar ao iniciar uma sessão"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Ficheiro não é um ficheiro .desktop válido"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "Versão de ficheiro de ambiente de trabalho '%s' desconhecida"
+
+#~ msgid "Starting %s"
+#~ msgstr "A iniciar %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "Aplicação não aceita documentos na linha de comando"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Opção de iniciação desconhecida. %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr ""
+#~ "Incapaz de indicar URIs de documentos a uma entrada de ficheiro de "
+#~ "ambiente de trabalho 'Type=Link'"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Não é um item iniciável"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Desativar a ligação ao gestor de sessões"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Especificar o ficheiro que contém a configuração gravada"
+
+#~ msgid "FILE"
+#~ msgstr "FICHEIRO"
+
+#~ msgid "Session management options:"
+#~ msgstr "Opções de gestão de sessões:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Apresentar as opções de gestão de sessões"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "Algumas aplicações ainda se encontram em execução:"
+
+#~ msgid "Unknown"
+#~ msgstr "Desconhecido"
+
+#~ msgid "A program is still running:"
+#~ msgstr "Uma aplicação ainda se encontra em execução:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "A aguardar que a aplicação termine. Interromper a aplicação pode causar a "
+#~ "perca de trabalho."
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "A aguardar que as aplicações terminem. Interromper estas aplicações pode "
+#~ "causar a perca de trabalho."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "Ainda Assim Alternar Utilizador"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "Ainda Assim Terminar a Sessão"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "Ainda Assim Suspender"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "Ainda Assim Hibernar"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "Ainda Assim Desligar"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "Ainda Assim Reiniciar"
+
+#~ msgid "Lock Screen"
+#~ msgstr "Trancar o Ecrã"
+
+#~ msgid "Cancel"
+#~ msgstr "Cancelar"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "A sua sessão terminará automaticamente dentro de %d segundo."
+#~ msgstr[1] "A sua sessão terminará automaticamente dentro de %d segundos."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "O sistema será automaticamente desligado dentro de %d segundo."
+#~ msgstr[1] "O sistema será automaticamente desligado dentro de %d segundos."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] ""
+#~ "Este sistema será reiniciado automaticamente dentro de %d segundo."
+#~ msgstr[1] ""
+#~ "Este sistema será reiniciado automaticamente dentro de %d segundos."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "A sessão atual está iniciada com o utilizador \"%s\"."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "Terminar a sessão neste sistema agora?"
+
+#~ msgid "_Switch User"
+#~ msgstr "_Alternar Utilizador"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "Desligar este sistema agora?"
+
+#~ msgid "S_uspend"
+#~ msgstr "S_uspender"
+
+#~ msgid "_Hibernate"
+#~ msgstr "_Hibernar"
+
+#~ msgid "_Restart"
+#~ msgstr "_Reiniciar"
+
+#~ msgid "_Shut Down"
+#~ msgstr "_Desligar"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "Reiniciar este sistema agora?"
+
+#~ msgid "%d hour"
+#~ msgid_plural "%d hours"
+#~ msgstr[0] "%d hora"
+#~ msgstr[1] "%d horas"
+
+#~ msgid "%d minute"
+#~ msgid_plural "%d minutes"
+#~ msgstr[0] "%d minuto"
+#~ msgstr[1] "%d minutos"
+
+#~ msgid "%d second"
+#~ msgid_plural "%d seconds"
+#~ msgstr[0] "%d segundo"
+#~ msgstr[1] "%d segundos"
+
+#~ msgid "0 seconds"
+#~ msgstr "0 segundos"
+
+#~ msgid "Automatic logout in %s"
+#~ msgstr "Terminar sessão automaticamente em %s"
+
+#~ msgid ""
+#~ "This session is configured to automatically log out after a period of "
+#~ "inactivity."
+#~ msgstr ""
+#~ "Esta sessão está configurada para terminar automaticamente após um "
+#~ "período de inatividade."
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "Incapaz de encontrar o ícone '%s'"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "Falha ao Iniciar o GNOME 3"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "Infelizmente o GNOME 3 foi incapaz de iniciar corretamente e arrancou em "
+#~ "<i>modo de recurso</i>.\n"
+#~ "\n"
+#~ "Provavelmente isso significa que o seu sistema (placa gráfica ou "
+#~ "controladores) não é capaz de processar toda a experiência GNOME 3."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "Descubra mais sobre o GNOME 3"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr ""
+#~ "Incapaz de iniciar sessão de arranque (e incapaz de se ligar ao servidor "
+#~ "X)"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>Algumas aplicações ainda se encontram em execução:</b>"
+
+#~ msgid "Exited with code %d"
+#~ msgstr "Terminado com o código %d"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "Terminado com o sinal %d"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "Parado com o sinal %d"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the "
+#~ "extensions below may have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "Ocorreu um problema e o sistema é incapaz de recuperar. Algumas das "
+#~ "extensões abaixo poderão ter causado o problema.\n"
+#~ "Tente desativar algumas e depois termine a sessão e tente novamente."
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "Ocorreu um problema com o servidor de configuração.\n"
+#~ "(%s terminou com o estado %d)"
+
+#~ msgid "Try _Recovery"
+#~ msgstr "Tentar _Recuperar"
+
+#~ msgid "A system error has occurred: %s"
+#~ msgstr "Ocorreu um erro de sistema: %s"
+
+#~ msgid "A fatal system error has occurred: %s"
+#~ msgstr "Ocorreu um erro fatal no sistema: %s"
+
+#~ msgid "Component '%s': %s"
+#~ msgstr "Componente '%s': %s"
+
+#~ msgid "Killed by signal"
+#~ msgstr "Morto pelo sinal"
+
+#~ msgid "Timed out"
+#~ msgstr "Não responde"
+
+#~ msgid "Default session"
+#~ msgstr "Sessão por omissão"
+
+#~ msgid "File Manager"
+#~ msgstr "Gestor de Ficheiros"
+
+#~ msgid "List of applications that are part of the default session."
+#~ msgstr "Lista de aplicações que fazem parte da sessão por omissão."
+
+#~ msgid ""
+#~ "List of components that are required as part of the session. (Each "
+#~ "element names a key under \"/desktop/gnome/session/"
+#~ "required_components\"). The Startup Applications preferences tool will "
+#~ "not normally allow users to remove a required component from the session, "
+#~ "and the session manager will automatically add the required components "
+#~ "back to the session at login time if they do get removed."
+#~ msgstr ""
+#~ "Lista de componentes que são necessários como parte da sessão. (Cada "
+#~ "elemento designa uma chave sob \"/desktop/gnome/session/"
+#~ "required_components\"). As Preferências de Aplicações de Arranque "
+#~ "normalmente não permitirão aos utilizadores remover um componente "
+#~ "necessário da sessão, e o gestor de sessões irá automaticamente adicionar "
+#~ "novamente, ao iniciar uma sessão, os componentes necessários, caso tenham "
+#~ "sido removidos."
+
+#~ msgid "Panel"
+#~ msgstr "Painel"
+
+#~ msgid "Required session components"
+#~ msgstr "Componentes necessários de sessão"
+
+#~ msgid ""
+#~ "The file manager provides the desktop icons and allows you to interact "
+#~ "with your saved files."
+#~ msgstr ""
+#~ "O gestor de ficheiros disponibiliza os ícones de ambiente de trabalho e "
+#~ "permite-lhe interagir com os seus ficheiros gravados."
+
+#~ msgid ""
+#~ "The number of minutes of inactivity before the session is considered idle."
+#~ msgstr ""
+#~ "O número de minutos de inatividade até que a sessão seja considerada "
+#~ "inativa."
+
+#~ msgid ""
+#~ "The panel provides the bar at the top or bottom of the screen containing "
+#~ "menus, the window list, status icons, the clock, etc."
+#~ msgstr ""
+#~ "O painel disponibiliza a barra no topo e no fundo do ecrã que contêm "
+#~ "menus, a lista de janelas, ícones de estado, o relógio, etc."
+
+#~ msgid ""
+#~ "The window manager is the program that draws the title bar and borders "
+#~ "around windows, and allows you to move and resize windows."
+#~ msgstr ""
+#~ "O gestor de janelas é a aplicação que desenha a barra de título e margens "
+#~ "em torno das janelas, e que lhe permite mover e redimensionar as janelas."
+
+#~ msgid "Time before session is considered idle"
+#~ msgstr "Tempo até que a sessão seja considerada inativa"
+
+#~ msgid "Window Manager"
+#~ msgstr "Gestor de Janelas"
+
+#~ msgid "GConf key used to look up default session"
+#~ msgstr "Chave GConf utilizada para procurar a sessão por omissão"
+
+#~ msgid "Show logout dialog"
+#~ msgstr "Apresentar diálogo de término de sessão"
+
+#~ msgid "Show shutdown dialog"
+#~ msgstr "Apresentar diálogo de desligar"
+
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "Utilizar caixas de diálogo para os erros"
+
+#~ msgid "Set the current session name"
+#~ msgstr "Definir o nome da sessão atual"
+
+#~ msgid "NAME"
+#~ msgstr "NOME"
+
+#~ msgid "Kill session"
+#~ msgstr "Matar sessão"
+
+#~ msgid ""
+#~ "Assistive technology support has been requested for this session, but the "
+#~ "accessibility registry was not found. Please ensure that the AT-SPI "
+#~ "package is installed. Your session has been started without assistive "
+#~ "technology support."
+#~ msgstr ""
+#~ "Foi pedido para esta sessão suporte para tecnologia assistiva, mas o "
+#~ "registo de acessibilidade não foi encontrado. Certifique-se de que o "
+#~ "pacote AT-SPI se encontra instalado. A sua sessão foi iniciada sem "
+#~ "suporte para tecnologia assistiva."
+
+#~ msgid "AT SPI Registry Wrapper"
+#~ msgstr "Invólucro de Registo AT SPI"
+
+#~ msgid "GNOME Settings Daemon Helper"
+#~ msgstr "Assistente do Daemon das Definições GNOME"
+
+#~ msgid ""
+#~ "If enabled, gnome-session will save the session automatically. Otherwise, "
+#~ "the logout dialog will have an option to save the session."
+#~ msgstr ""
+#~ "Se ativo, o gnome-session gravará a sessão automaticamente. Caso "
+#~ "contrário, o diálogo de terminar sessão terá uma opção para gravar a "
+#~ "sessão."
+
+#~ msgid "Preferred Image to use for login splash screen"
+#~ msgstr ""
+#~ "Imagem Preferida a utilizar para o ecrã de logotipo ao iniciar sessão"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "Apresentar ecrã de logotipo"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "Apresentar ecrã de logotipo ao iniciar sessão"
+
+#~ msgid ""
+#~ "This is a relative path value based off the $datadir/pixmaps/ directory. "
+#~ "Sub-directories and image names are valid values. Changing this value "
+#~ "will effect the next session login."
+#~ msgstr ""
+#~ "Este é um caminho relativo baseado no diretório $datadir/pixmaps/. "
+#~ "Subdiretórios e nomes de imagens são valores válidos. Alterar este valor "
+#~ "irá ter efeito na próxima vez que iniciar uma sessão."
+
+#~ msgid ""
+#~ "Waiting for program to finish.  Interrupting program may cause you to "
+#~ "lose work."
+#~ msgstr ""
+#~ "A aguardar que as aplicações terminem. Interromper as aplicações poderá "
+#~ "causar a perca de trabalho."
+
+#~ msgid "- GNOME Splash Screen"
+#~ msgstr "- Ecrã de Logotipo do GNOME"
+
+#~ msgid "GNOME Splash Screen"
+#~ msgstr "Ecrã de Logotipo do GNOME"
+
+#~ msgid "The name of the startup program cannot be empty"
+#~ msgstr "O nome da aplicação de arranque não pode ser vazio"
+
+#~ msgid "Sessions Preferences"
+#~ msgstr "Preferências de Sessão"
+
+#~ msgid "GNOME Keyring Daemon Wrapper"
+#~ msgstr "Invólucro do Daemon do GNOME Keyring"
+
+#~ msgid "Selected option in the log out dialog"
+#~ msgstr "Opção selecionada no diálogo de terminar sessão"
+
+#~ msgid ""
+#~ "This is the option that will be selected in the logout dialog, valid "
+#~ "values are \"logout\" for logging out, \"shutdown\" for halting the "
+#~ "system and \"restart\" for restarting the system."
+#~ msgstr ""
+#~ "Esta é a opção que estará selecionada no diálogo de terminar sessão, "
+#~ "valores válidos são \"logout\" para terminar a sessão, \"shutdown\" para "
+#~ "desligar o sistema e \"restart\" para reiniciar o sistema."
+
+#~ msgid "Configure your sessions"
+#~ msgstr "Configurar as suas sessões"
+
+#~ msgid "Session management"
+#~ msgstr "Gestão de sessões"
+
+#~ msgid "GNOME GUI Library + EggSMClient"
+#~ msgstr "Biblioteca de Interface Gráfico GNOME + EggSMClient"
+
+#~ msgid ""
+#~ "The Window manager that gnome-session will start. Valid values are "
+#~ "\"metacity\" and \"compiz\"."
+#~ msgstr ""
+#~ "O gestor de janelas que o gnome-session irá iniciar. Valores válidos são "
+#~ "\"metacity\" e \"compiz\"."
+
+#~ msgid "Window Manager to start"
+#~ msgstr "Gestor de Janelas a iniciar"
+
+#~ msgid "gtk-cancel"
+#~ msgstr "gtk-cancelar"
+
+#~ msgid "Play logout sound instead of login"
+#~ msgstr "Reproduzir som de terminar sessão em vez do de iniciar"
+
+#~ msgid "- GNOME login/logout sound"
+#~ msgstr "- som de início/terminar de sessão GNOME"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "Autorizar ligações TCP"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+#~ msgstr ""
+#~ "Por motivos de segurança, em plataformas que tenham "
+#~ "_IceTcpTransNoListen() (sistemas XFree86), o gnome-session não escuta por "
+#~ "ligações em portos TCP. Esta opção autorizará ligações de máquinas "
+#~ "remotas (autorizadas). O gnome-session tem de ser reiniciado para que "
+#~ "esta opção tenha efeito."
+
+#~ msgid "_Order:"
+#~ msgstr "_Ordem:"
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "O que acontece à aplicação quando termina."
+
+#~ msgid "_Style:"
+#~ msgstr "E_stilo:"
+
+#~ msgid "Inative"
+#~ msgstr "Inativa"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "A aguardar início ou já terminada."
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "Já iniciada mas ainda não reportou estado."
+
+#~ msgid "Running"
+#~ msgstr "Em execução"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "Um membro normal da sessão."
+
+#~ msgid "Saving"
+#~ msgstr "A gravar"
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "Estado não reportado dentro do prazo."
+
+#~ msgid "Normal"
+#~ msgstr "Normal"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "Não afetado por fim de sessão mas pode morrer."
+
+#~ msgid "Never allowed to die."
+#~ msgstr "Nunca é permitido morrer."
+
+#~ msgid "Trash"
+#~ msgstr "Lixo"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "Descartada no final da sessão e pode morrer."
+
+#~ msgid "Settings"
+#~ msgstr "Propriedades"
+
+#~ msgid "Always started on every login."
+#~ msgstr "Iniciada em todos os inícios de sessão."
+
+#~ msgid "Order"
+#~ msgstr "Ordem"
+
+#~ msgid "Style"
+#~ msgstr "Estilo"
+
+#~ msgid "State"
+#~ msgstr "Estado"
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work "
+#~ "correctly."
+#~ msgstr ""
+#~ "Ocorreu um erro ao iniciar o Daemon de Definições GNOME.\n"
+#~ "\n"
+#~ "Algumas coisas, tais como temas, sons ou configurações do fundo do "
+#~ "ambiente poderão não funcionar corretamente."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "A última mensagem de erro foi:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "O GNOME tentará ainda assim reiniciar o Daemon de Definições da próxima "
+#~ "vez que iniciar sessão."
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "O Daemon de Definições reiniciou-se demasiadas vezes."
+
+#~ msgid "PROGRAM..."
+#~ msgstr "APLICAÇÃO..."
+
+#~ msgid ""
+#~ "You must specify at least one program to remove. You can list the "
+#~ "programs with --list.\n"
+#~ msgstr ""
+#~ "Tem de especificar pelo menos uma aplicação a remover. Pode listar as "
+#~ "aplicações com --list.\n"
+
+#~ msgid "Error: could not connect to the session manager\n"
+#~ msgstr "Erro: Incapaz de se ligar ao gestor de sessões\n"
+
+#~ msgid "Currently registered clients:\n"
+#~ msgstr "Clientes atualmente registados:\n"
+
+#~ msgid "Couldn't find program %s in session\n"
+#~ msgstr "Incapaz de encontrar a aplicação %s na sessão\n"
+
+#~ msgid ""
+#~ "The GNOME session manager cannot start properly.  Please report this as a "
+#~ "GNOME bug. Please include this ICE failure message in the bug report:  "
+#~ "'%s'.  Meanwhile you could try logging in using the failsafe session."
+#~ msgstr ""
+#~ "O gestor de sessões GNOME foi incapaz de se iniciar corretamente.  "
+#~ "Reporte este problema como sendo um erro do GNOME. Inclua esta mensagem "
+#~ "de falha ICE no relatório de erro:  '%s'.  Entretanto poderá tentar "
+#~ "iniciar uma sessão utilizando a sessão de recurso."
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to lock the file '%s'.  Please "
+#~ "report this as a GNOME bug.  Sometimes this error may occur if the file's "
+#~ "directory is unwritable, you could try logging in via the failsafe "
+#~ "session and ensuring that it is."
+#~ msgstr ""
+#~ "O gestor de sessões GNOME foi incapaz de trancar o ficheiro '%s'.  Relate "
+#~ "este problema como sendo um erro do GNOME.  Por vezes este erro poderá "
+#~ "ocorrer se o diretório do ficheiro não permitir escrita, pelo que poderá "
+#~ "iniciar uma sessão utilizando a sessão de recurso e certificar-se de que "
+#~ "o diretório possui permissões de escrita."
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to read the file: '%s'.  If this "
+#~ "file exists it must be readable by you for GNOME to work properly.  Try "
+#~ "logging in with the failsafe session and removing this file."
+#~ msgstr ""
+#~ "O gestor de sessões GNOME foi incapaz de ler o ficheiro: '%s'.  Se este "
+#~ "ficheiro existir terá de ser legível pelo seu utilizador para que o GNOME "
+#~ "funcione corretamente.  Tente iniciar uma sessão utilizando a sessão de "
+#~ "recurso e remover este ficheiro."
+
+#~ msgid ""
+#~ "Could not write to file '%s'.  This file must be writable in order for "
+#~ "GNOME to function properly.  Try logging in with the failsafe session and "
+#~ "removing this file.  Also make sure that the file's directory is writable."
+#~ msgstr ""
+#~ "Incapz de escrever no ficheiro '%s'.  Este ficheiro tem de permitir "
+#~ "escrita para que o GNOME funcione corretamente.  Tente iniciar uma sessão "
+#~ "utilizando a sessão de recurso e remover este ficheiro.  Certifique-se "
+#~ "também de que o diretório onde se encontra o ficheiro permite escrita."
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "Tem a certeza de que deseja terminar a sessão?"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "_Reiniciar o computador"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "Apenas ler sessões gravadas do ficheiro default.session"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr ""
+#~ "Milisegundos gastos à espera que os clientes se registem (0=infinito)"
+
+#~ msgid "DELAY"
+#~ msgstr "ESPERA"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr "Milisegundos gastos à espera que os clientes respondam (0=infinito)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr "Milisegundos gastos à espera que os clientes morram (0=infinito)"
+
+#~ msgid "This session is running as a privileged user"
+#~ msgstr "Esta sessão está a correr como utilizador privilegiado"
+
+#~ msgid ""
+#~ "Running a session as a privileged user should be avoided for security "
+#~ "reasons. If possible, you should log in as a normal user."
+#~ msgstr ""
+#~ "Executar uma sessão como utilizador privilegiado deverá ser evitado por "
+#~ "motivos de segurança. Se possível, deverá iniciar uma sessão como "
+#~ "utilizador normal."
+
+#~ msgid ""
+#~ "The session might encounter issues if the computer clock is not properly "
+#~ "configured. Please consider adjusting it.\n"
+#~ "\n"
+#~ "Current date is <b>%s</b>."
+#~ msgstr ""
+#~ "A sessão poderá encontrar problemas se o relógio do computador não "
+#~ "estiver devidamente configurado. Considere ajustá-lo.\n"
+#~ "\n"
+#~ "A data atual é <b>%s</b>."
+
+#~ msgid "Failed to launch time configuration tool: %s"
+#~ msgstr "Falha ao iniciar a ferramenta de configuração de hora: %s"
+
+#~ msgid "The computer clock appears to be wrong"
+#~ msgstr "Parece que o relógio do computador está incorreto"
+
+#~ msgid "_Ignore"
+#~ msgstr "_Ignorar"
+
+#~ msgid "_Adjust the Clock"
+#~ msgstr "_Ajustar o Relógio"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "Incapaz de encontrar endereço de internet para %s.\n"
+#~ "Isto impedirá o GNOME de funcionar corretamente.\n"
+#~ "Poderá ser possível corrigir o problema adicionando\n"
+#~ "%s ao ficheiro /etc/hosts."
+
+#~ msgid "Try Again"
+#~ msgstr "Tentar Novamente"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "Espera abandonada devido a conflitos."
+
+#~ msgid "No response to the %s command."
+#~ msgstr "Nenhuma resposta ao comando %s."
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "A aplicação pode estar lenta, parada ou zombie."
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "Pode aguardar que ela responda ou removê-la."
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "Reiníco abandonado devido a falhas."
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "Encerramento de sessão em curso."
+
+#~ msgid "- Save the current session"
+#~ msgstr "- Gravar a sessão atual"
+
+#~ msgid "Save changes to the current session before closing?"
+#~ msgstr "Gravar as alterações à sessão atual antes de fechar?"
+
+#~ msgid "If you don't save, changes will be discarded."
+#~ msgstr "Se não gravar, as alterações serão descartadas."
+
+#~ msgid "_Close without Saving"
+#~ msgstr "_Fechar sem Gravar"
+
+#~ msgid "Your session has been saved."
+#~ msgstr "A sua sessão foi gravada."
+
+#~ msgid "could not connect to the session manager\n"
+#~ msgstr "Incapaz de se ligar ao gestor de sessões\n"
+
+#~ msgid "session manager does not support GNOME extensions\n"
+#~ msgstr "o gestor de sessões não suporta extensões GNOME\n"
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "Remover o cliente atualmente selecionado da sessão."
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "Aplicar alterações à sessão atual"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "A lista de aplicações na sessão."
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "Aplicações atualmente em e_xecução:"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "Gestor de Janelas Sawfish"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "Gestor de Janelas Metacity"
+
+#~ msgid "Nautilus"
+#~ msgstr "Nautilus"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "Definições do Ambiente"
+
+#~ msgid "New Startup Program"
+#~ msgstr "Nova Aplicação de Arranque"
+
+#~ msgid "_Save current setup"
+#~ msgstr "_Gravar a configuração atual"
+
+#~ msgid "Automatically save chan_ges to session"
+#~ msgstr "_Gravar automaticamente alterações à sessão"
+
+#~ msgid "The session name cannot be empty"
+#~ msgstr "O nome de sessão não pode ser vazio"
+
+#~ msgid "Add a new session"
+#~ msgstr "Adicionar nova sessão"
+
+#~ msgid "Edit session name"
+#~ msgstr "Editar nome de sessão"
+
+#~ msgid "Disable"
+#~ msgstr "Desativar"
+
+#~ msgid "_Edit"
+#~ msgstr "_Editar"
+
+#~ msgid ""
+#~ "Some changes are not saved.\n"
+#~ "Is it still OK to exit?"
+#~ msgstr ""
+#~ "Algumas alterações não foram gravadas\n"
+#~ "Ainda assim sair?"
+
+#~ msgid "Show splash screen on _login"
+#~ msgstr "Apresentar ecrã de _logotipo ao iniciar sessão"
+
+#~ msgid "_Startup Command:"
+#~ msgstr "Comando de _Arranque:"
+
+#~ msgid "There was an unknown activation error."
+#~ msgstr "Ocorreu um erro de ativação desconhecido."
+
+#~ msgid "Initialize session settings"
+#~ msgstr "Inicializar definições de sessão"
+
+#~ msgid "Save Current Session"
+#~ msgstr "Gravar Sessão Atual"
+
+#~ msgid "Save current state of desktop"
+#~ msgstr "Gravar estado atual do ambiente"

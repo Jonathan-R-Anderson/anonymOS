@@ -1,0 +1,725 @@
+# gnome-session Bahasa Melayu (ms)
+# Melihat Sistem kehakiman masa kini, Saya tak hairan
+# kalau saya disabitkan dengan kesalahan mendera isteri
+# ketika saya masih BUJANG
+#
+# Hasbullah Bin Pit (sebol) <sebol@ikhlas.com>, 2001-2003
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session HEAD\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2020-01-20 22:13+0000\n"
+"PO-Revision-Date: 2020-01-26 09:22+0800\n"
+"Last-Translator: abuyop <abuyop@gmail.com>\n"
+"Language-Team: Pasukan Terjemahan GNOME Malaysia\n"
+"Language: ms\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 2.0.6\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+
+#: data/gnome-custom-session.desktop.in.in:3
+msgid "Custom"
+msgstr "Suai"
+
+#: data/gnome-custom-session.desktop.in.in:4
+msgid "This entry lets you select a saved session"
+msgstr "Masukan ini membolehkan anda pilih sesi tersimpan"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "Sesi ini akan mendaftar masuk ke GNOME"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "semu GNOME"
+
+#: data/gnome-xorg.desktop.in.in:3
+#| msgid "GNOME on Wayland"
+msgid "GNOME on Xorg"
+msgstr "GNOME di Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:5
+#| msgid "Saving session details."
+msgid "Save sessions"
+msgstr "Simpan sesi"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:6
+#| msgid ""
+#| "If enabled, gnome-session will prompt the user before ending a session."
+msgid "If enabled, gnome-session will save the session automatically."
+msgstr "Jika dibenarkan, gnome-session akan menyimpan sesi secara automatik."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:10
+#| msgid "Set the current session"
+msgid "Save this session"
+msgstr "Simpan sesi ini"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:11
+#| msgid ""
+#| "If enabled, gnome-session will save the session automatically. Otherwise, "
+#| "the logout dialog will have an option to save the session."
+msgid ""
+"When enabled, gnome-session will automatically save the next session at log "
+"out even if auto saving is disabled."
+msgstr ""
+"Jika dibenarkan, gnome-session akan menyimpan sesi secara automatik ketika "
+"daftar keluar walaupun auto-simpan dilumpuhkan."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:15
+msgid "Logout prompt"
+msgstr "Bisikan daftar keluar"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:16
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Jika dibenarkan, gnome-session akan membisik pengguna sebelum mengakhirkan "
+"satu sesi."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:20
+#| msgid "Show extension warning"
+msgid "Show the fallback warning"
+msgstr "Tunjuk amaran jatuh-balik"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:21
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Jika dibenarkan, gnome-session akan paparkan satu dialog amaran selepas "
+"daftar masuk jika sesi dijatuh-balikkan secara automatik."
+
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "Sesi Suai"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "Sila pilih satu sesi suai untuk dijalankan"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "_Sesi Baharu"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "_Buang Sesi"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "Nam_a Semula Sesi"
+
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "_Teruskan"
+
+#: gnome-session/gsm-fail-whale-dialog.c:313
+msgid "Oh no!  Something has gone wrong."
+msgstr "Alamak! Ada masalah telah berlaku."
+
+#: gnome-session/gsm-fail-whale-dialog.c:320
+#| msgid ""
+#| "A problem has occurred and the system can't recover. Please contact a "
+#| "system administrator"
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system "
+"administrator"
+msgstr ""
+"Satu masalah telah berlaku dan menyebabkan sistem tidak dapat dipulihkan. "
+"Sila hubungi pentadbir sistem"
+
+#: gnome-session/gsm-fail-whale-dialog.c:322
+#| msgid ""
+#| "A problem has occurred and the system can't recover. All extensions have "
+#| "been disabled as a precaution."
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have "
+"been disabled as a precaution."
+msgstr ""
+"Satu masalah telah berlaku dan menyebabkan sistem tidak dapat dipulihkan. "
+"Semua sambungan telah dilumpuhkan sebagai langkah berjaga-jaga."
+
+#: gnome-session/gsm-fail-whale-dialog.c:324
+#| msgid ""
+#| "A problem has occurred and the system can't recover.\n"
+#| "Please log out and try again."
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"Satu masalah telah berlaku dan menyebabkan sistem tidak dapat dipulihkan. \n"
+"Sila daftar keluar dan cuba sekali lagi."
+
+#: gnome-session/gsm-fail-whale-dialog.c:339
+msgid "_Log Out"
+msgstr "_Daftar Keluar"
+
+#: gnome-session/gsm-fail-whale-dialog.c:361 gnome-session/main.c:404
+msgid "Enable debugging code"
+msgstr "Benarkan kod penyahpepijatan"
+
+#: gnome-session/gsm-fail-whale-dialog.c:362
+msgid "Allow logout"
+msgstr "Benarkan daftar keluar"
+
+#: gnome-session/gsm-fail-whale-dialog.c:363
+msgid "Show extension warning"
+msgstr "Tunjuk amaran sambungan"
+
+#: gnome-session/gsm-manager.c:1289 gnome-session/gsm-manager.c:1999
+msgid "Not responding"
+msgstr "Tiada respons"
+
+#: gnome-session/gsm-util.c:414
+msgid "_Log out"
+msgstr "_Daftar keluar"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "Aplikasi Diingati"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "Program ini telah menyekat daftar keluar."
+
+#: gnome-session/gsm-xsmp-server.c:338
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr ""
+"Enggan menerima sambungan klien baharu kerana sesi ini sedang dimatikan\n"
+
+#: gnome-session/gsm-xsmp-server.c:605
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "Tidak dapat mencipta soket mendengar ICE: %s"
+
+#: gnome-session/main.c:398
+msgid "Running as systemd service"
+msgstr "Berjalan sebagai perkhidmatan systemd"
+
+#: gnome-session/main.c:399
+#| msgid " - the GNOME session manager"
+msgid "Use systemd session management"
+msgstr "Guna pengurusan sesi systemd"
+
+#: gnome-session/main.c:401
+msgid "Use builtin session management (rather than the systemd based one)"
+msgstr ""
+"Guna pengurusan sesi terbina-dalam (berbanding yang berasaskan systemd)"
+
+#: gnome-session/main.c:402
+msgid "Override standard autostart directories"
+msgstr "Batal direktori auto-mula piawai"
+
+#: gnome-session/main.c:402
+msgid "AUTOSTART_DIR"
+msgstr "DIR_AUTOMULA"
+
+#: gnome-session/main.c:403
+msgid "Session to use"
+msgstr "Sesi yang digunakan"
+
+#: gnome-session/main.c:403
+msgid "SESSION_NAME"
+msgstr "NAMA_SESI"
+
+#: gnome-session/main.c:405
+msgid "Do not load user-specified applications"
+msgstr "Jangan memuatkan aplikasi khusus-pengguna"
+
+#: gnome-session/main.c:406
+msgid "Version of this application"
+msgstr "Versi aplikasi ini"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:408
+msgid "Show the fail whale dialog for testing"
+msgstr "Tunjukkan dialog kegagalan untuk pengujian"
+
+#: gnome-session/main.c:409
+msgid "Disable hardware acceleration check"
+msgstr "Lumpuhkan semakan pemecutan perkakasan"
+
+#: gnome-session/main.c:441
+#| msgid " - the GNOME session manager"
+msgid " — the GNOME session manager"
+msgstr " — pengurus sesi GNOME"
+
+#: tools/gnome-session-ctl.c:244
+msgid "Start gnome-session-shutdown.target"
+msgstr "Mulakan gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:245
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Mulakan gnome-session-shutdown.target ketika menerima EOF atau satu bait "
+"pada stdin"
+
+#: tools/gnome-session-ctl.c:246
+msgid "Signal initialization done to gnome-session"
+msgstr "Pengawalan isyarat dilakukan pada gnome-session"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Restart dbus.service if it is running"
+msgstr "Mula semula dbus.service jika ia dijalankan"
+
+#: tools/gnome-session-ctl.c:275
+msgid "Program needs exactly one parameter"
+msgstr "Program perlu satu parameter sahaja"
+
+#: tools/gnome-session-inhibit.c:108
+#, c-format
+#| msgid ""
+#| "%s [OPTION...] COMMAND\n"
+#| "\n"
+#| "Execute COMMAND while inhibiting some session functionality.\n"
+#| "\n"
+#| "  -h, --help        Show this help\n"
+#| "  --version         Show program version\n"
+#| "  --app-id ID       The application id to use\n"
+#| "                    when inhibiting (optional)\n"
+#| "  --reason REASON   The reason for inhibiting (optional)\n"
+#| "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#| "                    logout, switch-user, suspend, idle, automount\n"
+#| "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#| "\n"
+#| "If no --inhibit option is specified, idle is assumed.\n"
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Lakukan COMMAND ketika merencat beberapa kefungsian sesi.\n"
+"\n"
+"  -h, --help        Tunjuk bantuan ini\n"
+"  --version         Tunjuk versi program\n"
+"  --app-id ID       Id aplikasi yang digunakan\n"
+"                    ketika merencat (pilihan)\n"
+"  --reason REASON   Sebab melakukan perencatan (pilihan)\n"
+"  --inhibit ARG     Perkara yang direncatkan, senarai dipisah-tanda-titik-"
+"bertindih:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Jangan lancarkan COMMAND dan tunggu selamanya\n"
+"\n"
+"Jika tiada pilihan --inhibit dinyatakan, melahu dikuatkuasakan.\n"
+
+#: tools/gnome-session-inhibit.c:146
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "Gagal melakukan %s\n"
+
+#: tools/gnome-session-inhibit.c:206 tools/gnome-session-inhibit.c:216
+#: tools/gnome-session-inhibit.c:226
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s memerlukan satu argumen\n"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Daftar keluar"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Padam"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "But Semula"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Mengabaikan mana-mana perencat yang ada"
+
+#: tools/gnome-session-quit.c:54
+#| msgid "Don't prompt for user confirmation"
+msgid "Don’t prompt for user confirmation"
+msgstr "Jangan bisikan pengesahan pengguna"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Tidak dapat bersambung dengan pengurus sesi"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program dipanggil dengan pilihan bercanggah"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "Sesi %d"
+
+#: tools/gnome-session-selector.c:107
+#| msgid ""
+#| "Session names are not allowed to start with ‘.’ or contain ‘/’ characters"
+msgid ""
+"Session names are not allowed to start with “.” or contain “/” characters"
+msgstr ""
+"Nama sesi tidak boleh bermula dengan \".\" atau mengandungi aksara \"/\""
+
+#: tools/gnome-session-selector.c:111
+#| msgid "Session names are not allowed to start with ‘.’"
+msgid "Session names are not allowed to start with “.”"
+msgstr "Nama sesi tidak boleh bermula dengan \".\""
+
+#: tools/gnome-session-selector.c:115
+#| msgid "Session names are not allowed to contain ‘/’ characters"
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "Nama sesi tidak boleh mengandungi aksara \"/\""
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+#| msgid "A session named ‘%s’ already exists"
+msgid "A session named “%s” already exists"
+msgstr "Satu sesi bernama \"%s\" telah wujud"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Sesi ini log masukkan anda ke GNOME menggunakan Wayland"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Program permulaan _tambahan:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Program Permulaan"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_Automatik mengingat aplikasi berjalan apabila log keluar"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "Ingat Aplikasi Sedang Be_rjalan"
+
+#~ msgid "Options"
+#~ msgstr "Opsyen"
+
+#~ msgid "Browse…"
+#~ msgstr "Selongkar..."
+
+# help-browser/toc-man.c:19
+# help-browser/toc2-man.c:21
+#~ msgid "Comm_ent:"
+#~ msgstr "Kom_en:"
+
+# help-browser/toc-man.c:19
+# help-browser/toc2-man.c:21
+#~ msgid "Co_mmand:"
+#~ msgstr "Ar_ahan:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Nama:"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "Izinkan Sambungan TCP"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+#~ msgstr ""
+#~ "Atas sebab keselamatan, pada platform yang mempunyai "
+#~ "_IceTcpTransNoListen() (Sistem XFree86), gnome-session tidak akan "
+#~ "mendengar sambungan pada liang TCP. Opsyen ini akan membolehkan sambungan "
+#~ "(sah) drpd hos jauh. gnome-session mesti diulanghidupkan supaya ia "
+#~ "bertindakbalas."
+
+#~ msgid ""
+#~ "Preferred Image to use for the splash screen when logging in to the GNOME "
+#~ "Desktop"
+#~ msgstr ""
+#~ "Imej digemari untuk digunakan bagi skrin splash bila menglogmasuk ke "
+#~ "Desktop GNOME"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "Papar skrin splash"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "Papar skrin splash bila sesi bermula"
+
+#~ msgid "Splash Screen Image"
+#~ msgstr "Imej Skrin Splash"
+
+#~ msgid "_Order:"
+#~ msgstr "_Turutan:"
+
+#~ msgid "The order in which applications are started in the session."
+#~ msgstr "Turutan aplikasi yang mana dimulakan pada sesi."
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "Apa terjadi pada aplikasi bila ia keluar."
+
+#~ msgid "_Style:"
+#~ msgstr "_Gaya:"
+
+#~ msgid "Order"
+#~ msgstr "Turutan:"
+
+#~ msgid "Style"
+#~ msgstr "Gaya:"
+
+#~ msgid "State"
+#~ msgstr "Keadaan:"
+
+#~ msgid "Program"
+#~ msgstr "Program"
+
+#~ msgid "Inactive"
+#~ msgstr "Tidak aktif"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "Menunggu untuk bermula atau sudah tamat."
+
+#~ msgid "Starting"
+#~ msgstr "Memulakan"
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "Bermula tetapi tidak dilaporkan keadaannya"
+
+#~ msgid "Running"
+#~ msgstr "Terlaksana"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "Ahli normal bagi sesi"
+
+#~ msgid "Saving"
+#~ msgstr "Menyimpan"
+
+#~ msgid "Unknown"
+#~ msgstr "Entah"
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "Keadaan tidak dilaporkan dalam hadmasa."
+
+#~ msgid "Normal"
+#~ msgstr "Normal"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "Kebal oleh logkeluar tetapi boleh mati"
+
+#~ msgid "Restart"
+#~ msgstr "Ulanghidup"
+
+#~ msgid "Never allowed to die."
+#~ msgstr "Tidak diizinkan untuk mati."
+
+#~ msgid "Trash"
+#~ msgstr "Sampah"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "Abaikan ketika log keluar dan boleh mati"
+
+#~ msgid "Settings"
+#~ msgstr "Penetapan"
+
+#~ msgid "Always started on every login."
+#~ msgstr "Sentiasa dimulakan pada setiap logmasuk."
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work "
+#~ "correctly."
+#~ msgstr ""
+#~ "Terdapat ralat memulakan Daemon Tetapan GNOME.\n"
+#~ "\n"
+#~ "Terdapat perkara seperti tetapan tema, bunyi atau latang belakang mungkin "
+#~ "tidak berkerja dengan betul."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "Mesej ralat terakhir adalah:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME akan cuba mengulanghidupkan Daemon Tetapan bila anda log masuk "
+#~ "kelak."
+
+#~ msgid "There was an unknown activation error."
+#~ msgstr "Terdapat ralat pengaktifan yang tidak diketahui."
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "Daemon Tetapan diulanghidup terlalu banyak kali."
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "Adakah anda pasti untuk log keluar?"
+
+#~ msgid "_Save current setup"
+#~ msgstr "_Simpan tetapan semasa"
+
+#~ msgid "Action"
+#~ msgstr "Aksi"
+
+#~ msgid "Sh_ut down"
+#~ msgstr "T_utup komputer"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "_Ulanghidup komputer"
+
+#~ msgid "Specify a session name to load"
+#~ msgstr "Nyatakan nama sesi untuk dimuatkan"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "Hanya membaca sesi tersimpan daripada fail default.session"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr ""
+#~ "Tempoh dalam milisaat diluangkan untuk menunggu klien mendaftar "
+#~ "(0=selamanya)"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr ""
+#~ "Tempoh dalam milisaat diluangkan untuk menunggu klien menjawap "
+#~ "(0=selamanya)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr ""
+#~ "Tempoh dalam milisaat diluangkan untuk menunggu klien mati (0=selamanya)"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "Tak boleh mencari alamat internet untuk %s.\n"
+#~ "Ianya akan mengelakkan GNOME daripada bekerja dengan betul.\n"
+#~ "Anda boleh membetulkan maslaah ini dengan menambah\n"
+#~ " %s di fail /etc/hosts"
+
+#~ msgid "Log in Anyway"
+#~ msgstr "Log Masuk Juga"
+
+#~ msgid "Try Again"
+#~ msgstr "Cuba Lagi"
+
+#~ msgid "Your session has been saved"
+#~ msgstr "Sesi anda telah pun disimpan"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "Penantian diabaikan kerana konflik"
+
+#~ msgid "No response to the %s command."
+#~ msgstr "Tiada jawapan untuk arahan %s."
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "Program mungkin perlahan, terhenti atau berderai."
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "Anda boleh menunggunya dijawap atau dibuang."
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "Ulanghidup diabaikan kerana kegagalan."
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "Sesi penutupan dalam progres."
+
+#~ msgid "Kill session"
+#~ msgstr "Bunuh sesi"
+
+#~ msgid "Use dialog boxes"
+#~ msgstr "Guna kekotak dialog"
+
+#~ msgid "The session name cannot be empty"
+#~ msgstr "Nama sesi tak boleh kosong"
+
+#~ msgid "Add a new session"
+#~ msgstr "Tambah sesi baru"
+
+#~ msgid "Edit session name"
+#~ msgstr "Edit nama sesi"
+
+#~ msgid "_Edit"
+#~ msgstr "_Edit"
+
+#~ msgid ""
+#~ "Some changes are not saved.\n"
+#~ "Is it still OK to exit?"
+#~ msgstr ""
+#~ "Terdapat perubahan tidak disimpan\n"
+#~ "Masih OK untuk keluar?"
+
+#~ msgid "Show splash screen on _login"
+#~ msgstr "Papar skrin splash pada _logmasuk"
+
+#~ msgid "Automatically save chan_ges to session"
+#~ msgstr "Automatik simpan per_ubahan pada sesi"
+
+#~ msgid "Session Name"
+#~ msgstr "Nama Sessi"
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "Buang klien semasa dipilih dari sesi."
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "Terapkan perubahan perubahan pada sesi"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "Senarai program pada sesi."
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "_Program sedang terlaksana:"
+
+#~ msgid "Initialize session settings"
+#~ msgstr "Initialisasi Tetapan sesi"
+
+#~ msgid "Configure your sessions"
+#~ msgstr "Konfigurasi sesi anda"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "Pengurus Tetingkap Sawfish"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "Pengurus Tetingkap Metacity"
+
+#~ msgid "Window Manager"
+#~ msgstr "Pengurus Tetingkap"
+
+#~ msgid "The Panel"
+#~ msgstr "Panel"
+
+#~ msgid "Session Manager Proxy"
+#~ msgstr "Pengurus Proksi Sesi"
+
+#~ msgid "Nautilus"
+#~ msgstr "Nautilus"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "Tetapan Desktop"

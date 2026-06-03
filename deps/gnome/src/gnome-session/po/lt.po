@@ -1,0 +1,512 @@
+# translation of gnome-session.HEAD.po to Lithuanian
+# Lithuanian translation of gnome-session
+# Copyright (C) 2000-2006, 2007, 2008 Free Software Foundation, Inc.
+# Gediminas Paulauskas <menesis@delfi.lt>, 2000-2003.
+# Žygimantas Beručka <zygis@gnome.org>, 2003-2007, 2010.
+# Justina Klingaitė <justina.klingaite@gmail.com>, 2005.
+# Gintautas Miliauskas <gintas@akl.lt>, 2006, 2007, 2008.
+# Aurimas Černius <aurisc4@gmail.com>, 2013-2021.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session.HEAD\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-05 17:39+0000\n"
+"PO-Revision-Date: 2025-09-05 22:48+0300\n"
+"Last-Translator: Aurimas Černius <aurisc4@gmail.com>\n"
+"Language-Team: Lietuvių <gnome-lt@lists.akl.lt>\n"
+"Language: lt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Poedit 3.7\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Šis seansas prijungia jus prie GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME Wayland aplinkoje"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME Xorg aplinkoje"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Atsijungimo klausimas"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr "Jei įjungta, gnome-session klaus naudotojo prie užbaigiant seansą."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Rodyti atsarginės veiksenos įspėjimą"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Jei įjungta, gnome-session prisijungus parodys įspėjimo dialogą, jei "
+"automatiškai naudojama atsarginė veiksena."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Neatsako"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Atsijungti"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Naudoti sesiją"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "Įjungti derinimo kodą"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "Programos versija"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "Šios parinkties nepaisoma"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "Nevykdyti apvalkalo vėl"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " – GNOME seanso tvarkytuvė"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Paleisti gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Paleisti gnome-session-shutdown.target gavus EOF arba vieno baito įvestį"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Pranešti gnome-session apie inicializacijos pabaigą"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Perleisti dbus.service, jei jau veikia"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Vykdyti iš ExecStopPost, kad tarnybai nepavykus būtų paleistas gnome-session-"
+"failed.target"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Programai reikia vienintelio parametro"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Nežinomas pristabdymo argumentas: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr ""
+"Nepavyko paleisti %s: %m\n"
+"\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Rodyti programos versiją"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Programos id, naudojasm pristabdant (nebūtina)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "Pristabdymo priežastis (nebūtina)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "PRIEŽASTIS"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Pridėti veiksmą pristabdymui (kartojamas)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "VEIKSMAS"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Nepaleisti KOMANDOS ir laukti amžinai"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Išvardinti esamus pristabdymus ir išeiti"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "KOMANDA"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Vykdyti KOMANDĄ pristabdant seanso funkcionalumą."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Galimos VEIKSMO vertės yra: logout, switch-user, suspend, idle ir "
+"automount.\n"
+"Jei nėra --inhibit parametrų, laikoma idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Nenurodyta nei KOMANDA, nei --inhibit-only."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Atsijungti"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Išjungti"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Įkelti iš naujo"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ignoruojami trukdžiai"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Nereikalauti naudotojo patvirtinimo"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Nepavyko prisijungti prie seansų tvarkytuvės"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Programa iškviesta, naudojant konfliktuojančius parametrus"
+
+#~ msgid "Custom"
+#~ msgstr "Pasirinktinis"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Šis įvesties laukas leidžia pasirinkti įrašytą seansą"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "GNOME netikra"
+
+#~ msgid "Save sessions"
+#~ msgstr "Įrašyti seansus"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Jei įjungta, gnome-session automatiškai įrašys seansą."
+
+#~ msgid "Save this session"
+#~ msgstr "Įrašyti šį seansą"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Kai įjungta, gnome-session automatiškai įrašys kitą seansą atsijungiant "
+#~ "net jei automatinis įrašymas yra išjungtas."
+
+#~ msgid "Custom Session"
+#~ msgstr "Pasirinktinis seansas"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Pasirinkite pasirinktinį seansą paleidimui"
+
+#~ msgid "_New Session"
+#~ msgstr "_Naujas seansas"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Pašalinti seansą"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Per_vadinti seansą"
+
+#~ msgid "_Continue"
+#~ msgstr "_Tęsti"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "O ne! Nutiko kažkas negera."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Iškilo problema ir sistema negali atsistatyti. Susisiekite su sistemos "
+#~ "administratoriumi"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Iškilo problema ir sistema negali atsistatyti. Kaip atsargos priemonė "
+#~ "visi plėtiniai buvo išjungti."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Iškilo problema ir sistema negali atsistatyti.\n"
+#~ "Atsijunkite ir prisijunkite iš naujo."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Atsijungti"
+
+#~ msgid "Allow logout"
+#~ msgstr "Leisti atsijungimą"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Rodyti plėtinio įspėjimą"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Atsiminti programą"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Ši programa neleidžia atsijungti."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr "Atsisakoma naujo kliento ryšio, kadangi seansas dabar išjungiamas\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Nepavyko sukurti ICE klausymo lizdo: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "Vykdoma kaip systemd tarnyba"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Nepaisyti standartinių automatinės paleisties aplankų"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "AUTOSTART_DIR"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Neįkelti naudotojo nurodytų programų"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Rodyti visiškos nesėkmės dialogą bandymui"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Išjungti aparatinio spartinimo tikrinimą"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [PARAMETRAS…] KOMANDA\n"
+#~ "\n"
+#~ "Vykdyti KOMANDĄ, tuo tarpu kliudant daliai seanso funkcionalumo.\n"
+#~ "\n"
+#~ "  -h, --help        Rodyti šį žinyną\n"
+#~ "  --version         Rodyti programos versiją\n"
+#~ "  --app-id ID       Naudotinas programos id\n"
+#~ "                    kliudant (neprivaloma)\n"
+#~ "  --reason REASON   Kliudimo priežastis (neprivaloma)\n"
+#~ "  --inhibit ARG     Kliudomi dalykai, dvitaškiai skiriamas sąrašas iš "
+#~ "šių:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Nepaleisti KOMANDOS ir vietoj to neribotai laukti\n"
+#~ "  -l, --list        Išvardinti esamus kliudymus ir išeiti\n"
+#~ "\n"
+#~ "Jei nėra parametro --inhibit, naudojama idle.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Klaida sukuriant kanalą: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Klaida skaitant iš kanalo\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s reikalauja argumento\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Seansas %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr "Seansų pavadinimai negali prasidėti „.“ ar turėti simbolių „/“"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Seansų pavadinimai negali prasidėti „.“"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Seansų pavadinimai negali turėti simbolių „/“"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "Jau yra seansas pavadinimu „%s“"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Naudoti systemd seanso valdymą"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr "Naudoti integruotą seanso valdymą (vietoje systemd)"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Papildomos paleidžiamos _programos:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Pradžioje paleidžiamos programos"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_Atsijungiant, automatiškai atsiminti paleistas programas"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Atsiminti dabar veikiančias programas"
+
+#~ msgid "Options"
+#~ msgstr "Parametrai"
+
+#~ msgid "Browse…"
+#~ msgstr "Naršyti…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "Ko_mentaras:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "_Komanda:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Pavadinimas:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Šis seansas prijungia jus prie GNOME naudojant Wayland"
+
+#~ msgid "Select Command"
+#~ msgstr "Pasirinkite komandą"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Pridėti paleidimo programą"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Redaguoti paleidžiamą programą"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Paleidimo komanda negali būti tuščia"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "Paleidimo komanda netinkama"
+
+#~ msgid "Enabled"
+#~ msgstr "Įjungta"
+
+#~ msgid "Icon"
+#~ msgstr "Piktograma"
+
+#~ msgid "Program"
+#~ msgstr "Programa"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Paleidžiamų programų nustatymai"
+
+#~ msgid "No name"
+#~ msgstr "Be pavadinimo"
+
+#~ msgid "No description"
+#~ msgstr "Nėra aprašymo"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Nepavyko parodyti žinyno dokumento"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Paleidžiamos programos"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Pasirinkite, kokias programas paleisti jums prisijungiant"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Failas nėra taisyklingas .desktop failas"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "Neatpažinta darbastalio failo versija „%s“"
+
+#~ msgid "Starting %s"
+#~ msgstr "Paleidžiama %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "Programa nepriima dokumentų komandinėje eilutėje"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Neatpažintas paleidimo parametras: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "Negalima perduoti dokumentų URI „Type=Link“ darbastalio elementui"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Nepaleidžiamas elementas"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Išjungti prisijungimą prie seansų valdyklės"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Nurodyti failą, kuriame įrašyta konfigūracija"
+
+#~ msgid "FILE"
+#~ msgstr "FAILAS"
+
+#~ msgid "Session management options:"
+#~ msgstr "Seanso valdymo parinktys:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Rodyti seanso valdymo parinktis"

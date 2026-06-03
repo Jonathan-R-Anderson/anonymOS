@@ -1,0 +1,231 @@
+# Slovenian translation of gnome-session.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the gnome-session package.
+#
+# Andraž Tori <andraz.tori1@guest.arnes.si> 2000.
+# Matej Urbančič <mateju@src.gnome.org>, 2007–2023.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-07-18 19:39+0000\n"
+"PO-Revision-Date: 2025-07-19 11:32+0200\n"
+"Last-Translator: Martin Srebotnjak <miles@filmsi.net>\n"
+"Language-Team: Slovenian GNOME Translation Team <gnome-si@googlegroups.com>\n"
+"Language: sl_SI\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n%100==1 ? 1 : n%100==2 ? 2 : n%100==3 || n"
+"%100==4 ? 3 : 0);\n"
+"X-Poedit-SourceCharset: utf-8\n"
+"X-Generator: Poedit 2.2.1\n"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "Seja omogoča prijavo v namizje GNOME."
+
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME on Wayland"
+msgstr "GNOME na sistemu Wayland"
+
+#: data/gnome-xorg.desktop.in.in:3
+msgid "GNOME on Xorg"
+msgstr "GNOME na sistemu Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Vnosno polje odjave"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr "Izbrana možnost omogoči prikaz vnosnega polja pred koncem seje."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Pokaži opozorila programske povrnitve"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Izbrana možnost omogoči prikaz opozorila po prijavi, če je seja samodejno "
+"povrnjena."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Ni odziva"
+
+#: gnome-session/gsm-util.c:283
+msgid "_Log out"
+msgstr "_Odjavi"
+
+#: gnome-session/leader-main.c:534
+msgid "Override standard autostart directories"
+msgstr "Preskoči običajne mape samodejnega zagona"
+
+#: gnome-session/leader-main.c:534
+msgid "AUTOSTART_DIR"
+msgstr "ZAČETNA_MAPA"
+
+#: gnome-session/leader-main.c:535 gnome-session/service-main.c:147
+msgid "Session to use"
+msgstr "Seja za uporabo"
+
+#: gnome-session/leader-main.c:535 gnome-session/service-main.c:147
+msgid "SESSION_NAME"
+msgstr "IME_SEJE"
+
+#: gnome-session/leader-main.c:536
+msgid "Enable debugging code"
+msgstr "Omogoči razhroščevanje kode"
+
+#: gnome-session/leader-main.c:537
+msgid "Version of this application"
+msgstr "Različica programa"
+
+#: gnome-session/leader-main.c:538
+msgid "This option is ignored"
+msgstr "Ta možnost je prezrta"
+
+#: gnome-session/leader-main.c:539
+msgid "Don't re-exec into a login shell"
+msgstr "Ne izvedi ponovno v lupini za prijavo"
+
+#: gnome-session/leader-main.c:560 gnome-session/service-main.c:156
+msgid " — the GNOME session manager"
+msgstr " – upravljalnik seje GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Zaženi ukaz gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Zaženi ukaz gnome-session-shutdown.target pri prejetju ukaza konca datoteke "
+"EOF oziroma enobajtni standardni dovod"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Začenjanje signala za gnome-sesion"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Ponovno zaženi storitev dbus.service, če je že zagnana"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Zaženi iz ExecStopPost za zagon gnome-session-failed.target ob spodleteli "
+"storitvi"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Program zahteva natanko en parameter"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Neznani argument za oviranje: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Napaka med izvajanjem %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Pokaži različico programa"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "ID programu, ki se uporabi pri oviranju (izbirno)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "Oznaka ID"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "Razlog za oviranje (neobvezno)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "RAZLOG"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Dejanje, ki naj bo ovirano (se lahko ponavlja)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "DEJANJE"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Ne zaženi UKAZ-a in namesto njega čakaj v nedogled"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Navedi obstoječa oviranja in zapri program"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "UKAZ"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Izvede UKAZ, medtem ko ovira nekatere funkcije seje."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Veljavne vrednosti DEJANJE so: logout, switch-user, suspend, idle in "
+"automount.\n"
+"Če ni določenih možnosti --inhibit, se predpostavi idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Niti UKAZ niti --inhibit-only nista bila določena."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Odjava"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Izklopi"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Ponovni zagon"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Prezri obstoječe oviralnike dejavnosti"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ne zahtevaj potrditve uporabnika"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Ni se mogoče povezati z upravljalnikom sej"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program zagnan z nasprotujočimi si možnostmi ukaza"

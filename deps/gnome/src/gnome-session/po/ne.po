@@ -1,0 +1,785 @@
+# translation of gnome-session.HEAD.ne.po to Nepali
+# Nepali translation of gnome-session
+# This file is distributed under the same license as the gnome-session package.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER.
+#
+# Pawan Chitrakar <pawan@nplinux.org>, 2004.
+# Shiva Prasad Pokharel <pokharelshiva@hotmail.com>, 2005.
+# Nabin Gautam <nabin@mpp.org.np>, 2007.
+msgid ""
+msgstr ""
+"Project-Id-Version: Gnome Nepali Translation Project\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2022-07-31 09:17+0000\n"
+"PO-Revision-Date: 2022-09-08 02:55+0545\n"
+"Last-Translator: Pawan Chitrakar <chautari@gmail.com>\n"
+"Language-Team: Nepali Translation Team <chautari@gmail.com>\n"
+"Language: ne\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n !=1;\n"
+"X-Generator: Poedit 3.0.1\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+
+#: data/gnome-custom-session.desktop.in.in:3
+msgid "Custom"
+msgstr "अनुकूलन"
+
+#: data/gnome-custom-session.desktop.in.in:4
+msgid "This entry lets you select a saved session"
+msgstr "यो प्रविष्टिले तपाईँलाई बचत गरिएको सत्र चयन गर्न अनुमति दिन्छ ।"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+msgid "GNOME"
+msgstr "जिनोम"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "यो सत्र जिनोम लगईन हुन्छ"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "जिनोम डम्मि"
+
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME on Wayland"
+msgstr "वेल्याण्डमा जिनोम"
+
+#: data/gnome-xorg.desktop.in.in:3
+msgid "GNOME on Xorg"
+msgstr "Xorg मा जिनोम"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:5
+msgid "Save sessions"
+msgstr "सत्र बचत गर्नुहोस्"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:6
+msgid "If enabled, gnome-session will save the session automatically."
+msgstr "यदि सक्षम पारिएमा, जिनोम सत्रले सत्र स्वचालित रूपमा बचत गर्नेछ ।"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:10
+msgid "Save this session"
+msgstr "यो सत्र बचत गर्नुहोस्"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:11
+msgid ""
+"When enabled, gnome-session will automatically save the next session at log out even if "
+"auto saving is disabled."
+msgstr ""
+"जब सक्षम पारिन्छ, जिनोम-सत्रले स्वत: बचत अक्षम पारिएको भएता पनि लगआउटमा पछिल्लो सत्र स्वचालित रूपमा "
+"बचत गर्नेछ ।"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:15
+msgid "Logout prompt"
+msgstr "तत्काल लगआउट"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:16
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr "सक्षम भएमा, जिनोम सत्रले सत्र अन्त्य हुनुभन्दा पहिला प्रयोगकर्तालाई प्रोत्साहन दिन्छ ।."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:20
+msgid "Show the fallback warning"
+msgstr "फलब्याक चेतावनी देखाउनुहोस्"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:21
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the session was "
+"automatically fallen back."
+msgstr ""
+"यदि सक्षम पारिएमा, यदि सत्र स्वचालित रूपमा पछाडि खस्यो भने जिनोम सत्रले लगइन पछि चेतावनी संवाद "
+"प्रदर्शन गर्नेछ ।"
+
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "अनुकूलन सत्र"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "कृपया चलाउनका लागि अनुकूल सत्र चयन गर्नुहोस् ।"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "नया सत्र"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "सत्र हटाउनुहोस्"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "सत्रको नाम फेर्ने"
+
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "जारी राख्नुहोस्"
+
+#: gnome-session/gsm-fail-whale-dialog.c:318
+msgid "Oh no!  Something has gone wrong."
+msgstr "ओहो होइन!  केही गडबड भएको छ ।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:325
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system administrator"
+msgstr ""
+"एउटा समस्या उत्पन्न भयो र प्रणाली पुन: प्राप्त गर्न सकिँदैन । कृपया प्रणाली प्रशासकलाई सम्पर्क गर्नुहोस्"
+
+#: gnome-session/gsm-fail-whale-dialog.c:327
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have been disabled as "
+"a precaution."
+msgstr ""
+"एउटा समस्या उत्पन्न भयो र प्रणाली पुन: प्राप्त गर्न सकिँदैन । सावधानीको लागि सबै विस्तारहरू अक्षम भएका "
+"छन्।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:329
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"एउटा समस्या उत्पन्न भयो र प्रणाली पुन: प्राप्त गर्न सकिँदैन ।\n"
+"कृपया लगआउट गर्नुहोस् र फेरि प्रयास गर्नुहोस् ।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:344
+msgid "_Log Out"
+msgstr "लगआउट"
+
+#: gnome-session/gsm-fail-whale-dialog.c:412 gnome-session/main.c:408
+msgid "Enable debugging code"
+msgstr "डिबगिङ सक्षम पार्नुहोस्"
+
+#: gnome-session/gsm-fail-whale-dialog.c:413
+msgid "Allow logout"
+msgstr "लगआउट अनुमति दिनुहोस्"
+
+#: gnome-session/gsm-fail-whale-dialog.c:414
+msgid "Show extension warning"
+msgstr "चेतावनी देखाउनुहोस्"
+
+#: gnome-session/gsm-manager.c:1317 gnome-session/gsm-manager.c:2058
+msgid "Not responding"
+msgstr "जवाफ दिन बन्द गरेको छ"
+
+#: gnome-session/gsm-util.c:431
+msgid "_Log out"
+msgstr "लगआउट"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "सम्झिएको अनुप्रयोग"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "यो कार्यक्रमले लगआउट गर्न दिएन."
+
+#: gnome-session/gsm-xsmp-server.c:340
+msgid "Refusing new client connection because the session is currently being shut down\n"
+msgstr "नयाँ क्लाइन्ट जडान अस्वीकार गर्दैछ किनभने सत्र हाल बन्द छ\n"
+
+#: gnome-session/gsm-xsmp-server.c:607
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "ICE सुन्ने सकेट सिर्जना गर्न सकेन: %s"
+
+#: gnome-session/main.c:402
+msgid "Running as systemd service"
+msgstr "प्रणाली सेवाको रूपमा चलिरहेको छ"
+
+#: gnome-session/main.c:403
+msgid "Use systemd session management"
+msgstr "प्रणाली प्रयोग गरि सत्र व्यवस्थापन गर्नुहोस्"
+
+#: gnome-session/main.c:405
+msgid "Use builtin session management (rather than the systemd based one)"
+msgstr "अवस्थित सत्र व्यवस्थापन प्रयोग गर्नुहोस् (systemd आधारित भन्दा)"
+
+#: gnome-session/main.c:406
+msgid "Override standard autostart directories"
+msgstr "मानक स्वत: सुरुआत डाइरेक्टरी अधिरोहण गर्नुहोस्"
+
+#: gnome-session/main.c:406
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: gnome-session/main.c:407
+msgid "Session to use"
+msgstr "प्रयोग गर्न सत्र"
+
+#: gnome-session/main.c:407
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: gnome-session/main.c:409
+msgid "Do not load user-specified applications"
+msgstr "प्रयोगकर्ता निर्दिष्ट गरिएको अनुप्रयोग हरू लोड नगर्नुहोस्"
+
+#: gnome-session/main.c:410
+msgid "Version of this application"
+msgstr "यो अनुप्रयोगको स‌सकरण"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:412
+msgid "Show the fail whale dialog for testing"
+msgstr "परीक्षणका लागि असफल ह्वेल संवाद देखाउनुहोस्"
+
+#: gnome-session/main.c:413
+msgid "Disable hardware acceleration check"
+msgstr "हार्डवेयर गतिवर्धन जाँच अक्षम पार्नुहोस्"
+
+#: gnome-session/main.c:445
+msgid " — the GNOME session manager"
+msgstr " — जिनोम सेसन प्रबन्धक"
+
+#: tools/gnome-session-ctl.c:245
+msgid "Start gnome-session-shutdown.target"
+msgstr "gnome-session-shutdown.target शुरु गर्नुहोस्"
+
+#: tools/gnome-session-ctl.c:246
+msgid "Start gnome-session-shutdown.target when receiving EOF or a single byte on stdin"
+msgstr "Stdin मा EOF वा एकल बाइट प्राप्त गर्दा gnome-session-shutdown.target सुरु गर्नुहोस्"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Signal initialization done to gnome-session"
+msgstr "जिनोम सत्रमा सङ्केत थालनी गरियो"
+
+#: tools/gnome-session-ctl.c:248
+msgid "Restart dbus.service if it is running"
+msgstr "यदि यो चलिरहेको छ भने dbus.service फेरि सुरु गर्नुहोस्"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Run from ExecStopPost to start gnome-session-failed.target on service failure"
+msgstr "gnome-session-failed.target सेवा असफल भयो, सुरु गर्न ExecStopPost बाट चलाउनुहोस्"
+
+#: tools/gnome-session-ctl.c:279
+msgid "Program needs exactly one parameter"
+msgstr "कार्यक्रमलाई ठीक एउटा परिमिति चाहिन्छ"
+
+#: tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"  -l, --list        List the existing inhibitions, and exit\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [विकल्प...] आदेश\n"
+"\n"
+"केही सत्र कार्यात्मकता निषेध गर्दा आदेश कार्यान्वयन गर्नुहोस् ।\n"
+"\n"
+"-h, --मद्दत यो मद्दत देखाउनुहोस्\n"
+"  --version कार्यक्रम संस्करण देखाउनुहोस्\n"
+"  --app-id आईडी प्रयोग गर्नका लागि अनुप्रयोग आईडी\n"
+"                    जब निषेध गरिएको हुन्छ (optional)\n"
+"  --resason कारण (वैकल्पिक) अवरोधको कारण\n"
+"  --inhibit ARG कुराहरू, colon-separated सूची:\n"
+"                    लगआउट, स्विच प्रयोगकर्ता, निलम्बन, निस्क्रिय, स्वचालित माउन्ट\n"
+"  --inhibit-only आदेश सुरु नगर्नुहोस् र सट्टामा सदाका लागि प्रतिक्षा गर्नुहोस्\n"
+"  -l, --list सूचीकृत गरिएको हालको निषेधहरू सूचीबद्ध गर्नुहोस्, र निस्कनुहोस्\n"
+"\n"
+"यदि कुनै --inhibit विकल्प निर्दिष्ट गरिएन भने, निस्क्रिय मानिएको छ ।\n"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "%s कार्यान्वयन गर्न असफल: \n"
+
+#: tools/gnome-session-inhibit.c:352 tools/gnome-session-inhibit.c:362
+#: tools/gnome-session-inhibit.c:372
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%sलाई एउटा तर्क आवश्यक छ\n"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "लगआउट"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "पावर बन्द"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "फेरि सुरु गर्ने"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "कुनै पनि अवस्थित इन्हिबिटर उपेक्षा गर्दैछ"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "प्रयोगकर्ता यकीनका लागि प्रोम्ट नगर्नुहोस्"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "सत्र प्रबन्धकमा जडान गर्न सकेन"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "हाल विवादित विकल्प निम्न हुन्: --%s र --%s"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "%d सत्र"
+
+#: tools/gnome-session-selector.c:107
+msgid "Session names are not allowed to start with “.” or contain “/” characters"
+msgstr "सत्र नामहरू \".\" वा समाविष्ट \"/\" वर्णसँग सुरु गर्न अनुमति दिइएको छैन"
+
+#: tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with “.”"
+msgstr "सत्र नामहरू \".\" बाट सुरु गर्न अनुमति दिएको छैन ।"
+
+#: tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "सत्र नामहरूलाई \"/\" वर्ण समावेश गर्न अनुमति दिइएको छैन"
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named “%s” already exists"
+msgstr "'%s' नाम गरेको सेसन पहिले नै अवस्थित छ ।."
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "यो सत्र व्यल्यान्ड प्रोयोग गरि जिनोम लगईन हुन्छ"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "अतिरिक्त सुरुआत कार्यक्रम:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "सुरुआत कार्यक्रम"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "लगआउट हुदा चलिरहेका अनुप्रयोग स्वत: याद गर्नुहोस्"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "हाल चलिरहेका अनुप्रयोग याद गर्नुहोस्"
+
+#~ msgid "Options"
+#~ msgstr "विकल्प"
+
+#~ msgid "Browse…"
+#~ msgstr "ब्राउज गर्नुहोस्"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "टिप्पणी"
+
+#~ msgid "Co_mmand:"
+#~ msgstr " आदेश:"
+
+#~ msgid "_Name:"
+#~ msgstr "नाम:"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "टीसीपी (TCP) जडानलाई अनुमति दिनुहोस्"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() (XFree86 "
+#~ "systems), gnome-session does not listen for connections on TCP ports. This option will "
+#~ "allow connections from (authorized) remote hosts. gnome-session must be restarted for "
+#~ "this to take effect."
+#~ msgstr ""
+#~ "सूरक्षाका कारणले, _IceTcpTransNoListen() (XFree86 प्रणाली) भएको प्लेटफर्ममा, टीसीपी(TCP) "
+#~ "पोर्टको जडानका जिनोम सत्रले ध्यान दिदैन । यस विकल्पले (आधिकारीक) टाढाको होस्टबाट जडानलाई अनुमति "
+#~ "दिन्छ ।यसको प्रभाव देखिनका लागि जिनोम-सत्र फेरि सुरु गर्नुपर्दछ ।"
+
+#~ msgid "Preferred Image to use for login splash screen"
+#~ msgstr "स्प्लास पर्दामा लगइन गर्नका लागि प्रयोग गरिने रूचाइएको छवि"
+
+#~ msgid "Selected option in the log out dialog"
+#~ msgstr "लगआउट संवादमा चयन गरिएका विकल्प"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "स्प्लास पर्दा देखाउनुहोस्"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "सत्र सुरु हुदा स्प्लास पर्दा देखाउनुहोस्"
+
+#~ msgid ""
+#~ "This is a relative path value based off the $datadir/pixmaps/ directory. Sub-"
+#~ "directories and image names are valid values. Changing this value will effect the next "
+#~ "session login."
+#~ msgstr ""
+#~ "यो $datadir/pixmaps/ डाइरेक्टरी आधार नभएको सम्बन्धित मार्ग मान हो । उप-डाइरेक्टरी र छवि नाम "
+#~ "वैध मान हुन् । यस मानको परिवर्तनले पछिल्लो सत्रको लगइनलाई प्रभाव पार्नेछ ।"
+
+#~ msgid ""
+#~ "This is the option that will be selected in the logout dialog, valid values are "
+#~ "\"logout\" for logging out, \"shutdown\" for halting the system and \"restart\" for "
+#~ "restarting the system."
+#~ msgstr ""
+#~ "यो लगआउट संवादमा चयन गरिने विकल्प हो, वैध मान लगिङआउटका लागि \"लगआउट\" , प्रणाली रोक्न \"बन्द "
+#~ "गर्नुहोस्\" र प्रणाली सुरु गर्न\"फेरि सुरु गर्नुहोस्\" हुन् ।"
+
+#~ msgid "Configure your sessions"
+#~ msgstr "तपाईँको सत्र कन्फिगर गर्नुहोस्"
+
+#~ msgid ""
+#~ "Assistive technology support has been requested for this session, but the "
+#~ "accessibility registry was not found. Please ensure that the AT-SPI package is "
+#~ "installed. Your session has been started without assistive technology support."
+#~ msgstr ""
+#~ "यस सत्रका लागि मद्दत प्रविधि समर्थन अनुरोध गरिएको छ, तर मद्दत पहुँच दर्ता फेला परेन । कृपया AT-SPI "
+#~ "प्याकेज स्थापना भएको निश्चित गर्नुहोस् । तपाईँको सत्र मद्दत प्रविधि समर्थन बिना सुरु भएको छ ।"
+
+#~ msgid "_Order:"
+#~ msgstr "आदेश:"
+
+#~ msgid "The order in which applications are started in the session."
+#~ msgstr "सत्रमा अनुप्रयोग सुरुआत गर्ने आदेश ।"
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "यो अवस्थित हुदा अनुप्रयोगमा के देखापर्दछ ।"
+
+#~ msgid "_Style:"
+#~ msgstr "शैली:"
+
+#~ msgid "Inactive"
+#~ msgstr "निस्क्रिय"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "सुरुआतका लागि प्रतिक्षा गर्दैछ वा पहिले नै पूरा भएको छ ।"
+
+#~ msgid "Starting"
+#~ msgstr "सुरुआत"
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "सुरुआत भएको छ तर स्थिति हालसम्म प्रतिवेदन गरिएको छैन ।"
+
+#~ msgid "Running"
+#~ msgstr "चलिरहेको"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "सत्रको साधारण सदस्य ।"
+
+#~ msgid "Saving"
+#~ msgstr "बचत"
+
+#~ msgid "Unknown"
+#~ msgstr "अज्ञात"
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "म्याद समाप्तीमा स्थिति प्रतिवेदन गरिएको छैन ।"
+
+#~ msgid "Normal"
+#~ msgstr "साधारण"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "लगआउटद्वारा प्रभावित भएन तर अन्त्य हुनसक्छ ।"
+
+#~ msgid "Restart"
+#~ msgstr "फेरि सुरु गर्नुहोस्"
+
+#~ msgid "Never allowed to die."
+#~ msgstr "अन्त्य गर्न कहिले पनि अनुमति नदिनुहोस् ।"
+
+#~ msgid "Trash"
+#~ msgstr "रद्दीटोकरी"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "लगआउट अस्वीकार गरियो र अन्त्य हुनसक्छ ।"
+
+#~ msgid "Settings"
+#~ msgstr "सेटिङ"
+
+#~ msgid "Always started on every login."
+#~ msgstr "सधैँ प्रत्येक लगइनमा सुरु गरिन्छ ।"
+
+#~ msgid "Order"
+#~ msgstr "आदेश"
+
+#~ msgid "Style"
+#~ msgstr "शैली"
+
+#~ msgid "State"
+#~ msgstr "स्थिति"
+
+#~ msgid "Program"
+#~ msgstr "कार्यक्रम"
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work correctly."
+#~ msgstr ""
+#~ "जिनोम सेटिङ डेइमोन सुरुआत गर्दा त्रुटि थियो ।\n"
+#~ "\n"
+#~ "केही विषयहरू, जस्तै; ध्वनि, वा पृष्टभूमि सेटिङले ठीक रूपमा कार्य नगर्न सक्छन् ।"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "अन्तिम त्रुटि सन्देश यसरूपमा थियो:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "तपाईँले फेरि पछि लगइन गर्दा जिनोमले सेटिङ डेइमोन फेरि सुरु गर्ने प्रयास गर्नेछ ।"
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "सेटिङ डेइमोन फेरि धेरै पटक सुरु हुनेछ ।"
+
+#~ msgid "No Name"
+#~ msgstr "नाम छैन"
+
+#~ msgid "List registered clients, then exit"
+#~ msgstr "दर्ता गरिएका क्लाइन्ट सूचीबद्ध गर्नुहोस्, त्यसपछि बाहिरिनुहोस्"
+
+#~ msgid "PROGRAM..."
+#~ msgstr "कार्यक्रम..."
+
+#~ msgid ""
+#~ "You must specify at least one program to remove. You can list the programs with --"
+#~ "list.\n"
+#~ msgstr ""
+#~ "तपाईँले हटाउनका लागि कम्तिमा पनि एउटा कार्यक्रम निर्दिष्ट गर्नुपर्दछ । तपाईँले --सूचीसँग कार्यक्रम "
+#~ "सूचीवद्ध गर्न सक्नुहुन्छ ।\n"
+
+#~ msgid "Error: could not connect to the session manager\n"
+#~ msgstr "त्रुटि: सत्र प्रबन्धकमा जडान गर्न सकेन\n"
+
+#~ msgid "Currently registered clients:\n"
+#~ msgstr "हालै दर्ता गरिएका क्लाइन्ट:\n"
+
+#~ msgid "Couldn't find program %s in session\n"
+#~ msgstr "सत्रमा कार्यक्रम %s फेला पार्न सकेन\n"
+
+#~ msgid ""
+#~ "The GNOME session manager cannot start properly.  Please report this as a GNOME bug. "
+#~ "Please include this ICE failure message in the bug report:  '%s'.  Meanwhile you could "
+#~ "try logging in using the failsafe session."
+#~ msgstr ""
+#~ "जिनोम सत्र प्रबन्धक राम्रोसँग सुरु गर्न सकिँदैन ।  कृपया यसलाई जिनोम बगका रूपमा प्रतिवेदन गर्नुहोस् । "
+#~ "कृपया यस आईसीई(ICE) असफलता सन्देशलाई बग प्रतिवेदनमा समाविष्ट गर्नुहोस्:  '%s'.  यही समयमा तपाईँले "
+#~ "फेलसेफ सत्र प्रयोग गरेर लगइन गर्न सक्नुहुन्छ ।"
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to lock the file '%s'.  Please report this as a "
+#~ "GNOME bug.  Sometimes this error may occur if the file's directory is unwritable, you "
+#~ "could try logging in via the failsafe session and ensuring that it is."
+#~ msgstr ""
+#~ "जिनोम सत्र प्रबन्धक फाइल '%s' ताल्चा लगाउन असफल भयो ।  कृपया यसलाई जिनोम बगका रूपमा प्रतिवेदन "
+#~ "गर्नुहोस् ।  फाइलको डाइरेक्टरी लेख्न नसकिने भएमा यस प्रकारको त्रुटि कहिलेकाही उत्पन्न हुनसक्छ, तपाईँले "
+#~ "फेलसेफ सत्रबाट लगइन गर्न र यो भएको निश्चित गर्न सक्नुहुन्छ ।"
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to read the file: '%s'.  If this file exists it "
+#~ "must be readable by you for GNOME to work properly.  Try logging in with the failsafe "
+#~ "session and removing this file."
+#~ msgstr ""
+#~ "जिनोम सत्र प्रबन्धक फाइल पढ्न असमर्थ थियो: '%s'.  यो फाइल अवस्थित भएमाजिनोमका लागि ठीक "
+#~ "तरिकाले कार्य गर्न तपाईँले पढ्नयोग्य हुनुपर्दछ ।  फलसेफ सत्रसँग लगइन गर्ने प्रयास गर्नुहोस् र यस फाइललाई "
+#~ "हटाउनुहोस् ।"
+
+#~ msgid ""
+#~ "Could not write to file '%s'.  This file must be writable in order for GNOME to "
+#~ "function properly.  Try logging in with the failsafe session and removing this file.  "
+#~ "Also make sure that the file's directory is writable."
+#~ msgstr ""
+#~ "फाइल '%s'मा लेख्न सकेन ।  जिनोमले राम्रोसँग कार्य गर्न यो फाइल लेख्नयोग्य हुनुपर्दछ ।  फलसेफ सत्रसँग "
+#~ "लगइन गर्ने प्रयास गर्नुहोस र यस फाइललाई हटाउनुहोस् ।  फाइलको डाइरेक्टरी लेख्नयोग्य भएको पनि निश्चित "
+#~ "गर्नुहोस् ।"
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "तपाईँ लगआउट गर्न निश्चित हुनुहुन्छ ?"
+
+#~ msgid "Action"
+#~ msgstr "कार्य"
+
+#~ msgid "Sh_ut down"
+#~ msgstr "बन्द गर्नुहोस्"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "कम्प्युटर फेरि सुरु गर्नुहोस्"
+
+#~ msgid "Specify a session name to load"
+#~ msgstr "लोड गर्नका लागि सत्र नाम निर्दिष्ट गर्नुहोस्"
+
+#~ msgid "NAME"
+#~ msgstr "नाम"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "पुर्वनिर्धारित सत्र फाइलबाट मात्र बचत गरिएका सत्र पढ्नुहोस्"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr "क्लाइन्टलाई रजिस्टर गर्नका लागि प्रतिक्षा गरेको समय मिलिसेकेन्डमा (०=सधैँ)"
+
+#~ msgid "DELAY"
+#~ msgstr "विलम्ब"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr "क्लाइन्टलाई प्रतिक्रिया दिनका लागि प्रतिक्षा गरेको समय मिलिसेकेन्डमा (०=सधैँ)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr "क्लाइन्टलाई नष्ट गर्नका लागि प्रतिक्षा गरेको समय मिलिसेकेन्डमा (०=सधैँ)"
+
+#~ msgid "This session is running as a privileged user"
+#~ msgstr "यो सत्र प्राथमिकता दिएको प्रयोगकर्ताका रूपमा चलिरहेको छ"
+
+#~ msgid ""
+#~ "Running a session as a privileged user should be avoided for security reasons. If "
+#~ "possible, you should log in as a normal user."
+#~ msgstr ""
+#~ "सूरक्षाका कारणले विशेषाधिकार दिइएको प्रयोगकर्ताको रूपमा चलिरहेको सत्रलाई परित्याग गरिएको हुनुपर्दछ "
+#~ "। सम्भव भएमा, तपाईँले सामान्य प्रयोगकर्ताका रूपमा लगइन गर्नुपर्दछ ।"
+
+#~ msgid ""
+#~ "The session might encounter issues if the computer clock is not properly configured. "
+#~ "Please consider adjusting it.\n"
+#~ "\n"
+#~ "Current date is <b>%s</b>."
+#~ msgstr ""
+#~ "कम्प्युटर घडी ठीक रूपमा कन्फिगर गरिएको नभएमा सत्रले विभिन्न समस्या सामना गर्न सक्छ । कृपया यसलाई "
+#~ "समायोजन गर्दा ध्यान दिनुहोस् ।\n"
+#~ "\n"
+#~ "हालको मिति <b>%s</b> हो ।"
+
+#~ msgid "Failed to launch time configuration tool: %s"
+#~ msgstr "समय कन्फिगरेसन उपकरण सुरुआत गर्न असफल: %s"
+
+#~ msgid "The computer clock appears to be wrong"
+#~ msgstr "कम्प्युटर घडी गलत हुने देखिन्छ"
+
+#~ msgid "_Ignore"
+#~ msgstr "उपेक्षा गर्नुहोस्"
+
+#~ msgid "_Adjust the Clock"
+#~ msgstr "घडी समायोजन गर्नुहोस्"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "%s का लागि इन्टरनेट ठगाना हेर्न सकेन ।\n"
+#~ "यसले जिनोमलाई ठीकसँग सञ्चालन हुनबाट बञ्चित गर्नेछ ।\n"
+#~ "file /etc/hosts\n"
+#~ "मा %s थपेर समस्या समाधान गर्न सम्भव हुनसक्छ ।"
+
+#~ msgid "Log in Anyway"
+#~ msgstr "जसरी पनि लगइन गर्नुहोस्"
+
+#~ msgid "Try Again"
+#~ msgstr "फेरि प्रयास गर्नुहोस्"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "विवादका कारणले प्रतिक्षा परित्याग गरियो ।"
+
+#~ msgid "No response to the %s command."
+#~ msgstr "आदेश %s लाई कुनै प्रतिक्रिया छैन ।"
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "कार्यक्रम ढीलो, रोकिएको वा विच्छेद गरिएको हुनसक्छ ।"
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "यसलाई प्रतिक्रिया दिन वा हटाउन तपाईँले प्रतिक्षा गर्नुपर्न सक्छ ।"
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "असफलताको कारणले फेरि सरुआत गर्न परित्याग गरियो ।"
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "बन्द गर्ने सत्र प्रगतिमा छ ।"
+
+#~ msgid "Set the current session name"
+#~ msgstr "हालको सत्रनाम सेट गर्नुहोस्"
+
+#~ msgid "Kill session"
+#~ msgstr "सत्र अन्त्य गर्नुहोस्"
+
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "त्रुटिका लागि संवाद बाकस प्रयोग गर्नुहोस्"
+
+#~ msgid "Save changes to the current session before closing?"
+#~ msgstr "हालको सत्र बन्द गर्नुभन्दा पहिला यसका परिवर्तन बचत गर्नुहुन्छ ?"
+
+#~ msgid "If you don't save, changes will be discarded."
+#~ msgstr "तपाईँले बचत नगरेमा, परिवर्तन परित्याग गरिन्छन् ।"
+
+#~ msgid "_Close without Saving"
+#~ msgstr "बचत नगरी बन्द गर्नुहोस्"
+
+#~ msgid "Enabled"
+#~ msgstr "सक्षम"
+
+#~ msgid "Your session has been saved."
+#~ msgstr "तपाईँको सत्र बचत गरिएको छ ।"
+
+#~ msgid "could not connect to the session manager\n"
+#~ msgstr "सत्र प्रबन्धकमा जडान गर्न सकेन\n"
+
+#~ msgid "session manager does not support GNOME extensions\n"
+#~ msgstr "सत्र प्रबन्धकले जिनोम विस्तार समर्थन गर्दैन\n"
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "सत्रबाट हाल चयन गरिएको क्लाइन्ट हटाउनुहोस् ।"
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "हालको सत्रमा परिवर्तन लागू गर्नुहोस्"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "सत्रका कार्यक्रमको सूची ।"
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "हाल चलिरहेका कार्यक्रम:"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "सफिस सञ्झ्याल प्रबन्धक"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "मेटासिटी सञ्झ्याल प्रबन्धक"
+
+#~ msgid "Window Manager"
+#~ msgstr "सञ्झ्याल प्रबन्धक"
+
+#~ msgid "The Panel"
+#~ msgstr "प्यानल"
+
+#~ msgid "Nautilus"
+#~ msgstr "नटिलस"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "डेस्कटप सेटिङ"
+
+#~ msgid "No description"
+#~ msgstr "वर्णन छैन"
+
+#~ msgid "The name of the startup program cannot be empty"
+#~ msgstr "सुरुआत कार्यक्रमको नामलाई खाली गर्न सकिँदैन"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "सुरुआत आदेशलाई खाली गर्न सकिदैँन"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "सुरुआत आदेश वैध छैन"
+
+#~ msgid "New Startup Program"
+#~ msgstr "नयाँ सुरुआत कार्यक्रम"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "सुरुआत कार्यक्रम सम्पादन गर्नुहोस्"

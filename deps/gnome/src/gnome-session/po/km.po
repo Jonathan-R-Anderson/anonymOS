@@ -1,0 +1,530 @@
+# Khmer translation for gnome-session
+# Copyright (c) 2009 Rosetta Contributors and Canonical Ltd 2009
+# This file is distributed under the same license as the gnome-session package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2009.
+# sutha <sutha@khmeros.info>, 2012.
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session\n"
+"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-"
+"session&keywords=I18N+L10N&component=general\n"
+"POT-Creation-Date: 2014-04-02 09:36+0000\n"
+"PO-Revision-Date: 2012-09-28 14:46+0700\n"
+"Last-Translator: sutha <sutha@khmeros.info>\n"
+"Language-Team: Khmer <support@khmeros>\n"
+"Language: km\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: WordForge 0.8 RC1\n"
+"X-Language: km-KH\n"
+
+#: ../data/gnome-custom-session.desktop.in.h:1
+msgid "Custom"
+msgstr "ផ្ទាល់​ខ្លួន"
+
+#: ../data/gnome-custom-session.desktop.in.h:2
+msgid "This entry lets you select a saved session"
+msgstr "ធាតុ​នេះ​អនុញ្ញាត​ឲ្យ​អ្នក​ជ្រើស​សម័យ​ដែល​បាន​រក្សាទុក"
+
+#: ../data/gnome.desktop.in.h:1 ../data/gnome.session.desktop.in.in.h:1
+msgid "GNOME"
+msgstr "GNOME"
+
+#: ../data/gnome.desktop.in.h:2
+msgid "This session logs you into GNOME"
+msgstr "សម័យ​នេះ​ជា​កំណត់​ហេតុ​ដែល​អ្នក​ទៅ​កាន់ GNOME"
+
+#: ../data/gnome-dummy.session.desktop.in.in.h:1
+#| msgid "GNOME"
+msgid "GNOME dummy"
+msgstr "GNOME dummy"
+
+#: ../data/gnome-wayland.desktop.in.h:1
+#: ../data/gnome-wayland.session.desktop.in.in.h:1
+#| msgid "GNOME fallback"
+msgid "GNOME on Wayland"
+msgstr "GNOME នៅ Wayland"
+
+#: ../data/gnome-wayland.desktop.in.h:2
+#| msgid "This session logs you into GNOME"
+msgid "This session logs you into GNOME, using Wayland"
+msgstr "សម័យ​នេះ​ចុះ​កំណត់ហេតុ​អ្នក​ក្នុង GNOME ដោយ​ប្រើ Wayland"
+
+#: ../data/session-selector.ui.h:1
+msgid "Custom Session"
+msgstr "សម័យ​ផ្ទាល់​ខ្លួន"
+
+#: ../data/session-selector.ui.h:2 ../tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "សូម​ជ្រើសសម័យ​ផ្ទាល់ខ្លួន ដើម្បីដំណើរការ"
+
+#: ../data/session-selector.ui.h:3
+msgid "_New Session"
+msgstr "សម័យ​ថ្មី"
+
+#: ../data/session-selector.ui.h:4
+msgid "_Remove Session"
+msgstr "លុប​សម័យ​ចេញ"
+
+#: ../data/session-selector.ui.h:5
+msgid "Rena_me Session"
+msgstr "ប្ដូរ​ឈ្មោះ​សម័យ"
+
+#: ../data/session-selector.ui.h:6
+msgid "_Continue"
+msgstr "បន្ត"
+
+#: ../data/session-properties.ui.h:1
+msgid "Additional startup _programs:"
+msgstr "កម្មវិធី​ចាប់ផ្ដើម​បន្ថែម ៖"
+
+#: ../data/session-properties.ui.h:2
+msgid "Startup Programs"
+msgstr "ចាប់ផ្ដើម​កម្មវិធី"
+
+#: ../data/session-properties.ui.h:3
+msgid "_Automatically remember running applications when logging out"
+msgstr "ចងចាំ​កម្មវិធី​ដែល​កំពុង​ដំណើរការ​ដោយ​ស្វ័យ​ប្រវត្តិ នៅ​ពេល​ចេញ"
+
+#: ../data/session-properties.ui.h:4
+msgid "_Remember Currently Running Applications"
+msgstr "ចងចាំ​ការ​ដំណើរការ​កម្មវិធី​បច្ចុប្បន្ន"
+
+#: ../data/session-properties.ui.h:5
+msgid "Options"
+msgstr "ជម្រើស"
+
+#: ../data/session-properties.ui.h:6
+msgid "Browse…"
+msgstr "រក​មើល..."
+
+#: ../data/session-properties.ui.h:7
+msgid "Comm_ent:"
+msgstr "មតិយោបល់ ៖"
+
+#: ../data/session-properties.ui.h:8
+msgid "Co_mmand:"
+msgstr "ពាក្យ​បញ្ជា ៖"
+
+#: ../data/session-properties.ui.h:9
+msgid "_Name:"
+msgstr "ឈ្មោះ ៖"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:321
+msgid "Oh no!  Something has gone wrong."
+msgstr "អូ ! មាន​អ្វី​មួយ​មិន​ត្រឹមត្រូវ​ហើយ ។"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:328
+msgid ""
+"A problem has occurred and the system can't recover. Please contact a system "
+"administrator"
+msgstr "មាន​បញ្ហា ​ប្រព័ន្ធ​មិន​អាច​សង្គ្រោះ​បាន​ទេ ។ សូម​ទាក់ទង​អ្នក​គ្រប់គ្រង​ប្រព័ន្ធ​របស់​អ្នក"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:330
+msgid ""
+"A problem has occurred and the system can't recover. All extensions have "
+"been disabled as a precaution."
+msgstr "មាន​បញ្ហា ប្រព័ន្ធ​មិន​អាច​សង្គ្រោះ​បាន​ទេ ។ ផ្នែក​បន្ថែម​ទាំងអស់​ត្រូវ​បាន​បិទ ។"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:332
+msgid ""
+"A problem has occurred and the system can't recover.\n"
+"Please log out and try again."
+msgstr ""
+"មាន​បញ្ហា​ ​ប្រព័ន្ធ​មិន​អាច​សង្គ្រោះ​បាន​ទេ ។\n"
+"សូម​ចេញ ហើយ​ព្យាយាម​​ម្ដង​ទៀត ។"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:347
+msgid "_Log Out"
+msgstr "ចេញ"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:369 ../gnome-session/main.c:305
+msgid "Enable debugging code"
+msgstr "បើក​កូដ​បំបាត់​កំហុស"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:370
+msgid "Allow logout"
+msgstr "អនុញ្ញាត​ឲ្យ​ចេញ"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:371
+msgid "Show extension warning"
+msgstr "បង្ហាញ​ការ​ព្រមាន​ផ្នែក​បន្ថែម"
+
+#: ../gnome-session/gsm-manager.c:1271 ../gnome-session/gsm-manager.c:2043
+msgid "Not responding"
+msgstr "មិន​ឆ្លើយ​តប"
+
+#: ../gnome-session/gsm-util.c:409
+#| msgid "Log out"
+msgid "_Log out"
+msgstr "ចេញ"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: ../gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "កម្មវិធី​ដែល​ចងចាំ"
+
+#: ../gnome-session/gsm-xsmp-client.c:1207
+msgid "This program is blocking logout."
+msgstr "កម្មវិធី​នេះ​ត្រូវ​បាន​ទប់ស្កាត់​មិន​ឲ្យ​ចេញ ។"
+
+#: ../gnome-session/gsm-xsmp-server.c:340
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr "បដិសេធ​ការ​តភ្ជាប់​ម៉ាស៊ីន​ភ្ញៀវ ពីព្រោះ​សម័យ​បច្ចុប្បន្ន​កំពុង​ត្រូវ​បានបិទ\n"
+
+#: ../gnome-session/gsm-xsmp-server.c:609
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "មិន​អាច​បង្កើត​រន្ធ​ស្ដាប់ ICE បាន​ទេ ៖ %s"
+
+#: ../gnome-session/main.c:303
+msgid "Override standard autostart directories"
+msgstr "បដិសេធ​ថត​ចាប់ផ្ដើម​ដោយ​ស្វ័យ​ប្រវត្តិ​ស្តង់ដារ"
+
+#: ../gnome-session/main.c:303
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: ../gnome-session/main.c:304
+msgid "Session to use"
+msgstr "សម័យ​ត្រូវ​ប្រើ"
+
+#: ../gnome-session/main.c:304
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: ../gnome-session/main.c:306
+msgid "Do not load user-specified applications"
+msgstr "កុំ​ផ្ទុក​កម្មវិធី​ដែល​បាន​បញ្ជាក់​ដោយ​អ្នក​ប្រើ"
+
+#: ../gnome-session/main.c:307
+msgid "Version of this application"
+msgstr "កំណែ​កម្មវិធី​នេះ"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: ../gnome-session/main.c:309
+msgid "Show the fail whale dialog for testing"
+msgstr "បង្ហាញ​ប្រអប់ fail whale សម្រាប់​សាកល្បង"
+
+#: ../gnome-session/main.c:342
+msgid " - the GNOME session manager"
+msgstr " - កម្មវិធី​គ្រប់គ្រង​សម័យ  GNOME"
+
+#: ../tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION...] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [OPTION...] COMMAND\n\nExecute COMMAND while inhibiting some session "
+"functionality.\n\n  -h, --help        Show this help\n  --version         "
+"Show program version\n  --app-id ID       The application id to use\n "
+"                   when inhibiting (optional)\n  --reason REASON   The "
+"reason for inhibiting (optional)\n  --inhibit ARG     Things to inhibit, "
+"colon-separated list of:\n                    logout, switch-user, suspend, "
+"idle, automount\n  --inhibit-only    Do not launch COMMAND and wait forever "
+"instead\n\nIf no --inhibit option is specified, idle is assumed.\n"
+
+#: ../tools/gnome-session-inhibit.c:146
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "បាន​បរាជ័យ​ក្នុង​ការ​អនុវត្ត %s\n"
+
+#: ../tools/gnome-session-inhibit.c:206 ../tools/gnome-session-inhibit.c:216
+#: ../tools/gnome-session-inhibit.c:226
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s ទាមទារ​អាគុយម៉ង់\n"
+
+#: ../tools/gnome-session-selector.c:61
+#, c-format
+#| msgid "Session to use"
+msgid "Session %d"
+msgstr "សម័យ %d"
+
+#: ../tools/gnome-session-selector.c:107
+msgid ""
+"Session names are not allowed to start with ‘.’ or contain ‘/’ characters"
+msgstr ""
+"ឈ្មោះសម័យ​មិន​ត្រូវ​បាន​អនុញ្ញាត​ឲ្យ​ចាប់ផ្ដើម​ដោយ ‘.’ ឬ​មាន​តួអក្សរ ‘/’"
+
+#: ../tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with ‘.’"
+msgstr "ឈ្មោះ​សម័យ​មិន​ត្រូវ​បាន​អនុញ្ញាត​ឲ្យ​ចាប់ផ្ដើម​ដោយ ‘.’"
+
+#: ../tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain ‘/’ characters"
+msgstr "ឈ្មោះ​សម័យ​មិន​ត្រូវ​បាន​អនុញ្ញាត​ឲ្យ​មានតួអក្សរ ‘/’"
+
+#: ../tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named ‘%s’ already exists"
+msgstr "មាន​ឈ្មោះ​សម័យ​ដែលមាន​ឈ្មោះ ‘%s’ រួច​ហើយ"
+
+#: ../tools/gnome-session-quit.c:51
+msgid "Log out"
+msgstr "ចេញ"
+
+#: ../tools/gnome-session-quit.c:52
+msgid "Power off"
+msgstr "បិទ"
+
+#: ../tools/gnome-session-quit.c:53
+msgid "Reboot"
+msgstr "ចាប់ផ្ដើម​ឡើង​វិញ"
+
+#: ../tools/gnome-session-quit.c:54
+msgid "Ignoring any existing inhibitors"
+msgstr "មិន​អើពើ​កម្មវិធី​ហាមឃាត់​ដែល​មាន​ស្រាប់"
+
+#: ../tools/gnome-session-quit.c:55
+msgid "Don't prompt for user confirmation"
+msgstr "កុំ​សួរ​រក​ការ​បញ្ជាក់​របស់​អ្នក​ប្រើ"
+
+#: ../tools/gnome-session-quit.c:89 ../tools/gnome-session-quit.c:99
+msgid "Could not connect to the session manager"
+msgstr "មិន​អាច​តភ្ជាប់​ទៅ​កម្មវិធី​គ្រប់គ្រង​សម័យ​បាន​ទេ"
+
+#: ../tools/gnome-session-quit.c:201
+msgid "Program called with conflicting options"
+msgstr "កម្មវិធី​បានហៅ​ដោយ​ប្រើ​ជម្រើសប៉ះទង្គិច"
+
+#~ msgid "Select Command"
+#~ msgstr "ជ្រើសរើសពាក្យបញ្ជា"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "បន្ថែម​​កម្មវិធី​នៅ​ពេល​ចាប់ផ្ដើម"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "កែសម្រួល​កម្មវិធី​នៅ​ពេល​ចាប់ផ្ដើម"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "ពាក្យ​បញ្ជា​ចាប់ផ្ដើម​មិន​អាច​ទទេ​ឡើយ"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "ពាក្យ​បញ្ជា​ចាប់ផ្ដើម​មិន​ត្រឹមត្រូវ​ទេ"
+
+#~ msgid "Enabled"
+#~ msgstr "បាន​បើក"
+
+#~ msgid "Icon"
+#~ msgstr "រូបតំណាង"
+
+#~ msgid "Program"
+#~ msgstr "កម្មវិធី"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "ចំណូល​ចិត្ត​កម្មវិធី​ចាប់ផ្ដើម"
+
+#~ msgid "No name"
+#~ msgstr "គ្មាន​ឈ្មោះ"
+
+#~ msgid "No description"
+#~ msgstr "គ្មាន​សេចក្ដី​ពិពណ៌នា"
+
+#~ msgid "Could not display help document"
+#~ msgstr "មិន​អាច​បង្ហាញ​ឯកសារ​ជំនួយ​បាន​ទេ"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "កម្មវិធី​មួយ​ចំនួន​នៅ​តែ​កំពុង​ដំណើរ​ការ ៖"
+
+#~ msgid ""
+#~ "Waiting for the program to finish.  Interrupting the program may cause "
+#~ "you to lose work."
+#~ msgstr "រង់ចាំ​ឲ្យ​កម្មវិធី​ចប់ ។ ការ​ផ្អាក​កម្មវិធី​អាច​បណ្ដាល​ឲ្យ​បាត់បង់កិច្ចការ ។"
+
+#~ msgid "Startup Applications"
+#~ msgstr "កម្មវិធី​នៅ​ពេល​ចាប់ផ្ដើម"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "ជ្រើស​កម្មវិធី​ត្រូវ​ចាប់ផ្ដើម​នៅ​ពេល​ចូល"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "ឯកសារ​មិន​មែន​ជា​ឯកសារ .desktop ត្រឹមត្រូវ"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "មិន​ស្គាល់​ឯកសារ​ផ្ទៃតុ​កំណែ '%s'"
+
+#~ msgid "Starting %s"
+#~ msgstr "ចាប់ផ្ដើម %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "កម្មវិធី​មិន​ទទួល​យក​ឯកសារ​នៅ​លើ​បន្ទាត់​ពាក្យ​បញ្ជា​ឡើយ"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "ជម្រើស​បើក​ដំណើរការ​ដែល​មិន​ស្គាល់ ៖ %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "មិន​អាច​ចម្លង URIs របស់​ឯកសារ​ទៅ​ធាតុ​ផ្ទៃតុ 'Type=Link'"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "មិនមែន​ជា​ធាតុ​ដែល​អាច​ចាប់ផ្ដើម​បាន​ទេ"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "បិទ​ការ​តភ្ជាប់​ទៅ​កម្មវិធី​គ្រប់គ្រង​សម័យ"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "បញ្ជាក់​ឯកសារ​ថា​មាន​ការ​កំណត់​រចនាសម្ព័ន្ធ​ដែល​បាន​រក្សាទុក"
+
+#~ msgid "FILE"
+#~ msgstr "ឯកសារ"
+
+#~ msgid "Specify session management ID"
+#~ msgstr "បញ្ជាក់​លេខ​សម្គាល់​គ្រប់គ្រង​សម័យ"
+
+#~ msgid "ID"
+#~ msgstr "លេខ​សម្គាល់"
+
+#~ msgid "Session management options:"
+#~ msgstr "ជម្រើស​គ្រប់គ្រង​សម័យ ៖"
+
+#~ msgid "Show session management options"
+#~ msgstr "បង្ហាញ​ជម្រើស​គ្រប់គ្រង​សម័យ"
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "រក​មិន​ឃើញ​រូបតំណាង '%s'"
+
+#~ msgid "Unknown"
+#~ msgstr "មិនស្គាល់"
+
+#~ msgid "A program is still running:"
+#~ msgstr "កម្មវិធី​នៅ​តែ​កំពុង​ដំណើរការ ៖"
+
+#~ msgid ""
+#~ "Waiting for programs to finish.  Interrupting these programs may cause "
+#~ "you to lose work."
+#~ msgstr "រង់ចាំ​ឲ្យ​កម្មវិធី​ចប់ ។ ការ​ផ្អាក​កម្មវិធី​ទាំង​នេះ​អាច​បណ្ដាល​ឲ្យ​បាត់បង់​កិច្ចកា​រ​របស់​អ្នក ។"
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "អញ្ចឹង​ប្ដូរ​អ្នក​ប្រើ"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "អញ្ចឹង​ចេញ"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "អញ្ចឹង​ផ្អាក"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "អញ្ចឹង​សង្ខំ"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "អញ្ចឹង បិទ"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "អញ្ចឹង ចាប់ផ្ដើម​ឡើងវិញ"
+
+#~ msgid "Lock Screen"
+#~ msgstr "ចាក់សោ​អេក្រង់"
+
+#~ msgid "Cancel"
+#~ msgstr "បោះបង់"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "អ្នក​នឹង​ត្រូវ​ចេញ​​ក្នុង​រយៈពេល %d វិនាទី ។"
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "ប្រព័ន្ធ​នេះ​នឹង​បិទ​ដោយ​ស្វ័យ​ប្រវត្តិ​ក្នុង​រយៈ​ពេល %d វិនាទី ។"
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "ប្រព័ន្ធ​នេះ​នឹង​ត្រូវ​បាន​ចាប់ផ្ដើម​ឡើង​វិញ​ដោយ​ស្វ័យប្រវត្តិ​នៅ​  %d វិនាទី ។"
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "បច្ចុប្បន្ន​បាន​ចូល​ជា \"%s\" ។"
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "ចេញ​ពី​ប្រព័ន្ធ​នេះ​ឥឡូវ ?"
+
+#~ msgid "_Switch User"
+#~ msgstr "ប្ដូរ​អ្នក​ប្រើ"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "បិទ​ប្រព័ន្ធ​នេះ​ឥឡូវ ?"
+
+#~ msgid "S_uspend"
+#~ msgstr "ផ្អាក"
+
+#~ msgid "_Hibernate"
+#~ msgstr "សម្ងំ"
+
+#~ msgid "_Restart"
+#~ msgstr "ចាប់ផ្ដើម​ឡើង​វិញ"
+
+#~ msgid "_Shut Down"
+#~ msgstr "បិទ"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "ចាប់ផ្ដើម​ប្រព័ន្ធ​នេះ​ឥឡូវ​នេះ​ឬ ?"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "GNOME 3 បាន​ប​រាជ័យ​ក្នុង​ការ​ផ្ទុក"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "ជា​អកុសល GNOME 3 មិន​អាច​ចាប់ផ្ដើម​ត្រឹមត្រូវ ហើយ​បាន​ចាប់ផ្ដើម​ក្នុង <i>របៀប fallback</"
+#~ "i> ។\n"
+#~ "\n"
+#~ "នេះ​ប្រហែលជា​ប្រព័ន្ធ​របស់​អ្នក (ផ្នែក​រឹង​ក្រាហ្វិក ឬ​កម្មវិធី​បញ្ជា) មិន​អាច​ផ្ដល់​បទពិសោធន៍ GNOME 3 "
+#~ "ពេញលេញ ។"
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "សិក្សា​បន្ថែម​អំពី GNOME 3"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr "មិន​អាច​ចាប់ផ្ដើម​សម័យ​ចូល​បាន​ទេ (និង​មិន​អាច​តភ្ជាប់​ទៅ​ម៉ាស៊ីន​បម្រើ X បាន​ទេ)"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>កម្មវិធី​មួយ​ចំនួន​នៅ​តែ​កំពុង​ដំណើរការ ៖</b>"
+
+#~ msgid "Ubuntu"
+#~ msgstr "អ៊ូប៊ុនទូ"
+
+#~ msgid "This session logs you into Ubuntu"
+#~ msgstr "សកម្ម​នេះ​ចុះ​កំណត់​ហេតុ​អ្នក​ក្នុង​អ៊ូប៊ុនទូ"
+
+#~ msgid "_Remember Currently Running Application"
+#~ msgstr "ចងចាំ​កម្មវិធី​ដែល​កំពុង​ដំណើរការ​ថ្មីៗ"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "បាន​បញ្ឈប់​ដោយ​សញ្ញា %d"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "បាន​បញ្ចប់​ដោយ​សញ្ញា %d"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the "
+#~ "extensions below may have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "បញ្ហា​បានកើត​ឡើង ហើយ​ប្រព័ន្ធ​មិន​អាច​សង្គ្រោះ​បាន​ទេ ។ ផ្នែក​បន្ថែម​មួយ​ចំនួន​ដូច​ខាង​ក្រោម​អាច​បណ្ដាល​ឲ្យ​"
+#~ "មាន​បញ្ហា​នេះ ។ សូម​ព្យាយាម​បិទ​ពួកវា ហើយ​បន្ទាប់​ចេញ និង​ព្យាយាម​ម្ដង​ទៀត ។"
+
+#~ msgid "Exited with code %d"
+#~ msgstr "បាន​ចាកចេញ​ដោយ​មាន​កូដ %d"

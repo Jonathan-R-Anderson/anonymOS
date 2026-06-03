@@ -1,0 +1,520 @@
+# Serbian translation of gnome-session
+# Courtesy of Prevod.org team (http://prevod.org/) -- 2003–2022.
+# This file is distributed under the same license as the gnome-session package.
+# Данило Шеган <danilo@gnome.org> 2005.
+# Слободан Д. Средојевић <slobo@akrep.be> 2006.
+# Мирослав Николић <miroslavnikolic@rocketmail.com>, 2011–2022.
+# Марко М. Костић <marko.m.kostic@gmail.com>, 2020.
+# Милош Поповић <gpopac@gmail.com>, 2010–20-2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-16 13:50+0000\n"
+"PO-Revision-Date: 2025-09-18 12:57+0200\n"
+"Last-Translator: Милош Поповић <gpopac@gmail.com>\n"
+"Language-Team: Serbian <Serbian <gnome-sr@googlegroups.com>>\n"
+"Language: sr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=n==1? 3 : n%10==1 && n%100!=11 ? 0 : "
+"n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2\n"
+"X-Project-Style: gnome\n"
+"X-Generator: Gtranslator 47.1\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "Гном"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Ова сесија вас пријављује у Гном"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "Гном на Вејланду"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "Гном на Икс серверу"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Упит за одјаву"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Ако је омогућено, гномова сесија ће питати корисника да ли жели да оконча "
+"сесију."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Прикажи упозорење о одступању"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Ако је омогућено, гномова сесија ће приказати прозорче са упозорењем након "
+"пријаве ако је сесија одступна."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Не даје одзив"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Одјави ме"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Сесије које ће бити коришћене"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "НАЗИВ_СЕСИЈЕ"
+
+#: gnome-session/leader-main.c:187
+msgid "Enable debugging code"
+msgstr "Укључује код за исправљање грешака"
+
+#: gnome-session/leader-main.c:188
+msgid "Version of this application"
+msgstr "Издање овог програма"
+
+#: gnome-session/leader-main.c:189
+msgid "This option is ignored"
+msgstr "Ова опција је занемарена"
+
+#: gnome-session/leader-main.c:190
+msgid "Don't re-exec into a login shell"
+msgstr "Не покрећите поново унутар љуске за пријаву"
+
+#: gnome-session/leader-main.c:208 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — управник Гномовом сесијом"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Покрени gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Покрени gnome-session-shutdown.target након примања EOF сигнала или примања "
+"једног бајта на стандардном улазу"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Иницијализација сигнала урађено за gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Поново покрени dbus.service ако је покренут"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Покретање из ExecStopPost-а зарад покретања gnome-session-shutdown.target "
+"при неуспешној услузи"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Програму треба тачно један параметар"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Непознат аргумент за забрану %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Не могу да извршим %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Прикажи верзију програма"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "ИБ апликације који се користи за забрану (опционо)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ИБ"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Разлог за забрану (опционо)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "РАЗЛОГ"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Додај радњу за забрану (понавља се)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "РАДЊА"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Не покрећи НАРЕДБУ и чекај неограничено"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Исписује постојеће забране и излази"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "НАРЕДБА"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Изврши НАРЕДБУ уз забрану неких могућности сесије."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Могуће РАДЊЕ су: logout (одјави ме), switch-user (промени корисника), \n"
+"suspend (обустави), idle (мировање) и automount (сам монтирај).\n"
+"Уколико нису дате опције уз --inhibit, подразумевано се користи мировање."
+
+#: tools/gnome-session-inhibit.c:408
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Није дата ни НАРЕДБА ни --inhibit-only."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Одјави ме"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Искључи"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Поново покрени"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Занемарујем постојеће забране"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Не тражи потврду од корисника"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Не могу да се повежем са управником сесије"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Програм је позван са несагласним могућностима"
+
+#~ msgid "Custom"
+#~ msgstr "Прилагођено"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Ова ставка вам допушта да изаберете сачувану сесију"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "Гномов лажњак"
+
+#~ msgid "Save sessions"
+#~ msgstr "Сачувај сесије"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Ако је омогућено, гномова сесија ће самостално чувати сесију."
+
+#~ msgid "Save this session"
+#~ msgstr "Сачувај ову сесију"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Када је омогућено, гномова сесија ће самостално сачувати следећу сесију "
+#~ "при одјави чак иако је самостално чување искључено."
+
+#~ msgid "Custom Session"
+#~ msgstr "Прилагођена сесија"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Изаберите прилагођену сесију за покретање"
+
+#~ msgid "_New Session"
+#~ msgstr "_Нова сесија"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Уклони сесију"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Преименуј _сесију"
+
+#~ msgid "_Continue"
+#~ msgstr "_Настави"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "О, не!  Нешто је пошло наопако!"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Дошло је до проблема и систем не може да се опорави. Обратите се "
+#~ "администратору система"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Дошло је до проблема и систем не може да се опорави. Сва проширења су "
+#~ "искључена зарад предострожности."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Дошло је до проблема и систем не може да се опорави.\n"
+#~ "Одјавите се и покушајте опет."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Одјави ме"
+
+#~ msgid "Allow logout"
+#~ msgstr "Дозвољава одјављивање"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Приказује упозорење проширења"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Запамћени програм"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Овај програм онемогућава одјаву."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr "Одбацујем везу са новим клијентом јер је у току гашење сесије\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Не могу да направим прикључак ИЦЕ ослушкивања: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "Покрени као систем-де услугу"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Заобилази уобичајене директоријуме самопокретања"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "ДИРЕКТОРИЈУМ_САМОПОКРЕТАЊА"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Не учитава програме које је задао корисник"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Приказује прозорче неуспеха за испробавање"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Искључује проверу хардверског убрзања"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [ОПЦИЈА...] НАРЕДБА\n"
+#~ "\n"
+#~ "Извршите НАРЕДБУ уз спречавање неких функционалности сесије.\n"
+#~ "\n"
+#~ "  -h, --help        Приказује ову помоћ\n"
+#~ "  --version         Приказује издање програма\n"
+#~ "  --app-id ИБ       ИБ програма за коришћење приликом\n"
+#~ "                    спречавања (изборно)\n"
+#~ "  --reason РАЗЛОГ   Разлог спречавања (изборно)\n"
+#~ "  --inhibit АРГ     Списак ствари за спречавање, раздвојених двотачкама:\n"
+#~ "                    logout (одјављивање), switch-user (промена "
+#~ "корисника),\n"
+#~ "                    suspend (обустава), idle (мировање), automount "
+#~ "(самоприкачињање)\n"
+#~ "  --inhibit-only    Не покреће НАРЕДБУ и уместо тога чека у недоглед\n"
+#~ "  -l, --list        Приказује тренутна спречавања и излази\n"
+#~ "\n"
+#~ "Ако ниједна опција спречавања (--inhibit) није наведена, подразумева се "
+#~ "стање мировања (idle).\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Грешка при прављењу цеви: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Грешка при читању цеви\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "„%s“ захтева аргумент\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Сесија „%d“"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr ""
+#~ "Називи сесија не могу да почињу тачком (.) или да садрже косу црту (/)"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Називи сесија не могу да почињу тачком (.)"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Називи сесија не могу да садрже косу црту (/)"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "Већ постоји сесија под називом „%s“"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Користи систем-де управљање сесијом"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr ""
+#~ "Користи уграђено управљање сесије (уместо оне засноване на систем-деу)"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Додатни почетни _програми:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Почетни програми"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_Сам запамти покренуте програме приликом одјављивања"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Запамти тренутно покренуте програме"
+
+#~ msgid "Options"
+#~ msgstr "Опције"
+
+#~ msgid "Browse…"
+#~ msgstr "Преглед…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "_Коментар:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "_Наредба:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Назив:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Ова сесија вас пријављује у Гном, користећи Вајланд"
+
+#~ msgid "Select Command"
+#~ msgstr "Изабери наредбу"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Додај почетни програм"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Уреди почетни програм"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Наредба почетног програма се мора унети"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "Наредба почетног програма није исправна"
+
+#~ msgid "Enabled"
+#~ msgstr "Укључен"
+
+#~ msgid "Icon"
+#~ msgstr "Иконица"
+
+#~ msgid "Program"
+#~ msgstr "Програм"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Поставке почетних програма"
+
+#~ msgid "No name"
+#~ msgstr "Без имена"
+
+#~ msgid "No description"
+#~ msgstr "Без описа"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Не могу да прикажем документ помоћи"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Почетни програми"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr ""
+#~ "Изаберите који ће се програми покренути када се пријавите на рачунар"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Ово није исправна „.desktop“ датотека"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "Непрепознато издање датотеке радне површи „%s“"
+
+#~ msgid "Starting %s"
+#~ msgstr "Покрећем „%s“"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "Програм не прихвата документе из линије наредби"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Непозната опција покретања: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "Не могу да проследим адресе докумената на „Type=Link“ унос"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Није ставка за покретање"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Искључује везу са управником сесије"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Наводи датотеку која садржи сачувана подешавања"
+
+#~ msgid "FILE"
+#~ msgstr "ДАТОТЕКА"
+
+#~ msgid "Session management options:"
+#~ msgstr "Могућности управљања сесијом:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Приказује могућности управљања сесијом"

@@ -1,0 +1,410 @@
+# Swedish messages for gnome-session.
+# Copyright © 1998-2012, 2014-2021, 2024, 2025 Free Software Foundation, Inc.
+# Martin Wahlen <mva@sbbs.se>, 1998.
+# Anders Carlsson <anders.carlsson@tordata.se>, 1999.
+# Andreas Hyden  <a.hyden@cyberpoint.se>, 2000.
+# Martin Norbäck <d95mback@dtek.chalmers.se>, 2000, 2001.
+# Christian Rose <menthos@menthos.com>, 2000, 2001, 2002, 2003, 2004, 2005.
+# Daniel Nylander <po@danielnylander.se>, 2006, 2007, 2008, 2009, 2010, 2011, 2012.
+# Anders Jonsson <anders.jonsson@norsjovallen.se>, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2024, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-08-27 22:11+0000\n"
+"PO-Revision-Date: 2025-09-06 10:08+0200\n"
+"Last-Translator: Anders Jonsson <anders.jonsson@norsjovallen.se>\n"
+"Language-Team: Swedish <tp-sv@listor.tp-sv.se>\n"
+"Language: sv\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Poedit 3.7\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Denna session loggar in dig i GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME med Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME med Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Utloggningsfråga"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Om aktiverad kommer gnome-session att fråga användaren innan en session "
+"avslutas."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Visa fallback-varning"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Om aktiverad kommer gnome-session att visa en varningsdialog efter "
+"inloggning om sessionen automatiskt föll tillbaka till att använda gnome-"
+"fallback."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Svarar inte"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Logga ut"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Session att använda"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "SESSIONSNAMN"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "Aktivera felsökningskod"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "Version av detta program"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "Denna flagga ignoreras"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "Exekvera inte igen in i ett inloggningsskal"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — GNOME-sessionshanteraren"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Starta gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Starta gnome-session-shutdown.target då EOF eller en ensam byte tas emot på "
+"standard in"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Signalinitiering gjord på gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Starta om dbus.service om den körs"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Kör från ExecStopPost för att starta gnome-session-shutdown.target då tjänst "
+"misslyckas"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Programmet behöver exakt en parameter"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Okänt förhindrandeargument: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Kunde inte exekvera %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Visa programversion"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Program-ID att använda vid förhindrande (valfritt)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "Orsaken för förhindrande (valfritt)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "ORSAK"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Lägg till åtgärd att hindra (upprepningsbar)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "ÅTGÄRD"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Kör inte KOMMANDO och vänta för alltid i stället"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Lista befintliga förhindranden och avsluta"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "KOMMANDO"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Kör KOMMANDO under tiden någon sessionsfunktionalitet hindras."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Giltiga värden på ÅTGÄRD är: logout, switch-user, suspend, idle och "
+"automount.\n"
+"Om ingen --inhibit-flagga anges så antas idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Varken KOMMANDO eller --inhibit-only angavs."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Logga ut"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Stäng av"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Starta om"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ignorera allt som hindrar"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Fråga inte efter användarbekräftelse"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Kunde inte ansluta till sessionshanteraren"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program anropat med motsägande flaggor"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Åsidosätt standardkataloger för automatisk start"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "AUTOSTARTKAT"
+
+#~ msgid "Save sessions"
+#~ msgstr "Spara sessioner"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Om aktiverad kommer gnome-session att spara sessionen automatiskt."
+
+#~ msgid "Save this session"
+#~ msgstr "Spara denna session"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Om aktiverad kommer gnome-session automatiskt att spara nästa session vid "
+#~ "utloggning även om automatisk sparning är inaktiverad."
+
+#~ msgid "Oh no! Something has gone wrong."
+#~ msgstr "Åh nej! Någonting har gått fel."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Ett problem har inträffat och systemet kan inte återhämta sig. Kontakta "
+#~ "en systemadministratör"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Ett problem har inträffat och systemet kan inte återhämta sig. Alla "
+#~ "tillägg har inaktiverats som en säkerhetsåtgärd."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Ett problem har inträffat och systemet kan inte återhämta sig.\n"
+#~ "Logga ut och försök igen."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Logga ut"
+
+#~ msgid "Allow logout"
+#~ msgstr "Tillåt utloggning"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Visa tilläggsvarning"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Ihågkommet program"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Detta program blockerar utloggningen."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr ""
+#~ "Avvisar ny klientanslutning på grund av att sessionen är på väg att "
+#~ "stängas av\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Kunde inte skapa lyssnande ICE-uttag: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "Körs som systemd-tjänst"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Läs inte in användarspecifika program"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Visa den ”felande valen” för testning"
+
+#~ msgid "Custom"
+#~ msgstr "Anpassad"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Denna post låter dig välja en sparad session"
+
+# a dummy gnome-session which does not start anything
+# but the autostart software and the DBus API
+#~ msgid "GNOME dummy"
+#~ msgstr "GNOME-attrapp"
+
+#~ msgid "Custom Session"
+#~ msgstr "Anpassad session"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Välj en anpassad session att köra"
+
+#~ msgid "_New Session"
+#~ msgstr "_Ny session"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Ta bort session"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Byt na_mn på session"
+
+#~ msgid "_Continue"
+#~ msgstr "_Fortsätt"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Inaktivera kontroll för hårdvaruacceleration"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Fel vid skapande av rörledning: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Fel vid läsning av rörledning\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Session %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr "Sessionsnamn får inte börja med ”.” eller innehålla ”/”-tecken"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Sessionsnamn får inte börja med ”.”"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Sessionsnamn får inte innehålla ”/”-tecken"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "En session med namnet ”%s” existerar redan"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [FLAGGA…] KOMMANDO\n"
+#~ "\n"
+#~ "Exekvera KOMMANDO medan någon funktionalitet förhindras.\n"
+#~ "\n"
+#~ "  -h, --help        Visa denna hjälp\n"
+#~ "  --version         Visa programversion\n"
+#~ "  --app-id ID       Program-ID att använda\n"
+#~ "                    vid förhindrande (valfri)\n"
+#~ "  --reason ORSAK    Orsaken till förhindrande (valfri)\n"
+#~ "  --inhibit ARG     Saker att förhindra, kolonseparerad lista av:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Kör inte KOMMANDO utan vänta för alltid i stället\n"
+#~ "  -l, --list        Lista befintliga förhindranden och avsluta\n"
+#~ "\n"
+#~ "\n"
+#~ "Om ingen --inhibit-flagga angivits, antas idle.\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s kräver ett argument\n"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Använd systemd-sessionshantering"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr "Använd inbyggd sessionshantering (snarare än den systemd-baserade)"

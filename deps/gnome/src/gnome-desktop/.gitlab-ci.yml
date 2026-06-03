@@ -1,0 +1,77 @@
+# You can override the included template(s) by including variable overrides
+# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
+# Secret Detection customization: https://docs.gitlab.com/ee/user/application_security/secret_detection/#customizing-settings
+# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
+# Note that environment variables can be set in several places
+# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+include:
+- template: Security/SAST.gitlab-ci.yml
+- template: Security/Secret-Detection.gitlab-ci.yml
+- project: "GNOME/citemplates"
+  file: "templates/default-rules.yml"
+- component: "gitlab.gnome.org/GNOME/citemplates/release-service@master"
+  inputs:
+    dist-job-name: "build_stable"
+- component: gitlab.gnome.org/GNOME/citemplates/gnomeos-basic-ci@master
+  inputs:
+    job-stage: "test"
+    meson-options: "-Dgtk_doc=true"
+- component: "gitlab.gnome.org/GNOME/citemplates/basic-deploy-docs@master"
+
+build_stable:
+  image: fedora:latest
+  needs: []
+  variables:
+    _BUILDDIR: "_builddir"
+    DEPENDENCIES: gtk3-devel gtk4-devel gsettings-desktop-schemas-devel gettext
+                  gtk-doc libxkbcommon-devel xkeyboard-config-devel itstool
+                  gobject-introspection-devel systemd-devel iso-codes-devel
+                  libseccomp-devel gcc gcc-c++ glibc-devel
+                  meson redhat-rpm-config
+    TEST_DEPENDENCIES: ccache
+                       gnome-desktop-testing
+                       xorg-x11-server-Xvfb
+                       glibc-langpack-en
+                       glibc-langpack-he
+                       glibc-langpack-ja
+                       abattis-cantarell-fonts
+                       libabigail
+                       git
+
+    LAST_DESKTOP_ABI_BREAK: 428a044fa20e06357f311c1c8e1e7aab9cbbb11d
+    LAST_DESKTOP_LEGACY_ABI_BREAK: ddaa0e8b1868495f0e3ca5e28f2242bdf2a88161
+    LAST_BG_ABI_BREAK: 0da1fcac914ad4c67f016bda7864c4b153cbfbaa
+
+  before_script:
+    # Undo delangification present in the Fedora Docker images
+    - rm -f /etc/rpm/macros.image-language-conf
+    - dnf reinstall -y glib2
+    - dnf update -y --nogpgcheck
+    - dnf install -y --nogpgcheck $DEPENDENCIES
+    - dnf install -y --nogpgcheck $TEST_DEPENDENCIES
+  script:
+    - meson --prefix=/usr -Dinstalled_tests=true ${_BUILDDIR}
+    - pushd ${_BUILDDIR}
+    - meson compile
+    - meson install
+    - meson dist
+    - G_MESSAGES_DEBUG=all xvfb-run -a -s "-screen 0 1024x768x24" meson test
+    - G_MESSAGES_DEBUG=all xvfb-run -a -s "-screen 0 1024x768x24"
+                     gnome-desktop-testing-runner --report-directory=test-results gnome-desktop
+    - popd
+    - .ci/check-abi
+       --old-desktop-legacy=${LAST_DESKTOP_LEGACY_ABI_BREAK}
+       --old-desktop=${LAST_DESKTOP_ABI_BREAK}
+       --old-bg=${LAST_BG_ABI_BREAK}
+       $(git rev-parse HEAD)
+
+    - cp -r "${_BUILDDIR}/meson-dist/" "${CI_PROJECT_DIR}/public-dist/"
+  artifacts:
+    paths:
+      - "${_BUILDDIR}/meson-logs/"
+      - "${_BUILDDIR}/meson-dist/"
+      - "${_BUILDDIR}/test-results/"
+      - "public-dist"
+    when: "always"
+    reports:
+      junit: "${_BUILDDIR}/meson-logs/testlog.junit.xml"

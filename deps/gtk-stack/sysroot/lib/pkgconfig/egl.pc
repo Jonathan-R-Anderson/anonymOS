@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: egl
+Description: Mesa EGL Library
+Version: 23.3.5
+Requires: gbm, glesv2, libdrm >=  2.4.75, libdrm >= 2.4.109, wayland-server >= 1.18, zlib >=  1.2.3, expat, wayland-client >= 1.18, wayland-egl-backend >=  3
+Libs: -L${libdir} -lEGL -pthread -lm
+Libs.private: -lpthread
+Cflags: -I${includedir} -pthread

@@ -1,0 +1,15 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+sysconfdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/etc
+localstatedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/var
+confdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/etc/fonts
+cachedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/var/cache/fontconfig
+
+Name: Fontconfig
+Description: Font configuration and customization library
+Version: 2.15.0
+Requires: freetype2 >=  21.0.15, expat
+Libs: -L${libdir} -lfontconfig -pthread
+Cflags: -I${includedir} -pthread

@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: cairo
+Description: Multi-platform 2D graphics library
+Version: 1.18.2
+Requires: zlib, libpng >=  1.4.0, fontconfig >=  2.13.0, freetype2 >=  23.0.17, pixman-1 >=  0.40.0
+Libs: -L${libdir} -lcairo -lm -ldl
+Cflags: -I${includedir}/cairo

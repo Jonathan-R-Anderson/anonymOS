@@ -1,0 +1,12 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+gbmbackendspath=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/gbm
+
+Name: gbm
+Description: Mesa gbm library
+Version: 23.3.5
+Requires: libdrm >= 2.4.109, zlib >=  1.2.3, expat, wayland-server >= 1.18
+Libs: -L${libdir} -lgbm -pthread -lm
+Cflags: -I${includedir} -pthread

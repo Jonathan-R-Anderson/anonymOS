@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+
+dridriverdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib/dri
+
+Name: dri
+Description: Direct Rendering Infrastructure
+Version: 23.3.5
+Requires.private: libdrm >=  2.4.109
+Cflags: -I${includedir}

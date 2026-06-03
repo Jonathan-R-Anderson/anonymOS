@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+
+Name: aquamarine
+URL: https://github.com/hyprwm/aquamarine
+Description: A very light linux rendering backend library
+Version: 0.11.0
+Cflags: -I${includedir}
+Libs: -L${libdir} -laquamarine

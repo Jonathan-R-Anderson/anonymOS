@@ -1,0 +1,14 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+libdir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib
+includedir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/include
+
+Name: FreeType 2
+URL: https://freetype.org
+Description: A free, high-quality, and portable font engine.
+Version: 26.2.20
+Requires: zlib, libpng
+Requires.private: 
+Libs: -L/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/lib -lfreetype -lbz2
+Libs.private: 
+Cflags: -I${includedir}/freetype2

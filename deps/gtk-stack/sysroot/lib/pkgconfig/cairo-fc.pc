@@ -1,0 +1,8 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+
+Name: cairo-fc
+Description: Fontconfig font backend for cairo graphics library
+Version: 1.18.2
+Requires: cairo, fontconfig >=  2.13.0
+Cflags: -I${includedir}

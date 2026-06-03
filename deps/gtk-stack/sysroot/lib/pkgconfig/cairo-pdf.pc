@@ -1,0 +1,8 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+
+Name: cairo-pdf
+Description: PDF surface backend for cairo graphics library
+Version: 1.18.2
+Requires: cairo, zlib
+Cflags: -I${includedir}

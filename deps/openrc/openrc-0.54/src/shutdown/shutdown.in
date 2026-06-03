@@ -1,0 +1,46 @@
+#!/bin/sh
+
+do_halt=false
+while getopts :akrhPHfFnct: opt; do
+	case "$opt" in
+		a) ;;
+		k) ;;
+		r)
+			shutdown_arg=--reboot
+			;;
+		h)
+			do_halt=true
+			shutdown_arg=--poweroff
+			;;
+		P)
+			if ! ${do_halt}; then
+				printf "%s\n" "The -P flag requires the -h flag" >&2
+				exit 1
+			fi
+			shutdown_arg=--poweroff
+			;;
+		H)
+			if ! ${do_halt}; then
+				printf "%s\n" "The -H flag requires the -h flag" >&2
+				exit 1
+			fi
+			shutdown_arg=--halt
+			;;
+		f) ;;
+		F) ;;
+		n) ;;
+		c) ;;
+		t) ;;
+		[?]) printf "%s\n" "${0##*/}: invalid command line option" >&2
+		exit 1
+		;;
+	esac
+done
+shift $((OPTIND-1))
+
+if [ -z "${shutdown_arg}" ]; then
+	shutdown_arg=--single
+fi
+
+printf "%s %s\n" "@SBINDIR@/openrc-shutdown ${shutdown_arg}" "$@"
+exec @SBINDIR@/openrc-shutdown ${shutdown_arg} "$@"

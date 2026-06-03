@@ -1,0 +1,511 @@
+# translation of gnome-desktop.HEAD.ne.po to Nepali
+# Nepali Translation of gnome-desktop
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the gnome-desktop package.
+# Pawan Chitrakar <pawan@nplinux.org>.
+#
+# Narayan Kumar Magar <narayan@mpp.org.np>, 2007.
+msgid ""
+msgstr ""
+"Project-Id-Version: Nepali Translation Gnome\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-desktop/issues\n"
+"POT-Creation-Date: 2022-09-02 16:31+0000\n"
+"PO-Revision-Date: 2022-09-08 01:59+0545\n"
+"Last-Translator: Pawan Chitrakar <chautari@gmail.com>\n"
+"Language-Team: Nepali Translation Team <chautari@gmail.com>\n"
+"Language: ne\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"First-Translator: Suman Raj Tiwari <tiwarisuman@hotmail.com>\n"
+"X-Generator: Poedit 3.0.1\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1014
+#, c-format
+msgid "File %s does not have a preview icon attribute"
+msgstr "फाइल %s सँग पूर्वावलोकन प्रतिमा विशेषता छैन"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1024
+#, c-format
+msgid "No loadable icon for %s"
+msgstr "%s का लागि लोड गर्न योग्य प्रतिमा छैन"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1153
+#, c-format
+msgid "Could not find thumbnailer for mime-type '%s'"
+msgstr "माइम-प्रकार '%s' का लागि थम्बनेलर फेला पार्न सकेन"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1283
+#, c-format
+msgid "Failed to create folder '%s'"
+msgstr "फोल्डर '%s' सिर्जना गर्न असफल"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1296
+#, c-format
+msgid "The output folder '%s' is not writable"
+msgstr "निर्गत फोल्डर '%s' लेख्न योग्य छैन"
+
+#: libgnome-desktop/gnome-languages.c:691
+msgid "Unspecified"
+msgstr "निर्दिष्ट नगरिएको"
+
+#. TRANSLATORS: Used to distinguish the labels representing the gez_ER
+#. and gez_ET locales from gez_ER@abegede respective gez_ET@abegede. The
+#. difference is related to collation.
+#: libgnome-desktop/gnome-languages.c:1352
+msgid "Abegede"
+msgstr "अबेगेडे"
+
+#. TRANSLATORS: Used to distinguish Cyrillic from Latin written language variants.
+#: libgnome-desktop/gnome-languages.c:1354
+msgid "Cyrillic"
+msgstr "सिरिलिक"
+
+#. TRANSLATORS: Also known as "Nagari", a written variant for many languages
+#. of the Indian subcontinent. See:
+#. https://en.wikipedia.org/wiki/Devanagari
+#: libgnome-desktop/gnome-languages.c:1358
+msgid "Devanagari"
+msgstr "देवनागरी"
+
+#. TRANSLATORS: Used to distinguish the label representing the tt_RU
+#. locale from tt_RU@iqtelif. It's a special alphabet for Tatar.
+#: libgnome-desktop/gnome-languages.c:1361
+msgid "IQTElif"
+msgstr "IQTElif"
+
+#. TRANSLATORS: The alphabet/script, not the language. Used to distinguish
+#. Latin from Cyrillic written language variants.
+#: libgnome-desktop/gnome-languages.c:1364
+msgid "Latin"
+msgstr "ल्याटिन"
+
+#. TRANSLATORS: "Saho" is a variant of the Afar language. Used to
+#. distinguish the label representing the aa_ER locale from aa_ER@saaho.
+#: libgnome-desktop/gnome-languages.c:1367
+msgid "Saho"
+msgstr "साहो"
+
+#. TRANSLATORS: "Valencia" is a dialect of the Catalan language spoken
+#. in Valencia. Used to distinguish the label representing the ca_ES
+#. locale from ca_ES@valencia.
+#: libgnome-desktop/gnome-languages.c:1371
+msgid "Valencia"
+msgstr "भ्यालेन्सिया"
+
+#: libgnome-desktop/gnome-rr-config.c:754 libgnome-desktop/gnome-rr/gnome-rr-config.c:712
+#, c-format
+msgid "CRTC %d cannot drive output %s"
+msgstr "सिआर्टिसि %d आउटपुट %s चलाउन सक्दैन"
+
+#: libgnome-desktop/gnome-rr-config.c:761 libgnome-desktop/gnome-rr/gnome-rr-config.c:719
+#, c-format
+msgid "output %s does not support mode %dx%d@%dHz"
+msgstr "आउटपुट %s मोड %dx%d@%dHz समर्थन गर्दैन"
+
+#: libgnome-desktop/gnome-rr-config.c:772 libgnome-desktop/gnome-rr/gnome-rr-config.c:730
+#, c-format
+msgid "CRTC %d does not support rotation=%d"
+msgstr "सिआर्टिसि %d रोटेसन् %d समर्थन गर्दैन"
+
+#: libgnome-desktop/gnome-rr-config.c:785 libgnome-desktop/gnome-rr/gnome-rr-config.c:743
+#, c-format
+msgid ""
+"output %s does not have the same parameters as another cloned output:\n"
+"existing mode = %d, new mode = %d\n"
+"existing coordinates = (%d, %d), new coordinates = (%d, %d)\n"
+"existing rotation = %d, new rotation = %d"
+msgstr ""
+"निर्गत %s सँग एक प्यारामिटरहरू अर्को क्लोन आउटपुटको रूपमा छैन:\n"
+"अवस्थित मोड =%d, नयाँ मोड =%d\n"
+"अवस्थित समकक्ष = (%d,%d), नयाँ समकक्ष = (%d,%d)\n"
+"अवस्थित रोटेशन =%d, नयाँ रोटेशन =%d"
+
+#: libgnome-desktop/gnome-rr-config.c:800 libgnome-desktop/gnome-rr/gnome-rr-config.c:758
+#, c-format
+msgid "cannot clone to output %s"
+msgstr "आउटपुट %s मा क्लोन हुनसक्दैन"
+
+#: libgnome-desktop/gnome-rr-config.c:926 libgnome-desktop/gnome-rr/gnome-rr-config.c:883
+#, c-format
+msgid "Trying modes for CRTC %d\n"
+msgstr ""
+"सिआर्टिसि %d\n"
+"का लागी मोडहरु कोसिस् गरिदै\n"
+
+#: libgnome-desktop/gnome-rr-config.c:950 libgnome-desktop/gnome-rr/gnome-rr-config.c:907
+#, c-format
+msgid "CRTC %d: trying mode %dx%d@%dHz with output at %dx%d@%dHz (pass %d)\n"
+msgstr "सिआर्टिसि %d %dx%d@%dHz (pass %d) मा आउटपुट दिदै %dx%d@%dHz कोसिस् गरिदै\n"
+
+#: libgnome-desktop/gnome-rr-config.c:997 libgnome-desktop/gnome-rr/gnome-rr-config.c:954
+#, c-format
+msgid ""
+"could not assign CRTCs to outputs:\n"
+"%s"
+msgstr ""
+"सिआर्टिसिहरु %s\n"
+"आउटपुटहरुमा खटाउन सकियेन"
+
+#: libgnome-desktop/gnome-rr-config.c:1001 libgnome-desktop/gnome-rr/gnome-rr-config.c:958
+#, c-format
+msgid ""
+"none of the selected modes were compatible with the possible modes:\n"
+"%s"
+msgstr "कुनै पनि चयन गरियेका मोडहरु संभावित %s मोडहरु संग मिलेनन्"
+
+#. Translators: the "requested", "minimum", and
+#. * "maximum" words here are not keywords; please
+#. * translate them as usual.
+#: libgnome-desktop/gnome-rr-config.c:1082 libgnome-desktop/gnome-rr/gnome-rr-config.c:1039
+#, c-format
+msgid ""
+"required virtual size does not fit available size: requested=(%d, %d), minimum=(%d, %d), "
+"maximum=(%d, %d)"
+msgstr ""
+"आवश्यक भर्चुअल आकार उपलब्ध आकार संग  फिट गर्दैन: अनुरोधित =(%d, %d), न्यूनतम =(%d, %d), अधिकतम "
+"=(%d, %d)"
+
+#: libgnome-desktop/gnome-wall-clock.c:258
+msgctxt "time separator"
+msgid "∶"
+msgstr "∶"
+
+#. Translators: This is the time format with full date
+#. plus day used in 24-hour mode. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:335
+msgid "%a %b %-e_%R:%S"
+msgstr "%a %b %-e_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:336
+msgid "%a %b %-e_%R"
+msgstr "%a %b %-e_%R"
+
+#. Translators: This is the time format with full date
+#. used in 24-hour mode. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:341
+msgid "%b %-e_%R:%S"
+msgstr "%b %-e_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:342
+msgid "%b %-e_%R"
+msgstr "%b %-e_%R"
+
+#. Translators: This is the time format with day used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:346
+msgid "%a %R:%S"
+msgstr "%a %R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:347
+msgid "%a %R"
+msgstr "%a %R"
+
+#. Translators: This is the time format without date used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:351
+msgid "%R:%S"
+msgstr "%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:352
+msgid "%R"
+msgstr "%R"
+
+#. Translators: This is a time format with full date
+#. plus day used for AM/PM. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:360
+msgid "%a %b %-e_%l:%M:%S %p"
+msgstr "%a %b %-e_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:361
+msgid "%a %b %-e_%l:%M %p"
+msgstr "%a %b %-e_%l:%M %p"
+
+#. Translators: This is a time format with full date
+#. used for AM/PM. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:366
+msgid "%b %-e_%l:%M:%S %p"
+msgstr "%b %-e_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:367
+msgid "%b %-e_%l:%M %p"
+msgstr "%b %-e_%l:%M %p"
+
+#. Translators: This is a time format with day used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:371
+msgid "%a %l:%M:%S %p"
+msgstr "%a %l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:372
+msgid "%a %l:%M %p"
+msgstr "%a %l:%M %p"
+
+#. Translators: This is a time format without date used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:376
+msgid "%l:%M:%S %p"
+msgstr "%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:377
+msgid "%l:%M %p"
+msgstr "%l∶%M %p"
+
+#~ msgid "The Mysterious GEGL"
+#~ msgstr "रहस्यमय GEGL"
+
+#~ msgid "The Squeaky Rubber GNOME"
+#~ msgstr "स्क्विकि रबर जीनोम"
+
+#~ msgid "Wanda The GNOME Fish"
+#~ msgstr "वान्डा जीनोम फिस"
+
+#~ msgid "Could not locate the directory with header images."
+#~ msgstr "हेडर छविहरूसँग डाइरेक्टरी राख्न सकेन ।"
+
+#~ msgid "Failed to open directory with header images: %s"
+#~ msgstr "हेडर छविहरूसँग डाइरेक्टरी खोल्न असफल भयो: %s"
+
+#~ msgid "Unable to load header image: %s"
+#~ msgstr "हेडर छवि लोड गर्न असक्षम: %s"
+
+#~ msgid "Could not locate the GNOME logo."
+#~ msgstr "जिनोम लोगो राख्न सकेन ।"
+
+#~ msgid "Unable to load '%s': %s"
+#~ msgstr "'%s' लोड गर्न असक्षम: %s"
+
+#~ msgid "Could not open the address \"%s\": %s"
+#~ msgstr " \"%s\" ठेगाना खोल्न सकेन: %s"
+
+#~ msgid "Could not get information about GNOME version."
+#~ msgstr "जिनोम संस्करणको बारेमा सूचना प्राप्त गर्न सकेन ।"
+
+#~ msgid "%s: %s\n"
+#~ msgstr "%s: %s\n"
+
+#~ msgid "Version"
+#~ msgstr "संस्करण"
+
+#~ msgid "Distributor"
+#~ msgstr "बितरक"
+
+#~ msgid "Build Date"
+#~ msgstr "निर्माण मिति"
+
+#~ msgid "%s: "
+#~ msgstr "%s: "
+
+#~ msgid "About GNOME"
+#~ msgstr "जिनोमको बारेमा"
+
+#~ msgid "News"
+#~ msgstr "समाचारहरू"
+
+#~ msgid "Software"
+#~ msgstr "सफ्टवेयर"
+
+#~ msgid "Developers"
+#~ msgstr "विकासकर्ता"
+
+#~ msgid "Friends of GNOME"
+#~ msgstr "जिनोमका साथिहरू"
+
+#~ msgid "Contact"
+#~ msgstr "सम्पर्क गर्नुहोस्"
+
+#~ msgid "Welcome to the GNOME Desktop"
+#~ msgstr "जिनोम डेस्कटपमा स्वागत छ"
+
+#~ msgid "Brought to you by:"
+#~ msgstr "यसद्धारा प्रायोजित:"
+
+#~ msgid "About the GNOME Desktop"
+#~ msgstr "जिनोम डेस्कटपको बारेमा"
+
+#~ msgid "Display information on this GNOME version"
+#~ msgstr "यो जीनोम संस्करणमा सूचना प्रदर्शन गर्नुहोस्"
+
+#~ msgid "Learn more about GNOME"
+#~ msgstr "जिनोमको बारेमा धेरै सिक्नुहोस्"
+
+#~ msgid ""
+#~ "GNOME also includes a complete development platform for applications programmers, "
+#~ "allowing the creation of powerful and complex applications."
+#~ msgstr ""
+#~ "अनुप्रयोग कार्यक्रमहरूको लागि जिनोमले पनि शक्तिशाली र जटिल अनुप्रयोगहरूको सिर्जनालाई अनुमति दिँदै "
+#~ "एउटा पुर्ण विकास मञ्च समावेश गर्दछ ।"
+
+#~ msgid ""
+#~ "GNOME includes most of what you see on your computer, including the file manager, web "
+#~ "browser, menus, and many applications."
+#~ msgstr ""
+#~ "जिनोमले तपाईँले आफ्नो कम्प्युरटरमा देखेको फाइल प्रबन्धक, वेब ब्राउजर, मेनुहरू र धेरै अनुप्रयोगहरू समेत धेरै "
+#~ "जसो समावेश गर्दछ ।"
+
+#~ msgid ""
+#~ "GNOME is a Free, usable, stable, accessible desktop environment for the Unix-like "
+#~ "family of operating systems."
+#~ msgstr ""
+#~ "सञ्चालन प्रणालीको युनिक्स-जस्तै परिवारका लागि जीनोम स्वतन्त्र, उपयोगी, स्थायी, पहुँचयोग्य डेस्कटप "
+#~ "परिवेश हो ।"
+
+#~ msgid ""
+#~ "GNOME's focus on usability and accessibility, regular release cycle, and strong "
+#~ "corporate backing make it unique among Free Software desktops."
+#~ msgstr ""
+#~ "प्रयोगात्मकता र पहुँचतामा जीनोमको फोकस, नियमित निष्कासन चक्र, र वलियो संगठित समर्थनले यसलाई "
+#~ "स्वतन्त्र सफ्टवेयर डेस्कटपहरू मध्ये अद्वितीय बनाउँदछ ।"
+
+#~ msgid ""
+#~ "GNOME's greatest strength is our strong community. Virtually anyone, with or without "
+#~ "coding skills, can contribute to making GNOME better."
+#~ msgstr ""
+#~ "जीनोमको सबै भन्दा ठूलो आधार भनेको हाम्रो बलियो समुदाय नै हो । वास्तविक रूपमा जो कोहीले, सङ्केतन "
+#~ "दक्षता वा दक्षता बिना नै, जीनोमलाई राम्रो बनाउन योगदान गर्न सक्दछ । "
+
+#~ msgid ""
+#~ "Hundreds of people have contributed code to GNOME since it was started in 1997; many "
+#~ "more have contributed in other important ways, including translations, documentation, "
+#~ "and quality assurance."
+#~ msgstr ""
+#~ "१९९७ मा जीनोम सुरआत भए देखि नै सयौं मानिसहरूले जीनोममा कोड योगदान गर्नुभएको छ; धेरै धेरैले अनुवाद, "
+#~ "मिसिलिकरण, र गुणात्मक आश्वासन समेत गरेर अन्य महत्वपूर्ण तरिकाले योगदान गर्नुभएको छ,"
+
+#~ msgid "Error reading file '%s': %s"
+#~ msgstr "'%s' फाइल पढ्दा त्रुटि: %s"
+
+#~ msgid "Error rewinding file '%s': %s"
+#~ msgstr "'%s' फाइल दोहोर्याउँदा त्रुटि: %s"
+
+#~ msgid "No name"
+#~ msgstr "नाम छैन"
+
+#~ msgid "File '%s' is not a regular file or directory."
+#~ msgstr "'%s' फाइल एउटा नियमित फाइल वा डाइरेक्टरी होइन ।"
+
+#~ msgid "Error cannot find file id '%s'"
+#~ msgstr "त्रुटिले '%s' फाइल आईडी फेला पार्न सक्दैन"
+
+#~ msgid "No filename to save to"
+#~ msgstr "यसमा बचत गर्नलाई फाइल नाम छैन"
+
+#~ msgid "Starting %s"
+#~ msgstr "%s सुरु गर्दै"
+
+#~ msgid "No URL to launch"
+#~ msgstr "सुरुआत गर्नलाई URL छैन"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "एउटा सुरुआतयोग्य वस्तु छैन"
+
+#~ msgid "No command (Exec) to launch"
+#~ msgstr "सुरुआत गर्नलाई आदेश (कार्यान्वयन) छैन"
+
+#~ msgid "Bad command (Exec) to launch"
+#~ msgstr "सुरुआत गर्नलाई खराब आदेश (कार्यान्वयन)"
+
+#~ msgid "Unknown encoding of: %s"
+#~ msgstr "यसको अज्ञात संकेतन: %s"
+
+#~ msgid "Error writing file '%s': %s"
+#~ msgstr "'%s' फाइल लेख्दा त्रुटि: %s"
+
+#~ msgid "Directory"
+#~ msgstr "डाइरेक्टरी"
+
+#~ msgid "Application"
+#~ msgstr "अनुप्रयोग"
+
+#~ msgid "Link"
+#~ msgstr "लिङ्क"
+
+#~ msgid "FSDevice"
+#~ msgstr "FSयन्त्र"
+
+#~ msgid "MIME Type"
+#~ msgstr "माइम प्रकार"
+
+#~ msgid "Service"
+#~ msgstr "सेवा"
+
+#~ msgid "ServiceType"
+#~ msgstr "सेवा प्रकार"
+
+#~ msgid "_URL:"
+#~ msgstr "URL:"
+
+#~ msgid "Comm_and:"
+#~ msgstr "आदेश:"
+
+#~ msgid "_Name:"
+#~ msgstr "नाम:"
+
+#~ msgid "_Generic name:"
+#~ msgstr "जेनेरिक नाम:"
+
+#~ msgid "Co_mment:"
+#~ msgstr "टिप्पणी गर्नुहोस्:"
+
+#~ msgid "Browse"
+#~ msgstr "ब्राउज गर्नुहोस्"
+
+#~ msgid "_Type:"
+#~ msgstr "प्रकार:"
+
+#~ msgid "_Icon:"
+#~ msgstr "प्रतिमा:"
+
+#~ msgid "Browse icons"
+#~ msgstr "प्रतिमाहरू ब्राउज गर्नुहोस्"
+
+#~ msgid "Run in t_erminal"
+#~ msgstr "टर्मिनलमा चलाउनुहोस्"
+
+#~ msgid "Language"
+#~ msgstr "भाषा"
+
+#~ msgid "Name"
+#~ msgstr "नाम"
+
+#~ msgid "Generic name"
+#~ msgstr "जेनेरिक नाम"
+
+#~ msgid "Comment"
+#~ msgstr "टिप्पणी गर्नुहोस्"
+
+#~ msgid "_Try this before using:"
+#~ msgstr "प्रयोग गर्नु भन्दा अगाडि प्रयास गर्नुहोस्:"
+
+#~ msgid "_Documentation:"
+#~ msgstr "मिसिलिकरण:"
+
+#~ msgid "_Name/Comment translations:"
+#~ msgstr "नाम/टिप्पणि अनुवाद:"
+
+#~ msgid "_Add/Set"
+#~ msgstr "थप्नुहोस्/सेट गर्नुहोस्"
+
+#~ msgid "Add or Set Name/Comment Translations"
+#~ msgstr "नाम/टिप्पणी अनुवादहरू थप्नुहोस् वा सेट गर्नुहोस्"
+
+#~ msgid "Re_move"
+#~ msgstr "हटाउनुहोस्"
+
+#~ msgid "Remove Name/Comment Translation"
+#~ msgstr "नाम/टिप्पणी अनुवाद हटाउनुहोस्"
+
+#~ msgid "Basic"
+#~ msgstr "आधारभूत"
+
+#~ msgid "Advanced"
+#~ msgstr "उन्नत"
+
+#~ msgid "_Show Hints at Startup"
+#~ msgstr "सुरुआतमा संकेतहरू देखाउनुहोस्"

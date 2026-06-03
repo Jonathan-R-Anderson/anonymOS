@@ -1,0 +1,490 @@
+# Translation of oc.po to Occitan
+# Occitan translation of gnome-desktop.
+# Copyright (C) 2007 Free Software Foundation, Inc.
+# This file is distributed under the same license as the gnome-desktop package.
+# Yannig Marchegay (Kokoyaya) <yannig@marchegay.org>, 2007.
+# Cédric Valmary (Tot en òc) <cvalmary@yahoo.fr>, 2015.
+msgid ""
+msgstr ""
+"Project-Id-Version: oc\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-desktop/issues\n"
+"POT-Creation-Date: 2022-05-05 15:12+0000\n"
+"PO-Revision-Date: 2022-05-23 19:06+0200\n"
+"Last-Translator: Quentin PAGÈS\n"
+"Language-Team: Tot en òc (totenoc.eu)\n"
+"Language: oc\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Poedit 3.0.1\n"
+"X-Project-Style: gnome\n"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1014
+#, c-format
+msgid "File %s does not have a preview icon attribute"
+msgstr "Lo fichièr %s a pas d’atribut d’icòna per la previsualizacion"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1024
+#, c-format
+msgid "No loadable icon for %s"
+msgstr "Cap d’icòna pas cargabla per %s"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1153
+#, c-format
+msgid "Could not find thumbnailer for mime-type '%s'"
+msgstr "Vinheta pas trobada pel mime-type « %s »"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1283
+#, c-format
+msgid "Failed to create folder '%s'"
+msgstr "Creacion impossibla del dossièr « %s »"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1296
+#, c-format
+msgid "The output folder '%s' is not writable"
+msgstr "Lo dossièr de sortida « %s » es pas modificable"
+
+#: libgnome-desktop/gnome-languages.c:724
+msgid "Unspecified"
+msgstr "Pas precisat"
+
+#. TRANSLATORS: Used to distinguish the labels representing the gez_ER
+#. and gez_ET locales from gez_ER@abegede respective gez_ET@abegede. The
+#. difference is related to collation.
+#: libgnome-desktop/gnome-languages.c:1385
+msgid "Abegede"
+msgstr "Abegede"
+
+#. TRANSLATORS: Used to distinguish Cyrillic from Latin written language variants.
+#: libgnome-desktop/gnome-languages.c:1387
+msgid "Cyrillic"
+msgstr "Cirillic"
+
+#. TRANSLATORS: Also known as "Nagari", a written variant for many languages
+#. of the Indian subcontinent. See:
+#. https://en.wikipedia.org/wiki/Devanagari
+#: libgnome-desktop/gnome-languages.c:1391
+msgid "Devanagari"
+msgstr "Devanagari"
+
+#. TRANSLATORS: Used to distinguish the label representing the tt_RU
+#. locale from tt_RU@iqtelif. It's a special alphabet for Tatar.
+#: libgnome-desktop/gnome-languages.c:1394
+msgid "IQTElif"
+msgstr "IQTElif"
+
+#. TRANSLATORS: The alphabet/script, not the language. Used to distinguish
+#. Latin from Cyrillic written language variants.
+#: libgnome-desktop/gnome-languages.c:1397
+msgid "Latin"
+msgstr "Latin"
+
+#. TRANSLATORS: "Saho" is a variant of the Afar language. Used to
+#. distinguish the label representing the aa_ER locale from aa_ER@saaho.
+#: libgnome-desktop/gnome-languages.c:1400
+msgid "Saho"
+msgstr "Saho"
+
+#. TRANSLATORS: "Valencia" is a dialect of the Catalan language spoken
+#. in Valencia. Used to distinguish the label representing the ca_ES
+#. locale from ca_ES@valencia.
+#: libgnome-desktop/gnome-languages.c:1404
+msgid "Valencia"
+msgstr "Valencian"
+
+#: libgnome-desktop/gnome-rr-config.c:754
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:712
+#, c-format
+msgid "CRTC %d cannot drive output %s"
+msgstr "Lo CRTC %d pòt pas pilotar una sortida %s"
+
+#: libgnome-desktop/gnome-rr-config.c:761
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:719
+#, c-format
+msgid "output %s does not support mode %dx%d@%dHz"
+msgstr "la sortida %s pren pas en carga lo mòde %dx%d@%dHz"
+
+#: libgnome-desktop/gnome-rr-config.c:772
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:730
+#, c-format
+msgid "CRTC %d does not support rotation=%d"
+msgstr "Lo CRTC %d pren pas en carga la rotacion = %d"
+
+#: libgnome-desktop/gnome-rr-config.c:785
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:743
+#, c-format
+msgid ""
+"output %s does not have the same parameters as another cloned output:\n"
+"existing mode = %d, new mode = %d\n"
+"existing coordinates = (%d, %d), new coordinates = (%d, %d)\n"
+"existing rotation = %d, new rotation = %d"
+msgstr ""
+"la sortida %s possedís pas los meteisses paramètres que l'autra sortida "
+"clòna :\n"
+"mòde actual = %d, mòde novèl = %d\n"
+"coordenadas actualas = (%d, %d), coordenadas novèlas = (%d, %d)\n"
+"rotacion actuala = %d, novèla rotacion = %d"
+
+#: libgnome-desktop/gnome-rr-config.c:800
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:758
+#, c-format
+msgid "cannot clone to output %s"
+msgstr "impossible de clonar sus la sortida %s"
+
+#: libgnome-desktop/gnome-rr-config.c:926
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:883
+#, c-format
+msgid "Trying modes for CRTC %d\n"
+msgstr "Tèsts dels mòdes pel CRTC %d\n"
+
+#: libgnome-desktop/gnome-rr-config.c:950
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:907
+#, c-format
+msgid "CRTC %d: trying mode %dx%d@%dHz with output at %dx%d@%dHz (pass %d)\n"
+msgstr ""
+"CRTC %d : tèst del mòde %dx%d@%dHz amb una sortida a %dx%d@%dHz (passa %d)\n"
+
+#: libgnome-desktop/gnome-rr-config.c:997
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:954
+#, c-format
+msgid ""
+"could not assign CRTCs to outputs:\n"
+"%s"
+msgstr ""
+"impossible d'assignar de CRTC a las sortidas :\n"
+"%s"
+
+#: libgnome-desktop/gnome-rr-config.c:1001
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:958
+#, c-format
+msgid ""
+"none of the selected modes were compatible with the possible modes:\n"
+"%s"
+msgstr ""
+"cap dels mòdes causits es pas compatible amb los mòdes possibles :\n"
+"%s"
+
+#. Translators: the "requested", "minimum", and
+#. * "maximum" words here are not keywords; please
+#. * translate them as usual.
+#: libgnome-desktop/gnome-rr-config.c:1082
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:1039
+#, c-format
+msgid ""
+"required virtual size does not fit available size: requested=(%d, %d), "
+"minimum=(%d, %d), maximum=(%d, %d)"
+msgstr ""
+"la talha virtuala demandada es pas adaptada a la talha disponibla : "
+"demanda=(%d, %d), minimum=(%d, %d), maximum=(%d, %d)"
+
+#: libgnome-desktop/gnome-wall-clock.c:258
+msgctxt "time separator"
+msgid "∶"
+msgstr "h"
+
+#. Translators: This is the time format with full date
+#. plus day used in 24-hour mode. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:335
+msgid "%a %b %-e_%R:%S"
+msgstr "%A %e %B_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:336
+msgid "%a %b %-e_%R"
+msgstr "%A %e %B_%R"
+
+#. Translators: This is the time format with full date
+#. used in 24-hour mode. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:341
+msgid "%b %-e_%R:%S"
+msgstr "%e %b_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:342
+msgid "%b %-e_%R"
+msgstr "%e %b_%R"
+
+#. Translators: This is the time format with day used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:346
+msgid "%a %R:%S"
+msgstr "%a %R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:347
+msgid "%a %R"
+msgstr "%a %R"
+
+#. Translators: This is the time format without date used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:351
+msgid "%R:%S"
+msgstr "%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:352
+msgid "%R"
+msgstr "%R"
+
+#. Translators: This is a time format with full date
+#. plus day used for AM/PM. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:360
+msgid "%a %b %-e_%l:%M:%S %p"
+msgstr "%A %e %B_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:361
+msgid "%a %b %-e_%l:%M %p"
+msgstr "%A %e %B_%l:%M %p"
+
+#. Translators: This is a time format with full date
+#. used for AM/PM. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:366
+msgid "%b %-e_%l:%M:%S %p"
+msgstr "%A %e %B_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:367
+msgid "%b %-e_%l:%M %p"
+msgstr "%A %e %B_%l:%M %p"
+
+#. Translators: This is a time format with day used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:371
+msgid "%a %l:%M:%S %p"
+msgstr "%a %l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:372
+msgid "%a %l:%M %p"
+msgstr "%a %l:%M %p"
+
+#. Translators: This is a time format without date used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:376
+msgid "%l:%M:%S %p"
+msgstr "%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:377
+msgid "%l:%M %p"
+msgstr "%l:%M %p"
+
+#~ msgctxt "Monitor vendor"
+#~ msgid "Unknown"
+#~ msgstr "Desconegut"
+
+#~ msgid "could not get the screen resources (CRTCs, outputs, modes)"
+#~ msgstr "impossible d'obténer las ressorsas d'ecran (CRTC, sortidas, mòdes)"
+
+#~ msgid "unhandled X error while getting the range of screen sizes"
+#~ msgstr ""
+#~ "error X pas gerida al moment de l'obtencion de la lista de las talhas "
+#~ "d'ecran disponiblas"
+
+#~ msgid "could not get the range of screen sizes"
+#~ msgstr "impossible d'obténer la lista de las talhas d'ecran disponiblas"
+
+#~ msgid "RANDR extension is not present"
+#~ msgstr "l'extension RANDR es pas presenta"
+
+#~ msgid "could not get information about output %d"
+#~ msgstr "impossible d'obténer d'informacions sus la sortida %d"
+
+#~ msgid "Built-in Display"
+#~ msgstr "Afichatge integrat"
+
+#~ msgid "%s Display"
+#~ msgstr "Afichatge %s"
+
+#~ msgid "Unknown Display"
+#~ msgstr "Afichatge desconegut"
+
+#~ msgid ""
+#~ "requested position/size for CRTC %d is outside the allowed limit: "
+#~ "position=(%d, %d), size=(%d, %d), maximum=(%d, %d)"
+#~ msgstr ""
+#~ "la talha e la posicion demandadas al CRTC %d son en defòra dels limits "
+#~ "autorizadas : position=(%d, %d), talha=(%d, %d), maximum=(%d, %d)"
+
+#~ msgid "could not set the configuration for CRTC %d"
+#~ msgstr "impossible de definir la configuracion pel CRTC %d"
+
+#~ msgid "could not get information about CRTC %d"
+#~ msgstr "impossible d'obténer d'informacions sul CRTC %d"
+
+#~ msgid ""
+#~ "none of the saved display configurations matched the active configuration"
+#~ msgstr ""
+#~ "aucune des configurations d'afichatge enregistradas ne correspond a la "
+#~ "configuration active"
+
+#~ msgid "%a %b %e, %R∶%S"
+#~ msgstr "%a %e %b, %R∶%S"
+
+#~ msgid "%a %l∶%M∶%S %p"
+#~ msgstr "%a %l∶%M∶%S %p"
+
+#~ msgid "%a %l∶%M %p"
+#~ msgstr "%a %l∶%M %p"
+
+#~ msgid "%l∶%M∶%S %p"
+#~ msgstr "%l∶%M∶%S %p"
+
+#~ msgid "%l∶%M %p"
+#~ msgstr "%l∶%M %p"
+
+#~ msgid "Cannot find a terminal, using xterm, even if it may not work"
+#~ msgstr ""
+#~ "Impossible de trobar un terminal, xterm serà utilizat mas il pourrait ne "
+#~ "pas fonctionner"
+
+#~ msgid "Laptop"
+#~ msgstr "Ordenador portable"
+
+#~ msgid "Mirrored Displays"
+#~ msgstr "Ecrans clones"
+
+#~ msgid "About GNOME"
+#~ msgstr "A prepaus de GNOME"
+
+#~ msgid "Learn more about GNOME"
+#~ msgstr "Ne saber mai sus GNOME"
+
+#~ msgid "News"
+#~ msgstr "Novèlas"
+
+#~ msgid "GNOME Library"
+#~ msgstr "Bibliotèca GNOME"
+
+#~ msgid "Friends of GNOME"
+#~ msgstr "Amics de GNOME"
+
+#~ msgid "Contact"
+#~ msgstr "Contacte"
+
+#~ msgid "The Mysterious GEGL"
+#~ msgstr "Lo misteriós GEGL"
+
+#~ msgid "The Squeaky Rubber GNOME"
+#~ msgstr "Lo cruissiment d'elastic GNOME"
+
+#~ msgid "Wanda The GNOME Fish"
+#~ msgstr "Wanda lo peis GNOME"
+
+#~ msgid "_Open URL"
+#~ msgstr "_Dobrir l'URL"
+
+#~ msgid "_Copy URL"
+#~ msgstr "_Copiar l'URL"
+
+#~ msgid "About the GNOME Desktop"
+#~ msgstr "A prepaus del burèu GNOME"
+
+#~ msgid "%(name)s: %(value)s"
+#~ msgstr "%(name)s : %(value)s"
+
+#~ msgid "Welcome to the GNOME Desktop"
+#~ msgstr "Benvenguda sul burèu GNOME"
+
+#~ msgid "Brought to you by:"
+#~ msgstr "Vos es presentat per :"
+
+#~ msgid "<b>%(name)s:</b> %(value)s"
+#~ msgstr "<b>%(name)s :</b> %(value)s"
+
+#~ msgid "Version"
+#~ msgstr "Version"
+
+#~ msgid "Distributor"
+#~ msgstr "Distributor"
+
+#~ msgid "Build Date"
+#~ msgstr "Data de construccion"
+
+#~ msgid "Display information on this GNOME version"
+#~ msgstr "Aficha d'informacions relativas a la presenta version de GNOME"
+
+#~ msgid ""
+#~ "GNOME also includes a complete development platform for applications "
+#~ "programmers, allowing the creation of powerful and complex applications."
+#~ msgstr ""
+#~ "GNOME incorpòra tanben una plataforma completa de desvolopament per "
+#~ "programaires. Lor permet de crear d'aplicacions poderosas e complèxas."
+
+#~ msgid ""
+#~ "GNOME includes most of what you see on your computer, including the file "
+#~ "manager, web browser, menus, and many applications."
+#~ msgstr ""
+#~ "GNOME inclutz la màger part de çò que vesètz sus vòstre ordenador, inclús "
+#~ "lo gestionari de fichièrs, lo navigador Web, los menús e fòrça "
+#~ "aplicacions."
+
+#~ msgid ""
+#~ "GNOME is a Free, usable, stable, accessible desktop environment for the "
+#~ "Unix-like family of operating systems."
+#~ msgstr ""
+#~ "GNOME es un environament de burèu Liure, foncional, estable e accessible "
+#~ "pels sistèmas operatius de tipe Unix."
+
+#~ msgid ""
+#~ "GNOME's focus on usability and accessibility, regular release cycle, and "
+#~ "strong corporate backing make it unique among Free Software desktops."
+#~ msgstr ""
+#~ "L'atencion de GNOME sus l'ergonomia e l'accessibilitat, un cicle de "
+#~ "distribucion regular e lo seguiment de grandas entrepresas lo rend unic "
+#~ "entre totes los environaments de burèu Liure."
+
+#~ msgid ""
+#~ "GNOME's greatest strength is our strong community. Virtually anyone, with "
+#~ "or without coding skills, can contribute to making GNOME better."
+#~ msgstr ""
+#~ "La mai granda fòrça de GNOME es sa poderosa comunautat. A pauc près qual "
+#~ "que siá, amb o sens competéncia en programacion, pòt contribuir a "
+#~ "melhorar GNOME."
+
+#~ msgid ""
+#~ "Hundreds of people have contributed code to GNOME since it was started in "
+#~ "1997; many more have contributed in other important ways, including "
+#~ "translations, documentation, and quality assurance."
+#~ msgstr ""
+#~ "De centenats de personas an portat de còdi al projècte GNOME dempuèi sa "
+#~ "naissance en 1997 ; encara mai an contribuit dins d'autres domenis "
+#~ "importants tals coma las traduccions, la documentavion e l'assegurança "
+#~ "qualité."
+
+#~ msgid "Error reading file '%s': %s"
+#~ msgstr "Error al moment de la lectura del fichièr « %s » : %s"
+
+#~ msgid "Error rewinding file '%s': %s"
+#~ msgstr "Error en rembobinant lo fichièr « %s » : %s"
+
+#~ msgid "No name"
+#~ msgstr "Pas cap de nom"
+
+#~ msgid "File '%s' is not a regular file or directory."
+#~ msgstr "Lo fichièr « %s » es pas un fichièr regular o un repertòri."
+
+#~ msgid "Cannot find file '%s'"
+#~ msgstr "Impossible de trobar lo fichièr « %s »"
+
+#~ msgid "No filename to save to"
+#~ msgstr "Pas cap de nom de fichièr per enregistrar"
+
+#~ msgid "Starting %s"
+#~ msgstr "Aviada de %s"
+
+#~ msgid "No URL to launch"
+#~ msgstr "Pas cap d'URL d'aviar"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Aqueste element pòt pas èsser aviat"
+
+#~ msgid "No command (Exec) to launch"
+#~ msgstr "Pas cap de comanda (exec) d'aviar"
+
+#~ msgid "Bad command (Exec) to launch"
+#~ msgstr "Marrida comanda (exec) d'aviar"
+
+#~ msgid "Unknown encoding of: %s"
+#~ msgstr "Encodatge desconegut de : %s"
+
+#~ msgid "Mirror Screens"
+#~ msgstr "Ecrans identics"

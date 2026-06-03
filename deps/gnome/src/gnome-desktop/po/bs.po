@@ -1,0 +1,153 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-desktop.HEAD\n"
+"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-"
+"desktop&keywords=I18N+L10N&component=general\n"
+"POT-Creation-Date: 2015-02-27 07:36+0000\n"
+"PO-Revision-Date: 2015-02-04 15:39+0000\n"
+"Last-Translator: Samir Ribić <Unknown>\n"
+"Language-Team: Bosnian <lokal@lugbih.org>\n"
+"Language: bs\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Launchpad-Export-Date: 2015-02-05 06:56+0000\n"
+"X-Generator: Launchpad (build 17331)\n"
+
+#: ../libgnome-desktop/gnome-languages.c:714
+msgid "Unspecified"
+msgstr "Nenavedeno"
+
+#: ../libgnome-desktop/gnome-rr-config.c:745
+#, c-format
+msgid "CRTC %d cannot drive output %s"
+msgstr "CRTC %d ne može dobije izlaz %s"
+
+#: ../libgnome-desktop/gnome-rr-config.c:752
+#, c-format
+msgid "output %s does not support mode %dx%d@%dHz"
+msgstr "izlaz %s ne podržava režim %dx%d@%dHz"
+
+#: ../libgnome-desktop/gnome-rr-config.c:763
+#, c-format
+msgid "CRTC %d does not support rotation=%d"
+msgstr "CRTC %d ne podržava rotaciju=%d"
+
+#: ../libgnome-desktop/gnome-rr-config.c:776
+#, c-format
+msgid ""
+"output %s does not have the same parameters as another cloned output:\n"
+"existing mode = %d, new mode = %d\n"
+"existing coordinates = (%d, %d), new coordinates = (%d, %d)\n"
+"existing rotation = %d, new rotation = %d"
+msgstr ""
+"izlaz %s kao drugi klonirani izlaz:\n"
+"postojeći režim = %d, novi režim = %d\n"
+"postojeće koordinate = (%d, %d), nove koordinate = (%d, %d)\n"
+"postojeća rotacija = %d, nova rotacija = %d"
+
+#: ../libgnome-desktop/gnome-rr-config.c:791
+#, c-format
+msgid "cannot clone to output %s"
+msgstr "ne mogu da kloniram u izlaz %s"
+
+#: ../libgnome-desktop/gnome-rr-config.c:917
+#, c-format
+msgid "Trying modes for CRTC %d\n"
+msgstr "Isprobavam režime za CRTC %d\n"
+
+#: ../libgnome-desktop/gnome-rr-config.c:941
+#, c-format
+msgid "CRTC %d: trying mode %dx%d@%dHz with output at %dx%d@%dHz (pass %d)\n"
+msgstr ""
+"CRTC %d: isprobavam režim %dx%d@%dHz bez izlaza na %dx%d@%dHz (%d. pokušaj)\n"
+
+#: ../libgnome-desktop/gnome-rr-config.c:988
+#, c-format
+msgid ""
+"could not assign CRTCs to outputs:\n"
+"%s"
+msgstr ""
+"ne mogu da pridružim CRTC-e izlazima:\n"
+"%s"
+
+#: ../libgnome-desktop/gnome-rr-config.c:992
+#, c-format
+msgid ""
+"none of the selected modes were compatible with the possible modes:\n"
+"%s"
+msgstr ""
+"ni jedan od izabranih režima nije saglasan sa mogućim režimima:\n"
+"%s"
+
+#. Translators: the "requested", "minimum", and
+#. * "maximum" words here are not keywords; please
+#. * translate them as usual.
+#: ../libgnome-desktop/gnome-rr-config.c:1073
+#, c-format
+msgid ""
+"required virtual size does not fit available size: requested=(%d, %d), "
+"minimum=(%d, %d), maximum=(%d, %d)"
+msgstr ""
+"zahtijevana virtuelna veličina je izvan dostupne: zahtijevana=(%d, %d), "
+"najmanja=(%d, %d), najveća=(%d, %d)"
+
+#. Translators: This is the time format with full date used
+#. in 24-hour mode.
+#: ../libgnome-desktop/gnome-wall-clock.c:299
+msgid "%a %b %e, %R:%S"
+msgstr "%a, %e. %b, %R:%S"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:300
+msgid "%a %b %e, %R"
+msgstr "%a, %e. %b, %R"
+
+#. Translators: This is the time format with day used
+#. in 24-hour mode.
+#: ../libgnome-desktop/gnome-wall-clock.c:304
+msgid "%a %R:%S"
+msgstr "%a, %R:%S"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:305
+msgid "%a %R"
+msgstr "%a %R"
+
+#. Translators: This is the time format without date used
+#. in 24-hour mode.
+#: ../libgnome-desktop/gnome-wall-clock.c:309
+msgid "%R:%S"
+msgstr "%R:%S"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:309
+msgid "%R"
+msgstr "%R"
+
+#. Translators: This is a time format with full date used
+#. for AM/PM.
+#: ../libgnome-desktop/gnome-wall-clock.c:315
+msgid "%a %b %e, %l:%M:%S %p"
+msgstr "%a %b %e, %l:%M:%S %p"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:316
+msgid "%a %b %e, %l:%M %p"
+msgstr "%a %b %e, %l:%M %p"
+
+#. Translators: This is a time format with day used
+#. for AM/PM.
+#: ../libgnome-desktop/gnome-wall-clock.c:320
+msgid "%a %l:%M:%S %p"
+msgstr "%a %l:%M:%S %p"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:321
+msgid "%a %l:%M %p"
+msgstr "%a %H:%M"
+
+#. Translators: This is a time format without date used
+#. for AM/PM.
+#: ../libgnome-desktop/gnome-wall-clock.c:325
+msgid "%l:%M:%S %p"
+msgstr "%l:%M:%S %p"
+
+#: ../libgnome-desktop/gnome-wall-clock.c:326
+msgid "%l:%M %p"
+msgstr "%l:%M %p"

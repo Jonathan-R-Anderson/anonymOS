@@ -1,0 +1,553 @@
+# gnome-desktop faylının Azərbaycan dilinə tərcüməsi.
+# Copyright (C) 200 Free Software Foundation, Inc.
+# Vasif Ismailoglu MD <azerb_linux@hotmail.com>, 2000.
+# Ramal Rəhimov <jhonaluman@gmail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-desktop\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-desktop/issues/\n"
+"POT-Creation-Date: 2025-03-05 10:24+0000\n"
+"PO-Revision-Date: 2025-05-27 16:20+0400\n"
+"Last-Translator: Ramal Rəhimov <jhonaluman@gmail.com>\n"
+"Language-Team: Azerbaijani <az@li.org>\n"
+"Language: az\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Gtranslator 48.0\n"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1014
+#, c-format
+msgid "File %s does not have a preview icon attribute"
+msgstr "Fayl %s üçün önizləmə ikonu atributu mövcud deyil"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1024
+#, c-format
+msgid "No loadable icon for %s"
+msgstr "%s üçün yüklənə bilən ikon mövcud deyil"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1153
+#, c-format
+msgid "Could not find thumbnailer for mime-type '%s'"
+msgstr "'%s' MIME növü üçün önizləmə yaradan proqram tapılmadı"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1283
+#, c-format
+msgid "Failed to create folder '%s'"
+msgstr "'%s' qovluğunu yaratmaq mümkün olmadı"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1296
+#, c-format
+msgid "The output folder '%s' is not writable"
+msgstr "Çıxış qovluğu '%s' yazıla bilən deyil"
+
+#: libgnome-desktop/gnome-languages.c:698
+msgid "Unspecified"
+msgstr "Göstərilməyib"
+
+#: libgnome-desktop/gnome-languages.c:1364
+msgid "Abegede"
+msgstr "Abegede"
+
+#: libgnome-desktop/gnome-languages.c:1366
+msgid "Cyrillic"
+msgstr "Kiril"
+
+#: libgnome-desktop/gnome-languages.c:1370
+msgid "Devanagari"
+msgstr "Devanagari"
+
+#: libgnome-desktop/gnome-languages.c:1373
+msgid "IQTElif"
+msgstr "IQTElif (Tatar əlifbası)"
+
+#: libgnome-desktop/gnome-languages.c:1376
+msgid "Latin"
+msgstr "Latın"
+
+#: libgnome-desktop/gnome-languages.c:1379
+msgid "Saho"
+msgstr "Saho"
+
+#: libgnome-desktop/gnome-languages.c:1383
+msgid "Valencia"
+msgstr "Valensiya"
+
+#: libgnome-desktop/gnome-rr-config.c:754
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:712
+#, c-format
+msgid "CRTC %d cannot drive output %s"
+msgstr "CRTC %d çıxış %s üçün istifadə edilə bilməz"
+
+#: libgnome-desktop/gnome-rr-config.c:761
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:719
+#, c-format
+msgid "output %s does not support mode %dx%d@%dHz"
+msgstr "%s çıxışı %dx%d@%dHz rejimini dəstəkləmir"
+
+#: libgnome-desktop/gnome-rr-config.c:772
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:730
+#, c-format
+msgid "CRTC %d does not support rotation=%d"
+msgstr "CRTC %d döndürmə=%d funksiyasını dəstəkləmir"
+
+#: libgnome-desktop/gnome-rr-config.c:785
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:743
+#, c-format
+msgid ""
+"output %s does not have the same parameters as another cloned output:\n"
+"existing mode = %d, new mode = %d\n"
+"existing coordinates = (%d, %d), new coordinates = (%d, %d)\n"
+"existing rotation = %d, new rotation = %d"
+msgstr ""
+"%s çıxışı digər klonlaşdırılmış çıxışla eyni parametrlərə malik deyil:\n"
+"mövcud rejim = %d, yeni rejim = %d\n"
+"mövcud koordinatlar = (%d, %d), yeni koordinatlar = (%d, %d)\n"
+"mövcud döndürmə = %d, yeni döndürmə = %d"
+
+#: libgnome-desktop/gnome-rr-config.c:800
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:758
+#, c-format
+msgid "cannot clone to output %s"
+msgstr "%s çıxışına klonlama mümkün deyil"
+
+#: libgnome-desktop/gnome-rr-config.c:926
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:883
+#, c-format
+msgid "Trying modes for CRTC %d\n"
+msgstr "CRTC %d üçün rejimlər yoxlanılır\n"
+
+#: libgnome-desktop/gnome-rr-config.c:950
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:907
+#, c-format
+msgid "CRTC %d: trying mode %dx%d@%dHz with output at %dx%d@%dHz (pass %d)\n"
+msgstr ""
+"CRTC %d: çıxış %dx%d@%dHz rejimində %dx%d@%dHz ilə yoxlanılır (keçid %d)\n"
+
+#: libgnome-desktop/gnome-rr-config.c:997
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:954
+#, c-format
+msgid ""
+"could not assign CRTCs to outputs:\n"
+"%s"
+msgstr ""
+"CRTC-ləri çıxışlara təyin etmək mümkün olmadı:\n"
+"%s"
+
+#: libgnome-desktop/gnome-rr-config.c:1001
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:958
+#, c-format
+msgid ""
+"none of the selected modes were compatible with the possible modes:\n"
+"%s"
+msgstr ""
+"Seçilmiş rejimlərdən heç biri mümkün rejimlərlə uyğun gəlmir:\n"
+"%s"
+
+#: libgnome-desktop/gnome-rr-config.c:1082
+#: libgnome-desktop/gnome-rr/gnome-rr-config.c:1039
+#, c-format
+msgid ""
+"required virtual size does not fit available size: requested=(%d, %d), "
+"minimum=(%d, %d), maximum=(%d, %d)"
+msgstr ""
+"Virtual ölçü mövcud ölçüyə uyğun gəlmir: tələb olunan=(%d, %d), minimum=(%d, "
+"%d), maksimum=(%d, %d)"
+
+#: libgnome-desktop/gnome-wall-clock.c:282
+msgctxt "time separator"
+msgid "∶"
+msgstr "∶"
+
+#: libgnome-desktop/gnome-wall-clock.c:359
+msgid "%a %b %-e_%R:%S"
+msgstr "%a %b %-e_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:360
+msgid "%a %b %-e_%R"
+msgstr "%a %b %-e_%R"
+
+#: libgnome-desktop/gnome-wall-clock.c:365
+msgid "%b %-e_%R:%S"
+msgstr "%b %-e_%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:366
+msgid "%b %-e_%R"
+msgstr "%b %-e_%R"
+
+#: libgnome-desktop/gnome-wall-clock.c:370
+msgid "%a %R:%S"
+msgstr "%a %R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:371
+msgid "%a %R"
+msgstr "%a %R"
+
+#: libgnome-desktop/gnome-wall-clock.c:375
+msgid "%R:%S"
+msgstr "%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:376
+msgid "%R"
+msgstr "%R"
+
+#: libgnome-desktop/gnome-wall-clock.c:384
+msgid "%a %b %-e_%l:%M:%S %p"
+msgstr "%a %b %-e_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:385
+msgid "%a %b %-e_%l:%M %p"
+msgstr "%a %b %-e_%l:%M %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:390
+msgid "%b %-e_%l:%M:%S %p"
+msgstr "%b %-e_%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:391
+msgid "%b %-e_%l:%M %p"
+msgstr "%b %-e_%l:%M %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:395
+msgid "%a %l:%M:%S %p"
+msgstr "%a %l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:396
+msgid "%a %l:%M %p"
+msgstr "%a %l:%M %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:400
+msgid "%l:%M:%S %p"
+msgstr "%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:401
+msgid "%l:%M %p"
+msgstr "%l:%M %p"
+
+#~ msgid "The Mysterious GEGL"
+#~ msgstr "Mistik GEGL"
+
+#~ msgid "The Squeaky Rubber Gnome"
+#~ msgstr "Ciyildəyən Rezin Gnome"
+
+#~ msgid "Wanda The GNOME Fish"
+#~ msgstr "Wanda GNOME Balığı"
+
+#~ msgid "The End!"
+#~ msgstr "Son!"
+
+#~ msgid "Could not locate the directory with header images."
+#~ msgstr "Başlıq rəsmlərinin olduğu cərgə tapıla bilmədi."
+
+#, c-format
+#~ msgid "Failed to open directory with header images: %s"
+#~ msgstr "Başlıq rəsmlərin olduğu cərgə açıla bilmədi: %s"
+
+#, c-format
+#~ msgid "Unable to load header image: %s"
+#~ msgstr "Başlıq rəsmi yüklənə bilmədi: %s"
+
+#~ msgid "Could not locate the GNOME logo button."
+#~ msgstr "GNOME loqo düyməsi tapıla bilmədi."
+
+#, c-format
+#~ msgid "Unable to load '%s': %s"
+#~ msgstr "'%s' yüklənə bilmədi: %s"
+
+#, c-format
+#~ msgid "Could not open the address \"%s\": %s"
+#~ msgstr "\"%s\" ünvanı açıla bilmədi: %s"
+
+#~ msgid "Could not locate the file with GNOME version information."
+#~ msgstr "GNOME buraxılış nömrəsini daxil edən fayl tapıla bilmədi."
+
+#~ msgid "Version"
+#~ msgstr "Buraxılış"
+
+#~ msgid "Distributor"
+#~ msgstr "Distribyutor"
+
+#~ msgid "Build Date"
+#~ msgstr "İnşa Tarixi"
+
+#~ msgid "About GNOME"
+#~ msgstr "GNOME Haqqında"
+
+#~ msgid "News"
+#~ msgstr "Xəbərlər"
+
+#~ msgid "Software"
+#~ msgstr "Tə'minat"
+
+#~ msgid "Developers"
+#~ msgstr "İnkişafçılar"
+
+#~ msgid "Friends of GNOME"
+#~ msgstr "GNOME'un Dostları"
+
+#~ msgid "Contact"
+#~ msgstr "Əlaqə"
+
+#~ msgid "Welcome to the GNOME Desktop"
+#~ msgstr "GNOME Masa Üstünə Xoş Gəldiniz"
+
+#~ msgid "Brought to you by:"
+#~ msgstr "GNOME'u sizə yetişdirənlər:"
+
+#~ msgid "About the GNOME Desktop"
+#~ msgstr "GNOME Masa Üstü Haqqında"
+
+#, fuzzy
+#~ msgid "Know more about GNOME"
+#~ msgstr "GNOME Haqqında"
+
+#~ msgid ""
+#~ "GNOME also includes a complete development platform for applications "
+#~ "programmers, allowing the creation of powerful and complex applications."
+#~ msgstr ""
+#~ "GNOME eyni zamanda inkişafçılara qarışıq və güclü tə'minatlar yaratma "
+#~ "imkanı verən inkişaf platformunu da daxil edir."
+
+#~ msgid ""
+#~ "GNOME includes most of what you see on your computer, including the file "
+#~ "manager, web browser, menus, and many applications."
+#~ msgstr ""
+#~ "Kompüterinizdə ehtiyacınız olan hər şeyi GNOME daxil edir. Bunun içində "
+#~ "fayl idarəçisi, menyular və veb səyyahı kimi bir çox proqram daxildir."
+
+#~ msgid ""
+#~ "GNOME is a Free, usable, stable, accessible desktop environment for the "
+#~ "Unix-like family of operating systems."
+#~ msgstr ""
+#~ "GNOME, Unix-bənzəri əməliyyat sistemləri ailələri üçün sərbəst, "
+#~ "işlədilməsi asand, güclü, yetişmə qabiliyyətli masa üstü mühitidir."
+
+#~ msgid ""
+#~ "GNOME's focus on usability and accessibility, regular release cycle, and "
+#~ "strong corporate backing make it unique among Free Software desktops."
+#~ msgstr ""
+#~ "GNOME'un istifadə asandlığı və yetişmə qabiliyyəti, müntəzəm buraxılış "
+#~ "dövrəsi və güclü korporativ arxa ona diqər Sərbəst Tə'minatlı masa "
+#~ "üstüləri arasında xüsusi yer verir."
+
+#~ msgid ""
+#~ "GNOME's greatest strength is our strong community. Virtually anyone, with "
+#~ "or without coding skills, can contribute to making GNOME better."
+#~ msgstr ""
+#~ "GNOME'un ən böyük gücü onun güclü cəmiyyətidir. Proqramlaşdırma "
+#~ "qabiliyyəti olan və olmayan hamı GNOME layihəsini daha da gözəlləşdirmək "
+#~ "üçün ona dəstək verə bilər."
+
+#~ msgid ""
+#~ "Hundreds of people have contributed code to GNOME since it was started in "
+#~ "1997; many more have contributed in other important ways, including "
+#~ "translations, documentation, and quality assurance."
+#~ msgstr ""
+#~ "1997 ilində GNOME layihəsinin yaradılmasından bu günə dək minlərlə insan "
+#~ "GNOME kodlarına dəstək vermişdir, onlardan çoxu da tərcümə, sənədlər, "
+#~ "keyfiyyət  kimi daha fərqli sahələrdə dəstəklərini əsirgəməmişdir."
+
+#, c-format
+#~ msgid "Error reading file '%s': %s"
+#~ msgstr "'%s' faylını oxuma xətası:: %s"
+
+#, c-format
+#~ msgid "Error rewinding file '%s': %s"
+#~ msgstr "'%s' faylını geri sarma xətası: %s"
+
+#~ msgid "No name"
+#~ msgstr "Adsız"
+
+#, c-format
+#~ msgid "File '%s' is not a regular file or directory."
+#~ msgstr "'%s' düzgün fayl yada cərgə deyil."
+
+#~ msgid "No filename to save to"
+#~ msgstr "Qeyd ediləcək fayl adı yoxdur"
+
+#, c-format
+#~ msgid "Starting %s"
+#~ msgstr "%s başladılır"
+
+#~ msgid "No URL to launch"
+#~ msgstr "Açacaq URL yoxdur"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Başladıla bilən üzv deyil"
+
+#~ msgid "No command (Exec) to launch"
+#~ msgstr "Başlatmaq üçün əmr (Exec) verilməyib"
+
+#~ msgid "Bad command (Exec) to launch"
+#~ msgstr "Başlatma əmri (Exec) səhvdir"
+
+#, c-format
+#~ msgid "Unknown encoding of: %s"
+#~ msgstr "Namə'lum kodlama: %s"
+
+#, c-format
+#~ msgid "Error writing file '%s': %s"
+#~ msgstr "'%s' faylına yazma xətası: %s"
+
+#~ msgid "Directory"
+#~ msgstr "Cərgə"
+
+#~ msgid "Application"
+#~ msgstr "Tə'minat"
+
+#~ msgid "Link"
+#~ msgstr "Körpü"
+
+#~ msgid "FSDevice"
+#~ msgstr "FSAvadanlığı"
+
+#~ msgid "MIME Type"
+#~ msgstr "MIME Növü"
+
+#~ msgid "Service"
+#~ msgstr "Xidmət"
+
+#~ msgid "ServiceType"
+#~ msgstr "Xidmət Növü"
+
+#~ msgid "_URL:"
+#~ msgstr "_URL:"
+
+#~ msgid "Comm_and:"
+#~ msgstr "Ə_mr:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Ad:"
+
+#~ msgid "_Generic name:"
+#~ msgstr "Ü_mumi ad:"
+
+#~ msgid "Co_mment:"
+#~ msgstr "Şə_rh:"
+
+#~ msgid "Browse"
+#~ msgstr "Gəz"
+
+#~ msgid "_Type:"
+#~ msgstr "_Növ:"
+
+#~ msgid "_Icon:"
+#~ msgstr "_Timsal:"
+
+#~ msgid "Browse icons"
+#~ msgstr "Timsalları gəz"
+
+#~ msgid "Run in t_erminal"
+#~ msgstr "Terminalda _icra et"
+
+#~ msgid "Language"
+#~ msgstr "Dil"
+
+#~ msgid "Name"
+#~ msgstr "Ad"
+
+#~ msgid "Generic name"
+#~ msgstr "Ümumi ad"
+
+#~ msgid "Comment"
+#~ msgstr "Şərh"
+
+#~ msgid "_Try this before using:"
+#~ msgstr "İşlətmədən əvvəl bunu _sına:"
+
+#~ msgid "_Documentation:"
+#~ msgstr "_Sənədlər:"
+
+#~ msgid "_Name/Comment translations:"
+#~ msgstr "_Ad/Şərh tərcümələri:"
+
+#~ msgid "_Add/Set"
+#~ msgstr "Ə_lavə et/Seç"
+
+#~ msgid "Add or Set Name/Comment Translations"
+#~ msgstr "Ad/Şərh Tərcümələri Əlavə et ya da Seç"
+
+#~ msgid "Re_move"
+#~ msgstr "_Sil"
+
+#~ msgid "Remove Name/Comment Translation"
+#~ msgstr "Ad/Şərh Tərcümələrini Sil"
+
+#~ msgid "Basic"
+#~ msgstr "Əsas"
+
+#~ msgid "Advanced"
+#~ msgstr "Ətraflı"
+
+#~ msgid "_Show Hints at Startup"
+#~ msgstr "Başlanğıcda Ehkamları _Göstər"
+
+#~ msgid "Accessories"
+#~ msgstr "Ləvazimatlar"
+
+#~ msgid "Accessories menu"
+#~ msgstr "Ləvazimatlar menyusu"
+
+#~ msgid "Applications"
+#~ msgstr "Proqramlar"
+
+#~ msgid "Programming"
+#~ msgstr "Proqramlaşdırma"
+
+#~ msgid "Tools for software development"
+#~ msgstr "Proqram inkişaf vasitələri"
+
+#~ msgid "Games"
+#~ msgstr "Oyunlar"
+
+#~ msgid "Games menu"
+#~ msgstr "Oyunlar menyusu"
+
+#~ msgid "Graphics"
+#~ msgstr "Qrafika"
+
+#~ msgid "Graphics menu"
+#~ msgstr "Qrafika menyusu"
+
+#~ msgid "Internet"
+#~ msgstr "İnternet"
+
+#~ msgid "Programs for Internet and networks"
+#~ msgstr "İnternet və şəbəkə proqramları"
+
+#~ msgid "Multimedia"
+#~ msgstr "Multimedya"
+
+#~ msgid "Multimedia menu"
+#~ msgstr "Multimedya menyusu"
+
+#~ msgid "Office"
+#~ msgstr "Offis"
+
+#~ msgid "Office Applications"
+#~ msgstr "Offis Proqramları"
+
+#~ msgid "Applications without a category"
+#~ msgstr "Kateqoriyasız proqramlar"
+
+#~ msgid "Other"
+#~ msgstr "Digər"
+
+#~ msgid "Programs"
+#~ msgstr "Proqramlar"
+
+#~ msgid "Programs menu"
+#~ msgstr "Proqramlar menyusu"
+
+#~ msgid "Desktop Preferences"
+#~ msgstr "Masa Üstü Qurğuları"
+
+#~ msgid "Preferences that affect the whole GNOME desktop"
+#~ msgstr "Bütün Gnome masa üstünə tə'sir edən qurğular"
+
+#~ msgid "System Tools"
+#~ msgstr "Sistem Vasitələri"
+
+#~ msgid "System menu"
+#~ msgstr "Sistem menyusu"

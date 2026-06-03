@@ -1,0 +1,9 @@
+# GDM configuration storage
+
+[daemon]
+
+[security]
+
+[debug]
+# Uncomment the line below to turn on debugging
+#Enable=true

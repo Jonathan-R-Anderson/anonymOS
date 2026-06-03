@@ -1,0 +1,846 @@
+# Serbian translation of gdm
+# Courtesy of Prevod.org team (http://prevod.org/) -- 2003—2017.
+# This file is distributed under the same license as the gdm package.
+# Горан Ракић <gox@devbase.net>
+# Данило Шеган <danilo@prevod.org>, 2005.
+# Слободан Д. Средојевић <slobo@akrep.be>, 2005.
+# Мирослав Николић <miroslavnikolic@rocketmail.com>, 2011—2017.
+# Марко М. Костић (Marko M. Kostić) <marko.m.kostic@gmail.com>
+# Leco <gerovid@gmail.com>, 2024.
+# Милош Поповић <gpopac@gmail.com>, 2010—20-2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2025-09-17 07:57+0000\n"
+"PO-Revision-Date: 2025-09-18 12:27+0200\n"
+"Last-Translator: Милош Поповић <gpopac@gmail.com>\n"
+"Language-Team: Serbian <Serbian <gnome-sr@googlegroups.com>>\n"
+"Language: sr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=n==1? 3 : n%10==1 && n%100!=11 ? 0 : "
+"n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2\n"
+"X-Project-Style: gnome\n"
+"X-Generator: Gtranslator 47.1\n"
+
+#: chooser/gdm-host-chooser-dialog.c:139
+msgid "_Refresh"
+msgstr "_Освежи"
+
+#: chooser/gdm-host-chooser-dialog.c:140
+msgid "_Cancel"
+msgstr "От_кажи"
+
+#: chooser/gdm-host-chooser-dialog.c:141
+msgid "C_onnect"
+msgstr "По_вежи се"
+
+#: chooser/gdm-host-chooser-dialog.c:146
+msgid "Select System"
+msgstr "Изаберите систем"
+
+#: chooser/gdm-host-chooser-widget.c:255
+msgid "XDMCP: Could not create XDMCP buffer!"
+msgstr "ХДМЦП: Не могу да направим ХДМЦП оставу!"
+
+#: chooser/gdm-host-chooser-widget.c:261
+msgid "XDMCP: Could not read XDMCP header!"
+msgstr "ХДМЦП: Не могу да прочитам ХДМЦП заглавље!"
+
+#: chooser/gdm-host-chooser-widget.c:267
+msgid "XDMCP: Incorrect XDMCP version!"
+msgstr "ХДМЦП: Неисправно ХДМЦП издање!"
+
+#: chooser/gdm-host-chooser-widget.c:273
+msgid "XDMCP: Unable to parse address"
+msgstr "ХДМЦП: Не могу да отворим адресу"
+
+#: common/gdm-common.c:343
+#, c-format
+msgid "/dev/urandom is not a character device"
+msgstr "„/dev/urandom“ није означени уређај"
+
+#: common/gdm-common.c:382
+msgid "Unable to create transient display: "
+msgstr "Не могу да створим прелазни екран: "
+
+#: common/gdm-common.c:579
+msgid "Could not identify the current session: "
+msgstr "Не могу да одредим текућу сесију: "
+
+#: common/gdm-common.c:588
+#, c-format
+msgid "Could not identify the current seat."
+msgstr "Не могу да одредим текуће седиште."
+
+#: daemon/gdm-display-access-file.c:280 daemon/gdm-display-access-file.c:301
+#, c-format
+msgid "Could not find user “%s” on system"
+msgstr "Не могу наћи корисника „%s“ на систему"
+
+#: daemon/gdm-legacy-display.c:226
+msgid ""
+"Could not start the X server (your graphical environment) due to an internal "
+"error. Please contact your system administrator or check your syslog to "
+"diagnose. In the meantime this display will be disabled.  Please restart GDM "
+"when the problem is corrected."
+msgstr ""
+"Не могу да покренем Икс сервер (ваше графичко окружење) због грешке унутар "
+"програма. Контактирајте администратора система или прегледајте системски "
+"дневник. У међувремену, овај екран ће бити искључен. Поново покрените ГДМ "
+"када исправите проблем."
+
+#: daemon/gdm-manager.c:765
+msgid "No display available"
+msgstr "Нема доступног приказа"
+
+#: daemon/gdm-manager.c:863 daemon/gdm-manager.c:1192
+msgid "No session available"
+msgstr "Нема доступне сесије"
+
+#: daemon/gdm-manager.c:882
+msgid "Chooser session unavailable"
+msgstr "Није доступна сесија бирача"
+
+#: daemon/gdm-manager.c:898
+msgid "Can only be called before user is logged in"
+msgstr "Може једино бити позван пре него што се корисник пријави"
+
+#: daemon/gdm-manager.c:910
+msgid "Caller not GDM"
+msgstr "Позивник није ГДМ"
+
+#: daemon/gdm-manager.c:920
+msgid "Unable to open private communication channel"
+msgstr "Не могу да отворим приватни канал комуникације"
+
+#: daemon/gdm-server.c:387
+#, c-format
+msgid "Server was to be spawned by user %s but that user doesn’t exist"
+msgstr ""
+"Требало је да се сервер прикаже за корисника %s, али тај корисник не постоји"
+
+#: daemon/gdm-server.c:398 daemon/gdm-server.c:418
+#, c-format
+msgid "Couldn’t set groupid to %d"
+msgstr "Не могу да поставим иб групе на %d"
+
+#: daemon/gdm-server.c:404
+#, c-format
+msgid "initgroups () failed for %s"
+msgstr "initgroups () за %s није успео"
+
+#: daemon/gdm-server.c:410
+#, c-format
+msgid "Couldn’t set userid to %d"
+msgstr "Не могу да поставим иб корисника на %d"
+
+#: daemon/gdm-server.c:482
+#, c-format
+msgid "%s: Could not open log file for display %s!"
+msgstr "%s: Не могу да отворим датотеку дневника за екран %s!"
+
+#: daemon/gdm-server.c:503 daemon/gdm-server.c:509 daemon/gdm-server.c:515
+#, c-format
+msgid "%s: Error setting %s to %s"
+msgstr "%s: Грешка при постављању %s на %s"
+
+#: daemon/gdm-server.c:535
+#, c-format
+msgid "%s: Server priority couldn’t be set to %d: %s"
+msgstr "%s: не могу да поставим приоритет сервера на вредност %d: %s"
+
+#: daemon/gdm-server.c:690
+#, c-format
+msgid "%s: Empty server command for display %s"
+msgstr "%s: Празна наредба сервера за екран %s"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Корисничко име"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "Име корисника"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Домаћин"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "Назив домаћина"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Екран"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "Уређај за приказ"
+
+#: daemon/gdm-session.c:1444
+msgid "Could not create authentication helper process"
+msgstr "Не могу да направим процес помоћника потврђивања идентитета"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr ""
+"Досегли сте ограничење за највише покушаја пријављивања лозинком, покушајте "
+"другачији начин"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"Досегли сте ограничење за највише покушаја самосталног пријављивања, "
+"покушајте другачији начин"
+
+#: daemon/gdm-session-worker.c:819
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"Досегли сте ограничење за највише покушаја пријаве уз помоћ отиска прста, "
+"покушајте другачији начин"
+
+#: daemon/gdm-session-worker.c:822
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr ""
+"Досегли сте ограничење за највише покушаја пријаве преко паметне картице, "
+"покушајте другачији начин"
+
+#: daemon/gdm-session-worker.c:824
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr ""
+"Досегли сте ограничење за највише покушаја пријављивања, покушајте другачији "
+"начин"
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "Нажалост, идентификовање лозинком није успело. Покушајте поново."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "Нажалост, самостално пријављивање није успело. Покушајте поново."
+
+#: daemon/gdm-session-worker.c:837
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "Нажалост, идентификовање отиском прста није успело. Покушајте поново."
+
+#: daemon/gdm-session-worker.c:840
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr ""
+"Нажалост, идентификовање паметном картицом није успело. Покушајте поново."
+
+#: daemon/gdm-session-worker.c:842
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Погрешили сте! Покушајте поново."
+
+#: daemon/gdm-session-worker.c:857
+msgid "Your account was given a time limit that’s now passed."
+msgstr "Вашем налогу је дато временско ограничење које је сада прошло."
+
+#: daemon/gdm-session-worker.c:1258
+msgid "Username:"
+msgstr "Корисничко име:"
+
+#: daemon/gdm-session-worker.c:1675 daemon/gdm-session-worker.c:1692
+#, c-format
+msgid "no user account available"
+msgstr "нема доступног корисничког налога"
+
+#: daemon/gdm-session-worker.c:1719
+msgid "Unable to change to user"
+msgstr "Не могу да променим корисника"
+
+#: daemon/gdm-wayland-session.c:531
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "Покретач Вејланд сесије Гномовог управника приказа"
+
+#: daemon/gdm-xdmcp-display-factory.c:614
+msgid "Could not create socket!"
+msgstr "Не могу да направим прикључницу!"
+
+#: daemon/gdm-x-session.c:882
+msgid "Run program through /etc/gdm/Xsession wrapper script"
+msgstr "Покрени програм помоћу скрипте „/etc/gdm/Xsession“ омотача"
+
+#: daemon/gdm-x-session.c:883
+msgid "Listen on TCP socket"
+msgstr "Ослушкуј на ТЦП прикључници"
+
+#: daemon/gdm-x-session.c:895
+msgid "GNOME Display Manager X Session Launcher"
+msgstr "Покретач Икс сесије Гномовог управника приказа"
+
+# bug: why these two messages need to differ?
+#: daemon/main.c:126 daemon/main.c:139
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr ""
+"Не могу да пишем у ПИБ датотеку %s: вероватно више нема простора на диску: %s"
+
+#: daemon/main.c:197
+#, c-format
+msgid "Can’t find the GDM user “%s”. Aborting!"
+msgstr "Не могу да нађем корисника „%s“ за ГДМ. Прекидам!"
+
+#: daemon/main.c:203
+msgid "The GDM user should not be root. Aborting!"
+msgstr "Супер корисник (root) не може да користи ГДМ. Прекидам!"
+
+#: daemon/main.c:209
+#, c-format
+msgid "Can’t find the GDM group “%s”. Aborting!"
+msgstr "Не могу да нађем групу „%s“ за ГДМ. Прекидам!"
+
+#: daemon/main.c:215
+msgid "The GDM group should not be root. Aborting!"
+msgstr "Група root не може бити ГДМ група. Прекидам!"
+
+#: daemon/main.c:283
+msgid "Make all warnings fatal"
+msgstr "Чини сва упозорења кобним"
+
+#: daemon/main.c:284
+msgid "Exit after a time (for debugging)"
+msgstr "Излази након времена (због уклањања грешака)"
+
+#: daemon/main.c:285
+msgid "Print GDM version"
+msgstr "Исписује издање Гномовог управника приказа"
+
+#: daemon/main.c:296
+msgid "GNOME Display Manager"
+msgstr "Гномов управник приказа"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:316
+msgid "Only the root user can run GDM"
+msgstr "Само супер корисник (root) може да покрене ГДМ"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "Радник сесије Гномовог управника приказа"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Да ли да дозволи или не читаче отисака за пријављивање"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"Екран за пријављивање може опционално да омогући корисницима који су уписали "
+"своје отиске прстију да се пријаве користећи те отиске."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "Да ли да дозволи или не паметне картице за пријављивање"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"Екран за пријављивање може опционално да омогући корисницима који имају "
+"паметне картице да се пријаве користећи те картице."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow passwords for login"
+msgstr "Да ли да дозволи или не лозинке за пријављивање"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"Екран за пријављивање може бити подешен да онемогући потврђивање идентитета "
+"лозинком, приморавајући корисника да користи потврђивање идентитета паметном "
+"картицом или отиском прста."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Path to small image at top of user list"
+msgstr "Путања до сличица на врху списка корисника"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Екран за пријаву може изборно да прикаже сличицу која омогућава "
+"администраторима сајтова и дистрибуцијама да прикажу своју робну марку."
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Одступни екран за пријаву може изборно да прикаже сличицу која омогућава "
+"администраторима сајтова и дистрибуцијама да прикажу своју робну марку."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Avoid showing user list"
+msgstr "Избегавање приказивања списка корисника"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"Екран за пријављивање обично приказује списак доступних корисника који се "
+"могу пријавити. Ово подешавање може бити пребачено да искључи приказивање "
+"списка корисника."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+msgid "Enable showing the banner message"
+msgstr "Укључује приказ поруке на банеру"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid "Set to true to show the banner message text."
+msgstr "Поставите на тачно за приказ текста у банеру."
+
+#: data/org.gnome.login-screen.gschema.xml:80
+msgid "Banner message source"
+msgstr "Извор поруке на банеру"
+
+#: data/org.gnome.login-screen.gschema.xml:83
+msgid "The source of the text banner message on the login screen."
+msgstr "Извор текста поруке која се приказује на поздравном екрану."
+
+#: data/org.gnome.login-screen.gschema.xml:89
+msgid "Banner message text"
+msgstr "Текст поруке на банеру"
+
+#: data/org.gnome.login-screen.gschema.xml:92
+msgid "Text banner message to show in the login window."
+msgstr "Текст поруке за приказивање у поздравном прозору."
+
+#: data/org.gnome.login-screen.gschema.xml:98
+msgid "Banner message path"
+msgstr "Путања поруке на банеру"
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Path to text file with banner message to show in the login window."
+msgstr ""
+"Путања до текстуалне датотеке са поруком за банер који се приказује на "
+"поздравном екрану."
+
+#: data/org.gnome.login-screen.gschema.xml:107
+msgid "Disable showing the restart buttons"
+msgstr "Искључује приказ дугмади за поновно покретање"
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"Поставите на тачно како би онемогућили приказ дугмића за поновно покретање "
+"рачунара у поздравном прозору."
+
+#: data/org.gnome.login-screen.gschema.xml:116
+msgid "Number of allowed authentication failures"
+msgstr "Број неуспеха потврђивања идентитета"
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"Колико ће пута кориснику бити допуштено да покуша да потврди идентитет, пре "
+"него што ће бити враћен на екран за избор корисника."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Прикажи наредбу за помоћ"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Укључи детаљни приказ"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Прикажи испис за отклањање грешака"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "Омогући начин за пријаву"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "Онемогући начин за пријаву"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "Захтевај начин за пријаву"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Радња након уклањања паметне картице"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Подразумевано одговори потврдно"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Подеси пријаву лозинком."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Подеси пријаву отиском прста."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Подеси пријаву паметном катицом."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "Поништи подешавања ГДМ пријаве."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "Прикажи подешавања ГДМ пријаве."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Опције за лозинку"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Опције за отисак прста"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Опције за паметне картице (smartcard)"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Опције за поновно подешавање"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Прикажи опције"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "Ниједан ПАМ модул није доступан за пријаву лозинком"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "Ниједан ПАМ модул није достуан за пријаву паметном картицом"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "Ниједан ПАМ модул није доступан за пријаву отиском прста"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "„%s“ тражи бар један параметар"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "Не могу да омогућим нити онемогућим „%s“ у истом тренутку"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "„%s“ није исправна %s „%s“ вредност"
+
+#: utils/gdm-config.c:633
+#, c-format
+msgid "No distro detected, no hook to run"
+msgstr "Дистрибуција није пронађена, не могу да се закачим"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "Нису пронађени исправни аргументи за качење на „%s“"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "Качим се на дистрибуцију „%s“\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "Качење на дистибуцију „%s“ захтева заустављање"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"Качење на дистрибуцију није успело, враћен је излазни статус %d и грешка "
+"%s:\n"
+"Подаци стандардног излаза:\n"
+"%s\n"
+"Подаци излаза грешке:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr ""
+"Није успело подешавање опционог кључа „%s“ наредбе „%s“ кроз качење на "
+"дистрибуцију:"
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "Не могу да направим директоријум %s"
+
+#: utils/gdm-config.c:844
+#, c-format
+msgid "dconf profile not found"
+msgstr "Није пронађен dconf профил"
+
+#: utils/gdm-config.c:934
+#, c-format
+msgid "dconf has no system-db configured"
+msgstr "dconf нема подешен sytem-db"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr ""
+"Није успело преузимање коментара заглавља „%s“: %s, да ли је измењен у "
+"међувремену?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr ""
+"Коментар заглавља „%s“ датотеке се не слаже, да ли је измењен у међувремену?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr ""
+"Неоекивано заглавље је пронађено у датотеци за закључавање „%s“, да ли је "
+"измењено у међувремену?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "Не могу да покренем качење на дистрибуцију: "
+
+#: utils/gdm-config.c:1515 utils/gdmflexiserver.c:45
+msgid "COMMAND"
+msgstr "НАРЕДБА"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"Команде:\n"
+"  help         Приказује ове информације\n"
+"  password     Подешава пријаву лозинком\n"
+"  fingerprint  Подешава пријаву отиском прста\n"
+"  smartcard    Подешава пријаву паметном картицом\n"
+"  reset        Враћа на основна подешавања\n"
+"  show         Приказује тренутна подешавања\n"
+"\n"
+"Користи „%s COMMAND --help“ да би се приказале помоћне информације за сваку "
+"команду.\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "Опције за команде"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr ""
+"Неопходно је да будете root корисник да би сте користили %s „%s“ команду"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "Није успело подешавање %s поставке:"
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Није успело подешавање поставке за паметне картице"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Није успело подешавање поставке за лозинку"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Омогућено"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Онемогућено"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Није подржано"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Захтева се"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"Конфигурација GDM ауторизације\n"
+"\n"
+"  Пријава лозинком: %s\n"
+"  Пријава отиском прста: %s\n"
+"  Пријава паметном картицом: %s\n"
+"  Уклањање паметне картице: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "Да"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "да"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "Не"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "не"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Да ли желите да наставите ? [Да/не]"
+
+#: utils/gdm-config.c:1908
+#, c-format
+msgid "User cancelled the request"
+msgstr "Корисник је прекинуо захтев"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "Није успелно поновно подешавање поставке %s :"
+
+#: utils/gdmflexiserver.c:45
+msgid "Only the VERSION command is supported"
+msgstr "Подржана је само наредба ИЗДАЊЕ"
+
+#: utils/gdmflexiserver.c:46 utils/gdmflexiserver.c:47
+#: utils/gdmflexiserver.c:49 utils/gdmflexiserver.c:50
+msgid "Ignored — retained for compatibility"
+msgstr "Занемарено — задржано ради сагласности"
+
+#: utils/gdmflexiserver.c:48
+msgid "Debugging output"
+msgstr "Подаци за решавање грешака"
+
+#: utils/gdmflexiserver.c:52
+msgid "Version of this application"
+msgstr "Издање овог програма"
+
+#. Option parsing
+#: utils/gdmflexiserver.c:137
+msgid "— New GDM login"
+msgstr "— Нова ГДМ пријава"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr ""
+#~ "Нисам успео да направим директоријум означавача једног покретања „%s“: %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "Нисам успео да направим директоријум дневника „%s“: %s"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "Промена на %s корисника није успела"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "Не могу да подесим ИД корисника (uderid) на %u"
+
+#~ msgid "Screenshot taken"
+#~ msgstr "Снимак екрана је урађен"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "Прави снимак екрана вашег радног окружења"
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "Не могу да покренем сесију: "
+
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login "
+#~ "screen or start up a new login screen."
+#~ msgstr ""
+#~ "Систем не може да одреди да ли да се пребаци на постојећи или да покрене "
+#~ "нови екран пријављивања."
+
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "Систем не може да покрене нови екран пријављивања."
+
+#~ msgid ""
+#~ "You reached the maximum PIN authentication attempts, please try another "
+#~ "method"
+#~ msgstr ""
+#~ "Досегли сте ограничење за највише покушаја пријављивања преко ПИН-а, "
+#~ "покушајте другачији начин"
+
+#~ msgid "Sorry, PIN authentication didn’t work. Please try again."
+#~ msgstr "Нажалост, идентификовање ПИН-ом није успело. Покушајте поново."
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "Ваша лозинка је истекла, промените је."
+
+#~ msgid "GNOME Shell"
+#~ msgstr "Гномова шкољка"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "Управљање прозорима и састављање"

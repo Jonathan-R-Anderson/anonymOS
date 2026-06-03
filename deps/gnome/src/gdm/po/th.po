@@ -1,0 +1,772 @@
+# Thai translation of gdm.
+# Copyright (C) 2002-2015 Free Software Foundation, Inc.
+# This file is distributed under the same license as the gdm package.
+# Ross Golder <ross@golder.org>, 2002.
+# Surichat Sumrit <nook@opentle.org>, 2003, 2004.
+# Supranee Thirawatthanasuk <supranee@opentle.org>, 2004.
+# Chanchai Junlouchai <taz@opentle.org>, 2004.
+# Theppitak Karoonboonyanan <thep@linux.thai.net>, 2004-2013.
+# Sira Nokyoongtong <gumaraa@gmail.com>, 2010.
+# Akom Chotiphantawanon <knight2000@gmail.com>, 2015.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2025-10-18 20:58+0000\n"
+"PO-Revision-Date: 2025-10-23 16:14+0700\n"
+"Last-Translator: Akom Chotiphantawanon <knight2000@gmail.com>\n"
+"Language-Team: Thai <thai-l10n@googlegroups.com>\n"
+"Language: th\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#: chooser/gdm-host-chooser-dialog.c:139
+msgid "_Refresh"
+msgstr "เ_รียกใหม่"
+
+#: chooser/gdm-host-chooser-dialog.c:140
+msgid "_Cancel"
+msgstr "_ยกเลิก"
+
+#: chooser/gdm-host-chooser-dialog.c:141
+msgid "C_onnect"
+msgstr "เ_ชื่อมต่อ"
+
+#: chooser/gdm-host-chooser-dialog.c:146
+msgid "Select System"
+msgstr "เลือกระบบ"
+
+#: chooser/gdm-host-chooser-widget.c:255
+msgid "XDMCP: Could not create XDMCP buffer!"
+msgstr "XDMCP: ไม่สามารถสร้างบัฟเฟอร์ของ XDMCP ได้"
+
+#: chooser/gdm-host-chooser-widget.c:261
+msgid "XDMCP: Could not read XDMCP header!"
+msgstr "XDMCP: ไม่สามารถอ่านข้อมูลส่วนหัวของ XDMCP ได้"
+
+#: chooser/gdm-host-chooser-widget.c:267
+msgid "XDMCP: Incorrect XDMCP version!"
+msgstr "XDMCP: รุ่นของ XDMCP ไม่ถูกต้อง"
+
+#: chooser/gdm-host-chooser-widget.c:273
+msgid "XDMCP: Unable to parse address"
+msgstr "XDMCP: ไม่สามารถแจงที่อยู่"
+
+#: common/gdm-common.c:343
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom ไม่ได้เป็นอุปกรณ์แบบอักขระ"
+
+#: common/gdm-common.c:382
+msgid "Unable to create transient display: "
+msgstr "ไม่สามารถสร้างดิสเพลย์ชั่วคราวได้: "
+
+#: common/gdm-common.c:579
+msgid "Could not identify the current session: "
+msgstr "ไม่สามารถระบุวาระปัจจุบันได้: "
+
+#: common/gdm-common.c:588
+msgid "Could not identify the current seat."
+msgstr "ไม่สามารถระบุที่นั่งปัจจุบันได้"
+
+#: daemon/gdm-display-access-file.c:280 daemon/gdm-display-access-file.c:301
+#, c-format
+msgid "Could not find user “%s” on system"
+msgstr "ไม่พบผู้ใช้ “%s” ในระบบ"
+
+#: daemon/gdm-legacy-display.c:226
+msgid ""
+"Could not start the X server (your graphical environment) due to an internal error. Please "
+"contact your system administrator or check your syslog to diagnose. In the meantime this display "
+"will be disabled.  Please restart GDM when the problem is corrected."
+msgstr ""
+"ไม่สามารถเริ่มการทำงาน X server (สภาพแวดล้อมแบบกราฟิกของคุณ) เนื่องจากข้อผิดพลาดภายในบางประการ "
+"กรุณาติดต่อผู้ดูแลระบบของคุณ หรือตรวจสอบปูมของระบบเพื่อหาสาเหตุ ในระหว่างนี้ หน้าจอนี้จะถูกปิดใช้งาน กรุณาเริ่ม GDM "
+"ใหม่เมื่อแก้ปัญหาแล้ว"
+
+#: daemon/gdm-manager.c:765
+msgid "No display available"
+msgstr "ไม่มีจอแสดงผลให้ใช้"
+
+#: daemon/gdm-manager.c:863 daemon/gdm-manager.c:1192
+msgid "No session available"
+msgstr "ไม่มีวาระให้ใช้"
+
+#: daemon/gdm-manager.c:882
+msgid "Chooser session unavailable"
+msgstr "วาระเครื่องมือเลือกไม่พร้อมใช้"
+
+#: daemon/gdm-manager.c:898
+msgid "Can only be called before user is logged in"
+msgstr "ถูกเรียกได้ก่อนผู้ใช้เข้าระบบเท่านั้น"
+
+#: daemon/gdm-manager.c:910
+msgid "Caller not GDM"
+msgstr "ผู้เรียกไม่ใช่ GDM"
+
+#: daemon/gdm-manager.c:920
+msgid "Unable to open private communication channel"
+msgstr "ไม่สามารถเปิดช่องสื่อสารเป็นการภายในได้"
+
+#: daemon/gdm-server.c:387
+#, c-format
+msgid "Server was to be spawned by user %s but that user doesn’t exist"
+msgstr "จะสร้างโพรเซสเซิร์ฟเวอร์ในนามผู้ใช้ %s แต่ผู้ใช้นั้นไม่มีอยู่จริง"
+
+#: daemon/gdm-server.c:398 daemon/gdm-server.c:418
+#, c-format
+msgid "Couldn’t set groupid to %d"
+msgstr "ไม่สามารถกำหนด groupid เป็น %d"
+
+#: daemon/gdm-server.c:404
+#, c-format
+msgid "initgroups () failed for %s"
+msgstr "initgroups () ล้มเหลวสำหรับ %s"
+
+#: daemon/gdm-server.c:410
+#, c-format
+msgid "Couldn’t set userid to %d"
+msgstr "ไม่สามารถกำหนด ID ของผู้ใช้เป็น %d"
+
+#: daemon/gdm-server.c:482
+#, c-format
+msgid "%s: Could not open log file for display %s!"
+msgstr "%s: ไม่สามารถเปิดไฟล์ปูมสำหรับดิสเพลย์ %s!"
+
+#: daemon/gdm-server.c:503 daemon/gdm-server.c:509 daemon/gdm-server.c:515
+#, c-format
+msgid "%s: Error setting %s to %s"
+msgstr "%s: เกิดความผิดพลาดขณะตั้งค่า %s เป็น %s"
+
+#: daemon/gdm-server.c:535
+#, c-format
+msgid "%s: Server priority couldn’t be set to %d: %s"
+msgstr "%s: ไม่สามารถกำหนดลำดับความสำคัญของเซิร์ฟเวอร์เป็น %d ได้: %s"
+
+#: daemon/gdm-server.c:690
+#, c-format
+msgid "%s: Empty server command for display %s"
+msgstr "%s: คำสั่งเซิร์ฟเวอร์ว่างเปล่าสำหรับดิสเพลย์ %s"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "ชื่อผู้ใช้"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "ชื่อของผู้ใช้"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "ชื่อโฮสต์"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "ชื่อของโฮสต์"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "อุปกรณ์ดิสเพลย์"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "อุปกรณ์ดิสเพลย์"
+
+#: daemon/gdm-session.c:1444
+msgid "Could not create authentication helper process"
+msgstr "ไม่สามารถสร้างโพรเซสสำหรับช่วยยืนยันตัวบุคคลได้"
+
+#: daemon/gdm-session-worker.c:813
+msgid "You reached the maximum password authentication attempts, please try another method"
+msgstr "คุณพยายามยืนยันตัวตนด้วยรหัสผ่านครบจำนวนครั้งสูงสุดแล้ว กรุณาลองใช้วิธีอื่น"
+
+#: daemon/gdm-session-worker.c:816
+msgid "You reached the maximum auto login attempts, please try another authentication method"
+msgstr "คุณพยายามเข้าระบบอัตโนมัติครบจำนวนครั้งสูงสุดแล้ว กรุณาลองยืนยันตัวตนโดยใช้วิธีอื่น"
+
+#: daemon/gdm-session-worker.c:819
+msgid "You reached the maximum fingerprint authentication attempts, please try another method"
+msgstr "คุณพยายามยืนยันตัวตนด้วยลายนิ้วมือครบจำนวนครั้งสูงสุดแล้ว กรุณาลองใช้วิธีอื่น"
+
+#: daemon/gdm-session-worker.c:822
+msgid "You reached the maximum smart card authentication attempts, please try another method"
+msgstr "คุณพยายามยืนยันตัวตนด้วยสมาร์ทการ์ดครบจำนวนครั้งสูงสุดแล้ว กรุณาลองใช้วิธีอื่น"
+
+#: daemon/gdm-session-worker.c:824
+msgid "You reached the maximum authentication attempts, please try another method"
+msgstr "คุณพยายามยืนยันตัวตนครบจำนวนครั้งสูงสุดแล้ว กรุณาลองใช้วิธีอื่น"
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "ขออภัย การยืนยันตัวตนด้วยรหัสผ่านไม่สำเร็จ กรุณาลองใหม่"
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "ขออภัย การเข้าระบบอัตโนมัติไม่สำเร็จ กรุณาลองใหม่"
+
+#: daemon/gdm-session-worker.c:837
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "ขออภัย การยืนยันตัวตนด้วยลายนิ้วมือไม่สำเร็จ กรุณาลองใหม่"
+
+#: daemon/gdm-session-worker.c:840
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr "ขออภัย การยืนยันตัวตนด้วยสมาร์ทการ์ดไม่สำเร็จ กรุณาลองใหม่"
+
+#: daemon/gdm-session-worker.c:842
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "ขออภัย ยังไม่สำเร็จ กรุณาลองใหม่"
+
+#: daemon/gdm-session-worker.c:857
+msgid "Your account was given a time limit that’s now passed."
+msgstr "บัญชีของคุณมีกำหนดอายุการใช้งาน ซึ่งขณะนี้หมดอายุแล้ว"
+
+#: daemon/gdm-session-worker.c:1258
+msgid "Username:"
+msgstr "ชื่อผู้ใช้:"
+
+#: daemon/gdm-session-worker.c:1675 daemon/gdm-session-worker.c:1692
+msgid "no user account available"
+msgstr "ไม่มีบัญชีผู้ใช้"
+
+#: daemon/gdm-session-worker.c:1719
+msgid "Unable to change to user"
+msgstr "ไม่สามารถเปลี่ยนไปเป็นผู้ใช้ได้"
+
+#: daemon/gdm-wayland-session.c:531
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "ตัวเรียกวาระ Wayland ของโปรแกรมจัดการการเข้าระบบของ GNOME"
+
+#: daemon/gdm-xdmcp-display-factory.c:614
+msgid "Could not create socket!"
+msgstr "ไม่สามารถสร้างซ็อกเก็ตได้!"
+
+#: daemon/gdm-x-session.c:882
+msgid "Run program through /etc/gdm/Xsession wrapper script"
+msgstr "เรียกโปรแกรมผ่านสคริปต์ตัวครอบ /etc/gdm/Xsession"
+
+#: daemon/gdm-x-session.c:883
+msgid "Listen on TCP socket"
+msgstr "รอรับการเชื่อมต่อที่ซ็อกเก็ต TCP"
+
+#: daemon/gdm-x-session.c:895
+msgid "GNOME Display Manager X Session Launcher"
+msgstr "ตัวเรียกวาระ X ของโปรแกรมจัดการการเข้าระบบของ GNOME"
+
+#: daemon/main.c:126 daemon/main.c:139
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "ไม่สามารถเขียนไฟล์ PID %s: เป็นไปได้ว่าพื้นที่ดิสก์ไม่พอ: %s"
+
+#: daemon/main.c:197
+#, c-format
+msgid "Can’t find the GDM user “%s”. Aborting!"
+msgstr "ไม่พบบัญชีผู้ใช้ “%s” สำหรับ GDM  ขอยกเลิก!"
+
+#: daemon/main.c:203
+msgid "The GDM user should not be root. Aborting!"
+msgstr "บัญชีผู้ใช้สำหรับ GDM ไม่ควรเป็น root  ขอยกเลิก!"
+
+#: daemon/main.c:209
+#, c-format
+msgid "Can’t find the GDM group “%s”. Aborting!"
+msgstr "ไม่พบกลุ่ม “%s” ของ GDM  ขอยกเลิก!"
+
+#: daemon/main.c:215
+msgid "The GDM group should not be root. Aborting!"
+msgstr "กลุ่มของ GDM ไม่ควรเป็น root  ขอยกเลิก!"
+
+#: daemon/main.c:283
+msgid "Make all warnings fatal"
+msgstr "ถือว่าคำเตือนเสมือนข้อผิดพลาด"
+
+#: daemon/main.c:284
+msgid "Exit after a time (for debugging)"
+msgstr "จบการทำงานหลังจากระยะเวลาหนึ่ง (สำหรับการดีบั๊ก)"
+
+#: daemon/main.c:285
+msgid "Print GDM version"
+msgstr "พิมพ์รุ่น GDM"
+
+#: daemon/main.c:296
+msgid "GNOME Display Manager"
+msgstr "โปรแกรมจัดการการเข้าระบบของ GNOME"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:316
+msgid "Only the root user can run GDM"
+msgstr "ผู้ใช้ root เท่านั้นที่สามารถเรียกทำงาน GDM ได้"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "ตัวดำเนินงานวาระของโปรแกรมจัดการการเข้าระบบของ GNOME"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "จะอนุญาตให้เข้าระบบโดยใช้เครื่องอ่านลายนิ้วมือหรือไม่"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow users who have enrolled their fingerprints to log in using "
+"those prints."
+msgstr "หน้าจอเข้าระบบสามารถเปิดให้ผู้ใช้ที่ได้เก็บลายนิ้วมือไว้สามารถใช้ลายนิ้วมือเข้าระบบได้"
+
+#: data/org.gnome.login-screen.gschema.xml:21
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "จะอนุญาตให้เข้าระบบโดยใช้สมาร์ตการ์ดหรือไม่"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in using those smartcards."
+msgstr "หน้าจอเข้าระบบสามารถเปิดให้ผู้ใช้ที่มีสมาร์ตการ์ดสามารถใช้สมาร์ตการ์ดเข้าระบบได้"
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow passwords for login"
+msgstr "จะอนุญาตให้เข้าระบบโดยใช้รหัสผ่านหรือไม่"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can be configured to disallow password authentication, forcing the user to use "
+"smartcard or fingerprint authentication."
+msgstr ""
+"หน้าจอเข้าระบบสามารถตั้งค่าให้ปิดกั้นการยืนยันตัวบุคคลด้วยรหัสผ่านได้ "
+"ซึ่งจะเป็นการบังคับให้ผู้ใช้ใช้สมาร์ตการ์ดหรือลายนิ้วมือในการยืนยันตัวบุคคลแทน"
+
+#: data/org.gnome.login-screen.gschema.xml:41 data/org.gnome.login-screen.gschema.xml:51
+msgid "Path to small image at top of user list"
+msgstr "เส้นทางของภาพขนาดเล็กที่ด้านบนของรายชื่อผู้ใช้"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally show a small image to provide site administrators and "
+"distributions a way to display branding."
+msgstr "หน้าจอเข้าระบบสามารถแสดงภาพเล็กๆ ที่ด้านบนของรายชื่อผู้ใช้ เพื่อให้ผู้ดูแลระบบและชุดจัดแจกสามารถใช้แสดงยี่ห้อได้"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The fallback login screen can optionally show a small image to provide site administrators and "
+"distributions a way to display branding."
+msgstr ""
+"หน้าจอเข้าระบบแบบสำรองสามารถแสดงภาพเล็กๆ ที่ด้านบนของรายชื่อผู้ใช้ เพื่อให้ผู้ดูแลระบบและชุดจัดแจกสามารถใช้แสดงยี่ห้อได้"
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Avoid showing user list"
+msgstr "ไม่แสดงรายชื่อผู้ใช้"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen normally shows a list of available users to log in as. This setting can be "
+"toggled to disable showing the user list."
+msgstr "โดยปกติ หน้าจอเข้าระบบจะแสดงรายชื่อของผู้ใช้ที่มีในระบบเพื่อใช้เข้าระบบ ค่านี้สามารถตั้งเพื่อปิดการแสดงรายชื่อผู้ใช้ได้"
+
+#: data/org.gnome.login-screen.gschema.xml:71
+msgid "Enable showing the banner message"
+msgstr "เปิดใช้การแสดงข้อความพาดหัว"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid "Set to true to show the banner message text."
+msgstr "ตั้งเป็นค่าจริงถ้าต้องการแสดงข้อความพาดหัว"
+
+#: data/org.gnome.login-screen.gschema.xml:80
+msgid "Banner message source"
+msgstr "แหล่งข้อความพาดหัว"
+
+#: data/org.gnome.login-screen.gschema.xml:83
+msgid "The source of the text banner message on the login screen."
+msgstr "แหล่งของข้อความพาดหัวที่จะแสดงในหน้าต่างเข้าระบบ"
+
+#: data/org.gnome.login-screen.gschema.xml:89
+msgid "Banner message text"
+msgstr "ข้อความพาดหัว"
+
+#: data/org.gnome.login-screen.gschema.xml:92
+msgid "Text banner message to show in the login window."
+msgstr "ข้อความพาดหัวที่จะแสดงในหน้าต่างเข้าระบบ"
+
+#: data/org.gnome.login-screen.gschema.xml:98
+msgid "Banner message path"
+msgstr "เส้นทางข้อความพาดหัว"
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Path to text file with banner message to show in the login window."
+msgstr "เส้นทางไปยังไฟล์ข้อความพาดหัวที่จะแสดงในหน้าต่างเข้าระบบ"
+
+#: data/org.gnome.login-screen.gschema.xml:107
+msgid "Disable showing the restart buttons"
+msgstr "ปิดการแสดงปุ่มเริ่มเปิดเครื่องใหม่"
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr "ตั้งเป็นค่าจริงถ้าต้องการปิดการแสดงปุ่มเริ่มเปิดเครื่องใหม่ในหน้าต่างเข้าระบบ"
+
+#: data/org.gnome.login-screen.gschema.xml:116
+msgid "Number of allowed authentication failures"
+msgstr "จำนวนครั้งที่ยอมให้ยืนยันตัวบุคคลไม่ผ่าน"
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid ""
+"The number of times a user is allowed to attempt authentication, before giving up and going back "
+"to user selection."
+msgstr "จำนวนครั้งสูงสุดที่อนุญาตให้ผู้ใช้ยืนยันตัวบุคคล ก่อนที่จะยกเลิกและกลับไปที่หน้าเลือกผู้ใช้"
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "แสดงวิธีใช้คำสั่ง"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "แสดงเอาต์พุตแบบละเอียด"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "แสดงเอาต์พุตการดีบั๊ก"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "เปิดใช้งานวิธีการยืนยันตัวตน"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "ปิดใช้งานวิธีการยืนยันตัวตน"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "ต้องการวิธีการยืนยันตัวตน"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "การกระทำที่ต้องการเมื่อเอาสมาร์ทการ์ดออก"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "ตอบรับ “ใช่” กับคำถามทั้งหมด"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "กำหนดค่าการยืนยันตัวตนด้วยรหัสผ่าน"
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "กำหนดค่าการยืนยันตัวตนด้วยลายนิ้วมือ"
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "กำหนดค่าการยืนยันตัวตนด้วยสมาร์ทการ์ด"
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "ล้างค่าการกำหนดค่าการยืนยันตัวตนของ GDM"
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "แสดงการกำหนดค่าการยืนยันตัวตนของ GDM"
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "ตัวเลือกรหัสผ่าน"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "ตัวเลือกลายนิ้วมือ"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "ตัวเลือกสมาร์ทการ์ด"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "ล้างค่าตัวเลือก"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "แสดงตัวเลือก"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "ไม่มีมอดูล PAM ที่พร้อมใช้งานสำหรับการยืนยันตัวตนด้วยรหัสผ่าน"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "ไม่มีมอดูล PAM ที่พร้อมใช้งานสำหรับการยืนยันตัวตนด้วยสมาร์ทการ์ด"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "ไม่มีมอดูล PAM ที่พร้อมใช้งานสำหรับการยืนยันตัวตนด้วยลายนิ้วมือ"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "“%s” ต้องการพารามิเตอร์อย่างน้อยหนึ่งตัว"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "“%s” ไม่สามารถเปิดและปิดใช้งานพร้อมกันได้"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "“%s” ไม่ใช่ค่าที่ถูกต้องสำหรับ %s “%s”"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "ตรวจไม่พบชุดแจกจ่าย ไม่มีฮุคให้เรียกทำงาน"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "ไม่พบอาร์กิวเมนต์ที่ใช้ได้สำหรับเรียกทำงานฮุค “%s”"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "กำลังเรียกทำงานฮุคชุดแจกจ่าย “%s”\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "ฮุคชุดแจกจ่าย “%s” ร้องขอการหยุดทำงาน"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"ฮุคชุดแจกจ่ายล้มเหลวพร้อมสถานะการออก %d และข้อผิดพลาด %s:\n"
+"เอาต์พุตมาตรฐาน:\n"
+"%s\n"
+"เอาต์พุตข้อผิดพลาด:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr "ไม่สามารถกำหนดให้คำสั่ง “%s” มีคีย์ตัวเลือก “%s” ผ่านฮุคชุดแจกจ่าย: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "ไม่สามารถสร้างไดเรกทอรี %s"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "ไม่พบโปรไฟล์ dconf"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "dconf ไม่มีการกำหนดค่าของ system-db ไว้"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "ไม่สามารถอ่านความคิดเห็นส่วนหัวของ “%s”: %s ความคิดเห็นถูกแก้ไขหรือเปล่า?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr "ความคิดเห็นส่วนหัวของไฟล์ “%s” ไม่ตรงกัน ความคิดเห็นถูกแก้ไขหรือเปล่า?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr "ไม่พบส่วนหัวที่ต้องการในไฟล์ล็อก “%s” ส่วนหัวถูกแก้ไขหรือเปล่า?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "เรียกทำงานฮุคชุดแจกจ่ายที่จำเป็นไม่สำเร็จ: "
+
+#: utils/gdm-config.c:1515 utils/gdmflexiserver.c:45
+msgid "COMMAND"
+msgstr "คำสั่ง"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"คำสั่ง:\n"
+"  help         แสดงข้อมูลนี้\n"
+"  password     กำหนดค่าการยืนยันตัวตนด้วยรหัสผ่าน\n"
+"  fingerprint  กำหนดค่าการยืนยันตัวตนด้วยลายนิ้วมือ\n"
+"  smartcard    กำหนดค่าการยืนยันตัวตนด้วยสมาร์ทการ์ด\n"
+"  reset        ล้างค่ากลับเป็นการกำหนดค่าเริ่มต้น\n"
+"  show         แสดงการกำหนดค่าปัจจุบัน\n"
+"\n"
+"ใช้ “%s คำสั่ง --help” เพื่อดูวิธีใช้สำหรับคำสั่งนั้นๆ\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "ตัวเลือกคำสั่ง"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "คุณต้องเข้าระบบในฐานะ root เพื่อใช้คำสั่ง %s “%s”"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "ไม่สามารถกำหนดการตั้งค่า %s: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "ไม่สามารถกำหนดการตั้งค่าสมาร์ทการ์ด"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "ไม่สามารถกำหนดการตั้งค่ารหัสผ่าน"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "เปิดใช้งาน"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "ปิดใช้งาน"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "ไม่รองรับ"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "จำเป็น"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"การกำหนดค่าการอนุญาตของ GDM\n"
+"\n"
+"  การยืนยันตัวตนด้วยรหัสผ่าน: %s\n"
+"  การยืนยันตัวตนด้วยลายนิ้วมือ: %s\n"
+"  การยืนยันตัวตนด้วยสมาร์ทการ์ด: %s\n"
+"  การกระทำเมื่อถอดสมาร์ทการ์ด: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "Y"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "y"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "n"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "คุณต้องการดำเนินการต่อหรือไม่? [Y/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "ผู้ใช้ยกเลิกคำขอ"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "ไม่สามารถล้างการตั้งค่า %s ใหม่: "
+
+#: utils/gdmflexiserver.c:45
+msgid "Only the VERSION command is supported"
+msgstr "รองรับแค่คำสั่ง VERSION เท่านั้น"
+
+#: utils/gdmflexiserver.c:46 utils/gdmflexiserver.c:47 utils/gdmflexiserver.c:49
+#: utils/gdmflexiserver.c:50
+msgid "Ignored — retained for compatibility"
+msgstr "ไม่สนใจ — คงไว้เพื่อความเข้ากันได้กับระบบเก่าเท่านั้น"
+
+#: utils/gdmflexiserver.c:48
+msgid "Debugging output"
+msgstr "การแสดงข้อความดีบั๊ก"
+
+#: utils/gdmflexiserver.c:52
+msgid "Version of this application"
+msgstr "แสดงรุ่นของโปรแกรมนี้"
+
+#. Option parsing
+#: utils/gdmflexiserver.c:137
+msgid "— New GDM login"
+msgstr "— การเข้าระบบผ่าน GDM"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr "สร้างไดเรกทอรี %s สำหรับทำเครื่องหมายว่ามีการทำงานแล้วไม่สำเร็จ: %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "สร้าง LogDir %s ไม่สำเร็จ: %s"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "ไม่สามารถสลับไปเป็นผู้ใช้ %s ได้"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "ไม่สามารถกำหนด ID ของผู้ใช้เป็น %u"
+
+#~ msgid "Screenshot taken"
+#~ msgstr "ภาพหน้าจอถูกจับ"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "จับภาพหน้าจอ"
+
+#, c-format
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login screen or start up a "
+#~ "new login screen."
+#~ msgstr "ระบบไม่สามารถตัดสินได้ว่าจะสลับไปยังหน้าจอเข้าระบบที่มีอยู่ หรือจะเปิดหน้าจอเข้าระบบอันใหม่"
+
+#, c-format
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "ระบบไม่สามารถเปิดหน้าจอเข้าระบบอันใหม่"
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "รหัสผ่านของคุณหมดอายุแล้ว กรุณาเปลี่ยนรหัสผ่าน"
+
+#~ msgid "GNOME Shell"
+#~ msgstr "GNOME Shell"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "การจัดการหน้าต่างและ composite"
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "ไม่สามารถเปิดใช้วาระได้: "

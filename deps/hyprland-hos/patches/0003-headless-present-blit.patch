@@ -1,0 +1,100 @@
+--- a/src/backend/Headless.cpp
++++ b/src/backend/Headless.cpp
+@@ -1,7 +1,10 @@
+ #include <aquamarine/backend/Headless.hpp>
+ #include <fcntl.h>
+ #include <algorithm>
++#include <cerrno>
++#include <cstdint>
+ #include <ctime>
++#include <sys/ioctl.h>
+ #include <sys/timerfd.h>
+ #include <cstring>
+ #include <unistd.h>
+@@ -14,6 +17,26 @@ using namespace Hyprutils::Math;
+ 
+ #define TIMESPEC_NSEC_PER_SEC 1000000000LL
+ 
++namespace {
++    struct SHosPresent {
++        uint64_t data;
++        uint32_t width;
++        uint32_t height;
++        uint32_t stride;
++        uint32_t format;
++        uint64_t size;
++    };
++
++    constexpr unsigned long HOS_IOCTL_PRESENT = _IOW('d', 0xF0, SHosPresent);
++
++    int hosPresentFD() {
++        static int fd = -1;
++        if (fd < 0)
++            fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
++        return fd;
++    }
++}
++
+ Aquamarine::CHeadlessOutput::CHeadlessOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CHeadlessBackend> backend_) : backend(backend_) {
+     name = name_;
+ 
+@@ -32,6 +55,47 @@ Aquamarine::CHeadlessOutput::~CHeadlessOutput() {
+ }
+ 
+ bool Aquamarine::CHeadlessOutput::commit() {
++    auto buffer = state->internalState.buffer;
++
++    if (buffer) {
++        if (!(buffer->caps() & BUFFER_CAPABILITY_DATAPTR)) {
++            backend->backend->log(AQ_LOG_ERROR, std::format("Output {}: pending buffer is not CPU-readable", name));
++            return false;
++        }
++
++        auto attrs                    = buffer->dmabuf();
++        auto [pixelData, fmt, bufLen] = buffer->beginDataPtr(0);
++
++        if (!pixelData || !bufLen) {
++            buffer->endDataPtr();
++            backend->backend->log(AQ_LOG_ERROR, std::format("Output {}: pending buffer has no data pointer", name));
++            return false;
++        }
++
++        const uint32_t width  = static_cast<uint32_t>(buffer->size.x);
++        const uint32_t height = static_cast<uint32_t>(buffer->size.y);
++        const uint32_t stride = attrs.strides.at(0) ? attrs.strides.at(0) : width * 4;
++
++        SHosPresent present = {
++            .data   = reinterpret_cast<uint64_t>(pixelData),
++            .width  = width,
++            .height = height,
++            .stride = stride,
++            .format = fmt ? fmt : attrs.format,
++            .size   = static_cast<uint64_t>(bufLen),
++        };
++
++        int fd = hosPresentFD();
++        if (fd < 0 || ioctl(fd, HOS_IOCTL_PRESENT, &present) < 0) {
++            const int err = errno;
++            buffer->endDataPtr();
++            backend->backend->log(AQ_LOG_ERROR, std::format("Output {}: kernel present failed: {}", name, strerror(err)));
++            return false;
++        }
++
++        buffer->endDataPtr();
++    }
++
+     events.commit.emit();
+     state->onCommit();
+     needsFrame = false;
+@@ -189,7 +253,10 @@ bool Aquamarine::CHeadlessBackend::createOutput(const std::string& name) {
+ 
+     auto output = SP<CHeadlessOutput>(new CHeadlessOutput(outputName, self.lock()));
+     outputs.emplace_back(output);
+-    output->modes.emplace_back(SP<SOutputMode>(new SOutputMode(Vector2D{1920, 1080}, 60000, true)));
++    // EpinAnonymOS: match the Limine framebuffer (g_fb, 1280x800 under QEMU).
++    // Dumb buffers stay off-screen; commit() presents the selected buffer through
++    // a small kernel blit into g_fb.
++    output->modes.emplace_back(SP<SOutputMode>(new SOutputMode(Vector2D{1280, 800}, 60000, true)));
+     output->swapchain = CSwapchain::create(backend->primaryAllocator, self.lock());
+     output->self      = output;
+     backend->events.newOutput.emit(SP<IOutput>(output));

@@ -1,0 +1,36 @@
+--- a/src/backend/Backend.cpp
++++ b/src/backend/Backend.cpp
+@@ -4,6 +4,7 @@
+ #include <aquamarine/backend/DRM.hpp>
+ #include <aquamarine/backend/Null.hpp>
+ #include <aquamarine/allocator/GBM.hpp>
++#include <aquamarine/allocator/DRMDumb.hpp>
+ #include <hyprutils/os/FileDescriptor.hpp>
+ #include <ranges>
+ #include <sys/timerfd.h>
+@@ -170,6 +171,25 @@
+         }
+     }
+ 
++    // HanonymOS: no DRM backend means no GBM/GPU allocator, but a headless
++    // (software) compositor still needs to allocate buffers.  Fall back to a DRM
++    // dumb-buffer allocator opened directly on the primary card node — it uses
++    // only libdrm (CREATE_DUMB/MAP_DUMB/PRIME), no Mesa/GBM, so it works without
++    // a GPU driver.
++    if (!primaryAllocator) {
++        int dumbFD = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
++        if (dumbFD < 0)
++            dumbFD = open("/dev/dri/renderD128", O_RDWR | O_CLOEXEC);
++        if (dumbFD >= 0) {
++            primaryAllocator = CDRMDumbAllocator::create(dumbFD, self);
++            if (primaryAllocator)
++                log(AQ_LOG_DEBUG, "Created a DRM dumb-buffer allocator (software/headless path)");
++            else
++                close(dumbFD);
++        } else
++            log(AQ_LOG_ERROR, "Cannot open /dev/dri node for dumb allocator");
++    }
++
+     if (!primaryAllocator && (implementations.empty() || implementations.at(0)->type() != AQ_BACKEND_NULL)) {
+         log(AQ_LOG_CRITICAL, "Cannot open backend: no allocator available");
+         return false;

@@ -1,0 +1,42 @@
+diff --git a/src/Compositor.cpp b/src/Compositor.cpp
+--- a/src/Compositor.cpp
++++ b/src/Compositor.cpp
+@@ -347,6 +347,11 @@ CCompositor::CCompositor() {
+         throwError("CBackend::create() failed!");
+     }
+ 
++    if (!m_aqBackend->hasSession()) {
++        Log::logger->log(Log::DEBUG, "Sessionless backend active; forcing compositor session active");
++        m_sessionActive = true;
++    }
++
+     m_initialized = true;
+ 
+     Log::logger->log(Log::DEBUG, "Instance Signature: {}", m_instanceSignature);
+@@ -764,8 +769,12 @@ void CCompositor::prepareFallbackOutput() {
+ 
+     headless->createOutput();
+ 
+-    if (m_monitors.empty())
+-        enterUnsafeState();
++    if (m_monitors.empty()) {
++        if (!m_aqBackend->hasSession())
++            Log::logger->log(Log::DEBUG, "Sessionless fallback output pending; skipping unsafe state");
++        else
++            enterUnsafeState();
++    }
+ }
+ 
+ void CCompositor::startCompositor() {
+@@ -3037,9 +3046,11 @@ void CCompositor::onNewMonitor(SP<Aquamarine::IOutput> output) {
+     // add it to real
+     auto PNEWMONITOR = g_pCompositor->m_realMonitors.emplace_back(makeShared<CMonitor>(output));
+-    if (std::string("HEADLESS-1") == output->name) {
++    if (std::string("HEADLESS-1") == output->name && g_pCompositor->m_aqBackend->hasSession()) {
+         g_pCompositor->m_unsafeOutput = PNEWMONITOR;
+         output->name                  = "FALLBACK"; // we are allowed to do this :)
++    } else if (std::string("HEADLESS-1") == output->name) {
++        output->name = "FALLBACK";
+     }
+ 
+     Log::logger->log(Log::DEBUG, "New output with name {}", output->name);

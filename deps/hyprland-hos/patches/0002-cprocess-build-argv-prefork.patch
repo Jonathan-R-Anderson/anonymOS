@@ -1,0 +1,122 @@
+--- a/src/os/Process.cpp
++++ b/src/os/Process.cpp
+@@ -45,47 +45,50 @@
+         return false;
+     }
+ 
++    // HanonymOS: build argv BEFORE fork().  In a multithreaded process the child
++    // of fork() may only call async-signal-safe functions until execve; strdup /
++    // std::vector allocate and can deadlock on an allocator / libc++ lock held by
++    // another thread at the moment of fork.  Doing it in the parent makes the
++    // child path lock-free (only close/dup2/execvp).
++    std::vector<char*> argsC;
++    argsC.emplace_back(strdup(m_impl->binary.c_str()));
++    for (auto& arg : m_impl->args)
++        argsC.emplace_back(strdup(arg.c_str()));
++    argsC.emplace_back(nullptr);
++
+     int pid = fork();
+     if (pid == -1) {
+         close(outPipe[0]);
+         close(outPipe[1]);
+         close(errPipe[0]);
+         close(errPipe[1]);
++        for (auto ptr : argsC)
++            if (ptr)
++                free(ptr);
+         return false;
+     }
+ 
+     if (!pid) {
+-        // child
++        // child — async-signal-safe only (argv was built above, pre-fork)
+         close(outPipe[0]);
+         close(errPipe[0]);
+ 
+         dup2(outPipe[1], 1 /* stdout */);
+         dup2(errPipe[1], 2 /* stderr */);
+ 
+-        // build argv
+-        std::vector<char*> argsC;
+-        argsC.emplace_back(strdup(m_impl->binary.c_str()));
+-        for (auto& arg : m_impl->args) {
+-            // Arguments are duplicated for execvp; if execvp fails, they must be freed.
+-            argsC.emplace_back(strdup(arg.c_str()));
+-        }
+-
+-        argsC.emplace_back(nullptr);
+-
+         // pass env
+         for (auto& [n, v] : m_impl->env) {
+             setenv(n.c_str(), v.c_str(), 1);
+         }
+ 
+         execvp(m_impl->binary.c_str(), argsC.data());
+-        for (auto ptr : argsC) {
+-            if (ptr)
+-                free(ptr);
+-        }
+         _exit(1);
+ 
+     } else {
+         // parent
++        for (auto ptr : argsC)
++            if (ptr)
++                free(ptr);
+         close(outPipe[1]);
+         close(errPipe[1]);
+ 
+@@ -185,11 +188,23 @@
+     if (pipe(socket) != 0)
+         return false;
+ 
++    // HanonymOS: build argv BEFORE any fork() (see runSync) so the forked
++    // child/grandchild only call async-signal-safe functions and cannot deadlock
++    // on an allocator/libc++ lock inherited locked from another thread.
++    std::vector<char*> argsC;
++    argsC.emplace_back(strdup(m_impl->binary.c_str()));
++    for (auto& arg : m_impl->args)
++        argsC.emplace_back(strdup(arg.c_str()));
++    argsC.emplace_back(nullptr);
++
+     pid_t child, grandchild;
+     child = fork();
+     if (child < 0) {
+         close(socket[0]);
+         close(socket[1]);
++        for (auto ptr : argsC)
++            if (ptr)
++                free(ptr);
+         return false;
+     }
+ 
+@@ -201,17 +216,9 @@
+ 
+         grandchild = fork();
+         if (grandchild == 0) {
+-            // run in grandchild
++            // run in grandchild — async-signal-safe only (argv built pre-fork)
+             close(socket[0]);
+             close(socket[1]);
+-            // build argv
+-            std::vector<char*> argsC;
+-            argsC.emplace_back(strdup(m_impl->binary.c_str()));
+-            for (auto& arg : m_impl->args) {
+-                argsC.emplace_back(strdup(arg.c_str()));
+-            }
+-
+-            argsC.emplace_back(nullptr);
+ 
+             // pass env
+             for (auto& [n, v] : m_impl->env) {
+@@ -251,6 +258,10 @@
+     }
+ 
+     // run in parent
++    for (auto ptr : argsC)
++        if (ptr)
++            free(ptr);
++
+     close(socket[1]);
+     ssize_t bytesRead = read(socket[0], &grandchild, sizeof(grandchild));
+     close(socket[0]);

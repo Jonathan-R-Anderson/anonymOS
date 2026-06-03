@@ -1,0 +1,412 @@
+diff --git a/src/render/GLRenderer.cpp b/src/render/GLRenderer.cpp
+index 35aca7d..ddb2578 100644
+--- a/src/render/GLRenderer.cpp
++++ b/src/render/GLRenderer.cpp
+@@ -85,8 +85,6 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
+     const auto  PMONITOR           = g_pHyprRenderer->m_renderData.pMonitor;
+     static auto PNVIDIAANTIFLICKER = CConfigValue<Config::INTEGER>("opengl:nvidia_anti_flicker");
+ 
+-    g_pHyprRenderer->m_renderData.damage = m_renderPass.render(g_pHyprRenderer->m_renderData.damage);
+-
+     auto cleanup = CScopeGuard([this]() {
+         if (m_currentRenderbuffer)
+             m_currentRenderbuffer->unbind();
+@@ -94,6 +92,35 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
+         m_currentBuffer       = nullptr;
+     });
+ 
++    if (m_renderMode == RENDER_MODE_NORMAL && m_currentRenderbuffer && m_currentRenderbuffer->needsCPUCopy()) {
++        static bool logged = false;
++        if (!logged) {
++            Log::logger->log(Log::WARN, "renderer: using HOS CPU-readback clear frame path");
++            logged = true;
++        }
++
++        m_renderPass.clear();
++        g_pHyprRenderer->bindFB(m_currentRenderbuffer->getFB());
++        g_pHyprOpenGL->scissor(nullptr);
++        glClearColor(0.06F, 0.09F, 0.12F, 1.F);
++        glClear(GL_COLOR_BUFFER_BIT);
++        g_pHyprRenderer->m_renderData.damage = CRegion{0, 0, sc<int>(PMONITOR->m_pixelSize.x), sc<int>(PMONITOR->m_pixelSize.y)};
++        PMONITOR->m_output->state->setBuffer(m_currentBuffer);
++
++        if ((isNvidia() && *PNVIDIAANTIFLICKER) || isSoftware())
++            glFinish();
++        else
++            glFlush();
++
++        m_usedAsyncBuffers.clear();
++        if (renderingDoneCallback)
++            renderingDoneCallback();
++
++        return;
++    }
++
++    g_pHyprRenderer->m_renderData.damage = m_renderPass.render(g_pHyprRenderer->m_renderData.damage);
++
+     if (m_renderMode != RENDER_MODE_TO_BUFFER_READ_ONLY)
+         g_pHyprOpenGL->end();
+     else {
+diff --git a/src/render/Renderbuffer.hpp b/src/render/Renderbuffer.hpp
+index e19af22..0b14c00 100644
+--- a/src/render/Renderbuffer.hpp
++++ b/src/render/Renderbuffer.hpp
+@@ -16,6 +16,9 @@ namespace Render {
+ 
+         virtual void            bind()   = 0;
+         virtual void            unbind() = 0;
++        virtual bool            needsCPUCopy() const {
++            return false;
++        }
+ 
+         WP<Aquamarine::IBuffer> m_hlBuffer;
+ 
+diff --git a/src/render/ShaderLoader.cpp b/src/render/ShaderLoader.cpp
+index 50ab61d..6545e7e 100644
+--- a/src/render/ShaderLoader.cpp
++++ b/src/render/ShaderLoader.cpp
+@@ -11,6 +11,7 @@
+ #include <glslang/Public/resource_limits_c.h>
+ #include <string>
+ #include <filesystem>
++#include <sstream>
+ 
+ using namespace Render;
+ 
+@@ -79,43 +80,55 @@ std::string CShaderLoader::getDefines(ShaderFeatureFlags features) {
+ }
+ 
+ std::string CShaderLoader::processSource(const std::string& source, glslang_stage_t stage) {
+-    const glslang_input_t input = {
+-        .language                          = GLSLANG_SOURCE_GLSL,
+-        .stage                             = stage,
+-        .client                            = GLSLANG_CLIENT_NONE,
+-        .target_language                   = GLSLANG_TARGET_NONE,
+-        .code                              = source.c_str(),
+-        .default_version                   = 100,
+-        .default_profile                   = GLSLANG_NO_PROFILE,
+-        .force_default_version_and_profile = false,
+-        .forward_compatible                = false,
+-        .messages                          = GLSLANG_MSG_DEFAULT_BIT,
+-        .resource                          = glslang_default_resource(),
+-        .callbacks                         = m_callbacks,
+-        .callbacks_ctx                     = this,
+-    };
+-
+-    glslang_shader_t* shader = glslang_shader_create(&input);
++    (void)stage;
++    return expandIncludes(source);
++}
+ 
+-    if (!glslang_shader_preprocess(shader, &input)) {
+-        Log::logger->log(Log::ERR, "GLSL preprocessing failed");
+-        Log::logger->log(Log::ERR, "{}", glslang_shader_get_info_log(shader));
+-        Log::logger->log(Log::ERR, "{}", glslang_shader_get_info_debug_log(shader));
+-        Log::logger->log(Log::ERR, "{}", input.code);
+-        glslang_shader_delete(shader);
++std::string CShaderLoader::expandIncludes(const std::string& source, size_t depth) {
++    if (depth > 16) {
++        Log::logger->log(Log::ERR, "Shader include expansion exceeded maximum depth");
+         return source;
+     }
+ 
+-    std::stringstream stream(glslang_shader_get_preprocessed_code(shader));
+-    std::string       code = "";
++    std::stringstream stream(source);
++    std::string       code;
+     std::string       line;
+ 
+     while (std::getline(stream, line)) {
+-        if (!line.starts_with("#line "))
++        const auto first = line.find_first_not_of(" \t");
++        const auto trim  = first == std::string::npos ? std::string{} : line.substr(first);
++
++        if (trim.starts_with("#extension GL_ARB_shading_language_include")) {
++            continue;
++        }
++
++        if (!trim.starts_with("#include")) {
+             code += line + "\n";
++            continue;
++        }
++
++        const auto quoteStart = trim.find('"');
++        const auto quoteEnd   = quoteStart == std::string::npos ? std::string::npos : trim.find('"', quoteStart + 1);
++        if (quoteStart == std::string::npos || quoteEnd == std::string::npos) {
++            code += line + "\n";
++            continue;
++        }
++
++        const auto header = trim.substr(quoteStart + 1, quoteEnd - quoteStart - 1);
++        if (m_overrideDefines.length() && header == "defines.h") {
++            code += m_overrideDefines;
++            continue;
++        }
++
++        if (!m_includes.contains(header)) {
++            Log::logger->log(Log::ERR, "Shader include '{}' not found", header);
++            code += line + "\n";
++            continue;
++        }
++
++        code += expandIncludes(m_includes.at(header), depth + 1);
+     }
+ 
+-    glslang_shader_delete(shader);
+     return code;
+ }
+ 
+diff --git a/src/render/ShaderLoader.hpp b/src/render/ShaderLoader.hpp
+index 5818465..5475b50 100644
+--- a/src/render/ShaderLoader.hpp
++++ b/src/render/ShaderLoader.hpp
+@@ -64,6 +64,7 @@ namespace Render {
+         std::string loadShader(const std::string& filename);
+         std::string getDefines(ShaderFeatureFlags features);
+         std::string processSource(const std::string& source, glslang_stage_t stage = GLSLANG_STAGE_FRAGMENT);
++        std::string expandIncludes(const std::string& source, size_t depth = 0);
+ 
+         //
+         std::string                                                         m_shaderPath;
+diff --git a/src/render/gl/GLFramebuffer.cpp b/src/render/gl/GLFramebuffer.cpp
+index 31af664..23af6f8 100644
+--- a/src/render/gl/GLFramebuffer.cpp
++++ b/src/render/gl/GLFramebuffer.cpp
+@@ -54,7 +54,17 @@ bool CGLFramebuffer::internalAlloc(int w, int h, uint32_t drmFormat) {
+     }
+ 
+     auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+-    RASSERT((status == GL_FRAMEBUFFER_COMPLETE), "Framebuffer incomplete, couldn't create! (FB status: {}, GL Error: 0x{:x})", status, sc<int>(glGetError()));
++    if (status != GL_FRAMEBUFFER_COMPLETE) {
++        const auto err = glGetError();
++        Log::logger->log(Log::ERR, "Framebuffer \"{}\" incomplete, couldn't create! (FB status: {}, GL Error: 0x{:x})", m_name, status, sc<int>(err));
++
++        if (m_stencilTex && m_stencilTex->ok())
++            m_stencilTex->unbind();
++
++        glBindTexture(GL_TEXTURE_2D, 0);
++        glBindFramebuffer(GL_FRAMEBUFFER, 0);
++        return false;
++    }
+ 
+     if (m_stencilTex && m_stencilTex->ok())
+         m_stencilTex->unbind();
+@@ -109,12 +119,57 @@ void CGLFramebuffer::release() {
+ }
+ 
+ bool CGLFramebuffer::readPixels(CHLBufferReference buffer, uint32_t offsetX, uint32_t offsetY, uint32_t width, uint32_t height) {
++    const SP<Aquamarine::IBuffer> aqBuffer = buffer.m_buffer;
++    return readPixels(aqBuffer, offsetX, offsetY, width, height);
++}
++
++bool CGLFramebuffer::readPixels(SP<Aquamarine::IBuffer> buffer, uint32_t offsetX, uint32_t offsetY, uint32_t width, uint32_t height) {
++    if (!buffer) {
++        LOGM(Log::ERR, "Can't copy: buffer is null");
++        return false;
++    }
++
+     auto shm                      = buffer->shm();
+-    auto [pixelData, fmt, bufLen] = buffer->beginDataPtr(0); // no need for end, cuz it's shm
++    auto [pixelData, fmt, bufLen] = buffer->beginDataPtr(0);
++
++    if (!pixelData) {
++        LOGM(Log::ERR, "Can't copy: buffer has no data pointer");
++        buffer->endDataPtr();
++        return false;
++    }
++
++    const uint32_t drmFormat = shm.success ? shm.format : fmt;
++    uint32_t       stride    = shm.success ? shm.stride : 0;
++
++    if (!shm.success) {
++        const auto dma = buffer->dmabuf();
++        if (dma.success)
++            stride = dma.strides[0];
++    }
+ 
+-    const auto PFORMAT = getPixelFormatFromDRM(shm.format);
++    const auto PFORMAT = getPixelFormatFromDRM(drmFormat);
+     if (!PFORMAT) {
+         LOGM(Log::ERR, "Can't copy: failed to find a pixel format");
++        buffer->endDataPtr();
++        return false;
++    }
++
++    const uint32_t copyWidth  = width > 0 ? width : sc<uint32_t>(m_size.x);
++    const uint32_t copyHeight = height > 0 ? height : sc<uint32_t>(m_size.y);
++    const uint32_t packStride = minStride(PFORMAT, copyWidth);
++
++    if (!stride)
++        stride = packStride;
++
++    if (stride < packStride) {
++        LOGM(Log::ERR, "Can't copy: destination stride {} is smaller than packed stride {}", stride, packStride);
++        buffer->endDataPtr();
++        return false;
++    }
++
++    if (bufLen < sc<size_t>(stride) * copyHeight) {
++        LOGM(Log::ERR, "Can't copy: destination buffer too small ({} < {})", bufLen, sc<size_t>(stride) * copyHeight);
++        buffer->endDataPtr();
+         return false;
+     }
+ 
+@@ -124,8 +179,7 @@ bool CGLFramebuffer::readPixels(CHLBufferReference buffer, uint32_t offsetX, uin
+ 
+     glPixelStorei(GL_PACK_ALIGNMENT, 1);
+ 
+-    uint32_t    packStride = minStride(PFORMAT, m_size.x);
+-    int         glFormat   = PFORMAT->glFormat;
++    int glFormat = PFORMAT->glFormat;
+ 
+     static auto stripSwizzleAlpha = [](std::array<GLint, 4> arr) {
+         arr[3] = GL_ONE;
+@@ -146,13 +200,12 @@ bool CGLFramebuffer::readPixels(CHLBufferReference buffer, uint32_t offsetX, uin
+ 
+     // This could be optimized by using a pixel buffer object to make this async,
+     // but really clients should just use a dma buffer anyways.
+-    if (packStride == sc<uint32_t>(shm.stride)) {
+-        glReadPixels(offsetX, offsetY, width > 0 ? width : m_size.x, height > 0 ? height : m_size.y, glFormat, PFORMAT->glType, pixelData);
++    if (packStride == stride) {
++        glReadPixels(offsetX, offsetY, copyWidth, copyHeight, glFormat, PFORMAT->glType, pixelData);
+     } else {
+-        const auto h = height > 0 ? height : m_size.y;
+-        for (size_t i = 0; i < h; ++i) {
++        for (size_t i = 0; i < copyHeight; ++i) {
+             uint32_t y = i;
+-            glReadPixels(offsetX, offsetY + y, width > 0 ? width : m_size.x, 1, glFormat, PFORMAT->glType, pixelData + i * shm.stride);
++            glReadPixels(offsetX, offsetY + y, copyWidth, 1, glFormat, PFORMAT->glType, pixelData + i * stride);
+         }
+     }
+ 
+@@ -160,6 +213,7 @@ bool CGLFramebuffer::readPixels(CHLBufferReference buffer, uint32_t offsetX, uin
+     glPixelStorei(GL_PACK_ALIGNMENT, 4);
+ 
+     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
++    buffer->endDataPtr();
+     return true;
+ }
+ 
+diff --git a/src/render/gl/GLFramebuffer.hpp b/src/render/gl/GLFramebuffer.hpp
+index 3405165..17c22cb 100644
+--- a/src/render/gl/GLFramebuffer.hpp
++++ b/src/render/gl/GLFramebuffer.hpp
+@@ -3,6 +3,7 @@
+ #include "../../defines.hpp"
+ #include "../Texture.hpp"
+ #include "../Framebuffer.hpp"
++#include <aquamarine/buffer/Buffer.hpp>
+ #include <drm_fourcc.h>
+ 
+ namespace Render::GL {
+@@ -15,6 +16,7 @@ namespace Render::GL {
+         void   addStencil(SP<ITexture> tex) override;
+         void   release() override;
+         bool   readPixels(CHLBufferReference buffer, uint32_t offsetX = 0, uint32_t offsetY = 0, uint32_t width = 0, uint32_t height = 0) override;
++        bool   readPixels(SP<Aquamarine::IBuffer> buffer, uint32_t offsetX = 0, uint32_t offsetY = 0, uint32_t width = 0, uint32_t height = 0);
+ 
+         void   bind() override;
+         void   unbind();
+diff --git a/src/render/gl/GLRenderbuffer.cpp b/src/render/gl/GLRenderbuffer.cpp
+index 208957e..303a904 100644
+--- a/src/render/gl/GLRenderbuffer.cpp
++++ b/src/render/gl/GLRenderbuffer.cpp
+@@ -10,6 +10,7 @@
+ #include <hyprutils/signal/Signal.hpp>
+ 
+ #include <dlfcn.h>
++#include <drm_fourcc.h>
+ 
+ using namespace Render::GL;
+ 
+@@ -19,8 +20,10 @@ CGLRenderbuffer::~CGLRenderbuffer() {
+ 
+     g_pHyprOpenGL->makeEGLCurrent();
+ 
+-    unbind();
+-    m_framebuffer->release();
++    if (m_framebuffer) {
++        GLFB(m_framebuffer)->unbind();
++        m_framebuffer->release();
++    }
+ 
+     if (m_rbo)
+         glDeleteRenderbuffers(1, &m_rbo);
+@@ -32,9 +35,29 @@ CGLRenderbuffer::~CGLRenderbuffer() {
+ CGLRenderbuffer::CGLRenderbuffer(SP<Aquamarine::IBuffer> buffer, uint32_t format) : IRenderbuffer(buffer, format) {
+     auto dma = buffer->dmabuf();
+ 
+-    m_image = g_pHyprOpenGL->createEGLImage(dma);
++    if (dma.success)
++        m_image = g_pHyprOpenGL->createEGLImage(dma);
++
+     if (m_image == EGL_NO_IMAGE_KHR) {
+-        Log::logger->log(Log::ERR, "rb: createEGLImage failed");
++        if (!(buffer->caps() & Aquamarine::BUFFER_CAPABILITY_DATAPTR)) {
++            Log::logger->log(Log::ERR, "rb: createEGLImage failed and buffer has no CPU data pointer");
++            return;
++        }
++
++        const uint32_t fbFormat = format == DRM_FORMAT_ARGB8888 ? DRM_FORMAT_ARGB8888 : DRM_FORMAT_XRGB8888;
++
++        m_framebuffer = makeShared<CGLFramebuffer>();
++        Log::logger->log(Log::WARN, "rb: allocating CPU readback framebuffer {}x{} source fmt 0x{:x} fb fmt 0x{:x}", buffer->size.x, buffer->size.y,
++                         dma.success ? dma.format : format, fbFormat);
++        if (!m_framebuffer->alloc(buffer->size.x, buffer->size.y, fbFormat)) {
++            Log::logger->log(Log::ERR, "rb: failed to allocate CPU readback framebuffer");
++            return;
++        }
++
++        m_needsCPUCopy = true;
++        m_good         = true;
++
++        Log::logger->log(Log::WARN, "rb: dmabuf EGLImage import failed; rendering to GL framebuffer with CPU readback");
+         return;
+     }
+ 
+@@ -69,5 +92,27 @@ void CGLRenderbuffer::bind() {
+ }
+ 
+ void CGLRenderbuffer::unbind() {
++    if (!m_framebuffer)
++        return;
++
++    if (m_needsCPUCopy) {
++        const auto buffer = m_hlBuffer.lock();
++        if (!buffer)
++            Log::logger->log(Log::ERR, "rb: cannot CPU-copy renderbuffer, buffer is gone");
++        else if (!GLFB(m_framebuffer)->readPixels(buffer))
++            Log::logger->log(Log::ERR, "rb: CPU readback into output buffer failed");
++        else {
++            static bool logged = false;
++            if (!logged) {
++                Log::logger->log(Log::DEBUG, "rb: CPU readback into output buffer completed");
++                logged = true;
++            }
++        }
++    }
++
+     GLFB(m_framebuffer)->unbind();
+ }
++
++bool CGLRenderbuffer::needsCPUCopy() const {
++    return m_needsCPUCopy;
++}
+diff --git a/src/render/gl/GLRenderbuffer.hpp b/src/render/gl/GLRenderbuffer.hpp
+index 137a8e0..19fb26e 100644
+--- a/src/render/gl/GLRenderbuffer.hpp
++++ b/src/render/gl/GLRenderbuffer.hpp
+@@ -14,9 +14,11 @@ namespace Render::GL {
+ 
+         void bind() override;
+         void unbind() override;
++        bool needsCPUCopy() const override;
+ 
+       private:
+-        void*  m_image = nullptr;
+-        GLuint m_rbo   = 0;
++        void*  m_image        = nullptr;
++        GLuint m_rbo          = 0;
++        bool   m_needsCPUCopy = false;
+     };
+ }

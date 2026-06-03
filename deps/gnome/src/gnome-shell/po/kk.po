@@ -1,0 +1,4399 @@
+# Kazakh translation for gnome-shell.
+# Copyright (C) 2015 The gnome-shell authors.
+# This file is distributed under the same license as the gnome-shell package.
+# Baurzhan Muftakhidinov <baurthefirst@gmail.com>, 2012-2021.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-shell/issues/\n"
+"POT-Creation-Date: 2026-02-04 22:50+0000\n"
+"PO-Revision-Date: 2026-02-08 21:21+0500\n"
+"Last-Translator: Baurzhan Muftakhidinov <baurthefirst@gmail.com>\n"
+"Language-Team: Kazakh <kk_KZ@googlegroups.com>\n"
+"Language: kk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#: data/50-gnome-shell-launchers.xml:6
+msgid "Launchers"
+msgstr "Жөнелткіштер"
+
+#: data/50-gnome-shell-launchers.xml:10
+msgid "Activate pinned app 1"
+msgstr "Бекітілген 1-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:14
+msgid "Activate pinned app 2"
+msgstr "Бекітілген 2-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:18
+msgid "Activate pinned app 3"
+msgstr "Бекітілген 3-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:22
+msgid "Activate pinned app 4"
+msgstr "Бекітілген 4-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:26
+msgid "Activate pinned app 5"
+msgstr "Бекітілген 5-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:30
+msgid "Activate pinned app 6"
+msgstr "Бекітілген 6-шы қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:34
+msgid "Activate pinned app 7"
+msgstr "Бекітілген 7-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:38
+msgid "Activate pinned app 8"
+msgstr "Бекітілген 8-ші қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:42
+msgid "Activate pinned app 9"
+msgstr "Бекітілген 9-шы қолданбаны белсендіру"
+
+#: data/50-gnome-shell-launchers.xml:46
+msgid "Open new window of pinned app 1"
+msgstr "Бекітілген 1-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:50
+msgid "Open new window of pinned app 2"
+msgstr "Бекітілген 2-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:54
+msgid "Open new window of pinned app 3"
+msgstr "Бекітілген 3-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:58
+msgid "Open new window of pinned app 4"
+msgstr "Бекітілген 4-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:62
+msgid "Open new window of pinned app 5"
+msgstr "Бекітілген 5-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:66
+msgid "Open new window of pinned app 6"
+msgstr "Бекітілген 6-шы қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:70
+msgid "Open new window of pinned app 7"
+msgstr "Бекітілген 7-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:74
+msgid "Open new window of pinned app 8"
+msgstr "Бекітілген 8-ші қолданбаның жаңа терезесін ашу"
+
+#: data/50-gnome-shell-launchers.xml:78
+msgid "Open new window of pinned app 9"
+msgstr "Бекітілген 9-шы қолданбаның жаңа терезесін ашу"
+
+#. Translators: name of the folder under ~/Pictures for screenshots.
+#: data/50-gnome-shell-screenshots.xml:6 js/ui/screenshot.js:2296
+msgid "Screenshots"
+msgstr "Скриншоттар"
+
+#: data/50-gnome-shell-screenshots.xml:9 data/org.gnome.shell.gschema.xml.in:267
+msgid "Take a screenshot interactively"
+msgstr "Скриншотты интерактивті түрде түсіру"
+
+#: data/50-gnome-shell-screenshots.xml:12
+#: data/org.gnome.shell.gschema.xml.in:279
+msgid "Take a screenshot"
+msgstr "Скриншотты түсіру"
+
+#: data/50-gnome-shell-screenshots.xml:15
+#: data/org.gnome.shell.gschema.xml.in:275
+msgid "Take a screenshot of a window"
+msgstr "Терезе скриншотын түсіру"
+
+#: data/50-gnome-shell-screenshots.xml:18
+#: data/org.gnome.shell.gschema.xml.in:271
+msgid "Record a screencast interactively"
+msgstr "Скринкастты интерактивті түрде жазу"
+
+#: data/50-gnome-shell-system.xml:6
+#: data/X-GNOME-Shell-System.directory.desktop.in:2 js/ui/messageTray.js:1311
+msgid "System"
+msgstr "Жүйе"
+
+#: data/50-gnome-shell-system.xml:9
+msgid "Show the notification list"
+msgstr "Хабарламалар тізімін көрсету"
+
+#: data/50-gnome-shell-system.xml:12
+msgid "Open the quick settings menu"
+msgstr "Жылдам баптаулар мәзірін ашу"
+
+#: data/50-gnome-shell-system.xml:15
+msgid "Focus the active notification"
+msgstr "Белсенді хабарламаға фокусты орнату"
+
+#: data/50-gnome-shell-system.xml:18
+msgid "Show the overview"
+msgstr "Шолуды көрсету"
+
+#: data/50-gnome-shell-system.xml:21
+msgid "Show all apps"
+msgstr "Барлық қолданбаларды көрсету"
+
+#: data/org.gnome.shell.gschema.xml.in:6
+msgid "Enable internal tools useful for developers and testers from Alt-F2"
+msgstr ""
+"Alt-F2 ішінен өндірушілер мен сынаушылар үшін пайдалы ішкі саймандарды іске "
+"қосу"
+
+#: data/org.gnome.shell.gschema.xml.in:9
+msgid ""
+"Allows access to internal debugging and monitoring tools using the Alt-F2 "
+"dialog."
+msgstr ""
+"Alt-F2 сұхбат арқылы қолжетерлік болатын ішкі жөндеу мен бақылау саймандарына "
+"қатынауды рұқсат ету."
+
+#: data/org.gnome.shell.gschema.xml.in:16
+msgid "UUIDs of extensions to enable"
+msgstr "Іске қосу үшін кеңейтулердің UUID-ры"
+
+#: data/org.gnome.shell.gschema.xml.in:17
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be loaded. Any extension that wants to be loaded needs to be in this "
+"list. You can also manipulate this list with the EnableExtension and "
+"DisableExtension D-Bus methods on org.gnome.Shell."
+msgstr ""
+"GNOME Shell кеңейтулерінде UUID қасиеті бар; бұл кілт жүктелетін кеңейтулер "
+"тізімін сақтайды. Жүйеге кірген кезде жүктелем дейтін кеңейту осы тізімде "
+"болуы тиіс. Бұл тізімді org.gnome.Shell ішіндегі EnableExtension және "
+"DisableExtension DBus тәсілдерімен де өзгертуге болады."
+
+#: data/org.gnome.shell.gschema.xml.in:26
+msgid "UUIDs of extensions to force disabling"
+msgstr "Мәжбүрлі сөндіру үшін кеңейтулер UUID-лары"
+
+#: data/org.gnome.shell.gschema.xml.in:27
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be disabled, even if loaded as part of the current mode. You can also "
+"manipulate this list with the EnableExtension and DisableExtension D-Bus "
+"methods on org.gnome.Shell. This key takes precedence over the “enabled-"
+"extensions” setting."
+msgstr ""
+"GNOME Shell кеңейтулерінде UUID қасиеті бар; бұл кілт сөндіру үшін кеңейтулер "
+"тізімін сақтайды, олар қазіргі режимде іске қосылған болса да. Сонымен қатар, "
+"бұл тізімді org.gnome.Shell EnableExtension және DisableExtension D-Bus "
+"тәсілдері арқылы түзетуге болады. Бұл кілт \"enabled-extensions\" баптауын "
+"үстінен басады."
+
+#: data/org.gnome.shell.gschema.xml.in:37
+msgid "Disable user extensions"
+msgstr "Пайдаланушы кеңейтулерін сөндіру"
+
+#: data/org.gnome.shell.gschema.xml.in:38
+msgid ""
+"Disable all extensions the user has enabled without affecting the “enabled-"
+"extension” setting."
+msgstr ""
+"\"enabled-extension\" баптауын тимей-ақ, пайдаланушы іске қосқан барлық "
+"кеңейтулерді сөндіру."
+
+#: data/org.gnome.shell.gschema.xml.in:45
+msgid "Allow extension installation"
+msgstr "Кеңейтуді орнатуды рұқсат ету"
+
+#: data/org.gnome.shell.gschema.xml.in:46
+msgid ""
+"Allow users to install extensions in their home folder. If disabled, the "
+"InstallRemoteExtension D-Bus method will fail, and extensions are only loaded "
+"from system directories on startup. It does not affect extensions that are "
+"already loaded, so a change only takes full effect on the next login."
+msgstr ""
+"Пайдаланушыларға өз үй бумасына кеңейтулерді орнатуға рұқсат ету. Сөндірілсе, "
+"InstallRemoteExtension D-Bus әдісі сәтсіз болады, ал кеңейтулер жүйе іске "
+"қосылған кезде тек жүйелік бумалардан жүктелетін болады. Ол қазір жүктелген "
+"кеңейтулерге әсер етпейді, сондықтан өзгеріс тек келесі кіруге толық күшіне "
+"енеді."
+
+#: data/org.gnome.shell.gschema.xml.in:56
+msgid "Disables the validation of extension version compatibility"
+msgstr "Кеңейту нұсқасы үйлесімділігінің расталуын сөндіреді"
+
+#: data/org.gnome.shell.gschema.xml.in:57
+msgid ""
+"GNOME Shell will only load extensions that claim to support the current "
+"running version. Enabling this option will disable this check and try to load "
+"all extensions regardless of the versions they claim to support."
+msgstr ""
+"GNOME Shell тек ағымдағы орындалып жатқан нұсқаны қолдаймын деп хабарлайтын "
+"кеңейтулерді жүктейтін болады. Бұл опцияны іске қосу ол мүмкіндікті "
+"сөндіреді, және кеңейту қолдайтын нұсқасына қарамастан жүктеп көретін болады."
+
+#: data/org.gnome.shell.gschema.xml.in:67
+msgid "List of desktop file IDs for favorite applications"
+msgstr "Таңдамалы қолданбалар үшін desktop файлдары ID-нің тізімі"
+
+#: data/org.gnome.shell.gschema.xml.in:68
+msgid ""
+"The applications corresponding to these identifiers will be displayed in the "
+"favorites area."
+msgstr ""
+"Осы анықтағыштарға сәйкес келетін қолданбалар таңдамалылар аймағында "
+"көрсетілетін болады."
+
+#: data/org.gnome.shell.gschema.xml.in:75
+msgid "History for command (Alt-F2) dialog"
+msgstr "Командалар сұхбаты (Alt-F2) үшін тарихы"
+
+#. Translators: looking glass is a debugger and inspector tool, see https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/docs/looking-glass.md
+#: data/org.gnome.shell.gschema.xml.in:80
+msgid "History for the looking glass dialog"
+msgstr "Іздеу сұхбатының тарихы"
+
+#: data/org.gnome.shell.gschema.xml.in:84
+msgid "Always show the “Log Out” action in the system menu"
+msgstr "Жүйелік мәзірде \"Жүйеден шығу\" нұсқасын әрқашан көрсету"
+
+#: data/org.gnome.shell.gschema.xml.in:85
+msgid ""
+"This key overrides the automatic hiding of the “Log out” action in the system "
+"menu for logged-in situations where there is a single, local, non-system user "
+"and only a single available session type (e.g. GNOME on Wayland)."
+msgstr ""
+"Бұл кілт жалғыз, жергілікті, жүйелік емес пайдаланушы және тек бір ғана "
+"қолжетімді сеанс түрі (мысалы, Wayland-тағы GNOME) бар кірген жағдайлар үшін "
+"жүйе мәзірінде «Жүйеден шығу» әрекетін автоматты түрде жасыруды үстінен "
+"басады."
+
+#: data/org.gnome.shell.gschema.xml.in:94
+msgid ""
+"Whether to remember password for mounting encrypted or remote filesystems"
+msgstr ""
+"Шифрленген немесе қашықтағы файлдық жүйелерді тіркеу парольдерін сақтау керек "
+"пе, соны көрсетеді"
+
+#: data/org.gnome.shell.gschema.xml.in:95
+msgid ""
+"The shell will request a password when an encrypted device or a remote "
+"filesystem is mounted. If the password can be saved for future use a "
+"“Remember Password” checkbox will be present. This key sets the default state "
+"of the checkbox."
+msgstr ""
+"Қоршам шифрленген құрылғы немесе қашықтағы файлдық жүйе тіркелген кезде "
+"парольді сұрайды. Егер парольді болашақтағы қолданулар үшін сақтау керек "
+"болса, \"Парольді есте сақтау\" жалаушасын орнатыңыз. Бұл кілт жалаушаның "
+"бастапқы күйін орнатады."
+
+#: data/org.gnome.shell.gschema.xml.in:104
+msgid "The last selected non-default power profile"
+msgstr "Соңғы таңдалған әдепкі емес эл. қорегі профилі"
+
+#: data/org.gnome.shell.gschema.xml.in:105
+msgid ""
+"Some systems support more than two power profiles. In order to still support "
+"toggling between two profiles, this key records the last selected non-default "
+"profile."
+msgstr ""
+"Кейбір жүйелер екіден артық эл. корек профильдерін қолдайды. Екі профиль "
+"арасында ауысуды қолдау үшін бұл кілт соңғы таңдалған әдепкі емес профильді "
+"жазады."
+
+#: data/org.gnome.shell.gschema.xml.in:113
+msgid "The last version the “Welcome to GNOME” dialog was shown for"
+msgstr "\"GNOME %s ішіне қош келдіңіз\" сұхбаты көрсетілген соңғы нұсқасы"
+
+#: data/org.gnome.shell.gschema.xml.in:114
+msgid ""
+"This key determines for which version the “Welcome to GNOME” dialog was last "
+"shown. An empty string represents the oldest possible version, and a huge "
+"number will represent versions that do not exist yet. This huge number can be "
+"used to effectively disable the dialog."
+msgstr ""
+"Бұл кілт \"GNOME %s ішіне қош келдіңіз\" сұхбаты көрсетілген соңғы нұсқасын "
+"сипаттайды. Бос жол мүмкін болған ең ескі нұсқаны, ал үлкен сан әлі жоқ болып "
+"тұрған нұсқаларды сипаттайды. Бұл үлкен санды сұхбатты сөндіру үшін қолдануға "
+"болады."
+
+#: data/org.gnome.shell.gschema.xml.in:125
+msgid "Layout of the app picker"
+msgstr "Қолданбалар таңдаушысының жаймасы"
+
+#: data/org.gnome.shell.gschema.xml.in:126
+msgid ""
+"Layout of the app picker. Each entry in the array is a page. Pages are stored "
+"in the order they appear in GNOME Shell. Each page contains an “application "
+"id” → 'data' pair. Currently, the following values are stored as 'data': • "
+"“position”: the position of the application icon in the page"
+msgstr ""
+"Қолданбалар таңдаушысының жаймасы. Массивтегі әрбір жазба жеке бет болып "
+"табылады. Беттер GNOME Shell-да көрсетілетін ретімен сақталады. Әр бетте "
+"\"бағдарлама id\" → \"деректер\" жұбы бар. Қазіргі кезде мәндер келесідей "
+"сақталады 'деректер': • \"орын\": беттегі бағдарлама таңбашасының орны"
+
+#: data/org.gnome.shell.gschema.xml.in:145
+#: data/org.gnome.shell.gschema.xml.in:152
+msgid "Keybinding to shift between overview states"
+msgstr "Шолу күйлері арасында ауысу үшін пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:146
+msgid "Keybinding to shift between session, window picker and app grid"
+msgstr ""
+"Сессия, терезелер таңдаушысы және қолданбалар торы арасында ауысу үшін "
+"пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:153
+msgid "Keybinding to shift between app grid, window picker and session"
+msgstr ""
+"Қолданбалар торы, терезелер таңдаушысы және сессия арасында ауысу үшін "
+"пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:159
+msgid "Keybinding to open the “Show Applications” view"
+msgstr "\"Қолданбаларды көрсету\" көрінісін ашу үшін пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:160
+msgid ""
+"Keybinding to open the “Show Applications” view of the Activities Overview."
+msgstr ""
+"Көрініс ішінен \"Қолданбаларды көрсету\" ашу үшін пернелер комбинациясы."
+
+#: data/org.gnome.shell.gschema.xml.in:167
+msgid "Keybinding to open the overview"
+msgstr "Шолуды ашу үшін пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:168
+msgid "Keybinding to open the Activities Overview."
+msgstr "Көріністі ашу үшін пернелер комбинациясы."
+
+#: data/org.gnome.shell.gschema.xml.in:174
+msgid "Keybinding to toggle the visibility of the notification list"
+msgstr ""
+"Хабарламалар тізімінің көрінуін іске қосу/сөндіру үшін пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:175
+msgid "Keybinding to toggle the visibility of the notification list."
+msgstr ""
+"Хабарламалар тізімінің көрінуін іске қосу/сөндіру үшін пернелер комбинациясы."
+
+#: data/org.gnome.shell.gschema.xml.in:181
+msgid "Keybinding to toggle the quick settings menu"
+msgstr "Жылдам мәзірді ашу/жабу үшін пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:182
+msgid "Keybinding to toggle the quick settings menu."
+msgstr "Жылдам мәзірді ашу/жабу үшін пернелер комбинациясы."
+
+#: data/org.gnome.shell.gschema.xml.in:188
+msgid "Keybinding to focus the active notification"
+msgstr "Белсенді ескертуге фокусты ауыстыру пернелер комбинациясы"
+
+#: data/org.gnome.shell.gschema.xml.in:189
+msgid "Keybinding to focus the active notification."
+msgstr "Белсенді ескертуге фокусты ауыстыру пернелер комбинациясы."
+
+#: data/org.gnome.shell.gschema.xml.in:195
+msgid "Switch to application 1"
+msgstr "1-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:199
+msgid "Switch to application 2"
+msgstr "2-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:203
+msgid "Switch to application 3"
+msgstr "3-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:207
+msgid "Switch to application 4"
+msgstr "4-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:211
+msgid "Switch to application 5"
+msgstr "5-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:215
+msgid "Switch to application 6"
+msgstr "6-шы қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:219
+msgid "Switch to application 7"
+msgstr "7-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:223
+msgid "Switch to application 8"
+msgstr "8-ші қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:227
+msgid "Switch to application 9"
+msgstr "9-шы қолданбаға ауысу"
+
+#: data/org.gnome.shell.gschema.xml.in:231
+msgid "Open a new instance of application 1"
+msgstr "1-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:235
+msgid "Open a new instance of application 2"
+msgstr "2-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:239
+msgid "Open a new instance of application 3"
+msgstr "3-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:243
+msgid "Open a new instance of application 4"
+msgstr "4-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:247
+msgid "Open a new instance of application 5"
+msgstr "5-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:251
+msgid "Open a new instance of application 6"
+msgstr "6-шы қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:255
+msgid "Open a new instance of application 7"
+msgstr "7-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:259
+msgid "Open a new instance of application 8"
+msgstr "8-ші қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:263
+msgid "Open a new instance of application 9"
+msgstr "9-шы қолданбаның жаңа данасын ашу"
+
+#: data/org.gnome.shell.gschema.xml.in:283
+msgid "Screen brightness up"
+msgstr "Экран жарықтылығын арттыру"
+
+#: data/org.gnome.shell.gschema.xml.in:287
+msgid "Screen brightness up on current monitor"
+msgstr "Ағымдағы мониторда экран жарықтылығын арттыру"
+
+#: data/org.gnome.shell.gschema.xml.in:291
+msgid "Screen brightness down"
+msgstr "Экран жарықтылығын төмендету"
+
+#: data/org.gnome.shell.gschema.xml.in:295
+msgid "Screen brightness down on current monitor"
+msgstr "Ағымдағы мониторда экран жарықтылығын төмендету"
+
+#: data/org.gnome.shell.gschema.xml.in:299
+msgid "Screen brightness cycle"
+msgstr "Экран жарықтылығын циклдік ауыстыру"
+
+#: data/org.gnome.shell.gschema.xml.in:303
+msgid "Screen brightness cycle on current monitor"
+msgstr "Ағымдағы мониторда экран жарықтылығын циклдік ауыстыру"
+
+#: data/org.gnome.shell.gschema.xml.in:312
+#: data/org.gnome.shell.gschema.xml.in:339
+msgid "Limit switcher to current workspace."
+msgstr "Ауыстырғышты ағымдағы жұмыс орнымен шектеу."
+
+#: data/org.gnome.shell.gschema.xml.in:313
+msgid ""
+"If true, only applications that have windows on the current workspace are "
+"shown in the switcher. Otherwise, all applications are included."
+msgstr ""
+"Таңдалса, ауыстырғышта тек ағымдағы жұмыс орнындағы терезелері бар "
+"қолданбалар көрсетіледі. Болмаса, барлық қолданбалар болады."
+
+#: data/org.gnome.shell.gschema.xml.in:330
+msgid "The application icon mode."
+msgstr "Қолданбаның таңбаша режимі."
+
+#: data/org.gnome.shell.gschema.xml.in:331
+msgid ""
+"Configures how the windows are shown in the switcher. Valid possibilities are "
+"“thumbnail-only” (shows a thumbnail of the window), “app-icon-only” (shows "
+"only the application icon) or “both”."
+msgstr ""
+"Терезелер ауыстырғышта қалай көрсетілетінін сипаттайды. Мүмкін мәндері "
+"\"thumbnail-only\" (терезенің кіші көрінісі көрсетіледі), \"app-icon-only\" "
+"(тек қолданба таңбашасы көрсетіледі) немесе \"both\" (екеуі де)."
+
+#: data/org.gnome.shell.gschema.xml.in:340
+msgid ""
+"If true, only windows from the current workspace are shown in the switcher. "
+"Otherwise, all windows are included."
+msgstr ""
+"Таңдалса, ауыстырғышта тек ағымдағы жұмыс орнындағы терезелер көрсетіледі. "
+"Болмаса, барлық терезелер болады."
+
+#: data/org.gnome.shell.gschema.xml.in:350
+msgid "Locations"
+msgstr "Орналасулар"
+
+#: data/org.gnome.shell.gschema.xml.in:351
+msgid "The locations to show in world clocks"
+msgstr "Дүниежүзілік сағаттарда көрсетілетін орналасулар"
+
+#: data/org.gnome.shell.gschema.xml.in:361
+msgid "Automatic location"
+msgstr "Автоматты орналасу"
+
+#: data/org.gnome.shell.gschema.xml.in:362
+msgid "Whether to fetch the current location or not"
+msgstr "Ағымдағы орналасуды алу керек пе, жоқ па"
+
+#: data/org.gnome.shell.gschema.xml.in:369
+msgid "Location"
+msgstr "Орналасу"
+
+#: data/org.gnome.shell.gschema.xml.in:370
+msgid "The location for which to show a forecast"
+msgstr "Ауа райы болжамын көрсету үшін орналасу"
+
+#. Keep in sync with subprojects/extensions-app
+#: data/org.gnome.Shell.Extensions.desktop.in:4
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:5
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:3
+#: subprojects/extensions-app/data/ui/extensions-window.ui:57
+msgid "Extensions"
+msgstr "Кеңейтулер"
+
+#: data/org.gnome.Shell.PortalHelper.desktop.in:2
+msgid "Network Login"
+msgstr "Желілік кіру"
+
+#: data/X-GNOME-Shell-Utilities.directory.desktop.in:2
+msgid "Utilities"
+msgstr "Утилиталар"
+
+#: js/dbusServices/extensions/extensionPrefsDialog.js:70
+msgid "Extension Error"
+msgstr "Кеңейту қатесі"
+
+#. Translators: %s is an extension name
+#: js/dbusServices/extensions/extensionPrefsDialog.js:103
+#, javascript-format
+msgid "Unable to display the settings for “%s”."
+msgstr "“%s” үшін баптауларды көрсету мүмкін емес."
+
+#. Translators: Link label in the phrase "Information about this
+#. problem may be available on the extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:109
+msgid "extension website"
+msgstr "кеңейту веб-сайты"
+
+#. Translators: %s is "extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:113
+#, javascript-format
+msgid "Information about this problem may be available on the %s."
+msgstr "Бұл мәселе туралы ақпарат %s бетінде қолжетімді болуы мүмкін."
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:19
+#: subprojects/extensions-app/data/ui/extension-row.ui:13
+msgid "Error Details"
+msgstr "Қате ақпараты"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:26
+msgid "Copy Error"
+msgstr "Көшіріп алу қатесі"
+
+#: js/gdm/authPrompt.js:58 js/misc/timeLimitsManager.js:1427
+msgid "Screen Time Limit Reached"
+msgstr "Экран уақытының шегіне жетті"
+
+#: js/gdm/authPrompt.js:64
+msgid ""
+"Daily limit for screen time on this device has been reached. Resume tomorrow."
+msgstr ""
+"Бұл құрылғыда экран уақытының шектеу шамасы күнделікті шегіне жетті. Ертең "
+"жалғастырыңыз."
+
+#. Translators: this is for ignoring a screen time limit for parental controls
+#: js/gdm/authPrompt.js:72
+msgid "Ignore"
+msgstr "Елемеу"
+
+#: js/gdm/authPrompt.js:256 js/gdm/loginDialog.js:514
+#: js/ui/audioDeviceSelection.js:60 js/ui/components/networkAgent.js:114
+#: js/ui/components/polkitAgent.js:144 js/ui/endSessionDialog.js:401
+#: js/ui/extensionDownloader.js:276 js/ui/shellMountOperation.js:382
+#: js/ui/shellMountOperation.js:392
+msgid "Cancel"
+msgstr "Бас тарту"
+
+#: js/gdm/authPrompt.js:434 js/ui/components/networkAgent.js:214
+#: js/ui/components/networkAgent.js:234 js/ui/components/networkAgent.js:266
+#: js/ui/components/networkAgent.js:299 js/ui/components/networkAgent.js:338
+#: js/ui/components/networkAgent.js:351 js/ui/components/polkitAgent.js:286
+#: js/ui/shellMountOperation.js:332
+#: subprojects/extensions-tool/src/command-upload.c:252
+msgid "Password"
+msgstr "Пароль"
+
+#: js/gdm/loginDialog.js:327
+msgid "Choose Session"
+msgstr "Сессияны таңдау"
+
+#: js/gdm/loginDialog.js:420 js/ui/status/accessibility.js:35
+msgid "Accessibility"
+msgstr "Қол жетерлілігі"
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:472
+#, javascript-format
+msgid ""
+"Remote login is not possible because a remote session is already running for "
+"%s. To login remotely, you must log out from the remote session or force stop "
+"it."
+msgstr ""
+"Қашықтан кіру мүмкін емес, себебі %s үшін қашықтағы сеанс қазір орындалып "
+"тұр. Қашықтан кіру үшін қашықтағы сеанстан шығу керек немесе оны мәжбүрлі "
+"түрде тоқтату керек."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:475
+#, javascript-format
+msgid ""
+"Login is not possible because a remote session is already running for %s. To "
+"login, you must log out from the remote session or force stop it."
+msgstr ""
+"Кіру мүмкін емес, себебі %s үшін қашықтағы сеанс қазір орындалып тұр. Кіру "
+"үшін қашықтағы сеанстан шығу керек немесе оны мәжбүрлі түрде тоқтату керек."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:478
+#, javascript-format
+msgid ""
+"Remote login is not possible because a local session is already running for "
+"%s. To login remotely, you must log out from the local session or force stop "
+"it."
+msgstr ""
+"Қашықтан кіру мүмкін емес, себебі %s үшін жергілікті сеанс қазір орындалып "
+"тұр. Қашықтан кіру үшін жергілікті сеанстан шығу керек немесе оны мәжбүрлі "
+"түрде тоқтату керек."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:481
+#, javascript-format
+msgid ""
+"Login is not possible because a session is already running for %s. To login, "
+"you must log out from the session or force stop it."
+msgstr ""
+"Кіру мүмкін емес, себебі %s үшін сеанс қазір орындалып тұр. Кіру үшін "
+"сеанстан шығу керек немесе оны мәжбүрлі түрде тоқтату керек."
+
+#: js/gdm/loginDialog.js:490
+msgid "Session Already Running"
+msgstr "Сеанс іске қосулы болып тұр"
+
+#: js/gdm/loginDialog.js:502
+msgid ""
+"Force stopping will quit any running apps and processes, and could result in "
+"data loss"
+msgstr ""
+"Мәжбүрлі түрде тоқтату кез келген қосылып тұрған қолданбалар мен процестерін "
+"аяқтайды және деректердің жоғалуына әкелуі мүмкін"
+
+#: js/gdm/loginDialog.js:522
+msgid "Force Stop"
+msgstr "Мәжбүрлі тоқтату"
+
+#: js/gdm/loginDialog.js:600
+msgid "Not listed?"
+msgstr "Тізімде жоқсыз ба?"
+
+#. Translators: this message is shown below the username entry field
+#. to clue the user in on how to login to the local network realm
+#: js/gdm/loginDialog.js:1136
+#, javascript-format
+msgid "(e.g., user or %s)"
+msgstr "(мыс., пайдаланушы немесе %s)"
+
+#: js/gdm/loginDialog.js:1141 js/ui/components/networkAgent.js:258
+#: js/ui/components/networkAgent.js:293 js/ui/components/networkAgent.js:327
+#: subprojects/extensions-tool/src/command-upload.c:234
+msgid "Username"
+msgstr "Пайдаланушы аты"
+
+#: js/gdm/loginDialog.js:1207
+msgid "Login Attempt Timed Out"
+msgstr "Жүйеге кіру талабының уақыты бітті"
+
+#: js/gdm/loginDialog.js:1208
+msgid "Login took too long, please try again"
+msgstr "Жүйеге кіру талабы тым көп уақыт алды, қайталап көріңіз"
+
+#: js/gdm/loginDialog.js:1553
+msgid "Login Window"
+msgstr "Жүйеге кіру терезесі"
+
+#: js/gdm/util.js:496
+msgid "Authentication error"
+msgstr "Аутентификация қатесі"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can swipe their finger on the fingerprint reader
+#: js/gdm/util.js:731
+msgid "(or swipe finger across reader)"
+msgstr "(немесе саусағыңызды оқу құралынан өткізіңіз)"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can place their finger on the fingerprint reader instead
+#: js/gdm/util.js:736
+msgid "(or place finger on reader)"
+msgstr "(немесе саусақты оқу құралына орналастырыңыз)"
+
+#: js/misc/breakManager.js:774
+msgid "Break complete sound"
+msgstr "Үзілістің аяқталу дыбысы"
+
+#: js/misc/breakManager.js:983
+#, javascript-format
+msgid "%d second"
+msgid_plural "%d seconds"
+msgstr[0] "%d секунд"
+
+#: js/misc/breakManager.js:989
+#, javascript-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "%d минут"
+
+#: js/misc/breakManager.js:995
+#, javascript-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "%d сағат"
+
+#: js/misc/breakManager.js:1001
+#, javascript-format
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "%d күн"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1083
+#, javascript-format
+msgid "It will be time for a break in %s"
+msgid_plural "It will be time for a break in %s"
+msgstr[0] "Үзіліс %s уақытынан кейін орын алады"
+
+#: js/misc/breakManager.js:1091
+msgid "Movement Break Soon"
+msgstr "Жақын арада қозғалыс үзілісі"
+
+#: js/misc/breakManager.js:1094
+msgid "Eyesight Break Soon"
+msgstr "Жақын арада көзге арналған үзіліс"
+
+#: js/misc/breakManager.js:1097
+msgid "Break Soon"
+msgstr "Жақын арада үзіліс"
+
+#: js/misc/breakManager.js:1142
+msgid "Movement Break in Progress"
+msgstr "Қозғалыс үзілісі орындалуда"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1145
+#, javascript-format
+msgid "Continue moving around for %s"
+msgid_plural "Continue moving around for %s"
+msgstr[0] "%s бойы қозғала беріңіз"
+
+#: js/misc/breakManager.js:1151
+msgid "Eyesight Break in Progress"
+msgstr "Көзді демалдыру үзілісі орындалуда"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1154
+#, javascript-format
+msgid "Continue looking away for %s"
+msgid_plural "Continue looking away for %s"
+msgstr[0] "%s бойы ары қарай қарай беріңіз"
+
+#: js/misc/breakManager.js:1160
+msgid "Break in Progress"
+msgstr "Үзіліс орындалуда"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1163
+#, javascript-format
+msgid "%s left in your break"
+msgid_plural "%s left in your break"
+msgstr[0] "Үзілісте %s қалды"
+
+#: js/misc/breakManager.js:1202
+msgid "Time for a Movement Break"
+msgstr "Қозғалыс үзілісінің уақыты келді"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1205
+#, javascript-format
+msgid "Take a break from the device and move around for %s"
+msgid_plural "Take a break from the device and move around for %s"
+msgstr[0] "Құрылғыдан үзіліс алып, %s бойы қозғалыңыз"
+
+#: js/misc/breakManager.js:1211
+msgid "Time for an Eyesight Break"
+msgstr "Көзді демалдыру үзілісінің уақыты келді"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1214
+#, javascript-format
+msgid ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgid_plural ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgstr[0] ""
+"Экраннан үзіліс алыңыз. Кем дегенде 6 метр қашықтыққа қараңыз, кем дегенде %s "
+"бойы"
+
+#: js/misc/breakManager.js:1220
+msgid "Time for a Break"
+msgstr "Үзіліс уақыты"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1223
+#, javascript-format
+msgid "It’s time to take a break. Get away from the device for %s!"
+msgid_plural "It’s time to take a break. Get away from the device for %s!"
+msgstr[0] "Үзіліс уақыты келді. Құрылғыдан %s уақытына алыстаңыз!"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1247
+#, javascript-format
+msgid "You were due to take a break %s ago"
+msgid_plural "You were due to take a break %s ago"
+msgstr[0] "Сіз %s бұрын үзіліс алуыңыз керек еді"
+
+#: js/misc/breakManager.js:1253
+msgid "Break Overdue"
+msgstr "Үзіліс уақыты өтіп кетті"
+
+#: js/misc/breakManager.js:1269
+#, javascript-format
+msgid "There is %s remaining in your break"
+msgid_plural "There are %s remaining in your break"
+msgstr[0] "Үзілісіңізде %s қалды"
+
+#: js/misc/breakManager.js:1275
+msgid "Break Interrupted"
+msgstr "Үзіліс үзілді"
+
+#. Translators: As in "Delay the break"
+#: js/misc/breakManager.js:1353
+msgid "Delay"
+msgstr "Кейінге қалдыру"
+
+#. Translators: As in "Skip the break"
+#: js/misc/breakManager.js:1375 js/ui/welcomeDialog.js:61
+msgid "Skip"
+msgstr "Аттап кету"
+
+#. Translators: As in "Take the break"
+#: js/misc/breakManager.js:1397
+msgid "Take"
+msgstr "Бастау"
+
+#. Translators: This is a notification to warn the user that a
+#. screen time break will start shortly.
+#: js/misc/breakManager.js:1460
+#, javascript-format
+msgid "Break in %d second"
+msgid_plural "Break in %d seconds"
+msgstr[0] "Үзіліс %d кейін"
+
+#: js/misc/brightnessManager.js:171 js/ui/status/brightness.js:10
+msgid "Brightness"
+msgstr "Жарықтылығы"
+
+#. Translators: The name of the power-off action in search
+#: js/misc/systemActions.js:94
+msgctxt "search-result"
+msgid "Power Off"
+msgstr "Сөндіру"
+
+#. Translators: A list of keywords that match the power-off action, separated by semicolons
+#: js/misc/systemActions.js:97
+msgid "power off;poweroff;shutdown;halt;stop"
+msgstr "power off;poweroff;shutdown;halt;stop;сөндіру;қайта қосу;тоқтату"
+
+#. Translators: The name of the restart action in search
+#: js/misc/systemActions.js:102
+msgctxt "search-result"
+msgid "Restart"
+msgstr "Қайта қосу"
+
+#. Translators: A list of keywords that match the restart action, separated by semicolons
+#: js/misc/systemActions.js:105
+msgid "reboot;restart;"
+msgstr "reboot;restart;қайта жүктеу;қайта іске қосу;"
+
+#. Translators: The name of the lock screen action in search
+#: js/misc/systemActions.js:110
+msgctxt "search-result"
+msgid "Lock Screen"
+msgstr "Экранды блоктау"
+
+#. Translators: A list of keywords that match the lock screen action, separated by semicolons
+#: js/misc/systemActions.js:113
+msgid "lock screen"
+msgstr "экранды блоктау"
+
+#. Translators: The name of the logout action in search
+#: js/misc/systemActions.js:118
+msgctxt "search-result"
+msgid "Log Out"
+msgstr "Жүйеден шығу"
+
+#. Translators: A list of keywords that match the logout action, separated by semicolons
+#: js/misc/systemActions.js:121
+msgid "logout;log out;sign off"
+msgstr "logout;log out;sign off;шығу;жүйеден шығу"
+
+#. Translators: The name of the suspend action in search
+#: js/misc/systemActions.js:126
+msgctxt "search-result"
+msgid "Suspend"
+msgstr "Ұйықтату"
+
+#. Translators: A list of keywords that match the suspend action, separated by semicolons
+#: js/misc/systemActions.js:129
+msgid "suspend;sleep"
+msgstr "ұйықтату"
+
+#. Translators: The name of the switch user action in search
+#: js/misc/systemActions.js:134
+msgctxt "search-result"
+msgid "Switch User"
+msgstr "Пайдаланушыны ауыстыру"
+
+#. Translators: A list of keywords that match the switch user action, separated by semicolons
+#: js/misc/systemActions.js:137
+msgid "switch user"
+msgstr "пайдаланушыны ауыстыру"
+
+#. Translators: A list of keywords that match the lock orientation action, separated by semicolons
+#: js/misc/systemActions.js:144
+msgid "lock orientation;unlock orientation;screen;rotation"
+msgstr ""
+"lock orientation;unlock orientation;screen;rotation;бұрылуды құлыптау;экран "
+"бұрылуы"
+
+#. Translators: The name of the screenshot UI action in search
+#: js/misc/systemActions.js:149
+msgctxt "search-result"
+msgid "Take a Screenshot"
+msgstr "Скриншотты түсіру"
+
+#. Translators: A list of keywords that match the screenshot UI action, separated by semicolons
+#: js/misc/systemActions.js:152
+msgid "screenshot;screencast;snip;capture;record"
+msgstr "screenshot;screencast;snip;capture;record;скриншот;скринкаст;жазу;ұстау"
+
+#: js/misc/systemActions.js:256
+msgctxt "search-result"
+msgid "Unlock Screen Rotation"
+msgstr "Экранды бұруды құлыптан босату"
+
+#: js/misc/systemActions.js:257
+msgctxt "search-result"
+msgid "Lock Screen Rotation"
+msgstr "Экранды бұруды құлыптау"
+
+#: js/misc/timeLimitsManager.js:468
+msgid "GNOME needs to save screen time data"
+msgstr "GNOME экран уақыты деректерін сақтауы қажет"
+
+#: js/misc/timeLimitsManager.js:1392
+msgid "Screen Time Limit is almost up"
+msgstr "Экран уақытының шектеуі жақындап қалды"
+
+#: js/misc/timeLimitsManager.js:1394
+#, javascript-format
+msgid "The computer will lock in %d second."
+msgid_plural "The computer will lock in %d seconds."
+msgstr[0] "Компьютер %d секундтан кейін құлыпталады."
+
+#: js/misc/timeLimitsManager.js:1402
+#, javascript-format
+msgid "Screen Time Limit in %d Minute"
+msgid_plural "Screen Time Limit in %d Minutes"
+msgstr[0] "Экран уақыты шектеуі %d минуттан кейін"
+
+#: js/misc/timeLimitsManager.js:1406
+msgid "Your screen time limit is approaching"
+msgstr "Экран уақытының шегі жақындап қалды"
+
+#: js/misc/timeLimitsManager.js:1428
+msgid "It’s time to stop using the device"
+msgstr "Құрылғыны пайдалануды тоқтататын уақыт келді"
+
+#: js/misc/util.js:131
+msgid "Command not found"
+msgstr "Команда табылмады"
+
+#: js/misc/util.js:169
+#, javascript-format
+msgid "Execution of “%s” failed:"
+msgstr "\"%s\" жөнелту сәтсіз:"
+
+#: js/misc/dateUtils.js:69
+msgid "Just now"
+msgstr "Жаңа ғана"
+
+#: js/misc/dateUtils.js:72
+#, javascript-format
+msgid "%d minute ago"
+msgid_plural "%d minutes ago"
+msgstr[0] "%d минут бұрын"
+
+#: js/misc/dateUtils.js:79
+#, javascript-format
+msgid "%d hour ago"
+msgid_plural "%d hours ago"
+msgstr[0] "%d сағат бұрын"
+
+#: js/misc/dateUtils.js:85 js/ui/dateMenu.js:184
+msgid "Yesterday"
+msgstr "Кеше"
+
+#: js/misc/dateUtils.js:88
+#, javascript-format
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] "%d күн бұрын"
+
+#: js/misc/dateUtils.js:95
+#, javascript-format
+msgid "%d week ago"
+msgid_plural "%d weeks ago"
+msgstr[0] "%d апта бұрын"
+
+#: js/misc/dateUtils.js:102
+#, javascript-format
+msgid "%d month ago"
+msgid_plural "%d months ago"
+msgstr[0] "%d ай бұрын"
+
+#: js/misc/dateUtils.js:108
+#, javascript-format
+msgid "%d year ago"
+msgid_plural "%d years ago"
+msgstr[0] "%d жыл бұрын"
+
+#. Translators: Time in 24h format
+#: js/misc/dateUtils.js:155
+msgid "%H:%M"
+msgstr "%H:%M"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 24h format. i.e. "Yesterday, 14:30"
+#: js/misc/dateUtils.js:161
+#, no-c-format
+msgid "Yesterday, %H:%M"
+msgstr "Кеше, %H:%M"
+
+#. Translators: this is the week day name followed by a time
+#. string in 24h format. i.e. "Monday, 14:30"
+#: js/misc/dateUtils.js:167
+#, no-c-format
+msgid "%A, %H:%M"
+msgstr "%A, %H:%M"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 24h format.
+#. i.e. "May 25, 14:30"
+#: js/misc/dateUtils.js:173
+#, no-c-format
+msgid "%B %-d, %H:%M"
+msgstr "%B %-d, %H:%M"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 24h format.
+#. i.e. "May 25 2012, 14:30"
+#: js/misc/dateUtils.js:179
+#, no-c-format
+msgid "%B %-d %Y, %H:%M"
+msgstr "%B %-d %Y, %H:%M"
+
+#. Show only the time if date is on today
+#. eslint-disable-line no-lonely-if
+#. Translators: Time in 12h format
+#: js/misc/dateUtils.js:184
+msgid "%l:%M %p"
+msgstr "%H:%M"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 12h format. i.e. "Yesterday, 2:30 pm"
+#: js/misc/dateUtils.js:190
+#, no-c-format
+msgid "Yesterday, %l:%M %p"
+msgstr "Кеше, %H:%M"
+
+#. Translators: this is the week day name followed by a time
+#. string in 12h format. i.e. "Monday, 2:30 pm"
+#: js/misc/dateUtils.js:196
+#, no-c-format
+msgid "%A, %l:%M %p"
+msgstr "%A, %H:%M"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 12h format.
+#. i.e. "May 25, 2:30 pm"
+#: js/misc/dateUtils.js:202
+#, no-c-format
+msgid "%B %-d, %l:%M %p"
+msgstr "%B %-d, %H:%M"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 12h format.
+#. i.e. "May 25 2012, 2:30 pm"
+#: js/misc/dateUtils.js:208
+#, no-c-format
+msgid "%B %-d %Y, %l:%M %p"
+msgstr "%B %-d %Y, %H:%M"
+
+#: js/portalHelper/main.js:98
+msgid "Your connection seems to be secure"
+msgstr "Байланысыңыз қауіпсіз болып көрінеді"
+
+#: js/portalHelper/main.js:104
+msgid ""
+"Your connection to this hotspot login is not secure. Passwords or other "
+"information you enter on this page can be viewed by people nearby."
+msgstr ""
+"Бұл қатынау нүктесіне кіруге байланысыңыз қауіпсіз емес. Бұл парақта "
+"енгізілген парольдер немесе басқа да ақпаратыңызды сол желідегі адамдар көре "
+"алады."
+
+#: js/portalHelper/main.js:115
+msgid "Hotspot Login"
+msgstr "Қатынау нүктесіне кіру"
+
+#. No support for non-modal system dialogs, so ignore the option
+#. let modal = options['modal'] || true;
+#: js/ui/accessDialog.js:51 js/ui/inhibitShortcutsDialog.js:92
+msgid "Deny"
+msgstr "Тыйым салу"
+
+#: js/ui/accessDialog.js:52 js/ui/inhibitShortcutsDialog.js:101
+msgid "Allow"
+msgstr "Рұқсат ету"
+
+#: js/ui/appDisplay.js:1731
+msgid "Unnamed Folder"
+msgstr "Атаусыз бума"
+
+#: js/ui/appFavorites.js:89
+#, javascript-format
+msgid "%s has been pinned to the dash."
+msgstr "%s қолданбалар панеліне бекітілді."
+
+#: js/ui/appFavorites.js:120
+#, javascript-format
+msgid "%s has been unpinned from the dash."
+msgstr "%s қолданбалар панелінен босатылды."
+
+#: js/ui/appFavorites.js:134 js/ui/main.js:304
+msgid "Undo"
+msgstr "Болдырмау"
+
+#. Translators: This is the heading of a list of open windows
+#: js/ui/appMenu.js:49
+msgid "Open Windows"
+msgstr "Ашық терезелер"
+
+#: js/ui/appMenu.js:57
+msgid "New Window"
+msgstr "Жаңа терезе"
+
+#: js/ui/appMenu.js:84
+msgid "App Details"
+msgstr "Қолданба ақпараты"
+
+#: js/ui/appMenu.js:100
+msgid "Quit"
+msgstr "Шығу"
+
+#: js/ui/appMenu.js:160 js/ui/dash.js:245
+msgid "Unpin"
+msgstr "Босату"
+
+#: js/ui/appMenu.js:161
+msgid "Pin to Dash"
+msgstr "Қолданбалар панеліне бекіту"
+
+#: js/ui/appMenu.js:178
+msgid "Launch Using Integrated Graphics Card"
+msgstr "Кірістірілген графикалық карта көмегімен іске қосу"
+
+#: js/ui/appMenu.js:179
+msgid "Launch Using Discrete Graphics Card"
+msgstr "Дискретті графикалық карта көмегімен іске қосу"
+
+#: js/ui/audioDeviceSelection.js:46
+msgid "Select Audio Device"
+msgstr "Аудио құрылғысын таңдаңыз"
+
+#: js/ui/audioDeviceSelection.js:67 js/ui/status/volume.js:81
+msgid "Sound Settings"
+msgstr "Дыбыс баптаулары"
+
+#: js/ui/audioDeviceSelection.js:75
+msgid "Headphones"
+msgstr "Құлаққап"
+
+#: js/ui/audioDeviceSelection.js:77
+msgid "Headset"
+msgstr "Микрофонды құлаққап"
+
+#: js/ui/audioDeviceSelection.js:79 js/ui/status/volume.js:371
+msgid "Microphone"
+msgstr "Микрофон"
+
+#: js/ui/backgroundMenu.js:13
+msgid "Change Background…"
+msgstr "Фонды өзгерту…"
+
+#: js/ui/backgroundMenu.js:15
+msgid "Display Settings"
+msgstr "Экран баптаулары"
+
+#: js/ui/backgroundMenu.js:16
+msgid "Settings"
+msgstr "Баптаулар"
+
+#. Translators: Enter 0-6 (Sunday-Saturday) for non-work days. Examples: "0" (Sunday) "6" (Saturday) "06" (Sunday and Saturday).
+#: js/ui/calendar.js:34
+msgctxt "calendar-no-work"
+msgid "06"
+msgstr "06"
+
+#. Translators: Calendar grid abbreviation for Sunday.
+#. *
+#. * NOTE: These grid abbreviations are always shown together
+#. * and in order, e.g. "S M T W T F S".
+#.
+#: js/ui/calendar.js:60
+msgctxt "grid sunday"
+msgid "S"
+msgstr "Жк"
+
+#. Translators: Calendar grid abbreviation for Monday
+#: js/ui/calendar.js:62
+msgctxt "grid monday"
+msgid "M"
+msgstr "Дс"
+
+#. Translators: Calendar grid abbreviation for Tuesday
+#: js/ui/calendar.js:64
+msgctxt "grid tuesday"
+msgid "T"
+msgstr "Сс"
+
+#. Translators: Calendar grid abbreviation for Wednesday
+#: js/ui/calendar.js:66
+msgctxt "grid wednesday"
+msgid "W"
+msgstr "Ср"
+
+#. Translators: Calendar grid abbreviation for Thursday
+#: js/ui/calendar.js:68
+msgctxt "grid thursday"
+msgid "T"
+msgstr "Бс"
+
+#. Translators: Calendar grid abbreviation for Friday
+#: js/ui/calendar.js:70
+msgctxt "grid friday"
+msgid "F"
+msgstr "Жм"
+
+#. Translators: Calendar grid abbreviation for Saturday
+#: js/ui/calendar.js:72
+msgctxt "grid saturday"
+msgid "S"
+msgstr "Сн"
+
+#. *
+#. * Translators: The header displaying just the month name
+#. * standalone, when this is a month of the current year.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not change it.
+#.
+#: js/ui/calendar.js:425
+msgid "%OB"
+msgstr "%OB"
+
+#. *
+#. * Translators: The header displaying the month name and the year
+#. * number, when this is a month of a different year.  You can
+#. * reorder the format specifiers or add other modifications
+#. * according to the requirements of your language.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not use the old "%B" here unless you
+#. * absolutely know what you are doing.
+#.
+#: js/ui/calendar.js:435
+msgid "%OB %Y"
+msgstr "%OB %Y"
+
+#: js/ui/calendar.js:505
+msgid "Previous month"
+msgstr "Өткен ай"
+
+#: js/ui/calendar.js:523
+msgid "Next month"
+msgstr "Келесі ай"
+
+#: js/ui/calendar.js:675
+#, no-javascript-format
+msgctxt "date day number format"
+msgid "%d"
+msgstr "%d"
+
+#: js/ui/calendar.js:734
+msgid "Week %V"
+msgstr "Апта %V"
+
+#: js/ui/calendar.js:787
+msgid "No Notifications"
+msgstr "Хабарламалар жоқ"
+
+#: js/ui/calendar.js:828
+msgid "Clear"
+msgstr "Тазарту"
+
+#: js/ui/calendar.js:832
+msgctxt "action"
+msgid "Clear all notifications"
+msgstr "Барлық хабарламаларды тазарту"
+
+#. Translators: %s is an application name
+#: js/ui/closeDialog.js:40
+#, javascript-format
+msgid "“%s” Is Not Responding"
+msgstr "\"%s\" жауап бермейді"
+
+#: js/ui/closeDialog.js:41
+msgid ""
+"You may choose to wait a short while for it to continue or force the app to "
+"quit entirely"
+msgstr ""
+"Жалғастыруды біраз күте аласыз немесе қолданбаны толығымен жабуға мәжбүрлей "
+"аласыз"
+
+#: js/ui/closeDialog.js:69
+msgid "Force Quit"
+msgstr "Мәжбүрлі тоқтату"
+
+#: js/ui/closeDialog.js:74
+msgid "Wait"
+msgstr "Күту"
+
+#: js/ui/components/automountManager.js:81
+msgid "External drive connected"
+msgstr "Сыртқы диск қосылды"
+
+#: js/ui/components/automountManager.js:93
+msgid "External drive disconnected"
+msgstr "Сыртқы диск алынды"
+
+#: js/ui/components/automountManager.js:207
+msgid "Unable to unlock volume"
+msgstr "Томды босату мүмкін емес"
+
+#: js/ui/components/automountManager.js:208
+msgid "The installed udisks version does not support the PIM setting"
+msgstr "Орнатылған udisks нұсқасы PIM орнатуды қолдамайды"
+
+#. Translators: %s is the name of a partition on a external drive
+#: js/ui/components/autorunManager.js:189
+#, javascript-format
+msgid "“%s” connected"
+msgstr "\"%s\" байланысқан"
+
+#: js/ui/components/autorunManager.js:190
+msgid "Disk can now be used"
+msgstr "Диск енді пайдаланылуы мүмкін"
+
+#: js/ui/components/autorunManager.js:202
+#, javascript-format
+msgid "Open with %s"
+msgstr "%s көмегімен ашу"
+
+#: js/ui/components/networkAgent.js:96
+msgid "Alternatively you can connect by pushing the “WPS” button on your router"
+msgstr ""
+"Қосымша түрде, сіз роутердегі \"WPS\" батырмасын басу арқылы байланыса аласыз"
+
+#: js/ui/components/networkAgent.js:108 js/ui/status/bluetooth.js:245
+#: js/ui/status/network.js:360 js/ui/status/network.js:444
+msgid "Connect"
+msgstr "Байланысу"
+
+#: js/ui/components/networkAgent.js:223
+msgid "Key"
+msgstr "Кілт"
+
+#: js/ui/components/networkAgent.js:274 js/ui/components/networkAgent.js:313
+msgid "Private key password"
+msgstr "Жеке кілт паролі"
+
+#: js/ui/components/networkAgent.js:307
+msgid "Identity"
+msgstr "Идентификация"
+
+#: js/ui/components/networkAgent.js:333
+msgid "Service"
+msgstr "Қызмет"
+
+#: js/ui/components/networkAgent.js:371 js/ui/components/networkAgent.js:407
+#: js/ui/components/networkAgent.js:744 js/ui/components/networkAgent.js:765
+msgid "Authentication required"
+msgstr "Аутентификация керек"
+
+#: js/ui/components/networkAgent.js:372 js/ui/components/networkAgent.js:745
+#, javascript-format
+msgid ""
+"Passwords or encryption keys are required to access the wireless network “%s”"
+msgstr ""
+"\"%s\" сымсыз желісіне қатынау үшін парольдер немесе шифрлеу кілттері керек"
+
+#: js/ui/components/networkAgent.js:376 js/ui/components/networkAgent.js:749
+msgid "Wired 802.1X authentication"
+msgstr "Сымды 802.1X аутентификациясы"
+
+#: js/ui/components/networkAgent.js:379
+msgid "Network name"
+msgstr "Желі атауы"
+
+#: js/ui/components/networkAgent.js:387 js/ui/components/networkAgent.js:753
+msgid "DSL authentication"
+msgstr "DSL аутентификациясы"
+
+#: js/ui/components/networkAgent.js:394 js/ui/components/networkAgent.js:758
+msgid "PIN code required"
+msgstr "PIN коды керек"
+
+#: js/ui/components/networkAgent.js:395 js/ui/components/networkAgent.js:759
+msgid "PIN code is needed for the mobile broadband device"
+msgstr "Сымсыз кеңжолақты құрылғы үшін PIN коды керек"
+
+#: js/ui/components/networkAgent.js:397
+msgid "PIN"
+msgstr "PIN"
+
+#: js/ui/components/networkAgent.js:408 js/ui/components/networkAgent.js:750
+#: js/ui/components/networkAgent.js:754 js/ui/components/networkAgent.js:766
+#: js/ui/components/networkAgent.js:770
+#, javascript-format
+msgid "A password is required to connect to “%s”"
+msgstr "\"%s\" үшін байланысты орнату үшін пароль керек"
+
+#: js/ui/components/networkAgent.js:769
+msgid "VPN password"
+msgstr "VPN паролі"
+
+#: js/ui/components/polkitAgent.js:44
+msgid "Authentication Required"
+msgstr "Аутентификация керек"
+
+#: js/ui/components/polkitAgent.js:84
+msgid "Administrator"
+msgstr "Әкімші"
+
+#: js/ui/components/polkitAgent.js:149
+msgid "Authenticate"
+msgstr "Аутентификациялау"
+
+#. Translators: "that didn't work" refers to the fact that the
+#. * requested authentication was not gained; this can happen
+#. * because of an authentication error (like invalid password),
+#. * for instance.
+#: js/ui/components/polkitAgent.js:263 js/ui/shellMountOperation.js:415
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Кешіріңіз, талап сәтсіз. Қайтадан көріңіз."
+
+#: js/ui/ctrlAltTab.js:23 js/ui/overviewControls.js:407
+msgid "Windows"
+msgstr "Терезелер"
+
+#: js/ui/dash.js:201 js/ui/dash.js:247
+msgid "Show Apps"
+msgstr "Қолданбаларды көрсету"
+
+#. Translators: this is the name of the dock/favorites area on
+#. the bottom of the overview
+#: js/ui/dash.js:405
+msgid "Dash"
+msgstr "Dash"
+
+#. Translators: This is the date format to use when the calendar popup is
+#. * shown - it is shown just below the time in the top bar (e.g.,
+#. * "Tue 9:29 AM").  The string itself should become a full date, e.g.,
+#. * "February 17 2015".
+#.
+#: js/ui/dateMenu.js:99
+msgid "%B %-d %Y"
+msgstr "%B %-d %Y"
+
+#. Translators: This is the accessible name of the date button shown
+#. * below the time in the shell; it should combine the weekday and the
+#. * date, e.g. "Tuesday February 17 2015".
+#.
+#: js/ui/dateMenu.js:106
+msgid "%A %B %e %Y"
+msgstr "%A %B %e %Y"
+
+#. Translators: Shown on calendar heading when selected day occurs on current year
+#: js/ui/dateMenu.js:173
+msgctxt "calendar heading"
+msgid "%B %-d"
+msgstr "%B %-d"
+
+#. Translators: Shown on calendar heading when selected day occurs on different year
+#: js/ui/dateMenu.js:176
+msgctxt "calendar heading"
+msgid "%B %-d %Y"
+msgstr "%B %-d %Y"
+
+#: js/ui/dateMenu.js:182
+msgid "Today"
+msgstr "Бүгін"
+
+#: js/ui/dateMenu.js:186
+msgid "Tomorrow"
+msgstr "Ертең"
+
+#. Translators: Shown in calendar event list for all day events
+#. * Keep it short, best if you can use less then 10 characters
+#.
+#: js/ui/dateMenu.js:217
+msgctxt "event list time"
+msgid "All Day"
+msgstr "Толық күн"
+
+#. Translators: Shown in calendar event list as the start/end of events
+#. * that only show day and month
+#.
+#: js/ui/dateMenu.js:239
+msgid "%m/%d"
+msgstr "%m/%d"
+
+#: js/ui/dateMenu.js:290
+msgid "No Events"
+msgstr "Оқиғалар жоқ"
+
+#: js/ui/dateMenu.js:412
+msgid "Add World Clocks…"
+msgstr "Дүниежүзілік сағаттарды қосу…"
+
+#: js/ui/dateMenu.js:413
+msgid "World Clocks"
+msgstr "Дүниежүзілік сағаттар"
+
+#: js/ui/dateMenu.js:704
+msgid "Loading…"
+msgstr "Жүктеу…"
+
+#: js/ui/dateMenu.js:714
+msgid "Go Online for Weather Information"
+msgstr "Ауа райы ақпаратын алу үшін желіге байланысыңыз"
+
+#: js/ui/dateMenu.js:716
+msgid "Weather Information Unavailable"
+msgstr "Ауа райы ақпараты қолжетімді емес"
+
+#: js/ui/dateMenu.js:726
+msgid "Weather"
+msgstr "Ауа райы"
+
+#: js/ui/dateMenu.js:728
+msgid "Select Weather Location…"
+msgstr "Ауа райы орнын таңдау…"
+
+#: js/ui/endSessionDialog.js:46
+#, javascript-format
+msgctxt "title"
+msgid "Log Out %s"
+msgstr "Шығу: %s"
+
+#: js/ui/endSessionDialog.js:47
+msgctxt "title"
+msgid "Log Out"
+msgstr "Шығу"
+
+#: js/ui/endSessionDialog.js:50
+#, javascript-format
+msgid "%s will be logged out automatically in %d second"
+msgid_plural "%s will be logged out automatically in %d seconds"
+msgstr[0] "%s жүйеден автоматты түрде %d секундтан кейін шығады"
+
+#: js/ui/endSessionDialog.js:56
+#, javascript-format
+msgid "You will be logged out automatically in %d second"
+msgid_plural "You will be logged out automatically in %d seconds"
+msgstr[0] "Сіз жүйеден автоматты түрде %d секундтан кейін шығасыз"
+
+#: js/ui/endSessionDialog.js:63
+msgctxt "button"
+msgid "Log Out"
+msgstr "Шығу"
+
+#: js/ui/endSessionDialog.js:69 js/ui/status/system.js:181
+msgctxt "title"
+msgid "Power Off"
+msgstr "Сөндіру"
+
+#: js/ui/endSessionDialog.js:70
+msgctxt "title"
+msgid "Install Updates & Power Off"
+msgstr "Жаңартуларды орнату және сөндіру"
+
+#: js/ui/endSessionDialog.js:73
+#, javascript-format
+msgid "The system will power off automatically in %d second"
+msgid_plural "The system will power off automatically in %d seconds"
+msgstr[0] "Жүйе %d секундтан кейін автоматты түрде сөндіріледі"
+
+#: js/ui/endSessionDialog.js:77 js/ui/endSessionDialog.js:96
+msgctxt "checkbox"
+msgid "Install pending software updates"
+msgstr "Кезекте тұрған БҚ жаңартуларын орнату"
+
+#: js/ui/endSessionDialog.js:81
+msgctxt "button"
+msgid "Power Off"
+msgstr "Сөндіру"
+
+#: js/ui/endSessionDialog.js:88
+msgctxt "title"
+msgid "Restart"
+msgstr "Қайта қосу"
+
+#: js/ui/endSessionDialog.js:89
+msgctxt "title"
+msgid "Install Updates & Restart"
+msgstr "Жаңартуларды орнату және қайта қосу"
+
+#: js/ui/endSessionDialog.js:92
+#, javascript-format
+msgid "The system will restart automatically in %d second"
+msgid_plural "The system will restart automatically in %d seconds"
+msgstr[0] "Жүйе %d секундтан кейін автоматты түрде қайта қосылады"
+
+#: js/ui/endSessionDialog.js:100
+msgctxt "button"
+msgid "Restart"
+msgstr "Қайта қосу"
+
+#: js/ui/endSessionDialog.js:108
+msgctxt "title"
+msgid "Restart & Install Updates"
+msgstr "Қайта қосу және жаңартуларды орнату"
+
+#: js/ui/endSessionDialog.js:111
+#, javascript-format
+msgid "The system will automatically restart and install updates in %d second"
+msgid_plural ""
+"The system will automatically restart and install updates in %d seconds"
+msgstr[0] ""
+"Жүйе %d секундтан кейін автоматты түрде қайта қосылады және жаңартуларды "
+"орнатады"
+
+#: js/ui/endSessionDialog.js:118
+msgctxt "button"
+msgid "Restart & Install"
+msgstr "Қайта қосу және орнату"
+
+#: js/ui/endSessionDialog.js:120
+msgctxt "button"
+msgid "Install & Power Off"
+msgstr "Орнату және сөндіру"
+
+#: js/ui/endSessionDialog.js:121
+msgctxt "checkbox"
+msgid "Power off after updates are installed"
+msgstr "Жаңартулар орнатылғаннан кейін сөндіру"
+
+#: js/ui/endSessionDialog.js:262
+msgid "Low battery power: please plug in before installing updates"
+msgstr ""
+"Батарея заряд деңгейі аз: жаңартуларды орнату алдында эл. қорегі желісіне "
+"жалғаңыз"
+
+#: js/ui/endSessionDialog.js:271
+msgid "Some applications are busy or have unsaved work"
+msgstr "Кейбір қолданбалар бос емес немесе сақталмаған жұмыстары бар"
+
+#: js/ui/endSessionDialog.js:276
+msgid "Other users are logged in"
+msgstr "Басқа пайдаланушылар жүйеге кіріп тұр"
+
+#: js/ui/endSessionDialog.js:431
+msgctxt "button"
+msgid "Boot Options"
+msgstr "Жүктеу параметрлері"
+
+#. Translators: Remote here refers to a remote session, like a ssh login
+#: js/ui/endSessionDialog.js:635
+#, javascript-format
+msgid "%s (remote)"
+msgstr "%s (қашықтағы)"
+
+#. Translators: Console here refers to a tty like a VT console
+#: js/ui/endSessionDialog.js:638
+#, javascript-format
+msgid "%s (console)"
+msgstr "%s (консоль)"
+
+#: js/ui/extensionDownloader.js:280
+msgid "Install"
+msgstr "Орнату"
+
+#: js/ui/extensionDownloader.js:286
+msgid "Install Extension"
+msgstr "Кеңейтуді орнату"
+
+#: js/ui/extensionDownloader.js:287
+#, javascript-format
+msgid "Download and install “%s” from extensions.gnome.org?"
+msgstr "extensions.gnome.org адресінен \"%s\" жүктеп алып, орнату керек пе?"
+
+#: js/ui/extensionSystem.js:353
+msgid "Extension Updates Available"
+msgstr "Кеңейту жаңартулары дайын"
+
+#: js/ui/extensionSystem.js:354
+msgid "Extension updates are ready to be installed"
+msgstr "Кеңейту жаңартулары орнатылуға дайын"
+
+#: js/ui/inhibitShortcutsDialog.js:70
+msgid "Allow inhibiting shortcuts"
+msgstr "Пернелер жарлығын алмастыруды рұқсат ету"
+
+#. Translators: %s is an application name like "Settings"
+#: js/ui/inhibitShortcutsDialog.js:73
+#, javascript-format
+msgid "The app %s wants to inhibit shortcuts"
+msgstr "%s қолданбасы пернелер жарлықтарын қолдануды блоктағысы келеді"
+
+#: js/ui/inhibitShortcutsDialog.js:74
+msgid "An app wants to inhibit shortcuts"
+msgstr "Қолданба пернелер жарлықтарын қолдануды блоктағысы келеді"
+
+#. Translators: %s is a keyboard shortcut like "Super+x"
+#: js/ui/inhibitShortcutsDialog.js:81
+#, javascript-format
+msgid "You can restore shortcuts by pressing %s"
+msgstr "Сіз жарлықтарды %s басу арқылы қалпына келтіре аласыз"
+
+#: js/ui/kbdA11yDialog.js:34
+msgid "Slow Keys Turned On"
+msgstr "Баяу пернелер іске қосылған"
+
+#: js/ui/kbdA11yDialog.js:35
+msgid "Slow Keys Turned Off"
+msgstr "Баяу пернелер сөндірілген"
+
+#: js/ui/kbdA11yDialog.js:36
+msgid ""
+"You just held down the Shift key for 8 seconds. This is the shortcut for the "
+"Slow Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Сіз Shift пернесін 8 секунд бойы басулы ұстадыңыз. Бұл Баяу пернелер "
+"мүмкіндігінің жарлығы, ол пернетақта жұмысына әсер етеді."
+
+#: js/ui/kbdA11yDialog.js:42
+msgid "Sticky Keys Turned On"
+msgstr "Жабысқақ пернелер іске қосылған"
+
+#: js/ui/kbdA11yDialog.js:43
+msgid "Sticky Keys Turned Off"
+msgstr "Жабысқақ пернелер сөндірілген"
+
+#: js/ui/kbdA11yDialog.js:45
+msgid ""
+"You just pressed the Shift key 5 times in a row. This is the shortcut for the "
+"Sticky Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Сіз Shift пернесін қатарынан 5 рет бастыңыз. Бұл Жабысқақ пернелер "
+"мүмкіндігінің жарлығы, ол пернетақта жұмысына әсер етеді."
+
+#: js/ui/kbdA11yDialog.js:47
+msgid ""
+"You just pressed two keys at once, or pressed the Shift key 5 times in a row. "
+"This turns off the Sticky Keys feature, which affects the way your keyboard "
+"works."
+msgstr ""
+"Сіз екі пернені бірге бастыңыз, немесе Shift пернесін қатарынан 5 рет "
+"бастыңыз. Бұл Жабысқақ пернелер мүмкіндігін сөндіреді, ол пернетақта жұмысына "
+"әсер етеді."
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Leave On"
+msgstr "Іске қосулы қалдыру"
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Turn On"
+msgstr "Іске қосу"
+
+#: js/ui/kbdA11yDialog.js:67 js/ui/status/network.js:455
+msgid "Turn Off"
+msgstr "Сөндіру"
+
+#: js/ui/kbdA11yDialog.js:67
+msgid "Leave Off"
+msgstr "Сөндірулі қалдыру"
+
+#: js/ui/keyboard.js:179 js/ui/status/keyboard.js:888
+msgid "Keyboard Settings"
+msgstr "Пернетақта баптаулары"
+
+#: js/ui/lookingGlass.js:737
+msgid "No extensions installed"
+msgstr "Кеңейтулер орнатылмаған"
+
+#. Translators: argument is an extension UUID.
+#: js/ui/lookingGlass.js:800
+#, javascript-format
+msgid "%s has not emitted any errors"
+msgstr "%s ешбір қатені шығармады"
+
+#: js/ui/lookingGlass.js:806
+msgid "Hide Errors"
+msgstr "Қателерді жасыру"
+
+#: js/ui/lookingGlass.js:810 js/ui/lookingGlass.js:890
+msgid "Show Errors"
+msgstr "Қателерді көрсету"
+
+#: js/ui/lookingGlass.js:819
+msgid "Active"
+msgstr "Белсенді"
+
+#: js/ui/lookingGlass.js:822
+msgid "Inactive"
+msgstr "Белсенді емес"
+
+#: js/ui/lookingGlass.js:824
+msgid "Error"
+msgstr "Қате"
+
+#: js/ui/lookingGlass.js:826
+msgid "Out of date"
+msgstr "Ескірген"
+
+#: js/ui/lookingGlass.js:828
+msgid "Downloading"
+msgstr "Жүктелуде"
+
+#: js/ui/lookingGlass.js:830
+msgid "Deactivating"
+msgstr "Белсенді емес қылу"
+
+#: js/ui/lookingGlass.js:832
+msgid "Activating"
+msgstr "Белсендіру"
+
+#: js/ui/lookingGlass.js:868
+msgid "View Source"
+msgstr "Бастапқы кодын қарау"
+
+#: js/ui/lookingGlass.js:879
+msgid "Web Page"
+msgstr "Веб парағы"
+
+#: js/ui/main.js:300
+msgid "System was put in unsafe mode"
+msgstr "Жүйе қауіпсіз емес режимге қойылды"
+
+#: js/ui/main.js:301
+msgid "Apps now have unrestricted access"
+msgstr "Қолданбаларда енді шектелмеген рұқсаттар бар"
+
+#: js/ui/main.js:362
+msgid "Logged in as a privileged user"
+msgstr "Привилегияланған пайдаланушы ретінде жүйеге кірген"
+
+#: js/ui/main.js:363
+msgid ""
+"Running a session as a privileged user should be avoided for security "
+"reasons. If possible, you should log in as a normal user."
+msgstr ""
+"Привилегияланған пайдаланушы ретінде сессияны орындаудан қауіпсіздік "
+"салдарынан аулақ болу керек. Мүмкін болса, қалыпты пайдаланушы ретінде жүйеге "
+"кіріңіз."
+
+#: js/ui/main.js:411
+msgid "Screen Lock disabled"
+msgstr "Экранды блоктау сөндірілген"
+
+#: js/ui/main.js:412
+msgid "Screen Locking requires the GNOME display manager"
+msgstr "Экранды блоктау GNOME дисплейлер басқарушысын талап етеді"
+
+#. Translators: this is the string displayed in the header when a message
+#. source doesn't have a name
+#: js/ui/messageList.js:403
+msgid "Unknown App"
+msgstr "Белгісіз қолданба"
+
+#: js/ui/messageTray.js:325 js/ui/messageTray.js:327
+msgid "Notification sound"
+msgstr "Хабарландыру дыбысы"
+
+#: js/ui/mpris.js:144
+msgid "Unknown artist"
+msgstr "Белгісіз әртіс"
+
+#: js/ui/mpris.js:154
+msgid "Unknown title"
+msgstr "Белгісіз атауы"
+
+#. Translators: this is the text displayed
+#. in the search entry when no search is
+#. active; it should not exceed ~30
+#. characters.
+#: js/ui/overviewControls.js:330
+msgid "Type to search"
+msgstr "Іздеу үшін теріңіз"
+
+#: js/ui/overviewControls.js:395
+msgid "Apps"
+msgstr "Қолданбалар"
+
+#. Translators: This is the main view to select
+#. activities. See also note for "Activities" string.
+#: js/ui/overview.js:33
+msgid "Overview"
+msgstr "Шолу"
+
+#: js/ui/padOsd.js:98
+msgid "New shortcut…"
+msgstr "Жаңа жарлық…"
+
+#: js/ui/padOsd.js:151
+msgid "App defined"
+msgstr "Қолданбамен анықталған"
+
+#: js/ui/padOsd.js:152
+msgid "Show on-screen help"
+msgstr "Экрандағы көмекті көрсету"
+
+#: js/ui/padOsd.js:153
+msgid "Switch monitor"
+msgstr "Мониторды ауыстыру"
+
+#: js/ui/padOsd.js:154
+msgid "Assign keystroke"
+msgstr "Пернелер жарлығын тағайындау"
+
+#: js/ui/padOsd.js:223
+msgid "Done"
+msgstr "Дайын"
+
+#: js/ui/padOsd.js:743
+msgid "Edit…"
+msgstr "Түзету…"
+
+#: js/ui/padOsd.js:791
+msgid "None"
+msgstr "Ешнәрсе"
+
+#: js/ui/padOsd.js:868
+msgid "Press a button to configure"
+msgstr "Баптау үшін батырманы басыңыз"
+
+#: js/ui/padOsd.js:869
+msgid "Press Esc to exit"
+msgstr "Шығу үшін Esc басыңыз"
+
+#: js/ui/padOsd.js:872
+msgid "Press any key to exit"
+msgstr "Шығу үшін кез-келген батырманы басыңыз"
+
+#. Translators: If there is no suitable word for "Activities"
+#. in your language, you can use the word for "Overview".
+#: js/ui/panel.js:208
+msgid "Activities"
+msgstr "Көрініс"
+
+#: js/ui/panel.js:289
+msgctxt "System menu in the top bar"
+msgid "System"
+msgstr "Жүйелік"
+
+#: js/ui/panel.js:470
+msgid "Top Bar"
+msgstr "Үстідегі панель"
+
+#: js/ui/quickSettings.js:164 js/ui/quickSettings.js:263
+msgid "Open menu"
+msgstr "Мәзірді ашу"
+
+#: js/ui/runDialog.js:61
+msgid "Run a Command"
+msgstr "Команданы орындау"
+
+#: js/ui/runDialog.js:79
+msgid "Press ESC to close"
+msgstr "Жабу үшін ESC пернесін басыңыз"
+
+#: js/ui/screenShield.js:220
+msgid "GNOME needs to lock the screen"
+msgstr "GNOME экранды блоктау керек"
+
+#. Translators: notification source name for screenshots and recordings.
+#: js/ui/screenshot.js:40
+msgid "Screen Capture"
+msgstr "Экран түсірілімі"
+
+#: js/ui/screenshot.js:1267
+msgid "Selection"
+msgstr "Таңдау"
+
+#: js/ui/screenshot.js:1277
+msgid "Area Selection"
+msgstr "Аймақты таңдау"
+
+#: js/ui/screenshot.js:1282
+msgid "Screen"
+msgstr "Экран"
+
+#: js/ui/screenshot.js:1292
+msgid "Screen Selection"
+msgstr "Экранды таңдау"
+
+#: js/ui/screenshot.js:1297
+msgid "Window"
+msgstr "Терезе"
+
+#: js/ui/screenshot.js:1307
+msgid "Window Selection"
+msgstr "Терезені таңдау"
+
+#: js/ui/screenshot.js:1332 js/ui/status/system.js:118
+msgid "Take Screenshot"
+msgstr "Скриншотты түсіру"
+
+#: js/ui/screenshot.js:1348
+msgid "Record Screen"
+msgstr "Экранды жазу"
+
+#. Translators: since this string refers to an action,
+#. it needs to be phrased as a verb.
+#: js/ui/screenshot.js:1365
+msgid "Capture"
+msgstr "Түсіру"
+
+#: js/ui/screenshot.js:1387
+msgid "Show Pointer"
+msgstr "Курсорды көрсету"
+
+#. Translators: this is the folder where recorded
+#. screencasts are stored.
+#: js/ui/screenshot.js:2020
+msgid "Screencasts"
+msgstr "Скринкасттар"
+
+#. Translators: this is a filename used for screencast
+#. * recording, where "%d" and "%t" date and time, e.g.
+#. * "Screencast From 07-17-2013 10:00:46 PM"
+#: js/ui/screenshot.js:2025
+#, no-c-format
+msgid "Screencast From %d %t"
+msgstr "Скринкаст, уақыты %d %t"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2071
+msgid "Screencast recorded"
+msgstr "Скринкаст жазылды"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2084
+msgid "Screencast failed to start"
+msgstr "Скринкаст іске қосыла алмады"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2090
+msgid "Screencast ended: Out of disk space"
+msgstr "Скринкаст күтпегенде үзілді: Диск орны бітті"
+
+#. We can encourage user to try again on service crashes since the
+#. recorder will auto-blocklist the pipeline that crashed.
+#. Translators: notification title.
+#: js/ui/screenshot.js:2096
+msgid "Screencast ended unexpectedly, please try again"
+msgstr "Скринкаст күтпегенде үзілді, қайталап көріңіз"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2099
+msgid "Screencast ended unexpectedly"
+msgstr "Скринкаст күтпегенде үзілді"
+
+#. Translators: notification body when a screencast was recorded.
+#: js/ui/screenshot.js:2112
+msgid "Click here to view the video"
+msgstr "Видеоны көру үшін осында шертіңіз"
+
+#. Translators: button on the screencast notification.
+#. Translators: button on the screenshot notification.
+#: js/ui/screenshot.js:2120 js/ui/screenshot.js:2363
+msgid "Show in Files"
+msgstr "Файлдар қолданбасында көрсету"
+
+#. Translators: this is the name of the file that the screenshot is
+#. saved to. The placeholder is a timestamp, e.g. "2017-05-21 12-24-03".
+#: js/ui/screenshot.js:2309
+#, javascript-format
+msgid "Screenshot From %s"
+msgstr "Скриншот, уақыты %s"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2353
+msgid "Screenshot captured"
+msgstr "Скриншот түсірілді"
+
+#. Translators: notification body when a screenshot was captured.
+#: js/ui/screenshot.js:2355
+msgid "You can paste the image from the clipboard"
+msgstr "Суретті алмасу буферінен кірістіруге болады"
+
+#: js/ui/screenshot.js:2413 js/ui/screenshot.js:2575
+msgid "Screenshot taken"
+msgstr "Скриншот түсірілді"
+
+#: js/ui/search.js:846
+msgid "Searching"
+msgstr "Іздеу"
+
+#: js/ui/search.js:849
+msgid "No results"
+msgstr "Нәтижелер жоқ"
+
+#: js/ui/search.js:984
+#, javascript-format
+msgid "%d more"
+msgid_plural "%d more"
+msgstr[0] "тағы %d"
+
+#: js/ui/searchController.js:86
+#: subprojects/extensions-app/data/ui/extensions-window.ui:73
+msgid "Search"
+msgstr "Іздеу"
+
+#: js/ui/shellEntry.js:22
+msgid "Copy"
+msgstr "Көшіру"
+
+#: js/ui/shellEntry.js:27
+msgid "Paste"
+msgstr "Кірістіру"
+
+#: js/ui/shellEntry.js:79
+msgid "Show Text"
+msgstr "Мәтінді көрсету"
+
+#: js/ui/shellEntry.js:81
+msgid "Hide Text"
+msgstr "Мәтінді жасыру"
+
+#: js/ui/shellEntry.js:170
+msgid "Caps lock is on"
+msgstr "Caps lock іске қосылған"
+
+#: js/ui/shellMountOperation.js:286
+msgid "Hidden Volume"
+msgstr "Жасырын том"
+
+#: js/ui/shellMountOperation.js:289
+msgid "Windows System Volume"
+msgstr "Windows жүйелік томы"
+
+#: js/ui/shellMountOperation.js:292
+msgid "Uses Keyfiles"
+msgstr "Кілт файлдарды қолданады"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:300
+#, javascript-format
+msgid "To unlock a volume that uses keyfiles, use the <i>%s</i> utility instead"
+msgstr ""
+"Кілт файлдарын қолданатын томды босату үшін, <i>%s</i> утилитасын қолданыңыз"
+
+#: js/ui/shellMountOperation.js:304
+msgid ""
+"You need an external utility like <i>Disks</i> to unlock a volume that uses "
+"keyfiles"
+msgstr ""
+"Кілттік файлдарды қолданатын томдар блоктауын ашу үшін сізге <i>Дисктер</i> "
+"сияқты сыртқы қолданба керек"
+
+#: js/ui/shellMountOperation.js:312
+msgid "PIM Number"
+msgstr "PIM нөмірі"
+
+#: js/ui/shellMountOperation.js:371
+msgid "Remember Password"
+msgstr "Парольді есте сақтау"
+
+#: js/ui/shellMountOperation.js:386
+msgid "Unlock"
+msgstr "Босату"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:400
+#, javascript-format
+msgid "Open %s"
+msgstr "%s ашу"
+
+#: js/ui/shellMountOperation.js:436
+msgid "The PIM must be a number or empty"
+msgstr "PIM тек сандардан тұруы, немесе бос болуы тиіс"
+
+#: js/ui/status/accessibility.js:45 js/ui/status/accessibility.js:153
+msgid "High Contrast"
+msgstr "Жоғары контраст"
+
+#: js/ui/status/accessibility.js:48 js/ui/status/accessibility.js:169
+msgid "Zoom"
+msgstr "Үлкейту"
+
+#: js/ui/status/accessibility.js:55 js/ui/status/accessibility.js:221
+msgid "Screen Reader"
+msgstr "Экраннан оқитын қолданба"
+
+#: js/ui/status/accessibility.js:59 js/ui/status/accessibility.js:237
+msgid "Screen Keyboard"
+msgstr "Экрандағы пернетақта"
+
+#: js/ui/status/accessibility.js:63 js/ui/status/accessibility.js:253
+msgid "Visual Alerts"
+msgstr "Бейнелік хабарлау"
+
+#: js/ui/status/accessibility.js:67 js/ui/status/accessibility.js:269
+msgid "Sticky Keys"
+msgstr "Жабысқақ пернелер"
+
+#: js/ui/status/accessibility.js:71 js/ui/status/accessibility.js:285
+msgid "Slow Keys"
+msgstr "Баяу пернелер"
+
+#: js/ui/status/accessibility.js:75 js/ui/status/accessibility.js:301
+msgid "Bounce Keys"
+msgstr "Қайталанатын пернелер"
+
+#: js/ui/status/accessibility.js:79 js/ui/status/accessibility.js:317
+msgid "Mouse Keys"
+msgstr "Тышқан пернелері"
+
+#: js/ui/status/accessibility.js:84
+msgid "Accessibility Settings"
+msgstr "Қолжетімділік баптаулары"
+
+#: js/ui/status/accessibility.js:122 js/ui/status/accessibility.js:185
+msgid "Large Text"
+msgstr "Үлкен мәтін"
+
+#: js/ui/status/autoRotate.js:14
+msgid "Auto Rotate"
+msgstr "Авто бұру"
+
+#: js/ui/status/backgroundApps.js:155
+msgctxt "title"
+msgid "Background Apps"
+msgstr "Фондық қолданбалар"
+
+#: js/ui/status/backgroundApps.js:170
+msgid "Apps known to be running without a window"
+msgstr "Терезесіз жұмыс істейтін қолданбалар"
+
+#: js/ui/status/backgroundApps.js:181
+msgid "App Settings"
+msgstr "Қолданба баптаулары"
+
+#: js/ui/status/backgroundApps.js:238
+msgid "No Background Apps"
+msgstr "Фондық қолданбалар жоқ"
+
+#: js/ui/status/backgroundApps.js:240
+#, javascript-format
+msgid "%d Background App"
+msgid_plural "%d Background Apps"
+msgstr[0] "%d фондық қолданбасы"
+
+#: js/ui/status/backlight.js:39
+msgid "Keyboard Brightness"
+msgstr "Пернетақта жарықтылы"
+
+#: js/ui/status/backlight.js:87
+msgid "Off"
+msgstr "Сөнд"
+
+#: js/ui/status/backlight.js:88
+msgid "Low"
+msgstr "Төмен"
+
+#: js/ui/status/backlight.js:89
+msgid "High"
+msgstr "Жоғары"
+
+#: js/ui/status/backlight.js:162 js/ui/status/keyboard.js:870
+msgid "Keyboard"
+msgstr "Пернетақта"
+
+#: js/ui/status/backlight.js:164
+msgid "Open keyboard brightness menu"
+msgstr "Пернетақта жарықтығы мәзірін ашу"
+
+#: js/ui/status/bluetooth.js:245 js/ui/status/network.js:360
+msgid "Disconnect"
+msgstr "Байланысты үзу"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:266 js/ui/status/network.js:354
+#, javascript-format
+msgid "Disconnect %s"
+msgstr "%s байланысын үзу"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:268 js/ui/status/network.js:356
+#, javascript-format
+msgid "Connect to %s"
+msgstr "%s құрылғысымен байланысу"
+
+#: js/ui/status/bluetooth.js:276 js/ui/status/bluetooth.js:280
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+#: js/ui/status/bluetooth.js:277
+msgid "Open Bluetooth menu"
+msgstr "Bluetooth мәзірін ашу"
+
+#: js/ui/status/bluetooth.js:303 js/ui/status/network.js:1925
+msgid "Bluetooth Settings"
+msgstr "Bluetooth баптаулары"
+
+#: js/ui/status/bluetooth.js:350
+msgid "No available or connected devices"
+msgstr "Қолжетімді немесе байланысқан құрылғылар жоқ"
+
+#: js/ui/status/bluetooth.js:351
+msgid "Turn on Bluetooth to connect to devices"
+msgstr "Құрылғыларға байланысу үшін Bluetooth іске қосыңыз"
+
+#. Translators: This is the number of connected bluetooth devices
+#: js/ui/status/bluetooth.js:415
+#, javascript-format
+msgid "%d Connected"
+msgid_plural "%d Connected"
+msgstr[0] "%d байланысқан"
+
+#: js/ui/status/brightness.js:42
+msgid "Open brightness menu"
+msgstr "Жарықтық мәзірін ашу"
+
+#: js/ui/status/darkMode.js:12
+msgid "Dark Style"
+msgstr "Қараңғы режим"
+
+#: js/ui/status/doNotDisturb.js:10
+msgid "Do Not Disturb"
+msgstr "Мазаламаңыз"
+
+#: js/ui/status/dwellClick.js:14
+msgid "Single Click"
+msgstr "Дара шерту"
+
+#: js/ui/status/dwellClick.js:19
+msgid "Double Click"
+msgstr "Қос шерту"
+
+#: js/ui/status/dwellClick.js:24
+msgid "Drag"
+msgstr "Тартып апару"
+
+#: js/ui/status/dwellClick.js:29
+msgid "Secondary Click"
+msgstr "Екінші шерту"
+
+#: js/ui/status/dwellClick.js:38
+msgid "Dwell Click"
+msgstr "Пернеде кідіртуден кейінгі сол жақпен шерту"
+
+#: js/ui/status/keyboard.js:887
+msgid "Show Keyboard Layout"
+msgstr "Пернетақта жаймасын көрсету"
+
+#: js/ui/status/location.js:337
+msgid "Allow location access"
+msgstr "Орналасуға қатынауды рұқсат ету"
+
+#. Translators: %s is an application name
+#: js/ui/status/location.js:339
+#, javascript-format
+msgid "The app %s wants to access your location"
+msgstr "%s қолданбасы орналасуыңызға рұқсат сұрап отыр"
+
+#: js/ui/status/location.js:349
+msgid "Location access can be changed at any time from the privacy settings"
+msgstr ""
+"Орналасуыңызға қатынауды кез-кезген кезде жекелік баптауларының ішінен "
+"өзгертуге болады"
+
+#: js/ui/status/location.js:357
+msgid "Deny Access"
+msgstr "Тыйым салу"
+
+#: js/ui/status/location.js:362
+msgid "Grant Access"
+msgstr "Рұқсат ету"
+
+#: js/ui/status/network.js:62
+msgid "<unknown>"
+msgstr "<белгісіз>"
+
+#: js/ui/status/network.js:1060
+msgid "Secure"
+msgstr "Қауіпсіз"
+
+#: js/ui/status/network.js:1060
+msgid "Not secure"
+msgstr "Қауіпсіз емес"
+
+#: js/ui/status/network.js:1061
+#, javascript-format
+msgid "Signal strength %s%%"
+msgstr "Сигнал деңгейі %s%%"
+
+#. translators: The first placeholder is the network name, the second and indication whether it is secure, and the last the signal strength indication
+#: js/ui/status/network.js:1063
+#, javascript-format
+msgid "%s, %s, %s"
+msgstr "%s, %s, %s"
+
+#. Translators: %s is a network identifier
+#: js/ui/status/network.js:1166
+#, javascript-format
+msgid "%s Hotspot"
+msgstr "%s қатынау нүктесі"
+
+#: js/ui/status/network.js:1447
+#, javascript-format
+msgid "%d connected"
+msgid_plural "%d connected"
+msgstr[0] "%d байланысқан"
+
+#: js/ui/status/network.js:1545 js/ui/status/network.js:1562
+msgid "VPN"
+msgstr "VPN"
+
+#: js/ui/status/network.js:1546
+msgid "Open VPN menu"
+msgstr "VPN мәзірін ашу"
+
+#: js/ui/status/network.js:1547
+msgid "VPN Settings"
+msgstr "VPN баптаулары"
+
+#: js/ui/status/network.js:1807
+msgid "Wi–Fi"
+msgstr "Wi–Fi"
+
+#: js/ui/status/network.js:1808
+msgid "Open Wi–Fi menu"
+msgstr "Wi–Fi мәзірін ашу"
+
+#: js/ui/status/network.js:1810
+msgid "All Networks"
+msgstr "Барлық желілер"
+
+#: js/ui/status/network.js:1907
+msgid "Wired Connections"
+msgstr "Сымды желі байланысы"
+
+#: js/ui/status/network.js:1908
+msgid "Open wired connections menu"
+msgstr "Сымды қосылымдар мәзірін ашу"
+
+#: js/ui/status/network.js:1909
+msgid "Wired Settings"
+msgstr "Сымды желі баптаулары"
+
+#: js/ui/status/network.js:1923
+msgid "Bluetooth Tethers"
+msgstr "Bluetooth модемдері"
+
+#: js/ui/status/network.js:1924
+msgid "Open Bluetooth tethers menu"
+msgstr "Bluetooth арқылы интернетті бөлісу мәзірін ашу"
+
+#. Translators: "Tether" from "Bluetooth Tether"
+#: js/ui/status/network.js:1931
+msgid "Tether"
+msgstr "Модем"
+
+#: js/ui/status/network.js:1944
+msgid "Mobile Connections"
+msgstr "Мобильді желі байланыстары"
+
+#: js/ui/status/network.js:1945
+msgid "Open mobile connections menu"
+msgstr "Мобильді қосылымдар мәзірін ашу"
+
+#: js/ui/status/network.js:1947
+msgid "Mobile Broadband Settings"
+msgstr "Сымсыз кеңжолақты желісінің баптаулары"
+
+#. Translators: "Mobile" from "Mobile Broadband"
+#: js/ui/status/network.js:1956
+msgid "Mobile"
+msgstr "Мобильді"
+
+#: js/ui/status/network.js:1990
+msgid "Sign in to Network"
+msgstr "Желіге кіру"
+
+#: js/ui/status/network.js:2177
+msgid "Connection failed"
+msgstr "Байланыс орнату сәтсіз"
+
+#: js/ui/status/network.js:2178
+msgid "Activation of network connection failed"
+msgstr "Желілік байланысты белсендіру сәтсіз"
+
+#: js/ui/status/nightLight.js:19
+msgid "Night Light"
+msgstr "Түнгі жарық"
+
+#: js/ui/status/powerProfiles.js:19
+msgctxt "Power profile"
+msgid "Performance"
+msgstr "Өнімділік"
+
+#: js/ui/status/powerProfiles.js:24
+msgctxt "Power profile"
+msgid "Balanced"
+msgstr "Баланс"
+
+#: js/ui/status/powerProfiles.js:29
+msgctxt "Power profile"
+msgid "Power Saver"
+msgstr "Қорек үнемдеу"
+
+#: js/ui/status/powerProfiles.js:35
+msgctxt "Power profile"
+msgid "Custom"
+msgstr "Реттелетін"
+
+#: js/ui/status/powerProfiles.js:45
+msgctxt "Quick settings button title"
+msgid "Power Mode"
+msgstr "Эл. қорегі режимі"
+
+#: js/ui/status/powerProfiles.js:46
+msgid "Open power profiles menu"
+msgstr "Қуат профильдері мәзірін ашу"
+
+#: js/ui/status/powerProfiles.js:77
+msgctxt "Quick settings menu header"
+msgid "Power Mode"
+msgstr "Эл. қорегі режимі"
+
+#: js/ui/status/powerProfiles.js:79
+msgid "Power Settings"
+msgstr "Қорек баптаулары"
+
+#: js/ui/status/remoteAccess.js:73
+msgid "Stop Screencast"
+msgstr "Скринкастты тоқтату"
+
+#: js/ui/status/remoteAccess.js:141
+msgid "Stop Screen Sharing"
+msgstr "Экранмен бөлісуді тоқтату"
+
+#: js/ui/status/rfkill.js:97
+msgid "Airplane Mode"
+msgstr "Ұшақтағы режим"
+
+#: js/ui/status/system.js:175
+msgid "Power Off Menu"
+msgstr "Сөндіру мәзірі"
+
+#: js/ui/status/system.js:183
+msgid "Suspend"
+msgstr "Ұйықтату"
+
+#: js/ui/status/system.js:188
+msgid "Restart…"
+msgstr "Қайта қосу…"
+
+#: js/ui/status/system.js:193
+msgid "Power Off…"
+msgstr "Сөндіру…"
+
+#: js/ui/status/system.js:200
+msgid "Log Out…"
+msgstr "Жүйеден шығу…"
+
+#: js/ui/status/system.js:205
+msgid "Switch User…"
+msgstr "Пайдаланушыны ауыстыру…"
+
+#: js/ui/status/system.js:249
+msgctxt "action"
+msgid "Lock Screen"
+msgstr "Экранды блоктау"
+
+#: js/ui/status/thunderbolt.js:310
+msgid "Unknown Thunderbolt device"
+msgstr "Белгісіз Thunderbolt құрылғысы"
+
+#: js/ui/status/thunderbolt.js:311
+msgid ""
+"New device has been detected while you were away. Please disconnect and "
+"reconnect the device to start using it."
+msgstr ""
+"Сіз кетіп қалған уақытта жаңа құрылғы анықталған. Оны қолдануды бастау үшін, "
+"оны ажыратып, қайта салыңыз."
+
+#: js/ui/status/thunderbolt.js:314
+msgid "Unauthorized Thunderbolt device"
+msgstr "Авторизацияланбаған Thunderbolt құрылғысы"
+
+#: js/ui/status/thunderbolt.js:315
+msgid ""
+"New device has been detected and needs to be authorized by an administrator"
+msgstr "Жаңа құрылғы анықталды және де оны әкімші авторизациялау керек"
+
+#: js/ui/status/thunderbolt.js:321
+msgid "Thunderbolt authorization error"
+msgstr "Thunderbolt авторизация қатесі"
+
+#: js/ui/status/thunderbolt.js:322
+#, javascript-format
+msgid "Could not authorize the Thunderbolt device: %s"
+msgstr "Thunderbolt құралғысын авторизациялау мүмкін емес: %s"
+
+#: js/ui/status/volume.js:217
+msgid "Volume changed"
+msgstr "Дыбыс өзгертілді"
+
+#: js/ui/status/volume.js:230
+msgid "Unmute"
+msgstr "Дыбысты қайтару"
+
+#: js/ui/status/volume.js:230
+msgid "Mute"
+msgstr "Дыбысын өшіру"
+
+#: js/ui/status/volume.js:297
+msgid "Volume"
+msgstr "Дыбыс деңгейі"
+
+#: js/ui/status/volume.js:313
+msgid "Sound Output"
+msgstr "Дыбыс шығысы"
+
+#: js/ui/status/volume.js:314
+msgid "Open sound output menu"
+msgstr "Дыбыс шығысы мәзірін ашу"
+
+#: js/ui/status/volume.js:389
+msgid "Sound Input"
+msgstr "Дыбыс кірісі"
+
+#: js/ui/status/volume.js:390
+msgid "Open sound input menu"
+msgstr "Дыбыс кірісі мәзірін ашу"
+
+#. Translators: this is for display mirroring i.e. cloning.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:20
+msgid "Mirror"
+msgstr "Айналы"
+
+#. Translators: this is for the desktop spanning displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:29
+msgid "Join Displays"
+msgstr "Экран­дарды біріктіру"
+
+#. Translators: this is for using only external displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:39
+msgid "External Only"
+msgstr "Тек сыртқы"
+
+#. Translators: this is for using only the laptop display.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:47
+msgid "Built-in Only"
+msgstr "Тек құрамындағы"
+
+#. Translators: This is a time format for a date in
+#. long format
+#: js/ui/unlockDialog.js:415
+msgid "%A %B %-d"
+msgstr "%A %B %-d"
+
+#: js/ui/unlockDialog.js:421
+msgid "Swipe up to unlock"
+msgstr "Босату үшін жоғары өткізіңіз"
+
+#: js/ui/unlockDialog.js:422
+msgid "Click or press a key to unlock"
+msgstr "Босату үшін шертіңіз немесе пернені басыңыз"
+
+#: js/ui/unlockDialog.js:610
+msgid "Unlock Window"
+msgstr "Блоктауды алу терезесі"
+
+#: js/ui/unlockDialog.js:619
+msgid "Log in as another user"
+msgstr "Басқа пайдаланушы ретінде жүйеге кіру"
+
+#: js/ui/welcomeDialog.js:47
+#, javascript-format
+msgid "GNOME %s"
+msgstr "GNOME %s"
+
+#: js/ui/welcomeDialog.js:51
+#, javascript-format
+msgid "Welcome to %s"
+msgstr "%s ішіне қош келдіңіз"
+
+#: js/ui/welcomeDialog.js:52
+msgid "If you want to learn your way around, check out the tour"
+msgstr "Егер айналаңызды үйренгіңіз келсе, турды шолыңыз"
+
+#: js/ui/welcomeDialog.js:66
+msgid "Take Tour"
+msgstr "Турды шолу"
+
+#: js/ui/windowAttentionHandler.js:18
+#, javascript-format
+msgid "“%s” is ready"
+msgstr "\"%s\" дайын"
+
+#. Translators: This string should be shorter than 30 characters
+#: js/ui/windowManager.js:60
+msgid "Keep these display settings?"
+msgstr "Бұл экран баптауларын сақтауды қалайсыз ба?"
+
+#: js/ui/windowManager.js:70
+msgid "Revert Settings"
+msgstr "Баптауларды қалпына келтіру"
+
+#: js/ui/windowManager.js:75
+msgid "Keep Changes"
+msgstr "Өзгерістерді сақтау"
+
+#: js/ui/windowManager.js:95
+#, javascript-format
+msgid "Settings changes will revert in %d second"
+msgid_plural "Settings changes will revert in %d seconds"
+msgstr[0] "Өзгертілген баптаулар %d секундтан кейін қалпына келтіріледі"
+
+#. Translators: This represents the size of a window. The first number is
+#. * the width of the window and the second is the height.
+#: js/ui/windowManager.js:490
+#, javascript-format
+msgid "%d × %d"
+msgstr "%d × %d"
+
+#. Translators: entry in the window right click menu.
+#: js/ui/windowMenu.js:28
+msgctxt "window-menu"
+msgid "Take Screenshot"
+msgstr "Экран кескінін түсіру"
+
+#: js/ui/windowMenu.js:40
+msgid "Hide"
+msgstr "Жасыру"
+
+#: js/ui/windowMenu.js:47
+msgid "Restore"
+msgstr "Қалпына келтіру"
+
+#: js/ui/windowMenu.js:51
+msgid "Maximize"
+msgstr "Жазық қылу"
+
+#: js/ui/windowMenu.js:58
+msgid "Move"
+msgstr "Жылжыту"
+
+#: js/ui/windowMenu.js:72
+msgid "Resize"
+msgstr "Өлшемін өзгерту"
+
+#: js/ui/windowMenu.js:86
+msgid "Always on Top"
+msgstr "Әрқашан алдында"
+
+#: js/ui/windowMenu.js:105
+msgid "Always on Visible Workspace"
+msgstr "Әрқашан көрінетін жұмыс орнында"
+
+#: js/ui/windowMenu.js:119
+msgid "Move to Workspace Left"
+msgstr "Сол жақтағы жұмыс орнына жылжыту"
+
+#: js/ui/windowMenu.js:125
+msgid "Move to Workspace Right"
+msgstr "Оң жақтағы жұмыс орнына жылжыту"
+
+#: js/ui/windowMenu.js:131
+msgid "Move to Workspace Up"
+msgstr "Жоғарыдағы жұмыс орнына жылжыту"
+
+#: js/ui/windowMenu.js:137
+msgid "Move to Workspace Down"
+msgstr "Төмендегі жұмыс орнына жылжыту"
+
+#: js/ui/windowMenu.js:155
+msgid "Move to Monitor Up"
+msgstr "Жоғарыдағы мониторға жылжыту"
+
+#: js/ui/windowMenu.js:164
+msgid "Move to Monitor Down"
+msgstr "Төмендегі мониторға жылжыту"
+
+#: js/ui/windowMenu.js:173
+msgid "Move to Monitor Left"
+msgstr "Сол жақ мониторға жылжыту"
+
+#: js/ui/windowMenu.js:182
+msgid "Move to Monitor Right"
+msgstr "Оң жақ мониторға жылжыту"
+
+#: js/ui/windowMenu.js:190
+msgid "Close"
+msgstr "Жабу"
+
+#: src/main.c:515 subprojects/extensions-tool/src/main.c:336
+msgid "Print version"
+msgstr "Баспа нұсқасы"
+
+#: src/main.c:521
+msgid "Mode used by GDM for login screen"
+msgstr "GDM жүйеге кіру экраны үшін қолданатын режимі"
+
+#: src/main.c:527
+msgid "Use a specific mode, e.g. “gdm” for login screen"
+msgstr "Жүйеге кіру экраны үшін арнайы режимді, мыс. \"gdm\", қолдану"
+
+#: src/main.c:533
+msgid "List possible modes"
+msgstr "Қолжетерлік режимдерді тізіп шығу"
+
+#: src/main.c:539
+msgid "Force animations to be enabled"
+msgstr "Анимацияны мәжбүрлі түрде іске қосу"
+
+#: src/shell-app.c:267
+msgctxt "program"
+msgid "Unknown"
+msgstr "Белгісіз"
+
+#: src/shell-app.c:518
+#, c-format
+msgid "Failed to launch “%s”"
+msgstr "\"%s\" жөнелту сәтсіз"
+
+#: src/shell-keyring-prompt.c:779
+msgid "Passwords do not match"
+msgstr "Парольдер өзара сәйкес емес"
+
+#: src/shell-keyring-prompt.c:787
+msgid "Password cannot be blank"
+msgstr "Пароль бос болуы мүмкін емес"
+
+#: src/shell-polkit-authentication-agent.c:342
+msgid "Authentication dialog was dismissed by the user"
+msgstr "Аутентификация терезесін пайдаланушы тайдырды"
+
+#: src/st/st-icon-theme.c:1857
+#, c-format
+msgid "Icon '%s' not present in theme %s"
+msgstr "\"%s\" таңбашасы %s темасында жоқ"
+
+#: src/st/st-icon-theme.c:3450 src/st/st-icon-theme.c:3753
+msgid "Failed to load icon"
+msgstr "Таңбашаны жүктеу сәтсіз"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:6
+msgid "Manage your GNOME Extensions"
+msgstr "GNOME кеңейтулерін басқару"
+
+#. developer_name tag deprecated with Appstream 1.0
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:20
+msgid "The GNOME Project"
+msgstr "GNOME жобасы"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:52
+msgid ""
+"GNOME Extensions handles updating extensions, configuring extension "
+"preferences and removing or disabling unwanted extensions."
+msgstr ""
+"GNOME кеңейтулері көмегімен кеңейтулерді жаңарту, баптау және оларды өшіру "
+"немесе сөндіруге болады."
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:65
+msgid "Main Window"
+msgstr "Басты терезе"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:69
+msgid "Available Updates"
+msgstr "Қолжетімді жаңартулар"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:73
+msgid "Search View"
+msgstr "Іздеу көрінісі"
+
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:6
+msgid "Configure GNOME Shell Extensions"
+msgstr "GNOME Shell кеңейтулерін баптау"
+
+#: subprojects/extensions-app/js/extensionManager.js:237
+#, javascript-format
+msgid ""
+"The installed version of this extension (%s) is incompatible with the current "
+"version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Бұл кеңейтудің орнатылған нұсқасы (%s) ағымдағы GNOME нұсқасымен (%s) "
+"үйлеспейді. Бұл кеңейту сөндірілді."
+
+#: subprojects/extensions-app/js/extensionManager.js:238
+#, javascript-format
+msgid ""
+"The installed version of this extension is incompatible with the current "
+"version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Бұл кеңейтудің орнатылған нұсқасы ағымдағы GNOME нұсқасымен (%s) үйлеспейді. "
+"Бұл кеңейту сөндірілді."
+
+#: subprojects/extensions-app/js/extensionManager.js:242
+msgid ""
+"An error has occurred in this extension. This could cause issues elsewhere in "
+"the system. It is recommended to turn the extension off until the error is "
+"resolved."
+msgstr ""
+"Бұл кеңейтуде қате орын алды. Бұл жүйенің басқа жерлерінде де мәселелер "
+"тудыруы мүмкін. Қате шешілгенге дейін кеңейтуді сөндіру ұсынылады."
+
+#. translators: Details for an extension error
+#: subprojects/extensions-app/js/extensionManager.js:248
+msgid "Error details:"
+msgstr "Қате ақпараты:"
+
+#: subprojects/extensions-app/js/extensionRow.js:82
+#, javascript-format
+msgid "Version %s"
+msgstr "Нұсқасы %s"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:108
+#, javascript-format
+msgid "Remove “%s”?"
+msgstr "\"%s\" өшіру керек пе?"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:109
+msgid ""
+"If you remove the extension, you need to return to download it if you want to "
+"enable it again"
+msgstr ""
+"Кеңейтуді өшірсеңіз, оны қайта іске қосу үшін қайта жүктеп алу керек болады"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:112
+msgid "_Cancel"
+msgstr "_Бас тарту"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:113
+msgid "_Remove"
+msgstr "Өші_ру"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:153
+msgid "translator-credits"
+msgstr "Baurzhan Muftakhidinov <baurthefirst@gmail.com>"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:198
+#, javascript-format
+msgid "%d extension will be updated on next login."
+msgid_plural "%d extensions will be updated on next login."
+msgstr[0] "%d кеңейту жүйеге келесі рет кірген кезде жаңартылатын болады."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:51
+msgid "Updates Details"
+msgstr "Жаңарту ақпараты"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:68
+msgid ""
+"A new version of this extension is ready and will be loaded on next login."
+msgstr ""
+"Бұл кеңейтудің жаңа нұсқасы дайын және жүйеге келесі рет кіру кезінде "
+"жүктеледі."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:100
+msgid "Extension Details"
+msgstr "Кеңейту ақпараты"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:188
+msgid "_Website"
+msgstr "_Веб-сайт"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:215
+msgid "_Settings"
+msgstr "_Баптаулар"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:242
+msgid "_Remove…"
+msgstr "Өші_ру…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:6
+msgid "Keyboard Shortcuts"
+msgstr "Пернетақта жарлықтары"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:10
+msgid "About Extensions"
+msgstr "Кеңейтулер туралы"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:64
+msgid "Main Menu"
+msgstr "Басты мәзір"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:106
+msgid "Search extensions"
+msgstr "Кеңейтулерді іздеу"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:123
+msgid "_Log Out…"
+msgstr "Жүйеден _шығу…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:131
+msgid "_Extensions"
+msgstr "К_еңейтулер"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:136
+msgid "More Information"
+msgstr "Көбірек ақпарат"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:148
+msgid ""
+"Extensions can cause performance and stability issues. It is recommended to "
+"disable all extensions if you experience problems with your system."
+msgstr ""
+"Кеңейтулер өнімділік пен тұрақтылық мәселелерін тудыруы мүмкін. Жүйеңіздегі "
+"ақаулықтарға тап болсаңыз, кеңейтулерді сөндіру ұсынылады."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:175
+msgid "User Extensions"
+msgstr "Пайдаланушы кеңейтулері"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:184
+msgid "System Extensions"
+msgstr "Жүйелік кеңейтулер"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:203
+msgid "Search Results"
+msgstr "Іздеу нәтижелері"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:217
+msgid "No Results Found"
+msgstr "Нәтижелер жоқ"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:218
+msgid "Try a different search"
+msgstr "Басқа сөздерді іздеп көріңіз"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:229
+msgid "No Installed Extensions"
+msgstr "Кеңейтулер орнатылмаған"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:230
+msgid ""
+"To find and add extensions, visit <a href=\"https://"
+"extensions.gnome.org\">extensions.gnome.org</a>."
+msgstr ""
+"Жаңа кеңейтулерді тауып, орнату үшін, <a href=\"https://"
+"extensions.gnome.org\">extensions.gnome.org</a> шолыңыз."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:240
+msgid "Something’s gone wrong"
+msgstr "Бір нәрсе қате кетті"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:241
+msgid ""
+"We’re very sorry, but it was not possible to get the list of installed "
+"extensions. Make sure you are logged into GNOME and try again."
+msgstr ""
+"Кешірім өтінеміз, барлық орнатылған кеңейтулер тізімін алу мүмкін болмады. "
+"GNOME ішіне кіргеніңізді тексеріп, қайталап көріңіз."
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:6
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Жалпы"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:9
+msgctxt "shortcut window"
+msgid "Open Menu"
+msgstr "Мәзірді ашу"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:15
+msgctxt "shortcut window"
+msgid "Toggle Search"
+msgstr "Іздеуді іске қосу/сөндіру"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:21
+msgctxt "shortcut window"
+msgid "Show Shortcuts"
+msgstr "Жарлықтарды көрсету"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:27
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Шығу"
+
+#. Translators: a file path to an extension directory
+#: subprojects/extensions-tool/src/command-create.c:284
+#, c-format
+msgid "The new extension was successfully created in %s.\n"
+msgstr "Жаңа кеңейту %s ішінде сәтті жасалды.\n"
+
+#: subprojects/extensions-tool/src/command-create.c:376
+#, c-format
+msgid ""
+"Name should be a very short (ideally descriptive) string.\n"
+"Examples are: %s"
+msgstr ""
+"Атауы қысқа мәтіндік жол (сипаттайтын) болуы тиіс.\n"
+"Мысалы: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:382
+#: subprojects/extensions-tool/src/main.c:243
+msgid "Name"
+msgstr "Аты"
+
+#: subprojects/extensions-tool/src/command-create.c:396
+#, c-format
+msgid ""
+"Description is a single-sentence explanation of what your extension does.\n"
+"Examples are: %s"
+msgstr ""
+"Сипаттамасы - бұл сіздің кеңейтуіңіз жасайтын әрекеттің бір сөйлемді "
+"анықтамасы.\n"
+"Мысалы: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:402
+#: subprojects/extensions-tool/src/main.c:246
+msgid "Description"
+msgstr "Сипаттамасы"
+
+#: subprojects/extensions-tool/src/command-create.c:416
+#, c-format
+msgid ""
+"UUID is a globally-unique identifier for your extension.\n"
+"This should be in the format of an email address "
+"(clicktofocus@janedoe.example.com)\n"
+msgstr ""
+"UUID - бұл кеңейтуңіздің глобалды деңгейдегі бірегей идентификаторы.\n"
+"Ол эл. пошта адресі пішімінде болуы тиіс (clicktofocus@janedoe.example.com)\n"
+
+#: subprojects/extensions-tool/src/command-create.c:443
+#, c-format
+msgid "Choose one of the available templates:\n"
+msgstr "Қол жетімді үлгілердің бірін таңдаңыз:\n"
+
+#: subprojects/extensions-tool/src/command-create.c:457
+msgid "Template"
+msgstr "Үлгі"
+
+#: subprojects/extensions-tool/src/command-create.c:515
+msgid "The unique identifier of the new extension"
+msgstr "Жаңа кеңейтудің бірегей идентификаторы"
+
+#: subprojects/extensions-tool/src/command-create.c:518
+msgid "NAME"
+msgstr "АТАУЫ"
+
+#: subprojects/extensions-tool/src/command-create.c:519
+msgid "The user-visible name of the new extension"
+msgstr "Жаңа кеңейтудің пайдаланушыға көрінетін атауы"
+
+#: subprojects/extensions-tool/src/command-create.c:521
+msgid "DESCRIPTION"
+msgstr "СИПАТТАМАСЫ"
+
+#: subprojects/extensions-tool/src/command-create.c:523
+msgid "A short description of what the extension does"
+msgstr "Кеңейтудің қысқаша сипаттамасы"
+
+#: subprojects/extensions-tool/src/command-create.c:525
+#: subprojects/extensions-tool/src/command-pack.c:455
+msgid "DOMAIN"
+msgstr "ДОМЕН"
+
+#: subprojects/extensions-tool/src/command-create.c:527
+msgid "The gettext domain used by the extension"
+msgstr "Кеңейту қолданатын gettext домені"
+
+#: subprojects/extensions-tool/src/command-create.c:529
+#: subprojects/extensions-tool/src/command-pack.c:448
+msgid "SCHEMA"
+msgstr "СҰЛБА"
+
+#: subprojects/extensions-tool/src/command-create.c:531
+msgid "The GSettings schema used by the extension"
+msgstr "Кеңейту қолданатын GSettings сұлбасы"
+
+#: subprojects/extensions-tool/src/command-create.c:534
+msgid "TEMPLATE"
+msgstr "ҮЛГІ"
+
+#: subprojects/extensions-tool/src/command-create.c:535
+msgid "The template to use for the new extension"
+msgstr "Жаңа кеңейту үшін қолданылатын үлгі"
+
+#: subprojects/extensions-tool/src/command-create.c:538
+msgid "Include prefs.js template"
+msgstr "prefs.js үлгісін қосу"
+
+#: subprojects/extensions-tool/src/command-create.c:544
+msgid "Enter extension information interactively"
+msgstr "Кеңейту ақпаратын интерактивті түрде енгізу"
+
+#: subprojects/extensions-tool/src/command-create.c:552
+msgid "Create a new extension"
+msgstr "Жаңа кеңейтуді жасау"
+
+#: subprojects/extensions-tool/src/command-create.c:570
+#: subprojects/extensions-tool/src/command-list.c:190
+msgid "Unknown arguments"
+msgstr "Белгісіз аргументтер"
+
+#: subprojects/extensions-tool/src/command-create.c:595
+msgid "UUID, name and description are required"
+msgstr "UUID, аты және сипаттамасы керек"
+
+#: subprojects/extensions-tool/src/command-disable.c:62
+#: subprojects/extensions-tool/src/command-enable.c:62
+#, c-format
+msgid "Extension “%s” does not exist\n"
+msgstr "\"%s\" кеңейтуі жоқ\n"
+
+#: subprojects/extensions-tool/src/command-disable.c:98
+msgid "Disable an extension"
+msgstr "Кеңейтуді сөндіру"
+
+#: subprojects/extensions-tool/src/command-disable.c:116
+#: subprojects/extensions-tool/src/command-enable.c:116
+#: subprojects/extensions-tool/src/command-info.c:103
+#: subprojects/extensions-tool/src/command-prefs.c:105
+#: subprojects/extensions-tool/src/command-reset.c:76
+#: subprojects/extensions-tool/src/command-uninstall.c:104
+msgid "No UUID given"
+msgstr "UUID көрсетілмеген"
+
+#: subprojects/extensions-tool/src/command-disable.c:121
+#: subprojects/extensions-tool/src/command-enable.c:121
+#: subprojects/extensions-tool/src/command-info.c:108
+#: subprojects/extensions-tool/src/command-prefs.c:110
+#: subprojects/extensions-tool/src/command-reset.c:81
+#: subprojects/extensions-tool/src/command-uninstall.c:109
+msgid "More than one UUID given"
+msgstr "Бірден көп UUID көрсетілген"
+
+#: subprojects/extensions-tool/src/command-enable.c:98
+msgid "Enable an extension"
+msgstr "Кеңейтуді іске қосу"
+
+#: subprojects/extensions-tool/src/command-info.c:50
+#: subprojects/extensions-tool/src/command-list.c:66
+#: subprojects/extensions-tool/src/main.c:150
+#, c-format
+msgid "Failed to connect to GNOME Shell\n"
+msgstr "GNOME Shell-ға байланысты орнату сәтсіз аяқталды\n"
+
+#: subprojects/extensions-tool/src/command-info.c:59
+#: subprojects/extensions-tool/src/main.c:159
+#, c-format
+msgid "Extension “%s” doesn't exist\n"
+msgstr "\"%s\" кеңейтуі жоқ\n"
+
+#: subprojects/extensions-tool/src/command-info.c:85
+msgid "Show extensions info"
+msgstr "Кеңейтулер ақпаратын көрсету"
+
+#: subprojects/extensions-tool/src/command-install.c:195
+msgid "Overwrite an existing extension"
+msgstr "Бар болып тұрған кеңейтуді үстінен жазу"
+
+#: subprojects/extensions-tool/src/command-install.c:198
+msgid "Print extension UUID on success"
+msgstr "Сәтті болса, кеңейту UUID басып шығару"
+
+#: subprojects/extensions-tool/src/command-install.c:200
+msgid "EXTENSION_BUNDLE"
+msgstr "КЕҢЕЙТУ_ДЕСТЕСІ"
+
+#: subprojects/extensions-tool/src/command-install.c:209
+msgid "Install an extension bundle"
+msgstr "Кеңейту дестесін орнату"
+
+#: subprojects/extensions-tool/src/command-install.c:227
+msgid "No extension bundle specified"
+msgstr "Кеңейту дестесі көрсетілмеген"
+
+#: subprojects/extensions-tool/src/command-install.c:233
+msgid "More than one extension bundle specified"
+msgstr "Бірден көп кеңейту дестесі көрсетілген"
+
+#: subprojects/extensions-tool/src/command-list.c:140
+msgid "Show user-installed extensions"
+msgstr "Пайдаланушы орнатқан кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:143
+msgid "Show system-installed extensions"
+msgstr "Жүйелік деңгейде орнатылған кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:146
+msgid "Show enabled extensions"
+msgstr "Іске қосылған кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:149
+msgid "Show disabled extensions"
+msgstr "Сөндірілген кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:152
+msgid "Show extensions in active state"
+msgstr "Белсенді кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:155
+msgid "Show extensions in inactive state"
+msgstr "Белсенді емес кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:158
+msgid "Show extensions with preferences"
+msgstr "Баптаулары бар кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:161
+msgid "Show extensions with updates"
+msgstr "Жаңартулары бар кеңейтулерді көрсету"
+
+#: subprojects/extensions-tool/src/command-list.c:164
+msgid "Print extension details"
+msgstr "Кеңейту ақпаратын басып шығару"
+
+#: subprojects/extensions-tool/src/command-list.c:172
+msgid "List installed extensions"
+msgstr "Орнатылған кеңейтулерді тізіп шығару"
+
+#: subprojects/extensions-tool/src/command-pack.c:444
+#: subprojects/extensions-tool/src/command-upload.c:427
+msgid "FILE"
+msgstr "ФАЙЛ"
+
+#: subprojects/extensions-tool/src/command-pack.c:445
+msgid "Additional source to include in the bundle"
+msgstr "Дестеге қосылатын қосымша қайнар көз"
+
+#: subprojects/extensions-tool/src/command-pack.c:449
+msgid "A GSettings schema that should be included"
+msgstr "Құрамына енуі тиіс GSettings сұлбасы"
+
+#: subprojects/extensions-tool/src/command-pack.c:451
+#: subprojects/extensions-tool/src/command-pack.c:462
+msgid "DIRECTORY"
+msgstr "БУМА"
+
+#: subprojects/extensions-tool/src/command-pack.c:453
+msgid "The directory where translations are found"
+msgstr "Аудармалар орналасқан бума"
+
+#: subprojects/extensions-tool/src/command-pack.c:457
+msgid "The gettext domain to use for translations"
+msgstr "Аудармалар үшін қолданылуы тиіс gettext домені"
+
+#: subprojects/extensions-tool/src/command-pack.c:460
+msgid "Overwrite an existing pack"
+msgstr "Бар болып тұрған пакетті үстінен жазу"
+
+#: subprojects/extensions-tool/src/command-pack.c:464
+msgid "The directory where the pack should be created"
+msgstr "Десте жасалуы тиіс бума"
+
+#: subprojects/extensions-tool/src/command-pack.c:466
+msgid "SOURCE_DIRECTORY"
+msgstr "ҚАЙНАР_КӨЗ_БУМАСЫ"
+
+#: subprojects/extensions-tool/src/command-pack.c:475
+msgid "Create an extension bundle"
+msgstr "Кеңейту дестесін жасау"
+
+#: subprojects/extensions-tool/src/command-pack.c:495
+msgid "More than one source directory specified"
+msgstr "Бірден көп қайнар көз бумасы көрсетілген"
+
+#: subprojects/extensions-tool/src/command-prefs.c:47
+#, c-format
+msgid "Extension “%s” doesn't have preferences\n"
+msgstr "\"%s\" кеңейтудің баптаулары жоқ\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:62
+#, c-format
+msgid "Failed to open prefs for extension “%s”: %s\n"
+msgstr "\"%s\" кеңейтуі үшін қолданбаларды ашу сәтсіз аяқталды: %s\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:87
+msgid "Opens extension preferences"
+msgstr "Кеңейту баптауларын ашады"
+
+#: subprojects/extensions-tool/src/command-reset.c:58
+msgid "Reset an extension"
+msgstr "Кеңейтуді қалпына келтіру"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:49
+#, c-format
+msgid "Cannot uninstall system extensions\n"
+msgstr "Жүйелік кеңейтулерді өшіру мүмкін емес\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:64
+#, c-format
+msgid "Failed to uninstall “%s”\n"
+msgstr "\"%s\" өшіру сәтсіз аяқталды\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:86
+msgid "Uninstall an extension"
+msgstr "Кеңейтуді өшіру"
+
+#: subprojects/extensions-tool/src/command-upload.c:226
+#, c-format
+msgid "Login to extensions.gnome.org\n"
+msgstr "extensions.gnome.org сайтына кіру\n"
+
+#: subprojects/extensions-tool/src/command-upload.c:256
+#, c-format
+msgid "Warning! Password will be echoed"
+msgstr "Ескерту! Пароль экранда көрсетіледі"
+
+#: subprojects/extensions-tool/src/command-upload.c:419
+msgid "USERNAME"
+msgstr "ПАЙДАЛАНУШЫ АТЫ"
+
+#: subprojects/extensions-tool/src/command-upload.c:421
+msgid "Username to log into https://extensions.gnome.org"
+msgstr "https://extensions.gnome.org сайтына кіру үшін пайдаланушы аты"
+
+#: subprojects/extensions-tool/src/command-upload.c:423
+msgid "PASSWORD"
+msgstr "ПАРОЛЬ"
+
+#: subprojects/extensions-tool/src/command-upload.c:425
+msgid "Password to log into https://extensions.gnome.org"
+msgstr "https://extensions.gnome.org сайтына кіруге арналған пароль"
+
+#: subprojects/extensions-tool/src/command-upload.c:429
+msgid ""
+"Read https://extensions.gnome.org password from file, use \"-\" for stdin"
+msgstr ""
+"https://extensions.gnome.org паролін файлдан оқу, stdin үшін \"-\" "
+"пайдаланыңыз"
+
+#: subprojects/extensions-tool/src/command-upload.c:432
+msgid "Accept the terms of service at https://extensions.gnome.org/upload/"
+msgstr ""
+"https://extensions.gnome.org/upload/ сайтындағы қызмет көрсету шарттарын "
+"қабылдау"
+
+#: subprojects/extensions-tool/src/command-upload.c:434
+msgid "FILE…"
+msgstr "ФАЙЛ…"
+
+#: subprojects/extensions-tool/src/command-upload.c:443
+msgid "Upload new extension versions"
+msgstr "Кеңейтулердің жаңа нұсқаларын жүктеп салу"
+
+#: subprojects/extensions-tool/src/command-upload.c:461
+msgid "Only one of --password and --password-file can be used"
+msgstr ""
+"--password және --password-file параметрлерінің тек біреуін ғана пайдалануға "
+"болады"
+
+#: subprojects/extensions-tool/src/command-upload.c:467
+msgid "You must accept the terms of service to upload extensions"
+msgstr ""
+"Кеңейтулерді жүктеп салу үшін қызмет көрсету шарттарын қабылдауыңыз керек"
+
+#: subprojects/extensions-tool/src/command-upload.c:473
+msgid "No files given"
+msgstr "Файлдар берілген жоқ"
+
+#: subprojects/extensions-tool/src/main.c:76
+msgid "Do not print error messages"
+msgstr "Қате туралы хабарламаларды басып шығармау"
+
+#: subprojects/extensions-tool/src/main.c:249
+msgid "Path"
+msgstr "Жол"
+
+#: subprojects/extensions-tool/src/main.c:252
+msgid "URL"
+msgstr "URL"
+
+#: subprojects/extensions-tool/src/main.c:255
+msgid "Original author"
+msgstr "Бастапқы авторы"
+
+#: subprojects/extensions-tool/src/main.c:261
+#: subprojects/extensions-tool/src/main.c:263
+#: subprojects/extensions-tool/src/main.c:265
+msgid "Version"
+msgstr "Нұсқасы"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Enabled"
+msgstr "Іске қосылған"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Yes"
+msgstr "Иә"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "No"
+msgstr "Жоқ"
+
+#: subprojects/extensions-tool/src/main.c:271
+msgid "State"
+msgstr "Қалып-күйі"
+
+#: subprojects/extensions-tool/src/main.c:309
+msgid "“version” takes no arguments"
+msgstr "“version” аргументтерді қабылдамайды"
+
+#: subprojects/extensions-tool/src/main.c:311
+#: subprojects/extensions-tool/src/main.c:331
+msgid "Usage:"
+msgstr "Қолданылуы:"
+
+#: subprojects/extensions-tool/src/main.c:314
+msgid "Print version information and exit."
+msgstr "Нұсқа ақпаратын басып шығару және шығу."
+
+#: subprojects/extensions-tool/src/main.c:329
+#: subprojects/extensions-tool/src/main.c:332
+msgid "COMMAND"
+msgstr "КОМАНДА"
+
+#: subprojects/extensions-tool/src/main.c:332
+msgid "[ARGS…]"
+msgstr "[АРГУМЕНТТЕР…]"
+
+#: subprojects/extensions-tool/src/main.c:334
+msgid "Commands:"
+msgstr "Командалар:"
+
+#: subprojects/extensions-tool/src/main.c:335
+msgid "Print help"
+msgstr "Көмекті басып шығару"
+
+#: subprojects/extensions-tool/src/main.c:337
+msgid "Enable extension"
+msgstr "Кеңейтуді іске қосу"
+
+#: subprojects/extensions-tool/src/main.c:338
+msgid "Disable extension"
+msgstr "Кеңейтуді сөндіру"
+
+#: subprojects/extensions-tool/src/main.c:339
+msgid "Reset extension"
+msgstr "Кеңейтуді қалпына келтіру"
+
+#: subprojects/extensions-tool/src/main.c:340
+msgid "Uninstall extension"
+msgstr "Кеңейтуді өшіру"
+
+#: subprojects/extensions-tool/src/main.c:341
+msgid "List extensions"
+msgstr "Кеңейтулерді тізіп шығару"
+
+#: subprojects/extensions-tool/src/main.c:342
+#: subprojects/extensions-tool/src/main.c:343
+msgid "Show extension info"
+msgstr "Кеңейту ақпаратын көрсету"
+
+#: subprojects/extensions-tool/src/main.c:344
+msgid "Open extension preferences"
+msgstr "Кеңейту параметрлерін ашу"
+
+#: subprojects/extensions-tool/src/main.c:345
+msgid "Create extension"
+msgstr "Кеңейтуді жасау"
+
+#: subprojects/extensions-tool/src/main.c:346
+msgid "Package extension"
+msgstr "Кеңейтуді дестеге салу"
+
+#: subprojects/extensions-tool/src/main.c:347
+msgid "Install extension bundle"
+msgstr "Кеңейту дестесін орнату"
+
+#: subprojects/extensions-tool/src/main.c:349
+#, c-format
+msgid "Use “%s” to get detailed help.\n"
+msgstr "Толық көмекті алу үшін \"%s\" пайдаланыңыз.\n"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:3
+msgid "Plain"
+msgstr "Қалыпты"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:4
+msgid "An empty extension"
+msgstr "Бос кеңейту"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:3
+msgid "Indicator"
+msgstr "Индикатор"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:4
+msgid "Add an icon to the top bar"
+msgstr "Жоғарғы панельге таңбашаны қосу"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:3
+msgid "Quick Settings Item"
+msgstr "Жылдам баптау элементі"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:4
+msgid "Add an item to quick settings"
+msgstr "Жылдам баптауларға жаңа элементті қосу"
+
+#. translators:
+#. * The device has been disabled
+#: subprojects/gvc/gvc-mixer-control.c:1872
+msgid "Disabled"
+msgstr "Сөндірулі"
+
+#. translators:
+#. * The number of sound outputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1879
+#, c-format
+msgid "%u Output"
+msgid_plural "%u Outputs"
+msgstr[0] "%u шығысы"
+
+#. translators:
+#. * The number of sound inputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1889
+#, c-format
+msgid "%u Input"
+msgid_plural "%u Inputs"
+msgstr[0] "%u кірісі"
+
+#: subprojects/gvc/gvc-mixer-control.c:2872
+msgid "System Sounds"
+msgstr "Жүйелік дыбыстар"
+
+#~ msgctxt "title"
+#~ msgid "Restart & Install Upgrade"
+#~ msgstr "Қайта қосу және жаңартуларды орнату"
+
+#, javascript-format
+#~ msgid ""
+#~ "%s %s will be installed after restart. Upgrade installation can take a "
+#~ "long time: ensure that you have backed up and that the computer is plugged "
+#~ "in."
+#~ msgstr ""
+#~ "%s %s қайта қосылғаннан кейін орнатылатын болады. Орнатуды жаңарту ұзақ "
+#~ "уақытты алуы мүмкін: деректердің қор көшірмесі бар екеніне және компьютер "
+#~ "эл. желісіне жалғанып тұрғанына көз жеткізіңіз."
+
+#~ msgid "Restart is not available on Wayland"
+#~ msgstr "Қайта қосу Wayland нұсқасында қолжетерсіз"
+
+#~ msgid "Restarting…"
+#~ msgstr "Қайта қосу…"
+
+#~ msgid "Unable to lock"
+#~ msgstr "Блоктау мүмкін емес"
+
+#~ msgid "Lock was blocked by an app"
+#~ msgstr "Блоктауды басқа қолданба болдырмады"
+
+#~ msgid "GNOME Shell"
+#~ msgstr "GNOME Shell"
+
+#~ msgid "Window management and application launching"
+#~ msgstr "Терезелерді басқару мен қолданбаларды жөнелту"
+
+#~ msgid ""
+#~ "We’re very sorry, but there’s been a problem: the settings for this "
+#~ "extension can’t be displayed. We recommend that you report the issue to "
+#~ "the extension authors."
+#~ msgstr ""
+#~ "Кешіріңіз, мәселе орын алды: бұл кеңейту үшін баптауларды көрсету мүмкін "
+#~ "емес. Бұл мәселені кеңейту авторларына хабарлауды ұсынамыз."
+
+#~ msgid "Technical Details"
+#~ msgstr "Техникалық ақпараты"
+
+#~ msgid "Homepage"
+#~ msgstr "Үй парағы"
+
+#~ msgid "Visit extension homepage"
+#~ msgstr "Кеңейтудің үй парағын шолу"
+
+#~ msgid "Could not parse command:"
+#~ msgstr "Команданы талдау мүмкін емес:"
+
+#~ msgid "%H∶%M"
+#~ msgstr "%H∶%M"
+
+#~ msgid "Screenshot"
+#~ msgstr "Скриншот"
+
+#~ msgid "Move Titlebar Onscreen"
+#~ msgstr "Атау жолағын экранға жылжыту"
+
+#~ msgid "Stop conflicting session dialog closed"
+#~ msgstr "Қарамы-қайшылық туғызған сеансты тоқтату сұхбаты жабылды"
+
+#, javascript-format
+#~ msgid "Try to login again to start a session for user %s."
+#~ msgstr "%s пайдаланушысы үшін сеансты бастау үшін қайта кіріп көріңіз."
+
+#, javascript-format
+#~ msgid "%s is now known as %s"
+#~ msgstr "%s енді %s ретінде белгілі"
+
+#~ msgid "Network Manager"
+#~ msgstr "Желілер басқарушысы"
+
+#~ msgid "Disabling"
+#~ msgstr "Сөндірілуде"
+
+#~ msgid "Enabling"
+#~ msgstr "Іске қосылуда"
+
+#, javascript-format
+#~ msgid "%d %%"
+#~ msgstr "%d %%"
+
+#~ msgid "Thunderbolt"
+#~ msgstr "Thunderbolt"
+
+#~ msgid "No Thanks"
+#~ msgstr "Жоқ рахмет"
+
+#~ msgid "No Matches"
+#~ msgstr "Сәйкестіктер жоқ"
+
+#~ msgid "The extension had an error"
+#~ msgstr "Кеңейтуде қате болды"
+
+#~ msgid "The extension can be updated"
+#~ msgstr "Кеңейтуді жаңартуға болады"
+
+#~ msgid "Help"
+#~ msgstr "Көмек"
+
+#~ msgid "Manually Installed"
+#~ msgstr "Қолмен орнатылған"
+
+#~ msgid "Built-In"
+#~ msgstr "Құрамындағы"
+
+#~ msgid "Extension Updates Ready"
+#~ msgstr "Кеңейту жаңартулары дайын"
+
+#~ msgid "Attach modal dialog to the parent window"
+#~ msgstr "Модальды сұхбатты аталық терезесіне жалғау"
+
+#~ msgid ""
+#~ "This key overrides the key in org.gnome.mutter when running GNOME Shell."
+#~ msgstr ""
+#~ "Бұл кілт GNOME Shell орындалған кезде org.gnome.mutter ішіндегі кілтті "
+#~ "үстінен жазады."
+
+#~ msgid "Enable edge tiling when dropping windows on screen edges"
+#~ msgstr ""
+#~ "Терезелерді экран шеттеріне апарған кезде олардың өлшемдерін өзгертуді "
+#~ "іске қосу"
+
+#~ msgid "Workspaces are managed dynamically"
+#~ msgstr "Жұмыс орындары динамикалы түрде басқарылады"
+
+#~ msgid "Workspaces only on primary monitor"
+#~ msgstr "Жұмыс орындар тек біріншілік мониторда"
+
+#~ msgid "Delay focus changes in mouse mode until the pointer stops moving"
+#~ msgstr "Тышқан режиміндегі фокусты ауыстыру курсор тоқтағанша дейін кідірту"
+
+#~ msgid "Region & Language Settings"
+#~ msgstr "Аймақ және тіл баптаулары"
+
+#~ msgid "Applications"
+#~ msgstr "Қолданбалар"
+
+#~ msgid "Screenshot / Screencast"
+#~ msgstr "Скриншот/скринкаст"
+
+#, javascript-format
+#~ msgid "Unable to start %s"
+#~ msgstr "%s іске қосу мүмкін емес"
+
+#, javascript-format
+#~ msgid "Couldn’t find the %s application"
+#~ msgstr "%s қолданбасы табылмады"
+
+#~ msgid "Evolution Calendar"
+#~ msgstr "Evolution күнтізбесі"
+
+#~ msgid ""
+#~ "Whether the default Bluetooth adapter had set up devices associated to it"
+#~ msgstr ""
+#~ "Үнсіз келісім бойынша Bluetooth адаптерінде байланысқан құрылғылар бар ма"
+
+#~ msgid ""
+#~ "The shell will only show a Bluetooth menu item if a Bluetooth adapter is "
+#~ "powered, or if there were devices set up associated with the default "
+#~ "adapter. This will be reset if the default adapter is ever seen not to "
+#~ "have devices associated to it."
+#~ msgstr ""
+#~ "Қоршам Bluetooth мәзірін тек Bluetooth адаптері іске қосылған болса және "
+#~ "үнсіз келісім бойынша адаптерінде байланысқан құрылғылар бар болса ғана "
+#~ "көрсетеді. Бұл үнсіз келісім адаптерінде байланысқан құрылғылар жоқ болса "
+#~ "тасталады."
+
+#~ msgid "Log Out"
+#~ msgstr "Жүйеден шығу"
+
+#~ msgid "Bluetooth Off"
+#~ msgstr "Bluetooth сөндірілген"
+
+#~ msgid "Location In Use"
+#~ msgstr "Орналасу қолданылуда"
+
+#~ msgid "Location Disabled"
+#~ msgstr "Орналасу сөндірулі тұр"
+
+#, javascript-format
+#~ msgid "%s Off"
+#~ msgstr "%s сөндірулі"
+
+#, javascript-format
+#~ msgid "%s Connected"
+#~ msgstr "%s байланысқан"
+
+#, javascript-format
+#~ msgid "%s Unmanaged"
+#~ msgstr "%s басқарылмайтын"
+
+#, javascript-format
+#~ msgid "%s Connecting"
+#~ msgstr "%s байланысуда"
+
+#, javascript-format
+#~ msgid "%s Requires Authentication"
+#~ msgstr "%s аутентификацияны талап етеді"
+
+#, javascript-format
+#~ msgid "Firmware Missing For %s"
+#~ msgstr "%s үшін бинарлы кодтары жоқ"
+
+#, javascript-format
+#~ msgid "%s Unavailable"
+#~ msgstr "%s қолжетерсіз"
+
+#, javascript-format
+#~ msgid "%s Connection Failed"
+#~ msgstr "%s байланысын орнату сәтсіз"
+
+#, javascript-format
+#~ msgid "%s Hardware Disabled"
+#~ msgstr "%s құрылғылық түрде сөндірулі тұр"
+
+#, javascript-format
+#~ msgid "%s Disabled"
+#~ msgstr "%s сөндірулі тұр"
+
+#~ msgid "Connect to Internet"
+#~ msgstr "Интернетке байланысу"
+
+#~ msgid "Airplane Mode is On"
+#~ msgstr "Ұшақтағы режим іске қосылған"
+
+#~ msgid "Wi-Fi is disabled when airplane mode is on."
+#~ msgstr "Wi-Fi ұшақтағы режимі кезінде сөндірілген болады."
+
+#~ msgid "Turn Off Airplane Mode"
+#~ msgstr "Ұшақтағы режимді сөндіру"
+
+#~ msgid "Wi-Fi is Off"
+#~ msgstr "Wi-Fi сөндірілген"
+
+#~ msgid "Wi-Fi needs to be turned on in order to connect to a network."
+#~ msgstr "Желіге байланысты орнату үшін Wi-Fi іске қосылған болуы тиіс."
+
+#~ msgid "Turn On Wi-Fi"
+#~ msgstr "Wi-Fi іске қосу"
+
+#~ msgid "Select a network"
+#~ msgstr "Желіні таңдау"
+
+#~ msgid "Use hardware switch to turn off"
+#~ msgstr "Сөндіру үшін құрылғылық қосқышты қолданыңыз"
+
+#~ msgid "Select Network"
+#~ msgstr "Желіні таңдау"
+
+#~ msgid "Wi-Fi Settings"
+#~ msgstr "Wi-Fi баптаулары"
+
+#, javascript-format
+#~ msgid "%s Not Connected"
+#~ msgstr "%s байланыспаған"
+
+#~ msgid "connecting…"
+#~ msgstr "байланысты орнату…"
+
+#~ msgid "authentication required"
+#~ msgstr "аутентификация керек"
+
+#~ msgid "connection failed"
+#~ msgstr "байланысты орнату сәтсіз"
+
+#~ msgid "VPN Off"
+#~ msgstr "VPN сөндірілген"
+
+#, javascript-format
+#~ msgid "%s Wi-Fi Connection"
+#~ msgid_plural "%s Wi-Fi Connections"
+#~ msgstr[0] "%s Wi-Fi желі байланысы"
+
+#~ msgid "Night Light Disabled"
+#~ msgstr "Түнгі жарық сөндірілген"
+
+#~ msgid "Resume"
+#~ msgstr "Жалғастыру"
+
+#~ msgid "Disable Until Tomorrow"
+#~ msgstr "Ертеңге дейін сөндіру"
+
+#~ msgid "Fully Charged"
+#~ msgstr "Толығымен зарядталған"
+
+#~ msgid "Not Charging"
+#~ msgstr "Зарядталуда емес"
+
+#~ msgid "Estimating…"
+#~ msgstr "Есептеу…"
+
+#, javascript-format
+#~ msgid "%d∶%02d Remaining (%d %%)"
+#~ msgstr "%d∶%02d қалды (%d %%)"
+
+#, javascript-format
+#~ msgid "%d∶%02d Until Full (%d %%)"
+#~ msgstr "%d∶%02d толық зарядқа дейін (%d %%)"
+
+#~ msgid "Screen is Being Shared"
+#~ msgstr "Экранмен бөлісудесіз"
+
+#~ msgid "Turn off"
+#~ msgstr "Сөндіру"
+
+#~ msgid "Airplane Mode On"
+#~ msgstr "Ұшақтағы режим іске қосулы"
+
+#~ msgid "Lock"
+#~ msgstr "Блоктау"
+
+#~ msgid "Power Off / Log Out"
+#~ msgstr "Сөндіру / Жүйеден шығу"
+
+#~ msgid "Enable introspection API"
+#~ msgstr "Интроспекция API іске қосу"
+
+#~ msgid ""
+#~ "Enables a D-Bus API that allows to introspect the application state of the "
+#~ "shell."
+#~ msgstr ""
+#~ "Қоршамның қолданба күйін интроспекциялауды мүмкін қылатын D-Bus API іске "
+#~ "қосу."
+
+#~ msgid "Remove from Favorites"
+#~ msgstr "Таңдамалылардан өшіру"
+
+#~ msgid "Add to Favorites"
+#~ msgstr "Таңдамалыларға қосу"
+
+#~ msgid "Author"
+#~ msgstr "Авторы"
+
+#~ msgid "Warning"
+#~ msgstr "Ескерту"
+
+#~ msgid ""
+#~ "Extensions can cause system issues, including performance problems. If you "
+#~ "encounter problems with your system, it is recommended to disable all "
+#~ "extensions."
+#~ msgstr ""
+#~ "Кеңейтулер жүйелік мәселелерді, соның ішінде өнімділік мәселелерін туғызуы "
+#~ "мүмкін. Жүйелік мәселелерге тап болсаңыз, барлық кеңейтулерді сөндіру "
+#~ "ұсынылады."
+
+#~ msgid "Failed to connect to GNOME Shell"
+#~ msgstr "GNOME Shell-ға байланысты орнату сәтсіз аяқталды"
+
+#~ msgid "Minimize"
+#~ msgstr "Қайыру"
+
+#~ msgid "Unmaximize"
+#~ msgstr "Жазық емес қылу"
+
+#~ msgid "App Picker View"
+#~ msgstr "Қолданбаларды таңдау көрінісі"
+
+#~ msgid "Index of the currently selected view in the application picker."
+#~ msgstr ""
+#~ "Ағымдағы таңдалған көріністің қолданбаларды таңдау режиміндегі индексі."
+
+#~ msgid "Frequently used applications will appear here"
+#~ msgstr "Жиі қолданылатын қолданбалар осында көрінеді"
+
+#~ msgid "Frequent"
+#~ msgstr "Жиі қолданылатын"
+
+#~ msgid "All"
+#~ msgstr "Барлығы"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d"
+#~ msgstr "%A, %B %-d"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d, %Y"
+#~ msgstr "%A, %B %-d, %Y"
+
+#~ msgid "On"
+#~ msgstr "Іске қос."
+
+#~ msgid ""
+#~ "Keybinding that pauses and resumes all running tweens, for debugging "
+#~ "purposes"
+#~ msgstr ""
+#~ "Барлық орындалып тұрған анимацияларды тоқтататын не жалғастыратын пернелер "
+#~ "жарлығы (жөндеу үшін)"
+
+#~ msgid "Which keyboard to use"
+#~ msgstr "Қолданылатын пернетақта"
+
+#~ msgid "The type of keyboard to use."
+#~ msgstr "Қолданылатын пернетақта түрі."
+
+#~ msgid "network-workgroup"
+#~ msgstr "network-workgroup"
+
+#~ msgid "Browse in Software"
+#~ msgstr "БҚ қолданбасында шолу"
+
+#~ msgid "Next"
+#~ msgstr "Келесі"
+
+#~ msgctxt "button"
+#~ msgid "Sign In"
+#~ msgstr "Кіру"
+
+#~ msgid "Password:"
+#~ msgstr "Пароль:"
+
+#~ msgid "Type again:"
+#~ msgstr "Қайтадан енгізіңіз:"
+
+#~ msgid "Password: "
+#~ msgstr "Пароль: "
+
+#~ msgid "Authentication required by wireless network"
+#~ msgstr "Сымсыз желісі аутентификацияны талап етеді"
+
+#~ msgid "Mobile broadband network password"
+#~ msgstr "Сымсыз кеңжолақты желісінің паролі"
+
+#~ msgid "toggle-switch-us"
+#~ msgstr "toggle-switch-intl"
+
+#~ msgid "%A, %B %d"
+#~ msgstr "%A, %B %d"
+
+#~ msgid "%d new message"
+#~ msgid_plural "%d new messages"
+#~ msgstr[0] "%d жаңа хабарлама"
+
+#~ msgid "Account Settings"
+#~ msgstr "Тіркелгі баптаулары"
+
+#~ msgid "Orientation Lock"
+#~ msgstr "Бағдарды бекіту"
+
+#~ msgid "There was an error loading the preferences dialog for %s:"
+#~ msgstr "%s үшін баптаулар сұхбатын жүктеу кезінде қате орын алды:"
+
+#~ msgid "%s all day."
+#~ msgstr "%s күні бойы."
+
+#~ msgid "%s, then %s later."
+#~ msgstr "%s, одан кейін %s."
+
+#~ msgid "%s, then %s, followed by %s later."
+#~ msgstr "%s, одан кейін %s, одан кейін %s."
+
+#~ msgid "Feels like %s."
+#~ msgstr "%s сияқты сезіледі."
+
+#~ msgctxt "search-result"
+#~ msgid "Log out"
+#~ msgstr "Жүйеден шығу"
+
+#~ msgctxt "search-result"
+#~ msgid "Switch user"
+#~ msgstr "Пайдаланушыны ауыстыру"
+
+#~ msgid "Hide tray"
+#~ msgstr "Жүйелік трейді жасыру"
+
+#~ msgid "Status Icons"
+#~ msgstr "Қалып-күй таңбашалары"
+
+#~ msgid "Events"
+#~ msgstr "Оқиғалар"
+
+#~ msgid "Media"
+#~ msgstr "Медиа"
+
+#~ msgid "%d x %d"
+#~ msgstr "%d x %d"
+
+#~ msgid "Web Authentication Redirect"
+#~ msgstr "Веб аутентификацияның қайта бағдарлауы"
+
+#~ msgid "Show the week date in the calendar"
+#~ msgstr "Күнтізбеде апта күнін көрсету"
+
+#~ msgid "If true, display the ISO week date in the calendar."
+#~ msgstr "Ақиқат болса, күнтізбеде ISO апта күнін көрсетеді."
+
+#~ msgid "Use as Internet connection"
+#~ msgstr "Интернетпен байланыс ретінде қолдану"
+
+#~ msgid "%s is requesting access to your location."
+#~ msgstr "%s орналасу ақпаратыңызға қатынауды сұрайды."
+
+#~ msgid "GNOME Shell (wayland compositor)"
+#~ msgstr "GNOME Shell (wayland үйлестіргіші)"
+
+#~ msgid "%d Connected Device"
+#~ msgid_plural "%d Connected Devices"
+#~ msgstr[0] "%d байланысқан құрылғы"
+
+#~ msgid "UPS"
+#~ msgstr "UPS"
+
+#~ msgid "Battery"
+#~ msgstr "Батарея"
+
+#~ msgctxt "event list time"
+#~ msgid "%H∶%M"
+#~ msgstr "%H∶%M"
+
+#~ msgctxt "event list time"
+#~ msgid "%l∶%M %p"
+#~ msgstr "%l∶%M %p"
+
+#~ msgid "Invitation"
+#~ msgstr "Шақыру"
+
+#~ msgid "Call"
+#~ msgstr "Қоңырау"
+
+#~ msgid "File Transfer"
+#~ msgstr "Файлдармен алмасу"
+
+#~ msgid "Chat"
+#~ msgstr "Чат"
+
+#~ msgid "Invitation to %s"
+#~ msgstr "%s ішіне шақыру"
+
+#~ msgid "%s is inviting you to join %s"
+#~ msgstr "%s сізді %s ішіне қосылуды шақырады"
+
+#~ msgid "Decline"
+#~ msgstr "Тайдыру"
+
+#~ msgid "Accept"
+#~ msgstr "Қабылдау"
+
+#~ msgid "Video call from %s"
+#~ msgstr "Видео қоңырау: %s"
+
+#~ msgid "Call from %s"
+#~ msgstr "Қоңырау: %s"
+
+#~ msgid "Answer"
+#~ msgstr "Жауап"
+
+#~ msgid "%s is sending you %s"
+#~ msgstr "%s сізге %s жіберуде"
+
+#~ msgid "%s would like permission to see when you are online"
+#~ msgstr "%s сіз қашан желіде болатыныңызды білу құқығын сұрап тұр"
+
+#~ msgid "Authentication failed"
+#~ msgstr "Аутентификация сәтсіз"
+
+#~ msgid "Encryption error"
+#~ msgstr "Шифрлеу қатесі"
+
+#~ msgid "Certificate not provided"
+#~ msgstr "Сертификат ұсынылмады"
+
+#~ msgid "Certificate untrusted"
+#~ msgstr "Сертификат сенімсіз"
+
+#~ msgid "Certificate expired"
+#~ msgstr "Сертификаттың мерзімі аяқталған"
+
+#~ msgid "Certificate not activated"
+#~ msgstr "Сертификат белсендірілмеген"
+
+#~ msgid "Certificate hostname mismatch"
+#~ msgstr "Сертификаттың хост аты сәйкес емес"
+
+#~ msgid "Certificate fingerprint mismatch"
+#~ msgstr "Сертификаттың баспасы сәйкес емес"
+
+#~ msgid "Certificate self-signed"
+#~ msgstr "Сертификат өздігінен қолтаңбаланған"
+
+#~ msgid "Status is set to offline"
+#~ msgstr "Қалып-күй желіде емес етіп орнатылды"
+
+#~ msgid "Certificate is invalid"
+#~ msgstr "Сертификат дұрыс емес"
+
+#~ msgid "Connection has been refused"
+#~ msgstr "Сертификат тайдырылды"
+
+#~ msgid "Connection can't be established"
+#~ msgstr "Байланысты орнату мүмкін емес"
+
+#~ msgid "Connection has been lost"
+#~ msgstr "Байланыс жоғалтылды"
+
+#~ msgid "This account is already connected to the server"
+#~ msgstr "Бұл тіркелгі серверге байланысқан болып тұр"
+
+#~ msgid ""
+#~ "Connection has been replaced by a new connection using the same resource"
+#~ msgstr "Байланыс дәл сол ресурсты қолданып, жаңа байланыспен алмастырылды"
+
+#~ msgid "The account already exists on the server"
+#~ msgstr "Бұл тіркелгі серверде бар болып тұр"
+
+#~ msgid "Server is currently too busy to handle the connection"
+#~ msgstr "Сервер бұл байланысты өңдеу үшін тым бос емес"
+
+#~ msgid "Certificate has been revoked"
+#~ msgstr "Сертификат қайта шақырылған"
+
+#~ msgid ""
+#~ "Certificate uses an insecure cipher algorithm or is cryptographically weak"
+#~ msgstr ""
+#~ "Сертификат қауіпсіз емес шифрлеу алгоритмін қолдануда немесе "
+#~ "криптографиялы әлсіз"
+
+#~ msgid ""
+#~ "The length of the server certificate, or the depth of the server "
+#~ "certificate chain, exceed the limits imposed by the cryptography library"
+#~ msgstr ""
+#~ "Сервер сертификатының ұзындығы, не ол сертификат тізбегінің ұзындығы "
+#~ "криптографиялық жинақ ұсына алатын шегінен асып тұр"
+
+#~ msgid "Internal error"
+#~ msgstr "Ішкі қате"
+
+#~ msgid "View account"
+#~ msgstr "Тіркелгіні қарап шығу"
+
+#~ msgid "Show the message list"
+#~ msgstr "Хабарламалар тізімін көрсету"
+
+#~ msgctxt "list sunday"
+#~ msgid "Su"
+#~ msgstr "Жк"
+
+#~ msgctxt "list monday"
+#~ msgid "M"
+#~ msgstr "Бс"
+
+#~ msgctxt "list tuesday"
+#~ msgid "T"
+#~ msgstr "Сс"
+
+#~ msgctxt "list wednesday"
+#~ msgid "W"
+#~ msgstr "Ср"
+
+#~ msgctxt "list thursday"
+#~ msgid "Th"
+#~ msgstr "Бс"
+
+#~ msgctxt "list friday"
+#~ msgid "F"
+#~ msgstr "Жм"
+
+#~ msgctxt "list saturday"
+#~ msgid "S"
+#~ msgstr "Сн"
+
+#~ msgid "Nothing Scheduled"
+#~ msgstr "Жоспар бос"
+
+#~ msgid "This week"
+#~ msgstr "Осы аптада"
+
+#~ msgid "Next week"
+#~ msgstr "Келесі аптада"
+
+#~ msgid "Removable Devices"
+#~ msgstr "Ауыстырмалы құрылғылар"
+
+#~ msgid "Eject"
+#~ msgstr "Шығару"
+
+#~ msgid "Open"
+#~ msgstr "Ашу"
+
+#~ msgid "Clear Messages"
+#~ msgstr "Хабарламаларды тазарту"
+
+#~ msgid "Notification Settings"
+#~ msgstr "Хабарлау баптаулары"
+
+#~ msgid "Message Tray"
+#~ msgstr "Жүйелік трей"
+
+#~ msgid "Captive Portal"
+#~ msgstr "Captive-портал"
+
+#~ msgid "The maximum accuracy level of location."
+#~ msgstr "Орналасудың максималды дәлдік деңгейі."

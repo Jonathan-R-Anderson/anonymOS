@@ -1,0 +1,62 @@
+typedef struct
+{
+  const gchar *const locale;
+  const gchar *const type;
+  const gchar *const id;
+} DefaultInputSource;
+
+static DefaultInputSource default_input_sources[] =
+{
+  { "ar_DZ",    "xkb",          "ara+azerty" },
+  { "as_IN",    "ibus",         "m17n:as:inscript2" },
+  { "ast_ES",   "xkb",          "es+ast" },
+  { "az_AZ",    "xkb",          "az" },
+  { "be_BY",    "xkb",          "by" },
+  { "bg_BG",    "xkb",          "bg+phonetic" },
+  { "bn_IN",    "ibus",         "m17n:bn:inscript2" },
+  { "cat_ES",   "xkb",          "es+cat" },
+  { "cs_CZ",    "xkb",          "cz" },
+  { "de_CH",    "xkb",          "ch" },
+  { "de_DE",    "xkb",          "de" },
+  { "el_CY",    "xkb",          "gr" },
+  { "el_GR",    "xkb",          "gr" },
+  { "en_GB",    "xkb",          "gb" },
+  { "en_US",    "xkb",          "us" },
+  { "en_ZA",    "xkb",          "za" },
+  { "es_ES",    "xkb",          "es" },
+  { "es_GT",    "xkb",          "latam" },
+  { "es_MX",    "xkb",          "latam" },
+  { "es_US",    "xkb",          "us+intl" },
+  { "fr_BE",    "xkb",          "be" },
+  { "fr_CH",    "xkb",          "ch+fr" },
+  { "fr_FR",    "xkb",          "fr+oss" },
+  { "gl_ES",    "xkb",          "es" },
+  { "gu_IN",    "ibus",         "m17n:gu:inscript2" },
+  { "he_IL",    "xkb",          "il" },
+  { "hi_IN",    "ibus",         "m17n:hi:inscript2" },
+  { "id_ID",    "xkb",          "us" },
+  { "it_IT",    "xkb",          "it" },
+  { "ja_JP",    "ibus",         "anthy" },
+  { "kn_IN",    "ibus",         "m17n:kn:inscript2" },
+  { "ko_KR",    "ibus",         "hangul" },
+  { "mai_IN",   "ibus",         "m17n:mai:inscript2" },
+  { "ml_IN",    "ibus",         "m17n:ml:inscript2" },
+  { "mr_IN",    "ibus",         "m17n:mr:inscript2" },
+  { "nl_NL",    "xkb",          "us+altgr-intl" },
+  { "or_IN",    "ibus",         "m17n:or:inscript2" },
+  { "pa_IN",    "ibus",         "m17n:pa:inscript2-guru" },
+  { "pl_PL",    "xkb",          "pl" },
+  { "pt_BR",    "xkb",          "br" },
+  { "pt_PT",    "xkb",          "pt" },
+  { "ru_RU",    "xkb",          "ru" },
+  { "sd_IN",    "ibus",         "m17n:sd:inscript2-deva" },
+  { "sk_SK",    "xkb",          "sk" },
+  { "ta_IN",    "ibus",         "m17n:ta:inscript2" },
+  { "te_IN",    "ibus",         "m17n:te:inscript2" },
+  { "tr_TR",    "xkb",          "tr" },
+  { "ur_IN",    "ibus",         "m17n:ur:phonetic" },
+  { "zh_CN",    "ibus",         "libpinyin" },
+  { "zh_HK",    "ibus",         "cangjie" },
+  { "zh_TW",    "ibus",         "chewing" },
+  { NULL,       NULL,           NULL }
+};

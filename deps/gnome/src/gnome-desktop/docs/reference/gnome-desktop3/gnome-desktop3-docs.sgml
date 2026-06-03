@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.1.2//EN" 
+               "http://www.oasis-open.org/docbook/xml/4.1.2/docbookx.dtd">
+<book id="index" xmlns:xi="http://www.w3.org/2003/XInclude">
+  <bookinfo>
+    <title>GNOME Desktop Library Reference Manual</title>
+  </bookinfo>
+
+  <part id="intro">
+   <title>GNOME Desktop Library Overview</title>
+   <partintro>
+    <para>
+The libgnome-desktop library contains APIs that can be useful for a few applications, but which do not belong to GTK+ because of the limited use case. There is no guarantee of API or ABI stability, so it's recommended to not depend on it if you do not follow the same development cycle as GNOME. Use at your own risk.
+    </para>
+   </partintro>
+  </part>
+
+  <part id="background">
+    <title>Desktop Background</title>
+    <xi:include href="xml/gnome-bg.xml"/>
+    <xi:include href="xml/gnome-bg-crossfade.xml"/>
+    <xi:include href="xml/gnome-bg-slide-show.xml"/>
+  </part>
+
+  <part id="pnp">
+    <title>Plug and Play IDs</title>
+    <xi:include href="xml/gnome-pnp-ids.xml"/>
+  </part>
+
+  <part id="thumbnail">
+    <title>Thumbnails</title>
+    <xi:include href="xml/gnome-desktop-thumbnail.xml"/>
+  </part>
+
+  <part id="idle-monitor">
+    <title>Idle Monitor</title>
+    <xi:include href="xml/gnome-idle-monitor.xml"/>
+  </part>
+
+  <part id="wall-clock">
+    <title>Wall Clock</title>
+    <xi:include href="xml/gnome-wall-clock.xml"/>
+  </part>
+
+  <part id="xkb-info">
+    <title>X Keyboard Information</title>
+    <xi:include href="xml/gnome-xkb-info.xml"/>
+  </part>
+
+  <part id="languages">
+    <title>Language Utilities</title>
+    <xi:include href="xml/gnome-languages.xml"/>
+  </part>
+
+  <xi:include href="xml/annotation-glossary.xml"><xi:fallback /></xi:include>
+
+</book>

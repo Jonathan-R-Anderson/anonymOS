@@ -1,0 +1,847 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm to kazakh\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-01-20 19:30+0000\n"
+"PO-Revision-Date: \n"
+"Last-Translator: Baurzhan Muftakhidinov <baurthefirst@gmail.com>\n"
+"Language-Team: Kazakh <kk_KZ@googlegroups.com>\n"
+"Language: kk\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#: common/gdm-common.c:325
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom символдық құрылғы емес"
+
+#: common/gdm-common.c:364
+msgid "Unable to create transient display: "
+msgstr "Аралық экранды жасау мүмкін емес: "
+
+#: common/gdm-common.c:561
+msgid "Could not identify the current session: "
+msgstr "Ағымдағы сессияны анықтау мүмкін емес: "
+
+#: common/gdm-common.c:570
+msgid "Could not identify the current seat."
+msgstr "Ағымдағы отыру орнын анықтау мүмкін емес."
+
+#: daemon/gdm-manager.c:673
+msgid "No display available"
+msgstr "Қолжетерлік дисплей жоқ"
+
+#: daemon/gdm-manager.c:724 daemon/gdm-manager.c:1029
+msgid "No session available"
+msgstr "Қолжетімді сессиялар жоқ"
+
+#: daemon/gdm-manager.c:740
+msgid "Can only be called before user is logged in"
+msgstr "Пайдаланушы кіргенге дейін ғана шақыруға болады"
+
+#: daemon/gdm-manager.c:752
+msgid "Caller not GDM"
+msgstr "Шақырушы GDM емес"
+
+#: daemon/gdm-manager.c:762
+msgid "Unable to open private communication channel"
+msgstr "Жеке хабарласу арнасын ашу мүмкін емес"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Пайдаланушы"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "Пайдаланушы аты"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Хост аты"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "Хост аты"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Экран құрылғысы"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "Экран құрылғысы"
+
+#: daemon/gdm-session.c:1431
+msgid "Could not create authentication helper process"
+msgstr "Аутентификациясының көмекші үрдісін жасау мүмкін емес"
+
+#: daemon/gdm-session-worker.c:807
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr ""
+"Сіз парольмен аутентификациялау талаптарының максималды санына жеттіңіз, "
+"басқа тәсілді қолданып көріңіз"
+
+#: daemon/gdm-session-worker.c:810
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"Сіз автоматты түрде кіру талаптарының максималды санына жеттіңіз, басқа "
+"тәсілді қолданып көріңіз"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"Сіз саусақ ізімен аутентификациялау талаптарының максималды санына жеттіңіз, "
+"басқа тәсілді қолданып көріңіз"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr ""
+"Сіз смарткарта арқылы аутентификациялау талаптарының максималды санына "
+"жеттіңіз, басқа тәсілді қолданып көріңіз"
+
+#: daemon/gdm-session-worker.c:818
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr ""
+"Сіз аутентификациялау талаптарының максималды санына жеттіңіз, басқа тәсілді "
+"қолданып көріңіз"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr ""
+"Кешіріңіз, парольмен аутентификациялау жұмыс істемеді. Қайтадан көріңіз."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "Кешіріңіз, автоматты түрде кіру жұмыс істемеді. Қайтадан көріңіз."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr ""
+"Кешіріңіз, саусақ ізімен аутентификациялау жұмыс істемеді. Қайтадан көріңіз."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr ""
+"Кешіріңіз, смарткарта арқылы аутентификациялау жұмыс істемеді. Қайтадан "
+"көріңіз."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Кешіріңіз, бұл дұрыс емес болды. Қайтадан көріңіз."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "Тіркелгіңіз үшін берілген уақыт мерзімі енді аяқталды."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "Пайдаланушы:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "қолжетерлік пайдаланушы тіркелгілер жоқ"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "Пайдаланушыға ауысу мүмкін емес"
+
+#: daemon/gdm-wayland-session.c:507
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "GNOME дисплейлер басқарушысының Wayland сессиясын жөнелткіші"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "%s PID файлын жазу мүмкін емес: дискіде орын жоқ болуы мүмкін: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "Барлық ескертулерді фаталды деп белгілеу"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "Уақыт өте шығу (жөндеу режимі)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "GDM нұсқасын көрсету"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "GNOME Дисплей Менеджері"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "GDM бағдарламасын тек root жібере алады"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "GNOME Display Manager Session Worker"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr "GNOME қарсы алушы"
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr "Қалыпты GNOME қарсы алушы сессиясы"
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "GNOME бастапқы орнату"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr "GNOME бастапқы орнату сессиясы"
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "Пайдаланушы сессияларын басқаруға рұқсат беру"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr "Пайдаланушы сессиясын бастау немесе аяқтау үшін аутентификация керек"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "Жүйеге кіру үшін ауыстырмалы аутентификацияны рұқсат ету керек пе"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+msgstr ""
+"Жүйеге кіру экраны GDM PAM арқылы бір PAM қызметіне бірнеше аутентификация "
+"механизмін ұсынуға қосымша мүмкіндік бере алады."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+msgid "Whether or not to allow authentication via external web site"
+msgstr ""
+"Жүйеге кіру үшін сыртқы веб-сайт арқылы аутентификацияны рұқсат ету керек пе"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid ""
+"The login screen can optionally allow users to authenticate via web login."
+msgstr ""
+"Жүйеге кіру экраны қосымша түрде пайдаланушыларға веб-интерфей арқылы "
+"аутентификациядан өтуге мүмкіндік бере алады."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow authentication using a passkey"
+msgstr ""
+"Жүйеге кіру үшін кіру кілтін пайдаланып аутентификациялауға рұқсат беру "
+"керек пе"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+msgstr ""
+"Жүйеге кіру экраны кіру кілттері бар пайдаланушыларға сол кілттер арқылы "
+"жүйеге кіруге қосымша мүмкіндік бере алады."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Жүйеге кіру үшін саусақ оқитын құрылғыларды рұқсат ету ма"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"Жүйеге кіру экраны пайдаланушылар үшін саусақты өткізіп, ол арқылы жүйеге "
+"кіруге рұқсат ете алады."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "Жүйеге кіру үшін смарткарта құрылғыларды рұқсат ету ма"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"Жүйеге кіру экраны пайдаланушылар үшін смарткарталарды қолданып, ол арқылы "
+"жүйеге кіруге рұқсат ете алады."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "Жүйеге парольмен кіруді рұқсат ету ма, жоқ па"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"Жүйеге кіру экраны үшін парольмен кіру мүмкіндігін сөндіруге болады, "
+"пайдаланушы смарткарта немесе саусақ аутентификациясын қолдануға мәжбүр "
+"болады."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+#: data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "Пайдаланушылар тізімінің үстіндегі кішкене суретке дейінгі жол"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Жүйеге кіру экраны әкімшілер және өндірушілер үшін ұйымды анықтауды мүмкін "
+"қылатын кіші бейнені көрсете алады."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Жүйеге кіру қосымша экраны әкімшілер және өндірушілер үшін ұйымды анықтауды "
+"мүмкін қылатын кіші бейнені көрсете алады."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "Пайдаланушылар тізімін көрсетпеу"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"Жүйеге кіру экраны әдетте жүйеге кіре алатын пайдаланушылар тізімін "
+"көрсетеді. Бұл баптау арқылы ол мүмкіндікті сөндіруге болады."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "Қарсы алу хабарламасын көрсету"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "Ақиқат деп орнатыңыз, егер қарсы алу мәтінді көргіңіз келсе."
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Banner message source"
+msgstr "Қарсы алу хабарламасының қайнар көзі"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+msgid "The source of the text banner message on the login screen."
+msgstr "Кіру терезесінде көрсетілетін мәтін хабарламасының қайнар көзі."
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "Қарсы алу хабарламасы"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "Кіру терезесінде көрсетілетін мәтін хабарламасы."
+
+#: data/org.gnome.login-screen.gschema.xml:128
+msgid "Banner message path"
+msgstr "Қарсы алу хабарламасының жолы"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+msgid "Path to text file with banner message to show in the login window."
+msgstr ""
+"Кіру терезесінде көрсетілетін мәтін хабарламасы бар мәтіндің файл жолы."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "Қайта қосу батырмасын көрсетпеу"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"АҚИҚАТ мәніне орнатыңыз, жүйеге кіру терезесінде қайта қосу батырмасын "
+"көрсетпеу үшін."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "Рұқсат етілген аутентификация қателері"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"Пайдаланушыны таңдау сұхбатына қайта оралуға дейінгі пайдаланушы үшін қанша "
+"жүйеге кіру талабы рұқсат етіледі."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Команда көмегін көрсету"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Кеңейтілген шығысты көрсету"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Жөндеу шығысын көрсету"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "Аутентификация тәсілін іске қосу"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "Аутентификация тәсілін сөндіру"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "Аутентификация тәсілін талап ету"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Смарткартаны алып тастау әрекеті"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Барлық сұраққа иә деп жауап беру"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Парольдік аутентификацияны баптау."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Саусақ ізі аутентификациясын баптау."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Смарткарта аутентификациясын баптау."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "GDM аутентификация баптауларын тастау."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "GDM аутентификация баптауларын көрсету."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Пароль опциялары"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Саусақ ізі опциялары"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Смарткарта опциялары"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Опцияларды тастау"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Опцияларды көрсету"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "Парольдік аутентификация үшін PAM модуль қолжетімді емес"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "Смарткарта аутентификациясы үшін PAM модуль қолжетімді емес"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "Саусақ ізі аутентификациясы үшін PAM модуль қолжетімді емес"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "“%s” кем дегенде бір параметрді талап етеді"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "“%s” бір уақытта сөндірілген және іске қосылған болуы мүмкін емес"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "“%s” мәні жарамды %s “%s” мәні емес"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "Ешбір дистрибутив анықталмады, орындалатын хук жоқ"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "“%s” хугын орындау үшін жарамды аргументтер табылмады"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "“%s” дистрибутив хугын орындау\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "“%s” дистрибутив хугы тоқтатуды талап етті"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"Дистрибутив хугы %d қалып-күймен мен %s қатесімен аяқталды:\n"
+"Қалыпты шығыс:\n"
+"%s\n"
+"Қате шығысы:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr ""
+"Дистрибутив хугы арқылы “%s” командасының “%s” кілтін орнату сәтсіз "
+"аяқталды: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "%s бумасын жасау сәтсіз аяқталды"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "dconf профилі табылмады"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "dconf үшін бапталған system-db жоқ"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "“%s” тақырыптама түсіндірмесін алу қатесі: %s, ол өзгертілді ме?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr ""
+"Файлдың “%s” тақырыптама түсіндірмесі сәйкес келмейді, ол өзгертілді ме?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr ""
+"“%s” құлыптау файлында күтілген тақырыптама табылмады, ол өзгертілді ме?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "Талап етілетін дистрибутив хугын орындау сәтсіз аяқталды: "
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "КОМАНДА"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"Командалар:\n"
+"  help         Бұл ақпаратты көрсету\n"
+"  password     Парольдік аутентификацияны баптау\n"
+"  fingerprint  Саусақ ізі аутентификациясын баптау\n"
+"  smartcard    Смарткарта аутентификациясын баптау\n"
+"  reset        Бастапқы баптауларға қайтару\n"
+"  show         Ағымдағы баптауларды көрсету\n"
+"\n"
+"Әр команда үшін көмекті алу үшін “%s COMMAND --help” қолданыңыз.\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "Команда опциялары"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "%s “%s” командасын орындау үшін сіз әкімші (root) болуыңыз керек"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "%s баптауын орнату сәтсіз аяқталды: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Смарткарта баптауын орнату сәтсіз аяқталды"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Пароль баптауын орнату сәтсіз аяқталды"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Іске қосулы"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Сөндірулі"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Қолдауы жоқ"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Талап етіледі"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"GDM авторизация баптаулары\n"
+"\n"
+"  Парольдік аутентификация: %s\n"
+"  Саусақ ізі аутентификациясы: %s\n"
+"  Смарткарта аутентификациясы: %s\n"
+"  Смарткартаны алып тастау әрекеті: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "Y"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "y"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "n"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Жалғастыруды қалайсыз ба? [Y/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "Пайдаланушы сұранымнан бас тартты"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "%s баптауын тастау сәтсіз аяқталды: "
+
+#~ msgid "_Refresh"
+#~ msgstr "Жаңар_ту"
+
+#~ msgid "_Cancel"
+#~ msgstr "Ба_с тарту"
+
+#~ msgid "C_onnect"
+#~ msgstr "Ба_йланысу"
+
+#~ msgid "Select System"
+#~ msgstr "Жүйені таңдау"
+
+#~ msgid "XDMCP: Could not create XDMCP buffer!"
+#~ msgstr "XMCP: XDMCP буферін жасау мүмкін емес!"
+
+#~ msgid "XDMCP: Could not read XDMCP header!"
+#~ msgstr "XDMCP: XDMCP header оқу мүмкін емес!"
+
+#~ msgid "XDMCP: Incorrect XDMCP version!"
+#~ msgstr "XMDCP: XDMCP нұсқасы қате!"
+
+#~ msgid "XDMCP: Unable to parse address"
+#~ msgstr "XMDCP: Адресті талдау мүмкін емес"
+
+#, c-format
+#~ msgid "Could not find user “%s” on system"
+#~ msgstr "Жүйеден \"%s\" пайдаланушысы табылмады"
+
+#~ msgid ""
+#~ "Could not start the X server (your graphical environment) due to an "
+#~ "internal error. Please contact your system administrator or check your "
+#~ "syslog to diagnose. In the meantime this display will be disabled.  "
+#~ "Please restart GDM when the problem is corrected."
+#~ msgstr ""
+#~ "X серверін іске қосу мүмкін емес (сіздің графикалық қоршамыңыз), себебі "
+#~ "ішкі қатеде. Жүйелік администраторыңызға хабарласыңыз немесе өзіңіздің "
+#~ "syslog шығысын тексеріңіз. Бұл экран уақытша сөндіріледі. Мәселе шешілген "
+#~ "кезде GDM қызметін қайта қосыңыз."
+
+#~ msgid "Chooser session unavailable"
+#~ msgstr "Таңдаушы сессиясы қолжетерсіз"
+
+#, c-format
+#~ msgid "Server was to be spawned by user %s but that user doesn’t exist"
+#~ msgstr ""
+#~ "Серверді %s пайдаланушысы қосқан, бірақ ол пайдаланушысы жоқ болып тұр"
+
+#, c-format
+#~ msgid "Couldn’t set groupid to %d"
+#~ msgstr "Groupid мәнін %d-ға орнату қатесі"
+
+#, c-format
+#~ msgid "initgroups () failed for %s"
+#~ msgstr "%s үшін initgroups () қатесі"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %d"
+#~ msgstr "Userid мәнін %d-ға орнату қатесі"
+
+#, c-format
+#~ msgid "%s: Could not open log file for display %s!"
+#~ msgstr "%s: %s экраны үшін лог файлын ашу мүмкін емес!"
+
+#, c-format
+#~ msgid "%s: Error setting %s to %s"
+#~ msgstr "%s: %s жаңа %s мәніне орнату қатесі"
+
+#, c-format
+#~ msgid "%s: Server priority couldn’t be set to %d: %s"
+#~ msgstr "%s: Сервердің приоритеті %d мәніне орнатуға болмайды: %s"
+
+#, c-format
+#~ msgid "%s: Empty server command for display %s"
+#~ msgstr "%s: %s экраны үшін бос сервер командасы"
+
+#~ msgid "Could not create socket!"
+#~ msgstr "Сокет құру мүмкін емес!"
+
+#~ msgid "Run program through /etc/gdm/Xsession wrapper script"
+#~ msgstr "/etc/gdm/Xsession аймалау скрипті арқылы қолданбаны жөнелту"
+
+#~ msgid "Listen on TCP socket"
+#~ msgstr "TCP сокетін тындау"
+
+#~ msgid "GNOME Display Manager X Session Launcher"
+#~ msgstr "GNOME дисплейлер басқарушысының X сессиясын жөнелткіші"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr "Дара жөнелту маркер %s бумасын жасау сәтсіз аяқталды: %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "LogDir %s жасау сәтсіз: %s"
+
+#, c-format
+#~ msgid "Can’t find the GDM user “%s”. Aborting!"
+#~ msgstr "GDM пайдаланушысы '%s' табылмады. Тоқтатылады!"
+
+#~ msgid "The GDM user should not be root. Aborting!"
+#~ msgstr "GDM пайдаланушысы root болмауы керек. Тоқтатылады!"
+
+#, c-format
+#~ msgid "Can’t find the GDM group “%s”. Aborting!"
+#~ msgstr "GDM тобы '%s' табылмады. Тоқтатылады!"
+
+#~ msgid "The GDM group should not be root. Aborting!"
+#~ msgstr "GDM тобы root болмауы керек. Тоқтатылады!"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "%s пайдаланушысына ауысу сәтсіз аяталды"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "Userid мәнін %u-ға орнату мүмкін емес"
+
+#~ msgid "Only the VERSION command is supported"
+#~ msgstr "Тек VERSION командасына қолдау бар"
+
+#~ msgid "Ignored — retained for compatibility"
+#~ msgstr "Елемеу — үйлесімділік үшін ұсталады"
+
+#~ msgid "Debugging output"
+#~ msgstr "Шығысты логтау"
+
+#~ msgid "Version of this application"
+#~ msgstr "Осы бағдарламасының нұсқасы"
+
+#~ msgid "— New GDM login"
+#~ msgstr "— Жаңа GDM жүйеге кіру"
+
+#~ msgid "Screenshot taken"
+#~ msgstr "Скриншот алынды"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "Экранның сурет көшірмесін сақтау"
+
+#~ msgid ""
+#~ "You reached the maximum PIN authentication attempts, please try another "
+#~ "method"
+#~ msgstr ""
+#~ "Сіз PIN арқылы аутентификациялау талаптарының максималды санына жеттіңіз, "
+#~ "басқа тәсілді қолданып көріңіз"
+
+#~ msgid "Sorry, PIN authentication didn’t work. Please try again."
+#~ msgstr ""
+#~ "Кешіріңіз, PIN арқылы аутентификациялау жұмыс істемеді. Қайтадан көріңіз."
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "Сессияны белсендіру мүмкін емес: "
+
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login "
+#~ "screen or start up a new login screen."
+#~ msgstr ""
+#~ "Жүйе бар болып тұрған жүйеге кіру экранын қолдану немесе жаңа жүйеге кіру "
+#~ "экраның жасау керектігін анықтай алмады."
+
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "Жүйеге кірудің жаңа экраның жүйе іске қоса алмады."
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "Пароліңіздің мерзімі аяқталды, оны қазір ауыстырыңыз."
+
+#~ msgid "GNOME Shell"
+#~ msgstr "GNOME Shell"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "Терезелерді басқару мен эффектілер"

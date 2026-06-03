@@ -1,0 +1,875 @@
+# gdm Finnish translation.
+# Copyright (C) 1999-2005, 2007-2009 Free Software Foundation, Inc.
+# Heikki Mäntysaari https://launchpad.net/~heikki-mantysaari
+#
+# poiketen lokalisointi.org:sta, suspend = valmiustila
+#
+# Gnome 2012-03 Finnish translation sprint participants:
+# Mikko Rauhala <mjr@iki.fi>, 1999.
+# Jarkko Ranta <jjranta@cc.joensuu.fi>, 2000-2002.
+# Lauri Nurmi <lanurmi@iki.fi>, 2003.
+# Tommi Vainikainen <Tommi.Vainikainen@iki.fi>, 2003-2005, 2008-2011.
+# Ilkka Tuohela <hile@iki.fi>, 2005-2009.
+# Timo Jyrinki <timo.jyrinki@iki.fi>, 2010.
+# Juhani Numminen <juhaninumminen0@gmail.com>, 2013.
+# Jiri Grönroos <jiri.gronroos+l10n@iki.fi>, 2012, 2013, 2014, 2015, 2016, 2017.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-02-18 11:06+0000\n"
+"PO-Revision-Date: 2026-03-01 13:43+0200\n"
+"Last-Translator: Jiri Grönroos <jiri.gronroos+l10n@iki.fi>\n"
+"Language-Team: suomi <lokalisointi-lista@googlegroups.com>\n"
+"Language: fi\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.8\n"
+"X-POT-Import-Date: 2012-02-19 15:15:58+0000\n"
+
+#: common/gdm-common.c:324
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom ei ole merkkilaite"
+
+#: common/gdm-common.c:358
+msgid "Unable to create transient display: "
+msgstr "Tilapäisnäytön käynnistys epäonnistui: "
+
+#: common/gdm-common.c:555
+msgid "Could not identify the current session: "
+msgstr "Nykyistä istuntoa ei voitu tunnistaa: "
+
+#: common/gdm-common.c:564
+msgid "Could not identify the current seat."
+msgstr "Tämänhetkistä istuinta ei voitu tunnistaa."
+
+#: daemon/gdm-manager.c:668 daemon/gdm-manager.c:704
+msgid "No display available"
+msgstr "Näyttöä ei ole käytettävissä"
+
+#: daemon/gdm-manager.c:754 daemon/gdm-manager.c:1059
+msgid "No session available"
+msgstr "Istuntoa ei ole käytettävissä"
+
+#: daemon/gdm-manager.c:770
+msgid "Can only be called before user is logged in"
+msgstr "On kutsuttavissa ainoastaan ennen käyttäjän sisäänkirjautumista"
+
+#: daemon/gdm-manager.c:782
+msgid "Caller not GDM"
+msgstr "Kutsuja ei ole GDM"
+
+#: daemon/gdm-manager.c:792
+msgid "Unable to open private communication channel"
+msgstr "Yksityisen kommunikaatiokanavan avaaminen epäonnistui"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Käyttäjätunnus"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "Käyttäjätunnus"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Verkkonimi"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "Verkkonimi"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Näyttölaite"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "Näyttölaite"
+
+#: daemon/gdm-session.c:1442
+msgid "Could not create authentication helper process"
+msgstr "Tunnistautumisen avustusprosessin luominen ei onnistunut"
+
+#: daemon/gdm-session-worker.c:807
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr ""
+"Enimmäismäärä tunnistautumisyrityksiä salasanalla on täynnä. Yritä "
+"tunnistautumista toisella tavalla"
+
+#: daemon/gdm-session-worker.c:810
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"Enimmäismäärä automaattisen kirjautumisen yrityksiä on täynnä. Yritä "
+"tunnistautumista toisella tavalla"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"Enimmäismäärä tunnistautumisyrityksiä sormenjäljellä on täynnä. Yritä "
+"tunnistautumista toisella tavalla"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr ""
+"Enimmäismäärä tunnistautumisyrityksiä älykortilla on täynnä. Yritä "
+"tunnistautumista toisella tavalla"
+
+#: daemon/gdm-session-worker.c:818
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr ""
+"Enimmäismäärä tunnistautumisyrityksiä on täynnä. Yritä tunnistautumista "
+"toisella tavalla"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr ""
+"Valitettavasti tunnistautuminen salasanalla ei toiminut. Yritä uudelleen."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr ""
+"Valitettavasti automaattinen kirjautuminen ei toiminut. Yritä uudelleen."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr ""
+"Valitettavasti tunnistautuminen sormenjäljellä ei toiminut. Yritä uudelleen."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr ""
+"Valitettavasti tunnistautuminen älykortilla ei toiminut. Yritä uudelleen."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Valitettavasti se ei kelvannut. Yritä uudelleen."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "Tunnuksellesi annettiin aikaraja, joka on nyt umpeutunut."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "Käyttäjätunnus:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "käyttäjätiliä ei ole käytettävissä"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "Käyttäjää ei voitu vaihtaa"
+
+#: daemon/gdm-wayland-session.c:513
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "Gnomen kirjautumisikkunan Wayland-istunnon käynnistäjä"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "PID-tiedostoa %s ei voi kirjoittaa: levy on ehkä täynnä: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "Tee kaikista varoituksista kriittisiä"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "Lopeta tietyn ajan kuluttua (vianetsintää varten)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "Tulosta GDM-versio"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "Gnomen kirjautumisikkuna"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "Vain pääkäyttäjä voi suorittaa GDM:n"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "Gnomen kirjautumisikkunan istunnonhallinta"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr ""
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr ""
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "Gnomen alkuasetukset"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr ""
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "Salli käyttäjäistuntojen hallinta"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr "Käyttäjäistunnon aloittaminen tai lopettaminen vaatii tunnistautumisen"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+#, fuzzy
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "Sallitaanko älykorttilukijat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+#, fuzzy
+#| msgid ""
+#| "The login screen can optionally show a small image to provide site "
+#| "administrators and distributions a way to display branding."
+msgid ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+msgstr ""
+"Kirjautumisnäkymä voi valinnaisesti näyttää käyttäjäluettelon yläpuolella "
+"pienen kuvan osana paikallisen ylläpitäjän tai jakelun brändäystä."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+#, fuzzy
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow authentication via external web site"
+msgstr "Sallitaanko älykorttilukijat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+#, fuzzy
+#| msgid ""
+#| "The login screen can optionally allow users who have smartcards to log in "
+#| "using those smartcards."
+msgid ""
+"The login screen can optionally allow users to authenticate via web login."
+msgstr ""
+"Kirjautumisruutu voi valinnaisesti sallia älykortin haltijoiden kirjautua "
+"sisään älykortillaan."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+#, fuzzy
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow authentication using a passkey"
+msgstr "Sallitaanko älykorttilukijat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+#, fuzzy
+#| msgid ""
+#| "The login screen can optionally allow users who have smartcards to log in "
+#| "using those smartcards."
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+msgstr ""
+"Kirjautumisruutu voi valinnaisesti sallia älykortin haltijoiden kirjautua "
+"sisään älykortillaan."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Sallitaanko sormenjälkilukijat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"Kirjautumisruutu voi valinnaisesti sallia sormenjälkensä antaneiden "
+"käyttäjien kirjautua sisään sormenjäljellään."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "Sallitaanko älykorttilukijat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"Kirjautumisruutu voi valinnaisesti sallia älykortin haltijoiden kirjautua "
+"sisään älykortillaan."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "Sallitaanko salasanat sisäänkirjautumisessa"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"Sisäänkirjautuminen on mahdollista määrittää siten, että "
+"salasanatunnistautuminen ei ole mahdollista. Näin käyttäjä pakotetaan "
+"käyttämään älykortti- tai sormenjälkitunnistautumista."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+#: data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "Polku pieneen kuvaan käyttäjäluettelon yläpuolella"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Kirjautumisnäkymä voi valinnaisesti näyttää käyttäjäluettelon yläpuolella "
+"pienen kuvan osana paikallisen ylläpitäjän tai jakelun brändäystä."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Vikasietoinen kirjautumisnäkymä voi valinnaisesti näyttää käyttäjäluettelon "
+"yläpuolella pienen kuvan osana paikallisen ylläpitäjän tai jakelun "
+"brändäystä."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "Vältä näyttämästä käyttäjäluetteloa"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"Kirjautumisruutu näyttää normaalisti luettelon käyttäjistä, jotka voivat "
+"kirjautua. Tämä asetus on muutettavissa siten, ettei käyttäjäluetteloa "
+"näytetä."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "Näytä tervehdysviesti"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "Aseta todeksi, jos haluat näyttää tervehdysviestin."
+
+#: data/org.gnome.login-screen.gschema.xml:110
+#, fuzzy
+#| msgid "Banner message text"
+msgid "Banner message source"
+msgstr "Tervehdysviestin teksti"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+#, fuzzy
+#| msgid "Text banner message to show in the login window."
+msgid "The source of the text banner message on the login screen."
+msgstr "Kirjautumisikkunassa näytettävä tervehdysteksti."
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "Tervehdysviestin teksti"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "Kirjautumisikkunassa näytettävä tervehdysteksti."
+
+#: data/org.gnome.login-screen.gschema.xml:128
+#, fuzzy
+#| msgid "Banner message text"
+msgid "Banner message path"
+msgstr "Tervehdysviestin teksti"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+#, fuzzy
+#| msgid "Text banner message to show in the login window."
+msgid "Path to text file with banner message to show in the login window."
+msgstr "Kirjautumisikkunassa näytettävä tervehdysteksti."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "Älä näytä uudelleenkäynnistyspainikkeita"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"Aseta todeksi, jos et halua näyttää uudelleenkäynnistyspainikkeita "
+"kirjautumisikkunassa."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "Tunnistautumisvirheiden sallittu määrä"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"Käyttäjän sallittujen tunnistautumisyritysten lukumäärä, ennen kuin palataan "
+"käyttäjävalintaan."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Näytä komennon ohje"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Näytä runsas tuloste"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Näytä vianjäljitystuloste"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "Käytä tunnistautumistapaa"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "Poista tunnistautumistapa käytöstä"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "Vaadi tunnistautumistapa"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Älykortin poistamisen yhteydessä suoritettava toiminto"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Oleta myöntävä vastaus jokaiseen kysymykseen"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Määritä salasanalla tunnistautuminen."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Määritä sormenjäljellä tunnistautuminen."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Määritä älykortilla tunnistautuminen."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr ""
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr ""
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Salasana-asetukset"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Sormenjälkiasetukset"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Älykorttiasetukset"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Nollaa asetukset"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Näytä asetukset"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "PAM-moduulia salasanalla tunnistautumista varten ei ole käytettävissä"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "PAM-moduulia älykortilla tunnistautumista varten ei ole käytettävissä"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr ""
+"PAM-moduulia sormenjäljellä tunnistautumista varten ei ole käytettävissä"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "“%s” tarvitsee vähintään yhden parametrin"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "“%s” ei voi olla käytössä ja poissa käytöstä samanaikaisesti"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr ""
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr ""
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr ""
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr ""
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr ""
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr ""
+
+#: utils/gdm-config.c:773
+#, c-format
+#| msgid "Failed to create LogDir %s: %s"
+msgid "Failed to create directory %s"
+msgstr "Hakemiston %s luominen epäonnistui"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "dconf-profiilia ei löydy"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr ""
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr ""
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr ""
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr ""
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr ""
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "KOMENTO"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr ""
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr ""
+"Sinulla tulee olla root-käyttäjän oikeudet käyttääksesi komentoa %s “%s”"
+
+#: utils/gdm-config.c:1666
+#, c-format
+#| msgid "Failed to create LogDir %s: %s"
+msgid "Failed to set %s setting: "
+msgstr "Asetuksen %s asettaminen epäonnistui: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Älykorttiasetuksen asettaminen epäonnistui"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Salasana-asetuksen asettaminen epäonnistui"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Käytössä"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Ei käytössä"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Ei tuettu"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Vaadittu"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"GDM-valtuutuksen määritys\n"
+"\n"
+"  Salasanalla tunnistautuminen: %s\n"
+"  Sormenjäljellä tunnistautuminen: %s\n"
+"  Älykortilla tunnistautuminen: %s\n"
+"  Älykortin poistamisen toiminto: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "K"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "k"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "E"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "e"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Haluatko jatkaa? [K/e]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "Käyttäjä perui pyynnön"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "Asetuksen %s nollaaminen epäonnistui: "
+
+#~ msgid "_Refresh"
+#~ msgstr "P_äivitä"
+
+#~ msgid "_Cancel"
+#~ msgstr "_Peru"
+
+#~ msgid "C_onnect"
+#~ msgstr "_Yhdistä"
+
+#~ msgid "Select System"
+#~ msgstr "Valitse järjestelmä"
+
+#~ msgid "XDMCP: Could not create XDMCP buffer!"
+#~ msgstr "XDMCP: XDMCP-puskurin luonti epäonnistui!"
+
+#~ msgid "XDMCP: Could not read XDMCP header!"
+#~ msgstr "XDMCP: XDMCP-otsakkeen luku epäonnistui!"
+
+#~ msgid "XDMCP: Incorrect XDMCP version!"
+#~ msgstr "XDMCP: Väärä XDMCP-versio!"
+
+#~ msgid "XDMCP: Unable to parse address"
+#~ msgstr "XDMCP: Osoitteen jäsennys epäonnistui"
+
+#, c-format
+#~ msgid "Could not find user “%s” on system"
+#~ msgstr "Käyttäjää “%s” ei löytynyt järjestelmästä"
+
+#~ msgid ""
+#~ "Could not start the X server (your graphical environment) due to an "
+#~ "internal error. Please contact your system administrator or check your "
+#~ "syslog to diagnose. In the meantime this display will be disabled.  "
+#~ "Please restart GDM when the problem is corrected."
+#~ msgstr ""
+#~ "X-palvelimen (graafisen ympäristön) käynnistys ei onnistunut sisäisen "
+#~ "virheen takia. Ota yhteyttä järjestelmän ylläpitäjään tai tutki "
+#~ "järjestelmälokia. Tämä näyttö poistetaan toistaiseksi käytöstä. Käynnistä "
+#~ "GDM uudelleen, kun ongelma on korjattu."
+
+#~ msgid "Chooser session unavailable"
+#~ msgstr "Valitsinistuntoa ei ole käytettävissä"
+
+#, c-format
+#~ msgid "Server was to be spawned by user %s but that user doesn’t exist"
+#~ msgstr ""
+#~ "Palvelin käynnistettiin käyttäjänä %s, mutta käyttäjää ei ole olemassa"
+
+#, c-format
+#~ msgid "Couldn’t set groupid to %d"
+#~ msgstr "Ryhmätunnistetta ei voitu asettaa arvoon %d"
+
+#, c-format
+#~ msgid "initgroups () failed for %s"
+#~ msgstr "initgroups() epäonnistui %s:lle"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %d"
+#~ msgstr "Käyttäjätunnistetta ei voitu asettaa arvoon %d"
+
+#, c-format
+#~ msgid "%s: Could not open log file for display %s!"
+#~ msgstr "%s: Näytön %s lokitiedostoa ei voi avata!"
+
+#, c-format
+#~ msgid "%s: Error setting %s to %s"
+#~ msgstr "%s: Virhe asetettaessa %s arvoon %s"
+
+#, c-format
+#~ msgid "%s: Server priority couldn’t be set to %d: %s"
+#~ msgstr "%s: Palvelimen prioriteettia ei voitu asettaa arvoon %d: %s"
+
+#, c-format
+#~ msgid "%s: Empty server command for display %s"
+#~ msgstr "%s: Tyhjä palvelinkomento näytölle %s"
+
+#~ msgid "Could not create socket!"
+#~ msgstr "Pistokkeen luonti epäonnistui!"
+
+#~ msgid "Run program through /etc/gdm/Xsession wrapper script"
+#~ msgstr "Suorita ohjelma /etc/gdm/Xsession-wrapperiskriptin kautta"
+
+#~ msgid "Listen on TCP socket"
+#~ msgstr "Kuuntele TCP-sockettia"
+
+#~ msgid "GNOME Display Manager X Session Launcher"
+#~ msgstr "Gnomen kirjautumisikkunan X-istunnon käynnistäjä"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr "Suoritettu kerran -merkitsinhakemiston %s luominen epäonnistui: %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "Lokihakemiston %s luominen epäonnistui: %s"
+
+#, c-format
+#~ msgid "Can’t find the GDM user “%s”. Aborting!"
+#~ msgstr "GDM-käyttäjää “%s” ei löydy. Keskeytetään!"
+
+#~ msgid "The GDM user should not be root. Aborting!"
+#~ msgstr "Pääkäyttäjä ei voi olla GDM-käyttäjä. Keskeytetään!"
+
+#, c-format
+#~ msgid "Can’t find the GDM group “%s”. Aborting!"
+#~ msgstr "GDM-ryhmää “%s” ei löydy. Keskeytetään!"
+
+#~ msgid "The GDM group should not be root. Aborting!"
+#~ msgstr "GDM-ryhmä ei voi olla ”root”. Keskeytetään!"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "Käyttäjäksi %s vaihtaminen epäonnistui"
+
+#, fuzzy, c-format
+#~| msgid "Couldn’t set userid to %d"
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "Käyttäjätunnistetta ei voitu asettaa arvoon %d"
+
+#~ msgid "Only the VERSION command is supported"
+#~ msgstr "Vain VERSION-komento on tuettu"
+
+#~ msgid "Ignored — retained for compatibility"
+#~ msgstr "Ei huomioida – jätetty tähän yhteensopivuuden vuoksi"
+
+#~ msgid "Debugging output"
+#~ msgstr "Vianetsintätuloste"
+
+#~ msgid "Version of this application"
+#~ msgstr "Tämän ohjelman versio"
+
+#~ msgid "— New GDM login"
+#~ msgstr "— uusi GDM-sisäänkirjautuminen"
+
+#~ msgid "Screenshot taken"
+#~ msgstr "Kuvakaappaus otettu"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "Kaappaa kuva näytöstä"
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "Istunnon aktivointi epäonnistui: "
+
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login "
+#~ "screen or start up a new login screen."
+#~ msgstr ""
+#~ "Järjestelmä ei kykene päättämään, pitäisikö vaihtaa olemassa olevaan "
+#~ "kirjautumisruutuun vai käynnistää uusi."
+
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "Järjestelmä ei kykene käynnistämään uutta kirjautumisruutua."
+
+#~ msgid ""
+#~ "You reached the maximum PIN authentication attempts, please try another "
+#~ "method"
+#~ msgstr ""
+#~ "Enimmäismäärä tunnistautumisyrityksiä PIN-koodilla on täynnä. Yritä "
+#~ "tunnistautumista toisella tavalla"
+
+#~ msgid "Sorry, PIN authentication didn’t work. Please try again."
+#~ msgstr ""
+#~ "Valitettavasti tunnistautuminen PIN-koodilla ei toiminut. Yritä uudelleen."
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "Salasanasi on vanhentunut, vaihda se nyt."
+
+#~ msgid "GNOME Shell"
+#~ msgstr "Gnome Shell"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "Ikkunoiden hallinta ja latominen"

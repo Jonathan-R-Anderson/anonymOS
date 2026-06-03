@@ -1,0 +1,846 @@
+# Lithuanian translation of GDM
+# Copyright © 2001-2012 Free Software Foundation, Inc.
+# Gediminas Paulauskas <menesis@delfi.lt>, 2001.
+# Mantas Kriaučiūnas <mantelis@centras.lt>, 2002-2003.
+# Eglė Girinaitė <eglyte@centras.lt>, 2002.
+# Žygimantas Beručka  <zygis@gnome.org>, 2003-2006,2009, 2010, 2012.
+# Justina Klingaitė <justina.klingaite@gmail.com>, 2005.
+# Vytautas Liuolia <vytautas.liuolia@gmail.com>, 2007.
+# Gintautas Miliauskas <gintautas@miliauskas.lt>, 2008,2009.
+# Rimas Kudelis <rq@akl.lt>, 2010.
+# Algimantas Margevičius <gymka@mail.ru>, 2011.
+# Aurimas Černius <aurisc4@gmail.com>, 2010-2023.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: lt\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-01-20 19:30+0000\n"
+"PO-Revision-Date: 2026-01-30 23:41+0200\n"
+"Last-Translator: Aurimas Černius <aurimas.cernius@mailo.com>\n"
+"Language-Team: Lietuvių <gnome-lt@lists.akl.lt>\n"
+"Language: lt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"(n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Poedit 3.8\n"
+"X-Project-Style: gnome\n"
+
+#: common/gdm-common.c:325
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom nėra simbolių įrenginys"
+
+#: common/gdm-common.c:364
+msgid "Unable to create transient display: "
+msgstr "Nepavyko sukurti pereinamojo ekrano: "
+
+#: common/gdm-common.c:561
+msgid "Could not identify the current session: "
+msgstr "Nepavyko identifikuoti esamo seanso: "
+
+#: common/gdm-common.c:570
+msgid "Could not identify the current seat."
+msgstr "Nepavyko identifikuoti esamo seanso."
+
+#: daemon/gdm-manager.c:673
+msgid "No display available"
+msgstr "Nėra galimų vaizduoklių"
+
+#: daemon/gdm-manager.c:724 daemon/gdm-manager.c:1029
+msgid "No session available"
+msgstr "Nėra prieinamų seansų"
+
+#: daemon/gdm-manager.c:740
+msgid "Can only be called before user is logged in"
+msgstr "Gali būti kviečiamas tik prieš naudotojui prisijungiant"
+
+#: daemon/gdm-manager.c:752
+msgid "Caller not GDM"
+msgstr "Kvietėjas ne GDM"
+
+#: daemon/gdm-manager.c:762
+msgid "Unable to open private communication channel"
+msgstr "Nepavyko atverti privataus komunikacijos kanalo"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Naudotojo vardas"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "Naudotojo vardas"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Kompiuterio vardas"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "Kompiuterio vardas"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Vaizdavimo įrenginys"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "Vaizdavimo įrenginys"
+
+#: daemon/gdm-session.c:1431
+msgid "Could not create authentication helper process"
+msgstr "Nepavyko sukurti tapatybės patvirtinimo pagalbinio proceso"
+
+#: daemon/gdm-session-worker.c:807
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr "Pasiekėte bandymų ribą slaptažodžiui, bandykite kitą metodą"
+
+#: daemon/gdm-session-worker.c:810
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"Pasiekėte bandymų ribą automatiniam prisijungimui, bandykite kitą metodą"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"Pasiekėte bandymų ribą prisijungimui piršto atspaudu, bandykite kitą metodą"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr "Pasiekėte bandymų ribą kortelei, bandykite kitą metodą"
+
+#: daemon/gdm-session-worker.c:818
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr "Pasiekėte bandymų ribą prisijungimui, bandykite kitą metodą"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "Atleiskite, slaptažodis nesuveikė. Bandykite dar kartą."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "Atleiskite, automatinis prisijungimas nesuveikė. Bandykite dar kartą."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "Atleiskite, piršto atspaudas nesuveikė nesuveikė. Bandykite dar kartą."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr "Atleiskite, išmanioji kortelė nesuveikė. Bandykite dar kartą."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Atleiskite, tai nesuveikė. Bandykite dar kartą."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "Jūsų paskyrai buvo suteiktas laiko limitas, kuris dabar baigėsi."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "Naudotojo vardas:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "naudotojų paskyrų nėra"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "Nepavyko pakeisti naudotojo"
+
+#: daemon/gdm-wayland-session.c:507
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "GNOME ekrano tvarkytuvės Wayland seanso paleidėjas"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "Įrašyti PID failo %s nepavyko, tikriausiai diske nėra vietos: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "Padaryti visus įspėjimus kritinius"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "Išeiti praėjus šiek tiek laiko (derinimui)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "Rodyti GDM versiją"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "GNOME ekrano tvarkytuvė"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "Tik root naudotojas gali paleisti GDM"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "GNOME ekrano tvarkytuvės seanso darbininkas"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr "GNOME pasisveikinimas"
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr "Numatytasis GNOME pasisveikinimo seansas"
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "GNOME pradinis nustatymas"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr "GNOME pradinio nustatymo seansas"
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "Leisti valdyti naudotojų seansus"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr ""
+"Būtina patvirtinti tapatybę norint paleisti ar sustabdyti naudotojo seansą"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "Ar leisti perjungiamą tapatybės patvirtinimą prisijungimui"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+msgstr ""
+"Prisijungimo ekranas gali papildomai leisti vienai PAM tarnybai pateikti "
+"daugelį tapatybės patvirtinimo mechanizmų naudojant GDM PAM."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+msgid "Whether or not to allow authentication via external web site"
+msgstr "Ar leisti tapatybės patvirtinimą naudojant išorinį tinklalapį"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid ""
+"The login screen can optionally allow users to authenticate via web login."
+msgstr ""
+"Prisijungimo ekranas gali papildomai leisti naudotojams patvirtinti tapatybę "
+"naudojant internetinį prisijungimą."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow authentication using a passkey"
+msgstr "Ar leisti tapatybės patvirtinimą naudojant prisijungimo kodą"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+msgstr ""
+"Prisijungimo ekranas gali papildomai leisti naudotojams, kurie turi "
+"prisijungimo kodus, prisijungti naudojant šiuos kodus."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Ar leisti pirštų atspaudų skaitykles prisijungimui"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"Prisijungimo ekranas gali papildomai leisti naudotojams, kurie įrašė savo "
+"pirštų atspaudus, prisijungti naudojant šiuos atspaudus."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "Ar leisti apsaugos kortelių skaitykles prisijungimui"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"Prisijungimo ekranas gali papildomai leisti naudotojams, kurie turi apsaugos "
+"korteles, prisijungti naudojant šias korteles."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "Ar leisti slaptažodžius prisijungimui"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"Prisijungimo ekranas gali būti sukonfigūruotas neleisti tapatybės "
+"patvirtinimo slaptažodžiu, priverčiant naudotoją naudoti išmaniąją kortelę "
+"arba piršto atspaudą."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+#: data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "Kelias iki mažo paveikslėlio naudotojų sąrašo viršuje"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Prisijungimo ekranas gali papildomai parodyti mažą paveikslėlį, leisdamas "
+"distribucijų administratoriams pateikti prekių ženklus."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"Atsarginis prisijungimo ekranas gali papildomai parodyti mažą paveikslėlį, "
+"leisdamas distribucijų administratoriams pateikti prekių ženklus."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "Vengti rodyti naudotojų sąrašą"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"Prisijungimo ekranas paprastai rodo naudotojų, prie kurių paskyrų galima "
+"prisijungti, sąrašą. Šį nustatymą galima perjungti ir naudotojų sąrašas "
+"nebebus rodomas."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "Įjungti pasitinkančio pranešimo rodymą"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "Nustatykite į teigiamą, jei norite rodyti pasitikimo pranešimą."
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Banner message source"
+msgstr "Pranešimo teksto šaltinis"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+msgid "The source of the text banner message on the login screen."
+msgstr "Tekstinio pranešimo teksto šaltinis prisijungimo lange."
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "Pranešimo tekstas"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "Tekstinio pranešimo tekstas, rodomas prisijungimo lange."
+
+#: data/org.gnome.login-screen.gschema.xml:128
+msgid "Banner message path"
+msgstr "Pranešimo teksto kelias"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+msgid "Path to text file with banner message to show in the login window."
+msgstr ""
+"Kelias iki tekstinio failo su pranešimo tekstu, rodomu prisijungimo lange."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "Nerodyti kompiuterio paleidimo iš naujo mygtukų"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"Nustatykite į teigiamą, jei norite paslėpti kompiuterio paleidimo iš naujo "
+"mygtukus prisijungimo lange."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "Tapatybės patvirtinimo nesėkmių skaičius"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"Skaičius kartų, kiek naudotojui leidžiama mėginti patvirtinti tapatybę prieš "
+"grįžtant į naudotojų pasirinkimą."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Rodyti komandos pagalbą"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Rodyti išsamią išvestį"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Rodyti derinimo išvestį"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "Įjungti tapatybės patvirtinimo metodą"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "Išjungti tapatybės patvirtinimo metodą"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "Reikalauti tapatybės patvirtinimo metodo"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Veiksmas, vykdomas pašalinant išmaniąją kortelę"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Laikyti visus atsakymus teigiamais"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Konfigūruoti tapatybės patvirtinimą slaptažodžiu."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Konfigūruoti tapatybės patvirtinimą piršto atspaudu."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Konfigūruoti tapatybės patvirtinimą išmaniąją kortele."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "Atstatyti GDM tapatybės patvirtinimo konfigūraciją."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "Rodyti GDM tapatybės patvirtinimo konfigūraciją."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Slaptažodžio parametrai"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Piršto atspaudo parametrai"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Išmaniosios kortelės parametrai"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Atstatyti parametrus"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Rodyti parametrus"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "Nėra PAM modulio tapatybės patvirtinimui slaptažodžiu"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "Nėra PAM modulio tapatybės patvirtinimui išmaniąją kortele"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "Nėra PAM modulio tapatybės patvirtinimui piršto atspaudu"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "„%s“ reikia bent vieno parametro"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "„%s“ negali būti įjungta ir išjungta tuo pat metu"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "„%s“ nėra tinkama %s „%s“ vertė"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "Nepasirinkta distribucija, nėra ką vykdyti"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "Nerasta tinkamų argumentų priekabai „%s“ vykdyti"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "Vykdoma distribucijos priekaba „%s“\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "Distribucijos priekaba „%s“ prašo stabdymo"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"Distribucijos priekaba išėjo su statusu %d bei klaida %s:\n"
+"Standartinė išvestis:\n"
+"%s\n"
+"Klaidų išvestis:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr ""
+"Nepavyko nustatyti komandos „%s“ parametro rakto „%s“ naudojant "
+"distribucijos priekabą: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "Nepavyko sukurti katalogo %s"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "nerastas dconf profilis"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "dconf neturi sukonfigūruotos system-db"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "Nepavyko gauti „%s“ antraštės komentaro: %s, ar jis buvo pakeistas?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr "Failo „%s“ antraštės komentaras nesutampa, ar jis buvo pakeistas?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr "Nerasta tikėtasi antraštė užrakto faile „%s“, ar jis buvo pakeistas?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "Nepavyko įvykdyti būtinos distribucijos priekabos: "
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "KOMANDA"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"Komandos:\n"
+" help         Parodo šią informacija\n"
+" password     Konfigūruoti tapatybės patvirtinimą slaptažodžiu\n"
+"  fingerprint  Konfigūruoti tapatybės patvirtinimą piršto atspaudu\n"
+"  smartcard    Konfigūruoti tapatybės patvirtinimą išmaniąją kortele\n"
+"  reset        Atstato numatytąją konfigūraciją\n"
+"  show         Parodo dabartinę konfigūraciją\n"
+"\n"
+"Naudokite „%s KOMANDA --help“ kiekvienos komandos pagalbai gauti.\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "Komandos parametrai"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "Reikia būti root naudotoju, kad naudotumėt komandą %s „%s“"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "Nepavyko nustatyti %s nuostatos: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Nepavyko nustatyti išmaniosios kortelės nuostatos"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Nepavyko nustatyti slaptažodžio nuostatos"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Įjungta"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Išjungta"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Nepalaikoma"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Būtina"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"GDM autorizacijos konfigūracija\n"
+"\n"
+" Tapatybės patvirtinimas slaptažodžiu: %s\n"
+" Tapatybės patvirtinimas piršto atspaudu: %s\n"
+" Tapatybės patvirtinimas išmaniąją kortele: %s\n"
+" Išmaniosios kortelės pašalinimo veiksmas: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "T"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "t"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "n"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Ar norite tęsti? [T/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "Naudotojas atšaukė užklausą"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "Nepavyko atstatyti %s nuostatos: "
+
+#~ msgid "_Refresh"
+#~ msgstr "At_naujinti"
+
+#~ msgid "_Cancel"
+#~ msgstr "_Atsisakyti"
+
+#~ msgid "C_onnect"
+#~ msgstr "_Prisijunti"
+
+#~ msgid "Select System"
+#~ msgstr "Pasirinkite sistemą"
+
+#~ msgid "XDMCP: Could not create XDMCP buffer!"
+#~ msgstr "XDMCP: Nepavyko sukurti XDMCP buferio!"
+
+#~ msgid "XDMCP: Could not read XDMCP header!"
+#~ msgstr "XDMCP: Nepavyko perskaityti XDMCP antraštės!"
+
+#~ msgid "XDMCP: Incorrect XDMCP version!"
+#~ msgstr "XDMCP: Neteisinga XDMCP versija!"
+
+#~ msgid "XDMCP: Unable to parse address"
+#~ msgstr "XDMCP: Nepavyko perskaityti adreso"
+
+#, c-format
+#~ msgid "Could not find user “%s” on system"
+#~ msgstr "Nepavyko sistemoje rasti naudotojo „%s“"
+
+#~ msgid ""
+#~ "Could not start the X server (your graphical environment) due to an "
+#~ "internal error. Please contact your system administrator or check your "
+#~ "syslog to diagnose. In the meantime this display will be disabled.  "
+#~ "Please restart GDM when the problem is corrected."
+#~ msgstr ""
+#~ "Nepavyko paleisti X serverio (Jūsų grafinės aplinkos) dėl vidinės "
+#~ "klaidos. Susisiekite su sistemos administratoriumi arba patikrinkite "
+#~ "syslog, jei norite diagnozuoti problemą. Kol kas šis ekranas bus "
+#~ "išjungtas.  Kai išspręsite problemą, paleiskite GDM iš naujo."
+
+#~ msgid "Chooser session unavailable"
+#~ msgstr "Pasirinkimo seansas nepasiekiamas"
+
+#, c-format
+#~ msgid "Server was to be spawned by user %s but that user doesn’t exist"
+#~ msgstr ""
+#~ "Serveris turėjo būti sukurtas naudotojo %s, bet toks naudotojas "
+#~ "neegzistuoja"
+
+#, c-format
+#~ msgid "Couldn’t set groupid to %d"
+#~ msgstr "Nepavyko nustatyti groupid į %d"
+
+#, c-format
+#~ msgid "initgroups () failed for %s"
+#~ msgstr "initgroups() %s nepavyko"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %d"
+#~ msgstr "Nepavyko nustatyti userid į %d"
+
+#, c-format
+#~ msgid "%s: Could not open log file for display %s!"
+#~ msgstr "%s: Nepavyko atverti ekrano %s žurnalo failo!"
+
+#, c-format
+#~ msgid "%s: Error setting %s to %s"
+#~ msgstr "%s: Klaida nustatant %s į %s"
+
+#, c-format
+#~ msgid "%s: Server priority couldn’t be set to %d: %s"
+#~ msgstr "%s: Serverio prioriteto nepavyko nustatyti į %d: %s"
+
+#, c-format
+#~ msgid "%s: Empty server command for display %s"
+#~ msgstr "%s: Tuščia serverio komanda ekranui %s"
+
+#~ msgid "Could not create socket!"
+#~ msgstr "Nepavyko sukurti lizdo!"
+
+#~ msgid "Run program through /etc/gdm/Xsession wrapper script"
+#~ msgstr "Paleisti programą per /etc/gdm/Xsession tarpinį scenarijų"
+
+#~ msgid "Listen on TCP socket"
+#~ msgstr "Klausytis TCP lizdo"
+
+#~ msgid "GNOME Display Manager X Session Launcher"
+#~ msgstr "GNOME ekrano tvarkytuvės X seanso paleidėjas"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr "Nepavyko sukurti vykdymo žymeklio katalogo %s: %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "Nepavyko sukurti LogDir %s: %s"
+
+#, c-format
+#~ msgid "Can’t find the GDM user “%s”. Aborting!"
+#~ msgstr "Nepavyko rasti GDM naudotojo „%s“. Nutraukiama!"
+
+#~ msgid "The GDM user should not be root. Aborting!"
+#~ msgstr "GDM naudotojas neturėtų būti root. Nutraukiama!"
+
+#, c-format
+#~ msgid "Can’t find the GDM group “%s”. Aborting!"
+#~ msgstr "Nepavyko rasti GDM grupės „%s“. Nutraukiama!"
+
+#~ msgid "The GDM group should not be root. Aborting!"
+#~ msgstr "GDM grupė neturėtų būti root. Nutraukiama!"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "Nepavyko pakeisti naudotojo į %s"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "Nepavyko nustatyti userid į %u"
+
+#~ msgid "Only the VERSION command is supported"
+#~ msgstr "Palaikoma tik komanda VERSION"
+
+#~ msgid "Ignored — retained for compatibility"
+#~ msgstr "Nepaisoma — palikta dėl suderinamumo"
+
+#~ msgid "Debugging output"
+#~ msgstr "Derinimo išvestis"
+
+#~ msgid "Version of this application"
+#~ msgstr "Šios programos versija"
+
+#~ msgid "— New GDM login"
+#~ msgstr "— Naujas GDM prisijungimas"
+
+#~ msgid "Screenshot taken"
+#~ msgstr "Ekranvaizdis įrašytas"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "Įrašyti ekranvaizdį"
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "Nepavyko aktyvuoti seanso:"
+
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login "
+#~ "screen or start up a new login screen."
+#~ msgstr ""
+#~ "Sistemai nepavyksta nustatyti, ar persijungti į esamą prisijungimo "
+#~ "ekraną, ar paleisti naują prisijungimo ekraną."
+
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "Sistemai nepavyksta paleisti naujo prosijungimo ekrano."
+
+#~ msgid ""
+#~ "You reached the maximum PIN authentication attempts, please try another "
+#~ "method"
+#~ msgstr "Pasiekėte bandymų ribą PIN kodui, bandykite kitą metodą"
+
+#~| msgid "Sorry, that didn’t work. Please try again."
+#~ msgid "Sorry, PIN authentication didn’t work. Please try again."
+#~ msgstr "Atleiskite, PIN kodas nesuveikė. Bandykite dar kartą."
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "Jūsų slaptažodžio galiojimas baigėsi, pakeiskite jį."
+
+#~ msgid "GNOME Shell"
+#~ msgstr "GNOME apvalkalas"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "Langų valdymas ir komponavimas"

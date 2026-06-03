@@ -1,0 +1,669 @@
+# English (British) translation.
+# Copyright (C) 2004 THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the gdm2 package.
+# Gareth Owen <gowen72@yahoo.com>, 2004.
+# Philip Withnall <philip@tecnocode.co.uk> 2009, 2010.
+# Zander Brown <zbrown@gnome.org>, 2019-2021.
+# Andi Chandler <andi@gowling.com>, 2025.
+# Bruce Cowan <bruce@bcowan.me.uk>, 2010-2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-02-18 11:06+0000\n"
+"PO-Revision-Date: 2026-03-08 16:54+0000\n"
+"Last-Translator: Bruce Cowan <bruce@bcowan.me.uk>\n"
+"Language-Team: British English <en@li.org>\n"
+"Language: en_GB\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Gtranslator 49.0\n"
+
+#: common/gdm-common.c:324
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom is not a character device"
+
+#: common/gdm-common.c:358
+msgid "Unable to create transient display: "
+msgstr "Unable to create transient display: "
+
+#: common/gdm-common.c:555
+msgid "Could not identify the current session: "
+msgstr "Could not identify the current session: "
+
+#: common/gdm-common.c:564
+msgid "Could not identify the current seat."
+msgstr "Could not identify the current seat."
+
+#: daemon/gdm-manager.c:668 daemon/gdm-manager.c:704
+msgid "No display available"
+msgstr "No display available"
+
+#: daemon/gdm-manager.c:754 daemon/gdm-manager.c:1059
+msgid "No session available"
+msgstr "No session available"
+
+#: daemon/gdm-manager.c:770
+msgid "Can only be called before user is logged in"
+msgstr "Can only be called before user is logged in"
+
+#: daemon/gdm-manager.c:782
+msgid "Caller not GDM"
+msgstr "Caller not GDM"
+
+#: daemon/gdm-manager.c:792
+msgid "Unable to open private communication channel"
+msgstr "Unable to open private communication channel"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Username"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "The username"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Hostname"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "The hostname"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Display Device"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "The display device"
+
+#: daemon/gdm-session.c:1442
+msgid "Could not create authentication helper process"
+msgstr "Could not create authentication helper process"
+
+#: daemon/gdm-session-worker.c:807
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+
+#: daemon/gdm-session-worker.c:810
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+
+#: daemon/gdm-session-worker.c:818
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr ""
+"You reached the maximum authentication attempts, please try another method"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "Sorry, password authentication didn’t work. Please try again."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "Sorry, auto login didn’t work. Please try again."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "Sorry, fingerprint authentication didn’t work. Please try again."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr "Sorry, smart card authentication didn’t work. Please try again."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Sorry, that didn’t work. Please try again."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "Your account was given a time limit that’s now passed."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "Username:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "no user account available"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "Unable to change to user"
+
+#: daemon/gdm-wayland-session.c:513
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "GNOME Display Manager Wayland Session Launcher"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "Cannot write PID file %s: possibly out of disk space: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "Make all warnings fatal"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "Exit after a time (for debugging)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "Print GDM version"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "GNOME Display Manager"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "Only the root user can run GDM"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "GNOME Display Manager Session Worker"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr "GNOME Greeter"
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr "The default GNOME Greeter session"
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "GNOME Initial Setup"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr "The GNOME Initial Setup session"
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "Allow managing user sessions"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr "Authentication is required to start or stop a user session"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "Whether or not to allow switchable authentication for login"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+msgstr ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+msgid "Whether or not to allow authentication via external web site"
+msgstr "Whether or not to allow authentication via external web site"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid ""
+"The login screen can optionally allow users to authenticate via web login."
+msgstr ""
+"The login screen can optionally allow users to authenticate via web login."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow authentication using a passkey"
+msgstr "Whether or not to allow authentication using a passkey"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+msgstr ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Whether or not to allow fingerprint readers for login"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "Whether or not to allow smartcard readers for login"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "Whether or not to allow passwords for login"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+#: data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "Path to small image at top of user list"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "Avoid showing user list"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "Enable showing the banner message"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "Set to true to show the banner message text."
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Banner message source"
+msgstr "Banner message source"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+msgid "The source of the text banner message on the login screen."
+msgstr "The source of the text banner message on the login screen."
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "Banner message text"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "Text banner message to show in the login window."
+
+#: data/org.gnome.login-screen.gschema.xml:128
+msgid "Banner message path"
+msgstr "Banner message path"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+msgid "Path to text file with banner message to show in the login window."
+msgstr "Path to text file with banner message to show in the login window."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "Disable showing the restart buttons"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"Set to true to disable showing the restart buttons in the login window."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "Number of allowed authentication failures"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Show command help"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Show verbose output"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Show debug output"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "Enable the authentication method"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "Disable the authentication method"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "Require the authentication method"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Action to perform on smartcard removal"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Assume yes to any answer"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Configure Password Authentication."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Configure Fingerprint Authentication."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Configure Smart Card Authentication."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "Reset the GDM Authentication configuration."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "Show GDM Authentication configuration."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Password options"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Fingerprint options"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Smart Card options"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Reset options"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Show options"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "No PAM module available for Password authentication"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "No PAM module available for Smart Card authentication"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "No PAM module available for Fingerprint authentication"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "“%s” needs at least one parameter"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "“%s” can't be enabled and disabled at the same time"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "“%s” is not a valid %s “%s” value"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "No distro detected, no hook to run"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "No valid args found to run hook “%s”"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "Running distro hook “%s”\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "Distro hook “%s” requested stopping"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr "Failed to set command “%s” option key “%s” via distro hook: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "Failed to create directory %s"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "dconf profile not found"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "dconf has no system-db configured"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "Failed to get the “%s” header comment: %s, was it modified?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr "File “%s” header comment does not match, was it modified?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr "No expected header found on lock file “%s”, was it modified?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "Failed to run a required distro hook: "
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "COMMAND"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "Command options"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "You need to be root to use %s “%s” command"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "Failed to set %s setting: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Failed to set smartcard setting"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Failed to set password setting"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Enabled"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Disabled"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Not supported"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Required"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"GDM Authorisation configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "Y"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "y"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "n"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Do you want to continue? [Y/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "User cancelled the request"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "Failed to reset %s setting: "

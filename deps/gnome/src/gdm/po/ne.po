@@ -1,0 +1,809 @@
+# translation of gdm2.gnome-2-14.ne.po to Nepali
+# translation of gdm2.gnome-2-10.ne.po to Nepali
+# translation of gdm2.gnome-2-10.po to Nepali
+# This file is distributed under the same license as the PACKAGE package.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER.
+# Pawan Chitrakar  <pawan@nplinux.org>, 2005.
+# Jaydeep Bhusal <zaydeep@hotmail.com>, 2005.
+# Jyotshna Shrestha <jyotshna@mpp.org.np>, 2005.
+# Bishnu Adhikari <bsn_adk@hotmail.com>, 2005.
+# Mahesh Subedi <submanesh@hotmail.com>, 2006.
+# Mahesh subedi <submanesh@hotmail.com>, 2006.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Gnome Nepali Translation Project\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-02-18 11:06+0000\n"
+"PO-Revision-Date: 2026-03-02 15:33+0545\n"
+"Last-Translator: Pawan Chitrakar <chautari@gmail.com>\n"
+"Language-Team: Nepali Translation Team <chautari@gmail.com>\n"
+"Language: ne\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2;plural=(n!=1);\n"
+"X-Generator: Poedit 3.4.2\n"
+
+#: common/gdm-common.c:324
+msgid "/dev/urandom is not a character device"
+msgstr "/dev/urandom चारित्रिक यन्त्र होईन"
+
+#: common/gdm-common.c:358
+msgid "Unable to create transient display: "
+msgstr "पर्दा बनाउन असफल "
+
+#: common/gdm-common.c:555
+msgid "Could not identify the current session: "
+msgstr "हालको सेसन पहिचान गर्न सकिएन: "
+
+#: common/gdm-common.c:564
+msgid "Could not identify the current seat."
+msgstr "हालको सिट पहिचान गर्न सकिएन."
+
+#: daemon/gdm-manager.c:668 daemon/gdm-manager.c:704
+msgid "No display available"
+msgstr "दृष्य उपलब्ध छैन"
+
+#: daemon/gdm-manager.c:754 daemon/gdm-manager.c:1059
+msgid "No session available"
+msgstr "सेसन उपलब्ध छैन"
+
+#: daemon/gdm-manager.c:770
+msgid "Can only be called before user is logged in"
+msgstr "प्रयोगकर्ता लगईन गर्न अगाडि मात्रै चलाउन मिल्छ"
+
+#: daemon/gdm-manager.c:782
+msgid "Caller not GDM"
+msgstr "कलर जिडिएम होइन"
+
+#: daemon/gdm-manager.c:792
+msgid "Unable to open private communication channel"
+msgstr "निजी सञ्चार च्यानल खोल्न असमर्थ"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "प्रयोगकर्ता नाम"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "प्रयोगकर्ता नाम"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "होस्टनाम"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "होस्टनाम"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "प्रदर्शन यन्त्र"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "प्रदर्शन यन्त्र"
+
+#: daemon/gdm-session.c:1442
+msgid "Could not create authentication helper process"
+msgstr "प्रमाणीकरण मद्दत प्रकिय बनाउन सकिएन"
+
+#: daemon/gdm-session-worker.c:807
+msgid "You reached the maximum password authentication attempts, please try another method"
+msgstr "तपाईँले अधिकतम पासवर्ड प्रमाणीकरण प्रयासमा पुग्नुभयो, कृपया अर्को विधि प्रयास गर्नुहोस्"
+
+#: daemon/gdm-session-worker.c:810
+msgid "You reached the maximum auto login attempts, please try another authentication method"
+msgstr "तपाईँले अधिकतम स्वचालित लगइन प्रयासमा पुग्नुभयो, कृपया अन्य प्रमाणीकरण विधि प्रयास गर्नुहोस्"
+
+#: daemon/gdm-session-worker.c:813
+msgid "You reached the maximum fingerprint authentication attempts, please try another method"
+msgstr "तपाईँले अधिकतम औठाछाप प्रमाणीकरण प्रयासमा पुग्नुभयो, कृपया अर्को विधि प्रयास गर्नुहोस्"
+
+#: daemon/gdm-session-worker.c:816
+msgid "You reached the maximum smart card authentication attempts, please try another method"
+msgstr "तपाईँले अधिकतम स्मार्ट कार्ड प्रमाणीकरण प्रयासमा पुग्नुभयो, कृपया अर्को विधि प्रयास गर्नुहोस्"
+
+#: daemon/gdm-session-worker.c:818
+msgid "You reached the maximum authentication attempts, please try another method"
+msgstr "तपाईँले अधिकतम प्रमाणीकरण प्रयासमा पुग्नुभयो, कृपया अर्को विधि प्रयास गर्नुहोस्"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "माफ गर्नुहोस्, पासवर्ड प्रमाणीकरणले काम गरेन । कृपया पुन: प्रयास गर्नुहोस् ।."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "माफ गर्नुहोस्, स्वत: लगइनले काम गरेन । कृपया पुन: प्रयास गर्नुहोस् ।."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "माफ गर्नुहोस्, औठाछाप प्रमाणीकरणले काम गरेन । कृपया पुन: प्रयास गर्नुहोस् ।."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr "माफ गर्नुहोस्, स्मार्ट कार्ड प्रमाणीकरणले काम गरेन । कृपया पुन: प्रयास गर्नुहोस् ।."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "त्यो कार्य भएन : पुन प्रयास गर्नुस।."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "खाताको लागि तोकिएको समय समाप्त भयो ."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "प्रयोगकर्ता नाम:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "प्रयोगकर्ता खाता उपलब्ध छैन"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "प्रयोगकर्ता परिवर्तन गर्न असक्षम"
+
+#: daemon/gdm-wayland-session.c:513
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "जिनोम प्रदर्शन प्रबन्धक वेल्याण्ड सेसन कारक"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr "PID फाइल %s लेख्न सकिदैन, सम्भवत डिस्क खाली स्थान बाट बाहिर छ ।  त्रुटि: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "सबै चेतावनीहरू घातक बनाउनुहोस्"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "केहि समय पछि निस्कनुहोस् (डिबग लागि)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "जिडिएम संस्करण मुद्रण गर्नुहोस्"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "जिनोमको  प्रदर्शन प्रबन्धक"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "रुटले मात्र जिडिएम  चलाउन सक्छ"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "जिनोम प्रदर्शन प्रबन्धक सेसन कारक"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr "जिनोम ग्रीटर"
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr "पूर्वनिर्धारित जिनोम ग्रीटर सत्र"
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "जिनोम सुरुको सेटअप"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr "जिनोम प्रारम्भिक सेटअप सत्र"
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "प्रयोगकर्ता सत्रहरू व्यवस्थापन गर्न अनुमति दिनुहोस्"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr "प्रयोगकर्ता सत्र सुरु गर्न वा रोक्न प्रमाणीकरण आवश्यक छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:11
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "लगइनको लागि स्विचयोग्य प्रमाणीकरणलाई अनुमति दिने कि नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+msgid ""
+"The login screen can optionally allow a single PAM service to provide multiple "
+"authentication mechanisms via a GDM PAM."
+msgstr ""
+"लगइन स्क्रिनले वैकल्पिक रूपमा एउटा PAM सेवालाई GDM PAM मार्फत धेरै प्रमाणीकरण संयन्त्रहरू प्रदान गर्न अनुमति "
+"दिन सक्छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow authentication via external web site"
+msgstr "बाह्य वेबसाइट मार्फत प्रमाणीकरण अनुमति दिने कि नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+msgid "The login screen can optionally allow users to authenticate via web login."
+msgstr "लगइन स्क्रिनले वैकल्पिक रूपमा प्रयोगकर्ताहरूलाई वेब लगइन मार्फत प्रमाणीकरण गर्न अनुमति दिन सक्छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+msgid "Whether or not to allow authentication using a passkey"
+msgstr "पासकी प्रयोग गरेर प्रमाणीकरण अनुमति दिने कि नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in using those passkeys."
+msgstr ""
+"लगइन स्क्रिनले वैकल्पिक रूपमा पासकीहरू भएका प्रयोगकर्ताहरूलाई ती पासकीहरू प्रयोग गरेर लग इन गर्न अनुमति दिन "
+"सक्छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "औठाछाप बाट लगईन गर्न दिने वा नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their fingerprints to log in "
+"using those prints."
+msgstr "ओँठाछाप दर्ता भएको प्रयोगकर्तालाई सो ओँठाछाप बाट लगईन गर्न अनुमति दिनुहोस् ।."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr "स्मर्तकार्डबाट लगईन गर्न दिने या नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in using those "
+"smartcards."
+msgstr "स्मार्टकार्डबाट लगईन गर्न प्रयोगकर्तालाई अनुमति प्रदान गर्नुहोस् ."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "लगईन गर्न पासवर्द अनुमति दिने या नदिने"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, forcing the user to "
+"use smartcard or fingerprint authentication."
+msgstr ""
+"लगइन पर्दाले पासवर्ड प्रमाणीकरण अस्वीकार गर्न कन्फिगर गर्न सक्छ, प्रयोगकर्तालाई स्मार्टकार्ड वा फिंगरप्रिन्ट "
+"प्रमाणीकरण प्रयोग गर्न जोड दिनुहोस्।."
+
+#: data/org.gnome.login-screen.gschema.xml:71 data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "प्रयोगकर्ता सुचिको माथि सानो छवि"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site administrators and "
+"distributions a way to display branding."
+msgstr ""
+"लगइन पर्दा वैकल्पिक रूपमा एक सानो छविलाई साइट प्रशासकहरू र वितरणहरू  ब्रान्डिङ्ग गर्ने तरिका प्रदान गर्न "
+"सक्दछ।."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site administrators "
+"and distributions a way to display branding."
+msgstr ""
+"पछाडि लगइन पर्दाले साइट प्रशासकहरू प्रदान गर्न र ब्रान्डिङ प्रदर्शन गर्ने तरिकालाई प्रदान गर्न एक सानो छवि "
+"वैकल्पिक रूपमा देखाउन सक्छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "प्रयोगकर्ता सुची नदेखाउनुस्"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This setting can be "
+"toggled to disable showing the user list."
+msgstr ""
+"लगइन पर्दा सामान्य रूपमा उपलब्ध प्रयोगकर्ताहरूको सूची को रूपमा लगइन गर्न देखाउँदछ। यो सेटिङ प्रयोगकर्ता सूची "
+"असक्षम गर्न टगल गर्न सकिन्छ।."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "ब्यानर सन्देश देखाउने सक्षम बनाउनुहोस्"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "ब्यानर सन्देश पाठ देखाउने."
+
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Banner message source"
+msgstr "ब्यानर सन्देश स्रोत"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+msgid "The source of the text banner message on the login screen."
+msgstr "लगइन स्क्रिनमा रहेको टेक्स्ट ब्यानर सन्देशको स्रोत।."
+
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "सन्देश पाठ ब्यानर"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "ब्यानर पाठ सन्देश लगईन सञ्झ्यालमा देखाउनुहोस्."
+
+#: data/org.gnome.login-screen.gschema.xml:128
+msgid "Banner message path"
+msgstr "ब्यानर सन्देश मार्ग"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+msgid "Path to text file with banner message to show in the login window."
+msgstr "लगइन विन्डोमा देखाउन ब्यानर सन्देश सहितको पाठ फाइलको मार्ग।."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "फेरि सुरु बटन नदेखाउनुहोस्"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr "लगईन सञ्झ्यालमा फेरि सुरु गर्ने बटन नदेखाउनुहोस्."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "प्रमाणिकरण असफल कतिपटक गर्न दिनुहुन्छ"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before giving up and going "
+"back to user selection."
+msgstr ""
+"प्रयोगकर्ता चयनमा पछाडि जानु भन्दा पहिले, प्रयोगकर्तालाई प्रमाणीकरण प्रयास गर्न अनुमति दिइएको पटकको "
+"सङ्ख्या ।."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "आदेश मद्दत देखाउनुहोस्"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "भर्बोस निर्गत देखाउनुहोस्"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "डिबग निर्गत देखाउनुहोस्"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "प्रमाणीकरण विधि सक्षम पार्नुहोस्"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "प्रमाणीकरण विधि अक्षम पार्नुहोस्"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "प्रमाणीकरण विधि आवश्यक पर्दछ"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "स्मार्टकार्ड हटाउने कार्य सम्पादन गर्ने कार्य"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "कुनै पनि उत्तरको लागि हो मान्नुहोस्"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "पासवर्ड प्रमाणीकरण कन्फिगर गर्नुहोस् ।."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "फिंगरप्रिन्ट प्रमाणीकरण कन्फिगर गर्नुहोस् ।."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "स्मार्ट कार्ड प्रमाणीकरण कन्फिगर गर्नुहोस् ।."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "जीडीएम प्रमाणीकरण कन्फिगरेसन रिसेट गर्नुहोस् ।."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "जीडीएम प्रमाणीकरण कन्फिगरेसन देखाउनुहोस् ।."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "पासवर्ड विकल्प"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "फिंगरप्रिन्ट विकल्प"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "स्मार्ट कार्ड विकल्प"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "रिसेट विकल्प"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "विकल्प देखाउनुहोस्"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "पासवर्ड प्रमाणीकरणका लागि पीएएम मोड्युल उपलब्ध छैन"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "स्मार्ट कार्ड प्रमाणीकरणका लागि पीएएम मोड्युल उपलब्ध छैन"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "फिंगरप्रिन्ट प्रमाणीकरणका लागि पीएएम मोड्युल उपलब्ध छैन"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "\"%s\" लाई कम्तिमा एउटा परिमिति आवश्यक छ"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "\"%s\" एकै समयमा सक्षम र अक्षम पार्न सकिँदैन"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "\"%s\" वैध %s \"%s\" मान होइन"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "कुनै डिस्ट्रो फेला परेन, चलाउनका लागि हुक छैन"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "हुक \"%s\" चलाउन वैध आर्ग फेला परेन"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "डिस्ट्रो हुक \"%s\" चलिरहेको छ\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "डिस्ट्रो हुक \"%s\" ले रोक्न अनुरोध गर्यो"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"निकास स्थिति %d र त्रुटि %s सँग डिस्ट्रो हुक असफल भयो:\n"
+"मानक निर्गत:\n"
+"%s\n"
+"निर्गत त्रुटि:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr "डिस्ट्रो हुक मार्फत आदेश \"%s\" विकल्प कुञ्जी \"%s\" सेट गर्न असफल भयो: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "%s डाइरेक्टरी सिर्जना गर्न असफल भयो"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "डिकन्फ प्रोफाइल फेला परेन"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "डीकन्फसँग कुनै प्रणाली-डीबी कन्फिगर गरिएको छैन"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "\"%s\" हेडर टिप्पणी प्राप्त गर्न असफल: %s, के यो परिमार्जन गरिएको थियो?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr "फाइल \"%s\" हेडर टिप्पणी मेल खाँदैन, के यो परिमार्जन गरिएको थियो?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr "ताल्चा फाइल \"%s\" मा अपेक्षित हेडर फेला परेन, के यो परिमार्जित गरिएको थियो?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "आवश्यक डिस्ट्रो हुक चलाउन असफल: "
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "COMMAND"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"आदेश:\n"
+"  मद्दतले यो जानकारी देखाउँदछ\n"
+"  पासवर्ड पासवर्ड प्रमाणीकरण कन्फिगर गर्नुहोस्\n"
+"  फिंगरप्रिन्ट प्रमाणीकरण कन्फिगर गर्नुहोस्\n"
+"  स्मार्टकार्ड प्रमाणीकरण कन्फिगर गर्नुहोस्\n"
+"  पूर्वनिर्धारित कन्फिगरेसन रिसेट रिसेट गर्नुहोस्\n"
+"  हालको कन्फिगरेसन देखाउँदछ देखाउनुहोस्\n"
+"\n"
+"प्रत्येक आदेशमा मद्दत प्राप्त गर्न \"%s आदेश --मद्दत\" प्रयोग गर्नुहोस् ।\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "आदेश विकल्प"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "तपाईँले %s \"%s\" आदेश प्रयोग गर्न मूल हुन आवश्यक छ"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "%s सेटिङ सेट गर्न असफल: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "स्मार्टकार्ड सेटिङ सेट गर्न असफल भयो"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "पासवर्ड सेटिङ सेट गर्न असफल भयो"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "सक्षम पारिएको"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "अक्षम पारिएको"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "समर्थित छैन"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "आवश्यक"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"जीडीएम प्राधिकरण कन्फिगरेसन\n"
+"\n"
+"पासवर्ड प्रमाणीकरण: %s\n"
+"  फिंगरप्रिन्ट प्रमाणीकरण: %s\n"
+"  स्मार्ट कार्ड प्रमाणीकरण: %s\n"
+"  स्मार्ट कार्ड हटाउने कार्य: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "Y"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "Y"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "N"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "के तपाईँ जारी राख्न चाहनुहुन्छ? [Y/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "प्रयोगकर्ताले अनुरोध रद्द गरे"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "%s सेटिङ रिसेट गर्न असफल भयो: "
+
+#~ msgid "_Refresh"
+#~ msgstr "ताजा पार्नुहोस्"
+
+#~ msgid "_Cancel"
+#~ msgstr "_रद्द गर्नुहोस्"
+
+#~ msgid "C_onnect"
+#~ msgstr "जडान गर्नुहोस्"
+
+#~ msgid "Select System"
+#~ msgstr "प्रणालीको चयन गर्नु होस्"
+
+#~ msgid "XDMCP: Could not create XDMCP buffer!"
+#~ msgstr "XDMCP: XDMCP बफर सिर्जना गर्न सकिएन !"
+
+#~ msgid "XDMCP: Could not read XDMCP header!"
+#~ msgstr "XDMCP:  XDMCP हेडर पढ्न सकिएन !"
+
+#~ msgid "XDMCP: Incorrect XDMCP version!"
+#~ msgstr "XDMCP: गलत XDMCP संस्करण !"
+
+#~ msgid "XDMCP: Unable to parse address"
+#~ msgstr "XDMCP: ठेगपदवर्णन गर्न अक्षम"
+
+#, c-format
+#~ msgid "Could not find user “%s” on system"
+#~ msgstr "प्रणालीमा प्रयोगकर्ता \"%s\" फेला पार्न सकेन"
+
+#~ msgid ""
+#~ "Could not start the X server (your graphical environment) due to an internal error. "
+#~ "Please contact your system administrator or check your syslog to diagnose. In the "
+#~ "meantime this display will be disabled.  Please restart GDM when the problem is corrected."
+#~ msgstr ""
+#~ "केहि आन्तरिक त्रुटि कारणले X सर्भर (तपाईँको ग्राफिकल परिवेश) सुरू गर्न सकिएन । कृपया तपाईँको प्रणाली "
+#~ "प्रशासकसंगसम्पर्क राख्नुहोस् वा तपाईँको समस्या पहिचान गर्नका लागि सिस्लग जाँच गर्नुहोस्\n"
+#~ "सोही समयमा यो प्रदर्शन अक्षम पारिनेछ\n"
+#~ "समस्या सुधारिए पछि जिडिएम  पुन: चालु गर्नुहोस् ।."
+
+#~ msgid "Chooser session unavailable"
+#~ msgstr "सेसन छनोटअनुपलब्ध"
+
+#, c-format
+#~ msgid "Server was to be spawned by user %s but that user doesn’t exist"
+#~ msgstr "सर्भरलाई  %s बाट स्पाउन्ड् गरिएको छ तर त्यो प्रयोगकर्ता यहाँ अवस्थित छैन"
+
+#, c-format
+#~ msgid "Couldn’t set groupid to %d"
+#~ msgstr "%d मा समूह आइ डी सेट गर्न सकिएन"
+
+#, c-format
+#~ msgid "initgroups () failed for %s"
+#~ msgstr "%s को लागि सुरुसमुह () असफल"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %d"
+#~ msgstr "%d मा प्रयोगकर्ता आइ डी सेट गर्न सकिएन"
+
+#, c-format
+#~ msgid "%s: Could not open log file for display %s!"
+#~ msgstr "लग फाइल खोल्न सकेन: %s: %s!"
+
+#, c-format
+#~ msgid "%s: Error setting %s to %s"
+#~ msgstr "%s: %s देखि %sमा सेट गर्दा त्रुटि"
+
+#, c-format
+#~ msgid "%s: Server priority couldn’t be set to %d: %s"
+#~ msgstr "%s: सर्भरको प्राथमिकताहरू %d मा सेट हुन सक्दैन: %s"
+
+#, c-format
+#~ msgid "%s: Empty server command for display %s"
+#~ msgstr "%s: %s प्रदर्शनका लागि खाली सर्भर आदेश"
+
+#~ msgid "Could not create socket!"
+#~ msgstr "सकेट सिर्जना गर्न असफल !"
+
+#~ msgid "Run program through /etc/gdm/Xsession wrapper script"
+#~ msgstr "कार्यक्रम /etc/gdm/xsession लिपि स्क्रिप्ट मार्फत चलाउनुहोस्"
+
+#~ msgid "Listen on TCP socket"
+#~ msgstr "टिसिपि मा आदेशको लागि सुन्नुहोस्"
+
+#~ msgid "GNOME Display Manager X Session Launcher"
+#~ msgstr "जिनोम प्रदर्शन प्रबन्धक सेसन कारक"
+
+#, c-format
+#~ msgid "Failed to create ran once marker dir %s: %s"
+#~ msgstr "एक फेरमात्र चलाउने फोल्डर %s असफल : %s"
+
+#, c-format
+#~ msgid "Failed to create LogDir %s: %s"
+#~ msgstr "%s;%s लगडाइरेक्टरी सिर्जना गर्न असफल भयो"
+
+#, c-format
+#~ msgid "Can’t find the GDM user “%s”. Aborting!"
+#~ msgstr "जिडिएम  प्रयोगकर्ता (%s) लाई फेला पार्न सकिदैन । परित्याग हुँदैछ !"
+
+#~ msgid "The GDM user should not be root. Aborting!"
+#~ msgstr "जिडिएम  प्रयोगकर्ता रुट हुनुहुँदैन । परित्याग हुँदैछ !"
+
+#, c-format
+#~ msgid "Can’t find the GDM group “%s”. Aborting!"
+#~ msgstr "जिडिएम  समूह '%s' फेला पार्न सकेन । परित्याग हुँदैछ !"
+
+#~ msgid "The GDM group should not be root. Aborting!"
+#~ msgstr "जिडिएम  समूह रुट हुनुहुँदैन । परित्याग हुँदैछ !"
+
+#, c-format
+#~ msgid "Failed to switch to %s user"
+#~ msgstr "%s प्रयोगकर्तामा स्विच गर्न असफल भयो"
+
+#, c-format
+#~ msgid "Couldn’t set userid to %u"
+#~ msgstr "%u मा प्रयोगकर्ता आईडी सेट गर्न सकेन"
+
+#~ msgid "Only the VERSION command is supported"
+#~ msgstr "खालि VERSION आदेशमात्रै चलाउनमिल्छ"
+
+#~ msgid "Ignored — retained for compatibility"
+#~ msgstr "बेवास्ता - अनुकूलता को लागि"
+
+#~ msgid "Debugging output"
+#~ msgstr "निर्गतमा भएको त्रुटि सँच्याइदैं"
+
+#~ msgid "Version of this application"
+#~ msgstr "यो अनुप्रयोगको स‌सकरण"
+
+#~ msgid "— New GDM login"
+#~ msgstr "नया जिडिएम लगइन"
+
+#~ msgid "You reached the maximum PIN authentication attempts, please try another method"
+#~ msgstr "तपाईँले अधिकतम PIN प्रमाणीकरण प्रयासमा पुग्नुभयो, कृपया अर्को विधि प्रयास गर्नुहोस्"
+
+#~ msgid "Sorry, PIN authentication didn’t work. Please try again."
+#~ msgstr "माफ गर्नुहोस्, PIN प्रमाणीकरणले काम गरेन । कृपया पुन: प्रयास गर्नुहोस् ।"
+
+#~ msgid "Unable to activate session: "
+#~ msgstr "सेसन सक्रिय गर्न अक्षम "
+
+#~ msgid "Screenshot taken"
+#~ msgstr "स्क्रिनको तस्बिर लिइयो"
+
+#~ msgid "Take a picture of the screen"
+#~ msgstr "स्क्रिनको तस्वीर लिनुहोस्"
+
+#, fuzzy
+#~ msgid ""
+#~ "The system is unable to determine whether to switch to an existing login screen or start "
+#~ "up a new login screen."
+#~ msgstr "हालको लगईन ।"
+
+#~ msgid "The system is unable to start up a new login screen."
+#~ msgstr "प्रणालीबाट नया लगईन पर्दा शुरु गर्न असक्षम."
+
+#~ msgid "Your password has expired, please change it now."
+#~ msgstr "तपाईको पासवर्डको अवधि समाप्त भयो , नया परिनत गर्नुस्"
+
+#~ msgid "GNOME Shell"
+#~ msgstr "जिनोम पात्रो"
+
+#~ msgid "Window management and compositing"
+#~ msgstr "सञ्झ्याल प्रबन्धक र क्मपोजिटिङ्ग "

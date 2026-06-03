@@ -1,0 +1,706 @@
+# Hungarian translation for gdm.
+# Copyright (C) 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2021, 2024, 2025, 2026 Free Software Foundation, Inc.
+# This file is distributed under the same license as the gdm package.
+#
+# Szabolcs Bán <shooby at gnome dot hu>, 1999.
+# Krisztián Czakó <slapic at linux dot co dot hu>, 2000.
+# Emese Kovács <emese at gnome dot hu>, 2001.
+# András Tímár <timar at gnome dot hu>, 2001, 2002, 2003.
+# Gábor Sári <saga at gnome dot hu>, 2003, 2004.
+# László Dvornik <dvornik at gnome dot hu>, 2004, 2005.
+# Gábor Kelemen <kelemeng at gnome dot hu>, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2016.
+# Attila Szervác <sas-guest at haydn dot debian dot org>, 2006.
+# Dóra Kováts <dorcssa at gmail dot com>, 2008.
+# Balázs Úr <ur.balazs at fsf dot hu>, 2012, 2015, 2017, 2018, 2019, 2021, 2022, 2024, 2025, 2026.
+# Balázs Meskó <mesko.balazs at fsf dot hu>, 2025.
+msgid ""
+msgstr ""
+"Project-Id-Version: gdm master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gdm/issues/\n"
+"POT-Creation-Date: 2026-02-18 11:06+0000\n"
+"PO-Revision-Date: 2026-02-21 19:09+0100\n"
+"Last-Translator: Balázs Úr <ur.balazs at fsf dot hu>\n"
+"Language-Team: Hungarian <openscope at fsf dot hu>\n"
+"Language: hu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Lokalize 25.08.1\n"
+
+#: common/gdm-common.c:324
+msgid "/dev/urandom is not a character device"
+msgstr "a /dev/urandom nem karakteres eszköz"
+
+#: common/gdm-common.c:358
+msgid "Unable to create transient display: "
+msgstr "Nem hozható létre átmeneti kijelző: "
+
+#: common/gdm-common.c:555
+msgid "Could not identify the current session: "
+msgstr "Nem sikerült azonosítani a jelenlegi munkamenetet: "
+
+#: common/gdm-common.c:564
+msgid "Could not identify the current seat."
+msgstr "A jelenlegi hely nem azonosítható."
+
+#: daemon/gdm-manager.c:668 daemon/gdm-manager.c:704
+msgid "No display available"
+msgstr "Nem érhető el képernyő"
+
+#: daemon/gdm-manager.c:754 daemon/gdm-manager.c:1059
+msgid "No session available"
+msgstr "Nem érhető el munkamenet"
+
+#: daemon/gdm-manager.c:770
+msgid "Can only be called before user is logged in"
+msgstr "Csak a felhasználó bejelentkezése előtt hívható"
+
+#: daemon/gdm-manager.c:782
+msgid "Caller not GDM"
+msgstr "A hívó nem a GDM"
+
+#: daemon/gdm-manager.c:792
+msgid "Unable to open private communication channel"
+msgstr "Nem sikerült megnyitni a személyes kommunikációs csatornát"
+
+#: daemon/gdm-session-auditor.c:88
+msgid "Username"
+msgstr "Felhasználónév"
+
+#: daemon/gdm-session-auditor.c:89
+msgid "The username"
+msgstr "A felhasználónév"
+
+#: daemon/gdm-session-auditor.c:93
+msgid "Hostname"
+msgstr "Gépnév"
+
+#: daemon/gdm-session-auditor.c:94
+msgid "The hostname"
+msgstr "A gépnév"
+
+#: daemon/gdm-session-auditor.c:99
+msgid "Display Device"
+msgstr "Képernyő"
+
+#: daemon/gdm-session-auditor.c:100
+msgid "The display device"
+msgstr "A képernyő"
+
+#: daemon/gdm-session.c:1442
+msgid "Could not create authentication helper process"
+msgstr "Nem hozható létre a hitelesítési segédfolyamat"
+
+#: daemon/gdm-session-worker.c:807
+msgid ""
+"You reached the maximum password authentication attempts, please try another "
+"method"
+msgstr ""
+"Elérte a jelszavas hitelesítési próbálkozások korlátját, próbálkozzon másik "
+"módszerrel"
+
+#: daemon/gdm-session-worker.c:810
+msgid ""
+"You reached the maximum auto login attempts, please try another "
+"authentication method"
+msgstr ""
+"Elérte az automatikus bejelentkezési próbálkozások korlátját, próbálkozzon "
+"másik hitelesítési módszerrel"
+
+#: daemon/gdm-session-worker.c:813
+msgid ""
+"You reached the maximum fingerprint authentication attempts, please try "
+"another method"
+msgstr ""
+"Elérte az ujjlenyomatos hitelesítési próbálkozások korlátját, próbálkozzon "
+"másik módszerrel"
+
+#: daemon/gdm-session-worker.c:816
+msgid ""
+"You reached the maximum smart card authentication attempts, please try "
+"another method"
+msgstr ""
+"Elérte az intelligenskártyás hitelesítési próbálkozások korlátját, "
+"próbálkozzon másik módszerrel"
+
+#: daemon/gdm-session-worker.c:818
+msgid ""
+"You reached the maximum authentication attempts, please try another method"
+msgstr ""
+"Elérte a hitelesítési próbálkozások korlátját, próbálkozzon másik módszerrel"
+
+#: daemon/gdm-session-worker.c:825
+msgid "Sorry, password authentication didn’t work. Please try again."
+msgstr "Sajnos a jelszavas hitelesítés nem sikerült. Próbálja újra."
+
+#: daemon/gdm-session-worker.c:828
+msgid "Sorry, auto login didn’t work. Please try again."
+msgstr "Sajnos az automatikus bejelentkezés nem sikerült. Próbálja újra."
+
+#: daemon/gdm-session-worker.c:831
+msgid "Sorry, fingerprint authentication didn’t work. Please try again."
+msgstr "Sajnos az ujjlenyomatos hitelesítés nem sikerült. Próbálja újra."
+
+#: daemon/gdm-session-worker.c:834
+msgid "Sorry, smart card authentication didn’t work. Please try again."
+msgstr "Sajnos az intelligenskártyás hitelesítés nem sikerült. Próbálja újra."
+
+#: daemon/gdm-session-worker.c:836
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Sajnos ez nem sikerült. Próbálja újra."
+
+#: daemon/gdm-session-worker.c:851
+msgid "Your account was given a time limit that’s now passed."
+msgstr "A fiók időkorlátja letelt."
+
+#: daemon/gdm-session-worker.c:1208
+msgid "Username:"
+msgstr "Felhasználónév:"
+
+#: daemon/gdm-session-worker.c:1625 daemon/gdm-session-worker.c:1642
+msgid "no user account available"
+msgstr "nem létezik felhasználói fiók"
+
+#: daemon/gdm-session-worker.c:1669
+msgid "Unable to change to user"
+msgstr "Nem lehet a felhasználóra váltani"
+
+#: daemon/gdm-wayland-session.c:513
+msgid "GNOME Display Manager Wayland Session Launcher"
+msgstr "GNOME bejelentkezéskezelő Wayland munkamenet-indító"
+
+#: daemon/main.c:124 daemon/main.c:137
+#, c-format
+msgid "Cannot write PID file %s: possibly out of disk space: %s"
+msgstr ""
+"Nem írható a(z) %s PID fájl: lehetséges, hogy elfogyott a lemezterület: %s"
+
+#: daemon/main.c:222
+msgid "Make all warnings fatal"
+msgstr "Minden figyelmeztetés végzetessé tétele"
+
+#: daemon/main.c:223
+msgid "Exit after a time (for debugging)"
+msgstr "Kilépés egy idő után (hibakeresési céllal)"
+
+#: daemon/main.c:224
+msgid "Print GDM version"
+msgstr "GDM verzió kiírása"
+
+#: daemon/main.c:235
+msgid "GNOME Display Manager"
+msgstr "GNOME bejelentkezéskezelő"
+
+#. make sure the pid file doesn't get wiped
+#: daemon/main.c:255
+msgid "Only the root user can run GDM"
+msgstr "Csak a root futtathatja a GDM-et"
+
+#. Translators: worker is a helper process that does the work
+#. of starting up a session
+#: daemon/session-worker-main.c:127
+msgid "GNOME Display Manager Session Worker"
+msgstr "GNOME bejelentkezéskezelő környezet-segédfolyamata"
+
+#: data/gnome-greeter.desktop.in:2
+msgid "GNOME Greeter"
+msgstr "GNOME köszöntő"
+
+#: data/gnome-greeter.desktop.in:3
+msgid "The default GNOME Greeter session"
+msgstr "Az alapértelmezett GNOME köszöntő munkamenet"
+
+#: data/gnome-initial-setup.desktop.in:2
+msgid "GNOME Initial Setup"
+msgstr "GNOME kezdeti beállítások"
+
+#: data/gnome-initial-setup.desktop.in:3
+msgid "The GNOME Initial Setup session"
+msgstr "A GNOME kezdeti beállítások munkamenet"
+
+#: data/org.gnome.displaymanager.policy:11
+msgid "Allow managing user sessions"
+msgstr "Felhasználói munkamenetek kezelésének lehetővé tétele"
+
+#: data/org.gnome.displaymanager.policy:12
+msgid "Authentication is required to start or stop a user session"
+msgstr ""
+"Hitelesítés szükséges egy felhasználói munkamenet elindításához vagy leállítás"
+"ához"
+
+#: data/org.gnome.login-screen.gschema.xml:11
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow switchable authentication for login"
+msgstr "Engedélyezzen-e vagy sem átváltható hitelesítést a bejelentkezéshez"
+
+#: data/org.gnome.login-screen.gschema.xml:14
+#| msgid ""
+#| "The login screen can optionally show a small image to provide site "
+#| "administrators and distributions a way to display branding."
+msgid ""
+"The login screen can optionally allow a single PAM service to provide "
+"multiple authentication mechanisms via a GDM PAM."
+msgstr ""
+"A bejelentkezési képernyő választhatóan engedélyezhet egy önálló PAM-szolgálta"
+"tást, hogy több hitelesítési mechanizmus biztosítson egy GDM PAM-en keresztül."
+
+#: data/org.gnome.login-screen.gschema.xml:21
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow authentication via external web site"
+msgstr "Engedélyezzen-e vagy sem külső webhelyen keresztüli hitelesítést"
+
+#: data/org.gnome.login-screen.gschema.xml:24
+#| msgid ""
+#| "The login screen can optionally allow users who have smartcards to log in "
+#| "using those smartcards."
+msgid ""
+"The login screen can optionally allow users to authenticate via web login."
+msgstr ""
+"A bejelentkezési képernyő választhatóan lehetővé teheti a felhasználóknak a we"
+"bes bejelentkezésen keresztüli hitelesítést."
+
+#: data/org.gnome.login-screen.gschema.xml:31
+#| msgid "Whether or not to allow smartcard readers for login"
+msgid "Whether or not to allow authentication using a passkey"
+msgstr ""
+"Engedélyezze-e vagy sem a jelszókulcs használatával történő hitelesítést"
+
+#: data/org.gnome.login-screen.gschema.xml:34
+#| msgid ""
+#| "The login screen can optionally allow users who have smartcards to log in "
+#| "using those smartcards."
+msgid ""
+"The login screen can optionally allow users who have passkeys to log in "
+"using those passkeys."
+msgstr ""
+"A bejelentkezési képernyő választhatóan lehetővé teheti a jelszókulcsot birtok"
+"ló felhasználóknak, hogy a jelszókulcsok használatával jelentkezzenek be."
+
+#: data/org.gnome.login-screen.gschema.xml:41
+msgid "Whether or not to allow fingerprint readers for login"
+msgstr "Engedélyezze-e vagy sem az ujjlenyomat-olvasókat a bejelentkezéshez"
+
+#: data/org.gnome.login-screen.gschema.xml:44
+msgid ""
+"The login screen can optionally allow users who have enrolled their "
+"fingerprints to log in using those prints."
+msgstr ""
+"A bejelentkezési képernyő választhatóan lehetővé teheti az ujjlenyomatukat reg"
+"isztrált felhasználóknak a bejelentkezést ujjlenyomattal."
+
+#: data/org.gnome.login-screen.gschema.xml:51
+msgid "Whether or not to allow smartcard readers for login"
+msgstr ""
+"Engedélyezze-e vagy sem az intelligenskártya-olvasókat a bejelentkezéshez"
+
+#: data/org.gnome.login-screen.gschema.xml:54
+msgid ""
+"The login screen can optionally allow users who have smartcards to log in "
+"using those smartcards."
+msgstr ""
+"A bejelentkezési képernyő választhatóan lehetővé teheti az intelligenskártyát "
+"birtokló felhasználóknak a bejelentkezést a kártyával."
+
+#: data/org.gnome.login-screen.gschema.xml:61
+msgid "Whether or not to allow passwords for login"
+msgstr "Engedélyezze-e vagy sem a jelszavakat a bejelentkezéshez"
+
+#: data/org.gnome.login-screen.gschema.xml:64
+msgid ""
+"The login screen can be configured to disallow password authentication, "
+"forcing the user to use smartcard or fingerprint authentication."
+msgstr ""
+"A bejelentkezési képernyő beállítható a jelszavas hitelesítés tiltására, "
+"ezzel a felhasználót intelligenskártyás vagy ujjlenyomatos hitelesítés "
+"használatára kényszerítve."
+
+#: data/org.gnome.login-screen.gschema.xml:71
+#: data/org.gnome.login-screen.gschema.xml:81
+msgid "Path to small image at top of user list"
+msgstr "Útvonal a kis képhez a felhasználólista tetején"
+
+#: data/org.gnome.login-screen.gschema.xml:74
+msgid ""
+"The login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"A bejelentkezési képernyő választhatóan megjeleníthet egy kis képet, ezzel a r"
+"endszergazdák és disztribúciók márkajelzést helyezhetnek el."
+
+#: data/org.gnome.login-screen.gschema.xml:84
+msgid ""
+"The fallback login screen can optionally show a small image to provide site "
+"administrators and distributions a way to display branding."
+msgstr ""
+"A tartalék bejelentkezési képernyő megjeleníthet egy kis képet, ezzel a "
+"rendszergazdák és disztribúciók márkajelzést helyezhetnek el."
+
+#: data/org.gnome.login-screen.gschema.xml:91
+msgid "Avoid showing user list"
+msgstr "Felhasználólista megjelenítésének tiltása"
+
+#: data/org.gnome.login-screen.gschema.xml:94
+msgid ""
+"The login screen normally shows a list of available users to log in as. This "
+"setting can be toggled to disable showing the user list."
+msgstr ""
+"A bejelentkezési képernyő általában megjeleníti a felhasználók listáját, "
+"akik nevében be lehet jelentkezni. Ezzel a beállítással letiltható a "
+"felhasználólista megjelenítése."
+
+#: data/org.gnome.login-screen.gschema.xml:101
+msgid "Enable showing the banner message"
+msgstr "Hiba a fejlécüzenet megjelenítésekor"
+
+#: data/org.gnome.login-screen.gschema.xml:104
+msgid "Set to true to show the banner message text."
+msgstr "Állítsa igazra a fejléc szövegének megjelenítéséhez."
+
+# fixme
+#: data/org.gnome.login-screen.gschema.xml:110
+msgid "Banner message source"
+msgstr "Fejlécüzenet forrása"
+
+#: data/org.gnome.login-screen.gschema.xml:113
+msgid "The source of the text banner message on the login screen."
+msgstr ""
+"A bejelentkezési képernyőn megjelenítendő szöveges fejlécüzenet forrása."
+
+# fixme
+#: data/org.gnome.login-screen.gschema.xml:119
+msgid "Banner message text"
+msgstr "Fejlécüzenet szövege"
+
+#: data/org.gnome.login-screen.gschema.xml:122
+msgid "Text banner message to show in the login window."
+msgstr "A bejelentkezési ablakban megjelenítendő fejlécszöveg."
+
+# fixme
+#: data/org.gnome.login-screen.gschema.xml:128
+msgid "Banner message path"
+msgstr "Fejlécüzenet útvonala"
+
+#: data/org.gnome.login-screen.gschema.xml:131
+msgid "Path to text file with banner message to show in the login window."
+msgstr ""
+"A bejelentkezési ablakban megjelenítendő fejlécüzenetet tartalmazó "
+"szövegfájl útvonala."
+
+#: data/org.gnome.login-screen.gschema.xml:137
+msgid "Disable showing the restart buttons"
+msgstr "Az újraindítása gombok megjelenítésének letiltása"
+
+#: data/org.gnome.login-screen.gschema.xml:140
+msgid "Set to true to disable showing the restart buttons in the login window."
+msgstr ""
+"Állítsa igazra az újraindítás gombok megjelenítésének letiltásához a "
+"bejelentkezési ablakban."
+
+#: data/org.gnome.login-screen.gschema.xml:146
+msgid "Number of allowed authentication failures"
+msgstr "Engedélyezett hitelesítési hibák száma"
+
+#: data/org.gnome.login-screen.gschema.xml:149
+msgid ""
+"The number of times a user is allowed to attempt authentication, before "
+"giving up and going back to user selection."
+msgstr ""
+"A felhasználó ennyiszer próbálkozhat a hitelesítéssel, mielőtt visszatér a "
+"felhasználóválasztáshoz."
+
+#: utils/gdm-config.c:117
+msgid "Show command help"
+msgstr "Parancs súgójának megjelenítése"
+
+#: utils/gdm-config.c:121
+msgid "Show verbose output"
+msgstr "Részletes kimenet megjelenítése"
+
+#: utils/gdm-config.c:125
+msgid "Show debug output"
+msgstr "Hibakeresési kimenet megjelenítése"
+
+#: utils/gdm-config.c:134
+msgid "Enable the authentication method"
+msgstr "A hitelesítési módszer engedélyezése"
+
+#: utils/gdm-config.c:138
+msgid "Disable the authentication method"
+msgstr "A hitelesítési módszer letiltása"
+
+#: utils/gdm-config.c:147
+msgid "Require the authentication method"
+msgstr "A hitelesítési módszer megkövetelése"
+
+#: utils/gdm-config.c:151
+msgid "Action to perform on smartcard removal"
+msgstr "Az intelligens kártya eltávolításakor végrehajtandó művelet"
+
+#: utils/gdm-config.c:160
+msgid "Assume yes to any answer"
+msgstr "Igen válasz feltételezése minden kérdésnél"
+
+#: utils/gdm-config.c:262
+msgid "Configure Password Authentication."
+msgstr "Jelszavas hitelesítés beállítása."
+
+#: utils/gdm-config.c:264
+msgid "Configure Fingerprint Authentication."
+msgstr "Ujjlenyomatos hitelesítés beállítása."
+
+#: utils/gdm-config.c:266
+msgid "Configure Smart Card Authentication."
+msgstr "Intelligens kártyás hitelesítés beállítása."
+
+#: utils/gdm-config.c:268
+msgid "Reset the GDM Authentication configuration."
+msgstr "A GDM hitelesítési beállításának visszaállítása."
+
+#: utils/gdm-config.c:270
+msgid "Show GDM Authentication configuration."
+msgstr "A GDM hitelesítési beállításának megjelenítése."
+
+#: utils/gdm-config.c:281
+msgid "Password options"
+msgstr "Jelszó kapcsolók"
+
+#: utils/gdm-config.c:283
+msgid "Fingerprint options"
+msgstr "Ujjlenyomat kapcsolók"
+
+#: utils/gdm-config.c:285
+msgid "Smart Card options"
+msgstr "Intelligens kártya kapcsolók"
+
+#: utils/gdm-config.c:287
+msgid "Reset options"
+msgstr "Visszaállítási kapcsolók"
+
+#: utils/gdm-config.c:289
+msgid "Show options"
+msgstr "Megjelenítési kapcsolók"
+
+#: utils/gdm-config.c:319
+msgid "No PAM module available for Password authentication"
+msgstr "Nincs elérhető PAM-modul a jelszavas hitelesítéshez"
+
+#: utils/gdm-config.c:321
+msgid "No PAM module available for Smart Card authentication"
+msgstr "Nincs elérhető PAM-modul az intelligens kártyás hitelesítéshez"
+
+#: utils/gdm-config.c:323
+msgid "No PAM module available for Fingerprint authentication"
+msgstr "Nincs elérhető PAM-modul az ujjlenyomatos hitelesítéshez"
+
+#: utils/gdm-config.c:354
+#, c-format
+msgid "“%s” needs at least one parameter"
+msgstr "A(z) „%s” legalább egy paramétert igényel"
+
+#. TRANSLATORS: “command” can't be enabled...
+#: utils/gdm-config.c:363
+#, c-format
+msgid "“%s” can't be enabled and disabled at the same time"
+msgstr "A(z) „%s” nem engedélyezhető és tiltható le egyszerre"
+
+#. TRANSLATORS: option is not a valid command “option-key” value
+#: utils/gdm-config.c:386
+#, c-format
+msgid "“%s” is not a valid %s “%s” value"
+msgstr "A(z) „%s” nem érvényes %s „%s” érték"
+
+#: utils/gdm-config.c:633
+msgid "No distro detected, no hook to run"
+msgstr "Nincs disztribúció felismerve, nincs futtatandó horog"
+
+#: utils/gdm-config.c:651
+#, c-format
+msgid "No valid args found to run hook “%s”"
+msgstr "Nem találhatók érvényes argumentumok a(z) „%s” horog futtatásához"
+
+#: utils/gdm-config.c:656
+#, c-format
+msgid "Running distro hook “%s”\n"
+msgstr "A(z) „%s” disztribúciós horog futtatása\n"
+
+#: utils/gdm-config.c:670
+#, c-format
+msgid "Distro hook “%s” requested stopping"
+msgstr "A(z) „%s” disztribúciós horog leállítást kért"
+
+#: utils/gdm-config.c:683
+#, c-format
+msgid ""
+"Distro hook failed with exit status %d and error %s:\n"
+"Standard output:\n"
+"%s\n"
+"Error output:\n"
+"%s"
+msgstr ""
+"A disztribúciós horog sikertelen volt %d kilépési állapottal és %s hibával:\n"
+"Szabványos kimenet:\n"
+"%s\n"
+"Hibakimenet:\n"
+"%s"
+
+#. TRANSLATORS: Failed to set command “command” option key “option-key” via distro hook
+#: utils/gdm-config.c:733
+#, c-format
+msgid "Failed to set command “%s” option key “%s” via distro hook: "
+msgstr ""
+"Nem sikerült beállítani a(z) „%s” parancs kapcsolójának „%s” kulcsát a "
+"disztribúciós horgon keresztül: "
+
+#: utils/gdm-config.c:773
+#, c-format
+msgid "Failed to create directory %s"
+msgstr "Nem sikerült létrehozni a(z) %s könyvtárat"
+
+#: utils/gdm-config.c:844
+msgid "dconf profile not found"
+msgstr "A dconf-profil nem található"
+
+#: utils/gdm-config.c:934
+msgid "dconf has no system-db configured"
+msgstr "A dconf nem rendelkezik beállított system-db értékkel"
+
+#. TRANSLATORS: First value is a file path, second is an error message
+#: utils/gdm-config.c:1083
+#, c-format
+msgid "Failed to get the “%s” header comment: %s, was it modified?"
+msgstr "Nem sikerült lekérni a(z) „%s” fejlécmegjegyzést: %s, módosítva lett?"
+
+#: utils/gdm-config.c:1086
+#, c-format
+msgid "File “%s” header comment does not match, was it modified?"
+msgstr "A(z) „%s” fájl fejlécmegjegyzése nem egyezik, módosítva lett?"
+
+#. XXX: Fail with an error instead?
+#: utils/gdm-config.c:1214
+#, c-format
+msgid "No expected header found on lock file “%s”, was it modified?"
+msgstr ""
+"Nem található elvárt fejléc a(z) „%s” zárolási fájlban, módosítva lett?"
+
+#: utils/gdm-config.c:1499
+msgid "Failed to run a required distro hook: "
+msgstr "Nem sikerült futtatni egy szükséges disztribúciós horgot: "
+
+#: utils/gdm-config.c:1515
+msgid "COMMAND"
+msgstr "PARANCS"
+
+#: utils/gdm-config.c:1519
+#, c-format
+msgid ""
+"Commands:\n"
+"  help         Shows this information\n"
+"  password     Configure the password authentication\n"
+"  fingerprint  Configure the fingerprint authentication\n"
+"  smartcard    Configure the smartcard authentication\n"
+"  reset        Resets the default configuration\n"
+"  show         Shows the current configuration\n"
+"\n"
+"Use “%s COMMAND --help” to get help on each command.\n"
+msgstr ""
+"Parancsok:\n"
+" help          Megjeleníti ezt az információt\n"
+" password      A jelszavas hitelesítés beállítása\n"
+" fingerprint   Az ujjlenyomatos hitelesítés beállítása\n"
+" smartcard     Az intelligens kártyás hitelesítés beállítása\n"
+" reset         Visszaállítja az alapértelmezett beállítást\n"
+" show          Megjeleníti a jelenlegi beállítást\n"
+"\n"
+"Használja a(z) „%s PARANCS --help” parancsot az egyes parancsokkal "
+"kapcsolatos súgóért.\n"
+
+#: utils/gdm-config.c:1581
+msgid "Command options"
+msgstr "Parancs kapcsolók"
+
+#. TRANSLATORS: You need to be root to use PROGRAM-NAME “command” command
+#: utils/gdm-config.c:1616
+#, c-format
+msgid "You need to be root to use %s “%s” command"
+msgstr "Rendszergazdának kell lennie a(z) %s „%s” parancsának használatához"
+
+#: utils/gdm-config.c:1666
+#, c-format
+msgid "Failed to set %s setting: "
+msgstr "Nem sikerült beállítani a(z) %s beállítást: "
+
+#: utils/gdm-config.c:1758
+msgid "Failed to set smartcard setting"
+msgstr "Nem sikerült beállítani az intelligens kártyás beállítást"
+
+#: utils/gdm-config.c:1764
+msgid "Failed to set password setting"
+msgstr "Nem sikerült beállítani a jelszavas beállítást"
+
+#: utils/gdm-config.c:1778
+msgid "Enabled"
+msgstr "Engedélyezve"
+
+#: utils/gdm-config.c:1778
+msgid "Disabled"
+msgstr "Letiltva"
+
+#: utils/gdm-config.c:1787
+msgid "Not supported"
+msgstr "Nem támogatott"
+
+#: utils/gdm-config.c:1803
+msgid "Required"
+msgstr "Kötelező"
+
+#: utils/gdm-config.c:1855
+#, c-format
+msgid ""
+"GDM Authorization configuration\n"
+"\n"
+"  Password authentication: %s\n"
+"  Fingerprint authentication: %s\n"
+"  Smart Card authentication: %s\n"
+"  Smart Card removal action: %s\n"
+msgstr ""
+"GDM felhatalmazási beállítás\n"
+"\n"
+"  Jelszavas hitelesítés: %s\n"
+"  Ujjlenyomatos hitelesítés: %s\n"
+"  Intelligens kártyás hitelesítés: %s\n"
+"  Intelligens kártya eltávolítási művelete: %s\n"
+
+#: utils/gdm-config.c:1883
+msgctxt "Interactive question"
+msgid "Y"
+msgstr "I"
+
+#: utils/gdm-config.c:1884
+msgctxt "Interactive question"
+msgid "y"
+msgstr "i"
+
+#: utils/gdm-config.c:1885
+msgctxt "Interactive question"
+msgid "N"
+msgstr "N"
+
+#: utils/gdm-config.c:1886
+msgctxt "Interactive question"
+msgid "n"
+msgstr "n"
+
+#: utils/gdm-config.c:1890
+msgctxt "Interactive question"
+msgid "Do you want to continue? [Y/n]? "
+msgstr "Szeretné folytatni? [I/n]? "
+
+#: utils/gdm-config.c:1908
+msgid "User cancelled the request"
+msgstr "A felhasználó megszakította a kérést"
+
+#: utils/gdm-config.c:1939
+#, c-format
+msgid "Failed to reset %s setting: "
+msgstr "Nem sikerült visszaállítani a(z) %s beállítást: "

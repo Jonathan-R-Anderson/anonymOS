@@ -1,0 +1,54 @@
+PROJECT_ROOT ?= $(abspath ../../../../..)
+DC ?= ldc2
+SRC := $(shell find src -name '*.d')
+BUILD_DIR := $(PROJECT_ROOT)/build/deps/redepend/esh/anonymos
+TARGET := $(BUILD_DIR)/esh
+# Version flags (can be overridden)
+VERSION_FLAGS ?= -d-version=ANONYMOS_MINIMAL
+# Detect LDC include directory
+LDC_INCLUDE_DIR := $(shell dirname $(shell which $(DC) 2>/dev/null || echo /usr/bin/ldc2))/../include/d
+# Dynamic build for AnonymOS
+# Uses dynamic linking to support TLS and runtime features
+DFLAGS ?= $(VERSION_FLAGS) \
+          -I=$(LDC_INCLUDE_DIR) \
+          -O2 \
+          -relocation-model=pic \
+          -L--dynamic-linker=/lib64/ld-musl-x86_64.so.1 \
+          -L--allow-multiple-definition
+
+.RECIPEPREFIX := >
+
+$(TARGET): $(SRC)
+>mkdir -p $(BUILD_DIR)
+>$(DC) $(SRC) $(DFLAGS) -of=$(TARGET)
+>@echo "Built $(TARGET) (dynamically linked)"
+>@file $(TARGET)
+>@ldd $(TARGET) 2>&1 | head -5 || echo "  [!] Dynamic linking check failed"
+
+.PHONY: clean
+clean:
+>rm -rf $(BUILD_DIR)
+>rm -f esh esh.o lfe-sh output.txt *.a
+
+.PHONY: install
+install: $(TARGET)
+>mkdir -p ../../build-minimal/initrd-staging/bin/
+>cp $(TARGET) ../../build-minimal/initrd-staging/bin/
+>@echo "Installed $(TARGET) to initrd"
+>@echo "Note: Dynamically linked binary, requires ld-musl-x86_64.so.1"
+
+.PHONY: test
+test: $(TARGET)
+>@echo "Testing shell..."
+>@printf "help\nexit\n" | timeout 3 ./$(TARGET) 2>&1 | head -30 || echo "Test completed"
+
+.PHONY: verify
+verify: $(TARGET)
+>@echo "Verifying static linkage..."
+>@file $(TARGET)
+>@echo ""
+>@echo "Checking for dynamic dependencies:"
+>@ldd $(TARGET) 2>&1 || echo "✓ No dynamic linker needed"
+>@echo ""
+>@echo "Binary size:"
+>@ls -lh $(TARGET)

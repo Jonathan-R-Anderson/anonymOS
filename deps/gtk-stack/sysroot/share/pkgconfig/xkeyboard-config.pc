@@ -1,0 +1,7 @@
+
+datadir=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/share
+xkb_base=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot/share/X11/xkb
+
+Name: XKeyboardConfig
+Description: X Keyboard configuration data
+Version: 2.41

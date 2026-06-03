@@ -1,0 +1,413 @@
+# Translation of gnome-session to Czech.
+# Copyright (C) 1999, 2003, 2007, 2008, 2009, 2010, 2011 the author(s) of gnome-session.
+# Copyright (C) 2004, 2005, 2006 Miloslav Trmac <mitr@volny.cz>.
+# This file is distributed under the same license as the gnome-session package.
+#
+# GIS <gis@academy.cas.cz>, 1999.
+# David Šauer <davids@penguin.cz>, 1999.
+# George Lebl <jirka@5z.com>, 2000, 2001.
+# Stanislav Brabec <utx@penguin.cz>, 2000, 2001.
+# Michal Bukovjan <bukm@centrum.cz>, 2002, 2003.
+# Miloslav Trmac <mitr@volny.cz>, 2004, 2005, 2006.
+# Petr Tomeš <ptomes@gmail.com>, 2006.
+# Petr Kovar <pknbe@volny.cz>, 2007, 2008, 2009, 2010, 2011, 2012, 2013.
+# Marek Černocký <marek@manet.cz>, 2012, 2013, 2015, 2018, 2020, 2021, 2024.
+# Dagobert Janota <janotadag@gmail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-08-04 21:25+0000\n"
+"PO-Revision-Date: 2025-08-19 18:26+0200\n"
+"Last-Translator: Daniel Rusek <mail@asciiwolf.com>\n"
+"Language-Team: čeština <gnome-cs-list@gnome.org>\n"
+"Language: cs\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1) ? 0 : (n>=2 && n<=4) ? 1 : 2;\n"
+"X-Generator: Poedit 3.6\n"
+"X-Project-Style: gnome\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Toto sezení vás přihlásí do GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME na Waylandu"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME na Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Dotaz na odhlášení"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Když je zapnuto, gnome-session se bude před ukončením sezení dotazovat "
+"uživatele."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Zobrazit varování při záložním sezení"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Když je zapnuto, gnome-session zobrazí po přihlášení varovné dialogové okno "
+"v situaci, kdy se automaticky použije záložní sezení."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Neodpovídá"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "Odh_lásit se"
+
+#: gnome-session/leader-main.c:535 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Sezení, které se má použít"
+
+#: gnome-session/leader-main.c:535 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NÁZEV_SEZENÍ"
+
+#: gnome-session/leader-main.c:536
+msgid "Enable debugging code"
+msgstr "Zapnout ladicí kód"
+
+#: gnome-session/leader-main.c:537
+msgid "Version of this application"
+msgstr "Verze této aplikace"
+
+#: gnome-session/leader-main.c:538
+msgid "This option is ignored"
+msgstr "Tato možnost je ignorována"
+
+#: gnome-session/leader-main.c:539
+msgid "Don't re-exec into a login shell"
+msgstr "Zamezit opětovnému spuštění přihlašovacího shellu"
+
+#: gnome-session/leader-main.c:560 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " – správce sezení GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Spustit gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Spustit gnome-session-shutdown.target při zachycení signálu EOF nebo jednoho "
+"bajtu na standardním vstupu"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Dokončena signálová inicializace vůči gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Restartovat dbus.service, pokud běží"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Běžet od ExecStopPost do spuštění gnome-session-shutdown.target při selhání "
+"služby"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Program potřebuje právě jeden parametr"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Neznámý potlačující argument: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Nepodařilo se spustit %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Zobrazit verzi programu"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Id aplikace, která by se měla spustit při potlačování (volitelné)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "Důvod k potlačení (volitelné)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "DŮVOD"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Přidat akci k potlačení (opakovatelné)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "AKCE"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Nespustit PŘÍKAZ a namísto toho trvale čekat"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Vypsat existující potlačení a odejít"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "PŘÍKAZ"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Spustit PŘÍKAZ a potlačit některé funkce sezení."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Možné hodnoty AKCE jsou: logout, switch=user, suspend, idle a automount.\n"
+"V případě, že nejsou určeny žádné možnosti --inhibit, hodnotou je idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Nebyl určen PŘÍKAZ ani --inhibit-only."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Odhlásit se"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Vypnout"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Restartovat"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ignorovat jakékoliv existující inhibitory"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Nevyžadovat potvrzení od uživatele"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Nelze se spojit se správcem sezení"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program volán s kolidujícími volbami"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Přepsat standardní adresáře automatického spuštění"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "ADR_AUTOSPUŠTĚNÍ"
+
+#~ msgid "Custom"
+#~ msgstr "Vlastní"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Tato položka umožňuje vybrat uložené sezení"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "GNOME dummy"
+
+#~ msgid "Save sessions"
+#~ msgstr "Ukládat sezení"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Když je zapnuto, bude gnome-session automaticky ukládat sezení."
+
+#~ msgid "Save this session"
+#~ msgstr "Uložit toto sezení"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Když je zapnuto, gnome-session při odhlášení automaticky uloží příští "
+#~ "sezení, i když je vypnuté automatické ukládání."
+
+#~ msgid "Custom Session"
+#~ msgstr "Vlastní sezení"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Vyberte prosím vlastní sezení, které chcete spustit"
+
+#~ msgid "_New Session"
+#~ msgstr "_Nové sezení"
+
+#~ msgid "_Remove Session"
+#~ msgstr "Odst_ranit sezení"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Přej_menovat sezení"
+
+#~ msgid "_Continue"
+#~ msgstr "_Pokračovat"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "Jejda! Něco se pokazilo."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Došlo ke komplikacím a systém se nepodařilo obnovit. Kontaktujte prosím "
+#~ "správce systému"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Došlo ke komplikacím a systém se nepodařilo obnovit. Všechna rozšíření "
+#~ "byla preventivně zakázána."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Došlo ke komplikacím a systém se nepodařilo obnovit.\n"
+#~ "Odhlaste se prosím a zkuste to znovu."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Odhlásit se"
+
+#~ msgid "Allow logout"
+#~ msgstr "Umožnit odhlášení"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Zobrazit varování rozšíření"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Zapamatovaná aplikace"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Tento program brání odhlášení."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr ""
+#~ "Odmítnutí spojení nového klienta, jelikož právě probíhá vypnutí sezení\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Nelze vytvořit socket naslouchání ICE: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "Běží jako služba systemd"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Nenahrávat uživatelem zadané aplikace"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Zobrazit dialogové okno černé barvy pro testování"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Zakázat kontrolu hardwarové akcelerace"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [VOLBA…] PŘÍKAZ\n"
+#~ "\n"
+#~ "Spustí PŘÍKAZ a zablokuje určitou vlastnost sezení.\n"
+#~ "\n"
+#~ "  -h, --help        Zobrazit tuto nápovědu\n"
+#~ "  --version         Zobrazit verzi programu\n"
+#~ "  --app-id ID       ID aplikace, které se má použít při zablokování\n"
+#~ "                    (volitelné)\n"
+#~ "  --reason DŮVOD    Důvod zablokování (volitelné)\n"
+#~ "  --inhibit ARG     Vlastnosti k zablokování, seznam z následujících "
+#~ "možností\n"
+#~ "                    oddělených dvojtečkou:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Nespustit PŘÍKAZ a namísto toho čekat donekonečna\n"
+#~ "  -l, --list        Vypsat současná blokování a skončit\n"
+#~ "\n"
+#~ "Pokud není zadána volba --inhibit, použije se idle.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Chyba při vytváření roury: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Selhalo čtení roury\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s vyžaduje argument\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Sezení %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr "Názvy sezení nemohou začínat znakem „.“ nebo obsahovat znak „/“"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Názvy sezení nemohou začínat znakem „.“"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Názvy sezení nemohou obsahovat znak „/“"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "Sezení s názvem „%s“ již existuje"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Používat správu sezení systemd"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr "Používat vestavěnou správu sezení (místo té založené na systemd)"

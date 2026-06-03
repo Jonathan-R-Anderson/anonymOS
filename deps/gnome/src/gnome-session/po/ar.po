@@ -1,0 +1,671 @@
+# translation of gnome-session.HEAD.po to Arabic
+# This file is distributed under the same license as the PACKAGE package.
+# Copyright (C) 2004 THE PACKAGE'S COPYRIGHT HOLDER
+# Sayed Jaffer Al-Mosawi <mosawi@arabeyes.org>, 2002.
+# Djihed Afifi <djihed@gmail.com>, 2006.
+# Anas Husseini <linux.anas@gmail.com>, 2007.
+# Anas Afif Emad <anas.e87@gmail.com>, 2008.
+# Khaled Hosny <khaledhosny@eglug.org>, 2006, 2007, 2008, 2009, 2010, 2011, 2013, 2014.
+# Anass Ahmed <anass.1430@gmail.com>, 2011.
+# Ibrahim Saed <ibraheem5000@gmail.com>, 2012.
+# Ali Aljishi <ahj696@hotmail.com>, 2022.
+# Khalid Abu Shawarib <khalid.shawarib@gmail.com>, 2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session.HEAD\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2024-02-22 19:11+0000\n"
+"PO-Revision-Date: 2024-03-22 03:40+0300\n"
+"Last-Translator: Khalid Abu Shawarib <khalid.shawarib@gmail.com>\n"
+"Language-Team: Arabic <doc@arabeyes.org>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural= n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 && n%100<=99 ? 4 : 5;\n"
+"X-Generator: Gtranslator 45.3\n"
+"X-Project-Style: gnome\n"
+
+#: data/gnome-custom-session.desktop.in.in:3
+msgid "Custom"
+msgstr "مخصص"
+
+#: data/gnome-custom-session.desktop.in.in:4
+msgid "This entry lets you select a saved session"
+msgstr "هذه المدخلة تسمح لك باختيار جلسة محفوطة"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+msgid "GNOME"
+msgstr "جنوم"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "تولجك هذه الجلسة في جنوم"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "جنوم شكلي"
+
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME on Wayland"
+msgstr "جنوم على وَيلَاند"
+
+#: data/gnome-xorg.desktop.in.in:3
+msgid "GNOME on Xorg"
+msgstr "جنوم على إكس‌أورج"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Save sessions"
+msgstr "احفظ الجلسات"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will save the session automatically."
+msgstr "إن مكّن، سيحفظ gnome-session الجلسة تلقائيًّا."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Save this session"
+msgstr "احفظ هذه الجلسة"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"When enabled, gnome-session will automatically save the next session at log "
+"out even if auto saving is disabled."
+msgstr ""
+"إن مّكن، سيحفظ gnome-session الجلسة التالية تلقائيًّا عند تسجيل الخروج، حتّى لو "
+"كان الحفظ التلقائيّ معطّلًا."
+
+#: data/org.gnome.SessionManager.gschema.xml:15
+msgid "Logout prompt"
+msgstr "محثّ الخروج"
+
+#: data/org.gnome.SessionManager.gschema.xml:16
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr "إن مكّن، سيسأل gnome-session المستخدم قبل إنهاء جلسة."
+
+#: data/org.gnome.SessionManager.gschema.xml:20
+msgid "Show the fallback warning"
+msgstr "أظهر تحذير اللجوء"
+
+#: data/org.gnome.SessionManager.gschema.xml:21
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"إن مكّن، سيعرض gnome-session حوار تحذير بعد الولوج إن أُعيدت الجلسة تلقائيًّا."
+
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "جلسة مخصصة"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "من فضلك، اختر جلسة مخصصة لتشغيلها"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "جلسة _جديدة"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "_أزِل الجلسة"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "غيّر ا_سم جلسة"
+
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "أ_كمل"
+
+#: gnome-session/gsm-fail-whale-dialog.c:318
+msgid "Oh no!  Something has gone wrong."
+msgstr "لا! ثمة مشكلة."
+
+#: gnome-session/gsm-fail-whale-dialog.c:325
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system "
+"administrator"
+msgstr "حدثت مشكلة وتعذّر تعافي النظام. حاول الاتصال بمدير النظام"
+
+#: gnome-session/gsm-fail-whale-dialog.c:327
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have "
+"been disabled as a precaution."
+msgstr "حدثت مشكلة وتعذّر تعافي النظام. عُطّلت جميع الامتدادات كإجراء احترازي."
+
+#: gnome-session/gsm-fail-whale-dialog.c:329
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"حدثت مشكلة وتعذّر تعافي النظام.\n"
+"حاول الخروج ثم إعادة المحاولة."
+
+#: gnome-session/gsm-fail-whale-dialog.c:344
+msgid "_Log Out"
+msgstr "ا_خرج"
+
+#: gnome-session/gsm-fail-whale-dialog.c:412 gnome-session/main.c:505
+msgid "Enable debugging code"
+msgstr "فعّل كود تتبع الأخطاء"
+
+#: gnome-session/gsm-fail-whale-dialog.c:413
+msgid "Allow logout"
+msgstr "اسمح بالخروج"
+
+#: gnome-session/gsm-fail-whale-dialog.c:414
+msgid "Show extension warning"
+msgstr "أظهر تحذير الامتداد"
+
+#: gnome-session/gsm-manager.c:1301 gnome-session/gsm-manager.c:2050
+msgid "Not responding"
+msgstr "لا يستجيب"
+
+#: gnome-session/gsm-util.c:431
+msgid "_Log out"
+msgstr "ا_خرج"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "التطبيقات المتذكرة"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "يعيق هذا البرنامج الخروج."
+
+#: gnome-session/gsm-xsmp-server.c:340
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr "يرفض عملاءً جدد لأن الجلسة يتم إطفاؤها حاليا\n"
+
+#: gnome-session/gsm-xsmp-server.c:607
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "تعذّر إنشاء مقبس استماع ICE: %s"
+
+#: gnome-session/main.c:502
+msgid "Running as systemd service"
+msgstr "يعمل بصفته خدمة systemd"
+
+#: gnome-session/main.c:503
+msgid "Override standard autostart directories"
+msgstr "تخطى مجلدات بدء التشغيل القياسية"
+
+#: gnome-session/main.c:503
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: gnome-session/main.c:504
+msgid "Session to use"
+msgstr "الجلسة التي ستُستخدم"
+
+#: gnome-session/main.c:504
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: gnome-session/main.c:506
+msgid "Do not load user-specified applications"
+msgstr "لا تُحمّل التطبيقات التي حددها المستخدم"
+
+#: gnome-session/main.c:507
+msgid "Version of this application"
+msgstr "إصدارة هذا التطبيق"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:509
+msgid "Show the fail whale dialog for testing"
+msgstr "أظهر حوار الفشل للاختبار"
+
+#: gnome-session/main.c:510
+msgid "Disable hardware acceleration check"
+msgstr "عطّل التأكّد من تسريع العتاد"
+
+#: gnome-session/main.c:542
+msgid " — the GNOME session manager"
+msgstr " — مدير جلسات جنوم"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "ابدأ gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"ابدأ gnome-session-shutdown.target عند استقبال نهاية-ملف (EOF) أو بايتاً "
+"واحداً في دفق الإدخال القياسيّ (stdin)"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "تمهيد الإشارة المنجز لـgnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "أعِد تشغيل dbus.service إذا كانت تعمل"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-failed.target on service failure"
+msgstr "شغّل من ExecStopPost لبدء gnome-session-failed.target عند فشل الخدمة"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "يحتاج البرنامج معاملًا واحدًا فقط"
+
+#: tools/gnome-session-inhibit.c:108
+#, fuzzy, c-format
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"  -l, --list        List the existing inhibitions, and exit\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"نفذ COMMAND أثناء تثبيط بعض وظائف الجلسة.\n"
+"\n"
+"  -h, --help        أعرض هذه المساعدة\n"
+"  --version         أظهر إصدارة البرنامج\n"
+"  --app-id ID       معرف التطبيق المستعمل\n"
+"‎                    أثناء التثبيط (اختياري)\n"
+"  --reason REASON   سبب التثبيط (اختياري)\n"
+"  --inhibit ARG     الأشياء المثبطة، مسرودة كقائمة مفصولة بنقط رأسية:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    لا تقلع ؜COMMAND وانتظر للأبد عوضاً عن ذلك‏\n"
+"  -l, --list        اسرد التثبيطات الموجودة واخرج\n"
+"\n"
+"‎إذا لم يحدد خيار --inhibit‏، سيفترض idle.\n"
+
+#: tools/gnome-session-inhibit.c:282
+#, c-format
+msgid "Error while creating pipe: %s\n"
+msgstr "حدث خطأ أثناء إنشاء أنبوب: %s\n"
+
+#: tools/gnome-session-inhibit.c:299
+msgid "Failure reading pipe\n"
+msgstr "فشل قراءة الأنبوب\n"
+
+#: tools/gnome-session-inhibit.c:303
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "فشل تنفيذ %s\n"
+
+#: tools/gnome-session-inhibit.c:376 tools/gnome-session-inhibit.c:386
+#: tools/gnome-session-inhibit.c:396
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "يتطلب الخيار %s معاملا\n"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "اخرج"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "أطفئ"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "أعِد التشغيل"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "متجاهلًا أية مثبطات موجودة"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "لا تطلب تأكيدًا من المستخدم"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "تعذّر الاتصال بمدير الجلسات"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "تم استدعاء البرنامج بخيارات متضاربة"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "جلسة %d"
+
+#: tools/gnome-session-selector.c:107
+msgid ""
+"Session names are not allowed to start with “.” or contain “/” characters"
+msgstr "لا يُسمح أن يبدأ اسم الجلسة بـ «.» أو أن يتضمّن حروف «/»"
+
+#: tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with “.”"
+msgstr "لا يُسمح أن تبدأ أسماء الجلسات بـ «.»"
+
+#: tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "لا يُسمح أن تتضمّن أسماء الجلسات حروف «/»"
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named “%s” already exists"
+msgstr "توجد جلسة باسم «%s» مسبقًا"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "استخدم إدارة جلسات systemd"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr "استخدم إدارة الجلسة المدمجة (عوضًا عن المبنيّة على systemd)"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "تولجك هذه الجلسة في جنوم باستخدام وايلاند"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "برامج بدء الت_شغيل الإضافية:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "برامج بدء التشغيل"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "ت_ذكّر تلقائيا التطبيقات المشغلة عند تسجيل الخروج"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_تذكّر التطبيقات المشغلة حاليًا"
+
+#~ msgid "Options"
+#~ msgstr "الخيارات"
+
+#~ msgid "Browse…"
+#~ msgstr "تصفّح…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "ال_تعليق:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "الأ_مر:"
+
+#~ msgid "_Name:"
+#~ msgstr "الا_سم:"
+
+#~ msgid "Select Command"
+#~ msgstr "اختر أمرا"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "أضِف برنامجا لبداية التشغيل"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "حرّر برنامج بدء التشغيل"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "لا يمكن أن يكون أمر بدء التشغيل فارغًا"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "أمر بدء التشغيل غير سليم"
+
+#~ msgid "Enabled"
+#~ msgstr "مُفعّل"
+
+#~ msgid "Icon"
+#~ msgstr "أيقونة"
+
+#~ msgid "Program"
+#~ msgstr "البرنامج"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "تفضيلات برمجيات بدء التشغيل"
+
+#~ msgid "No name"
+#~ msgstr "بلا اسم"
+
+#~ msgid "No description"
+#~ msgstr "بلا وصف"
+
+#~ msgid "Could not display help document"
+#~ msgstr "تعذّر عرض مستند المساعدة"
+
+#~ msgid "Startup Applications"
+#~ msgstr "تطبيقات بدء التشغيل"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "اختر التطبيقات التي تريد تشغيلها عند ولوجك"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "ليس هذا ملف .desktop سليم"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "إصدارة ملف سطح مكتب غير معروفة: '%s'"
+
+#~ msgid "Starting %s"
+#~ msgstr "يجري بدء %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "لا يقبل التطبيق مستندات في سطر الأوامر"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "خيار إطلاق غير معروف: %Id"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "تعذّر تمرير مسارات الملفات إلى مدخلة سطح مكتب 'Type=Link'"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "ليس عنصرا يمكن إطلاقه"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "عطّل الاتصال بمدير الجلسات"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "حدد ملفا يحتوي الاعدادات المحفوظة"
+
+#~ msgid "FILE"
+#~ msgstr "ملف"
+
+#~ msgid "ID"
+#~ msgstr "معرّف"
+
+#~ msgid "Session management options:"
+#~ msgstr "خيارات إدارة الجلسات:"
+
+#~ msgid "Show session management options"
+#~ msgstr "اعرض خيارات إدارة الجلسات"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "ما زالت بعض البرامج تعمل:"
+
+#~ msgid "Unknown"
+#~ msgstr "مجهول"
+
+#~ msgid "A program is still running:"
+#~ msgstr "ما زال أحد البرامج يعمل:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr "بانتظار انتهاء البرامج. مقاطعة هذه البرامج قد يتسبب في فقدان العمل."
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr "بانتظار انتهاء البرامج. مقاطعة هذه البرامج قد يتسبب في فقد بيانات."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "بدّل المستخدم بالرغم من هذا"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "اخرج بالرغم من هذا"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "علّق بالرغم من هذا"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "أسبِت بالرغم من هذا"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "أغلق بالرغم من هذا"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "أعد التشغيل على أي حال"
+
+#~ msgid "Lock Screen"
+#~ msgstr "أوصد الشاشة"
+
+#~ msgid "Cancel"
+#~ msgstr "ألغ"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "سيتم إخراجك حالا."
+#~ msgstr[1] "سيتم إخراجك خلال ثانية واحدة."
+#~ msgstr[2] "سيتم إخراجك خلال ثانيتين."
+#~ msgstr[3] "سيتم إخراجك خلال %Id ثوان."
+#~ msgstr[4] "سيتم إخراجك خلال %Id ثانية."
+#~ msgstr[5] "سيتم إخراجك خلال %Id ثانية."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "سيتم إطفاء النظام حالا."
+#~ msgstr[1] "سيتم إطفاء النظام خلال ثانية واحدة."
+#~ msgstr[2] "سيتم إطفاء النظام خلال ثانيتين."
+#~ msgstr[3] "سيتم إطفاء النظام خلال %Id ثوان."
+#~ msgstr[4] "سيتم إطفاء النظام خلال %Id ثانية."
+#~ msgstr[5] "سيتم إطفاء النظام خلال %Id ثوان."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "سيعاد تشغيل النظام حالا."
+#~ msgstr[1] "سيعاد تشغيل النظام آليا خلال ثانية واحدة."
+#~ msgstr[2] "سيعاد تشغيل النظام آليا خلال ثانيتين."
+#~ msgstr[3] "سيعاد تشغيل النظام آليا خلال %Id ثوان."
+#~ msgstr[4] "سيعاد تشغيل النظام آليا خلال %Id ثانية."
+#~ msgstr[5] "سيعاد تشغيل النظام آليا خلال %Id ثانية."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "حاليا أنت والج باسم \"%s\"."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "أأخرج من هذا النظام الآن؟"
+
+#~ msgid "_Switch User"
+#~ msgstr "ب_دّل المستخدم"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "أأطفئ هذا النظام الآن؟"
+
+#~ msgid "S_uspend"
+#~ msgstr "_علّق"
+
+#~ msgid "_Hibernate"
+#~ msgstr "أ_سبِت"
+
+#~ msgid "_Restart"
+#~ msgstr "أعِد الت_شغيل"
+
+#~ msgid "_Shut Down"
+#~ msgstr "أ_طفئ"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "هل ترغب بإعادة تشغيل النظام الآن؟"
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "الأيقونة '%s' غير موجودة"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "فشل بدء جنوم 3"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "للأسف فشل بدء جنوم 3 على الوجه الصحيح ودخلت إلى <i>الطور التقليدي</i>.\n"
+#~ "\n"
+#~ "غالبا ما يعني هذا أن نظامك (عتاد الرسوميات أو المُشغّل) ليس مؤهلا لتشغيل "
+#~ "جنوم 3 بكامل طاقتها."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "تعرّف أكثر على جنوم 3"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr "تعذّر بدء جلسة الولوج (وتعذّر الاتصال بالخادوم الرسومي)"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>ما زالت بعض البرامج تعمل:</b>"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the "
+#~ "extensions below may have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "حدثت مشكلة وتعذّر تعافي النظام. قد تكون أحد الامتدادات بالأسفل قد تسببت في "
+#~ "هذا.\n"
+#~ "حاول تعطيل بعضها ثم لج مجددا."
+
+#~ msgid "Exited with code %d"
+#~ msgstr "خَرَجَ مع الرمز %d"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "قًتِل بإشارة %d"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "أُوقِف بإشارة %d"
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "هناك مشكلة مع خادوم الإعدادات.\n"
+#~ "(%s خرج بالحالة %Id)"
+
+#~ msgid "Try _Recovery"
+#~ msgstr "حاوِل ال_تعافي"
+
+#~ msgid "A system error has occurred: %s"
+#~ msgstr "حدث عُطل في النظام: %s"
+
+#~ msgid "A fatal system error has occurred: %s"
+#~ msgstr "حدث عُطل أساسي في النظام: %s"
+
+#~ msgid "Component '%s': %s"
+#~ msgstr "المكون '%s': ‏%s"
+
+#~ msgid "Killed by signal"
+#~ msgstr "قًتِل بإشارة"
+
+#~ msgid "Timed out"
+#~ msgstr "انتهت المهلة"
+
+#~ msgid "Show shutdown dialog"
+#~ msgstr "أعرض حوار إيقاف التشغيل"
+
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "استخدم صناديق الحوار للأخطاء"
+
+#~ msgid "Set the current session name"
+#~ msgstr "اضبط اسم الجلسة الحالية"
+
+#~ msgid "NAME"
+#~ msgstr "الاسم"
+
+#~ msgid "Classic GNOME"
+#~ msgstr "جنوم تقليدية"
+
+#~ msgid "Window Manager"
+#~ msgstr "مدير النوافذ"

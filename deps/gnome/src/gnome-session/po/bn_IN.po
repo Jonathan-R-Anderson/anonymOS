@@ -1,0 +1,575 @@
+# translation of bn_IN.po to Bengali INDIA
+# Bengali India translation of gnome-session.
+# Copyright (C) 2003, 2006, 2008, 2009, 2010 Free Software Foundation, Inc.
+# This file is distributed under the same license as the gnome-session package.
+# Taneem Ahmed <taneem@bengalinux.org>, 2003.
+# Khandakar Mujahidul Islam <suzan229@yahoo.com>, 2003-2005.
+# Runa Bhattacharjee <runab@fedoraproject.org>, 2008.
+# Runa Bhattacharjee <runab@redhat.com>, 2008, 2009, 2010, 2011, 2012.
+# sray <sray@redhat.com>, 2013, 2014. #zanata.
+# Akarshan Biswas <akarshan.biswas@hotmail.com>, 2020.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: bn_IN\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2020-08-16 08:36+0000\n"
+"PO-Revision-Date: 2020-10-11 12:49+0530\n"
+"Last-Translator: Akarshan Biswas <akarshan.biswas@hotmail.com>\n"
+"Language-Team: Bengali <anubad@lists.ankur.org.in>\n"
+"Language: bn_IN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1)\n"
+"X-DamnedLies-Scope: partial\n"
+"X-Generator: Gtranslator 3.38.0\n"
+
+# auto translated by TM merge from project: system-config-printer, version: 1.1.16-23, DocId: system-config-printer
+#: data/gnome-custom-session.desktop.in.in:3
+msgid "Custom"
+msgstr "স্বনির্ধারিত"
+
+#: data/gnome-custom-session.desktop.in.in:4
+msgid "This entry lets you select a saved session"
+msgstr "এই এন্ট্রি অাপনাকে একটি সংরক্ষিত সেশন নির্বাচন করতে দেয়"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "এই সেশানের মাধ্যমে GNOME-এ লগ-ইন করা যাবে"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "GNOME ডামি"
+
+#: data/gnome-xorg.desktop.in.in:3
+msgid "GNOME on Xorg"
+msgstr "Xorg এ জিনোম"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:5
+msgid "Save sessions"
+msgstr "সেশন সংরক্ষণ করুন"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:6
+msgid "If enabled, gnome-session will save the session automatically."
+msgstr "সক্ষম করা থাকলে, জিনোম-সেশনটি স্বয়ংক্রিয়ভাবে সেশনটি সংরক্ষণ করবে।"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:10
+#| msgid "Save sessions"
+msgid "Save this session"
+msgstr "এই সেশন সংরক্ষণ করুন"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:11
+msgid ""
+"When enabled, gnome-session will automatically save the next session at log "
+"out even if auto saving is disabled."
+msgstr ""
+"সক্ষম করা থাকলে, স্বয়ংক্রিয় সংরক্ষণ অক্ষম থাকলেও জিনোম-সেশন লগ আউটে পরবর্তী সেশনটি "
+"স্বয়ংক্রিয়ভাবে সংরক্ষণ করবে।"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:15
+msgid "Logout prompt"
+msgstr "লগআউট প্রম্পট"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:16
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"যদি সক্ষম করা থাকে, জিনোম-সেশনটি অধিবেশন শেষ করার আগে ব্যবহারকারীকে অনুরোধ "
+"জানাবে।"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:20
+msgid "Show the fallback warning"
+msgstr "ফলব্যাক সতর্কতা দেখান"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:21
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"যদি সক্ষম করা থাকে, সেশনটি স্বয়ংক্রিয়ভাবে পিছনে পড়ে গেলে জিনোম-সেশন লগইন করার "
+"পরে একটি সতর্কতা ডায়ালগ প্রদর্শন করবে।"
+
+# auto translated by TM merge from project: gdm, version: 3.8.4, DocId: gdm
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "স্বনির্ধারিত সেশান"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "চালাতে অনুগ্রহ করে একটি স্বনির্বাচিত সেশন নির্বাচন করুন"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "নতুন সেশন (_N)"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "সেশন সরান (_R)"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "সেশনের নাম পরিবর্তন করুন (_m)"
+
+# auto translated by TM merge from project: brasero, version: 3.8.0, DocId: brasero
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "এগিয়ে চলুন (_C)"
+
+#: gnome-session/gsm-fail-whale-dialog.c:318
+msgid "Oh no!  Something has gone wrong."
+msgstr "ওহ হো!  কিছু সমস্যা হয়েছে।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:325
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system "
+"administrator"
+msgstr ""
+"একটি সমস্যা দেখা দিয়েছে এবং সিস্টেমটি পুনরুদ্ধার করতে পারছে না। একটি সিস্টেম "
+"প্রশাসকের সাথে যোগাযোগ করুন"
+
+#: gnome-session/gsm-fail-whale-dialog.c:327
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have "
+"been disabled as a precaution."
+msgstr ""
+"একটি সমস্যা দেখা দিয়েছে এবং সিস্টেমটি পুনরুদ্ধার করতে পারছে না। সাবধানতা জন্য সমস্ত "
+"এক্সটেনশন অক্ষম করা হয়েছে।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:329
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"একটি সমস্যা দেখা দিয়েছে এবং সিস্টেমটি পুনরুদ্ধার করতে পারছে না।\n"
+" লগ আউট করে আবার চেষ্টা করুন।"
+
+#: gnome-session/gsm-fail-whale-dialog.c:344
+msgid "_Log Out"
+msgstr "লগ-আউট করুন (_L)"
+
+#: gnome-session/gsm-fail-whale-dialog.c:412 gnome-session/main.c:404
+msgid "Enable debugging code"
+msgstr "কোড ডিবাগ ব্যবস্থা সক্রিয় করুন"
+
+#: gnome-session/gsm-fail-whale-dialog.c:413
+msgid "Allow logout"
+msgstr "লগ আউটের অনুমতি দিন"
+
+#: gnome-session/gsm-fail-whale-dialog.c:414
+msgid "Show extension warning"
+msgstr "এক্সটেনশন সর্তকতা দেখান"
+
+#: gnome-session/gsm-manager.c:1289 gnome-session/gsm-manager.c:1999
+msgid "Not responding"
+msgstr "কোনো প্রতিক্রিয়া হয়নি"
+
+# auto translated by TM merge from project: gnome-session, version: 3.8.4, DocId: gnome-session-3.0
+#: gnome-session/gsm-util.c:415
+msgid "_Log out"
+msgstr "লগ-আউট করুন (_L)"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "অ্যাপ্লিকোশন মনে রাখা হবে"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "এই প্রোগ্রাম দ্বারা লগ-আউট করতে প্রতিরোধ করা হচ্ছে।"
+
+#: gnome-session/gsm-xsmp-server.c:338
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr ""
+"সিস্টেম বর্তমানে বন্ধ করার প্রচেষ্টা করা হচ্ছে ও এই কারণে নতুন ক্লায়েন্টের সাথে সংযোগ "
+"স্থাপনের অনুরোধ প্রত্যাখ্যান করা হচ্ছে।\n"
+
+#: gnome-session/gsm-xsmp-server.c:605
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "ICE অপেক্ষার সকেট নির্মাণ করতে ব্যর্থ: %s"
+
+#: gnome-session/main.c:398
+msgid "Running as systemd service"
+msgstr "সিস্টেম ডী সার্ভিস হিসাবে চলছে"
+
+#: gnome-session/main.c:399
+msgid "Use systemd session management"
+msgstr "সিস্টেমে ডী সেশন ম্যানেজমেন্ট ব্যবহার করুন"
+
+#: gnome-session/main.c:401
+msgid "Use builtin session management (rather than the systemd based one)"
+msgstr "অন্তর্নির্মিত সেশন ম্যানেজমেন্টে ব্যবহার করুন (সিস্টেম  ডী ভিত্তিক একের চেয়ে)"
+
+#: gnome-session/main.c:402
+msgid "Override standard autostart directories"
+msgstr "প্রমিত autostart ডিরেক্টরির মান উপেক্ষা করা হবে"
+
+#: gnome-session/main.c:402
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: gnome-session/main.c:403
+msgid "Session to use"
+msgstr "ব্যবহারযোগ্য সেশান"
+
+#: gnome-session/main.c:403
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: gnome-session/main.c:405
+msgid "Do not load user-specified applications"
+msgstr "ব্যবহারকারী দ্বারা নির্ধারিত অ্যাপ্লিকেশন লোড করা হবে না"
+
+#: gnome-session/main.c:406
+msgid "Version of this application"
+msgstr "অ্যাপ্লিকেশনের সংস্করণ"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:408
+msgid "Show the fail whale dialog for testing"
+msgstr "পরীক্ষার জন্য ফেইল-ওয়েইল ডায়লগটি প্রদর্শন করা হবে"
+
+#: gnome-session/main.c:409
+msgid "Disable hardware acceleration check"
+msgstr "হার্ডওয়্যার এক্সিলারেশন পরীক্ষা অক্ষম করুন"
+
+#: gnome-session/main.c:441
+msgid " — the GNOME session manager"
+msgstr "- জিনোম সেশন ম্যানেজার"
+
+#: tools/gnome-session-ctl.c:245
+msgid "Start gnome-session-shutdown.target"
+msgstr "Gnome-session-utdown.target শুরু করুন"
+
+#: tools/gnome-session-ctl.c:246
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+" EOF বা stdin এ একটি একক বাইট পাওয়ার সময় gnome-session-shutdown.target শুরু করুন"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Signal initialization done to gnome-session"
+msgstr "জিনোম-সেশনে সংকেত সূচনা সম্পন্ন হয়েছে"
+
+#: tools/gnome-session-ctl.c:248
+msgid "Restart dbus.service if it is running"
+msgstr "dbus.service চালু থাকলে পুনরায় চালু করুন"
+
+#: tools/gnome-session-ctl.c:249
+msgid ""
+"Run from ExecStopPost to start gnome-session-failed.target on service failure"
+msgstr ""
+"পরিষেবা ব্যর্থতায় gnome-session-failed.target শুরু করতে ExecStopPost থেকে চালান"
+
+#: tools/gnome-session-ctl.c:279
+msgid "Program needs exactly one parameter"
+msgstr "প্রোগ্রামের ঠিক এক প্যারামিটার দরকার"
+
+#: tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"  -l, --list        List the existing inhibitions, and exit\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [বিকল্প…] COMMAND\n"
+"\n"
+"কিছু সেশন কার্যকারিতা বাধা দেওয়ার সময় COMMAND সম্পাদন করুন।\n"
+"\n"
+"  -h, --help এই সাহায্যটি দেখান\n"
+" --version  প্রোগ্রাম সংস্করণ প্রদর্শন করুন\n"
+" --app-id ID ইনহিবিত করার সময় যেই অ্যাপ্লিকেশান আইডি ব্যাবহার করবেন(ঐচ্ছিক)\n"
+"--reason REASON  ইনহিবিত দেওয়ার কারণ (ঐচ্ছিক)\n"
+"--inhibit ARG  ইনহিবিত দেওয়ার বিষয়গুলি, কোলন-বিচ্ছিন্ন তালিকা:\n"
+"  logout, switch-user, suspend, idle, automount\n"
+" --inhibit-only COMMAND আরম্ভ করবেন না এবং পরিবর্তে চিরকালের জন্য অপেক্ষা\n"
+"-l, --list বিদ্যমান ইনহিবিতগুলি তালিকাভুক্ত করুন এবং প্রস্থান করুন\n"
+"যদি কোনও --inhibit বিকল্প নির্দিষ্ট না করা থাকে তবে idle ধরে নেওয়া হয়।\n"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "%s সম্পাদন করা গেল না\n"
+
+#: tools/gnome-session-inhibit.c:352 tools/gnome-session-inhibit.c:362
+#: tools/gnome-session-inhibit.c:372
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s এর একটি অার্গুমেন্টের অাবশ্যক\n"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "লগ-আউট"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "বন্ধ করুন"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "পুনরারম্ভ"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "কোনো উপস্থিত প্রতিরোধ অগ্রাহ্য করা হবে"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "ব্যবহারকারী নিশ্চিতকরণের জন্য অনুরোধ করবেন না"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "সেশান পরিচালনব্যবস্থার সাথে সংযোগ স্থাপন করতে ব্যর্থ"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "দ্বন্দ্বযুক্ত বিকল্প সহ প্রোগ্রাম আরম্ভের প্রচেষ্টা করা হয়েছে"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "সেশন %d"
+
+#: tools/gnome-session-selector.c:107
+msgid ""
+"Session names are not allowed to start with “.” or contain “/” characters"
+msgstr "সেশন নামগুলি \".\" দিয়ে শুরু করা অথবা \"/\" অক্ষর  থাকার অনুমতি নেই।"
+
+#: tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with “.”"
+msgstr "সেশন নামগুলি \".\" দিয়ে শুরু করার অনুমতি নেই।"
+
+#: tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "সেশন নামগুলিতে \"/\" অক্ষর থাকার অনুমতি নেই।"
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named “%s” already exists"
+msgstr "‘%s’ নামের একটি সেশন ইতিমধ্যেই উপস্থিত"
+
+#~| msgid "This session logs you into GNOME"
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Wayland ব্যবহার করে, এই সেশানের মাধ্যমে GNOME-এ লগ-ইন করা যাবে"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "অতিরিক্ত প্রারম্ভিক প্রোগ্রাম :(_p)"
+
+#~ msgid "Startup Programs"
+#~ msgstr "প্রারম্ভিক প্রোগ্রাম"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr ""
+#~ "লগ-আউট করার সময়, চলমান অ্যাপ্লিকেশনগুলির তালিকা স্বয়ংক্রিয়রূপে মনে রাখা হবে (_A)"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "বর্তমানে চলমান অ্যাপ্লিকেশনের তালিকা মনে রাখা হবে (_R)"
+
+#~ msgid "Options"
+#~ msgstr "বিকল্প"
+
+#~ msgid "Browse…"
+#~ msgstr "ব্রাউজ করুন..."
+
+#~ msgid "Comm_ent:"
+#~ msgstr "মন্তব্য: (_e)"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "কমান্ড: (_m)"
+
+#~ msgid "_Name:"
+#~ msgstr "নাম: (_N)"
+
+#~ msgid "Select Command"
+#~ msgstr "কমান্ড নির্বাচন করুন"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "প্রারম্ভিক প্রোগ্রাম যোগ করুন"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "প্রারম্ভিক কমান্ড সম্পাদন করুন"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "প্রারম্ভিক কমান্ড ফাঁকা রাখা যাবে না"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "প্রারম্ভিক কমান্ডের নাম উল্লেখ করা আবশ্যক"
+
+#~ msgid "Enabled"
+#~ msgstr "সক্রিয়"
+
+#~ msgid "Icon"
+#~ msgstr "আইকন"
+
+#~ msgid "Program"
+#~ msgstr "প্রোগ্রাম"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "প্রারম্ভিক অ্যাপ্লিকেশন সংক্রান্ত পছন্দ"
+
+#~ msgid "No name"
+#~ msgstr "নামবিহীন"
+
+#~ msgid "No description"
+#~ msgstr "বিবরণ অনুপস্থিত"
+
+#~ msgid "Could not display help document"
+#~ msgstr "সহায়ক নথিপত্র প্রদর্শন করতে ব্যর্থ"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "কয়েকটি প্রোগ্রাম চলছে:"
+
+#~ msgid "Startup Applications"
+#~ msgstr "প্রারম্ভিক অ্যাপ্লিকেশন"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "লগ-ইন করার সময় আরম্ভ করার উদ্দেশ্যে চিহ্নিত অ্যাপ্লিকেশন"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "বৈধ .desktop ফাইল নয়"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "অপরিচিত ডেস্কটপ ফাইলের সংস্করণ '%s'"
+
+#~ msgid "Starting %s"
+#~ msgstr "আরম্ভ করা হচ্ছে %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "কমান্ড-লাইনের মাধ্যমে এই অ্যাপ্লিকেশন দ্বারা কোনো নথিপত্র গ্রহণ করা হয় না"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "আরম্ভ সংক্রান্ত অপরিচিত বিকল্প: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "'Type=Link' ডেস্কটপ এনট্রির জন্য নথিপত্রের URI উল্লেখ করা সম্ভব নয়"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "চিহ্নিত বস্তু আরম্ভ করা সম্ভব নয়"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "সেশান পরিচালনব্যবস্থার সাথে সংযোগ বিচ্ছিন্ন করা হবে"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "সংরক্ষিত কনফিগারেশন সহ ফাইল চিহ্নিত করুন"
+
+#~ msgid "FILE"
+#~ msgstr "FILE"
+
+#~ msgid "ID"
+#~ msgstr "ID"
+
+#~ msgid "Session management options:"
+#~ msgstr "সেশন পরিচালনা সংক্রান্ত বিকল্প:"
+
+#~ msgid "Show session management options"
+#~ msgstr "সেশন পরিচালনা সংক্রান্ত বিকল্প প্রদর্শন করা হবে"
+
+#~ msgid "Unknown"
+#~ msgstr "অজানা"
+
+#~ msgid "A program is still running:"
+#~ msgstr "একটি প্রোগ্রাম বর্তমানে চলছে:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "প্রোগ্রাম সমাপ্ত হওয়ার অপেক্ষা করা হয়েছে। প্রোগ্রামটিকে মাঝপথে বাধা দিলে অাপনার "
+#~ "করা কাজ অাপনাকে হারাতে হতে পারে।"
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "প্রোগ্রামগুলি সমাপ্ত হওয়ার অপেক্ষা করা হচ্ছে। এই প্রোগ্রামগুলিকে মাঝপথে বাধা দিলে "
+#~ "অাপনার করা কাজ অাপনাকে হারাতে হতে পারে।"
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "তথাপি ব্যবহারকারী অ্যাকাউন্ট পরিবর্তন করা হবে"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "তথাপি লগ-আউট করা হবে"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "তথাপি স্থগিত করা হবে"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "তথাপি নিদ্রিত করা হবে"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "তথাপি বন্ধ করা হবে"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "তথাপি পুনরারম্ভ করা হবে"
+
+#~ msgid "Lock Screen"
+#~ msgstr "পর্দা লক করুন"
+
+#~ msgid "Cancel"
+#~ msgstr "বাতিল"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে আপনাকে লগ-আউট করা হবে।"
+#~ msgstr[1] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে আপনাকে লগ-আউট করা হবে।"
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে সিস্টেম বন্ধ করা হবে।"
+#~ msgstr[1] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে সিস্টেম বন্ধ করা হবে।"
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে সিস্টেম পুনরারম্ভ করা হবে।"
+#~ msgstr[1] "%d সেকেন্ড অতিক্রান্ত হলে স্বয়ংক্রিয়রূপে সিস্টেম পুনরারম্ভ করা হবে।"
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "বর্তমানে \"%s\" পরিচয়ে লগ-ইন করা হয়েছে।"
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "এই মুহূর্তে সিস্টেম থেকে লগ-আউট করা হবে কি?"
+
+#~ msgid "_Switch User"
+#~ msgstr "ব্যবহারকারী পরিবর্তন করুন (_S)"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "এই মুহূর্তে সিস্টেম বন্ধ করা হবে কি?"
+
+#~ msgid "S_uspend"
+#~ msgstr "স্থগিত করা হবে (_u)"
+
+#~ msgid "_Hibernate"
+#~ msgstr "নিদ্রিত অবস্থা (_H)"
+
+#~ msgid "_Restart"
+#~ msgstr "পুনরারম্ভ (_R)"
+
+#~ msgid "_Shut Down"
+#~ msgstr "বন্ধ করুন (_S)"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "অবিলম্বে সিস্টেম পুনরারম্ভ করা হবে কি?"

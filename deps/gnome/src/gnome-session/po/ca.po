@@ -1,0 +1,229 @@
+# gnome-session translation to Catalan.
+# Copyright © 2000, 2002, 2003, 2004, 2005, 2006 Free Software Foundation, Inc.
+# Ivan Vilata i Balaguer <ivan@selidor.net>, 2000.
+# Softcatalà <info@softcatala.org>, 2000.
+# Jordi Mallach <jordi@sindominio.net>, 2002, 2003, 2004, 2005, 2006, 2007.
+# Josep Puigdemont <josep.puigdemont@gmail.com>, 2007.
+# David Planella <david.planella@gmail.com>, 2008, 2009, 2010, 2011.
+# Jordi Serratosa <jordis@softcatala.cat>, 2012.
+# Gil Forcada <gilforcada@guifi.net>, 2013.
+# Josep Sànchez <papapep@gmx.com>, 2013.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session 2.3.7\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-09 18:23+0000\n"
+"PO-Revision-Date: 2025-09-10 11:50+0200\n"
+"Last-Translator: Jordi Mas i Hernàndez <jmas@softcatala.org>\n"
+"Language-Team: Catalan <tradgnome@softcatala.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Poedit 3.6\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Aquesta sessió us entra al GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME sobre Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME sobre Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Indicador de sortida"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid ""
+"If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Si s'habilita, el gnome-session preguntarà a l'usuari abans de finalitzar "
+"una sessió."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Mostra l'avís de mode clàssic"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Si s'habilita, el gnome-session mostrarà un diàleg d'avís després d'iniciar "
+"la sessió si aquesta és en mode clàssic."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "No està responent"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Surt"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Sessió que s'utilitzarà"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NOM_DE_SESSIÓ"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "Habilita el codi de depuració"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "Versió d'aquesta aplicació"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "Aquesta opció s'ignora"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "No tornis a executar en un intèrpret d'ordres d'inici de sessió"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — el gestor de sessions del GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Inicia gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Inicia gnome-session-shutdown.target quan es rep EOF o un únic byte a stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "S'ha completat el senyal d'inicialització a gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Reinicia dbus.service si està executant-se"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Executa des de ExecStopPost per a iniciar gnome-session-shutdown.target quan"
+" hi hagi una fallada del servei"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "El programa necessita exactament un paràmetre"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Argument d'inhibició desconegut: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "No s'ha pogut executar %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Mostra la versió del programa"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "L'identificador de l'aplicació a utilitzar quan s'inhibeix (opcional)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "IDENTIFICADOR"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "El motiu d'inhibició (opcional)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "MOTIU"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Afegeix una acció per inhibir (repetible)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "ACCIÓ"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "No llanceu l'ORDRE i espereu indefinidament"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Llista les inhibicions existents i surt"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "ORDRE"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Executa l'ordre mentre s'inhibeix alguna funcionalitat de sessió."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Els valors d'ACCIÓ vàlids són: logout, switch-user, suspend, idle i automount.\n"
+"Si no s'especifica cap opció --inhibit, s'assumeix que està inactiva."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "No s'ha especificat cap ORDRE ni --inhibit-only."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Surt"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Apaga"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Reinicia"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "S'està ignorant qualsevol inhibidor existent"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "No demanis la confirmació de l'usuari"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "No s'ha pogut connectar al gestor de sessions"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr ""
+"El programa s'ha invocat amb opcions que entren en conflicte entre elles"
+
+

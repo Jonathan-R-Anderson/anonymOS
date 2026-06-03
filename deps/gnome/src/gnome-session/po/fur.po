@@ -1,0 +1,966 @@
+# Friulian traslation for gnome-session
+# Copyright (C) 2007 Free Software Foundation, Inc.
+# Massimo Furlani <massimo.furlani@libero.it>, 2007.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session 2.20.x\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-10-13 13:52+0000\n"
+"PO-Revision-Date: 2025-10-14 17:07+0200\n"
+"Last-Translator: Fabio Tomat <f.t.public@gmail.com>\n"
+"Language-Team: Friulian <massimo.furlani@libero.it>\n"
+"Language: fur\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.4.4\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Cheste session ti fasarà jentrâ in GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME su Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME su Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Conferme fin da session"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Se abilitât, gnome-session al domandarà conferme prin di finî la session."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Mostre l'avîs di rapeç"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Se abilitât, gnome-sessions al mostrarà un dialic di avîs daspò l'acès se la "
+"session e je stade rapeçade in automatic."
+
+#: gnome-session/gsm-manager.c:717 gnome-session/gsm-manager.c:1052
+msgid "Not responding"
+msgstr "Nol rispuint"
+
+#: gnome-session/gsm-util.c:170
+msgid "_Log out"
+msgstr "_Jes"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Session di doprâ"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NON_SESSION"
+
+#: gnome-session/leader-main.c:193
+msgid "Enable debugging code"
+msgstr "Abilite codiç di debug"
+
+#: gnome-session/leader-main.c:194
+msgid "Version of this application"
+msgstr "Version di cheste aplicazion"
+
+#: gnome-session/leader-main.c:195
+msgid "This option is ignored"
+msgstr "Cheste opzion e je ignorade"
+
+#: gnome-session/leader-main.c:196
+msgid "Don't re-exec into a login shell"
+msgstr "No sta tornâ a eseguî intune shell di acès"
+
+#: gnome-session/leader-main.c:210 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — Il gjestôr di session GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Fâs partî gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Fâs partî gnome-session-shutdown.target cuant che si ricêf EOF o un singul "
+"byte sul stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Inizializazion dal segnâl fate par gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Torne invie dbus.service se al è in esecuzion"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Eseguìs di ExecStopPost par fâ partî gnome-session-shutdown.target al "
+"faliment dal servizi"
+
+#: tools/gnome-session-ctl.c:281
+#, c-format
+msgid "Program needs exactly one parameter"
+msgstr "Il program al à bisugne di juste un parametri"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Argoment di inibizion no cognossût: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Falît a eseguî %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Mostre version dal program"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "L'id di aplicazion di doprâ cuant che si inibìs (facoltatîf)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Il motîf de inibizion (facoltatîf)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "MOTÎF"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Zonte azion par inibî (ripetibil)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "AZION"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "No sta inviâ COMANT e invezit spiete par simpri"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Liste lis inibizions esistentis, podopo jes"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "COMANT"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Eseguìs COMANT ae inibizion di cualchi funzionalitât de session."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"I valôrs di AZION valits a son: logout, switch-user, suspend, idle e "
+"automount.\n"
+"\vSe no vegnin specificadis opzions --inhibit, al ven considerât idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Nissun dai doi, COMANT o --inhibit-only, a son stâts specificâts."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "_Jes"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Stude"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Torne invie"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ignore ogni inibidôr esistent"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "No sta domandâ conferme"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Impussibil colegasi al ministradôr di session"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program clamât cun opzions in conflit"
+
+#~ msgid "Custom"
+#~ msgstr "Personalizade"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Ti permet di selezionâ une session salvade"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "GNOME dummy"
+
+#~ msgid "Save sessions"
+#~ msgstr "Salve sessions"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Se abilitât, gnome-session al salvarà la session in automatic."
+
+#~ msgid "Save this session"
+#~ msgstr "Salve cheste session"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Cuant che al è abilitât, gnome-session al salvarà in automatic la "
+#~ "sucessive session tal moment che si jessarà, ancje se il salvament "
+#~ "automatic al è disabilitât."
+
+#~ msgid "Custom Session"
+#~ msgstr "Session personalizade"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Par plasê selezione une session personalizade di inviâ"
+
+#~ msgid "_New Session"
+#~ msgstr "G_nove Sessions"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Gjave sessions"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "Cambie Non ae Session"
+
+#~ msgid "_Continue"
+#~ msgstr "_Indenant"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "Orpo! Alc al è lât ledrôs."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Al è vignût fûr un probleme e il sisteme nol pues comedâsi. Par plasê "
+#~ "clame l'aministradôr di sisteme"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Al è vignût fûr un probleme e il sisteme nol pues comedâsi. Dutis lis "
+#~ "estensions a son stadis disabilitadis par precauzion."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Al è vignût fûr un probleme e il sisteme nol pues comedâsi. \n"
+#~ "Par plasê jes e torne prove."
+
+#~ msgid "_Log Out"
+#~ msgstr "_Jes"
+
+#~ msgid "Allow logout"
+#~ msgstr "Permet di jessî"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Mostre avîs di estension"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Aplicazion memorizade"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Chest program al sta blocant la jessude."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr ""
+#~ "Refudi le gnove conession client parcè che la session si sta studant\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Impussibil creâ il socket di scolte ICE: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "In esecuzion come servizi di systemd"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "No'l ten cont des directory standard di inviament automatic"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "AUTOSTART_DIR"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Nol cjame lis aplicazions specificadis dal utent"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Mostre il dialic \"fail whale\" par fâ un test"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Gjave control acelerazion hardware"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [OPZION...] COMANT\n"
+#~ "\n"
+#~ "Eseguìs COMANT intant che si inibìs cualchi funzionalitât di session.\n"
+#~ "\n"
+#~ " -h, --help        Mostre chest jutori\n"
+#~ "  --version         Mostre version dal program\n"
+#~ "  --app-id ID       Il ID de aplicazion di doprâ\n"
+#~ "                    cuant che si inibìs (opzionâl)\n"
+#~ "  --reason REASON   La reson par inibî (opzionâl)\n"
+#~ "  --inhibit ARG     Liste, separade di virgulis, di elements di inibî:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    No sta eseguî COMANT, invezit spietâ par simpri\n"
+#~ " -l, --list        Liste lis inibizions esistentis e jes\n"
+#~ "\n"
+#~ "Se --inhibit nol à nissune opzion, al ven doprât idle.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Erôr tal creâ la conduture (pipe): %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Impussibil lei la conduture (pipe)\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s al scugne vê un argoment\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "Session %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr "I nons di session no puedin tacâ cun “.” o vê il caratar “/”"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "I nons di session no puedin tacâ cun “.”"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "I nons di session no puedin vê il caratar “/”"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "Une session clamade “%s” e esist za"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Dopre la gjestion de session di systemd"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr ""
+#~ "Dopre la gjestion de session integrade (invezit che chel basât su systemd)"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "_Programs di inviament adizionâi:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Programs di inviament"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_Ae jessude visasi automaticamentri lis aplicazions in esecuzion"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Visiti lis aplicazions cumò in esecuzion"
+
+#~ msgid "Options"
+#~ msgstr "Opzions di session"
+
+#~ msgid "Browse…"
+#~ msgstr "Esplore..."
+
+#~ msgid "Comm_ent:"
+#~ msgstr "Co_ment:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "Co_mant:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Non:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Cheste session ti fasarâ jentrâ dentri GNOME, doprant Wayland"
+
+#~ msgid "Select Command"
+#~ msgstr "Selezion comant"
+
+#, fuzzy
+#~ msgid "Add Startup Program"
+#~ msgstr "Zonte program di inviament"
+
+#, fuzzy
+#~ msgid "Edit Startup Program"
+#~ msgstr "Modifiche programe di inviament"
+
+#, fuzzy
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Il non dal program di inviament nol pos jessi vueit"
+
+#, fuzzy
+#~ msgid "The startup command is not valid"
+#~ msgstr "Il comant di inviament nol è valid"
+
+#~ msgid "Enabled"
+#~ msgstr "Abilitât"
+
+#~ msgid "Icon"
+#~ msgstr "Icone"
+
+#~ msgid "Program"
+#~ msgstr "Program"
+
+#~ msgid "No name"
+#~ msgstr "Nissun non"
+
+#~ msgid "No description"
+#~ msgstr "Nissune descrizion"
+
+#~ msgid "Could not display help document"
+#~ msgstr "No pues mostrâ il document di jutori"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "Cualchi program al sta ancjemò zirant:"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Selezione cualis aplicazions fa partî cuanche tu jentris"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Il file a nol è un valit file .desktop"
+
+#~| msgid "Starting"
+#~ msgid "Starting %s"
+#~ msgstr "Inviament in côrs di %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "L'aplicazion no acete documents su linie di comant"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Opzion di inviament no ricognossude: %d"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Element no inviabil"
+
+#~| msgid "Could not connect to the session manager"
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Impussibil colegasi al gjestôr di session"
+
+#~ msgid "FILE"
+#~ msgstr "FILE"
+
+#~ msgid "Session management options:"
+#~ msgstr "Opzions di ministrazion di session:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Mostre opzions di ministrazion di session"
+
+#~ msgid "Unknown"
+#~ msgstr "No cognossût"
+
+#~ msgid "A program is still running:"
+#~ msgstr "Un program al sta ancjemò zirant:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "O spieti che il program al finissi. Interompi il program al pues fati "
+#~ "pierdi il lavôr fat."
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "O spieti che i programs a finissin. Interompi chescj programs al pues "
+#~ "fati pierdi il lavôr fat."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "Cambie utent d'istes"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "Jes d'istes"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "Sospint d'istes"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "Glace d'istes"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "Stude d'istes"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "Reinvie d'istes"
+
+#~ msgid "Lock Screen"
+#~ msgstr "Bloche Visôr"
+
+#~ msgid "Cancel"
+#~ msgstr "Anule"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "Tu jessarâs automaticamentri in %d secont."
+#~ msgstr[1] "Tu jessarâs automaticamentri in %d seconts."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "Il sisteme a si studarà automaticamentri in %d secont."
+#~ msgstr[1] "Il sisteme a si studarà automaticamentri in %d seconts."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "Il sisteme a si reinviarà automaticamentri in %d secont."
+#~ msgstr[1] "Il sisteme a si reinviarà automaticamentri in %d seconts."
+
+#, fuzzy
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "In chest moment tu sês jentrât come \"%s\"."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "Jessî di chest sisteme cumò?"
+
+#~ msgid "_Switch User"
+#~ msgstr "_Cambie Utent"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "Studâ il sisteme cumò?"
+
+#~ msgid "S_uspend"
+#~ msgstr "S_ospint"
+
+#~ msgid "_Hibernate"
+#~ msgstr "_Glace"
+
+#~ msgid "_Restart"
+#~ msgstr "_Reinvie"
+
+#~ msgid "_Shut Down"
+#~ msgstr "_Stude"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "Reinviâ il sisteme cumò?"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "Permet conessions TCP"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+#~ msgstr ""
+#~ "Par mutîfs di sigurece, su plataformes ch'a doprin _IceTcpTransNoListen() "
+#~ "(sistemes XFree86), gnome-session nol reste in scolte di conessions su "
+#~ "puartis TCP. Cheste operazion a permet conessions di bande di machinis "
+#~ "remotis (autorizadis). Al coventarâ ognicâs tornâ a inviâ gnome-session "
+#~ "parcè che lis modifichis a vedin efiet."
+
+#~ msgid "Preferred Image to use for login splash screen"
+#~ msgstr "Imagjine preferide di doprâ pa la schermade di inviament"
+
+#~ msgid "Selected option in the log out dialog"
+#~ msgstr "Opzion selezionade tal dialogo di logout"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "Mostre schermade di inviament"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "Mostre la schermade di inviament cuant ch'a ven inviade la session"
+
+#~ msgid ""
+#~ "This is a relative path value based off the $datadir/pixmaps/ directory. "
+#~ "Sub-directories and image names are valid values. Changing this value "
+#~ "will effect the next session login."
+#~ msgstr ""
+#~ "Chest al è un valôr di percors relatîf basât suntune directory $datadir/"
+#~ "pixmaps/. Noms di sot-directory e di imagjinis a son valôrs valids. La "
+#~ "modifiche di chest valôr à varâ efiet al prossim login."
+
+#~ msgid ""
+#~ "This is the option that will be selected in the logout dialog, valid "
+#~ "values are \"logout\" for logging out, \"shutdown\" for halting the "
+#~ "system and \"restart\" for restarting the system."
+#~ msgstr ""
+#~ "Cheste a je l'opzion che a risulte selezionade tal dialogo par finî la "
+#~ "session. Valôrs valids a son \"logout\" par lâ fûr, \"shutdown\" par "
+#~ "studâ il sisteme e \"restart\" par tornâ a inviâ il sisteme."
+
+#~ msgid "Configure your sessions"
+#~ msgstr "Configure lis sessions"
+
+#~ msgid ""
+#~ "Assistive technology support has been requested for this session, but the "
+#~ "accessibility registry was not found. Please ensure that the AT-SPI "
+#~ "package is installed. Your session has been started without assistive "
+#~ "technology support."
+#~ msgstr ""
+#~ "Par cheste session al è stât domandât il supuart a lis tecnologie "
+#~ "assistive; però nol è stât cjatât il regjistro di acessibilitât. Controlâ "
+#~ "se il pacut AT-SPI al è stât instalât. La session a je stade inviade "
+#~ "cence il supuart a lis tecnologie assistive."
+
+#~ msgid "_Order:"
+#~ msgstr "_Ordin:"
+
+#~ msgid "The order in which applications are started in the session."
+#~ msgstr "L'ordin di inviament da lis aplicazions ta session."
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "Ce sucedial a l'aplicazion cuant ch'a finis."
+
+#~ msgid "_Style:"
+#~ msgstr "_Stîl:"
+
+#~ msgid "Inactive"
+#~ msgstr "Inatîf"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "Al spiete di jessi inviât opûr al à finît."
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "Inviât, ma nol à ancjemò ripuartât il stât."
+
+#~ msgid "Running"
+#~ msgstr "In esecuzion"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "Un membro normâl da session."
+
+#~ msgid "Saving"
+#~ msgstr "Salvatagjio"
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "Stât no ripuartât in timp util."
+
+#~ msgid "Normal"
+#~ msgstr "Normâl"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "No afiet dal finiment da session, ma al pos finî."
+
+#~ msgid "Never allowed to die."
+#~ msgstr "No stâ finî mai."
+
+#~ msgid "Trash"
+#~ msgstr "Scovazzes"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "Lassât sta al finiment da session e al pos finî."
+
+#~ msgid "Settings"
+#~ msgstr "Impostazions"
+
+#~ msgid "Always started on every login."
+#~ msgstr "Inviât a ogni login."
+
+#~ msgid "Order"
+#~ msgstr "Ordin"
+
+#~ msgid "Style"
+#~ msgstr "Stîl"
+
+#~ msgid "State"
+#~ msgstr "Stât"
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work "
+#~ "correctly."
+#~ msgstr ""
+#~ "Al è saltât fûr un erôr vie pa l'inviament dal demoni des impostazions di "
+#~ "GNOME.\n"
+#~ "\n"
+#~ "Cualchi aspiet come temis, sûns o impostazions dal fondâl a podaressin no "
+#~ "funzionâ tal mût coret."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "L'ultim messaç di erôr al è stât:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME al provarâ a tornâ a inviâ il demoni des impostazions al prossim "
+#~ "login."
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "Il demoni des impostazions al è stât inviât masse voltis."
+
+#~ msgid "No Name"
+#~ msgstr "Nissun nom"
+
+#~ msgid "PROGRAM..."
+#~ msgstr "PROGRAME..."
+
+#~ msgid ""
+#~ "You must specify at least one program to remove. You can list the "
+#~ "programs with --list.\n"
+#~ msgstr ""
+#~ "Al covente specificâ almancul un programe di rimovi. Al è pussibil elencâ "
+#~ "i programis cun --list.\n"
+
+#~ msgid "Error: could not connect to the session manager\n"
+#~ msgstr "Erôr: impussibil colegasi al gjestôr di session\n"
+
+#~ msgid "Currently registered clients:\n"
+#~ msgstr "Clients atualmentri regjistrâts:\n"
+
+#~ msgid "Couldn't find program %s in session\n"
+#~ msgstr "Impussibil cjatâ il programe %s ta session\n"
+
+#~ msgid ""
+#~ "The GNOME session manager cannot start properly.  Please report this as a "
+#~ "GNOME bug. Please include this ICE failure message in the bug report:  "
+#~ "'%s'.  Meanwhile you could try logging in using the failsafe session."
+#~ msgstr ""
+#~ "Nol è pussibil inviâ in mût coret il gjestôr di session di GNOME. "
+#~ "Parplasè mandâ une report a GNOME. Meti dentri chest faliment di ICE tal "
+#~ "bug report: '%s'. Tal fratimp, provâ a loggasi doprant la session di "
+#~ "emergence."
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to lock the file '%s'.  Please "
+#~ "report this as a GNOME bug.  Sometimes this error may occur if the file's "
+#~ "directory is unwritable, you could try logging in via the failsafe "
+#~ "session and ensuring that it is."
+#~ msgstr ""
+#~ "Il gjestôr di session di GNOME nol à rivât a lei il file '%s'. Se chest "
+#~ "file al esist, al vares di jessi legjibil par lassâ che GNOME al podedi "
+#~ "operâ in mût coret. Provâ a loggasi cu la session di emergence e a rimovi "
+#~ "chest file."
+
+#~ msgid ""
+#~ "The GNOME session manager was unable to read the file: '%s'.  If this "
+#~ "file exists it must be readable by you for GNOME to work properly.  Try "
+#~ "logging in with the failsafe session and removing this file."
+#~ msgstr ""
+#~ "Il gjestôr di session di GNOME nol à rivât a lei il file '%s'. Se chest "
+#~ "file al esist, al vares di jessi legjibil par lassâ che GNOME al podedi "
+#~ "operâ in mût coret. Provâ a loggasi cu la session di emergence e a rimovi "
+#~ "chest file."
+
+#~ msgid ""
+#~ "Could not write to file '%s'.  This file must be writable in order for "
+#~ "GNOME to function properly.  Try logging in with the failsafe session and "
+#~ "removing this file.  Also make sure that the file's directory is writable."
+#~ msgstr ""
+#~ "Impussibil scrivi sul file '%s'. Chest files al à di jessi scrivibil "
+#~ "parcè che GNOME al funzioni in mût coret. Provâ a loggasi cu la session "
+#~ "di emergence e rimovi chest file. Sigurasi ancje, che la directory dal "
+#~ "file a sedi scrivibil."
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "Setu sigûr di volê lâ fûr?"
+
+#~ msgid "Action"
+#~ msgstr "Azion"
+
+#~ msgid "Sh_ut down"
+#~ msgstr "Sh_ut down"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "_Torne a inviâ il computer"
+
+#~ msgid "NAME"
+#~ msgstr "NOM"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "Lei lis sessions salvadis dome dal file default.session"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr "Timp di spiete da regjistrazion dai clients (in ms, 0=infinît)"
+
+#~ msgid "DELAY"
+#~ msgstr "RITART"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr "Timp di spiete da regjistrazion dai clients (in ms, 0=infinît)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr "Timp di spiete pa la muart dai clients (in ms, 0=infinît)"
+
+#~ msgid "This session is running as a privileged user"
+#~ msgstr "Si stâ inviant cheste session come utent cun podês"
+
+#~ msgid ""
+#~ "Running a session as a privileged user should be avoided for security "
+#~ "reasons. If possible, you should log in as a normal user."
+#~ msgstr ""
+#~ "Par sigurece, l'inviament di une session cuntun utent coun podês al vares "
+#~ "di mai sedi fat. Se pussibil loggasi come utent normâl."
+
+#~ msgid ""
+#~ "The session might encounter issues if the computer clock is not properly "
+#~ "configured. Please consider adjusting it.\n"
+#~ "\n"
+#~ "Current date is <b>%s</b>."
+#~ msgstr ""
+#~ "La session a podares lâ incuintri a problemis se l'orloi dal computer nol "
+#~ "è configurât in mût coret. Al è conseabil regolâ l'orloi.\n"
+#~ "\n"
+#~ "La date di cumò a je <b>%s</b>."
+
+#~ msgid "Failed to launch time configuration tool: %s"
+#~ msgstr "Inviament da l'imprest di configurazion falât: %s"
+
+#~ msgid "The computer clock appears to be wrong"
+#~ msgstr "L'orloi dal computer al samèe regolât."
+
+#~ msgid "_Ignore"
+#~ msgstr "_Lasse sta"
+
+#~ msgid "_Adjust the Clock"
+#~ msgstr "_Regole l'orloi"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "Nol è pussibil risolvi l'indiriz internet par %s.\n"
+#~ "Chest nol permet a GNOME di funzionâ in mût coret.\n"
+#~ "Eventualmentri al è pussibil coregi l'erôr zontant\n"
+#~ "%s a la fin dal file. /etc/hosts."
+
+#~ msgid "Try Again"
+#~ msgstr "Prove ancjemò"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "Vonde spietâ... Al è un conflit."
+
+#~ msgid "No response to the %s command."
+#~ msgstr "Nissune rispueste al comant %s."
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "Il programe al podares jessi lent, fêr o no funzionâ."
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "Al è pussibil spieta ch'al rispuindi o rimovilu."
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "Inviament interot. Masse erôrs."
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "Il finiment da session a je in cors."
+
+#~ msgid "Set the current session name"
+#~ msgstr "Imposte il nom da session"
+
+#~ msgid "Kill session"
+#~ msgstr "Cope la session"
+
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "Dopre barcons di dialogo pai erôrs"
+
+#~ msgid "Save changes to the current session before closing?"
+#~ msgstr "Salva i gambiaments a la session curint prime di sierâ?"
+
+#~ msgid "If you don't save, changes will be discarded."
+#~ msgstr "Se no si salve, lis modifichis a saran scartadis."
+
+#~ msgid "_Close without Saving"
+#~ msgstr "_Siere cence salvâ"
+
+#~ msgid "Your session has been saved."
+#~ msgstr "La session jè stade salvade"
+
+#~ msgid "could not connect to the session manager\n"
+#~ msgstr "Impussibil conetisi al gjestôr di session\n"
+
+#~ msgid "session manager does not support GNOME extensions\n"
+#~ msgstr "Il gjestôr di session nol supuarte lis estensions di GNOME\n"
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "Rimôf il client che cumò al è selezionât da la session."
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "Apliche lis modifichis a la session curint"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "La liste dai programes da session."
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "_Programes cumò in esecuzion:"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "Window Manager Sawfish"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "Window Manager Metacity"
+
+#~ msgid "Window Manager"
+#~ msgstr "Window Manager"
+
+#~ msgid "The Panel"
+#~ msgstr "Il panel"
+
+#~ msgid "Nautilus"
+#~ msgstr "Nautilus"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "Impostazions desktop"
+
+#~ msgid "The name of the startup program cannot be empty"
+#~ msgstr "Il nom dal programe di inviament nol pos jessi vueit"

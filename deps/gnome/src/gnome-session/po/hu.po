@@ -1,0 +1,232 @@
+# Hungarian translation for gnome-session.
+# Copyright (C) 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2018, 2019, 2022, 2024, 2025 Free Software Foundation, Inc.
+# This file is distributed under the same license as the gnome-session package.
+#
+# Szabolcs Ban <shooby at gnome dot hu>, 1998, 1999, 2000, 2001, 2002.
+# Emese Kovacs <emese at gnome dot hu>, 2000, 2001, 2002.
+# Andras Timar <timar at gnome dot hu>, 2001, 2002, 2003.
+# Laszlo Dvornik <dvornik at gnome dot hu>, 2004.
+# Gabor Kelemen <kelemeng at gnome dot hu>, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2018.
+# Mate ORY <orymate at gmail d0t com>, 2006, 2008.
+# Balázs Úr <ur.balazs at fsf dot hu>, 2014, 2019, 2022, 2024, 2025.
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-01 00:50+0000\n"
+"PO-Revision-Date: 2025-09-02 12:05+0200\n"
+"Last-Translator: Balázs Úr <ur.balazs at fsf dot hu>\n"
+"Language-Team: Hungarian <openscope at fsf dot hu>\n"
+"Language: hu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Lokalize 24.12.3\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Bejelentkezés a GNOME környezetbe"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME Waylanden"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME Xorgon"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Kérdés kijelentkezéskor"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Ha engedélyezett, akkor a gnome-session megkérdezi a felhasználót a "
+"munkamenet befejezése előtt."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Tartalék figyelmeztetés megjelenítése"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Ha engedélyezett, akkor a gnome-session egy figyelmeztetési párbeszédablakot "
+"jelenít meg, ha a munkamenet visszaállt a tartalékra."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Nem válaszol"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Kijelentkezés"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Használandó munkamenet"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "MUNKAMENET_NEVE"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "Hibakeresési kód engedélyezése"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "Ezen alkalmazás verziója"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "Ez a beállítás mellőzve van"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "Ne hajtsa végre újra egy bejelentkezési parancsértelmezőben"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " – A GNOME munkamenet-kezelője"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "A gnome-session-shutdown.target indítása"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"A gnome-session-shutdown.target indítása, ha EOF vagy egyedülálló bájt "
+"érkezik a szabványos bemeneten"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "A szignál előkészítése kész a gnome-session munkamenethez"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "A dbus.service újraindítása, ha fut"
+
+#: tools/gnome-session-ctl.c:251
+#| msgid ""
+#| "Run from ExecStopPost to start gnome-session-failed.target on service "
+#| "failure"
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Futtatás az ExecStopPost beállításból a gnome-session-shutdown.target indításá"
+"hoz szolgáltatáshiba esetén"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "A programnak pontosan egy paraméterre van szüksége"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Ismeretlen korlátozó argumentum: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+#| msgid "Failed to execute %s\n"
+msgid "Failed to execute %s: %m\n"
+msgstr "Nem sikerült a(z) %s végrehajtása: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Program verziójának megjelenítése"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "A korlátozáskor használandó alkalmazásazonosító (elhagyható)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "AZONOSÍTÓ"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "A korlátozás indoka (elhagyható)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "INDOK"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Művelet hozzáadása a korlátozáshoz (ismételhető)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "MŰVELET"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Ne indítsa a PARANCSOT, hanem inkább várjon örökké"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "A meglévő korlátozások felsorolása, majd kilépés"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "PARANCS"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr ""
+"PARANCS végrehajtása néhány munkamenet-funkcionalitás korlátozása során."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Az érvényes MŰVELET értékek a következők: logout, switch-user, suspend, idle é"
+"s automount.\n"
+"Ha nincsenek --inhibit kapcsolók megadva, akkor „idle” a feltételezett."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Se PARANCS, se --inhibit-only kapcsoló nem lett megadva."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Kijelentkezés"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Kikapcsolás"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Újraindítás"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "A meglévő korlátozók mellőzése"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ne kérjen felhasználói megerősítést"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Sikertelen kapcsolatfelvétel a munkamenet-kezelővel"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "A program kapcsolói ütköznek"

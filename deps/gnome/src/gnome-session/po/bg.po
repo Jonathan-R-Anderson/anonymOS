@@ -1,0 +1,232 @@
+# Bulgarian translation of gnome-session po-file.
+# Copyright (C) 2001, 2002, 2004, 2005, 2006 Free Software Foundation, Inc.
+# Copyright (C) 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+# Copyright (C) 2012, 2013, 2014, 2015, 2016 Free Software Foundation, Inc.
+# Copyright (C) 2017 Free Software Foundation, Inc.
+# Copyright (C) 2021, 2024, 2026 Alexander Shopov.
+# Pavel Cholakov <pavel@linux.zonebg.com>, 2001.
+# Yanko Kaneti <yaneti@declera.com>, 2002.
+# Vladimir "Kaladan" Petkov <kaladan@gmail.com>, 2004, 2005.
+# Peter Slavov <pslavov@i-space.org>, 2004
+# Yavor Doganov <yavor@gnu.org>, 2008.
+# Damyan Ivanov <dam+gnome@ktnx.net>, 2010.
+# Alexander Shopov <ash@kambanaria.org>, 2002, 2005, 2006, 2007, 2009, 2010.
+# Alexander Shopov <ash@kambanaria.org>, 2011, 2012, 2013, 2014, 2015, 2016.
+# Alexander Shopov <ash@kambanaria.org>, 2021, 2024, 2026.
+# Lyubomir Vasilev <lyubomirv@abv.bg>, 2017.
+# Krasimir Chonov <mk2616@abv.bg>, 2011.
+# twlvnn kraftwerk <kraft_werk@tutanota.com>, 2024.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session main\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2026-02-11 14:36+0000\n"
+"PO-Revision-Date: 2026-02-23 22:04+0100\n"
+"Last-Translator: Alexander Shopov <ash@kambanaria.org>\n"
+"Language-Team: Bulgarian <dict@ludost.net>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1)\n"
+"X-Generator: Gtranslator 46.1\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Влизане в GNOME"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Питане преди изход"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Когато е включено, „gnome-session“ ще пита потребителя, преди да прекрати "
+"сесията."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Показване на предупреждение при резервен вариант"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Когато е включено, „gnome-session“ ще извежда прозорец с предупреждение, ако "
+"при влизане е ползван резервният вариант за сесия."
+
+#: gnome-session/gsm-manager.c:718 gnome-session/gsm-manager.c:1056
+msgid "Not responding"
+msgstr "Не отговаря"
+
+#: gnome-session/gsm-util.c:170
+msgid "_Log out"
+msgstr "_Изход"
+
+#: gnome-session/leader-main.c:193 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Коя сесия да се ползва"
+
+#: gnome-session/leader-main.c:193 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "ИМЕ_НА_СЕСИЯ"
+
+#: gnome-session/leader-main.c:194
+msgid "Enable debugging code"
+msgstr "Включване на изчистването на грешки"
+
+#: gnome-session/leader-main.c:195
+msgid "Version of this application"
+msgstr "Версията на програмата"
+
+#: gnome-session/leader-main.c:196
+msgid "This option is ignored"
+msgstr "Тази опция се прескача"
+
+#: gnome-session/leader-main.c:197
+msgid "Don't re-exec into a login shell"
+msgstr "Без повторно изпълнение във входна обвивка"
+
+#: gnome-session/leader-main.c:211 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — управление на сесиите на GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Изпълнение на „gnome-session-shutdown.target“"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Стартиране на „gnome-session-shutdown.target“ при получаване на край на файл "
+"или сама на единичен байт на стандартния вход"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Извършено е инициализиране на сигналите на „gnome-session“"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Рестартиране на „dbus.service“, ако се изпълнява"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Изпълнение от „ExecStopPost“, за да се стартира „gnome-session-"
+"shutdown.target“ при грешка в услугата"
+
+#: tools/gnome-session-ctl.c:281
+#, c-format
+msgid "Program needs exactly one parameter"
+msgstr "Програмата изисква точно един параметър"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Непознат аргумент за ограничаване на функционалност: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Неуспешно изпълнение на %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Извеждане на версията на програмата"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr ""
+"Идентификаторът на програмата, която да се ползва при ограничаване "
+"(незадължително)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ИДЕНТИФИКАТОР"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "ПРИЧИНА за ограничаване на функционалността (незадължително)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "ПРИЧИНА"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Добавяне на ДЕЙСТВИЕ към ограничените (може да се повтаря)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "ДЕЙСТВИЕ"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Без стартиране на КОМАНДАта, неограничено изчакване"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Извеждане на възможните ограничения и изход"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "КОМАНДА"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr ""
+"Изпълнение на КОМАНДАта с ограничаване на част от функционалността на "
+"сесията."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Възможните ДЕЙСТВИя са: „logout“ (изход от сесия), „switch-user“ (смяна на "
+"потребител), „suspend“ (приспиване), „idle“ (бездействие) и „automount“ "
+"(автоматично монтиране). Ако не е указана опция „--inhibit“, се приема "
+"„idle“."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Не са указани нито КОМАНДА, нито опцията „--inhibit-only“."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Изход"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Изключване"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Рестартиране"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Изход въпреки блокиращите програми"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Без потвърждаване"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Не може да се изгради връзка към управлението на сесии"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Програмата е стартирана с противоречащи си опции"

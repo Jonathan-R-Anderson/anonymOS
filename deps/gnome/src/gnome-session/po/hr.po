@@ -1,0 +1,434 @@
+# Translation of gnome-session to Croatiann
+# Copyright (C) Croatiann team
+# Translators: Automatski Prijevod <>,Denis Lackovic <delacko@fly.srk.fer.hr>,Robert Sedak <robert.sedak@sk.tel.hr>,
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session 0\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2022-01-13 20:29+0000\n"
+"PO-Revision-Date: 2022-03-29 14:31+0200\n"
+"Last-Translator: gogo <trebelnik2@gmail.com>\n"
+"Language-Team: Croatian <lokalizacija@linux.hr>\n"
+"Language: hr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Launchpad-Export-Date: 2016-09-22 19:52+0000\n"
+"X-Generator: Poedit 3.0.1\n"
+
+#: data/gnome-custom-session.desktop.in.in:3
+msgid "Custom"
+msgstr "Prilagođen"
+
+#: data/gnome-custom-session.desktop.in.in:4
+msgid "This entry lets you select a saved session"
+msgstr "Ovaj unos vam omogućuje odabir spremljene sesije"
+
+#: data/gnome.desktop.in.in:3 data/gnome.session.desktop.in.in:3
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:4 data/gnome-wayland.desktop.in.in:4
+#: data/gnome-xorg.desktop.in.in:4
+msgid "This session logs you into GNOME"
+msgstr "Ova sesija vas prijavljuje u GNOME"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "GNOME lažno"
+
+#: data/gnome-wayland.desktop.in.in:3
+msgid "GNOME on Wayland"
+msgstr "GNOME na Waylandu"
+
+#: data/gnome-xorg.desktop.in.in:3
+msgid "GNOME on Xorg"
+msgstr "GNOME na Xorgu"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:5
+msgid "Save sessions"
+msgstr "Spremi sesiju"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:6
+msgid "If enabled, gnome-session will save the session automatically."
+msgstr "Ako je omogućeno, gnome-session će spremiti sesiju automatski."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:10
+msgid "Save this session"
+msgstr "Spremi ovu sesiju"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:11
+msgid ""
+"When enabled, gnome-session will automatically save the next session at log "
+"out even if auto saving is disabled."
+msgstr ""
+"Kada je omogućeno, gnome-session će automatski spremiti sljedeću sesiju pri "
+"odjavi čak i ako je automatsko spremanje onemogućeno."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:15
+msgid "Logout prompt"
+msgstr "Upit pri odjavi"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:16
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Ako je omogućeno, gnome-session će upitati korisnika prije završetka sesije."
+
+#: data/org.gnome.SessionManager.gschema.xml.in:20
+msgid "Show the fallback warning"
+msgstr "Prikaži upozorenje pričuvne prijave"
+
+#: data/org.gnome.SessionManager.gschema.xml.in:21
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Ako je omogućeno, gnome-session će prikazati dijalog upozorenja nakon "
+"prijave u pričuvnu prijavu."
+
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "Prilagođena sesija"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "Odaberite prilagođenu sesiju za pokretanje"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "_Nova sesija"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "_Ukloni sesiju"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "Preimen_uj sesiju"
+
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "_Nastavi"
+
+#: gnome-session/gsm-fail-whale-dialog.c:318
+msgid "Oh no!  Something has gone wrong."
+msgstr "O, ne! Nešto je pošlo po krivu."
+
+#: gnome-session/gsm-fail-whale-dialog.c:325
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system "
+"administrator"
+msgstr ""
+"Došlo je do problema od kojeg se sustav ne može oporaviti. Obavijestite "
+"administratora sustava"
+
+#: gnome-session/gsm-fail-whale-dialog.c:327
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have "
+"been disabled as a precaution."
+msgstr ""
+"Problem se pojavio i sustav se ne može oporaviti. Sva proširenja su "
+"onemogućena iz predostrožnosti."
+
+#: gnome-session/gsm-fail-whale-dialog.c:329
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"Došlo je do problema od kojeg se sustav ne može oporaviti.\n"
+"Odjavite se i pokušajte ponovno."
+
+#: gnome-session/gsm-fail-whale-dialog.c:344
+msgid "_Log Out"
+msgstr "_Odjavljivanje"
+
+#: gnome-session/gsm-fail-whale-dialog.c:412 gnome-session/main.c:408
+msgid "Enable debugging code"
+msgstr "Omogući otkrivanje grešaka"
+
+#: gnome-session/gsm-fail-whale-dialog.c:413
+msgid "Allow logout"
+msgstr "Dopusti odjavu"
+
+#: gnome-session/gsm-fail-whale-dialog.c:414
+msgid "Show extension warning"
+msgstr "Prikaži upozorenje proširenja"
+
+#: gnome-session/gsm-manager.c:1317 gnome-session/gsm-manager.c:2058
+msgid "Not responding"
+msgstr "Ne reagira"
+
+#: gnome-session/gsm-util.c:431
+msgid "_Log out"
+msgstr "_Odjavljivanje"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "Zapamćene aplikacije"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "Ovaj program blokira odjavu."
+
+#: gnome-session/gsm-xsmp-server.c:340
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr ""
+"Odbija se novo povezivanje s klijentom jer se sesija trenutno isključuje.\n"
+
+#: gnome-session/gsm-xsmp-server.c:607
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "Nije moguće izraditi ICE priključak: %s"
+
+#: gnome-session/main.c:402
+msgid "Running as systemd service"
+msgstr "Pokrenuto kao systemd usluga"
+
+#: gnome-session/main.c:403
+msgid "Use systemd session management"
+msgstr "Koristi systemd upravitelj sesijama"
+
+#: gnome-session/main.c:405
+msgid "Use builtin session management (rather than the systemd based one)"
+msgstr "Koristi ugrađeni upravitelj sesijama (radije nego systemd temeljeni)"
+
+#: gnome-session/main.c:406
+msgid "Override standard autostart directories"
+msgstr "Nadvladaj standardne direktorije automatskog pokretanja"
+
+#: gnome-session/main.c:406
+msgid "AUTOSTART_DIR"
+msgstr "DIR_AUTOPOKRETANJA"
+
+#: gnome-session/main.c:407
+msgid "Session to use"
+msgstr "Sesija za korištenje"
+
+#: gnome-session/main.c:407
+msgid "SESSION_NAME"
+msgstr "NAZIV_SESIJE"
+
+#: gnome-session/main.c:409
+msgid "Do not load user-specified applications"
+msgstr "Nemoj učitati aplikacije koje je odredio korisnik"
+
+#: gnome-session/main.c:410
+msgid "Version of this application"
+msgstr "Inačica ove aplikacije"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:412
+msgid "Show the fail whale dialog for testing"
+msgstr "Prikaži fail whale dijalog za testiranje"
+
+#: gnome-session/main.c:413
+msgid "Disable hardware acceleration check"
+msgstr "Onemogući provjeru hardverskog ubrzanja"
+
+#: gnome-session/main.c:445
+msgid " — the GNOME session manager"
+msgstr " — GNOME upravitelj sesijama"
+
+#: tools/gnome-session-ctl.c:245
+msgid "Start gnome-session-shutdown.target"
+msgstr "Pokreni gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:246
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Pokreni gnome-session-shutdown.target kada se primi EOF ili jedan bajt na "
+"stdinu"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Signal initialization done to gnome-session"
+msgstr "Pokretanje signala je završeno za gnome-session"
+
+#: tools/gnome-session-ctl.c:248
+msgid "Restart dbus.service if it is running"
+msgstr "Ponovno pokreni dbus.service ako je pokrenut"
+
+#: tools/gnome-session-ctl.c:249
+msgid ""
+"Run from ExecStopPost to start gnome-session-failed.target on service failure"
+msgstr ""
+"Pokrenite iz ExecStopPost za pokretanje gnome-session-failed.target pri "
+"neuspjehu usluge"
+
+#: tools/gnome-session-ctl.c:279
+msgid "Program needs exactly one parameter"
+msgstr "Programu je potreban točno jedan parametar"
+
+#: tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"  -l, --list        List the existing inhibitions, and exit\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [MOGUĆNOST...] NAREDBA\n"
+"\n"
+"Pokreni NAREDBU dok su zabranjene neke funkcije sesije.\n"
+"\n"
+"  -h, --help       Prikaži ovu pomoć\n"
+"  --version         Prikaži inačicu programa\n"
+"  --app-id ID       ID aplikacije koja se koristi\n"
+"                    pri zabranjivanju (neobavezno)\n"
+"  --reason RAZLOG   Razlog zabranjivanja (neobavezno)\n"
+"  --inhibit ARG     Stvari za zabraniti, Dvotočkom odvojen popis:\n"
+"                    odjave, zemjene-korisnika, suspenzije, mirovanja, "
+"automatskog montiranja\n"
+"  --inhibit-only    Ne pokreći NAREDBU i čekaj zauvijek\n"
+"  -l, --list        Prikaži postojeće zabrane, i izađi\n"
+"\n"
+"ako nije --inhibit mogućnost zabrane je određena, mirovanje je "
+"pretpostavljeno.\n"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "Neuspjelo pokretanje %s\n"
+
+#: tools/gnome-session-inhibit.c:352 tools/gnome-session-inhibit.c:362
+#: tools/gnome-session-inhibit.c:372
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s zahtijeva argument\n"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Odjavljivanje"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Isključivanje"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Ponovno pokretanje"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Zanemarivanje svih poznatih sprječavatelja"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ne traži potvrdu korisnika"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Nemoguće povezivanje s upraviteljem  sesije"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program pozvan s proturječnim mogućnostima"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "Sesija %d"
+
+#: tools/gnome-session-selector.c:107
+msgid ""
+"Session names are not allowed to start with “.” or contain “/” characters"
+msgstr ""
+"Nazivima sesija nije dopušteno da počinju s \".\" ili sadrže \"/\" znakove"
+
+#: tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with “.”"
+msgstr "Nazivima sesija nije dopušteno da počinju s \".\""
+
+#: tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "Nazivima sesija nije dopušteno da sadrže \"/\" znakove"
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named “%s” already exists"
+msgstr "Sesija naziva \"%s\" već postoji"
+
+#~ msgid "Select Command"
+#~ msgstr "Odaberi naredbu"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Dodaj pokretanje programa"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Uredi pokretanje programa"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Naredba pokretanja ne može biti prazna"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "Naredba pokretanja nije ispravna"
+
+#~ msgid "Enabled"
+#~ msgstr "Omogućeno"
+
+#~ msgid "Icon"
+#~ msgstr "Ikona"
+
+#~ msgid "Program"
+#~ msgstr "Program"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Osobitosti pokretanja programa"
+
+#~ msgid "No name"
+#~ msgstr "Bez naziva"
+
+#~ msgid "No description"
+#~ msgstr "Bez opisa"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Nemoguće prikazivanje dokumenta pomoći"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Pokrenute aplikacije"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Odaberite aplikacije koje želite pokrenuti prilikom prijave."
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Dodatni pokrenuti _programi prilikom prijave u sesiju:"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr ""
+#~ "_Automatski zapamti pokrenute aplikacije pri odjavljivanju iz sustava"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Zapamti trenutno pokrenute aplikacije"
+
+#~ msgid "Browse…"
+#~ msgstr "Potraži..."
+
+#~ msgid "Comm_ent:"
+#~ msgstr "Komen_tar:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "Na_redba:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Naziv:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Ova sesija prijavljuje vas u GNOME, upotrebom Waylanda"

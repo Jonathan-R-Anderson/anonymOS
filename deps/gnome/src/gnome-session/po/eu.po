@@ -1,0 +1,683 @@
+# translation of eu.po to Basque
+# Copyright (C) 1999, 2004, 2006, 2007, 2008, 2009, 2010, 2011 Free Software Foundation, Inc.
+#
+# Joseba Bidaurrazaga van Dierdonck <gcpbivaj@lg.ehu.es>, 2000.
+# Hizkuntza Politikarako Sailburuordetza <hizpol@ej-gv.es>, 2004.
+# Julen Ruiz Aizpuru <julenx@gmail.com>, 2011.
+# Iñaki Larrañaga Murgoitio <dooteo@zundan.com>, 2005, 2006, 2007, 2008, 2009, 2010, 2011.
+# Iñaki Larrañaga Murgoitio <dooteo@zundan.com>, 2012, 2013, 2014, 2016, 2017, 2018.
+# Asier Saratsua Garmendia  <asiersarasua@ni.eus>, 2019, 2020, 2021, 2025.
+#
+msgid ""
+msgstr "Project-Id-Version: eu\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-08-29 20:49+0000\n"
+"PO-Revision-Date: 2025-08-31 10:00+0100\n"
+"Last-Translator: Asier Saratsua Garmendia <asiersarasua@ni.eus>\n"
+"Language-Team: Basque <librezale@librezale.eus>\n"
+"Language: eu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Project-Style: gnome\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Saio honek GNOMEn sartuko zaitu"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME Wayland gainean"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME Xorg gainean"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Saio-amaierako gonbita"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr "Gaituta badago, 'gnome-session'ek erabiltzaileari galdetuko dio saioa bukatu aurretik."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Erakutsi ordezko abisua"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr "Gaituta badago, 'gnome-session'ek abisu bat bistaratuko du saioa hasi ondoren ordezko saioan sartu bada automatikoki."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Ez du erantzuten"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Amaitu saioa"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Saioa erabiltzeko"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "SAIOAREN_IZENA"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "Gaitu arazketa-kodea"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "Aplikazio honen bertsioa"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "Aukera honi ez ikusiarena egingo zaio"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "Ez erabili berriro exec saioa hasteko shell batean"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — GNOMEren saio-kudeatzailea"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Abiarazi 'gnome-session-shutdown.target'"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr "Abiarazi 'gnome-session-shutdown.target' EOF jasotzean edo byte bakarra jasotzean stdin-en"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Seinalearen hasieratzea egin da 'gnome-session' programan"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Berrabiarazi 'dbus.service' hura exekutatzen ari bada"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr "Exekutatu ExecStopPost funtziotik gnome-session-shutdown.target hasteko zerbitzuak huts egiten duenean"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Programak parametro bakar bat behar du"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Galarazteko argumentu ezezaguna: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Huts egin du %s exekutatzeak: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "Erakutsi programaren bertsioa"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Galaraztean erabilitako aplikazio-IDa (aukerakoa)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "IDa"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "Galaraztearen arrazoia (aukerakoa)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "ARRAZOIA"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "Gehitu galaraziko den ekintza (errepikagarria)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "EKINTZA"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Ez abiarazi KOMANDOA eta itxaron betiko"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "Zerrendatu dauden galarazpenak eta irten"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "KOMANDOA"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Exekutatu KOMANDOA saioaren zenbait funtzionaltasun galarazi bitartean."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr "Baliozko EKINTZA balioak honakoak dira: saioa amaitu, erabiltzailez aldatu, eseki, inaktibo egon eta automatikoki muntatu\n"
+"Ez bada --inhibit aukerarik zehazten, inaktibo dagoela ulertuko da."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Ez dira ez KOMANDOA ez --inhibit-only zehaztu."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Amaitu saioa"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Itzali"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Berrabiarazi"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ez ikusi egin dauden inhibitzaileei"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ez eskatu erabiltzailearen baieztapena"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Ezin izan da saio-kudeatzailearekin konektatu"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Gatazkan dauden aukerekin deitu da programa"
+
+#~ msgid "Custom"
+#~ msgstr "Pertsonalizatua"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "Sarrera honek gordetako saio bat hautatzea uzten dizu"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "Probako GNOME"
+
+#~ msgid "Save sessions"
+#~ msgstr "Gorde saioak"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "Gaituta badago, gnome-session-ek saioa automatikoki gordeko du."
+
+#~ msgid "Save this session"
+#~ msgstr "Gorde saio hau"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "Gaituta badago, 'gnome-session'ek hurrengo saioa automatikoki gordeko du "
+#~ "saioa amaitzean, nahiz eta gordetze automatikoa desgaituta egon."
+
+#~ msgid "Custom Session"
+#~ msgstr "Saio pertsonalizatua"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "Hautatu saio pertsonalizatua exekutatzeko"
+
+#~ msgid "_New Session"
+#~ msgstr "Saio _berria"
+
+#~ msgid "_Remove Session"
+#~ msgstr "_Kendu saioa"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "_Aldatu saioaren izena"
+
+#~ msgid "_Continue"
+#~ msgstr "_Jarraitu"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "Zerbait gaizki irten da."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "Arazo bat gertatu da eta sistemak ezin du berreskuratu. Jar zaitez "
+#~ "sistemaren administratzaile batekin harremanetan"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "Arazo bat gertatu da eta sistemak ezin du berreskuratu. Hedapen guztiak "
+#~ "desgaitu egin dira badaezpada."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "Arazo bat gertatu da eta sistemak ezin du berreskuratu.\n"
+#~ "Amaitu saioa eta saiatu berriro."
+
+#~ msgid "_Log Out"
+#~ msgstr "Amaitu _saioa"
+
+#~ msgid "Allow logout"
+#~ msgstr "Baimendu saio-amaiera"
+
+#~ msgid "Show extension warning"
+#~ msgstr "Erakutsi hedapenaren abisua"
+
+#~ msgid "Remembered Application"
+#~ msgstr "Gogoratutako aplikazioa"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "Programa honek saioa amaitzea blokeatzen ari da."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr "Bezero berrien konexioa ukatzen, unean saioa itzaltzen ari delako\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "Ezin izan da entzuteko ICE socket-a sortu: %s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "systemd zerbitzu gisa exekutatzen"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Jaramonik ez egin hasiera automatikoko direktorio estandarrei"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "HASIERA_AUTOMATIKOKO_DIREKTORIOA"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "Ez kargatu erabiltzaileak zehaztutako aplikazioak"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Erakutsi errorearen elkarrizketa-koadroa probetarako"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "Desgaitu hardware bidezko azelerazioaren egiaztaketa"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [AUKERA…] KOMANDOA\n"
+#~ "\n"
+#~ "Exekutatu KOMANDOA saioaren beste funtzionalitate batzuk galarazten diren "
+#~ "bitartean.\n"
+#~ "\n"
+#~ "  -h, --help        Erakutsi laguntza hau\n"
+#~ "  --version         Erakutsi programaren bertsioa\n"
+#~ "  --app-id ID      Erabiliko den aplikazioaren IDa \n"
+#~ "                        galaraztean (aukerakoa)\n"
+#~ "  --reason ZERGATIA Galarazteko zergatia (aukerakoa)\n"
+#~ "  --inhibit ARG     Galarazteko gauzak, komaz bereiztutako zerrenda:\n"
+#~ "                    logout (saio-amaiera), switch-user (erabiltzailez "
+#~ "aldatzea),\n"
+#~ "                    suspend (esekitzea), idle (inaktiboa),\n"
+#~ "                    automount (muntai automatikoa)\n"
+#~ "  --inhibit-only    Ez abiarazi KOMANDOA eta itxaron beti\n"
+#~ "  -l, --list        Zerrendatu galarazpenak eta irten\n"
+#~ "\n"
+#~ "Ez bada --inhibit aukera zehazten, aktibitate ez dagoela ulertzen da.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr "Errorea kanalizazioa sortzean: %s\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr "Hutsegitea kanalizazioa irakurtzean\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr "%s(e)k argumentu bat behar du\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "%d saio"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr ""
+#~ "Saioen izenak ezin dute “.“ karakterearekin hasi, edo “/“ karakterea eduki"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "Saioen izenak ezin dute “.“ karakterearekin hasi"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "Saioen izenak ezin dute “/“ karakterea eduki"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "“%s“ izeneko saioa badago lehendik ere"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "Erabili systemd saio-kudeatzailea"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr ""
+#~ "Erabili integratutako saio-kudeatzailea (systemd sisteman oinarritutakoa "
+#~ "erabili ordez)"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Saio honek GNOMEn sartuko zaitu, Wayland erabiliz"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Abioko _programa osagarriak:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Abioko programak"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr ""
+#~ "Gogoratu _automatikoki exekutatzen ari diren aplikazioak saioa amaitzean"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Gogoratu unean exekutatzen ari diren aplikazioak"
+
+#~ msgid "Options"
+#~ msgstr "Aukerak"
+
+#~ msgid "Browse…"
+#~ msgstr "Arakatu..."
+
+#~ msgid "Comm_ent:"
+#~ msgstr "_Iruzkina:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "_Komandoa:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Izena:"
+
+#~ msgid "Select Command"
+#~ msgstr "Hautatu komandoa"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Gehitu abioko programa"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Editatu abioko programa"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Abioko komandoa ezin da hutsik egon"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "Abioko komandoa ez da baliozkoa"
+
+#~ msgid "Enabled"
+#~ msgstr "Gaituta"
+
+#~ msgid "Icon"
+#~ msgstr "Ikonoa"
+
+#~ msgid "Program"
+#~ msgstr "Programa"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Abioko aplikazioen hobespenak"
+
+#~ msgid "No name"
+#~ msgstr "Izenik ez"
+
+#~ msgid "No description"
+#~ msgstr "Azalpenik ez"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Ezin izan da laguntzako dokumentua bistaratu"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Abioko aplikazioak"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Aukeratu zein aplikazio abiarazi saioa-hasten duzunean"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Fitxategia ez da baliozko '.desktop' fitxategia"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "Mahaigaineko fitxategiaren '%s' bertsioa ezezaguna"
+
+#~ msgid "Starting %s"
+#~ msgstr "%s abiarazten"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "Aplikazioak ez ditu dokumenturik onartzen komando-lerroan"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Abiarazteko aukera ezezaguna: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr ""
+#~ "Ezin zaio dokumentuaren URIrik eman mahaigaineko 'Type=Link' sarrerari"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Ez da elementu abiarazgarria"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Desgaitu konexioa saio-kudeatzailearekin"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Zehaztu gordetako konfigurazioa duen fitxategia"
+
+#~ msgid "FILE"
+#~ msgstr "FITXATEGIA"
+
+#~ msgid "Session management options:"
+#~ msgstr "Saio-kudeatzailearen aukerak:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Erakutsi saio-kudeatzailearen aukerak"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "Programa batzuk oraindik exekutatzen ari dira:"
+
+#~ msgid "Unknown"
+#~ msgstr "Ezezaguna"
+
+#~ msgid "A program is still running:"
+#~ msgstr "Programa bat oraindik exekutatzen ari da:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "Programa amaitu zain. Programa hau eteteak zure lanak galtzea eragin "
+#~ "lezake."
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "Programak amaitu zain. Programa hauek eteteak zure lanak galtzea eragin "
+#~ "lezake."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "Aldatu erabiltzailez hala ere"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "Amaitu saioa hala ere"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "Eseki hala ere"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "Hibernatu hala ere"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "Itzali hala ere"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "Berrabiarazi hala ere"
+
+#~ msgid "Lock Screen"
+#~ msgstr "Blokeatu pantaila"
+
+#~ msgid "Cancel"
+#~ msgstr "Utzi"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "Automatikoki zure saioa segundo %d barru amaituko da."
+#~ msgstr[1] "Automatikoki zure saioa %d segundotan amaituko da."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "Automatikoki sistema segundo %d barru itzaliko da."
+#~ msgstr[1] "Automatikoki sistema %d segundotan itzaliko da."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "Automatikoki sistema segundo %d barru berrabiaraziko da."
+#~ msgstr[1] "Automatikoki sistema %d segundotan berrabiaraziko da."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "Unean \"%s\" gisa zaude saioan hasita."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "Amaitu saioa sistematik orain?"
+
+#~ msgid "_Switch User"
+#~ msgstr "_Aldatu erabiltzailez"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "Itzali sistema orain?"
+
+#~ msgid "S_uspend"
+#~ msgstr "_Eseki"
+
+#~ msgid "_Hibernate"
+#~ msgstr "_Hibernatu"
+
+#~ msgid "_Restart"
+#~ msgstr "_Berrabiarazi"
+
+#~ msgid "_Shut Down"
+#~ msgstr "_Itzali"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "Berrabiarazi sistema orain?"
+
+#~ msgid "%d hour"
+#~ msgid_plural "%d hours"
+#~ msgstr[0] "ordu %d"
+#~ msgstr[1] "%d ordu"
+
+#~ msgid "%d minute"
+#~ msgid_plural "%d minutes"
+#~ msgstr[0] "minutu %d"
+#~ msgstr[1] "%d minutu"
+
+#~ msgid "%d second"
+#~ msgid_plural "%d seconds"
+#~ msgstr[0] "segundo %d"
+#~ msgstr[1] "%d segundo"
+
+#~ msgid "0 seconds"
+#~ msgstr "0 segundo"
+
+#~ msgid "Automatic logout in %s"
+#~ msgstr "Saioa automatikoki amaitzeko: %s"
+
+#~ msgid ""
+#~ "This session is configured to automatically log out after a period of "
+#~ "inactivity."
+#~ msgstr ""
+#~ "Saio hau inaktibitate denbora baten ondoren automatikoki amaitzeko "
+#~ "konfiguratuta dago."
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>Programa batzuk oraindik exekutatzen ari dira:</b>"
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "Ez da '%s' ikonoa aurkitu"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the "
+#~ "extensions below may have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "Arazo bat gertatu da eta sistemak ezin du berreskuratu. Azpiko "
+#~ "gehigarrietakoren batek eragindakoa izan daiteke arazoa.\n"
+#~ "Saiatu hauetakoren bat desgaitzen eta gero amaitu saioa eta saiatu "
+#~ "berriro."
+
+#~ msgid "Exited with code %d"
+#~ msgstr "%d kodearekin irten da"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "%d seinalearekin hilda"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "%d seinalearekin geldituta"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "Huts egin du GNOME 3 kargatzean"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "Zoritxarrez huts egin du GNOME 3 dagokion moduan kargatzean eta "
+#~ "<i>ordezko moduan</i> hasi da.\n"
+#~ "\n"
+#~ "Baliteke sistemak (grafikoen hardware edo gailuak) ahalmenik ez izatea "
+#~ "GNOME 3 esperientzia osoaz aritzeko."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "Ikasi GNOME 3 buruz gehiago"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr ""
+#~ "Ezin da saio-hasiera hasi (eta ezin da X zerbitzariarekin konektatu)"
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "Arazo bat dago konfigurazioko zerbitzariarekin.\n"
+#~ "(%s irtenda %d egoerarekin)"

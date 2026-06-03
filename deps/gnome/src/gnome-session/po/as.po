@@ -1,0 +1,492 @@
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+#
+# Amitakhya Phukan <aphukan@fedoraproject.org>, 2009, 2010.
+# Nilamdyuti Goswami <ngoswami@redhat.com>, 2011, 2012, 2013.
+# ngoswami <ngoswami@redhat.com>, 2014. #zanata.
+msgid ""
+msgstr ""
+"Project-Id-Version: as\n"
+"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-"
+"session&keywords=I18N+L10N&component=general\n"
+"POT-Creation-Date: 2014-01-03 14:35+0000\n"
+"PO-Revision-Date: 2014-01-06 17:30+0630\n"
+"Last-Translator: Nilamdyuti Goswami <ngoswami@redhat.com>\n"
+"Language-Team: Assamese <kde-i18n-doc@kde.org>\n"
+"Language: as\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Lokalize 1.5\n"
+
+#: ../data/gnome-custom-session.desktop.in.h:1
+msgid "Custom"
+msgstr "স্বনিৰ্বাচিত"
+
+#: ../data/gnome-custom-session.desktop.in.h:2
+msgid "This entry lets you select a saved session"
+msgstr "এই প্ৰৱিষ্টিয়ে আপোনাক এটা সংৰক্ষিত অধিবেশন নিৰ্বাচন কৰাত সহায় কৰে"
+
+#: ../data/gnome.desktop.in.h:1 ../data/gnome.session.desktop.in.in.h:1
+msgid "GNOME"
+msgstr "GNOME"
+
+#: ../data/gnome.desktop.in.h:2
+msgid "This session logs you into GNOME"
+msgstr "এই অধিবেশনে আপোনাক GNOME ত লগিন কৰায়"
+
+#: ../data/gnome-dummy.session.desktop.in.in.h:1
+msgid "GNOME dummy"
+msgstr "GNOME ডামি"
+
+#: ../data/gnome-wayland.desktop.in.h:1
+#: ../data/gnome-wayland.session.desktop.in.in.h:1
+msgid "GNOME on Wayland"
+msgstr "Wayland ত GNOME"
+
+#: ../data/gnome-wayland.desktop.in.h:2
+msgid "This session logs you into GNOME, using Wayland"
+msgstr "এই অধিবেশনে আপোনাক Wayland ব্যৱহাৰ কৰি, GNOME ত লগিন কৰায়"
+
+#: ../data/session-selector.ui.h:1
+msgid "Custom Session"
+msgstr "স্বনিৰ্বাচিত অধিবেশন"
+
+#: ../data/session-selector.ui.h:2 ../tools/gnome-session-selector.c:103
+msgid "Please select a custom session to run"
+msgstr "অনুগ্ৰহ কৰি চলাবলে এটা স্বনিৰ্বাচিত অধিবেশন বাছক"
+
+#: ../data/session-selector.ui.h:3
+msgid "_New Session"
+msgstr "নতুন অধিবেশন (_N)"
+
+#: ../data/session-selector.ui.h:4
+msgid "_Remove Session"
+msgstr "অধিবেশন আতৰাওক (_R)"
+
+#: ../data/session-selector.ui.h:5
+msgid "Rena_me Session"
+msgstr "অধিবেশন পুনৰ নামকৰণ কৰক (_m)"
+
+#: ../data/session-selector.ui.h:6
+msgid "_Continue"
+msgstr "অব্যাহত ৰাখক (_C)"
+
+#: ../data/session-properties.ui.h:1
+msgid "Additional startup _programs:"
+msgstr "অতিৰিক্ত আৰম্ভৰ প্ৰগ্ৰামসমূহ (_p):"
+
+#: ../data/session-properties.ui.h:2
+msgid "Startup Programs"
+msgstr "আৰম্ভৰ প্ৰগ্ৰামসমূহ"
+
+#: ../data/session-properties.ui.h:3
+msgid "_Automatically remember running applications when logging out"
+msgstr "লগআউট কৰাৰ সময়ত চলি থকা এপ্লিকেচনসমূহ স্বচালিতভাৱে মনত ৰাখক (_A)"
+
+#: ../data/session-properties.ui.h:4
+msgid "_Remember Currently Running Applications"
+msgstr "বৰ্তমানে চলি থকা এপ্লিকেচনসমূহ মনত ৰাখক (_R)"
+
+#: ../data/session-properties.ui.h:5
+msgid "Options"
+msgstr "বিকল্পসমূহ"
+
+#: ../data/session-properties.ui.h:6
+msgid "Browse…"
+msgstr "ব্ৰাউছ কৰক..."
+
+#: ../data/session-properties.ui.h:7
+msgid "Comm_ent:"
+msgstr "মন্তব্য (_e):"
+
+#: ../data/session-properties.ui.h:8
+msgid "Co_mmand:"
+msgstr "কমান্ড (_m):"
+
+#: ../data/session-properties.ui.h:9
+msgid "_Name:"
+msgstr "নাম (_N):"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:323
+msgid "Oh no!  Something has gone wrong."
+msgstr "ইচচ! কিবা এটা ভুল হৈছে।"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:330
+msgid ""
+"A problem has occurred and the system can't recover. Please contact a system "
+"administrator"
+msgstr ""
+"এটা সমস্যা দেখা দিছে আৰু চিস্টেমটো উদ্ধাৰ হব পৰা নাই। অনুগ্ৰহ কৰি এজন চিস্টেম "
+"প্ৰশাসকক যোগাযোগ কৰক"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:332
+msgid ""
+"A problem has occurred and the system can't recover. All extensions have "
+"been disabled as a precaution."
+msgstr ""
+"এটা সমস্যা দেখা দিছে আৰু চিস্টেমটো উদ্ধাৰ হব পৰা নাই। সকলো সম্প্ৰসাৰন এটা "
+"সাৱধানতা "
+"হিচাপে অসামৰ্থবান কৰা হৈছে।"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:334
+msgid ""
+"A problem has occurred and the system can't recover.\n"
+"Please log out and try again."
+msgstr ""
+"এটা সমস্যা দেখা দিছে আৰু চিস্টেমটো উদ্ধাৰ হব পৰা নাই।\n"
+"অনুগ্ৰহ কৰি লগআউট কৰক আৰু পুনৰ চেষ্টা কৰক।"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:349
+msgid "_Log Out"
+msgstr "লগআউট কৰক (_L)"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:371 ../gnome-session/main.c:307
+msgid "Enable debugging code"
+msgstr "ক'ড ডিবাগিং সামৰ্থবান কৰক"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:372
+msgid "Allow logout"
+msgstr "লগআউটৰ অনুমতি দিয়ক"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:373
+msgid "Show extension warning"
+msgstr "সম্প্ৰসাৰনৰ সতৰ্কবাৰ্তা দেখুৱাওক"
+
+#: ../gnome-session/gsm-manager.c:1272 ../gnome-session/gsm-manager.c:2044
+msgid "Not responding"
+msgstr "কোনো প্ৰতিক্ৰিয়া নাই"
+
+#: ../gnome-session/gsm-util.c:411
+msgid "_Log out"
+msgstr "লগআউট কৰক (_L)"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: ../gnome-session/gsm-xsmp-client.c:559
+msgid "Remembered Application"
+msgstr "মনত ৰখা এপ্লিকেচন"
+
+#: ../gnome-session/gsm-xsmp-client.c:1209
+msgid "This program is blocking logout."
+msgstr "এই প্ৰগ্ৰামে লগআউট অবৰোধ কৰি আছে।"
+
+#: ../gnome-session/gsm-xsmp-server.c:341
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr ""
+"চিস্টেম বৰ্তমানে বন্ধ কৰাৰ প্ৰচেষ্টা কৰা হৈছে আৰু এই কাৰণে নতুন গ্ৰাহকৰ সৈতে "
+"সংযোগ "
+"স্থাপনৰ অনুৰোধ প্ৰত্যাখ্যান কৰা হৈছে।\n"
+
+#: ../gnome-session/gsm-xsmp-server.c:610
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "ICE অপেক্ষাৰ ছ'কেট নিৰ্মাণ কৰিবলৈ ব্যৰ্থ: %s"
+
+#: ../gnome-session/main.c:305
+msgid "Override standard autostart directories"
+msgstr "প্ৰামাণিক স্বআৰম্ভ ডাইৰেকটৰিসমূহ অভাৰৰাইড কৰক"
+
+#: ../gnome-session/main.c:305
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: ../gnome-session/main.c:306
+msgid "Session to use"
+msgstr "ব্যৱহাৰ হ'ব লগিয়া অধিবেশন"
+
+#: ../gnome-session/main.c:306
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: ../gnome-session/main.c:308
+msgid "Do not load user-specified applications"
+msgstr "ব্যৱহাৰকাৰী দ্বাৰা নিৰ্ধাৰিত এপ্লিকেচনসমূহ ল'ড নকৰিব"
+
+#: ../gnome-session/main.c:309
+msgid "Version of this application"
+msgstr "এই এপ্লিকেচনৰ সংস্কৰণ"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: ../gnome-session/main.c:311
+msgid "Show the fail whale dialog for testing"
+msgstr "পৰিক্ষণৰ বাবে ব্যৰ্থ হোৱেইল ডাইলগ দেখুৱাওক"
+
+#: ../gnome-session/main.c:344
+msgid " - the GNOME session manager"
+msgstr "- GNOME অধিবেশন ব্যৱস্থাপক"
+
+#: ../tools/gnome-session-inhibit.c:110
+#, c-format
+msgid ""
+"%s [OPTION...] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [OPTION...] COMMAND\n"
+"\n"
+"অধিবেশনৰ কাৰ্য্যকৰীতাক বাধা দিওতে COMMAND এক্সিকিউট কৰক। \n"
+"\n"
+"  -h, --help        এই সহায় দেখুৱাওক\n"
+"  --version         প্ৰগ্ৰামৰ সংস্কৰণ দেখুৱাওক\n"
+"  --app-id ID       বাধা দিওতে ব্যৱহাৰ কৰিন লগিয়া\n"
+"                    এপ্লিকেচন আইডি (বৈকল্পিক)\n"
+"  --reason REASON   বাধা দিয়াৰ কাৰণ (বৈকল্পিক)\n"
+"  --inhibit ARG     বাধা দিব লগিয়া বস্তু, কলন-পৃথকিত তালিকা:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    ইয়াৰ পৰিৱৰ্তে COMMAND লঞ্চ কৰি সদায়ৰ বাবে অপেক্ষা নকৰিব\n"
+"\n"
+"যদি কোনো --inhibit বিকল্প ধাৰ্য্য কৰা হোৱা নাই, idle ধৰি লোৱা হয়।\n"
+
+#: ../tools/gnome-session-inhibit.c:148
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "%s এক্সিকিউট কৰিবলে ব্যৰ্থ\n"
+
+#: ../tools/gnome-session-inhibit.c:208 ../tools/gnome-session-inhibit.c:218
+#: ../tools/gnome-session-inhibit.c:228
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s ৰ এটা তৰ্কৰ প্ৰয়োজন\n"
+
+#: ../tools/gnome-session-selector.c:62
+#, c-format
+msgid "Session %d"
+msgstr "অধিবেশন %d"
+
+#: ../tools/gnome-session-selector.c:108
+msgid ""
+"Session names are not allowed to start with ‘.’ or contain ‘/’ characters"
+msgstr ""
+"অধিবেশন নামসমূহ ‘.’ ৰ সৈতে আৰম্ভ হোৱাৰ অথবা ‘/’ আখৰসমূহ অন্তৰ্ভুক্ত কৰাৰ "
+"অনুমতি নাই"
+
+#: ../tools/gnome-session-selector.c:112
+msgid "Session names are not allowed to start with ‘.’"
+msgstr "অধিবেশন নামসমূহ ‘.’ ৰ সৈতে আৰম্ভ হোৱাৰ অনুমতি নাই"
+
+#: ../tools/gnome-session-selector.c:116
+msgid "Session names are not allowed to contain ‘/’ characters"
+msgstr "অধিবেশন নামসমূহ ‘/’ আখৰসমূহ অন্তৰ্ভুক্ত কৰাৰ অনুমতি নাই"
+
+#: ../tools/gnome-session-selector.c:124
+#, c-format
+msgid "A session named ‘%s’ already exists"
+msgstr "‘%s’ নামৰ এটা অধিবেশন ইতিমধ্যে অস্তিত্ববান"
+
+#: ../tools/gnome-session-quit.c:53
+msgid "Log out"
+msgstr "লগআউট কৰক"
+
+#: ../tools/gnome-session-quit.c:54
+msgid "Power off"
+msgstr "বন্ধ কৰক"
+
+#: ../tools/gnome-session-quit.c:55
+msgid "Reboot"
+msgstr "পুনৰাম্ভ কৰক"
+
+#: ../tools/gnome-session-quit.c:56
+msgid "Ignoring any existing inhibitors"
+msgstr "কোনো উপস্থিত প্ৰতিৰোধ অগ্ৰাহ্য কৰা হৈ আছে"
+
+#: ../tools/gnome-session-quit.c:57
+msgid "Don't prompt for user confirmation"
+msgstr "ব্যৱহাৰকাৰী নিশ্চিতকৰণৰ কাৰণে প্ৰমপ্ট নকৰিব"
+
+#: ../tools/gnome-session-quit.c:91 ../tools/gnome-session-quit.c:101
+msgid "Could not connect to the session manager"
+msgstr "অধিবেশন ব্যৱস্থাপকৰ সৈতে সংযোগ স্থাপন কৰিবলৈ ব্যৰ্থ"
+
+#: ../tools/gnome-session-quit.c:203
+msgid "Program called with conflicting options"
+msgstr "দ্বন্দ্বযুক্ত বিকল্প সহ প্ৰগ্ৰামক কল কৰা হৈছে"
+
+#~ msgid "Select Command"
+#~ msgstr "কমান্ড বাছক"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "আৰম্ভৰ প্ৰগ্ৰাম যোগ কৰক"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "আৰম্ভৰ প্ৰগ্ৰাম সম্পাদন কৰক"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "আৰম্ভৰ কমান্ড ৰিক্ত থাকিব নোৱাৰিব"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "আৰম্ভৰ কমান্ড অবৈধ"
+
+#~ msgid "Enabled"
+#~ msgstr "সামৰ্থবান"
+
+#~ msgid "Icon"
+#~ msgstr "আইকন"
+
+#~ msgid "Program"
+#~ msgstr "প্ৰগ্ৰাম"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "আৰম্ভৰ এপ্লিকেচন পছন্দসমূহ"
+
+#~ msgid "No name"
+#~ msgstr "নাম নোহোৱা"
+
+#~ msgid "No description"
+#~ msgstr "বিৱৰণ নাই"
+
+#~ msgid "Could not display help document"
+#~ msgstr "সহায় দস্তাবেজ প্ৰদৰ্শন কৰিবলৈ ব্যৰ্থ"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "কিছুমান প্ৰগ্ৰাম চলি আছে:"
+
+#~ msgid "Startup Applications"
+#~ msgstr "আৰম্ভৰ এপ্লিকেচনসমূহ"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "লগিন কৰাৰ সময়ত কোনবোৰ এপ্লিকেচন আৰম্ভ হব বাছক"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "ফাইলটো এটা বৈধ .desktop ফাইল নহয়"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "ডেস্কটপ ফাইলৰ অজ্ঞাত সংস্কৰণ '%s'"
+
+#~ msgid "Starting %s"
+#~ msgstr "%s আৰম্ভ কৰা হৈছে"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "এই এপ্লিকেচনে কমান্ড-শাৰীৰ মাধ্যমে দস্তাবেজসমূহ গ্ৰহণ নকৰে"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "অপৰিচিত লঞ্চ বিকল্প: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "'Type=Link' ডেস্কটপ প্ৰবিষ্টিৰ ক্ষেত্ৰত দস্তাবেজৰ URI প্ৰেৰণ কৰিব নোৱাৰি"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "এটা লঞ্চ কৰিব পৰা বস্তু নহয় "
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "অধিবেশন ব্যৱস্থাপকৰ সৈতে সংযোগ বিচ্ছিন্ন কৰক"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "সংৰক্ষিত সংৰূপ অন্তৰ্ভুক্ত কৰা ফাইল ধাৰ্য্য কৰক"
+
+#~ msgid "FILE"
+#~ msgstr "FILE"
+
+#~ msgid "Specify session management ID"
+#~ msgstr "অধিবেশন ব্যৱস্থাপনাৰ ID উল্লেখ কৰক"
+
+#~ msgid "ID"
+#~ msgstr "ID"
+
+#~ msgid "Session management options:"
+#~ msgstr "অধিবেশন ব্যৱস্থাপনা বিকল্পসমূহ:"
+
+#~ msgid "Show session management options"
+#~ msgstr "অধিবেশন ব্যৱস্থাপনা বিকল্পসমূহ দেখুৱাওক"
+
+#~ msgid "Unknown"
+#~ msgstr "অজ্ঞাত"
+
+#~ msgid "A program is still running:"
+#~ msgstr "এটা প্ৰগ্ৰাম বৰ্তমানে চলি আছে:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "প্ৰগ্ৰাম সমাপ্ত হোৱাৰ অপেক্ষা কৰা হৈছে। প্ৰগ্ৰাম বিঘ্নিত হ'লে আপুনি কাৰ্য্য হেৰুৱাব "
+#~ "পাৰে।"
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "প্ৰগ্ৰামসমূহ সমাপ্ত হোৱাৰ বাবে অপেক্ষা কৰা হৈছে। প্ৰগ্ৰামসমূহ বিঘ্নিত হ'লে আপুনি "
+#~ "কাৰ্য্য হেৰুৱাব পাৰে।"
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "তথাপিও ব্যৱহাৰকাৰী পৰিবৰ্তন কৰক"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "তথাপিও লগআউট কৰক"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "তথাপিও স্থগিত কৰক"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "তথাপিও হাইবাৰনেইট কৰক"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "তথাপিও বন্ধ কৰক"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "তথাপিও পুনৰাম্ভ কৰক"
+
+#~ msgid "Lock Screen"
+#~ msgstr "পৰ্দা লক কৰক"
+
+#~ msgid "Cancel"
+#~ msgstr "বাতিল কৰক"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে আপোনাক লগআউট কৰা হব।"
+#~ msgstr[1] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে আপোনাক লগআউট কৰা হব।"
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে চিস্টেম বন্ধ কৰা হব।"
+#~ msgstr[1] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে চিস্টেম বন্ধ কৰা হব।"
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে চিস্টেম পুনাৰম্ভ কৰা হব।"
+#~ msgstr[1] "%d ছেকেণ্ডৰ পিছত স্বচালিতভাৱে চিস্টেম পুনাৰম্ভ কৰা হব।"
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "বৰ্তমানে আপুনি \"%s\" হিচাপে লগিন কৰিছে।"
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "এতিয়াই চিস্টেমৰ পৰা লগআউট কৰিব নে?"
+
+#~ msgid "_Switch User"
+#~ msgstr "ব্যৱহাৰকাৰী পৰিবৰ্তন কৰক (_S)"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "এই মুহূৰ্তে চিস্টেম বন্ধ কৰিব নে?"
+
+#~ msgid "S_uspend"
+#~ msgstr "স্থগিত কৰক (_u)"
+
+#~ msgid "_Hibernate"
+#~ msgstr "হাইবাৰনেইট কৰক (_H)"
+
+#~ msgid "_Restart"
+#~ msgstr "পুনৰাম্ভ কৰক (_R)"
+
+#~ msgid "_Shut Down"
+#~ msgstr "বন্ধ কৰক (_S)"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "এই চিস্টেম এতিয়া পুনৰাম্ভ কৰিব নে?"

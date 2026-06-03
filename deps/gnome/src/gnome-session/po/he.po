@@ -1,0 +1,1131 @@
+# translation of gnome-session.HEAD.he.po to Hebrew
+# translation of gnome-session.gnome-2-0.po to Hebrew
+# This file is distributed under the same license as the PACKAGE package.
+# Copyright (C) 2006 THE PACKAGE'S COPYRIGHT HOLDER.
+# Gil Osher <dolfin@rpg.org.il>, 2002, 2005.
+# Gil 'Dolfin' Osher <dolfin@rpg.org.il>, 2002,2003.
+# Yosef Or Boczko <yoseforb@gmail.com>, 2013-2020.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session.HEAD.he\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-08-29 20:49+0000\n"
+"PO-Revision-Date: 2025-08-30 08:07+0300\n"
+"Last-Translator: Yaron Shahrabani <sh.yaron@gmail.com>\n"
+"Language-Team: Hebrew <yoseforb@gmail.com>\n"
+"Language: he\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n==1 ? 0 : n==2 ? 1 : n>10 && n%10==0 ? "
+"2 : 3);\n"
+"X-Generator: Poedit 3.6\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "‏GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "הפעלה זאת מחברת אותך לשולחן העבודה GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "‏GNOME על גבי Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "‏GNOME על גבי Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "הודעה לפני יציאה"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"If enabled, gnome-session will prompt the user before ending a session."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "הצגת אזהרה כנסיגה"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "אין תגובה"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "י_ציאה"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "הפעלה לשימוש"
+
+#: gnome-session/leader-main.c:181 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "שם_הפעלה"
+
+#: gnome-session/leader-main.c:182
+msgid "Enable debugging code"
+msgstr "הפעלת קוד ניפוי שגיאות"
+
+#: gnome-session/leader-main.c:183
+msgid "Version of this application"
+msgstr "גירסת היישום הזה"
+
+#: gnome-session/leader-main.c:184
+msgid "This option is ignored"
+msgstr "האפשרות הזאת לא זוכה להתייחסות"
+
+#: gnome-session/leader-main.c:185
+msgid "Don't re-exec into a login shell"
+msgstr "לא להפעיל מחדש לתוך מעטפת כניסה"
+
+#: gnome-session/leader-main.c:203 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — מנהל ההפעלות של GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "הפעלת gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Signal initialization done to gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Restart dbus.service if it is running"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"הרצה מ־ExecStopPost כדי להפעיל gnome-session-shutdown.target כששירות נכשל"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "התכנית צריכה משתנה אחד בדיוק"
+
+#: tools/gnome-session-inhibit.c:69
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "ארגומנט מניעה לא ידוע: %s"
+
+#: tools/gnome-session-inhibit.c:289
+#, c-format
+#| msgid "Failed to execute %s\n"
+msgid "Failed to execute %s: %m\n"
+msgstr "ההרצה של %s נכשלה: %m\n"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "Show program version"
+msgstr "הצגת גרסת התוכנית"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The application id to use when inhibiting (optional)"
+msgstr "מזהה היישום לשימוש בעת הפעלת מניעה (רשות)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "The reason for inhibiting (optional)"
+msgstr "סיבת המניעה (רשות)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "REASON"
+msgstr "סיבה"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Add action to inhibit (repeatable)"
+msgstr "הוספת פעולה למניעה (אפשר לחזור עליה)"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "ACTION"
+msgstr "פעולה"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "לא להריץ COMMAND (פקודה) ולהמתין לעד במקום"
+
+#: tools/gnome-session-inhibit.c:366
+msgid "List the existing inhibitions, and exit"
+msgstr "הצגת המניעות הקיימות ולצאת"
+
+#: tools/gnome-session-inhibit.c:378
+msgid "COMMAND"
+msgstr "פקודה"
+
+#: tools/gnome-session-inhibit.c:384
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "הרצת פקודה תוך מניעת חלק מתכונתיות ההפעלה."
+
+#: tools/gnome-session-inhibit.c:385
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"ערכי ACTION (פעולה) תקפים הם: logout,‏ switch-user,‏ suspend,‏ idle "
+"ו־automount. (יציאה, החלפת משתמש, השהיה, המתנה ועיגון אוטומטי בהתאמה)\n"
+"אם לא צוינו אפשרויות ‎--inhibit ברירת המחדל היא idle (המתנה)."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "לא צוינו COMMAND (פקודה) או ‎--inhibit-only."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "יציאה"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "כיבוי"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "הפעלה מחדש"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "תוך התעלמות ממעקבים קיימים"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "אין לבקש אישור מהמשתמש"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "לא ניתן להתחבר למנהל ההפעלה"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "התכנית נקראה עם אפשרויות סותרות"
+
+#~ msgid "Custom"
+#~ msgstr "התאמה אישית"
+
+#~ msgid "This entry lets you select a saved session"
+#~ msgstr "רשומה זו מאפשרת לך לבחור בהפעלה שנשמרה"
+
+#~ msgid "GNOME dummy"
+#~ msgstr "‏דימוי של GNOME"
+
+#~ msgid "Save sessions"
+#~ msgstr "שמירת הפעלות"
+
+#~ msgid "If enabled, gnome-session will save the session automatically."
+#~ msgstr "If enabled, gnome-session will save the session automatically."
+
+#~ msgid "Save this session"
+#~ msgstr "שמירת ההפעלה הזאת"
+
+#~ msgid ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+#~ msgstr ""
+#~ "When enabled, gnome-session will automatically save the next session at "
+#~ "log out even if auto saving is disabled."
+
+#~ msgid "Custom Session"
+#~ msgstr "הפעלה מותאמת אישית"
+
+#~ msgid "Please select a custom session to run"
+#~ msgstr "נא לבחור הפעלה מותאמת אישית להרצה"
+
+#~ msgid "_New Session"
+#~ msgstr "הפעלה _חדשה"
+
+#~ msgid "_Remove Session"
+#~ msgstr "ה_סרת הפעלה"
+
+#~ msgid "Rena_me Session"
+#~ msgstr "_שינוי שם ההפעלה"
+
+#~ msgid "_Continue"
+#~ msgstr "להמ_שיך"
+
+#~ msgid "Oh no!  Something has gone wrong."
+#~ msgstr "אבוי!  משהו השתבש."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. Please contact a "
+#~ "system administrator"
+#~ msgstr ""
+#~ "אירעה תקלה והמערכת אינה יכולה להשתקם ממנה. נא ליצור קשר עם הנהלת המערכת"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover. All extensions have "
+#~ "been disabled as a precaution."
+#~ msgstr ""
+#~ "אירעה תקלה והמערכת אינה יכולה להשתקם ממנה. ליתר ביטחון כל ההרחבות הושבתו."
+
+#~ msgid ""
+#~ "A problem has occurred and the system can’t recover.\n"
+#~ "Please log out and try again."
+#~ msgstr ""
+#~ "אירעה תקלה והמערכת אינה יכולה להשתקם ממנה.\n"
+#~ "‬\n"
+#~ "‫נא לצאת ולנסות שוב."
+
+#~ msgid "_Log Out"
+#~ msgstr "_ניתוק"
+
+#~ msgid "Allow logout"
+#~ msgstr "לאפשר יציאה"
+
+#~ msgid "Show extension warning"
+#~ msgstr "הצגת אזהרת הרחבות"
+
+#~ msgid "Remembered Application"
+#~ msgstr "יישום השמור בזיכרון"
+
+#~ msgid "This program is blocking logout."
+#~ msgstr "תכנית זו מונעת את היציאה."
+
+#~ msgid ""
+#~ "Refusing new client connection because the session is currently being "
+#~ "shut down\n"
+#~ msgstr "מסרב לחיבור לקוח חדש מכיון שההפעלה נמצאת במהלך כיבוי\n"
+
+#, c-format
+#~ msgid "Could not create ICE listening socket: %s"
+#~ msgstr "לא ניתן ליצור שקע ICE: ‏%s"
+
+#~ msgid "Running as systemd service"
+#~ msgstr "מופעל כשירות systemd"
+
+#~ msgid "Override standard autostart directories"
+#~ msgstr "Override standard autostart directories"
+
+#~ msgid "AUTOSTART_DIR"
+#~ msgstr "תיקייה_הפעלה_אוטומטית"
+
+#~ msgid "Do not load user-specified applications"
+#~ msgstr "לא לטעון יישומים בבחירת המשתמש"
+
+#~ msgid "Show the fail whale dialog for testing"
+#~ msgstr "Show the fail whale dialog for testing"
+
+#~ msgid "Disable hardware acceleration check"
+#~ msgstr "השבתת בדיקת האצת חומרה"
+
+#, c-format
+#~ msgid ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+#~ msgstr ""
+#~ "%s [OPTION…] COMMAND\n"
+#~ "\n"
+#~ "Execute COMMAND while inhibiting some session functionality.\n"
+#~ "\n"
+#~ "  -h, --help        Show this help\n"
+#~ "  --version         Show program version\n"
+#~ "  --app-id ID       The application id to use\n"
+#~ "                    when inhibiting (optional)\n"
+#~ "  --reason REASON   The reason for inhibiting (optional)\n"
+#~ "  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+#~ "                    logout, switch-user, suspend, idle, automount\n"
+#~ "  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+#~ "  -l, --list        List the existing inhibitions, and exit\n"
+#~ "\n"
+#~ "If no --inhibit option is specified, idle is assumed.\n"
+
+#, c-format
+#~ msgid "Error while creating pipe: %s\n"
+#~ msgstr ""
+#~ "שגיאה ביצירת צינור: %s\n"
+#~ "‬\n"
+
+#~ msgid "Failure reading pipe\n"
+#~ msgstr ""
+#~ "קריאת צינור נכשלה\n"
+#~ "‬\n"
+
+#, c-format
+#~ msgid "%s requires an argument\n"
+#~ msgstr ""
+#~ "‫%s דורש ארגומנט\n"
+#~ "‬\n"
+
+#, c-format
+#~ msgid "Session %d"
+#~ msgstr "הפעלה %d"
+
+#~ msgid ""
+#~ "Session names are not allowed to start with “.” or contain “/” characters"
+#~ msgstr "אסור ששמות ההפעלות יתחילו בתו „.” או יכילו את התו „/”"
+
+#~ msgid "Session names are not allowed to start with “.”"
+#~ msgstr "אסור ששמות ההפעלות יתחילו בתו „.”"
+
+#~ msgid "Session names are not allowed to contain “/” characters"
+#~ msgstr "אסור ששמות ההפעלות יכילו את התו „/”"
+
+#, c-format
+#~ msgid "A session named “%s” already exists"
+#~ msgstr "כבר קיימת הפעלה בשם „%s”"
+
+#~ msgid "Use systemd session management"
+#~ msgstr "להשתמש בניהול ההפעלות של systemd"
+
+#~ msgid "Use builtin session management (rather than the systemd based one)"
+#~ msgstr "להשתמש בניהול הפעלות פנימי (במקום בניהול מבוסס systemd)"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "_תכניות הפעלה נוספות:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "תכניות הפעלה"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_זכירת היישומים הפעילים בזמן הניתוק"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "זכירת היישומים הפועלים _כעת"
+
+#~ msgid "Options"
+#~ msgstr "אפשרויות"
+
+#~ msgid "Browse…"
+#~ msgstr "עיון…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "הע_רה:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "פ_קודה:"
+
+#~ msgid "_Name:"
+#~ msgstr "_שם:"
+
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "הפעלה זאת מחברת אותך לשולחן העבודה GNOME, באמצעות Wayland"
+
+#~ msgid "Select Command"
+#~ msgstr "בחירת פקודה"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "הוספת תכנית עם ההפעלה"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "עריכת תכנית עם ההפעלה"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "פקודת ההפעלה לא יכולה להיות ריקה"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "פקודת ההפעלה אינה תקינה"
+
+#~ msgid "Enabled"
+#~ msgstr "מאופשר"
+
+#~ msgid "Icon"
+#~ msgstr "סמל"
+
+#~ msgid "Program"
+#~ msgstr "תכנית"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "העדפות יישומי הפעלה"
+
+#~ msgid "No name"
+#~ msgstr "ללא שם"
+
+#~ msgid "No description"
+#~ msgstr "ללא תיאור"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Could not display help document"
+
+#~ msgid "Startup Applications"
+#~ msgstr "יישומי ההפעלה"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "בחירת אילו יישומים יופעלו בעת כניסת המשתמש"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "הקובץ אינו קובץ ‎.desktop תקני"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "גרסת קובץ ה־‎.desktop‏ '%s' אינה מזוהה"
+
+#~ msgid "Starting %s"
+#~ msgstr "%s מופעל"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "היישום לא מקבל מסמכים בשורת הפקודה"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "אפשרות הרצה לא מזוהה: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "לא ניתן חהעביר כתובת מסמך לכניסת .desktop מסוג 'Type=link'"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "הפריט לא ניתן להרצה"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Disable connection to session manager"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Specify file containing saved configuration"
+
+#~ msgid "FILE"
+#~ msgstr "FILE"
+
+#~ msgid "Session management options:"
+#~ msgstr "Session management options:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Show session management options"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "ישנן תכניות שעדיין רצות:"
+
+#~ msgid "Unknown"
+#~ msgstr "לא ידוע"
+
+#~ msgid "A program is still running:"
+#~ msgstr "ישנה תכנית שעדיין רצה:"
+
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "בהמתנה לסיום התכנית. הפרעה לתכנית עלולה לגרור אבדן החומר שעבדת עליו."
+
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you "
+#~ "to lose work."
+#~ msgstr ""
+#~ "בהמתנה לסיום התכניות. הפרעה לתכניות עלולה לגרור לאבדן החומר שעבדת עליו."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "ה_חלפת משתמש בכל מקרה"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "יציאה בכל מקרה"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "השהייה בכל מקרה"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "מעבר למצב שינה בכל מקרה"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "כיבוי בכל מקרה"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "הפעלה מחדש בכל מקרה"
+
+#~ msgid "Lock Screen"
+#~ msgstr "נעילת המסך"
+
+#~ msgid "Cancel"
+#~ msgstr "ביטול"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "בעוד שנייה אחת יתרחש ניתוק אוטומטי."
+#~ msgstr[1] "בעוד %d שניות יתרחש ניתוק אוטומטי."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "בעוד שנייה אחת המערכת תכבה אוטומטית."
+#~ msgstr[1] "המערכת תכבה אוטומטית בעוד %d שניות."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "בעוד שנייה אחת המערכת תופעל מחדש אוטומטית."
+#~ msgstr[1] "המערכת תופעל מחדש אוטומטית בעוד %d שניות."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "כרגע נכנסת תחת השם \"%s\"."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "האם להתנתק מהמערכת?"
+
+#~ msgid "_Switch User"
+#~ msgstr "ה_חלפת משתמש"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "האם לכבות את המערכת כעת?"
+
+#~ msgid "S_uspend"
+#~ msgstr "ה_שהייה"
+
+#~ msgid "_Hibernate"
+#~ msgstr "מ_צב שינה"
+
+#~ msgid "_Restart"
+#~ msgstr "הפעלה מ_חדש"
+
+#~ msgid "_Shut Down"
+#~ msgstr "_כיבוי"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "האם להפעיל את המערכת מחדש כעת?"
+
+#~ msgid "%d hour"
+#~ msgid_plural "%d hours"
+#~ msgstr[0] "שעה אחת"
+#~ msgstr[1] "%d שעות"
+
+#~ msgid "%d minute"
+#~ msgid_plural "%d minutes"
+#~ msgstr[0] "דקה אחת"
+#~ msgstr[1] "%d דקות"
+
+#~ msgid "%d second"
+#~ msgid_plural "%d seconds"
+#~ msgstr[0] "שנייה אחת"
+#~ msgstr[1] "%d שניות"
+
+#~ msgid "0 seconds"
+#~ msgstr "0 שניות"
+
+#~ msgid "Automatic logout in %s"
+#~ msgstr "יציאה אוטומטית בעוד %s"
+
+#~ msgid ""
+#~ "This session is configured to automatically log out after a period of "
+#~ "inactivity."
+#~ msgstr "הפעלה זו מוגדרת לצאת אוטומטית לאחר פרק זמן של חוסר פעילות."
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "הסמל '%s' לא נמצא"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "טעינת GNOME 3 נכשלה"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "לרוע המזל הפעלת GNOME 3 כראוי נכשלה ובמקום זאת הופעל <b>מצב השחזור</b>.\n"
+#~ "\n"
+#~ "תקלה זו אירעה כפי הנראה כיוון שהמערכת שלך (או מנהל ההתקן של חומרת הגרפיקה "
+#~ "שלך) אינה מסוגלת להפעיל את חווית GNOME 3 במלואה."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "מידע נוסף על אודות GNOME 3"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+
+#~ msgid "Exited with code %d"
+#~ msgstr "יציאה עם הקוד %d"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "חוסל על ידי האות %d"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "נעצר על ידי האות %d"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>קיימות תכניות שעדיין רצות:</b>"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the "
+#~ "extensions below may have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "אירעה שגיאה והמערכת אינה יכולה להשתקם ממנה. כמה מההרחבות שלהלן עלולות היו "
+#~ "לגרום לכך.\n"
+#~ "נא לצאת ולנסות שוב."
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "יש בעיה עם שרת ההגדרות.\n"
+#~ "(‏%s יצא עם המצב %d)"
+
+#~ msgid "Show logout dialog"
+#~ msgstr "Show logout dialog"
+
+#~ msgid "Show shutdown dialog"
+#~ msgstr "Show shutdown dialog"
+
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "Use dialog boxes for errors"
+
+#~ msgid "Set the current session name"
+#~ msgstr "Set the current session name"
+
+#~ msgid "NAME"
+#~ msgstr "NAME"
+
+#~ msgid "Kill session"
+#~ msgstr "Kill session"
+
+#~ msgid "Classic GNOME"
+#~ msgstr "GNOME קלסי"
+
+#~ msgid "Window Manager"
+#~ msgstr "Window Manager"
+
+#~ msgid "Default session"
+#~ msgstr "Default session"
+
+#~ msgid "File Manager"
+#~ msgstr "File Manager"
+
+#~ msgid "List of applications that are part of the default session."
+#~ msgstr "List of applications that are part of the default session."
+
+#~ msgid ""
+#~ "List of components that are required as part of the session. (Each "
+#~ "element names a key under \"/desktop/gnome/session/"
+#~ "required_components\"). The Startup Applications preferences tool will "
+#~ "not normally allow users to remove a required component from the session, "
+#~ "and the session manager will automatically add the required components "
+#~ "back to the session at login time if they do get removed."
+#~ msgstr ""
+#~ "List of components that are required as part of the session. (Each "
+#~ "element names a key under \"/desktop/gnome/session/"
+#~ "required_components\"). The Startup Applications preferences tool will "
+#~ "not normally allow users to remove a required component from the session, "
+#~ "and the session manager will automatically add the required components "
+#~ "back to the session at login time if they do get removed."
+
+#~ msgid "Panel"
+#~ msgstr "Panel"
+
+#~ msgid "Required session components"
+#~ msgstr "Required session components"
+
+#~ msgid ""
+#~ "The file manager provides the desktop icons and allows you to interact "
+#~ "with your saved files."
+#~ msgstr ""
+#~ "The file manager provides the desktop icons and allows you to interact "
+#~ "with your saved files."
+
+#~ msgid ""
+#~ "The number of minutes of inactivity before the session is considered idle."
+#~ msgstr ""
+#~ "The number of minutes of inactivity before the session is considered idle."
+
+#~ msgid ""
+#~ "The panel provides the bar at the top or bottom of the screen containing "
+#~ "menus, the window list, status icons, the clock, etc."
+#~ msgstr ""
+#~ "The panel provides the bar at the top or bottom of the screen containing "
+#~ "menus, the window list, status icons, the clock, etc."
+
+#~ msgid ""
+#~ "The window manager is the program that draws the title bar and borders "
+#~ "around windows, and allows you to move and resize windows."
+#~ msgstr ""
+#~ "The window manager is the program that draws the title bar and borders "
+#~ "around windows, and allows you to move and resize windows."
+
+#~ msgid "Time before session is considered idle"
+#~ msgstr "Time before session is considered idle"
+
+#~ msgid "GConf key used to look up default session"
+#~ msgstr "GConf key used to look up default session"
+
+#~ msgid "Preferred Image to use for login splash screen"
+#~ msgstr "Preferred Image to use for login splash screen"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "Show the splash screen"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "Show the splash screen when the session starts up"
+
+#~ msgid ""
+#~ "This is a relative path value based off the $datadir/pixmaps/ directory. "
+#~ "Sub-directories and image names are valid values. Changing this value "
+#~ "will affect the next session login."
+#~ msgstr ""
+#~ "This is a relative path value based off the $datadir/pixmaps/ directory. "
+#~ "Sub-directories and image names are valid values. Changing this value "
+#~ "will affect the next session login."
+
+#~ msgid ""
+#~ "Waiting for program to finish.  Interrupting program may cause you to "
+#~ "lose work."
+#~ msgstr "ממתין לסיום תוכנית. הפרעה לתוכנית עלולה לגרום לאיבוד העבודה שלך."
+
+#~ msgid "- GNOME Splash Screen"
+#~ msgstr "- GNOME Splash Screen"
+
+#~ msgid "GNOME Splash Screen"
+#~ msgstr "GNOME Splash Screen"
+
+#~ msgid ""
+#~ "If enabled, gnome-session will save the session automatically. Otherwise, "
+#~ "the logout dialog will have an option to save the session."
+#~ msgstr ""
+#~ "If enabled, gnome-session will save the session automatically. Otherwise, "
+#~ "the logout dialog will have an option to save the session."
+
+#~ msgid ""
+#~ "Assistive technology support has been requested for this session, but the "
+#~ "accessibility registry was not found. Please ensure that the AT-SPI "
+#~ "package is installed. Your session has been started without assistive "
+#~ "technology support."
+#~ msgstr ""
+#~ "תמיכה בטכנולוגיה מסייעת התבקשה עבור הפעלה זאת, אבל הגדרות הנגישות לא "
+#~ "נמצאו. נא לוודא שהחבילה AT-SPI מותקנת. ההפעלה הותחלה ללא תמיכה בטכנולוגיה "
+#~ "מסייעת."
+
+#~ msgid "AT SPI Registry Wrapper"
+#~ msgstr "עוטף רישומי ה־AT SPI"
+
+#~ msgid "GNOME Settings Daemon Helper"
+#~ msgstr "מסייע מנוע ההגדרות של GNOME"
+
+#~ msgid "The name of the startup program cannot be empty"
+#~ msgstr "שם פקודת ההפעלה לא יכול להיות ריק"
+
+#~ msgid "Sessions Preferences"
+#~ msgstr "העדפות הפעלה"
+
+#~ msgid "Selected option in the log out dialog"
+#~ msgstr "Selected option in the log out dialog"
+
+#~ msgid ""
+#~ "This is the option that will be selected in the logout dialog, valid "
+#~ "values are \"logout\" for logging out, \"shutdown\" for halting the "
+#~ "system and \"restart\" for restarting the system."
+#~ msgstr ""
+#~ "This is the option that will be selected in the logout dialog, valid "
+#~ "values are \"logout\" for logging out, \"shutdown\" for halting the "
+#~ "system and \"restart\" for restarting the system."
+
+#~ msgid "Configure your sessions"
+#~ msgstr "הגדר את תצורות ההפעלה שלך"
+
+#~ msgid "Session management"
+#~ msgstr "ניהול תצורת ההפעלה"
+
+#~ msgid "GNOME GUI Library + EggSMClient"
+#~ msgstr "GNOME GUI Library + EggSMClient"
+
+#~ msgid ""
+#~ "The Window manager that gnome-session will start. Valid values are "
+#~ "\"metacity\" and \"compiz\"."
+#~ msgstr ""
+#~ "The Window manager that gnome-session will start. Valid values are "
+#~ "\"metacity\" and \"compiz\"."
+
+#~ msgid "Window Manager to start"
+#~ msgstr "Window Manager to start"
+
+#~ msgid "gtk-cancel"
+#~ msgstr "gtk-cancel"
+
+#~ msgid "Could not connect to the session manager\n"
+#~ msgstr "לא ניתן להתחבר למנהל ההפעלה\n"
+
+#~ msgid " - Save the current session"
+#~ msgstr "- Save the current session"
+
+#~ msgid "Play logout sound instead of login"
+#~ msgstr "Play logout sound instead of login"
+
+#~ msgid "- GNOME login/logout sound"
+#~ msgstr "- GNOME login/logout sound"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "Allow TCP connections"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+#~ msgstr ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+
+#~ msgid "_Order:"
+#~ msgstr "_סדר:"
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "מה שקורה ליישום כשהוא נסגר."
+
+#~ msgid "_Style:"
+#~ msgstr "_סגנון:"
+
+#~ msgid "Inactive"
+#~ msgstr "לא פעיל"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "מחכה להפעלה או כבר סיים."
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "התחיל אך טרם ציין מצב."
+
+#~ msgid "Running"
+#~ msgstr "פועל"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "חבר רגיל בתצורת ההפעלה."
+
+#~ msgid "Saving"
+#~ msgstr "שומר"
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "מצב לא צויין בזמן הנתון."
+
+#~ msgid "Normal"
+#~ msgstr "רגיל"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "לא מושפע על-ידי התנתקויות, אך יכול למות."
+
+#~ msgid "Never allowed to die."
+#~ msgstr "לעולם לא מורשה למות."
+
+#~ msgid "Trash"
+#~ msgstr "אשפה"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "מבוטל בהתנתקות ויכול למות."
+
+#~ msgid "Settings"
+#~ msgstr "הגדרות"
+
+#~ msgid "Always started on every login."
+#~ msgstr "תמיד מופעל בכל התחברות."
+
+#~ msgid "Order"
+#~ msgstr "סדר"
+
+#~ msgid "Style"
+#~ msgstr "סגנון"
+
+#~ msgid "State"
+#~ msgstr "מצב"
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work "
+#~ "correctly."
+#~ msgstr ""
+#~ "ארעה שגיאה בהפעלת תהליך השירות של הגדרות GNOME.\n"
+#~ "\n"
+#~ "כמה דברים, כמו הגדרות ערכות נושא, צלילים, או רקעים עלולים לא לפעול כראוי."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "הודעת השגיאה האחרונה הייתה:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME עדיין ינסה להפעיל מחדש את תהליך שירות ההגדרות בפעם הבאה שתתחבר."
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "תהליך שירות ההגדרות הופעל מחדש יותר מידי פעמים."
+
+#~ msgid "PROGRAM..."
+#~ msgstr "PROGRAM..."
+
+#~ msgid ""
+#~ "You must specify at least one program to remove. You can list the "
+#~ "programs with --list.\n"
+#~ msgstr ""
+#~ "You must specify at least one program to remove. You can list the "
+#~ "programs with --list.\n"
+
+#~ msgid "Error: could not connect to the session manager\n"
+#~ msgstr "Error: could not connect to the session manager\n"
+
+#~ msgid "Currently registered clients:\n"
+#~ msgstr "Currently registered clients:\n"
+
+#~ msgid "Couldn't find program %s in session\n"
+#~ msgstr "Couldn't find program %s in session\n"
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "אתה בטוח שברצונך להתנתק?"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "הפעל _מחדש את המחשב"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "Only read saved sessions from the default.session file"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr ""
+#~ "Millisecond period spent waiting for clients to register (0=forever)"
+
+#~ msgid "DELAY"
+#~ msgstr "DELAY"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr "תקופת זמן במילי שניות לחכות שהלקוחות יגיבו (0=לנצח)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr "Millisecond period spent waiting for clients to die (0=forever)"
+
+#~ msgid "_Ignore"
+#~ msgstr "ה_תעלם"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "לא הצלחתי למצוא את כתובת האינטרנט: %s.\n"
+#~ "זה ימנע מ GNOME לעבוד כנדרש.\n"
+#~ "ייתכן וכל הנדרש לתיקון הבעיה הוא הוספת\n"
+#~ "%s לקובץ /etc/hosts."
+
+#~ msgid "Try Again"
+#~ msgstr "נסה שנית"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "ההמתנה הופסקה בגלל התנגשות."
+
+#~ msgid "No response to the %s command."
+#~ msgstr "אין תגובה לפקודה %s."
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "התוכנית עשויה להיות אטית, מופסקת או שבורה."
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "אתה יכול לחכות לתגובה ממנה או להסיר אותה."
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "הפעלה מחדש הופסקה בגלל מספר כשלים."
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "כיבוי ההפעלה בתהליכים."
+
+#~ msgid "Save changes to the current session before closing?"
+#~ msgstr "לשמור שינויים לתצורת ההפעלה הנוכחית לפני הסגירה?"
+
+#~ msgid "_Close without Saving"
+#~ msgstr "_סגור מבלי לשמור"
+
+#~ msgid "Your session has been saved."
+#~ msgstr "תצורת ההפעלה שלך נשמרה."
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "הסר את הלקוח הנבחר מתצורת ההפעלה."
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "שמור שינויים לתצורת ההפעלה הנוכחית"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "רשימת תוכניות בתצורת ההפעלה."
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "ה_תוכניות הפועלות כרגע:"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "מנהל החלונות Sawfish"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "מנהל החלונות Metacity"
+
+#~ msgid "Nautilus"
+#~ msgstr "נאוטילוס"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "הגדרות שולחן עבודה"
+
+#~ msgid "New Startup Program"
+#~ msgstr "תוכנית הפעלה חדשה"
+
+#~ msgid "_Save current setup"
+#~ msgstr "_שמור תצורה נוכחית"
+
+#~ msgid "Automatically save chan_ges to session"
+#~ msgstr "_שמור שינויים בתצורת ההפעלה באופן אוטומטי"
+
+#~ msgid "There was an unknown activation error."
+#~ msgstr "ארעה שגיאת הפעלה לא ידועה."
+
+#~ msgid "The session name cannot be empty"
+#~ msgstr "שם תצורת ההפעלה לא יכול להיות ריק"
+
+#~ msgid "Add a new session"
+#~ msgstr "הוסף תצורת הפעלה חדשה"
+
+#~ msgid "Edit session name"
+#~ msgstr "ערוך את שם תצורת ההפעלה"
+
+#~ msgid "Disable"
+#~ msgstr "אל-תאפשר"
+
+#~ msgid "_Edit"
+#~ msgstr "_ערוך"
+
+#~ msgid ""
+#~ "Some changes are not saved.\n"
+#~ "Is it still OK to exit?"
+#~ msgstr ""
+#~ "מספר שינויים לא נשמרו.\n"
+#~ "זה עדיין בסדר לצאת?"
+
+#~ msgid "Show splash screen on _login"
+#~ msgstr "הצג מסך פתיחה בה_תחברות"
+
+#~ msgid "Initialize session settings"
+#~ msgstr "אתחל הגדרות תצורת הפעלה"
+
+#~ msgid "_Startup Command:"
+#~ msgstr "_פקודת הפעלה:"

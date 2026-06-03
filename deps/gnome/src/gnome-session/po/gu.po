@@ -1,0 +1,566 @@
+# translation of gu.po to Gujarati
+# Copyright (C) 2004, 2005, 2006, 2007, 2009, 2010, 2011 Free Software Foundation, Inc.
+# MagNet <magnet@magnet-i.com>, 2004.
+# Ankit Patel <ankit@redhat.com>, 2004, 2005, 2007, 2009.
+# Ankit Patel <ankit644@yahoo.com>, 2006.
+# Sweta Kothari <swkothar@redhat.com>, 2009, 2010, 2011, 2012, 2013, 2014.
+msgid ""
+msgstr ""
+"Project-Id-Version: gu\n"
+"Report-Msgid-Bugs-To: http://bugzilla.gnome.org/enter_bug.cgi?product=gnome-"
+"session&keywords=I18N+L10N&component=general\n"
+"POT-Creation-Date: 2016-06-30 17:18+0000\n"
+"PO-Revision-Date: 2016-07-11 22:10+0200\n"
+"Last-Translator: વિશાલ ભલાણી <vishalbhalani89@gmail.com>\n"
+"Language-Team: American English <kde-i18n-doc@kde.org>\n"
+"Language: gu\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.8.7.1\n"
+"Plural-Forms: nplurals=2; plural=(n!=1);\n"
+
+#: ../data/gnome-custom-session.desktop.in.h:1
+msgid "Custom"
+msgstr "વૈવિધ્ય"
+
+#: ../data/gnome-custom-session.desktop.in.h:2
+msgid "This entry lets you select a saved session"
+msgstr "આ નોંધણી કે જે તમને સંગ્રહ થયેલ સત્રને પસંદ કરવા દે છે"
+
+#: ../data/gnome.desktop.in.h:1 ../data/gnome.session.desktop.in.in.h:1
+msgid "GNOME"
+msgstr "GNOME"
+
+#: ../data/gnome.desktop.in.h:2 ../data/gnome-xorg.desktop.in.h:2
+msgid "This session logs you into GNOME"
+msgstr "આ સત્ર તમને GNOME માં પ્રવેશ આપે છે"
+
+#: ../data/gnome-xorg.desktop.in.h:1
+msgid "GNOME on Xorg"
+msgstr "Xorg પર GNOME"
+
+#: ../data/gnome-dummy.session.desktop.in.in.h:1
+msgid "GNOME dummy"
+msgstr "GNOME ડમી"
+
+#: ../data/session-selector.ui.h:1
+msgid "Custom Session"
+msgstr "વૈવિધ્ય સત્ર"
+
+#: ../data/session-selector.ui.h:2 ../tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "મહેરબાની કરીને ચલાવવા માટે વૈવિધ્ય સત્રને પસંદ કરો"
+
+#: ../data/session-selector.ui.h:3
+msgid "_New Session"
+msgstr "નવું સત્ર (_N)"
+
+#: ../data/session-selector.ui.h:4
+msgid "_Remove Session"
+msgstr "સત્રને દૂર કરો (_R)"
+
+#: ../data/session-selector.ui.h:5
+msgid "Rena_me Session"
+msgstr "સત્રનું નામ બદલો (_m)"
+
+#: ../data/session-selector.ui.h:6
+msgid "_Continue"
+msgstr "ચાલુ રાખો (_C)"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:313
+msgid "Oh no!  Something has gone wrong."
+msgstr "અરે નહિં! કંઇક ખોટુ થઇ ગયુ."
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:320
+msgid ""
+"A problem has occurred and the system can't recover. Please contact a system administrator"
+msgstr "સમસ્યા ઉદ્ભવી અને સિસ્ટમને પુન:પ્રાપ્ત કરી શક્યા નહિં. મહેરબાની કરીને સિસ્ટમ સંચાલકનો સંપર્ક કરો"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:322
+msgid ""
+"A problem has occurred and the system can't recover. All extensions have been disabled as a "
+"precaution."
+msgstr "સમસ્યા ઉદ્ભવી અને સિસ્ટમને પુન:પ્રાપ્ત કરી શક્યા નહિં. બધા એક્સટેન્શન એક સાવચેતી તરીકે નિષ્ક્રિય છે."
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:324
+msgid ""
+"A problem has occurred and the system can't recover.\n"
+"Please log out and try again."
+msgstr ""
+"સમસ્યા ઉદ્ભવી અને સિસ્ટમને પુન:પ્રાપ્ત કરી શક્યા નહિં.\n"
+" મહેરબાની કરીને બહાર નીકળો અને ફરીથી પ્રયત્ન કરો."
+
+# gnome-session/logout.c:274
+#: ../gnome-session/gsm-fail-whale-dialog.c:339
+msgid "_Log Out"
+msgstr "બહાર નીકળો (_L)"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:361 ../gnome-session/main.c:283
+msgid "Enable debugging code"
+msgstr "ડિબગીંગ કોડ ને સક્રિય કરો"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:362
+msgid "Allow logout"
+msgstr "logout ની પરવાનગી આપો"
+
+#: ../gnome-session/gsm-fail-whale-dialog.c:363
+msgid "Show extension warning"
+msgstr "ઍક્સટેન્શન ચેતવણી બતાવો"
+
+#: ../gnome-session/gsm-manager.c:1228 ../gnome-session/gsm-manager.c:1881
+msgid "Not responding"
+msgstr "જવાબ આપતુ નથી"
+
+# gnome-session/logout.c:274
+#: ../gnome-session/gsm-util.c:382
+msgid "_Log out"
+msgstr "બહાર નીકળો (_L)"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: ../gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "યાદ રાખેલ કાર્યક્રમ"
+
+#: ../gnome-session/gsm-xsmp-client.c:1207
+msgid "This program is blocking logout."
+msgstr "આ કાર્યક્રમ એ બહાર નીકળવાને અટકાવી રહ્યો છે."
+
+#: ../gnome-session/gsm-xsmp-server.c:340
+msgid "Refusing new client connection because the session is currently being shut down\n"
+msgstr "નવા ક્લાઇન્ટ જોડાણને ના પાડી રહ્યા છે કારણ કે સત્ર એ હાલમાં બંધ થયેલ છે\n"
+
+#: ../gnome-session/gsm-xsmp-server.c:609
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "ICE સાંભળવાની સોકેટ ને બનાવી શકાતી નથી: %s"
+
+#: ../gnome-session/main.c:281
+msgid "Override standard autostart directories"
+msgstr "પ્રમાણભૂત આપોઆપશરૂઆત ડિરેક્ટરીઓ પર ફરી લખો"
+
+#: ../gnome-session/main.c:281
+msgid "AUTOSTART_DIR"
+msgstr "AUTOSTART_DIR"
+
+#: ../gnome-session/main.c:282
+msgid "Session to use"
+msgstr "વાપરવા માટે સત્ર"
+
+#: ../gnome-session/main.c:282
+msgid "SESSION_NAME"
+msgstr "SESSION_NAME"
+
+#: ../gnome-session/main.c:284
+msgid "Do not load user-specified applications"
+msgstr "વપરાશકર્તા-સ્પષ્ટ થયેલ કાર્યક્રમો ને લોડ કરાતા નથી"
+
+#: ../gnome-session/main.c:285
+msgid "Version of this application"
+msgstr "આ કાર્યક્રમની આવૃત્તિ"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: ../gnome-session/main.c:287
+msgid "Show the fail whale dialog for testing"
+msgstr "પરીક્ષણ માટે નિષ્ફળ વ્હેલ સંવાદ બતાવો"
+
+#: ../gnome-session/main.c:288
+msgid "Disable hardware acceleration check"
+msgstr "હાર્ડવેર પ્રવેગકની તપાસણી અક્ષમ કરો"
+
+#: ../gnome-session/main.c:320
+msgid " - the GNOME session manager"
+msgstr " - જીનોમ સત્ર વ્યવસ્થાપક"
+
+#: ../tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION...] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [OPTION...] COMMAND\n"
+"\n"
+"COMMAND ચલાવો જ્યારે અમુક સત્ર કાર્યક્ષમતાઓને અવરોધી રહ્યુ હોય.\n"
+"\n"
+"  -h, --help        આ મદદને બતાવો\n"
+"  --version         કાર્યક્રમ આવૃત્તિને બતાવો\n"
+"  --app-id ID       વાપરવા માટે કાર્યક્રમ id\n"
+"                    જ્યારે અવરોધી રહ્યા હોય (વૈકલ્પિક)\n"
+"  --reason REASON   અવરોધવા માટે કારણ (વૈકલ્પિકl)\n"
+"  --inhibit ARG     અવરોધવા માટેની વસ્તુઓ, અવતરણ ચિહ્નથી અલગ થયેલ યાદી:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    COMMAND શરૂ કરો નહિં અને તેને બદલે હંમેશા રાહ જુઓ\n"
+"\n"
+"If no --inhibit વિકલ્પ સ્પષ્ટ થયેલ છે, નિષ્ક્રિય તરીકે ધાર્યુ હતુ.\n"
+
+#: ../tools/gnome-session-inhibit.c:146
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "%s ને ચલાવતી વખતે નિષ્ફળતા\n"
+
+#: ../tools/gnome-session-inhibit.c:206 ../tools/gnome-session-inhibit.c:216
+#: ../tools/gnome-session-inhibit.c:226
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "%s ને દલીલની જરૂર છે\n"
+
+#: ../tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "સત્ર %d"
+
+#: ../tools/gnome-session-selector.c:107
+msgid "Session names are not allowed to start with ‘.’ or contain ‘/’ characters"
+msgstr "સત્ર નામો ‘.’ સાથે શરૂ થવા પરવાનગી આપતા નથી અથવા ‘/’ અક્ષરોને સમાવે છે"
+
+#: ../tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with ‘.’"
+msgstr "સત્ર નામો ‘.’ સાથે શરૂ કરવા પરવાનગી આપતા નથી"
+
+#: ../tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain ‘/’ characters"
+msgstr "સત્ર નામો ‘/’ અક્ષરોને સમાવવા પરવાનગી આપતુ નથી"
+
+#: ../tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named ‘%s’ already exists"
+msgstr "નામ થયેલ સત્ર ‘%s’ પહેલેથી અસ્તિત્વ ધરાવે છે"
+
+# gnome-session/logout.c:274
+#: ../tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "બહાર નીકળો"
+
+#: ../tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "પાવર બંધ"
+
+#: ../tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "રીબુટ"
+
+#: ../tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "કોઈપણ વર્તમાન ઇન્હિબિટર્સ અવગણી રહ્યા છે"
+
+#: ../tools/gnome-session-quit.c:54
+msgid "Don't prompt for user confirmation"
+msgstr "વપરાશકર્તા ખાતરી માટે પૂછશો નહિં"
+
+# gnome-session/save-session.c:112
+#: ../tools/gnome-session-quit.c:88 ../tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "સત્ર સંચાલક સાથે સંપર્ક થઈ શક્યો નથી"
+
+#: ../tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "તકરાતા વિકલ્પો સાથે કાર્યક્રમ બોલાવવામાં આવ્યો"
+
+#~| msgid "This session logs you into GNOME"
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "આ સત્ર તમને GNOME માં પ્રવેશ આપે છે, Wayland ને વાપરી રહ્યા છે"
+
+# gnome-session/startup-programs.c:372
+#~ msgid "Additional startup _programs:"
+#~ msgstr "વધારાનો પ્રારંભીક કાર્યક્રમ (_p):"
+
+# gnome-session/session-properties-capplet.c:399
+#~ msgid "Startup Programs"
+#~ msgstr "શુરુઆતી કાર્યક્રમો"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "જ્યારે બહાર નીકળી રહ્યા હોય ત્યારે ચાલી રહેલ કાર્યક્રમો આપોઆપ યાદ રાખો (_A)"
+
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "વર્તમાનમાં ચાલી રહેલ કાર્યક્રમો યાદ રાખો (_R)"
+
+# gnome-session/session-properties-capplet.c:332
+#~ msgid "Options"
+#~ msgstr "વિકલ્પો"
+
+#~ msgid "Browse…"
+#~ msgstr "બ્રાઉઝ કરો..."
+
+# gnome-session/session-properties-capplet.c:362
+#~ msgid "Comm_ent:"
+#~ msgstr "ટિપ્પણી (_e):"
+
+# gnome-session/session-properties-capplet.c:362
+#~ msgid "Co_mmand:"
+#~ msgstr "આદેશ (_m):"
+
+#~ msgid "_Name:"
+#~ msgstr "નામ (_N):"
+
+# gnome-session/session-properties-capplet.c:362
+#~ msgid "Select Command"
+#~ msgstr "આદેશ ને પસંદ કરો"
+
+# gnome-session/startup-programs.c:392
+#~ msgid "Add Startup Program"
+#~ msgstr "શરુઆતી કાર્યક્રમને ઉમેરો"
+
+# gnome-session/startup-programs.c:392
+#~ msgid "Edit Startup Program"
+#~ msgstr "શરુઆતી કાર્યક્રમમાં ફેરફાર કરો"
+
+# gnome-session/startup-programs.c:332
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "શરુઆતી આદેશ ખાલી હોઈ શકે નહિ"
+
+# gnome-session/startup-programs.c:332
+#~ msgid "The startup command is not valid"
+#~ msgstr "શરૂઆતી આદેશ માન્ય નથી"
+
+#~ msgid "Enabled"
+#~ msgstr "સક્રિય કરેલ"
+
+# gnome-session/logout.c:266
+#~ msgid "Icon"
+#~ msgstr "ચિહ્ન"
+
+# gnome-session/gsm-client-list.c:111
+#~ msgid "Program"
+#~ msgstr "કાર્યક્રમ"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "શરૂઆતી કાર્યક્રમોની પસંદગીઓ"
+
+#~ msgid "No name"
+#~ msgstr "નામ નથી"
+
+#~ msgid "No description"
+#~ msgstr "કોઈ વર્ણન નથી"
+
+#~ msgid "Could not display help document"
+#~ msgstr "મદદ દસ્તાવેજ દર્શાવી શકાયુ નહિં"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "કેટલીક પ્રક્રિયાઓ એ હજુ ચાલી રહી છે:"
+
+#~ msgid "Startup Applications"
+#~ msgstr "શરૂઆતી કાર્યક્રમો"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "જ્યારે તમે પ્રવેશો તો શરૂ કરવા માટે ક્યા કાર્યક્મો જોઇએ છે તેને પસંદ કરો"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "ફાઇલ એ યોગ્ય .desktop ફાઇલ નથી"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "ઓળખી ન શકાય તેવી ડેસ્કટોપ ફાઇલ આવૃત્તિ '%s'"
+
+# gnome-session/gsm-client-row.c:34
+#~ msgid "Starting %s"
+#~ msgstr "શરુ થઈ રહ્યુ છે %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "આદેશ વાક્ય પર કાર્યક્રમ એ દસ્તાવેજોને સ્વીકારતુ નથી"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "નહિં ઓળખાતો લોન્ચ વિકલ્પ: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr "'Type=Link' ડેસ્કટોપ પ્રવેશમાં દસ્તાવેજ URIs ને પસાર કરી શકાતી નથી"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "શરૂ કરવા માટે વસ્તુ નથી"
+
+# gnome-session/save-session.c:112
+#~ msgid "Disable connection to session manager"
+#~ msgstr "સત્ર સંચાલક નાં જોડાણને નિષ્ક્રિય કરો"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "ચોક્કસ ફાઇલ એ સંગ્રહ થયેલ રૂપરેખાંકનને સમાવી રહ્યુ છે"
+
+#~ msgid "FILE"
+#~ msgstr "ફાઇલ"
+
+# gnome-session/main.c:66
+#~ msgid "Specify session management ID"
+#~ msgstr "સત્ર વ્યવસ્થાપન ID ને સ્પષ્ટ કરો"
+
+#~ msgid "ID"
+#~ msgstr "ID"
+
+# gnome-session/session-properties-capplet.c:332
+#~ msgid "Session management options:"
+#~ msgstr "સત્ર વ્યવસ્થાપન વિકલ્પો:"
+
+# gnome-session/session-properties-capplet.c:332
+#~ msgid "Show session management options"
+#~ msgstr "સત્ર વ્યવસ્થાપન વિકલ્પો ને બતાવો"
+
+# gnome-session/gsm-client-row.c:43
+#~ msgid "Unknown"
+#~ msgstr "અજ્ઞાત"
+
+#~ msgid "A program is still running:"
+#~ msgstr "પ્રક્રિયા એ હજુ ચાલી રહી છે:"
+
+#~| msgid ""
+#~| "Waiting for the program to finish.  Interrupting the program may cause you to lose work."
+#~ msgid ""
+#~ "Waiting for the program to finish. Interrupting the program may cause you to lose work."
+#~ msgstr ""
+#~ "સમાપ્ત કરવા પ્રક્રિયા માટે રાહ જોઇ રહ્યા છે.  અટકાવેલી પ્રક્રિયા એ તમે તમારા કામ ને ગુમાવવાનું કારણ બની "
+#~ "શકે છે."
+
+#~| msgid ""
+#~| "Waiting for programs to finish.  Interrupting these programs may cause you to lose work."
+#~ msgid ""
+#~ "Waiting for programs to finish. Interrupting these programs may cause you to lose work."
+#~ msgstr ""
+#~ "સમાપ્ત કરવા પ્રક્રિયા માટે રાહ જોઇ રહ્યા છે.  અટકાવેલી પ્રક્રિયા એ તમે તમારા કામ ને ગુમાવવાનું કારણ બની "
+#~ "શકે છે."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "કોઇપણ રીતે વપરાશકર્તાને બદલો"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "કોઈ પણ રીતે બહાર નીકળો"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "કોઇપણ રીતે અટકાવો"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "કોઈ પણ રીતે હાઇબરનેટ કરો"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "કોઈ પણ રીતે બંધ કરો"
+
+#~ msgid "Restart Anyway"
+#~ msgstr "કોઈ પણ રીતે ફરી શરૂ કરો"
+
+#~ msgid "Lock Screen"
+#~ msgstr "સ્ક્રીન ને તાળુ મારો"
+
+#~ msgid "Cancel"
+#~ msgstr "રદ કરો"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "તમે %d સેકન્ડમાં આપમેળે બહાર નીકળી જશો."
+#~ msgstr[1] "તમે %d સેકન્ડોમાં આપમેળે બહાર નીકળી જશો."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "આ સિસ્ટમ એ %d સેકન્ડમાં આપમેળે બહાર નીકળી જશે."
+#~ msgstr[1] "આ સિસ્ટમ એ %d સેકન્ડોમાં આપમેળે બહાર નીકળી જશે."
+
+#~ msgid "This system will be automatically restarted in %d second."
+#~ msgid_plural "This system will be automatically restarted in %d seconds."
+#~ msgstr[0] "આ સિસ્ટમ એ %d સેકંડમાં આપમેળે પુન:શરૂ થઇ જશે."
+#~ msgstr[1] "આ સિસ્ટમ એ %d સેકંડમાં આપમેળે પુન:શરૂ થઇ જશે."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "\"%s\" તરીકે તમે હાલમાં પ્રવેશેલ છો."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "હવે આ સિસ્ટમની બહાર નીકળો?"
+
+#~ msgid "_Switch User"
+#~ msgstr "વપરાશકર્તા ને બદલો (_S)"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "હવે આ સિસ્ટમ ને બંધ કરો?"
+
+#~ msgid "S_uspend"
+#~ msgstr "અટકાવો (_u)"
+
+#~ msgid "_Hibernate"
+#~ msgstr "હાઇબરનેટ (_H)"
+
+# gnome-session/session-properties.c:173
+#~ msgid "_Restart"
+#~ msgstr "ફરીથી શરુ કરો (_R)"
+
+# gnome-session/logout.c:277
+#~ msgid "_Shut Down"
+#~ msgstr "બંધ કરો (_S)"
+
+#~ msgid "Restart this system now?"
+#~ msgstr "શું હવે આ સિસ્ટમને પુન:શરૂ કરવા માંગો છો?"
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "ચિહ્ન '%s' એ શોધાયુ નથી"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "લાવવા માટે GNOME 3 નિષ્ફળ"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the <i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not capable of "
+#~ "delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "કમનસીબે GNOME 3 યોગ્ય રીતે શરૂ કરવામાં નિષ્ફળતા અને <i>ફોલબેક સ્થિતિ</i> માં શરૂ થયેલ છે.\n"
+#~ "\n"
+#~ "આનો મતલબ એ કે તમારી સિસ્ટમ (ગ્રાફિકલ હાર્ડવેર અથવા ડ્રાઇવર) સંપૂર્ણ GNOME 3 અનુભવને મોકલવા માટે સક્ષમ "
+#~ "નથી."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "GNOME 3 વિશે વધારે શીખો"
+
+#~ msgid "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr "પ્રવેશ સત્ર ને શરૂ કરવામાં અસમર્થ (અને X server ને જોડવામાં અસમર્થ)"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>કેટલીક પ્રક્રિયાઓ એ હજુ ચાલી રહી છે:</b>"
+
+#~ msgid "Exited with code %d"
+#~ msgstr "કોડ %d સાથે બહાર નીકળેલ છે"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "સંકેત %d દ્દારા મારેલ છે"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "સંકેત %d દ્દારા બંધ થયેલ છે"
+
+#~ msgid ""
+#~ "A problem has occurred and the system can't recover. Some of the extensions below may "
+#~ "have caused this.\n"
+#~ "Please try disabling some of these, and then log out and try again."
+#~ msgstr ""
+#~ "સમસ્યા ઉદ્ભવી અને સિસ્ટમને પુન:પ્રાપ્ત કરી શકતા નથી. નીચે અમુક એક્સટેન્શનો આ કારણે હોઇ શકે છે.\n"
+#~ "મહેરબાની કરીને આમાંના અમુકને નિષ્ક્રિય કરવાનો પ્રયત્ન કરો, અને પછી બહાર નીકળો અને ફરીથી પ્રયત્ન કરો."
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "ત્યાં રૂપરેખાંકન સર્વર સાથે સમસ્યા છે.\n"
+#~ "(સ્થિતિ %2$d સાથે %1$s બહાર નીકળેલ છે)"
+
+#~ msgid "Show shutdown dialog"
+#~ msgstr "સંવાદ ને બંધ કરવાનું બતાવો"
+
+# gnome-session/save-session.c:44
+#~ msgid "Use dialog boxes for errors"
+#~ msgstr "ભૂલો માટે સંવાદ બોક્સો વાપરો"
+
+# gnome-session/session-properties-capplet.c:259
+#~ msgid "Set the current session name"
+#~ msgstr "વર્તમાન સત્ર નામ સુયોજિત કરો"
+
+#~ msgid "NAME"
+#~ msgstr "NAME"
+
+# gnome-session/save-session.c:43
+#~ msgid "Kill session"
+#~ msgstr "સત્ર સમાપ્ત કરો"

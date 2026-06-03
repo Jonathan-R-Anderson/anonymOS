@@ -1,0 +1,227 @@
+# Indonesia translation of gnome-session.
+# Copyright (C) 2005 THE gnome-session'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the gnome-session package.
+#
+# Mohammad DAMT <mdamt@bisnisweb.com>, 2005.
+# Dirgita <dirgitadevina@yahoo.co.id>, 2010, 2011, 2012, 2014.
+# Andika Triwidada <andika@gmail.com>, 2010, 2011, 2013, 2014.
+# Bonaventura Aditya Perdana <bonaditya@about.me>, 2012.
+# Kukuh Syafaat <kukuhsyafaat@gnome.org>, 2017-2021, 2024.
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session gnome-49\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-11-10 18:32+0000\n"
+"PO-Revision-Date: 2026-01-04 14:15+0700\n"
+"Last-Translator: Andika Triwidada <andika@gmail.com>\n"
+"Language-Team: Indonesian <gnome-l10n-id@googlegroups.com>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.8\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Sesi ini melog-masukkan Anda ke GNOME"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "GNOME pada Wayland"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "GNOME pada Xorg"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Sapaan log keluar"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Jika diaktifkan, gnome-session akan menanyakan pengguna sebelum mengakhiri "
+"sesi."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Tampilkan peringatan penggantian"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Jika diaktifkan, gnome-session akan menampilkan dialog peringatan setelah "
+"log masuk jika sesi secara otomatis mundur kembali."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Tak merespon"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Log keluar"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Sesi yang dipakai"
+
+#: gnome-session/leader-main.c:192 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NAMA_SESI"
+
+#: gnome-session/leader-main.c:193
+msgid "Enable debugging code"
+msgstr "Mengaktifkan kode debug"
+
+#: gnome-session/leader-main.c:194
+msgid "Version of this application"
+msgstr "Versi aplikasi ini"
+
+#: gnome-session/leader-main.c:195
+msgid "This option is ignored"
+msgstr "Opsi ini diabaikan"
+
+#: gnome-session/leader-main.c:196
+msgid "Don't re-exec into a login shell"
+msgstr "Jangan jalankan ulang perintah ke dalam shell login"
+
+#: gnome-session/leader-main.c:210 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — manajer sesi GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Mulai gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Mulai gnome-session-shutdown.target saat menerima EOF atau satu byte pada "
+"stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Inisialisasi sinyal dilakukan untuk gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Mulai ulang dbus.service jika sedang berjalan"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Jalankan dari ExecStopPost untuk memulai gnome-session-shutdown.target pada "
+"kegagalan layanan"
+
+#: tools/gnome-session-ctl.c:281
+#, c-format
+msgid "Program needs exactly one parameter"
+msgstr "Program membutuhkan satu parameter yang tepat"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Argumen pencegah tak dikenal: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Gagal mengeksekusi %s: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Tampilkan versi program"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "ID aplikasi yang akan digunakan saat melakukan pencegahan (opsional)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Alasan pencegahan (opsional)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "ALASAN"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Tambahkan aksi untuk mencegah (dapat diulang)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "TINDAKAN"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Jangan luncurkan COMMAND dan tunggu selamanya saja"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Cantumkan daftar pencegahan yang ada, lalu keluar"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "PERINTAH"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Jalankan PERINTAH sambil mencegah beberapa fungsionalitas sesi."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Nilai TINDAKAN yang valid adalah: logout, switch-user, suspend, idle, dan "
+"automount.\n"
+"Jika tidak ada opsi --inhibit yang ditentukan, maka diasumsikan idle."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Baik COMMAND maupun --inhibit-only tidak ditentukan."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Keluar"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Matikan"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Nyalakan Ulang"
+
+# Keterangan untuk opsi force-logout.
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Mengabaikan sembarang pencegah"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Jangan tanyakan konfirmasi pengguna"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Tak dapat terhubung dengan manajer sesi"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program dipanggil dengan opsi yang bertentangan"

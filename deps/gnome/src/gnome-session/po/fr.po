@@ -1,0 +1,243 @@
+# French translation of gnome-session.
+# Copyright (C) 1998-2019 Free Software Foundation, Inc.
+#
+# Vincent Renardias <vincent@ldsol.com>, 1998-2000.
+# Joaquim Fellmann <joaquim@hrnet.fr>, 2000.
+# Christophe Merlet <redfox@redfoxcenter.org>, 2000-2006.
+# Sun G11n <gnome_int_l10n@ireland.sun.com>, 2002.
+# Laurent Richard <laurent.richard@ael.be>, 2006.
+# Damien Durand <splinux@fedoraproject.org>, 2006.
+# Robert-André Mauchin <zebob.m@pengzone.org>, 2006-2008.
+# Claude Paroz <claude@2xlibre.net>, 2007-2010, 2019.
+# Jonathan Ernst <jonathan@ernstfamily.ch>, 2007.
+# Stéphane Raimbault <stephane.raimbault@gmail.com>, 2008.
+# Frédéric Péters <fpeters@0d.be>, 2008.
+# Bruno Brouard <annoa.b@gmail.com>, 2009,2011-2012
+# Nicolas Repentin <nicolas@shivaserv.fr>, 2011
+# vanadiae <vanadiae35@gmail.com>, 2020.
+# Charles Monzat <charles.monzat@free.fr>, 2018-2021.
+# Irénée THIRION <irenee.thirion@e.email>, 2024.
+# Julien Humbert <julroy67@gmail.com>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session.HEAD\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2026-02-11 14:36+0000\n"
+"PO-Revision-Date: 2025-09-11 11:53+0900\n"
+"Last-Translator: Julien Humbert <julroy67@gmail.com>\n"
+"Language-Team: French <gnomefr@traduc.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Gtranslator 48.0\n"
+"X-DL-Lang: fr\n"
+"X-DL-Module: gnome-session\n"
+"X-DL-Branch: main\n"
+"X-DL-Domain: po\n"
+"X-DL-State: Translating\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Cette session vous connecte dans GNOME"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Invite de déconnexion"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Si activé, gnome-session interroge l’utilisateur avant de terminer la "
+"session."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Afficher l’avertissement de session de secours"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Si activé, gnome-session affiche une boîte de dialogue d’avertissement après "
+"la connexion si la session de secours a dû être automatiquement activée."
+
+#: gnome-session/gsm-manager.c:718 gnome-session/gsm-manager.c:1056
+msgid "Not responding"
+msgstr "Absence de réponse"
+
+#: gnome-session/gsm-util.c:170
+msgid "_Log out"
+msgstr "_Se déconnecter"
+
+#: gnome-session/leader-main.c:193 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Session à utiliser"
+
+#: gnome-session/leader-main.c:193 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "NOM_SESSION"
+
+#: gnome-session/leader-main.c:194
+msgid "Enable debugging code"
+msgstr "Active le code de débogage"
+
+#: gnome-session/leader-main.c:195
+msgid "Version of this application"
+msgstr "Version de cette application"
+
+#: gnome-session/leader-main.c:196
+msgid "This option is ignored"
+msgstr "Cette option est ignorée"
+
+#: gnome-session/leader-main.c:197
+msgid "Don't re-exec into a login shell"
+msgstr "Ne pas ré-exécuter vers un shell de connexion"
+
+#: gnome-session/leader-main.c:211 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — le gestionnaire de sessions de GNOME"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "Démarrer gnome-session-shutdown.target"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"Démarrer gnome-session-shutdown.target si réception de fin de fichier (EOF) "
+"ou d’un octet unique sur stdin"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Signaler l’initialisation comme terminée à gnome-session"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Redémarrer dbus.service s’il est en cours d’exécution"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Démarrer depuis ExecStopPost pour lancer la cible gnome-session-shutdown.target en "
+"cas d’échec du service"
+
+#: tools/gnome-session-ctl.c:281
+#, c-format
+msgid "Program needs exactly one parameter"
+msgstr "Le programme a besoin d’un seul paramètre uniquement"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Argument d’inhibition inconnu : %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "Impossible d’exécuter %s  : %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Afficher la version du programme"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr ""
+"Identifiant de l’application à utiliser lors de l’inhibition (facultatif)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "ID"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Raison de l’inhibition (facultatif)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "RAISON"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Ajouter l’action à inhiber (répétable)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "ACTION"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "Ne pas lancer la COMMANDE et attendre indéfiniment à la place"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Énumérer les inhibitions existantes, puis quitter"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "COMMANDE"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr ""
+"Exécuter la COMMANDE lors de l’inhibition de certaines fonctionnalités de la "
+"session."
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Les valeurs d’ACTION valides sont : « logout », (déconnecter) « switch-user » (changer d’utilisateur), "
+"« suspend » (mettre en veille), « idle » (inactif) et « automount » (monter automatiquement).\n"
+"Si aucune option --inhibit n’est spécifiée, « idle » est supposé."
+
+#: tools/gnome-session-inhibit.c:409
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Ni une COMMANDE ni l’option --inhibit-only n’ont été spécifiées."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Se déconnecter"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Éteindre"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Redémarrer"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Ignorer tout inhibiteur existant"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Ne pas demander de confirmation"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Impossible de se connecter au gestionnaire de sessions"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Programme appelé avec des options conflictuelles"
+
+#~ msgid "GNOME on Wayland"
+#~ msgstr "GNOME sur Wayland"
+
+#~ msgid "GNOME on Xorg"
+#~ msgstr "GNOME sur Xorg"

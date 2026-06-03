@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!DOCTYPE refentry PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN"
+  "http://www.oasis-open.org/docbook/xml/4.5/docbookx.dtd">
+<!-- SPDX-License-Identifier: LGPL-2.1-or-later -->
+
+<refsect1 xmlns:xi="http://www.w3.org/2001/XInclude">
+
+  <title>Notes</title>
+
+  <para id='pkgconfig-text'>Functions described here are available as a shared
+  library, which can be compiled against and linked to with the
+  <constant>libelogind</constant> <citerefentry project='die-net'><refentrytitle>pkg-config</refentrytitle><manvolnum>8</manvolnum></citerefentry>
+  file.</para>
+
+  <!-- 0 /// This part is irrellevant for elogind
+  <xi:include href="threads-aware.xml" xpointer="getenv"/>
+  // 0 -->
+</refsect1>

@@ -1,0 +1,24 @@
+name: ci_ubuntu
+
+on: [push, pull_request]
+
+jobs:
+
+  ubuntu:
+    name: Ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - gcc
+          - clang
+    env:
+      CC: ${{ matrix.compiler }}
+    steps:
+    - uses: actions/checkout@v2
+    - run: sudo apt-get update -q
+    - run: sudo apt-get install -q -y build-essential libpam-dev meson libcap-dev ${CC}
+    - run: meson setup builddir/
+    - run: ninja -C builddir
+    - run: ninja test --verbose -C builddir

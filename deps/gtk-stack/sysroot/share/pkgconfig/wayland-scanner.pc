@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=${prefix}
+datadir=${prefix}/share
+pkgdatadir=${datadir}/wayland
+wayland_scanner=wayland-scanner
+
+Name: wayland-scanner
+Description: Host wayland-scanner shim for Meson native dependency lookup
+Version: 1.23.1
+Libs:
+Cflags:

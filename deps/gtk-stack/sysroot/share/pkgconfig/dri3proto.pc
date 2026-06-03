@@ -1,0 +1,7 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+ 
+Name: DRI3Proto
+Description: DRI3 extension headers
+Version: 1.4
+Cflags: -I${includedir}

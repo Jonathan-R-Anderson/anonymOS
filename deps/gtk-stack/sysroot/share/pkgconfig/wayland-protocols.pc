@@ -1,0 +1,9 @@
+
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+datarootdir=${prefix}/share
+pkgdatadir=${pc_sysrootdir}${datarootdir}/wayland-protocols
+
+Name: Wayland Protocols
+Description: Wayland protocol files
+Version: 1.48

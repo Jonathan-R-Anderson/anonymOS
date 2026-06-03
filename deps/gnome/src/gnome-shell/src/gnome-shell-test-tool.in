@@ -1,0 +1,270 @@
+#!@PYTHON@
+# -*- mode: Python; indent-tabs-mode: nil; -*-
+
+import datetime
+try:
+    import json
+except ImportError:
+    import simplejson as json
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+from configparser import ConfigParser
+from pathlib import Path
+
+class GSettingsConfig(ConfigParser):
+    def add(self, path, key, value):
+        if not path in self:
+            self[path] = {}
+        self[path][key] = value
+
+    def save(self, xdg_home):
+        dir = f'{xdg_home}/config/glib-2.0/settings'
+        Path(dir).mkdir(parents=True)
+        with open(f'{dir}/keyfile', 'w') as keyfile:
+            self.write(keyfile)
+
+def install_extension(extension, env):
+    self_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    args = []
+    args.append(os.path.join(self_dir, 'gnome-extensions'))
+    args.append('install')
+    args.append('--print-uuid')
+    args.append(extension)
+
+    proc = subprocess.run(args, env=env, check=True, capture_output=True, text=True)
+    return proc.stdout.strip()
+
+def show_version(option, opt_str, value, parser):
+    print("GNOME Shell Test Tool @VERSION@")
+    sys.exit()
+
+def start_shell(xdg_home, wrap=None, perf_output=None):
+    # Set up environment
+    env = dict(os.environ)
+
+    filters = ['Gnome-shell-perf-helper'] + options.extra_filter
+    env['MUTTER_WM_CLASS_FILTER'] = ','.join(filters)
+
+    env['XDG_CACHE_HOME'] = f'{xdg_home}/cache'
+    env['XDG_CONFIG_HOME'] = f'{xdg_home}/config'
+    env['XDG_DATA_HOME'] = f'{xdg_home}/data'
+
+    if perf_output is not None:
+        env['SHELL_PERF_OUTPUT'] = perf_output
+
+    env['GSETTINGS_BACKEND'] = 'keyfile'
+
+    gsettings_config = GSettingsConfig()
+
+    # A fixed background image
+    if os.getenv('SHELL_BACKGROUND_IMAGE') is None:
+      env['SHELL_BACKGROUND_IMAGE'] = '@pkgdatadir@/perf-background.xml'
+
+    if options.extension:
+        uuid = install_extension(options.extension, env=env)
+        gsettings_config.add('org/gnome/shell', 'enabled-extensions', f'["{uuid}"]')
+
+    self_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    args = []
+    if wrap:
+        args += wrap.split(' ')
+    args.append(os.path.join(self_dir, 'gnome-shell'))
+
+    args.append('--automation-script')
+    args.append(options.script)
+
+    if options.disable_animations:
+        gsettings_config.add('org/gnome/desktop/interface', 'enable-animations', 'false')
+    else:
+        args.append('--force-animations')
+
+    if options.devkit or options.headless:
+        if options.devkit:
+            args.append('--devkit')
+        elif options.headless:
+            args.append('--headless')
+            if not options.hotplug:
+                args.append('--virtual-monitor')
+                args.append('1280x720')
+        else:
+            args.append('--display-server')
+        args.append('--wayland-display')
+        args.append('gnome-shell-test-display')
+
+    gsettings_config.save(xdg_home)
+
+    print("args: {}".format(args))
+    return subprocess.Popen(args, env=env)
+
+def run_shell(wrap=None, perf_output=None):
+    with tempfile.TemporaryDirectory() as xdg_home:
+        # we do no additional supervision of gnome-shell,
+        # beyond that of wait
+        # in particular, we don't kill the shell upon
+        # receiving a KeyboardInterrupt, as we expect to be
+        # in the same process group
+        shell = start_shell(xdg_home=xdg_home, wrap=wrap, perf_output=perf_output)
+        shell.wait()
+    return shell.returncode == 0
+
+def gnome_hwtest_log(*args):
+    command = ['gnome-hwtest-log', '-t', 'gnome-shell-perf-tool']
+    command.extend(args)
+    subprocess.check_call(command)
+
+def run_performance_test(wrap=None):
+    iters = options.test_iters
+    if options.perf_warmup:
+        iters += 1
+
+    logs = []
+    metric_summaries = {}
+
+    for i in range(0, iters):
+        # We create an empty temporary file that the shell will overwrite
+        # with the contents.
+        handle, output_file = tempfile.mkstemp(".json", "gnome-shell-perf.")
+        os.close(handle)
+
+        # Run the performance test and collect the output as JSON
+        normal_exit = False
+        try:
+            normal_exit = run_shell(wrap=wrap, perf_output=output_file)
+        except:
+            raise
+        finally:
+            if not normal_exit:
+                os.remove(output_file)
+
+        if not normal_exit:
+            return False
+
+        try:
+            f = open(output_file)
+            output = json.load(f)
+            f.close()
+        except:
+            raise
+        finally:
+            os.remove(output_file)
+
+        # Grab the event definitions and monitor layout the first time around
+        if i == 0:
+            events = output['events']
+            monitors = output['monitors']
+
+        if options.perf_warmup and i == 0:
+            continue
+
+        for metric in output['metrics']:
+            name = metric['name']
+            if not name in metric_summaries:
+                summary = {}
+                summary['description'] = metric['description']
+                summary['units'] = metric['units']
+                summary['values'] = []
+                metric_summaries[name] = summary
+            else:
+                summary = metric_summaries[name]
+
+            summary['values'].append(metric['value'])
+
+        logs.append(output['log'])
+
+    if options.perf_output:
+        # Write a complete report, formatted as JSON. The Javascript/C code that
+        # generates the individual reports we are summarizing here is very careful
+        # to format them nicely, but we just dump out a compressed no-whitespace
+        # version here for simplicity. Using json.dump(indent=0) doesn't real
+        # improve the readability of the output much.
+        report = {
+            'date': datetime.datetime.utcnow().isoformat() + 'Z',
+            'events': events,
+            'monitors': monitors,
+            'metrics': metric_summaries,
+            'logs': logs
+        }
+
+        # Add the Git revision if available
+        self_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        if os.path.exists(os.path.join(self_dir, 'gnome-shell-jhbuild.in')):
+            top_dir = os.path.dirname(self_dir)
+            git_dir = os.path.join(top_dir, '.git')
+            if os.path.exists(git_dir):
+                env = dict(os.environ)
+                env['GIT_DIR'] = git_dir
+                revision = subprocess.Popen(['git', 'rev-parse', 'HEAD'],
+                                            env=env,
+                                            stdout=subprocess.PIPE).communicate()[0].strip()
+                report['revision'] = revision
+
+        if options.perf_output:
+            f = open(options.perf_output, 'w')
+            json.dump(report, f)
+            f.close()
+    elif options.hwtest:
+        # Log to systemd journal
+        for metric in sorted(metric_summaries.keys()):
+            summary = metric_summaries[metric]
+            gnome_hwtest_log('--metric=' + metric + '=' + str(summary['values'][0]) + summary['units'],
+                             '--metric-description=' + summary['description'])
+        gnome_hwtest_log('--finished')
+    else:
+        # Write a human readable summary
+        print('------------------------------------------------------------')
+        for metric in sorted(metric_summaries.keys()):
+            summary = metric_summaries[metric]
+            print("#", summary['description'])
+            print(metric, ", ".join((str(x) for x in summary['values'])))
+        print('------------------------------------------------------------')
+
+    return True
+
+# Main program
+
+parser = argparse.ArgumentParser()
+parser.add_argument("script",
+                    metavar="AUTOMATION_SCRIPT",
+                    help="Automation script to run")
+parser.add_argument("--test-iters", type=int, metavar="ITERS",
+                    help="Numbers of iterations of the test to run",
+                    default=1)
+parser.add_argument("--perf-warmup", action="store_true",
+                    help="Run a dry run before performance tests")
+parser.add_argument("--perf-output", metavar="OUTPUT_FILE",
+                    help="Output file to write performance report")
+parser.add_argument("--extra-filter", action="append",
+                    help="add an extra window class that should be allowed")
+parser.add_argument("--hwtest", action="store_true",
+                    help="Log results appropriately for GNOME Hardware Testing")
+parser.add_argument("--version", action="version",
+                    version="GNOME Shell Performance Test @VERSION@")
+
+parser.add_argument("--wrap")
+
+parser.add_argument("--devkit", action="store_true",
+                    help="Run development kit")
+parser.add_argument("--headless", action="store_true",
+                    help="Run as a headless Wayland compositor")
+parser.add_argument("--hotplug", action="store_true",
+                    help="Start without a virtual monitor attached")
+
+parser.add_argument("--disable-animations", action="store_true",
+                    help="Run with animations disabled")
+parser.add_argument("--extension",
+                    help="Run with extension installed and enabled")
+
+options = parser.parse_args()
+
+if options.extra_filter is None:
+    options.extra_filter = []
+
+if options.script == 'hwtest':
+    options.extra_filter.append('Gedit')
+
+normal_exit = run_performance_test(wrap=options.wrap)
+if not normal_exit:
+    sys.exit(1)

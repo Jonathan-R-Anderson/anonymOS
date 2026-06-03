@@ -1,0 +1,266 @@
+# translation of gnome-desktop.master.ru.po to Russian
+# translation of gnome-desktop to Russian
+# Copyright (C) 1998-2002, 2005, 2006, 2007, 2009, 2010 Free Software Foundation, Inc.
+#
+# Max Valianskiy <maxcom@vinchi.ru>, 1998-1999.
+# Sergey Panov <sipan@mit.edu>, 1999.
+# Valek Filippov <frob@df.ru>, 2000-2002.
+# Dmitry Mastrukov <dmitry@taurussoft.org>, 2002-2003.
+# Leonid Kanter <leon@asplinux.ru>, 2003, 2005, 2006, 2007, 2009.
+# Zhovner Pavel <zhovner@ukr.net>, 2007.
+# Alexander Saprykin <xelfium@gmail.com>, 2009.
+# Yuri Kozlov <yuray@komyakino.ru>, 2010.
+# Yuri Myasoedov <omerta13@yandex.ru>, 2012, 2013.
+# Stas Solovey <whats_up@tut.by>, 2013.
+# Konstantin Nezhbert <zhbert@yandex.ru>, 2021.
+#
+# SPDX-FileCopyrightText: 2026 SPDX-FileCopyrightText :
+msgid ""
+msgstr ""
+"Project-Id-Version: ru\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-desktop/"
+"issues/\n"
+"POT-Creation-Date: 2025-12-30 17:41+0000\n"
+"PO-Revision-Date: 2026-02-03 15:14+0300\n"
+"Last-Translator: Artur So <arturios2005@mail.ru>\n"
+"Language-Team: Russian <gnome-cyr@gnome.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+"X-Generator: Poedit 3.8\n"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1027
+#, c-format
+msgid "File %s does not have a preview icon attribute"
+msgstr "Файл %s не имеет атрибута значка предварительного просмотра"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1037
+#, c-format
+msgid "No loadable icon for %s"
+msgstr "Нет загружаемого значка для %s"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1166
+#, c-format
+msgid "Could not find thumbnailer for mime-type '%s'"
+msgstr "Не удалось найти программу миниатюр для mime-типа '%s'"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1296
+#, c-format
+msgid "Failed to create folder '%s'"
+msgstr "Не удалось создать папку '%s'"
+
+#: libgnome-desktop/gnome-desktop-thumbnail.c:1309
+#, c-format
+msgid "The output folder '%s' is not writable"
+msgstr "Папка вывода '%s' недоступна для записи"
+
+#: libgnome-desktop/gnome-languages.c:700
+msgid "Unspecified"
+msgstr "Неопределённый"
+
+#. TRANSLATORS: Used to distinguish the labels representing the gez_ER
+#. and gez_ET locales from gez_ER@abegede respective gez_ET@abegede. The
+#. difference is related to collation.
+#: libgnome-desktop/gnome-languages.c:1366
+msgid "Abegede"
+msgstr "Абегеде"
+
+#. TRANSLATORS: Used to distinguish Cyrillic from Latin written language variants.
+#: libgnome-desktop/gnome-languages.c:1368
+msgid "Cyrillic"
+msgstr "Кириллица"
+
+#. TRANSLATORS: Also known as "Nagari", a written variant for many languages
+#. of the Indian subcontinent. See:
+#. https://en.wikipedia.org/wiki/Devanagari
+#: libgnome-desktop/gnome-languages.c:1372
+msgid "Devanagari"
+msgstr "Деванагари"
+
+#. TRANSLATORS: Used to distinguish the label representing the tt_RU
+#. locale from tt_RU@iqtelif. It's a special alphabet for Tatar.
+#: libgnome-desktop/gnome-languages.c:1375
+msgid "IQTElif"
+msgstr "IQTElif"
+
+#. TRANSLATORS: The alphabet/script, not the language. Used to distinguish
+#. Latin from Cyrillic written language variants.
+#: libgnome-desktop/gnome-languages.c:1378
+msgid "Latin"
+msgstr "Латиница"
+
+#. TRANSLATORS: "Saho" is a variant of the Afar language. Used to
+#. distinguish the label representing the aa_ER locale from aa_ER@saaho.
+#: libgnome-desktop/gnome-languages.c:1381
+msgid "Saho"
+msgstr "Сахо"
+
+#. TRANSLATORS: "Valencia" is a dialect of the Catalan language spoken
+#. in Valencia. Used to distinguish the label representing the ca_ES
+#. locale from ca_ES@valencia.
+#: libgnome-desktop/gnome-languages.c:1385
+msgid "Valencia"
+msgstr "Валенсия"
+
+# заменил на полное название месяца
+#. Translators: This is the time format with full date
+#. plus day used in 24-hour mode. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:337
+msgid "%a %b %-e_%R:%S"
+msgstr "%a, %-e %B_%R:%S"
+
+# заменил на полное название месяца
+#: libgnome-desktop/gnome-wall-clock.c:338
+msgid "%a %b %-e_%R"
+msgstr "%a, %-e %B_%R"
+
+# заменил на полное название месяца
+#. Translators: This is the time format with full date
+#. used in 24-hour mode. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:343
+msgid "%b %-e_%R:%S"
+msgstr "%-e %B_%R:%S"
+
+# заменил на полное название месяца
+#: libgnome-desktop/gnome-wall-clock.c:344
+msgid "%b %-e_%R"
+msgstr "%-e %B_%R"
+
+#. Translators: This is the time format with day used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:348
+msgid "%a %R:%S"
+msgstr "%a, %R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:349
+msgid "%a %R"
+msgstr "%a, %R"
+
+#. Translators: This is the time format without date used
+#. in 24-hour mode.
+#: libgnome-desktop/gnome-wall-clock.c:353
+msgid "%R:%S"
+msgstr "%R:%S"
+
+#: libgnome-desktop/gnome-wall-clock.c:354
+msgid "%R"
+msgstr "%R"
+
+# заменил на полное название месяца
+#. Translators: This is a time format with full date
+#. plus day used for AM/PM. Please keep the under-
+#. score to separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:362
+msgid "%a %b %-e_%l:%M:%S %p"
+msgstr "%a, %-e %B,_%l:%M:%S %p"
+
+# заменил на полное название месяца
+#: libgnome-desktop/gnome-wall-clock.c:363
+msgid "%a %b %-e_%l:%M %p"
+msgstr "%a, %-e %B_%l:%M %p"
+
+# заменил на полное название месяца
+#. Translators: This is a time format with full date
+#. used for AM/PM. Please keep the underscore to
+#. separate the date from the time.
+#: libgnome-desktop/gnome-wall-clock.c:368
+msgid "%b %-e_%l:%M:%S %p"
+msgstr "%-e %B_%l:%M:%S %p"
+
+# заменил на полное название месяца
+#: libgnome-desktop/gnome-wall-clock.c:369
+msgid "%b %-e_%l:%M %p"
+msgstr "%-e %B_%l:%M %p"
+
+#. Translators: This is a time format with day used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:373
+msgid "%a %l:%M:%S %p"
+msgstr "%a, %l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:374
+msgid "%a %l:%M %p"
+msgstr "%a, %l:%M %p"
+
+#. Translators: This is a time format without date used
+#. for AM/PM.
+#: libgnome-desktop/gnome-wall-clock.c:378
+msgid "%l:%M:%S %p"
+msgstr "%l:%M:%S %p"
+
+#: libgnome-desktop/gnome-wall-clock.c:379
+msgid "%l:%M %p"
+msgstr "%l:%M %p"
+
+#, c-format
+#~ msgid "CRTC %d cannot drive output %s"
+#~ msgstr "ЭЛТ %d не может управлять выходом %s"
+
+#, c-format
+#~ msgid "output %s does not support mode %dx%d@%dHz"
+#~ msgstr "выход %s не поддерживает режим %dx%d@%dГц"
+
+#, c-format
+#~ msgid "CRTC %d does not support rotation=%d"
+#~ msgstr "ЭЛТ %d не поддерживает вращение=%d"
+
+#, c-format
+#~ msgid ""
+#~ "output %s does not have the same parameters as another cloned output:\n"
+#~ "existing mode = %d, new mode = %d\n"
+#~ "existing coordinates = (%d, %d), new coordinates = (%d, %d)\n"
+#~ "existing rotation = %d, new rotation = %d"
+#~ msgstr ""
+#~ "параметры выхода %s отличаются от параметров другого клонированного "
+#~ "выхода:\n"
+#~ "существующий режим = %d, новый режим = %d\n"
+#~ "существующие координаты = (%d, %d), новые координаты = (%d, %d)\n"
+#~ "существующее вращение = %d, новое вращение = %d"
+
+#, c-format
+#~ msgid "cannot clone to output %s"
+#~ msgstr "не удалось клонировать в выход %s"
+
+#, c-format
+#~ msgid "Trying modes for CRTC %d\n"
+#~ msgstr "Проверка режимов контроллера ЭЛТ %d\n"
+
+#, c-format
+#~ msgid ""
+#~ "CRTC %d: trying mode %dx%d@%dHz with output at %dx%d@%dHz (pass %d)\n"
+#~ msgstr ""
+#~ "ЭЛТ %d: проверка режима %dx%d@%dГц с выходом на %dx%d@%dГц (попытка "
+#~ "%d)\n"
+
+#, c-format
+#~ msgid ""
+#~ "could not assign CRTCs to outputs:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "не удалось назначить контроллеры ЭЛТ для выходов:\n"
+#~ "%s"
+
+#, c-format
+#~ msgid ""
+#~ "none of the selected modes were compatible with the possible modes:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "ни один из выбранных режимов не совместим с разрешёнными режимами:\n"
+#~ "%s"
+
+#, c-format
+#~ msgid ""
+#~ "required virtual size does not fit available size: requested=(%d, %d), "
+#~ "minimum=(%d, %d), maximum=(%d, %d)"
+#~ msgstr ""
+#~ "требуемый виртуальный размер не умещается в доступное пространство: "
+#~ "требуется=(%d, %d), минимум=(%d, %d), максимум=(%d, %d)"
+
+#~ msgctxt "time separator"
+#~ msgid "∶"
+#~ msgstr "∶"

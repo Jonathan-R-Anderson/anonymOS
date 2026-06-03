@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CidrRootsConfiguration">
+    <sourceRoots>
+      <file path="$PROJECT_DIR$/src" />
+    </sourceRoots>
+    <excludeRoots>
+      <file path="$PROJECT_DIR$/build_debug" />
+      <file path="$PROJECT_DIR$/build_release" />
+      <file path="$PROJECT_DIR$/cb" />
+    </excludeRoots>
+  </component>
+  <component name="ExternalStorageConfigurationManager" enabled="true" />
+  <component name="MakefileSettings">
+    <option name="linkedExternalProjectsSettings">
+      <MakefileProjectSettings>
+        <option name="buildOptions" value="-j 1" />
+        <option name="buildTarget" value="justprint" />
+        <option name="externalProjectPath" value="$PROJECT_DIR$" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$" />
+          </set>
+        </option>
+        <option name="version" value="2" />
+      </MakefileProjectSettings>
+    </option>
+  </component>
+  <component name="MakefileWorkspace" PROJECT_DIR="$PROJECT_DIR$">
+    <contentRoot DIR="$PROJECT_DIR$/build" />
+  </component>
+  <component name="ProjectResources">
+    <resource url="http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd" location="$PROJECT_DIR$/.idea/docbookx.dtd" />
+  </component>
+</project>

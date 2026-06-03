@@ -1,0 +1,234 @@
+# Turkish translation of gnome-session.
+# Copyright (C) 2001-2003, 2004, 2008, 2011 Free Software Foundation, Inc.
+# Copyright (C) 2012-2025 gnome-session's COPYRIGHT HOLDER
+# This file is distributed under the same license as the gnome-session package.
+#
+# Sinan İmamoğlu <sinan@myrealbox.com>, 2002-2003.
+# Ömer Fadıl USTA <omer_fad@hotmail.com>, 2002.
+# Fatih Demir <kabalak@kabalak.net>, 2000.
+# Görkem Cetin <gorkem@gelecek.com.tr>, 2001.
+# Arman Aksoy <armish@linux-sevenler.de>, 2003.
+# Baris Cicek <baris@teamforce.name.tr>, 2004, 2005, 2008, 2009.
+# Muhammed Eken <gnome@m-eken.com>, 2011.
+# Osman Karagöz <osmank3@gmail.com>, 2013.
+# Ozan Çağlayan <ozancag@gmail.com>, 2013.
+# Gökhan Gurbetoğlu <ggurbet@gmail.com>, 2014.
+# Muhammet Kara <muhammetk@gmail.com>, 2011-2015.
+# Çağatay Yiğit Şahin <cyigitsahin@outlook.com>, 2017, 2018.
+# Sabri Ünal <yakushabb@gmail.com>, 2019, 2022-2024.
+# Emin Tufan Çetin <etcetin@gmail.com>, 2017-2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2025-09-18 10:58+0000\n"
+"PO-Revision-Date: 2025-08-28 14:07+0300\n"
+"Last-Translator: Sabri Ünal <yakushabb@gmail.com>\n"
+"Language-Team: Turkish <takim@gnome.org.tr>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 3.6\n"
+
+#: data/gnome.desktop.in.in:2 data/gnome.session.desktop:2
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in.in:3 data/gnome-wayland.desktop.in.in:3
+#: data/gnome-xorg.desktop.in.in:3
+msgid "This session logs you into GNOME"
+msgstr "Bu oturum GNOME’a girmenizi sağlar"
+
+#: data/gnome-wayland.desktop.in.in:2
+msgid "GNOME on Wayland"
+msgstr "Wayland üzerinde GNOME"
+
+#: data/gnome-xorg.desktop.in.in:2
+msgid "GNOME on Xorg"
+msgstr "Xorg üzerinde GNOME"
+
+#: data/org.gnome.SessionManager.gschema.xml:5
+msgid "Logout prompt"
+msgstr "Oturum kapatma istemi"
+
+#: data/org.gnome.SessionManager.gschema.xml:6
+msgid "If enabled, gnome-session will prompt the user before ending a session."
+msgstr ""
+"Etkinse, gnome-session, oturumu bitirmeden önce kullanıcıya soracaktır."
+
+#: data/org.gnome.SessionManager.gschema.xml:10
+msgid "Show the fallback warning"
+msgstr "Yedeğe dönüş uyarısını göster"
+
+#: data/org.gnome.SessionManager.gschema.xml:11
+msgid ""
+"If enabled, gnome-session will display a warning dialog after login if the "
+"session was automatically fallen back."
+msgstr ""
+"Etkinse, gnome-session, oturum kendiliğinden yedeğe düşmüşse girişin "
+"ardından uyarı penceresi gösterecektir."
+
+#: gnome-session/gsm-manager.c:709 gnome-session/gsm-manager.c:1040
+msgid "Not responding"
+msgstr "Yanıtlamıyor"
+
+#: gnome-session/gsm-util.c:167
+msgid "_Log out"
+msgstr "_Oturumu kapat"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "Session to use"
+msgstr "Kullanılacak oturum"
+
+#: gnome-session/leader-main.c:186 gnome-session/service-main.c:148
+msgid "SESSION_NAME"
+msgstr "OTURUM_ADI"
+
+#: gnome-session/leader-main.c:187
+msgid "Enable debugging code"
+msgstr "Kod hatası ayıklamayı etkinleştir"
+
+#: gnome-session/leader-main.c:188
+msgid "Version of this application"
+msgstr "Bu uygulamanın sürümü"
+
+#: gnome-session/leader-main.c:189
+msgid "This option is ignored"
+msgstr "Bu seçenek yok sayıldı"
+
+#: gnome-session/leader-main.c:190
+msgid "Don't re-exec into a login shell"
+msgstr "Oturum açma kabuğuna yeniden girme"
+
+#: gnome-session/leader-main.c:208 gnome-session/service-main.c:157
+msgid " — the GNOME session manager"
+msgstr " — GNOME oturum yöneticisi"
+
+#: tools/gnome-session-ctl.c:247
+msgid "Start gnome-session-shutdown.target"
+msgstr "gnome-session-shutdown.target’ı başlat"
+
+#: tools/gnome-session-ctl.c:248
+msgid ""
+"Start gnome-session-shutdown.target when receiving EOF or a single byte on "
+"stdin"
+msgstr ""
+"stdin’de EOF veya tek bayt alınırken gnome-session-shutdown.target’ı başlat"
+
+#: tools/gnome-session-ctl.c:249
+msgid "Signal initialization done to gnome-session"
+msgstr "Sinyal ilklendirilmesi gnome-session’a tamamlandı"
+
+#: tools/gnome-session-ctl.c:250
+msgid "Restart dbus.service if it is running"
+msgstr "Çalışıyorsa dbus.service’i yeniden başlat"
+
+#: tools/gnome-session-ctl.c:251
+msgid ""
+"Run from ExecStopPost to start gnome-session-shutdown.target on service "
+"failure"
+msgstr ""
+"Hizmet hatasında gnome-session-shutdown.target’ı ExecStopPost’tan başlat"
+
+#: tools/gnome-session-ctl.c:281
+msgid "Program needs exactly one parameter"
+msgstr "Program tam olarak bir parametreye gereksiniyor"
+
+#: tools/gnome-session-inhibit.c:68
+#, c-format
+msgid "Unknown inhibit argument: %s"
+msgstr "Bilinmeyen önleme argümanı: %s"
+
+#: tools/gnome-session-inhibit.c:288
+#, c-format
+msgid "Failed to execute %s: %m\n"
+msgstr "%s çalıştırılamadı: %m\n"
+
+#: tools/gnome-session-inhibit.c:360
+msgid "Show program version"
+msgstr "Program sürümünü göster"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "The application id to use when inhibiting (optional)"
+msgstr "Önlenirken kullanılacak uygulama kimliği (isteğe bağlı)"
+
+#: tools/gnome-session-inhibit.c:361
+msgid "ID"
+msgstr "KİMLİK"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "The reason for inhibiting (optional)"
+msgstr "Önleme nedeni (isteğe bağlı)"
+
+#: tools/gnome-session-inhibit.c:362
+msgid "REASON"
+msgstr "NEDEN"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "Add action to inhibit (repeatable)"
+msgstr "Önlemeye eylem ekle (yinelenebilir)"
+
+#: tools/gnome-session-inhibit.c:363
+msgid "ACTION"
+msgstr "EYLEM"
+
+#: tools/gnome-session-inhibit.c:364
+msgid "Do not launch COMMAND and wait forever instead"
+msgstr "KOMUTU çalıştırma ve bunun yerine sonsuza dek bekle"
+
+#: tools/gnome-session-inhibit.c:365
+msgid "List the existing inhibitions, and exit"
+msgstr "Var olan önlemeleri listele ve çık"
+
+#: tools/gnome-session-inhibit.c:377
+msgid "COMMAND"
+msgstr "KOMUT"
+
+#: tools/gnome-session-inhibit.c:383
+msgid "Execute COMMAND while inhibiting some session functionality."
+msgstr "Bazı oturum işlevselliğini önlerken KOMUTU çalıştır"
+
+#: tools/gnome-session-inhibit.c:384
+msgid ""
+"Valid ACTION values are: logout, switch-user, suspend, idle, and automount.\n"
+"If no --inhibit options are specified, idle is assumed."
+msgstr ""
+"Geçerli EYLEM değerleri şunlardır: logout (oturumu kapat), switch-user "
+"(kullanıcı değiştir), suspend (askıya al), idle (boşta) ve automount "
+"(kendiliğinden bağla).\n"
+"Eğer herhangi bir --inhibit seçeneği belirtilmezse idle (boşta) kullanılır."
+
+#: tools/gnome-session-inhibit.c:408
+msgid "Neither COMMAND nor --inhibit-only were specified."
+msgstr "Ne KOMUT ne de --inhibit-only belirtildi."
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Oturumu kapat"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Bilgisayarı kapat"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Yeniden başlat"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Var olan tüm önleyiciler yok sayılıyor"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Kullanıcıdan onay isteme"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Oturum yöneticisine bağlanılamadı"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program çakışan seçeneklerle çağırıldı"

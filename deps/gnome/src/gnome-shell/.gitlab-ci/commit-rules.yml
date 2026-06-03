@@ -1,0 +1,18 @@
+patterns:
+  deny:
+    - regex: '^(st-|St)'
+      message: Commit message subject should not be prefixed with 'st-' or 'St', use 'st/' instead
+      where: subject
+    - regex: '^[^:]+: [a-z]'
+      message: "Commit message subject should be properly Capitalized. E.g. 'window: Marginalize extradicity'"
+      where: subject
+    - regex: '^\S*\.(js|c|h):'
+      message: Commit message subject prefix should not include .c, .h etc.
+      where: subject
+    - regex: '([^.]\.|[:,;])\s*$'
+      message: Commit message subject should not end with punctuation
+      where: subject
+    - regex: '^[Cc]lose[sd]?:?\s*#[0-9]+'
+      message: Closes instructions must be a full link
+    - regex: '^[Ff]ix(e[sd]?)?:?\s*(#[0-9]+|https://)'
+      message: \"Fixes\" should be used with commits, use \"Closes\" for issues

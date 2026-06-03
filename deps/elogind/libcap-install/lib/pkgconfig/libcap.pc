@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/HanonymOS/deps/elogind/libcap-install
+exec_prefix=/home/bruns/Documents/HanonymOS/deps/elogind/libcap-install
+libdir=/home/bruns/Documents/HanonymOS/deps/elogind/libcap-install/lib
+includedir=/home/bruns/Documents/HanonymOS/deps/elogind/libcap-install/include
+
+Name: libcap
+Description: libcap - linux capabilities library
+Version: 2.70
+Libs: -L${libdir} -lcap
+Libs.private: 
+Cflags: -I${includedir}

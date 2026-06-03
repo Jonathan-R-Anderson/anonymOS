@@ -1,0 +1,24 @@
+#  SPDX-License-Identifier: LGPL-2.1-or-later
+#
+#  This file is part of elogind.
+#
+#  elogind is free software; you can redistribute it and/or modify it
+#  under the terms of the GNU Lesser General Public License as published by
+#  the Free Software Foundation; either version 2.1 of the License, or
+#  (at your option) any later version.
+
+prefix={{PREFIX}}
+exec_prefix={{PREFIX}}
+libdir={{LIBDIR}}
+#if 0 /// To be able to act as a drop-in replacement, elogind has a systemd subdir
+# includedir={{INCLUDE_DIR}}
+#else // 0
+includedir={{INCLUDE_DIR}}/elogind
+#endif // 0
+
+Name: elogind
+Description: elogind Library
+URL: {{PROJECT_URL}}
+Version: {{PROJECT_VERSION}}
+Libs: -L${libdir} -lelogind
+Cflags: -I${includedir}

@@ -1,0 +1,110 @@
+include:
+  - project: "GNOME/citemplates"
+    file: "templates/default-rules.yml"
+  - project: "Infrastructure/freedesktop-ci-templates"
+    file: "templates/fedora.yml"
+    ref: "c6aeb16f86e32525fa630fb99c66c4f3e62fc3cb"
+  - component: "gitlab.gnome.org/GNOME/citemplates/release-service@master"
+    inputs:
+      job-stage: "release"
+      dist-job-name: "build-fedora"
+  - component: "gitlab.gnome.org/GNOME/citemplates/gnomeos-basic-ci@master"
+    inputs:
+      meson-options: >-
+        --sysconfdir=/etc
+        --localstatedir=/var
+        --mandir=/usr/share/man
+        -Dpam-prefix=/etc
+        -Drun-dir=/run/gdm
+        -Ddefault-path=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin
+        -Dprofiling=true
+        -Dplymouth=enabled
+
+variables:
+  COMMON_BUILD_OPTIONS: --prefix=/usr --sysconfdir=/etc --localstatedir=/var --mandir=/usr/share/man --libdir=/usr/lib64 -Dpam-prefix=/etc -Drun-dir=/run/gdm -Ddefault-path=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin -Dprofiling=true -Dplymouth=enabled -Dselinux=enabled
+  MESON_BUILD_DIR: build
+
+stages:
+  - prepare
+  - build
+  - release
+
+.gdm.fedora:
+  variables:
+    FDO_DISTRIBUTION_VERSION: 42
+    FDO_DISTRIBUTION_TAG: "2025-06-01.0"
+    FDO_DISTRIBUTION_PACKAGES: >-
+      accountsservice-devel
+      audit-libs-devel
+      check-devel
+      dconf
+      desktop-file-utils
+      gettext-devel
+      git
+      gobject-introspection-devel
+      iso-codes-devel
+      itstool
+      json-glib-devel
+      keyutils-libs-devel
+      libattr-devel
+      libgudev-devel
+      libdmx-devel
+      libselinux-devel
+      libtool
+      meson
+      nss-devel
+      pam-devel
+      plymouth-devel
+      redhat-rpm-config
+      systemd
+      systemd-devel
+      which
+      yelp-devel
+      gtk3-devel
+      libXau-devel
+      libXdmcp-devel
+      xorg-x11-server-Xorg
+      xorg-x11-server-devel
+
+build-fedora-container:
+  extends:
+    - .fdo.container-build@fedora@x86_64
+    - .gdm.fedora
+  stage: prepare
+  rules:
+    - when: always
+
+build-fedora:
+  extends:
+    - .fdo.distribution-image@fedora
+    - .gdm.fedora
+  stage: build
+  script:
+    - meson setup ${MESON_BUILD_DIR} ${COMMON_BUILD_OPTIONS}
+    - meson compile -C ${MESON_BUILD_DIR}
+    - meson install -C ${MESON_BUILD_DIR}
+    - meson dist -C ${MESON_BUILD_DIR}
+    - meson test -C ${MESON_BUILD_DIR}
+    - cp -r "${MESON_BUILD_DIR}/meson-dist/" "${CI_PROJECT_DIR}/public-dist/"
+  rules:
+    - when: always
+  artifacts:
+    name: "${CI_JOB_NAME}-${CI_COMMIT_REF_NAME}"
+    when: always
+    paths:
+      - ${MESON_BUILD_DIR}/meson-logs
+      - "public-dist"
+
+build-fedora-wayland:
+  extends:
+    - .fdo.distribution-image@fedora
+    - .gdm.fedora
+  stage: build
+  script:
+    - meson setup ${MESON_BUILD_DIR} ${COMMON_BUILD_OPTIONS} -Dx11-support=false
+    - meson compile -C ${MESON_BUILD_DIR}
+    - meson install -C ${MESON_BUILD_DIR}
+    - meson dist -C ${MESON_BUILD_DIR}
+    - meson test -C ${MESON_BUILD_DIR}
+  rules:
+    - if: $CI_COMMIT_TAG == null

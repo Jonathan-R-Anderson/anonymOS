@@ -1,0 +1,835 @@
+50.0
+====
+
+* With systemd v260+, remote desktop sessions and local sessions in the background
+  will be granted access to the GPU. This allows remote sessions to have accelerated
+  graphics on distros that restrict the permissions on the GPU's device nodes (i.e.
+  Debian and its derivatives)
+* Translation updates
+
+50.rc
+=====
+
+* Changed remote desktop plumbing (i.e., the CreateRemoteDisplay method) to accept
+  a hostname, so that we can correctly communicate this information to PAM and to
+  wtmp/utpm/btmp.
+* Minor performance optimization for $GDM_DEBUG_JSON_REQUESTS
+* Translation updates
+
+50.beta
+=======
+
+* Add support for "unified" authentication mechanism. Histrionically, each
+  authentication method went through its own PAM conversation. Now, we also
+  support running a single PAM conversation that runs multiple authentication
+  methods at once. This requires support from PAM modules like pam_sss
+* Introduce debugging for JSON PAM messages via $GDM_DEBUG_JSON_REQUESTS env var
+* Re-introduce a timeout while waiting for primary GPU to appear. There are edge
+  cases where there is a GPU (and thus Wayland will work) but none is labeled as
+  primary. Once the timeout expires we stop waiting for the primary GPU and just
+  launch the session on any available GPU.
+* Authentication failures caused by PAM services reporting themselves as
+  unavailable are no longer reported as failed authentication attempts. For
+  instance, fingerprint sensor timeouts are reported as a service unavailable
+  error, and we would previously log that as a failed authentication attempt.
+* "Service Unavailable" errors from PAM modules are no longer treated as failed
+  login attempts. Most notably, such errors are returned by fprintd whenever the
+  fingerprint sensor times out.
+* GDM now tries to shut down the session whenever the PAM worker process crashes
+* Partially un-merged the session and display registration steps that were merged
+  in 50.alpha, due to bugs that the change introduced
+* Misc. other bug fixes
+* Translation updates
+
+50.alpha.1
+==========
+
+* Corrected Git mishap. The 50.alpha tag points at a commit that never made it
+  to the main branch. 50.alpha.1 corrects this. Make sure to look at the changelog
+  for 50.alpha for news about what's new in this release!
+* Fixups to the README
+* Dropped vistigial `udev-dir` meson option
+* Translation updates
+
+50.alpha
+==========
+
+* Translation updates
+* Fixed bug where we'd lose track of the user session failure counter
+* Added GNOME OS CI
+* Special sessions (like GDM, initial-setup) are now loaded from .desktop files
+  rather than being hard-coded into GDM
+* Entirely removed X11 support, except for the ability to launch other desktops'
+  X11 sessions with a per-user X server. This means that features like XDCMP and
+  system-wide Xserver are gone, and that GDM's own sessions will always run with
+  Wayland.
+* Consequently, we removed the ability to compile GDM without Wayland support
+* Introduced a new `gnome-headless-session@<username>.service`, which makes it
+  easier to start a headless graphical session (i.e. for RDP purposes)
+* Merged display and session registration into one step, because the previous
+  approach didn't work right for Wayland. This allowed us to remove workarounds
+  that caused bugs
+* Reworked wtmp/utmp/btmp fields to contain more useful values, especially on
+  Wayland and with headless RDP sessions
+* Dropped final usages of the `gdm`/`gdm3` user, so distros no longer need
+  to create it for us (GDM now entirely relies on dynamically allocated users)
+* Adapted to changes in gnome-shell's systemd unit files, and dropped hard-coded
+  gnome-shell session modes. It's now easier for custom/kiosk sessions to use
+  custom gnome-shell session modes
+* Added support for Linux 6.18's new `boot_display` sysfs attribute, which
+  replaces the `boot_vga` attribute. These attributes allow GDM to identify
+  the primary GPU, but modern AMD cards cannot use `boot_vga` because they
+  no longer have VGA support!
+* Fixed bug where we failed to propagate some environment variables into
+  the greeter's Pipewire instance
+
+49.1
+==========
+
+* Translation updates
+* Hotfixed a bug that leaves gnome-shell in a locked up state
+* Fixed implementation of userdb, so we don't list our users when asked about
+  UID 0 (root)
+* Switched safety check that avoids accidentally deleting / and /home from an
+  assertion to an error, so the check always runs even in production builds
+* Fixed bug where gnome-initial-setup's configuration (i.e. input methods)
+  failed to migrate to the final user session
+* Fixed bug where GDM assumed that Wayland is unavailable if Xwayland wasn't
+  installed on the system
+
+49.0.1
+==========
+
+* Follow-up for permissions issue fix, making the fix work in more environments
+
+49.0
+==========
+
+* Translation updates
+* Fix build failures when built without plymouth support
+* Fix permissions issue on the GDM work dir (/var/lib/gdm) that broke settings
+  persistence
+
+49.rc
+==========
+
+* Translation updates
+* Fixed a bug in PAM config files, introduced by transition to dynamic users
+* Added logic to retry preferred display server (usually Wayland) before falling
+  back (usually to X11)
+* Fixed a bug where Plymouth keeps running if not display is plugged into the
+  system. This would prevent bootup from completing and would prevent the user
+  from logging in on a serial console
+* Fixed GDM's session file loading logic to search directories in correct
+  precedence order
+* Fix simpledrm device detection to match the kernel's new device naming scheme
+* Re-enabled X11 support by default. We found it difficult to cleanly separate
+  GDM's ability to launch modern X11 sessions (which we intended to keep enabled
+  in GNOME 49) from the rest of GDM's X11 integration (which we intended to
+  disable but leave intact for GNOME 49). We still plan to remove GDM's full
+  X11 integration in a future version, and leave only the ability to launch
+  modern X11 sessions.
+* Worked around a regression introduced by the switch to dynamic users, where
+  the login screen no longer persists any settings
+
+49.beta
+==========
+
+* Translation updates
+* Switch to using dynamic users for greeter sessions. This enables systemd-based
+  session management on the greeter, removes GDM's dependency on dbus-daemon,
+  and frees us to drop gnome-session's builtin service manager.
+* Adapt to changes in gnome-session 49, which dropped the builtin service manager
+  code and now exclusively relies on systemd for session startup. This means that
+  GDM now depends on gnome-session 49.
+
+49.alpha.1
+==========
+
+* Drop dependency on Wacom g-s-d plugin  [Jordan; !301]
+* Drop leftover udev rules  [Alessandro; !299]
+* Fix warning when building without libxdmcp support  [Florian; !300]
+* Add polkit rules to allow access to smartcards [David, !287]
+* Misc [Joan; !298]
+
+Contributors:
+  Alessandro Astone, David Härdeman, Joan Torres López,
+  Florian Müllner, Jordan Petridis
+
+Translators:
+  Takayuki Kusano [ja], Aefgh Threenine [th]
+
+==================
+Version 49.alpha.0
+==================
+- meson: Change x11-support default value to false
+- Disable Xorg session by default
+- udev: Drop disable_wayland overrides
+- Fix build with gcc 15
+- Translation updates
+
+Contributors:
+  Zbigniew Jędrzejewski-Szmek, Florian Müllner, Jordan Petridis,
+  Ray Strode, Joan Torres, Adrian Vovk, Alynx Zhou
+
+Translators:
+  Antonio Marin [ro], Baxrom Raxmatov [uz], Cheng-Chia Tseng [zh_TW],
+  Andi Chandler [en_GB], Peter Mráz [sk], Rūdolfs Mazurs [lv]
+
+=======
+Version 48.0
+=======
+- Allow changing global network settings
+- Translation updates
+
+=======
+48.beta
+=======
+ - Don't require Xwayland if wayland-only
+ - Fix pam_syslog detection
+ - Fix Solaris build
+ - Fix udev rules for disabling wayland
+ - Add 'banner-message-path' and '-source' settings
+
+==========
+Version 47
+==========
+- Fix X11 support
+
+=============
+Version 47.rc
+=============
+- Make X11 support optional
+- Support logind secure attention key
+- Drop gdm-screenshot
+- Don't hardcode g-r-d in dbus policy
+- Fix numeric local address resolution
+- Docs updates
+- Translation updates
+
+================
+Version 47.alpha
+================
+- Support for gnome-remote-desktop persistent sessions
+- Misc changes
+- Translation updates
+
+============
+Version 46.0
+============
+- PAM improvements
+- Translation updates
+
+=============
+Version 46.rc
+=============
+- Support for killing conflicting sessions at login time.
+- XDMCP fix
+- Use wayland by default on certain server chips
+- Fix pam extension size computation
+- Introspection fix
+- Fix for homed users
+- Translation updates
+
+================
+Version 46.alpha
+================
+- Support remote login from gnome-remote-desktop (and hopefuly nicedcv in the future)
+- Support new JSON pam extension
+- Fix build with user-display-server=false
+- Minor clean ups
+- Move private D-Bus sockets to private directory
+- Build goo fixes
+- Warning fixes
+- Translation updates
+
+==============
+Version 45.0.1
+==============
+- Fix for the crasher fix
+
+============
+Version 45.0
+============
+- Crasher fix
+- Translation updates
+
+===============
+Version 45.beta
+===============
+- A ton of small code clean ups and small leak fixes
+- Set gnome-initial-setup dconf profile
+- Honor settings configured with a template in AccountsService
+- Crash fix from stray udev events
+- VT handling fixes
+- Work better in presence of simpledrm
+- wayland multi-seat support
+- Translation updates
+
+============
+Version 44.0
+============
+- Translation updates
+
+=============
+Version 44.rc
+=============
+- Lots of code clean ups
+- Fix detection of virt on efi setups
+- Fix btmp accounting on failed logins
+- Ensure pam_close_session is called even if worker is killed
+- PAM config update on Arch
+- Translation updates
+
+============
+Version 43.0
+============
+- Drop vestigial code
+- Fixes in GPU detection
+- use _GNU_SOURCE again to avoid compile warning
+- Translation updates
+
+============
+Version 42.0
+============
+- Work better on nvidia
+- Look in DATADIR for launch environment data files
+- PAM updates on exherbo
+- Translation updates
+
+============
+Version 41.3
+============
+- Juggle Xorg's -listen/-nolisten command line change better
+- Fix session type selection
+- Fix crash
+- Drop vestigial gdm-pin service
+- XDMCP fixes
+- Wayland nvidia udev updates
+- Translation updates
+
+============
+Version 41.0
+============
+- Translation updates
+
+==============
+Version 41.rc1
+==============
+- Fix fallback to Xorg at login screen
+- Fix SessionType in AccountService user config
+- Reuse VT on log out
+- Translation updates
+
+================
+Version 41.alpha
+================
+- Allow user session to be Wayland even when login screen is Xorg
+- Allow wayland user sessions for single GPU vendor nvidia machines
+- Translation updates
+
+==========
+Version 40
+==========
+- 100% CPU fix
+- Translation updates
+
+================
+Version 40.rc
+================
+- Fingerprint auth fixes
+- Fix timeout handling for graphics bringup
+- Translation updates
+
+================
+Version 40.beta
+================
+- xinit script improvements
+- Build goo fixes  
+- Support systems that boot before the graphics subsystem fully loads
+- Don't overwrite PATH set by user
+- Generalize gdm-disable-wayland into new gdm-runtime-config tool
+- Fail hard if accountsservice fails
+- PAM integration improvements
+- Leak fixes
+- Stop using deprecated systemd functions
+- Translation updates
+
+================
+Version 3.38.2.1
+================
+- Address autologin unlock bug issue (CVE-2020-27837)
+- Translation updates
+
+==============
+Version 3.38.2
+==============
+- Fix localization bug to prevented translated messages from showing up
+- Deal more appropriately with broken accountsservice
+
+==============
+Version 3.38.1
+==============
+- Fix bug leading to users /etc/gdm/custom.conf getting overwritten on nvidia systems.
+- Fix typo in comment
+- Translation updates
+
+==============
+Version 3.38.0
+==============
+- Crasher fix
+- build goo updates
+- systemd unit file improvements
+- Translation updates
+
+===============
+Version 3.37.90
+===============
+- Updates to systemd integration
+- deprecation fixes
+- Support killling X on login even when wayland support is disabled
+- Translation updates
+
+==============
+Version 3.37.3
+==============
+- PAM file updates for archlinux
+- User switching fix
+- Don't keep login screen running in background on Xorg
+- Translation updates
+
+==============
+Version 3.37.1
+==============
+- Switch from autogoo to meson
+- Fixes for when GDM isn't started on its configured initial VT
+- Don't hardcode path to plymouth
+- keyutils has a .pc file so use it
+- Enable wayland on cirrus
+- Chrome remote desktop fix
+- Always use separate session bus for greeter sessions
+  This runs dbus-run-session, so the binary needs to be available
+- Translation updates
+
+==============
+Version 3.34.1
+==============
+- De-duplicate sessions on pure Xorg too
+- Fix fast user switching by assuming the login screen VT is always the initial
+  one
+- Translation updates
+
+==============
+Version 3.34.0
+==============
+- Translation updates
+
+===============
+Version 3.33.92
+===============
+- Fix typo in debug message
+- Revert vt changing fix, because it exposes logind bug and it wasn't quite right anyway
+- Ensure login screen gets reaped when user switching
+- Translation updates
+
+===============
+Version 3.33.90
+===============
+- Update for changes to gnome-settings-daemon
+- initial-setup permissions fix
+- allow users to set PATH from ~/.config/environmet
+- support systemd user sessions
+- misc warning fixes
+- leak fix in libgdm
+- vt changing fix
+- drop some deprecations
+- drop unused icons
+- Translation updates
+
+==============
+Version 3.33.4
+==============
+- Fix session search directories
+- Kill user sessions when stopping gdm
+- Add way for sessions to register when they successfully started
+- Translation updates
+
+==============
+Version 3.32.0
+==============
+- No updates
+
+===============
+Version 3.31.91
+===============
+- Screen lock bypass fix (when timed login is enabled) (CVE-2019-3825)
+- PAM file updates
+- Improved debug logging
+- Keyboard layout fixes
+- Display foreach handling
+- Translation updates
+
+==============
+Version 3.31.4
+==============
+- DOAP file fixes
+- misc code clean ups
+- filter out duplicates from session list
+- Translation updates
+
+==============
+Version 3.30.2
+==============
+- Fix autologin crash
+- Unlock keyring again on autologin with newerish systemds
+- Fix initial-setup
+- Translation updates
+
+==============
+Version 3.30.1
+==============
+- make udev rule configurable
+- follow up fixes dealing with login screen reaping from two releases ago
+- disable wayland on proprietary nvidia machines for now
+- Translation updates
+
+==============
+Version 3.30.0
+==============
+- build fixes
+
+===============
+Version 3.29.92
+===============
+- search for sessions in XDG_DATA_DIRS
+- blacklist some more wayland unfriendly hardware
+- initial setup fix
+- flicker fix
+- misc bug fixes
+
+===============
+Version 3.29.91
+===============
+- CVE-2018-14424 - double free fix
+- follow up fixes dealing with login screen reaping form last release
+- add more debug logging
+- Translation updates
+
+===============
+Version 3.29.90
+===============
+- display wayland on certain server machines
+- lifecycle fixes to libgdm/GdmClient
+- drop intltool
+- build goo clean ups
+- kill login screen when not in use
+- clean up stale utmp entries
+- misc fixes
+- Translation updates
+
+==============
+Version 3.29.1
+==============
+- Reference counting fixes for GdmClient- ensure plymouth is quit properly even when local greeter is disabled
+- make sure GDM doesn't hang when called with unknown command line arguments 
+- Translation updates
+
+==============
+Version 3.28.0
+==============
+- Translation updates
+
+===============
+Version 3.27.92
+===============
+- Translation updates
+
+===============
+Version 3.27.91
+===============
+- Ensure default session for user gets reported to login screen up front
+- Translation updates
+
+===============
+Version 3.27.90
+===============
+- Add support for configuration from /run
+- Add udev rule to disable wayland with cirrus
+- Remove obsolete stuff about Xnest from configure
+- Adjust for g-s-d plugin removal
+- segfault fix in error condition for session wrappers
+- misc warning fixes
+- Translation updates
+
+==============
+Version 3.27.4
+==============
+- Fix for invalid DISPLAY/XAUTHORITY in session scripts
+- Fix for keyring integration on multidisk systems
+- Set GROUP environment variable
+- Deprecation fixes
+- Translation updates
+
+==============
+Version 3.27.3
+==============
+- don't call gdm_session_defaults_changed from setup
+- Add dependency to .pc file
+- code clean ups
+
+==============
+Version 3.26.1
+==============
+- Check for Xwayland before agreeing to do wayland
+- misc wayland fixes
+- xdmcp fixes
+- minor clean ups
+- allow gnome initial-setup to be forced from kernel command line
+- Translation updates
+
+==============
+Version 3.26.0
+==============
+- Fix for unauthenticated unlock when autologin is enabled (CVE-2017-12164)
+- Translation updates
+
+===============
+Version 3.25.92
+===============
+- Fix for going to normal mode after classic
+- crasher fix when user switching
+- make sure reauthentication is run in right context
+- send hangup signal to gdm when systemctl request reload
+- Translation updates
+
+=================
+Version 3.25.90.1
+=================
+- Fix breakage in greeter and initial setup
+- Translation updates
+
+===============
+Version 3.25.90
+===============
+- Fix for going to normal mode after classic
+- Translation updates
+
+================
+Version 3.25.4.1
+================
+- brown bag release to fix conflict with latest g-s-d release
+
+===============
+Version 3.25.4
+===============
+- wayland w/ --disable-user-display-server fix
+- Make login screen session separate from user session again
+- Translation updates
+
+===============
+Version 3.25.3
+===============
+- crasher fix
+- x11/wayland selection fix
+- greeter lifecycle fix
+- systemd unit installation fix
+- drop lock down of non-existent setting
+- Translation updates
+
+===============
+Version 3.24.1
+===============
+- Don't set DCONF_PROFILE for gnome-initial-setup
+- Remove deprecated a11y keys
+- autologin fixes
+- xdmcp fixes
+- user switching fixes
+- Translation updates
+
+===============
+Version 3.24.0
+===============
+
+===============
+Version 3.23.92
+===============
+- Be more robust against misconfigured autologin systems
+
+=================
+Version 3.23.91.1
+=================
+- Fix regression in wayland fallback code
+- Fix for headless sessions
+- Change around how PostLogin/PostSession scripts are run
+- Fix XDMCP in network environments with poor network resolution
+- Don't try to user switch with XDMCP
+- Translation updates
+
+===============
+Version 3.23.91
+===============
+- Small fix to environment variable importing
+- Add configure knob to turn off user X server
+
+==============
+Version 3.23.4
+==============
+- Make X11DisplayName property accurate
+- Fix bug that forced wayland on second logins even if user didn't pick it
+- kill clients from display on logout (multiseat and xdmcp only)
+- send hangup to process group when session exits
+- allow specifying pam_gdm install location to configure
+
+==============
+Version 3.22.1
+==============
+- Fix wayland login after Xorg logout for a user
+- Prefer /usr/bin/X to /usr/bin/Xorg
+
+==============
+Version 3.22.0
+==============
+- autologin fixes
+- Translation updates
+
+===============
+Version 3.21.91
+===============
+- fix autologin on non-LUKS systems
+- import environment from systemd user manager
+
+===============
+Version 3.21.90
+===============
+- Use LUKS password for to unlock gnome-keyring at login (when autologin is enabled)
+- Translation updates
+
+==============
+Version 3.21.4
+==============
+- Small crasher fix
+- Translation updates
+
+==============
+Version 3.21.3
+==============
+- Translation updates
+
+==============
+Version 3.21.2
+==============
+- Import DISPLAY into user bus
+- Translation updates
+
+==============
+Version 3.20.1
+==============
+- Fix passwordless logins on Debian/Ubuntu
+- Don't allow passwordless XDMCP logins
+- Fix redhat pam configuration
+- Translation updates
+
+==============
+Version 3.20.0
+==============
+- Translation updates
+
+===============
+Version 3.19.92
+===============
+- leak fix
+- Translation updates
+
+===============
+Version 3.19.91
+===============
+- Fix log output
+- Fix timed login
+- Fix openembedded pam configuration
+- Translation updates
+
+===============
+Version 3.19.90
+===============
+- Better build goo output
+- Support dbus user bus better
+- Fix bug that prevents wayland sessions, from being wayland sometimes
+- Translation updates
+
+================
+Version 3.19.4.1
+================
+- Fix crasher introduced in 3.19.4
+- Translation updates
+
+==============
+Version 3.19.4
+==============
+- Don't override PAM message for password change
+- Disable GVFS when we don't need it
+- Fail better when no sessions are installed
+- Support gnome-session in different PREFIX than GDM
+- doc updates
+- ensure unlock screen gets told when verification completes
+- Translation updates
+
+==============
+Version 3.19.2
+==============
+- Get rid of "custom" session
+- Separate X sessions and Wayland sessions
+- Hide Wayland sessions if the login screen is on X
+- Pass session mode to the shell via environment
+- Rename gnome-wayland session to gnome
+- Use -listen instead of -nolisten for new Xorg
+- Translation updates
+
+==============
+Version 3.18.0
+==============
+- Translation updates
+
+===============
+Version 3.17.92
+===============
+- Fix log out after autologin
+- Translation updates
+
+===============
+Version 3.17.90
+===============
+- Fix GDM_LANG corruption that sometimes fails login
+- Rework wtmp handling
+- Code clean ups
+- Translation updates
+
+==============
+Version 3.17.4
+==============
+- Fixes to handle gdm restarts better
+- Crasher fix on logout of wayland sessoin
+- systemd build updates
+- Translation updates
+
+================
+Version 3.17.3.1
+================
+- Ship systemd unit file (woops)
+
+==============
+Version 3.17.3
+==============
+- Support env.d directory for manipulating session environment
+- Drop ConsoleKit support
+- Translation updates
+
+==============
+Version 3.17.2
+==============
+- BSD fixes
+- Don't build Xsession by default
+- Fix monitor hotplug segfault
+- kdbus fixes
+- Translation updates
+
+For older NEWS updates, please see git.

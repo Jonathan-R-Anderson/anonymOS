@@ -1,0 +1,17 @@
+org.gnome.Geary.desktop
+org.gnome.Contacts.desktop
+org.gnome.Weather.desktop
+org.gnome.clocks.desktop
+org.gnome.Maps.desktop
+org.gnome.Music.desktop
+org.gnome.SimpleScan.desktop
+org.gnome.Settings.desktop
+org.gnome.Boxes.desktop
+org.gnome.Showtime.desktop
+org.gnome.Snapshot.desktop
+org.gnome.Characters.desktop
+Utilities # folder
+System # folder
+org.gnome.Console.desktop
+org.gnome.Tour.desktop
+org.gnome.Yelp.desktop

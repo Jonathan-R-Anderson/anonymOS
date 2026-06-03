@@ -262,6 +262,31 @@ private void exitTask(int tid, int code) {
             }
         }
     }
+    // Reclaim this task's private physical pages if it is the LAST user of its
+    // address space.  Threads (CLONE_VM) share pml4Phys, so freeing while a
+    // sibling is still alive would corrupt the shared space — in that case we
+    // leak (safe).  Only `owned` regions (anonymous / private file maps) are
+    // freed; device (g_fb) / shared (memfd) maps are left intact.
+    if (t.pml4Phys != 0) {
+        bool sharedAS = false;
+        for (int i = 0; i < MAX_TASKS; i++) {
+            if (i == tid) continue;
+            if (g_tasks[i].active && !g_tasks[i].exited &&
+                g_tasks[i].pml4Phys == t.pml4Phys) { sharedAS = true; break; }
+        }
+        if (!sharedAS) {
+            x64WriteCR3(t.pml4Phys);
+            for (int ri = 0; ri < t.regionCount; ri++) {
+                auto r = &t.regions[ri];
+                if (!r.owned) continue;
+                for (ulong va = r.start; va < r.end; va += 4096) {
+                    ulong phys = unmap_page_hhdm(va);
+                    if (phys != 0) free_phys_page(phys);
+                }
+            }
+        }
+    }
+
     klog("[kernel] task "); klog_hex(tid); klog(" exited code="); klog_hex(code); klog("\n");
     scheduleNext();
 }
@@ -315,6 +340,12 @@ private int forkTask(int parentTid) {
     d_store_task_fsbase(cast(ulong)childTid,
                         g_task_fsbase[parentTid]);
     child.active = true;
+
+    // The child is a new process: give it its own fd table (id = childTid) with an
+    // independent copy of the parent's descriptors, so each can close() its own
+    // copies (POSIX fork semantics — required by libseat's embedded seatd).
+    child.fdTabId = childTid;
+    fdtabForkCopy(parent.fdTabId, childTid);
 
     klog("[fork] parent="); klog_hex(parentTid);
     klog(" child="); klog_hex(childTid); klog("\n");
@@ -396,6 +427,10 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.brkStart   = parent.brkStart;
     child.brkCurrent = parent.brkCurrent;
     child.parentId   = parentTid;
+
+    // A thread shares its process's fd table (CLONE_FILES semantics): same
+    // descriptors, opens/closes are visible to all threads of the process.
+    child.fdTabId    = parent.fdTabId;
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -798,6 +833,9 @@ extern (C) ulong linux_seed_initial_stack_with_args(
     const(ulong)* infoWords, ulong pg,
     ulong argvUserVirt, ulong envpUserVirt) @nogc nothrow;
 
+// Toggle for the very verbose per-syscall trace ([sc] t=/n=).  Off by default.
+__gshared bool g_traceSyscalls = false;
+
 private void dispatchSyscall(int tid) {
     ulong rax = x64LastSyscallRax;
     ulong rdi = x64LastSyscallRdi;
@@ -807,10 +845,18 @@ private void dispatchSyscall(int tid) {
     ulong r8  = x64LastSyscallR8;
     ulong r9  = x64LastSyscallR9;
 
-    kchar('S');
-    klog("[sc] t="); klog_hex(cast(ulong)tid); klog(" n="); klog_hex(rax); klog("\n");
+    // Per-syscall trace — extremely verbose (hundreds of thousands of lines) and a
+    // heavy perf drain since every syscall writes to the serial port.  Gated off by
+    // default now that bring-up is past the syscall-by-syscall debugging stage.
+    if (g_traceSyscalls) {
+        kchar('S');
+        klog("[sc] t="); klog_hex(cast(ulong)tid); klog(" n="); klog_hex(rax); klog("\n");
+    }
 
     auto task = &g_tasks[tid];
+    // Select this task's process fd table before servicing the syscall, so each
+    // process sees its own descriptors (fork gives the child an independent copy).
+    fdtabSetActive(task.fdTabId);
     long ret  = 0;
 
     switch (rax) {
@@ -825,7 +871,11 @@ private void dispatchSyscall(int tid) {
             ulong mflags  = r10;
             ulong mfd     = r8;
             ulong moffset = r9;
-            if (mlen == 0) { ret = -22; break; }
+            if (mlen == 0) {
+                klog("[mmap-einval] len=0 flags="); klog_hex(mflags);
+                klog(" fd="); klog_hex(mfd); klog(" off="); klog_hex(moffset); klog("\n");
+                ret = -22; break;
+            }
             ulong alignedLen = (mlen + 0xFFF) & ~0xFFFUL;
             ulong vaddr;
             if (mflags & MAP_FIXED) {
@@ -883,8 +933,13 @@ private void dispatchSyscall(int tid) {
                     klog(" len="); klog_hex(alignedLen);
                     klog(" fd="); klog_hex(mfd); klog("\n");
                 }
+                // owned = pages came from alloc_phys_page (anonymous or private
+                // file map) and are exclusively ours → safe to reclaim on munmap /
+                // exit.  DRM (g_fb) and memfd maps reference device / shared pages
+                // that must never be freed.
                 addRegion(*task, vaddr, vaddr + alignedLen,
-                          RegionType.Mapped, RegionPerms.ReadWrite, 0);
+                          RegionType.Mapped, RegionPerms.ReadWrite, 0,
+                          !useDrmPhys && !useMemfd);
             } else {
                 if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
                 ret = -12;
@@ -975,9 +1030,19 @@ private void dispatchSyscall(int tid) {
             break;
 
         // munmap
-        case 11:
-            ret = sys_munmap(rdi, rsi);
+        case 11: {
+            // Free the underlying physical pages only when they belong to an
+            // owned (private anonymous / file) region; device (g_fb) and shared
+            // (memfd) maps must stay intact.  Walk on the task's own page tables.
+            bool freePages = (rsi != 0) && regionOwnedAt(*task, rdi);
+            if (rsi != 0) x64WriteCR3(task.pml4Phys);
+            ret = sys_munmap(rdi, rsi, freePages);
+            if (ret == 0 && rsi != 0) {
+                ulong ulen = (rsi + 0xFFF) & ~0xFFFUL;
+                removeRegion(*task, rdi, rdi + ulen);
+            }
             break;
+        }
 
         // arch_prctl (handles ARCH_SET_FS, updates g_task_fsbase)
         case 158:
@@ -1110,9 +1175,17 @@ private void dispatchSyscall(int tid) {
     //   ppoll(271):fds=rdi nfds=rsi timeout_ts=rdx (NULL = infinite)
     // Both scan fd readiness (ppoll fixed below); select/pselect are excluded
     // since they don't scan and would yield forever.
+    //   epoll_pwait(281): deliberately NOT yielded here.  Hyprland's wl_event_loop
+    //     passes a finite timeout computed from its own timer sources and relies on
+    //     epoll_pwait *returning 0 at the timeout* to fire those timers and advance
+    //     startup.  Yielding (re-running the syscall until an fd is ready) never
+    //     lets userspace see the 0-return, so the compositor stalls before it ever
+    //     creates a monitor/renderer.  Letting epoll_pwait busy-return 0 wastes CPU
+    //     but keeps the event loop turning, which is what actually makes progress.
     if (ret == 0 && (rax == 7 || rax == 271)) {
-        const bool wouldBlock = (rax == 7) ? (cast(long)rdx != 0) // poll timeout!=0
-                                           : true;                // ppoll: block
+        bool wouldBlock;
+        if (rax == 7) wouldBlock = (cast(long)rdx != 0);  // poll timeout!=0
+        else          wouldBlock = true;                  // ppoll: block
         if (wouldBlock) {
             task.regs[REG_RIP] -= 2;
             scheduleNext();
@@ -1220,7 +1293,9 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 228: return linux_sys_clock_gettime(a, b);
         case 229: return linux_sys_clock_getres(a, b);
         case 230: return linux_sys_clock_nanosleep(a, b, c, d);
-        case 233: return linux_sys_epoll_create(a);
+        case 213: return linux_sys_epoll_create(a);
+        case 232: return linux_sys_epoll_pwait(a, b, c, d, 0, 0);  // epoll_wait
+        case 233: return linux_sys_epoll_ctl(a, b, c, d);          // was mis-routed to epoll_create!
         case 234: return linux_sys_tgkill(a, b, c);
         case 254: return linux_sys_inotify_init();
         case 257: return linux_sys_openat(a, b, c, d);

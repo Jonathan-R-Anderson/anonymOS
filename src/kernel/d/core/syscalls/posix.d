@@ -1,7 +1,7 @@
 module core.syscalls.posix;
 
 import core.io : inb;
-import core.console : console_putchar, console_backspace;
+import core.console : console_putchar, console_backspace, g_fbConsoleEnabled;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
                               AF_UNIX, AF_INET, SOCK_STREAM, SOCK_DGRAM,
                               SOL_SOCKET, SCM_RIGHTS;
@@ -9,6 +9,7 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
                       g_current_task_id, d_store_task_fsbase;
 import core.random;
 import core.io;
+import core.stdc.string : memcpy;
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -85,7 +86,48 @@ private struct BootModuleRecord {
 
 static assert(BootModuleRecord.sizeof == 128);
 
-__gshared File[1024] g_fdTable;
+// Per-process file-descriptor tables.  fork() must give the child an INDEPENDENT
+// copy (POSIX semantics): e.g. libseat's embedded seatd forks a server and each
+// side close()s only its own copy of the socketpair — with a single shared table
+// those closes would tear down the connection (the seat "Could not flush" bug).
+// Threads (CLONE_VM) share their process's table.  `g_fdTable` points at the
+// active process's table; the syscall dispatcher selects it per task each call
+// via fdtabSetActive().  FDTAB_COUNT must be >= MAX_TASKS (task.d).
+enum int FDTAB_COUNT = 64;
+__gshared File[1024][FDTAB_COUNT] g_fdTabs;
+// Active table pointer; set by fdtabSetActive() before each syscall is serviced
+// (and defensively to process 0's table on first use).  &g_fdTabs[0][0] is not a
+// compile-time constant, so it can't be used as a static initializer.
+__gshared File* g_fdTable;
+
+// Point g_fdTable at process `fdTabId`'s table.  Called from the syscall
+// dispatcher with the current task's fdTabId before each syscall is serviced.
+public void fdtabSetActive(int fdTabId) {
+    if (fdTabId < 0 || fdTabId >= FDTAB_COUNT) fdTabId = 0;
+    g_fdTable = &g_fdTabs[fdTabId][0];
+}
+
+// fork(): copy the parent process's fd table to the child's, bumping the
+// refcounts of shared kernel objects (sockets/pipes) so the child holds its own
+// reference and the parent closing its copy doesn't destroy them.
+public void fdtabForkCopy(int srcTabId, int dstTabId) {
+    if (srcTabId < 0 || srcTabId >= FDTAB_COUNT) return;
+    if (dstTabId < 0 || dstTabId >= FDTAB_COUNT || dstTabId == srcTabId) return;
+    foreach (i; 0 .. 1024) {
+        g_fdTabs[dstTabId][i] = g_fdTabs[srcTabId][i];
+        File* f = &g_fdTabs[dstTabId][i];
+        if (f.type == FileType.FD_SOCKET) {
+            auto s = fileSocket(f);
+            if (s !is null) ++s.refCount;
+        } else if (f.type == FileType.FD_PIPE_READ) {
+            auto p = getPipe(cast(size_t)pipeIdFromFd(f));
+            if (p !is null) ++p.readers;
+        } else if (f.type == FileType.FD_PIPE_WRITE) {
+            auto p = getPipe(cast(size_t)pipeIdFromFd(f));
+            if (p !is null) ++p.writers;
+        }
+    }
+}
 __gshared bool g_fdTableInitialized = false;
 __gshared pid_t g_nextSyntheticPid = 100;
 
@@ -118,7 +160,17 @@ private enum int  EPOLL_CTL_ADD = 1;
 private enum int  EPOLL_CTL_DEL = 2;
 private enum int  EPOLL_CTL_MOD = 3;
 
-private struct EpollEvent { uint events; ulong data; }
+// Userspace struct epoll_event is PACKED on x86-64 (kernel ABI): the 8-byte
+// `data` (the source pointer) is at offset 4, immediately after the 4-byte
+// `events`, with NO padding.  Without align(1) D would place `data` at offset 8,
+// corrupting the pointer round-trip → wl_event_loop_dispatch() then calls a
+// garbage/NULL callback and faults (rip=0).
+private struct EpollEvent {
+align(1):                 // pack: `data` at offset 4 (right after the 4-byte
+    uint  events;         // `events`), matching the x86-64 kernel epoll_event ABI.
+    ulong data;           // (struct-level align(1) alone does NOT pack the fields.)
+}
+static assert(EpollEvent.sizeof == 12);
 private struct EpollWatch { bool active; int watchFd; uint events; ulong data; }
 private struct EpollInst  { bool inUse; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
@@ -334,6 +386,7 @@ private struct LocalSocket
     bool inUse;
     int domain;
     int type;
+    int refCount;     // number of fds referencing this socket (dup-aware close)
     LocalSocketState state;
     size_t backlog;
     int peerId;
@@ -425,6 +478,8 @@ private int allocSocketFd(int socketId, int flags)
             g_fdTable[i].offset = 0;
             g_fdTable[i].backend = cast(void*)(cast(size_t)socketId + 1);
             g_fdTable[i].fileSize = 0;
+            auto s = localSocketById(socketId);
+            if (s !is null) ++s.refCount;   // dup-aware lifetime
             return i;
         }
     }
@@ -617,6 +672,13 @@ private void closeLocalSocket(File* f)
         return;
     }
 
+    // Dup-aware: only really close when the last fd referencing this socket goes
+    // away.  Otherwise a dup (e.g. libseat's embedded seatd duplicating its
+    // connection fd and closing the original) would tear down the live connection.
+    if (sock.refCount > 0) --sock.refCount;
+    if (sock.refCount > 0)
+        return;
+
     if (sock.state == LocalSocketState.listener || sock.state == LocalSocketState.bound || sock.state == LocalSocketState.created)
     {
         releaseLocalSocket(socketId);
@@ -726,7 +788,7 @@ private long copySockoptUcred(ulong val, ulong len)
 }
 
 void initFdTable() {
-
+    if (g_fdTable is null) g_fdTable = &g_fdTabs[0][0];   // process 0's table
     if (g_fdTableInitialized) return;
     g_fdTable[0].type = FileType.FD_CONSOLE;
     g_fdTable[0].flags = O_RDONLY;
@@ -1209,6 +1271,26 @@ public int sys_open(const(char)* path, int flags) {
         return fd;
     }
 
+    // An existing rtfs *regular file* takes priority over the synthetic-directory
+    // and virtual-file shims below: the unpacked xkb tree lives under
+    // /usr/share/X11/xkb, whose ancestor paths are also listed as synthetic dirs,
+    // so without this a file open like .../rules/evdev would resolve to a 0-byte
+    // synthetic directory (fstat size 0 → mmap(0) → EINVAL in libxkbcommon).
+    {
+        int rp; const(char)* rl; size_t rll;
+        const int ri = rtResolve(path, rp, rl, rll);
+        if (ri >= 0 && g_rt[ri].kind == RT_REG) {
+            if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
+            if (flags & O_TRUNC) g_rt[ri].size = 0;
+            g_fdTable[fd].type     = FileType.FD_RTFILE;
+            g_fdTable[fd].flags    = flags;
+            g_fdTable[fd].offset   = (flags & O_APPEND) ? g_rt[ri].size : 0;
+            g_fdTable[fd].backend  = cast(void*)cast(size_t)ri;
+            g_fdTable[fd].fileSize = g_rt[ri].size;
+            return fd;
+        }
+    }
+
     if (isSyntheticDirectoryPath(path)) {
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
@@ -1318,6 +1400,17 @@ public int sys_close(int fd) {
     } else if (f.type == FileType.FD_EVENTFD) {
         int eid = cast(int)cast(size_t)f.backend;
         if (eid >= 0 && eid < EVENTFD_MAX) g_eventfd_inUse[eid] = false;
+    } else if (f.type == FileType.FD_MEMFD) {
+        // Reclaim PRIME-aliased records (borrowed GEM pages) so the swapchain's
+        // buffer cycle doesn't exhaust the memfd table.  Owner memfds are left
+        // as-is (their pages are bump-allocated and never freed anyway).
+        int mid = cast(int)cast(size_t)f.backend;
+        if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
+            g_memfds[mid].inUse    = false;
+            g_memfds[mid].physBase = 0;
+            g_memfds[mid].size     = 0;
+            g_memfds[mid].aliased  = false;
+        }
     }
 
     if (f.type == FileType.FD_PIPE_READ) {
@@ -1639,7 +1732,7 @@ private void writeLinuxStat(ulong statBuf, uint mode, ulong size) {
 // idiom used for sockets/pipes elsewhere in this file); file payloads are
 // page-backed and allocated lazily on first write.
 // ─────────────────────────────────────────────────────────────────────────────
-private enum int    RT_MAX_NODES = 512;
+private enum int    RT_MAX_NODES = 1024;
 private enum size_t RT_NAME_MAX  = 96;
 
 private enum ubyte RT_FREE = 0;
@@ -1810,6 +1903,109 @@ private void rtInit() {
     rtMkdirPath("/var\0".ptr,           M0755, 0, 0);
     rtMkdirPath("/var/tmp\0".ptr,       M1777, 0, 0);
     rtMkdirPath("/var/run\0".ptr,       M0755, 0, 0);
+
+    // Unpack the bundled xkeyboard-config tree (rules/keycodes/symbols/...) into
+    // the overlay so libxkbcommon can compile a real keymap.  Without this,
+    // xkb_context_new() can't add its include path and returns NULL → Hyprland's
+    // keyboard setup dereferences a NULL context and crashes.  Paired with
+    // XKB_CONFIG_ROOT=/usr/share/X11/xkb (exports.d).
+    rtUnpackXkb();
+
+    // Unpack bundled guest data assets (Hyprland wallpapers at
+    // /usr/share/hypr/wallN.png, etc.) so resolveAssetPath finds them and the
+    // compositor renders a real wallpaper instead of the flat fallback color.
+    rtUnpackAssets();
+}
+
+// Find-or-create a directory child `name`(len) under overlay dir `cur`.
+private int rtMkdirChild(int cur, const(char)* name, size_t len) {
+    int c = rtFindChild(cur, name, len);
+    if (c >= 0) return (g_rt[c].kind == RT_DIR) ? c : -1;
+    return rtCreate(cur, name, len, RT_DIR, 0x1ED /*0755*/, 0, 0);
+}
+
+// Walk a '/'-separated relative path (no leading '/'), creating intermediate
+// directories, then create the final component as a regular file holding `data`.
+private void rtAddFile(const(char)* rel, size_t relLen, const(ubyte)* data, uint dataLen) {
+    int cur = 0;                      // overlay root
+    size_t i = 0;
+    while (i < relLen) {
+        size_t cstart = i;
+        while (i < relLen && rel[i] != '/') ++i;
+        size_t clen = i - cstart;
+        const bool isLast = (i >= relLen);
+        if (clen == 0) { ++i; continue; }   // collapse '//'
+        if (isLast) {
+            int fidx = rtFindChild(cur, rel + cstart, clen);
+            if (fidx < 0) fidx = rtCreate(cur, rel + cstart, clen, RT_REG,
+                                          cast(ushort)0x1A4 /*0644*/, 0, 0);
+            if (fidx < 0 || g_rt[fidx].kind != RT_REG) return;
+            if (!rtEnsureCap(g_rt[fidx], dataLen)) { ++g_xkbAllocFails; return; }
+            foreach (k; 0 .. dataLen) g_rt[fidx].data[k] = data[k];
+            g_rt[fidx].size = dataLen;
+            return;
+        }
+        cur = rtMkdirChild(cur, rel + cstart, clen);
+        if (cur < 0) return;
+        ++i;                          // skip '/'
+    }
+}
+
+// Parse the bundled `xkb.blob` boot module — a flat archive of
+// [u32 pathLen][path][u32 dataLen][data] entries (paths relative to overlay
+// root, e.g. "usr/share/X11/xkb/symbols/us") — into the overlay.
+private void rtUnpackXkb() {
+    ulong phys, size;
+    if (!findBootModule("/xkb.blob\0".ptr, phys, size)) return;
+    if (phys == 0 || size < 8) return;
+    const(ubyte)* base = cast(const(ubyte)*)phys_to_virt(phys);
+    ulong off = 0;
+    while (off + 8 <= size) {
+        uint pathLen = *cast(const(uint)*)(base + off); off += 4;
+        if (pathLen == 0 || pathLen > 1024 || off + cast(ulong)pathLen + 4 > size) break;
+        const(char)* p = cast(const(char)*)(base + off); off += pathLen;
+        uint dataLen = *cast(const(uint)*)(base + off); off += 4;
+        if (off + cast(ulong)dataLen > size) break;
+        const(ubyte)* d = base + off; off += dataLen;
+        rtAddFile(p, pathLen, d, dataLen);
+        ++g_xkbFiles;
+        g_xkbBytes += dataLen;
+    }
+    klog("[xkb] unpacked files="); klog_hex(g_xkbFiles);
+    klog(" bytes="); klog_hex(g_xkbBytes);
+    klog(" allocFails="); klog_hex(g_xkbAllocFails); klog("\n");
+}
+
+__gshared uint g_xkbFiles = 0;
+__gshared uint g_xkbBytes = 0;
+__gshared uint g_xkbAllocFails = 0;
+
+__gshared uint g_assetFiles = 0;
+__gshared uint g_assetBytes = 0;
+
+// Parse the bundled `assets.blob` boot module — same flat archive format as
+// xkb.blob ([u32 pathLen][path][u32 dataLen][data], paths relative to overlay
+// root, e.g. "usr/share/hypr/wall0.png") — into the rtfs overlay.  Optional:
+// boots fine without it (Hyprland just falls back to its flat clear color).
+private void rtUnpackAssets() {
+    ulong phys, size;
+    if (!findBootModule("/assets.blob\0".ptr, phys, size)) return;
+    if (phys == 0 || size < 8) return;
+    const(ubyte)* base = cast(const(ubyte)*)phys_to_virt(phys);
+    ulong off = 0;
+    while (off + 8 <= size) {
+        uint pathLen = *cast(const(uint)*)(base + off); off += 4;
+        if (pathLen == 0 || pathLen > 1024 || off + cast(ulong)pathLen + 4 > size) break;
+        const(char)* p = cast(const(char)*)(base + off); off += pathLen;
+        uint dataLen = *cast(const(uint)*)(base + off); off += 4;
+        if (off + cast(ulong)dataLen > size) break;
+        const(ubyte)* d = base + off; off += dataLen;
+        rtAddFile(p, pathLen, d, dataLen);
+        ++g_assetFiles;
+        g_assetBytes += dataLen;
+    }
+    klog("[assets] unpacked files="); klog_hex(g_assetFiles);
+    klog(" bytes="); klog_hex(g_assetBytes); klog("\n");
 }
 
 private enum size_t fileBackendPlain = 0;
@@ -3799,6 +3995,12 @@ private void incPipeRef(int fd) {
     } else if (f.type == FileType.FD_PIPE_WRITE) {
         auto p = getPipe(cast(size_t)pipeIdFromFd(f));
         if (p !is null) ++p.writers;
+    } else if (f.type == FileType.FD_SOCKET) {
+        // dup of a socket fd: another reference to the same LocalSocket, so the
+        // socket (and its connection to the peer) must outlive the original fd.
+        // libseat's embedded seatd dups its connection fd and closes the original.
+        auto s = fileSocket(f);
+        if (s !is null) ++s.refCount;
     }
 }
 
@@ -4210,6 +4412,9 @@ private struct MemFdRec {
     ulong physBase;  // 0 until ftruncate allocates backing pages
     ulong size;      // page-aligned byte size
     int   seals;
+    bool  aliased;   // true: physBase is borrowed (e.g. a GEM dumb buffer exported
+                     // via PRIME); do NOT treat as owner, and reclaim the record on
+                     // close so the swapchain's buffer cycle doesn't leak slots.
 }
 __gshared MemFdRec[MEMFD_MAX] g_memfds;
 
@@ -4316,6 +4521,14 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024) return negErrno(EBADF);
     auto f = &g_fdTable[ifd];
+    // SO_PEERCRED on the seat connection fd: libseat's embedded seatd server calls
+    // this to identify its peer, but our socketpair/connection fd isn't always a
+    // recognised FD_SOCKET, so a strict ENOTSOCK makes the builtin backend fail to
+    // open the seat ("Not a socket") and aquamarine never activates the session.
+    // Everything runs as root here, so just hand back uid/gid 0 for any open fd.
+    if (lvl == SOL_SOCKET && cast(int)opt == SO_PEERCRED)
+        return copySockoptUcred(val, len);
+
     auto sock = fileSocket(f);
     if (sock is null) return negErrno(ENOTSOCK);
     if (lvl != SOL_SOCKET) return negErrno(ENOPROTOOPT);
@@ -4384,7 +4597,18 @@ private bool fdReadable(int fd) @nogc nothrow {
     if (fd < 0 || fd >= 1024) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)  return true;
-    if (f.type == FileType.FD_SOCKET)   return true; // socket may have data
+    if (f.type == FileType.FD_SOCKET) {
+        // Readable only when data is actually queued or the peer has hung up.
+        // Returning true unconditionally made poll() always report ready, so a
+        // task poll()ing an empty socket never yielded — starving the peer task
+        // that would supply the data (e.g. the forked embedded seatd server).
+        auto sock = fileSocket(f);
+        if (sock is null) return false;
+        if (sock.state == LocalSocketState.listener)
+            return sock.pendingHead != sock.pendingTail;   // a pending accept()
+        return socketBufferReadable(sock.rx) > 0 || sock.peerClosed
+            || sock.state == LocalSocketState.closed;
+    }
     if (f.type == FileType.FD_FILE && cast(size_t)f.backend > 2)
         return f.offset < f.fileSize;
     if (f.type == FileType.FD_BUNDLE || f.type == FileType.FD_BOOT_MODULE)
@@ -4691,7 +4915,52 @@ public long linux_sys_flock(ulong fd, ulong op) { return 0; }
 public long linux_sys_iopl(ulong level)         { return 0; }
 public long linux_sys_ioperm(ulong from, ulong num, ulong on) { return 0; }
 public long linux_sys_ptrace(ulong req, ulong pid, ulong addr, ulong data) { return negErrno(ENOSYS); }
-public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong buf) { return negErrno(ENOSYS); }
+public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong buf) {
+    // glibc/libstdc++ std::filesystem::exists()/is_regular_file() use statx; it
+    // was stubbed ENOSYS, so every exists() returned false — Hyprland's
+    // resolveAssetPath never found /usr/share/hypr/wallN.png (or any rtfs file),
+    // and getBackground() then dereferenced a null cairo surface.  Implement it by
+    // resolving the path through sys_open (which consults the rtfs overlay,
+    // synthetic dirs and boot modules) + fstat, then converting to statx layout.
+    enum AT_EMPTY_PATH = 0x1000;
+    if (buf == 0) return cast(long)negErrno(EFAULT);
+
+    long fd;
+    bool opened = false;
+    auto p = cast(const(char)*)path;
+    if ((fl & AT_EMPTY_PATH) != 0 && (path == 0 || p[0] == 0)) {
+        fd = cast(long)cast(int)dfd;            // stat the dir fd itself
+    } else {
+        if (path == 0) return cast(long)negErrno(EFAULT);
+        fd = sys_open(p, O_RDONLY);
+        if (fd < 0) return fd;                  // ENOENT → exists() == false
+        opened = true;
+    }
+
+    ubyte[144] st;
+    foreach (i; 0 .. 144) st[i] = 0;
+    long r = linux_sys_fstat(cast(ulong)fd, cast(ulong)st.ptr);
+    if (opened) sys_close(cast(int)fd);
+    if (r < 0) return r;
+
+    uint  stMode = *cast(uint*) (st.ptr + 24);
+    ulong stIno  = *cast(ulong*)(st.ptr + 8);
+    ulong stSize = *cast(ulong*)(st.ptr + 48);
+
+    // Fill struct statx (256 bytes).  Only the basic-stats fields std::filesystem
+    // consults are populated; the rest stay zero.
+    auto b = cast(ubyte*)buf;
+    foreach (i; 0 .. 256) b[i] = 0;
+    enum uint STATX_BASIC_STATS = 0x000007ff;
+    *cast(uint*)  (b + 0)  = STATX_BASIC_STATS;        // stx_mask
+    *cast(uint*)  (b + 4)  = 4096;                     // stx_blksize
+    *cast(uint*)  (b + 16) = 1;                        // stx_nlink
+    *cast(ushort*)(b + 28) = cast(ushort)stMode;       // stx_mode
+    *cast(ulong*) (b + 32) = stIno;                    // stx_ino
+    *cast(ulong*) (b + 40) = stSize;                   // stx_size
+    *cast(ulong*) (b + 48) = (stSize + 511) / 512;     // stx_blocks
+    return 0;
+}
 
 // ============================================================
 // OpenRC / elogind / init system syscalls
@@ -4900,6 +5169,7 @@ private enum uint DRM_NR_MODE_CREATE_DUMB   = 0xb2;
 private enum uint DRM_NR_MODE_MAP_DUMB      = 0xb3;
 private enum uint DRM_NR_MODE_DESTROY_DUMB  = 0xb4;
 private enum uint DRM_NR_MODE_ATOMIC        = 0xbc;
+private enum uint DRM_NR_HOS_PRESENT        = 0xf0;
 
 // DRM capability IDs
 private enum ulong DRM_CAP_DUMB_BUFFER          = 0x1;
@@ -5254,6 +5524,48 @@ private void userCopyString(ulong dst, const(char)* src, size_t n) @nogc nothrow
     foreach (i; 0 .. n) d[i] = src[i];
 }
 
+private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
+    if (!g_fb || g_fb.address == null || g_fb.pitch == 0 || g_fb.bpp != 32)
+        return negErrno(ENODEV);
+
+    ulong srcPtr  = userRead!ulong(arg + 0);
+    uint srcW     = userRead!uint(arg + 8);
+    uint srcH     = userRead!uint(arg + 12);
+    uint srcPitch = userRead!uint(arg + 16);
+    uint format   = userRead!uint(arg + 20);
+    ulong srcSize = userRead!ulong(arg + 24);
+
+    if (srcPtr == 0 || srcW == 0 || srcH == 0 || srcPitch == 0 || format == 0)
+        return negErrno(EINVAL);
+
+    const size_t bytesPerPixel = 4;
+    const size_t minRowBytes = cast(size_t)srcW * bytesPerPixel;
+    if (srcPitch < minRowBytes)
+        return negErrno(EINVAL);
+    if (srcSize != 0 && srcSize < cast(ulong)srcPitch * srcH)
+        return negErrno(EINVAL);
+
+    const uint copyW = srcW < g_fb.width ? srcW : cast(uint)g_fb.width;
+    const uint copyH = srcH < g_fb.height ? srcH : cast(uint)g_fb.height;
+    const size_t rowBytes = cast(size_t)copyW * bytesPerPixel;
+    if (rowBytes > g_fb.pitch || rowBytes > srcPitch)
+        return negErrno(EINVAL);
+
+    auto src = cast(const(ubyte)*)srcPtr;
+    auto dst = cast(ubyte*)g_fb.address;
+
+    smapBegin();
+    foreach (row; 0 .. copyH) {
+        memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
+               src + cast(size_t)row * cast(size_t)srcPitch,
+               rowBytes);
+    }
+    smapEnd();
+
+    g_fbConsoleEnabled = false;
+    return 0;
+}
+
 private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     console_putchar('H');
     uint nr = request & 0xFF;
@@ -5333,9 +5645,66 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     case DRM_NR_DROP_MASTER:
         return 0;
 
-    case DRM_NR_PRIME_HANDLE_TO_FD:
-    case DRM_NR_PRIME_FD_TO_HANDLE:
-        return negErrno(ENOSYS);
+    // struct drm_prime_handle { u32 handle; u32 flags; s32 fd; }
+    // Export a dumb GEM buffer as a dma-buf fd.  Aquamarine's headless allocator
+    // requires this to succeed (else attrs.success stays false and the swapchain
+    // can't acquire a buffer).  We hand back an fd that aliases the GEM's physical
+    // pages via the memfd machinery, so mmap'ing the prime fd yields the same
+    // pixels as the dumb buffer.
+    case DRM_NR_PRIME_HANDLE_TO_FD: {
+        uint handle = userRead!uint(arg + 0);
+        GemBuf* gem = findGem(handle);
+        if (!gem) return negErrno(EINVAL);
+
+        int slot = -1;
+        foreach (i, ref m; g_memfds) { if (!m.inUse) { slot = cast(int)i; break; } }
+        if (slot < 0) return negErrno(ENOSPC);
+
+        int nfd = -1;
+        for (int i = 3; i < 1024; ++i)
+            if (g_fdTable[i].type == FileType.FD_NONE) { nfd = i; break; }
+        if (nfd < 0) return negErrno(EMFILE);
+
+        g_memfds[slot].inUse    = true;
+        g_memfds[slot].physBase = gem.physAddr;
+        g_memfds[slot].size     = gem.size;
+        g_memfds[slot].seals    = 0;
+        g_memfds[slot].aliased  = true;
+
+        g_fdTable[nfd].type     = FileType.FD_MEMFD;
+        g_fdTable[nfd].flags    = 0;
+        g_fdTable[nfd].offset   = 0;
+        g_fdTable[nfd].backend  = cast(void*)cast(size_t)slot;
+        g_fdTable[nfd].fileSize = gem.size;
+
+        userWrite!int(arg + 8, nfd);     // drm_prime_handle.fd (output)
+        return 0;
+    }
+
+    // struct drm_prime_handle { u32 handle(out); u32 flags; s32 fd(in); }
+    // Inverse of PRIME_HANDLE_TO_FD.  Mesa's kms_swrast winsys imports a dma-buf
+    // by calling this to recover the GEM handle, then MODE_MAP_DUMB(handle) +
+    // mmap to render into it.  Our prime fd is an FD_MEMFD aliasing the GEM's
+    // physical pages, so map fd → memfd physBase → the GEM with that physAddr.
+    // (Without this the import returns NULL, the output render target is invalid,
+    // and Hyprland's frame never lands in the buffer — the screen stays at the
+    // dumb buffer's initial 0xFF memset.)
+    case DRM_NR_PRIME_FD_TO_HANDLE: {
+        int infd = userRead!int(arg + 8);
+        if (infd < 0 || infd >= 1024) return negErrno(EINVAL);
+        File* pf = &g_fdTable[infd];
+        if (pf.type != FileType.FD_MEMFD) return negErrno(EINVAL);
+        int mid = cast(int)cast(size_t)pf.backend;
+        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return negErrno(EINVAL);
+        ulong phys = g_memfds[mid].physBase;
+        uint handle = 0;
+        foreach (ref gb; g_gemBufs) {
+            if (gb.inUse && gb.physAddr == phys) { handle = gb.handle; break; }
+        }
+        if (handle == 0) return negErrno(EINVAL);
+        userWrite!uint(arg + 0, handle);
+        return 0;
+    }
 
     case DRM_NR_MODE_GETRESOURCES: {
         uint cnt_crtcs = userRead!uint(arg + 36);
@@ -5442,6 +5811,9 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     case DRM_NR_MODE_ATOMIC:
         return negErrno(EINVAL);
 
+    case DRM_NR_HOS_PRESENT:
+        return drmPresentToFramebuffer(arg);
+
     case DRM_NR_MODE_CREATE_DUMB: {
         uint h   = userRead!uint(arg + 0);
         uint w   = userRead!uint(arg + 4);
@@ -5452,15 +5824,14 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         uint pitch = (w * bpp / 8 + 63) & ~63u;
         ulong sz = cast(ulong)pitch * h;
 
-        ulong physAddr;
+        size_t pages = cast(size_t)((sz + 4095) >> 12);
+        ulong physAddr = alloc_phys_pages(pages);
+        if (!physAddr) return negErrno(ENOSPC);
+
         if (g_fb && w == g_fb.width && h == g_fb.height) {
-            physAddr = cast(ulong)g_fb.address - hhdm_offset;
-            pitch = cast(uint)g_fb.pitch;
-            sz = g_fb.pitch * g_fb.height;
-        } else {
-            size_t pages = cast(size_t)((sz + 4095) >> 12);
-            physAddr = alloc_phys_pages(pages);
-            if (!physAddr) return negErrno(ENOSPC);
+            // Userspace (Hyprland) is taking over the display.  Keep dumb buffers
+            // distinct, but stop drawing the kernel text console over GUI output.
+            g_fbConsoleEnabled = false;
         }
 
         int slot = -1;

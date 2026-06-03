@@ -60,8 +60,12 @@ long sys_mmap(ulong addr, ulong len, ulong prot, ulong flags, ulong fd, ulong of
     return cast(long)vaddr;
 }
 
-// Munmap implementation
-long sys_munmap(ulong addr, ulong len) {
+// Munmap implementation.  When `freePages` is set the caller has determined the
+// range belongs to an owned (private, alloc_phys_page-backed) region, so each
+// unmapped physical frame is returned to the free list for reuse instead of
+// leaking.  The caller MUST NOT set freePages for device (g_fb) / shared (memfd)
+// maps.
+long sys_munmap(ulong addr, ulong len, bool freePages = false) {
     if ((addr & 0xFFF) != 0) return -22; // EINVAL
     if (len == 0) return -22;
 
@@ -70,9 +74,11 @@ long sys_munmap(ulong addr, ulong len) {
     ulong num_pages = aligned_len / PAGE_SIZE;
 
     for (ulong i = 0; i < num_pages; i++) {
-        unmap_page_hhdm(addr + (i * PAGE_SIZE));
+        ulong phys = unmap_page_hhdm(addr + (i * PAGE_SIZE));
+        if (freePages && phys != 0)
+            free_phys_page(phys);
     }
-    
+
     return 0;
 }
 

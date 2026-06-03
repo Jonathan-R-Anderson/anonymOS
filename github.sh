@@ -18,10 +18,11 @@ while read -r file; do
 
     count=$((count + 1))
 
-    if [ $count -eq 15 ]; then
+    if [ $count -eq 50 ]; then
         echo "Creating batch commit $batch"
 
         git commit -m "Batch commit $batch"
+        git push
 
         batch=$((batch + 1))
         count=0
@@ -30,6 +31,7 @@ done < /tmp/untracked.txt
 
 if [ $count -gt 0 ]; then
     git commit -m "Batch commit $batch"
+    git push
 fi
 
 echo "Finished batching commits."

@@ -57,6 +57,10 @@ TEST_DRM_BIN  := build/test-drm
 COMPOSITOR_BIN := build/compositor
 HELLO_GUI_BIN := build/hello-gui
 HYPRLAND_BIN := deps/hyprland/Hyprland
+XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
+XKB_BLOB     := build/xkb.blob
+ASSET_SRC_DIR := build/assets
+ASSET_BLOB    := build/assets.blob
 
 FREESTANDING_CFLAGS := -static -nostdlib -nostartfiles -fno-stack-protector \
 	-fno-pic -fno-pie -m64 -O2 -e _start
@@ -120,6 +124,20 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/swrast_dri.so; \
 		printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n    module_path: boot():/swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
 		echo "Included Hyprland (dynamic) + ld-musl + kms_swrast/swrast _dri.so"; \
+		if [ ! -f $(XKB_BLOB) ] && [ -d $(XKB_SRC_DIR) ]; then \
+			python3 scripts/pack-xkb.py $(XKB_SRC_DIR) $(XKB_BLOB); \
+		fi; \
+		if [ -f $(XKB_BLOB) ]; then \
+			cp $(XKB_BLOB) cd/xkb.blob; \
+			printf '\n    module_path: boot():/xkb.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included xkb.blob (xkeyboard-config data)"; \
+		fi; \
+		if [ -d $(ASSET_SRC_DIR) ]; then \
+			python3 scripts/pack-assets.py $(ASSET_SRC_DIR) $(ASSET_BLOB) usr/share; \
+			cp $(ASSET_BLOB) cd/assets.blob; \
+			printf '\n    module_path: boot():/assets.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included assets.blob (Hyprland wallpapers /usr/share/hypr)"; \
+		fi; \
 	else \
 		echo "Hyprland not built — run: make deps-hyprland"; \
 	fi

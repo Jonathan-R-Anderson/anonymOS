@@ -37,7 +37,12 @@ enum : ulong {
 }
 
 enum MAX_TASKS   = 64;
-enum MAX_REGIONS = 512;
+// A real Mesa/softpipe + Hyprland startup maps several hundred persistent regions
+// (gallium buffers, the 1080p framebuffer, musl's mmap-backed large allocations),
+// which overflowed the old 512 cap ("addRegion: full") before the first frame.
+// munmap now reclaims entries (removeRegion), but the steady-state working set is
+// still large, so keep a generous ceiling. Cost: MAX_TASKS(64) * 4096 * ~32B ≈ 8MB.
+enum MAX_REGIONS = 4096;
 
 enum RegionType : ubyte {
     None             = 0,
@@ -57,6 +62,12 @@ struct AddrRegion {
     RegionType  type;
     RegionPerms perms;
     ulong       physBase; // for Mapped / CopyOnWrite
+    // True when this region's physical pages were freshly allocated from the
+    // bump pool and are exclusively owned by this address space (anonymous and
+    // private file-backed maps).  Such pages are safe to free_phys_page() on
+    // munmap / task exit.  False for device (g_fb / DRM) and shared (memfd) maps
+    // whose pages must never be reclaimed.
+    bool        owned;
 }
 
 struct Task {
@@ -89,6 +100,11 @@ struct Task {
 
     // Per-task mmap bump pointer (avoids collisions after fork)
     ulong mmapNext;
+
+    // Which per-process fd table this task uses (posix.d g_fdTabs).  Threads
+    // share their process leader's id; a fork()ed child gets its own (its task
+    // id) with a copied table.  0 = the initial process (task 0).
+    int fdTabId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;
@@ -113,7 +129,8 @@ void releaseTask(int tid) {
 
 // Add a virtual address region to a task
 bool addRegion(ref Task task, ulong start, ulong end,
-               RegionType type, RegionPerms perms, ulong physBase = 0) {
+               RegionType type, RegionPerms perms, ulong physBase = 0,
+               bool owned = false) {
     if (task.regionCount >= MAX_REGIONS) {
         klog("[task] addRegion: full\n");
         return false;
@@ -124,7 +141,35 @@ bool addRegion(ref Task task, ulong start, ulong end,
     r.type          = type;
     r.perms         = perms;
     r.physBase      = physBase;
+    r.owned         = owned;
     return true;
+}
+
+// Does the region containing `vaddr` own its physical pages (safe to free)?
+bool regionOwnedAt(ref Task task, ulong vaddr) {
+    auto r = findRegion(task, vaddr);
+    return r !is null && r.owned;
+}
+
+// Remove regions fully contained in [start, end) from a task's table (compacting
+// via swap-remove).  Called by munmap so the per-task region table doesn't leak
+// one entry per mmap — Mesa/softpipe churn many short-lived maps and otherwise
+// exhaust MAX_REGIONS ("addRegion: full").  Partial/straddling unmaps (rare) are
+// left intact; their pages are still unmapped by sys_munmap.
+void removeRegion(ref Task task, ulong start, ulong end) {
+    if (end <= start) return;
+    int n = task.regionCount;
+    int i = 0;
+    while (i < n) {
+        auto r = &task.regions[i];
+        if (r.start >= start && r.end <= end) {
+            task.regions[i] = task.regions[n - 1];   // swap-remove
+            --n;
+            continue;                                 // re-check swapped-in entry
+        }
+        ++i;
+    }
+    task.regionCount = n;
 }
 
 // Find the region that contains vaddr (or null)

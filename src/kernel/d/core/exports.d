@@ -859,7 +859,7 @@ ulong linux_seed_initial_stack(
     ulong strCursor = platformPhysOff;
     ulong execFnVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, execName);
 
-    enum bootEnvCount = 24;
+    enum bootEnvCount = 28;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -923,6 +923,26 @@ ulong linux_seed_initial_stack(
     // eglInitialize fails (driver/screen/config) instead of only the downstream
     // strlen(NULL) crash. Trim once EGL comes up.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "EGL_LOG_LEVEL=debug\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // libxkbcommon's baked DFLT_XKB_CONFIG_ROOT is a host build path that doesn't
+    // exist in the guest; point it at the overlay tree the kernel unpacks from
+    // xkb.blob (rtUnpackXkb) so xkb_context_new() can add an include path and
+    // keymap compilation finds rules/keycodes/symbols/...
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XKB_CONFIG_ROOT=/usr/share/X11/xkb\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // libXcursor's baked default XCURSOR_PATH has FOUR entries (host HanonymOS
+    // sysroot share/{icons,pixmaps}, ~/.local/share/icons, ~/.icons). We ship no
+    // cursor theme, so XcursorShapeLoadImages fails for every one of ~80 standard
+    // shapes (× a size-24 retry), opening index.theme in ALL four paths each time
+    // — ~640 synthetic-fs opens per loadTheme, ~60s on TCG. Collapse to a single
+    // (still absent) path so the failing search is 4× cheaper; the cursor falls
+    // back to the built-in hypr cursor either way.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_PATH=/usr/share/icons\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // Now that the kernel reclaims physical pages (free list), the heavier real
+    // scene render no longer OOMs — drive Hyprland's full m_renderPass.render()
+    // (wallpaper + windows) instead of the deterministic clear-only frame.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
 
     bool isHyprland =

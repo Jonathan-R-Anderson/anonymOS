@@ -17,6 +17,34 @@ __gshared limine_memmap_response* mmap_resp;
 // them to hand out overlapping physical pages, corrupting page tables.
 __gshared ulong g_next_phys_alloc = 0x100000;
 
+// Physical page free list — lets munmap and task teardown actually reclaim
+// single 4K pages (the bump pointer never rewinds, so without this every page
+// ever mapped leaks and a long-running compositor OOMs).  Sized to cover all of
+// a 512 MB guest (131072 pages); frees beyond that are dropped (a harmless leak).
+enum size_t FREE_LIST_CAP = 1 << 17;          // 131072 entries * 8B = 1 MB
+__gshared ulong[FREE_LIST_CAP] g_free_pages;
+__gshared size_t g_free_count = 0;
+__gshared ulong  g_free_calls = 0;            // diag counters
+__gshared ulong  g_reuse_hits = 0;
+
+// Return a single 4K page to the free list for reuse.  GUARDED: only accepts
+// pages from the bump pool (>=1 MB and below the high-water mark), so a stray
+// device / framebuffer physical address can never be handed back out as RAM.
+// Callers must only free pages they exclusively own (anonymous / private file
+// maps); never device (g_fb) or shared (memfd) pages — see the `owned` flag.
+void free_phys_page(ulong addr) {
+    addr &= ~0xFFFUL;
+    if (addr < 0x100000) return;             // low memory / null
+    if (addr >= g_next_phys_alloc) return;   // never came from the pool
+    if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
+    g_free_pages[g_free_count++] = addr;
+    ++g_free_calls;
+}
+
+void free_phys_pages(ulong addr, size_t n) {
+    foreach (i; 0 .. n) free_phys_page(addr + i * 4096);
+}
+
 
 void init_mm(limine_memmap_response* r) {
     klog("init_mm: starting\n");
@@ -74,6 +102,18 @@ void archMapKernel(ulong new_cr3) {
 }
 
 ulong alloc_phys_page() {
+    // Reuse a freed page first (zeroed, like the bump path) so churned single-page
+    // allocations (per-frame readback buffers, etc.) don't grow the high-water mark.
+    if (g_free_count > 0) {
+        ulong ret = g_free_pages[--g_free_count];
+        ++g_reuse_hits;
+        if (hhdm_offset != 0) {
+            ulong* ptr = cast(ulong*)(ret + hhdm_offset);
+            for (size_t k = 0; k < 512; k++) ptr[k] = 0;
+        }
+        return ret;
+    }
+
     for (size_t i = 0; i < mmap_resp.entry_count; i++) {
         limine_memmap_entry* entry = mmap_resp.entries[i];
 

@@ -148,7 +148,11 @@ int protect_page_hhdm(ulong virt_addr, ulong flags_set, ulong flags_clear) {
 }
 
 // Unmap Page implementation
-void unmap_page_hhdm(ulong virt_addr) {
+// Unmap a single 4K page from the active address space.  Returns the physical
+// address that was mapped (4K-aligned) so the caller can reclaim it via
+// free_phys_page, or 0 if nothing was mapped there.  The caller decides whether
+// the page is safe to free (owned/private) — this just reports it.
+ulong unmap_page_hhdm(ulong virt_addr) {
     ulong pml4_idx = (virt_addr >> 39) & 0x1FF;
     ulong pdpt_idx = (virt_addr >> 30) & 0x1FF;
     ulong pd_idx   = (virt_addr >> 21) & 0x1FF;
@@ -157,23 +161,22 @@ void unmap_page_hhdm(ulong virt_addr) {
     ulong cr3 = read_cr3();
     PageTable* pml4 = phys_to_virt_pt(cr3 & ~0xFFF);
 
-    if (!(pml4.entries[pml4_idx] & PTE_PRESENT)) return;
+    if (!(pml4.entries[pml4_idx] & PTE_PRESENT)) return 0;
 
     PageTable* pdpt = phys_to_virt_pt(pml4.entries[pml4_idx] & ~0xFFF);
-    if (!(pdpt.entries[pdpt_idx] & PTE_PRESENT)) return;
+    if (!(pdpt.entries[pdpt_idx] & PTE_PRESENT)) return 0;
 
     PageTable* pd = phys_to_virt_pt(pdpt.entries[pdpt_idx] & ~0xFFF);
-    if (!(pd.entries[pd_idx] & PTE_PRESENT)) return;
+    if (!(pd.entries[pd_idx] & PTE_PRESENT)) return 0;
 
     PageTable* pt = phys_to_virt_pt(pd.entries[pd_idx] & ~0xFFF);
-    if (!(pt.entries[pt_idx] & PTE_PRESENT)) return;
+    if (!(pt.entries[pt_idx] & PTE_PRESENT)) return 0;
 
-    // Clear present bit
-    pt.entries[pt_idx] &= ~PTE_PRESENT;
-    
-    // We should probably verify if we can free the physical frame here?
-    // But since we use a bump allocator for physical memory without a free list, for now we just leak it.
-    // TODO: Free physical frame.
+    // Physical frame = bits 12..51 of the PTE (mask off flags + NX + reserved).
+    ulong phys = pt.entries[pt_idx] & 0x000FFFFFFFFFF000UL;
+
+    pt.entries[pt_idx] = 0;
 
     invlpg(virt_addr);
+    return phys;
 }

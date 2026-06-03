@@ -1,0 +1,36 @@
+.TH xcb_composite_redirect_subwindows 3  "libxcb 1.17.0" "X Version 11" "XCB Requests"
+.ad l
+.SH NAME
+xcb_composite_redirect_subwindows \- Redirect all current and future children of ‘window’
+.SH SYNOPSIS
+.hy 0
+.B #include <xcb/composite.h>
+.SS Request function
+.HP
+xcb_void_cookie_t \fBxcb_composite_redirect_subwindows\fP(xcb_connection_t\ *\fIconn\fP, xcb_window_t\ \fIwindow\fP, uint8_t\ \fIupdate\fP);
+.br
+.hy 1
+.SH REQUEST ARGUMENTS
+.IP \fIconn\fP 1i
+The XCB connection to X11.
+.IP \fIwindow\fP 1i
+The root of the hierarchy to redirect to off-screen storage.
+.IP \fIupdate\fP 1i
+Whether contents are automatically mirrored to the parent window.  If one client
+	already specifies an update type of Manual, any attempt by another to specify a
+	mode of Manual so will result in an Access error.
+.SH DESCRIPTION
+Hierarchies starting at all current and future children of window
+	will be redirected as in RedirectWindow. If update is Manual,
+	then painting of the window background during window manipulation
+	and ClearArea requests is inhibited.
+.SH RETURN VALUE
+Returns an \fIxcb_void_cookie_t\fP. Errors (if any) have to be handled in the event loop.
+
+If you want to handle errors directly with \fIxcb_request_check\fP instead, use \fIxcb_composite_redirect_subwindows_checked\fP. See \fBxcb-requests(3)\fP for details.
+.SH ERRORS
+This request does never generate any errors.
+.SH SEE ALSO
+.BR xcb-requests (3)
+.SH AUTHOR
+Generated from composite.xml. Contact xcb@lists.freedesktop.org for corrections and improvements.

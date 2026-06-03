@@ -1,0 +1,183 @@
+# HanonymOS Hyprland-stack upgrades and extra transitive deps that are not in
+# the original 20-package list but are required for a clean build / status:
+#   - libinput 1.29.2   (aquamarine needs >= 1.26, Hyprland needs >= 1.29)
+#   - xkbcommon 1.12.0   (Hyprland needs >= 1.11)
+#   - wayland-protocols 1.48 (Hyprland needs >= 1.47)
+#   - brotli + highway + libjxl (hyprgraphics REQUIREs libjxl)
+#   - libuuid            (Hyprland needs uuid.pc)
+# Included from ../hyprland-hos/Makefile after Makefile.deps so all of
+# CMAKE_TARGET_FLAGS / PKG_CONFIG_ENV / SYSROOT / MUSL_* are already defined.
+
+.PHONY: upgrades
+upgrades: \
+	$(STAMP_DIR)/libinput-build \
+	$(STAMP_DIR)/xkbcommon-build \
+	$(STAMP_DIR)/wayland-protocols-build \
+	$(STAMP_DIR)/brotli-build \
+	$(STAMP_DIR)/highway-build \
+	$(STAMP_DIR)/libjxl-build \
+	$(STAMP_DIR)/uuid-build
+
+$(STAMP_DIR)/libjxl-build: $(STAMP_DIR)/brotli-build $(STAMP_DIR)/highway-build
+
+# --- libinput 1.29.2 (meson) ---
+$(DL_DIR)/libinput-1.29.2.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://gitlab.freedesktop.org/libinput/libinput/-/archive/1.29.2/libinput-1.29.2.tar.gz
+
+$(STAMP_DIR)/libinput-extract: $(DL_DIR)/libinput-1.29.2.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libinput
+	mkdir -p $(BUILD_DIR)/libinput
+	tar -xf $< -C $(BUILD_DIR)/libinput --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libinput-build: $(STAMP_DIR)/libinput-extract \
+	$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+	$(SELF)/Makefile.upgrades
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libinput/build
+	env $(PKG_CONFIG_ENV) meson setup $(BUILD_DIR)/libinput/build $(BUILD_DIR)/libinput \
+		--cross-file=$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+		--prefix=$(SYSROOT) --default-library=static -Dbuildtype=release \
+		-Dtests=false -Ddocumentation=false -Ddebug-gui=false -Dlibwacom=false
+	ninja -C $(BUILD_DIR)/libinput/build $(NINJA_BUILD_FLAGS) install
+	rm -f $(SYSROOT)/lib/libinput.a
+	$(LLVM_PREFIX)/bin/llvm-ar rcs $(SYSROOT)/lib/libinput.a \
+		$(BUILD_DIR)/libinput/build/libinput.so.*.p/*.o \
+		$(BUILD_DIR)/libinput/build/libquirks.a.p/*.o \
+		$(BUILD_DIR)/libinput/build/liblibinput-util.a.p/*.o
+	rm -f $(SYSROOT)/lib/libinput.so*
+	touch $@
+
+# --- xkbcommon 1.12.0 (meson) ---
+$(DL_DIR)/libxkbcommon-1.12.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-1.12.0.tar.gz
+
+$(STAMP_DIR)/xkbcommon-extract: $(DL_DIR)/libxkbcommon-1.12.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/xkbcommon
+	mkdir -p $(BUILD_DIR)/xkbcommon
+	tar -xf $< -C $(BUILD_DIR)/xkbcommon --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/xkbcommon-build: $(STAMP_DIR)/xkbcommon-extract \
+	$(PROJECT_ROOT)/deps/gtk-stack/stamps/xkbcommon \
+	$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+	$(SELF)/Makefile.upgrades
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/xkbcommon/build
+	env $(PKG_CONFIG_ENV) meson setup $(BUILD_DIR)/xkbcommon/build $(BUILD_DIR)/xkbcommon \
+		--cross-file=$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+		--prefix=$(SYSROOT) --default-library=static -Dbuildtype=release \
+		-Denable-docs=false -Denable-tools=false -Denable-x11=false \
+		-Denable-wayland=false -Denable-xkbregistry=false
+	ninja -C $(BUILD_DIR)/xkbcommon/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- wayland-protocols 1.48 (meson, data only) ---
+$(DL_DIR)/wayland-protocols-1.48.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.48/wayland-protocols-1.48.tar.gz
+
+$(STAMP_DIR)/wayland-protocols-extract: $(DL_DIR)/wayland-protocols-1.48.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/wayland-protocols
+	mkdir -p $(BUILD_DIR)/wayland-protocols
+	tar -xf $< -C $(BUILD_DIR)/wayland-protocols --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/wayland-protocols-build: $(STAMP_DIR)/wayland-protocols-extract \
+	$(PROJECT_ROOT)/deps/gtk-stack/stamps/wayland-protocols \
+	$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+	$(SELF)/Makefile.upgrades
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/wayland-protocols/build
+	sed -i "s/if dep_scanner.version().version_compare('>=1.22.90')/if false/" \
+		$(BUILD_DIR)/wayland-protocols/meson.build
+	env $(PKG_CONFIG_ENV) meson setup $(BUILD_DIR)/wayland-protocols/build $(BUILD_DIR)/wayland-protocols \
+		--cross-file=$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+		--prefix=$(SYSROOT) -Dbuildtype=release -Dtests=false
+	ninja -C $(BUILD_DIR)/wayland-protocols/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- brotli 1.1.0 (cmake) — libjxl dependency ---
+$(DL_DIR)/brotli-1.1.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/google/brotli/archive/refs/tags/v1.1.0.tar.gz
+
+$(STAMP_DIR)/brotli-extract: $(DL_DIR)/brotli-1.1.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/brotli
+	mkdir -p $(BUILD_DIR)/brotli
+	tar -xf $< -C $(BUILD_DIR)/brotli --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/brotli-build: $(STAMP_DIR)/brotli-extract
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/brotli/build
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/brotli -B $(BUILD_DIR)/brotli/build $(CMAKE_TARGET_FLAGS) \
+		-DBROTLI_DISABLE_TESTS=ON
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/brotli/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- highway 1.2.0 (cmake) — libjxl dependency ---
+$(DL_DIR)/highway-1.2.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz
+
+$(STAMP_DIR)/highway-extract: $(DL_DIR)/highway-1.2.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/highway
+	mkdir -p $(BUILD_DIR)/highway
+	tar -xf $< -C $(BUILD_DIR)/highway --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/highway-build: $(STAMP_DIR)/highway-extract
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/highway/build
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/highway -B $(BUILD_DIR)/highway/build $(CMAKE_TARGET_FLAGS) \
+		-DHWY_ENABLE_TESTS=OFF -DHWY_ENABLE_EXAMPLES=OFF -DHWY_ENABLE_CONTRIB=OFF -DBUILD_TESTING=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/highway/build $(NINJA_BUILD_FLAGS) install
+	# highway ships its pkg-config file as libhwy.pc; libjxl looks for `hwy`.
+	cp $(SYSROOT)/lib/pkgconfig/libhwy.pc $(SYSROOT)/lib/pkgconfig/hwy.pc
+	touch $@
+
+# --- libjxl 0.11.1 (cmake) — hyprgraphics dependency ---
+$(DL_DIR)/libjxl-0.11.1.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/libjxl/libjxl/archive/refs/tags/v0.11.1.tar.gz
+
+$(STAMP_DIR)/libjxl-extract: $(DL_DIR)/libjxl-0.11.1.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libjxl
+	mkdir -p $(BUILD_DIR)/libjxl
+	tar -xf $< -C $(BUILD_DIR)/libjxl --strip-components=1
+	# The GitHub archive tarball lacks the version that jxl.cmake greps out of
+	# lib/jxl/common.h (normally derived from git); inject v0.11.1 explicitly.
+	printf '\n#define JPEGXL_MAJOR_VERSION 0\n#define JPEGXL_MINOR_VERSION 11\n#define JPEGXL_PATCH_VERSION 1\n' >> $(BUILD_DIR)/libjxl/lib/jxl/common.h
+	touch $@
+
+$(STAMP_DIR)/libjxl-build: $(STAMP_DIR)/libjxl-extract
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libjxl/build
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/libjxl -B $(BUILD_DIR)/libjxl/build $(CMAKE_TARGET_FLAGS) \
+		-DJPEGXL_FORCE_SYSTEM_HWY=ON -DJPEGXL_FORCE_SYSTEM_BROTLI=ON \
+		-DJPEGXL_ENABLE_SKCMS=OFF -DJPEGXL_ENABLE_TOOLS=OFF -DJPEGXL_ENABLE_EXAMPLES=OFF \
+		-DJPEGXL_ENABLE_BENCHMARK=OFF -DJPEGXL_ENABLE_DOXYGEN=OFF -DJPEGXL_ENABLE_MANPAGES=OFF \
+		-DJPEGXL_ENABLE_JNI=OFF -DJPEGXL_ENABLE_SJPEG=OFF -DJPEGXL_ENABLE_OPENEXR=OFF \
+		-DJPEGXL_ENABLE_PLUGINS=OFF -DJPEGXL_ENABLE_TRANSCODE_JPEG=OFF -DBUILD_TESTING=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/libjxl/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- libuuid (functional stub: getrandom-based v4 UUIDs) ---
+$(STAMP_DIR)/uuid-build:
+	@mkdir -p $(STAMP_DIR) $(BUILD_DIR)
+	$(MUSL_CC) -O2 -fPIC -c $(SELF)/libuuid-stub/uuid.c -o $(BUILD_DIR)/uuid.o
+	llvm-ar rcs $(SYSROOT)/lib/libuuid.a $(BUILD_DIR)/uuid.o
+	mkdir -p $(SYSROOT)/include/uuid
+	cp $(SELF)/libuuid-stub/uuid.h $(SYSROOT)/include/uuid/uuid.h
+	mkdir -p $(SYSROOT)/lib/pkgconfig
+	printf 'prefix=%s\nexec_prefix=$${prefix}\nlibdir=$${exec_prefix}/lib\nincludedir=$${prefix}/include\n\nName: uuid\nDescription: Universally unique id library\nVersion: 2.41\nLibs: -L$${libdir} -luuid\nCflags: -I$${includedir}\n' "$(SYSROOT)" > $(SYSROOT)/lib/pkgconfig/uuid.pc
+	touch $@

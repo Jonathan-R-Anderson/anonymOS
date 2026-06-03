@@ -1,0 +1,535 @@
+# Makefile for downloading and building Hyprland dependencies
+
+DL_DIR     := $(SELF)/downloads
+BUILD_DIR  := $(SELF)/build
+STAMP_DIR  := $(SELF)/stamps
+HYPRWIRE_VER := 0.3.1
+HYPRWIRE_REV := 85148a8e612808cf5ddb25d0b3c5840f3498a7dc
+HYPRCURSOR_VER := 0.1.13
+HYPRCURSOR_REV := 39435900785d0c560c6ae8777d29f28617d031ef
+AQUAMARINE_VER := 0.11.0
+AQUAMARINE_REV := ab2b0af63fbc9fb779d684f19149b790978be8a8
+
+# Core CMake configuration for target
+CMAKE_TARGET_FLAGS := \
+	-G Ninja \
+	-DCMAKE_BUILD_TYPE=Release \
+	-DCMAKE_INSTALL_PREFIX=$(SYSROOT) \
+	-DCMAKE_SYSROOT=$(MUSL_INSTALL) \
+	-DCMAKE_PREFIX_PATH="$(SYSROOT);$(MUSL_INSTALL)" \
+	-DCMAKE_FIND_ROOT_PATH="$(SYSROOT);$(MUSL_INSTALL)" \
+	-DCMAKE_C_COMPILER=$(MUSL_CC) \
+	-DCMAKE_CXX_COMPILER=$(MUSL_CXX) \
+	-DCMAKE_ASM_COMPILER=$(MUSL_CC) \
+	-DCMAKE_AR=$(LLVM_PREFIX)/bin/llvm-ar \
+	-DCMAKE_RANLIB=$(LLVM_PREFIX)/bin/llvm-ranlib \
+	-DCMAKE_NM=$(LLVM_PREFIX)/bin/llvm-nm \
+	-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+	-DBUILD_SHARED_LIBS=OFF \
+	-DCMAKE_C_FLAGS="-isystem $(LLVM_PREFIX)/lib/clang/18/include" \
+	-DCMAKE_CXX_FLAGS="-isystem $(LLVM_PREFIX)/lib/clang/18/include"
+
+.PHONY: deps
+
+deps: \
+	$(STAMP_DIR)/cxx-compat-build \
+	$(STAMP_DIR)/pugixml-build \
+	$(STAMP_DIR)/hyprwayland-scanner-build \
+	$(STAMP_DIR)/lua-build \
+	$(STAMP_DIR)/glslang-build \
+	$(STAMP_DIR)/re2-build \
+	$(STAMP_DIR)/muparser-build \
+	$(STAMP_DIR)/libzip-build \
+	$(STAMP_DIR)/tomlplusplus-build \
+	$(STAMP_DIR)/librsvg-stub-build \
+	$(STAMP_DIR)/libjpeg-turbo-build \
+	$(STAMP_DIR)/libwebp-build \
+	$(STAMP_DIR)/libmagic-build \
+	$(STAMP_DIR)/libdisplay-info-build \
+	$(STAMP_DIR)/hwdata-build \
+	$(STAMP_DIR)/hyprland-protocols-build \
+	$(STAMP_DIR)/hyprutils-build \
+	$(STAMP_DIR)/hyprwire-build \
+	$(STAMP_DIR)/hyprlang-build \
+	$(STAMP_DIR)/hyprcursor-build \
+	$(STAMP_DIR)/hyprgraphics-build \
+	$(STAMP_DIR)/aquamarine-build
+
+# Establish internal dependency order
+$(STAMP_DIR)/hyprwayland-scanner-build: $(STAMP_DIR)/pugixml-build
+$(STAMP_DIR)/hyprwire-build: $(STAMP_DIR)/pugixml-build $(STAMP_DIR)/hyprutils-build
+$(STAMP_DIR)/hyprlang-build: $(STAMP_DIR)/hyprutils-build
+$(STAMP_DIR)/hyprcursor-build: $(STAMP_DIR)/hyprlang-build $(STAMP_DIR)/libzip-build $(STAMP_DIR)/tomlplusplus-build $(STAMP_DIR)/librsvg-stub-build
+$(STAMP_DIR)/hyprgraphics-build: $(STAMP_DIR)/hyprutils-build $(STAMP_DIR)/libjpeg-turbo-build $(STAMP_DIR)/libwebp-build $(STAMP_DIR)/libmagic-build $(STAMP_DIR)/librsvg-stub-build $(STAMP_DIR)/libjxl-build
+$(STAMP_DIR)/aquamarine-build: $(STAMP_DIR)/hyprwayland-scanner-build $(STAMP_DIR)/libdisplay-info-build $(STAMP_DIR)/hwdata-build $(STAMP_DIR)/hyprutils-build $(STAMP_DIR)/libinput-build
+
+# --- 0. C++ runtime compatibility ---
+$(STAMP_DIR)/cxx-compat-build: $(SELF)/cxx-compat/cxa_thread_atexit_impl.c
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR) $(SYSROOT)/lib
+	$(MUSL_CC) -O2 -fPIC -c $< -o $(BUILD_DIR)/cxa_thread_atexit_impl.o
+	$(LLVM_PREFIX)/bin/llvm-ar rcs $(SYSROOT)/lib/libhos-cxx-compat.a $(BUILD_DIR)/cxa_thread_atexit_impl.o
+	touch $@
+
+# --- 1. pugixml (Host) ---
+$(DL_DIR)/pugixml-1.14.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/zeux/pugixml/releases/download/v1.14/pugixml-1.14.tar.gz
+
+$(STAMP_DIR)/pugixml-extract: $(DL_DIR)/pugixml-1.14.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/pugixml
+	mkdir -p $(BUILD_DIR)/pugixml
+	tar -xf $< -C $(BUILD_DIR)/pugixml --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/pugixml-build: $(STAMP_DIR)/pugixml-extract
+	@mkdir -p $(STAMP_DIR)
+	cmake -G Ninja -S $(BUILD_DIR)/pugixml -B $(BUILD_DIR)/pugixml/build-host \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(HOST_TOOLS_ROOT) \
+		-DBUILD_SHARED_LIBS=OFF
+	ninja -C $(BUILD_DIR)/pugixml/build-host $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 2. hyprwayland-scanner (Host) ---
+$(DL_DIR)/hyprwayland-scanner-0.4.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprwayland-scanner/archive/refs/tags/v0.4.0.tar.gz
+
+$(STAMP_DIR)/hyprwayland-scanner-extract: $(DL_DIR)/hyprwayland-scanner-0.4.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprwayland-scanner
+	mkdir -p $(BUILD_DIR)/hyprwayland-scanner
+	tar -xf $< -C $(BUILD_DIR)/hyprwayland-scanner --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/hyprwayland-scanner-build: $(STAMP_DIR)/hyprwayland-scanner-extract
+	@mkdir -p $(STAMP_DIR)
+	cmake -G Ninja -S $(BUILD_DIR)/hyprwayland-scanner -B $(BUILD_DIR)/hyprwayland-scanner/build-host \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(SYSROOT) \
+		-DCMAKE_PREFIX_PATH=$(HOST_TOOLS_ROOT) \
+		-DBUILD_SHARED_LIBS=OFF
+	ninja -C $(BUILD_DIR)/hyprwayland-scanner/build-host $(NINJA_BUILD_FLAGS) install
+	mkdir -p $(HOST_TOOLS_BIN)
+	cp $(SYSROOT)/bin/hyprwayland-scanner $(HOST_TOOLS_BIN)/hyprwayland-scanner
+	touch $@
+
+# --- 3. Lua (Target) ---
+$(DL_DIR)/lua-5.5.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://www.lua.org/ftp/lua-5.5.0.tar.gz
+
+$(STAMP_DIR)/lua-extract: $(DL_DIR)/lua-5.5.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/lua
+	mkdir -p $(BUILD_DIR)/lua
+	tar -xf $< -C $(BUILD_DIR)/lua --strip-components=1
+	touch $@
+
+define LUA_PC_CONTENT
+prefix=$(SYSROOT)
+exec_prefix=$${prefix}
+libdir=$${exec_prefix}/lib
+includedir=$${prefix}/include
+
+Name: Lua
+Description: An Extensible Extension Language
+Version: 5.5.0
+Libs: -L$${libdir} -llua -lm
+Cflags: -I$${includedir}
+endef
+export LUA_PC_CONTENT
+
+$(STAMP_DIR)/lua-build: $(STAMP_DIR)/lua-extract
+	@mkdir -p $(STAMP_DIR)
+	cd $(BUILD_DIR)/lua && make posix CC="$(MUSL_CC)" AR="llvm-ar rcu" RANLIB="llvm-ranlib" CFLAGS="-O2 -Wall -fPIC"
+	cd $(BUILD_DIR)/lua && make install INSTALL_TOP="$(SYSROOT)"
+	mkdir -p $(SYSROOT)/lib/pkgconfig
+	echo "$$LUA_PC_CONTENT" > $(SYSROOT)/lib/pkgconfig/lua.pc
+	ln -sf lua.pc $(SYSROOT)/lib/pkgconfig/lua55.pc
+	ln -sf lua.pc $(SYSROOT)/lib/pkgconfig/lua5.5.pc
+	ln -sf lua.pc $(SYSROOT)/lib/pkgconfig/lua-5.5.pc
+	touch $@
+
+# --- 4. glslang (Target) ---
+$(DL_DIR)/glslang-14.0.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/KhronosGroup/glslang/archive/refs/tags/14.0.0.tar.gz
+
+$(STAMP_DIR)/glslang-extract: $(DL_DIR)/glslang-14.0.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/glslang
+	mkdir -p $(BUILD_DIR)/glslang
+	tar -xf $< -C $(BUILD_DIR)/glslang --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/glslang-build: $(STAMP_DIR)/glslang-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/glslang -B $(BUILD_DIR)/glslang/build $(CMAKE_TARGET_FLAGS) -DGLSLANG_TESTS=OFF -DENABLE_OPT=OFF -DENABLE_GLSLANG_BINARIES=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/glslang/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 5. re2 (Target) ---
+$(DL_DIR)/re2-2023-03-01.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/google/re2/archive/refs/tags/2023-03-01.tar.gz
+
+$(STAMP_DIR)/re2-extract: $(DL_DIR)/re2-2023-03-01.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/re2
+	mkdir -p $(BUILD_DIR)/re2
+	tar -xf $< -C $(BUILD_DIR)/re2 --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/re2-build: $(STAMP_DIR)/re2-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/re2 -B $(BUILD_DIR)/re2/build $(CMAKE_TARGET_FLAGS) -DRE2_BUILD_TESTING=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/re2/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 6. muparser (Target) ---
+$(DL_DIR)/muparser-2.3.4.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/beltoforion/muparser/archive/refs/tags/v2.3.4.tar.gz
+
+$(STAMP_DIR)/muparser-extract: $(DL_DIR)/muparser-2.3.4.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/muparser
+	mkdir -p $(BUILD_DIR)/muparser
+	tar -xf $< -C $(BUILD_DIR)/muparser --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/muparser-build: $(STAMP_DIR)/muparser-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/muparser -B $(BUILD_DIR)/muparser/build $(CMAKE_TARGET_FLAGS) -DENABLE_SAMPLES=OFF -DENABLE_OPENMP=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/muparser/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 7. libzip (Target) ---
+$(DL_DIR)/libzip-1.10.1.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://libzip.org/download/libzip-1.10.1.tar.gz
+
+$(STAMP_DIR)/libzip-extract: $(DL_DIR)/libzip-1.10.1.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libzip
+	mkdir -p $(BUILD_DIR)/libzip
+	tar -xf $< -C $(BUILD_DIR)/libzip --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libzip-build: $(STAMP_DIR)/libzip-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/libzip -B $(BUILD_DIR)/libzip/build $(CMAKE_TARGET_FLAGS) \
+		-DENABLE_GNUTLS=OFF -DENABLE_MBEDTLS=OFF -DENABLE_OPENSSL=OFF \
+		-DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/libzip/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 8. tomlplusplus (Target) ---
+$(DL_DIR)/tomlplusplus-3.4.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/marzer/tomlplusplus/archive/refs/tags/v3.4.0.tar.gz
+
+$(STAMP_DIR)/tomlplusplus-extract: $(DL_DIR)/tomlplusplus-3.4.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/tomlplusplus
+	mkdir -p $(BUILD_DIR)/tomlplusplus
+	tar -xf $< -C $(BUILD_DIR)/tomlplusplus --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/tomlplusplus-build: $(STAMP_DIR)/tomlplusplus-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/tomlplusplus -B $(BUILD_DIR)/tomlplusplus/build $(CMAKE_TARGET_FLAGS) -DTOMLPLUSPLUS_BUILD_TESTS=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/tomlplusplus/build $(NINJA_BUILD_FLAGS) install
+	# tomlplusplus is header-only and ships only a CMake config upstream;
+	# hyprcursor finds it via pkg-config, so synthesize a tomlplusplus.pc.
+	mkdir -p $(SYSROOT)/lib/pkgconfig
+	printf 'prefix=%s\nincludedir=$${prefix}/include\n\nName: tomlplusplus\nDescription: Header-only TOML config file parser and serializer for C++17\nVersion: 3.4.0\nCflags: -I$${includedir}\n' "$(SYSROOT)" > $(SYSROOT)/lib/pkgconfig/tomlplusplus.pc
+	touch $@
+
+# --- 9. librsvg stub (Target) ---
+$(STAMP_DIR)/librsvg-stub-build:
+	@mkdir -p $(STAMP_DIR) $(BUILD_DIR)
+	$(MUSL_CC) -fPIC -c $(SELF)/librsvg-stub/librsvg_stub.c -o $(BUILD_DIR)/librsvg_stub.o \
+		`env $(PKG_CONFIG_ENV) pkg-config --cflags gobject-2.0 cairo`
+	llvm-ar rcs $(SYSROOT)/lib/librsvg-2.a $(BUILD_DIR)/librsvg_stub.o
+	ln -sf librsvg-2.a $(SYSROOT)/lib/liblibrsvg-2.a
+	mkdir -p $(SYSROOT)/lib/pkgconfig
+	sed 's|/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot|$(SYSROOT)|g' $(SELF)/librsvg-stub/librsvg-2.0.pc > $(SYSROOT)/lib/pkgconfig/librsvg-2.0.pc
+	mkdir -p $(SYSROOT)/include/librsvg
+	cp $(SELF)/librsvg-stub/rsvg.h $(SYSROOT)/include/librsvg/rsvg.h
+	touch $@
+
+# --- 10. libjpeg-turbo (Target) ---
+$(DL_DIR)/libjpeg-turbo-3.0.2.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.2.tar.gz
+
+$(STAMP_DIR)/libjpeg-turbo-extract: $(DL_DIR)/libjpeg-turbo-3.0.2.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libjpeg-turbo
+	mkdir -p $(BUILD_DIR)/libjpeg-turbo
+	tar -xf $< -C $(BUILD_DIR)/libjpeg-turbo --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libjpeg-turbo-build: $(STAMP_DIR)/libjpeg-turbo-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/libjpeg-turbo -B $(BUILD_DIR)/libjpeg-turbo/build $(CMAKE_TARGET_FLAGS) -DWITH_SIMD=OFF -DWITH_TURBOJPEG=OFF -DENABLE_SHARED=0 -DWITH_TOOLS=0
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/libjpeg-turbo/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 11. libwebp (Target) ---
+$(DL_DIR)/libwebp-1.4.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/webmproject/libwebp/archive/refs/tags/v1.4.0.tar.gz
+
+$(STAMP_DIR)/libwebp-extract: $(DL_DIR)/libwebp-1.4.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libwebp
+	mkdir -p $(BUILD_DIR)/libwebp
+	tar -xf $< -C $(BUILD_DIR)/libwebp --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libwebp-build: $(STAMP_DIR)/libwebp-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/libwebp -B $(BUILD_DIR)/libwebp/build $(CMAKE_TARGET_FLAGS) \
+		-DWEBP_BUILD_WEBP_JS=OFF -DWEBP_BUILD_CWEBP=OFF -DWEBP_BUILD_DWEBP=OFF \
+		-DWEBP_BUILD_GIF2WEBP=OFF -DWEBP_BUILD_IMG2WEBP=OFF -DWEBP_BUILD_VWEBP=OFF \
+		-DWEBP_BUILD_WEBPINFO=OFF -DWEBP_BUILD_WEBPMUX=OFF -DWEBP_BUILD_EXTRAS=OFF
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/libwebp/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 12. libmagic / file (Target) ---
+$(DL_DIR)/file-5.45.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://astron.com/pub/file/file-5.45.tar.gz
+
+$(STAMP_DIR)/file-extract: $(DL_DIR)/file-5.45.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/file
+	mkdir -p $(BUILD_DIR)/file
+	tar -xf $< -C $(BUILD_DIR)/file --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libmagic-build: $(STAMP_DIR)/file-extract
+	@mkdir -p $(STAMP_DIR)
+	cd $(BUILD_DIR)/file && env $(PKG_CONFIG_ENV) ./configure --host=x86_64-pc-linux-musl --prefix=$(SYSROOT) CC="$(MUSL_CC)" FILE_COMPILE=/usr/bin/file --disable-shared --enable-static
+	cd $(BUILD_DIR)/file && make $(MAKE_BUILD_FLAGS)
+	cd $(BUILD_DIR)/file && make install
+	touch $@
+
+# --- 13. libdisplay-info (Target) ---
+$(DL_DIR)/libdisplay-info-0.2.0.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz
+
+$(STAMP_DIR)/libdisplay-info-extract: $(DL_DIR)/libdisplay-info-0.2.0.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/libdisplay-info
+	mkdir -p $(BUILD_DIR)/libdisplay-info
+	tar -xf $< -C $(BUILD_DIR)/libdisplay-info --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/libdisplay-info-build: $(STAMP_DIR)/libdisplay-info-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) meson setup $(BUILD_DIR)/libdisplay-info/build $(BUILD_DIR)/libdisplay-info \
+		--cross-file=$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+		--prefix=$(SYSROOT) \
+		--default-library=static \
+		-Dbuildtype=release
+	ninja -C $(BUILD_DIR)/libdisplay-info/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 14. hwdata (Target) ---
+$(DL_DIR)/hwdata-0.379.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/vcrhonek/hwdata/archive/refs/tags/v0.379.tar.gz
+
+$(STAMP_DIR)/hwdata-extract: $(DL_DIR)/hwdata-0.379.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hwdata
+	mkdir -p $(BUILD_DIR)/hwdata
+	tar -xf $< -C $(BUILD_DIR)/hwdata --strip-components=1
+	touch $@
+
+$(STAMP_DIR)/hwdata-build: $(STAMP_DIR)/hwdata-extract
+	@mkdir -p $(STAMP_DIR)
+	cd $(BUILD_DIR)/hwdata && ./configure --prefix=$(SYSROOT) --datadir=$(SYSROOT)/share
+	cd $(BUILD_DIR)/hwdata && make install
+	# hwdata ships only a pkg-config file; aquamarine does find_package(hwdata)
+	# and, when found, reads pnp.ids' dir from hwdata.pc's pkgdatadir. Provide a
+	# minimal CMake config so that (correct) branch wins over the host fallback.
+	mkdir -p $(SYSROOT)/lib/cmake/hwdata
+	printf 'set(hwdata_FOUND TRUE)\n' > $(SYSROOT)/lib/cmake/hwdata/hwdata-config.cmake
+	touch $@
+
+# --- 15. hyprland-protocols (Target) ---
+$(STAMP_DIR)/hyprland-protocols-build:
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) meson setup $(BUILD_DIR)/hyprland-protocols-build $(PROJECT_ROOT)/deps/hyprland/subprojects/hyprland-protocols \
+		--cross-file=$(PROJECT_ROOT)/deps/gtk-stack/stamps/meson-cross.ini \
+		--prefix=$(SYSROOT) \
+		--default-library=static \
+		-Dbuildtype=release
+	ninja -C $(BUILD_DIR)/hyprland-protocols-build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 16. hyprutils (Target) ---
+$(DL_DIR)/hyprutils-0.13.1.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprutils/archive/refs/tags/v0.13.1.tar.gz
+
+$(STAMP_DIR)/hyprutils-extract: $(DL_DIR)/hyprutils-0.13.1.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprutils
+	mkdir -p $(BUILD_DIR)/hyprutils
+	tar -xf $< -C $(BUILD_DIR)/hyprutils --strip-components=1
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/hyprutils/CMakeLists.txt
+	# HanonymOS: CProcess builds its argv (strdup/std::vector) inside the fork()
+	# child; in a multithreaded process that can deadlock on an allocator/libc++
+	# lock inherited locked from another thread. This patch builds argv pre-fork so
+	# the child is async-signal-safe (close/dup2/execvp only).  Idempotent.
+	patch -p1 --forward -d $(BUILD_DIR)/hyprutils \
+		< $(CURDIR)/patches/0002-cprocess-build-argv-prefork.patch || true
+	touch $@
+
+$(STAMP_DIR)/hyprutils-build: $(STAMP_DIR)/hyprutils-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/hyprutils -B $(BUILD_DIR)/hyprutils/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/hyprutils/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 17. hyprwire (Host scanner + target library) ---
+$(DL_DIR)/hyprwire-$(HYPRWIRE_REV).tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprwire/archive/$(HYPRWIRE_REV).tar.gz
+
+$(STAMP_DIR)/hyprwire-extract: $(DL_DIR)/hyprwire-$(HYPRWIRE_REV).tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprwire
+	mkdir -p $(BUILD_DIR)/hyprwire
+	tar -xf $< -C $(BUILD_DIR)/hyprwire --strip-components=1
+	sed -i 's/add_subdirectory(scanner)//' $(BUILD_DIR)/hyprwire/CMakeLists.txt
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/hyprwire/CMakeLists.txt
+	# GCC's libstdc++ needs <format> included explicitly for the host scanner.
+	sed -i '1i #include <format>' $(BUILD_DIR)/hyprwire/scanner/main.cpp
+	touch $@
+
+$(STAMP_DIR)/hyprwire-build: $(STAMP_DIR)/hyprwire-extract
+	@mkdir -p $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprwire/build-host $(BUILD_DIR)/hyprwire/build
+	env PKG_CONFIG_PATH="$(HOST_TOOLS_ROOT)/lib/pkgconfig" \
+		cmake -G Ninja -S $(BUILD_DIR)/hyprwire/scanner -B $(BUILD_DIR)/hyprwire/build-host \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(HOST_TOOLS_ROOT) \
+		-DCMAKE_PREFIX_PATH=$(HOST_TOOLS_ROOT) \
+		-DHYPRWIRE_VERSION=$(HYPRWIRE_VER) \
+		-DCMAKE_CXX_FLAGS="-I$(BUILD_DIR)/hyprwire/include"
+	env PKG_CONFIG_PATH="$(HOST_TOOLS_ROOT)/lib/pkgconfig" \
+		ninja -C $(BUILD_DIR)/hyprwire/build-host $(NINJA_BUILD_FLAGS) install
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/hyprwire -B $(BUILD_DIR)/hyprwire/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/hyprwire/build $(NINJA_BUILD_FLAGS) install
+	grep -q '^Requires.private:' $(SYSROOT)/lib/pkgconfig/hyprwire.pc || \
+		printf '\nRequires.private: hyprutils libffi\nLibs.private: -lhyprutils -lffi\n' >> $(SYSROOT)/lib/pkgconfig/hyprwire.pc
+	touch $@
+
+# --- 18. hyprlang (Target) ---
+$(DL_DIR)/hyprlang-0.6.7.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprlang/archive/refs/tags/v0.6.7.tar.gz
+
+$(STAMP_DIR)/hyprlang-extract: $(DL_DIR)/hyprlang-0.6.7.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprlang
+	mkdir -p $(BUILD_DIR)/hyprlang
+	tar -xf $< -C $(BUILD_DIR)/hyprlang --strip-components=1
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/hyprlang/CMakeLists.txt
+	touch $@
+
+$(STAMP_DIR)/hyprlang-build: $(STAMP_DIR)/hyprlang-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/hyprlang -B $(BUILD_DIR)/hyprlang/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/hyprlang/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 19. hyprcursor (Target) ---
+$(DL_DIR)/hyprcursor-$(HYPRCURSOR_REV).tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprcursor/archive/$(HYPRCURSOR_REV).tar.gz
+
+$(STAMP_DIR)/hyprcursor-extract: $(DL_DIR)/hyprcursor-$(HYPRCURSOR_REV).tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprcursor
+	mkdir -p $(BUILD_DIR)/hyprcursor
+	tar -xf $< -C $(BUILD_DIR)/hyprcursor --strip-components=1
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/hyprcursor/CMakeLists.txt
+	# Cross-build only the library and pkg-config metadata; util/tests are
+	# target executables and force fragile static executable links.
+	sed -i '/# hyprcursor-util/,/# tests/d; /add_custom_target(tests)/,/add_dependencies(tests hyprcursor_test_c)/d; /install(TARGETS hyprcursor-util)/d' $(BUILD_DIR)/hyprcursor/CMakeLists.txt
+	# libc++ (clang 18) needs an explicit <fstream> for std::ofstream here.
+	sed -i '1i #include <fstream>' $(BUILD_DIR)/hyprcursor/hyprcursor-util/src/main.cpp
+	touch $@
+
+$(STAMP_DIR)/hyprcursor-build: $(STAMP_DIR)/hyprcursor-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/hyprcursor -B $(BUILD_DIR)/hyprcursor/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/hyprcursor/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 20. hyprgraphics (Target) ---
+$(DL_DIR)/hyprgraphics-0.5.1.tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/hyprgraphics/archive/refs/tags/v0.5.1.tar.gz
+
+$(STAMP_DIR)/hyprgraphics-extract: $(DL_DIR)/hyprgraphics-0.5.1.tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/hyprgraphics
+	mkdir -p $(BUILD_DIR)/hyprgraphics
+	tar -xf $< -C $(BUILD_DIR)/hyprgraphics --strip-components=1
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/hyprgraphics/CMakeLists.txt
+	# Skip target-side test executables in the cross build; install the static
+	# library and pkg-config file only.
+	sed -i '/# tests/,/# Installation/{/# Installation/!d;}' $(BUILD_DIR)/hyprgraphics/CMakeLists.txt
+	touch $@
+
+$(STAMP_DIR)/hyprgraphics-build: $(STAMP_DIR)/hyprgraphics-extract
+	@mkdir -p $(STAMP_DIR)
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/hyprgraphics -B $(BUILD_DIR)/hyprgraphics/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/hyprgraphics/build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+# --- 21. aquamarine (Target) ---
+$(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz:
+	@mkdir -p $(DL_DIR)
+	curl -L -o $@ https://github.com/hyprwm/aquamarine/archive/$(AQUAMARINE_REV).tar.gz
+
+$(STAMP_DIR)/aquamarine-extract: $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz
+	@mkdir -p $(BUILD_DIR) $(STAMP_DIR)
+	rm -rf $(BUILD_DIR)/aquamarine
+	mkdir -p $(BUILD_DIR)/aquamarine
+	tar -xf $< -C $(BUILD_DIR)/aquamarine --strip-components=1
+	sed -i 's/SHARED/STATIC/g' $(BUILD_DIR)/aquamarine/CMakeLists.txt
+	# The static Mesa sysroot exposes EGL/GLES targets, not desktop GL.
+	sed -i 's/OpenGL::OpenGL/OpenGL::GLES3/g' $(BUILD_DIR)/aquamarine/CMakeLists.txt
+	# Skip target-side test executables in the cross build; install the static
+	# library and pkg-config file only.
+	sed -i '/# tests/,/# Installation/{/# Installation/!d;}' $(BUILD_DIR)/aquamarine/CMakeLists.txt
+	# HanonymOS: give the headless backend a DRM dumb-buffer allocator so
+	# CBackend::start() succeeds without a GPU/GBM driver (no Mesa needed for
+	# buffer allocation).  Idempotent: --forward skips if already applied.
+	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
+		< $(CURDIR)/patches/0001-headless-dumb-allocator.patch || true
+	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
+		< $(CURDIR)/patches/0003-headless-present-blit.patch || true
+	touch $@
+
+$(STAMP_DIR)/aquamarine-build: $(STAMP_DIR)/aquamarine-extract
+	@mkdir -p $(STAMP_DIR)
+	# aquamarine 0.9.3 references DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT, a kernel
+	# UAPI cap newer than the libdrm headers in our sysroot. Inject it (=6).
+	@grep -q DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT $(SYSROOT)/include/libdrm/drm.h || \
+		sed -i '/#define DRM_CLIENT_CAP_WRITEBACK_CONNECTORS/a #define DRM_CLIENT_CAP_CURSOR_PLANE_HOTSPOT 6' $(SYSROOT)/include/libdrm/drm.h
+	env $(PKG_CONFIG_ENV) cmake -S $(BUILD_DIR)/aquamarine -B $(BUILD_DIR)/aquamarine/build $(CMAKE_TARGET_FLAGS)
+	env $(PKG_CONFIG_ENV) ninja -C $(BUILD_DIR)/aquamarine/build $(NINJA_BUILD_FLAGS) install
+	touch $@

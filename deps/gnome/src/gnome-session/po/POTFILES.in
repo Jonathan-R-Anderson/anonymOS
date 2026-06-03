@@ -1,0 +1,12 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/gnome.desktop.in.in
+data/gnome.session.desktop
+data/org.gnome.SessionManager.gschema.xml
+gnome-session/gsm-manager.c
+gnome-session/gsm-util.c
+gnome-session/leader-main.c
+gnome-session/service-main.c
+tools/gnome-session-ctl.c
+tools/gnome-session-inhibit.c
+tools/gnome-session-quit.c

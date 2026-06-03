@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<!--
+  org.gnome.SessionManager.ClientPrivate:
+  @short_description: Plumbing for D-Bus Clients
+
+  This interface is used by
+  <link linkend='gdbus-org.gnome.SessionManager.ClientPrivate'>clients</link>
+  that connect to the Session Manager via D-Bus. It largely mirrors the
+  functionality available in the X11 Session Manager Protocol.
+-->
+<node>
+  <interface name="org.gnome.SessionManager.ClientPrivate">
+    <annotation name="org.gtk.GDBus.C.Name" value="ExportedClientPrivate"/>
+
+    <!--
+      EndSessionResponse:
+      @is_ok: Whether or not it is OK to preceed
+      @reason: The reason string
+
+      This should be called by the client in response to the
+      #org.gnome.SessionManager.ClientPrivate::QueryEndSession and
+      #org.gnome.SessionManager.ClientPrivate::EndSession signals.
+
+      When @is_ok is false, the provided reason may be displayed to the user.
+      The user may choose to ignore the reason, and continue with session
+      shutdown anyways.
+    -->
+    <method name="EndSessionResponse">
+      <arg name="is_ok" type="b" direction="in"/>
+      <arg name="reason" type="s" direction="in"/>
+    </method>
+
+    <!--
+      Stop:
+
+      The client should stop and and remove itself from the session in response
+      to this signal.
+    -->
+    <signal name="Stop"/>
+
+    <!--
+      QueryEndSession:
+      @flags: Flags
+
+      This signal is used to ask the client if it is ready for the session to
+      end. The client must respond by calling
+      #org.gnome.SessionManager.ClientPrivate.EndSessionResponse()
+      within one second of the signal emission.
+
+      The @flags may include:
+
+      <itemizedlist>
+        <listitem><para>
+          <emphasis>1</emphasis>:
+          Logout is forced. The client's inhibitors and the client's
+          #org.gnome.SessionManager.ClientPrivate.EndSessionResponse()
+          will be ignored.
+        </para></listitem>
+      </itemizedlist>
+
+      The client must not attempt to preform any actions or interact with the
+      user in response to this signal. Any actions required for a clean shutdown
+      must take place in response to the
+      #org.gnome.SessionManager.ClientPrivate::EndSession signal.
+    -->
+    <signal name="QueryEndSession">
+      <arg name="flags" type="u"/>
+    </signal>
+
+    <!--
+      EndSession:
+      @flags: Flags
+
+      This is the signal used to inform the client that the session is about to
+      end. The client will be given ten seconds to perform any actions required
+      for a clean shutdown. Once done, the client must respond by calling
+      #org.gnome.SessionManager.ClientPrivate.EndSessionResponse()
+      within the ten second period.
+
+      The client must not attempt to interact with the user in response to this
+      signal.
+    -->
+    <signal name="EndSession">
+      <arg name="flags" type="u"/>
+    </signal>
+
+    <!--
+      CancelEndSession:
+
+      This signal indicates to the client that a previous emission of
+      #org.gnome.SessionManager.ClientPrivate::QueryEndSession has been
+      cancelled. The client should resume normal operations.
+    -->
+    <signal name="CancelEndSession"/>
+
+  </interface>
+</node>

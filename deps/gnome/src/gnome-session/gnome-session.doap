@@ -1,0 +1,57 @@
+<Project xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:foaf="http://xmlns.com/foaf/0.1/"
+         xmlns:gnome="http://api.gnome.org/doap-extensions#"
+         xmlns="http://usefulinc.com/ns/doap#">
+
+  <name xml:lang="en">GNOME Session Manager</name>
+  <shortdesc xml:lang="en">The GNOME Session Manager</shortdesc>
+  <description>The GNOME Session Manager is in charge of starting the core
+components of the GNOME desktop, and applications that should be launched at
+login time.
+
+GNOME Session also provides the definition of what a standard GNOME session
+consists of.</description>
+  <homepage rdf:resource="https://wiki.gnome.org/Projects/SessionManagement" />
+  <developer-forum rdf:resource="https://discourse.gnome.org/c/platform/5" />
+  <download-page rdf:resource="https://download.gnome.org/sources/gnome-session/" />
+  <bug-database rdf:resource="https://gitlab.gnome.org/GNOME/gnome-session/issues" />
+
+  <category rdf:resource="http://api.gnome.org/doap-extensions#core" />
+  <programming-language>C</programming-language>
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Adrian Vovk</foaf:name>
+      <foaf:mbox rdf:resource="mailto:adrianvovk@gmail.com" />
+      <gnome:userid>adrianvovk</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Ray Strode</foaf:name>
+      <foaf:mbox rdf:resource="mailto:rstrode@redhat.com" />
+      <gnome:userid>halfline</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Colin Walters</foaf:name>
+      <foaf:mbox rdf:resource="mailto:walters@verbum.org" />
+      <gnome:userid>walters</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Iain Lane</foaf:name>
+      <foaf:mbox rdf:resource="mailto:iainl@gnome.org" />
+      <gnome:userid>iainl</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+  <maintainer>
+    <foaf:Person>
+      <foaf:name>Benjamin Berg</foaf:name>
+      <foaf:mbox rdf:resource="mailto:benjamin@sipsolutions.net" />
+      <gnome:userid>bberg</gnome:userid>
+    </foaf:Person>
+  </maintainer>
+</Project>

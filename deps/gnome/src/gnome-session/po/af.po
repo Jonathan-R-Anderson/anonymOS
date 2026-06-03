@@ -1,0 +1,807 @@
+# Afrikaans translation of gnome-session.
+# Copyright (C) 2004 Zuza Software Foundation
+# This file is distributed under the same license as the gnome-session package.
+# Zuza Software Foundation <info@translate.org.za>, 2004
+# F Wolff <friedel@translate.org.za>, 2011, 2013.
+# Pieter Schoeman <pieter@sonbesie.co.za>, 2017.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-session 2.6-branch\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-session/issues\n"
+"POT-Creation-Date: 2018-06-01 11:05+0000\n"
+"PO-Revision-Date: 2018-02-06 17:39+0200\n"
+"Last-Translator: Pieter Schalk Schoeman <pieter@sonbesie.co.za>\n"
+"Language-Team: Afrikaans <pieter@sonbesie.co.za>\n"
+"Language: af\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 2.0.3\n"
+"X-Project-Style: gnome\n"
+
+#: data/gnome-custom-session.desktop.in:3
+msgid "Custom"
+msgstr "Pasgemaak"
+
+#: data/gnome-custom-session.desktop.in:4
+msgid "This entry lets you select a saved session"
+msgstr "Die inskrywing laat u 'n gestoorde sessie kies"
+
+#: data/gnome.desktop.in:3 data/gnome.session.desktop.in.in:3
+msgid "GNOME"
+msgstr "GNOME"
+
+#: data/gnome.desktop.in:4 data/gnome-xorg.desktop.in:4
+msgid "This session logs you into GNOME"
+msgstr "Die sessie laat u by GNOME aanmeld"
+
+#: data/gnome-xorg.desktop.in:3
+msgid "GNOME on Xorg"
+msgstr "GNOME op Xorg"
+
+#: data/gnome-dummy.session.desktop.in.in:3
+msgid "GNOME dummy"
+msgstr "GNOME dummy"
+
+#: data/session-selector.ui:15
+msgid "Custom Session"
+msgstr "Pasgemaakte sessie"
+
+#: data/session-selector.ui:50 tools/gnome-session-selector.c:102
+msgid "Please select a custom session to run"
+msgstr "Kies asb. 'n pasgemaakte sessie om uit te voer"
+
+#: data/session-selector.ui:105
+msgid "_New Session"
+msgstr "_Nuwe sessie"
+
+#: data/session-selector.ui:119
+msgid "_Remove Session"
+msgstr "_Verwyder sessie"
+
+#: data/session-selector.ui:133
+msgid "Rena_me Session"
+msgstr "_Hernoem sessie"
+
+#: data/session-selector.ui:168
+msgid "_Continue"
+msgstr "_Gaan voort"
+
+#: gnome-session/gsm-fail-whale-dialog.c:313
+msgid "Oh no!  Something has gone wrong."
+msgstr "Gits!  Iets het verkeerd geloop."
+
+#: gnome-session/gsm-fail-whale-dialog.c:320
+msgid ""
+"A problem has occurred and the system can’t recover. Please contact a system "
+"administrator"
+msgstr ""
+"'n Fout het voorgekom en die stelsel kan nie daarvan herstel nie. Kontak die "
+"stelseladministrateur"
+
+#: gnome-session/gsm-fail-whale-dialog.c:322
+msgid ""
+"A problem has occurred and the system can’t recover. All extensions have "
+"been disabled as a precaution."
+msgstr ""
+"'n Fout het voorgekom en die stelsel kan nie daarvan herstel nie. Alle "
+"uitbreidings is as voorsorgmaatreël gedeaktiveer."
+
+#: gnome-session/gsm-fail-whale-dialog.c:324
+msgid ""
+"A problem has occurred and the system can’t recover.\n"
+"Please log out and try again."
+msgstr ""
+"'n Fout het voorgekom en die stelsel kan nie herstel daarvan nie.\n"
+"Meld af en probeer gerus weer aanmeld."
+
+#: gnome-session/gsm-fail-whale-dialog.c:339
+msgid "_Log Out"
+msgstr "_Meld af"
+
+#: gnome-session/gsm-fail-whale-dialog.c:361 gnome-session/main.c:279
+msgid "Enable debugging code"
+msgstr "Aktiveer ontfoutkode"
+
+#: gnome-session/gsm-fail-whale-dialog.c:362
+msgid "Allow logout"
+msgstr "Laat afmelding toe"
+
+#: gnome-session/gsm-fail-whale-dialog.c:363
+msgid "Show extension warning"
+msgstr "Wys uitbreidingwaarskuwing"
+
+#: gnome-session/gsm-manager.c:1266 gnome-session/gsm-manager.c:1919
+msgid "Not responding"
+msgstr "Reageer nie"
+
+#: gnome-session/gsm-util.c:382
+msgid "_Log out"
+msgstr "_Meld af"
+
+#. It'd be really surprising to reach this code: if we're here,
+#. * then the XSMP client already has set several XSMP
+#. * properties. But it could still be that SmProgram is not set.
+#.
+#: gnome-session/gsm-xsmp-client.c:557
+msgid "Remembered Application"
+msgstr "Onthou die toepassing"
+
+#: gnome-session/gsm-xsmp-client.c:1216
+msgid "This program is blocking logout."
+msgstr "Dié program keer afmelding."
+
+#: gnome-session/gsm-xsmp-server.c:338
+msgid ""
+"Refusing new client connection because the session is currently being shut "
+"down\n"
+msgstr ""
+"Nuwe klientverbinding word geweier omdat die sessie tans afgesluit word\n"
+
+#: gnome-session/gsm-xsmp-server.c:605
+#, c-format
+msgid "Could not create ICE listening socket: %s"
+msgstr "Kon nie 'n ICE-luistersok skep nie: %s"
+
+#: gnome-session/main.c:277
+msgid "Override standard autostart directories"
+msgstr "Oorheers standaard outobegin gidse"
+
+#: gnome-session/main.c:277
+msgid "AUTOSTART_DIR"
+msgstr "OUTOBEGIN_GIDS"
+
+#: gnome-session/main.c:278
+msgid "Session to use"
+msgstr "Sessie om te gebruik"
+
+#: gnome-session/main.c:278
+msgid "SESSION_NAME"
+msgstr "SESSIE_NAAM"
+
+#: gnome-session/main.c:280
+msgid "Do not load user-specified applications"
+msgstr "Moenie gebruiker-gespesifiseerde toepassings laai nie"
+
+#: gnome-session/main.c:281
+msgid "Version of this application"
+msgstr "Weergawe van hierdie program"
+
+#. Translators: the 'fail whale' is the black dialog we show when something goes seriously wrong
+#: gnome-session/main.c:283
+msgid "Show the fail whale dialog for testing"
+msgstr "Wys die dialoog vir ernstige foute (vir toetsdoeleindes)"
+
+#: gnome-session/main.c:284
+msgid "Disable hardware acceleration check"
+msgstr "Skakel die hardeware versnelling toets af"
+
+#: gnome-session/main.c:316
+msgid " — the GNOME session manager"
+msgstr " — die GNOME-sessiebestuurder"
+
+#: tools/gnome-session-inhibit.c:108
+#, c-format
+msgid ""
+"%s [OPTION…] COMMAND\n"
+"\n"
+"Execute COMMAND while inhibiting some session functionality.\n"
+"\n"
+"  -h, --help        Show this help\n"
+"  --version         Show program version\n"
+"  --app-id ID       The application id to use\n"
+"                    when inhibiting (optional)\n"
+"  --reason REASON   The reason for inhibiting (optional)\n"
+"  --inhibit ARG     Things to inhibit, colon-separated list of:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Do not launch COMMAND and wait forever instead\n"
+"\n"
+"If no --inhibit option is specified, idle is assumed.\n"
+msgstr ""
+"%s [KEUSE...] OPDRAG\n"
+"\n"
+"Voer OPDRAG uit terwyl sommige sessiefunksionaliteit onderdruk word.\n"
+"\n"
+"  -h, --help        Wys dié hulp\n"
+"  --version         Wys programweergawe\n"
+"  --app-id ID       Die program-ID om te gebruik tydens\n"
+"                    onderdrukking (opsioneel)\n"
+"  --reason REDE     Die rede vir onderdrukking (opsioneel)\n"
+"  --inhibit ARG     Dinge om te onderdruk, dubbelpuntgeskyde lys van:\n"
+"                    logout, switch-user, suspend, idle, automount\n"
+"  --inhibit-only    Moenie OPDRAG begin nie en wag bloot vir altyd\n"
+"\n"
+"As geen --inhibit-keuse gegee is nie, word \"idle\" aangeneem.\n"
+
+#: tools/gnome-session-inhibit.c:146
+#, c-format
+msgid "Failed to execute %s\n"
+msgstr "Uitvoering van \"%s\" het misluk\n"
+
+#: tools/gnome-session-inhibit.c:206 tools/gnome-session-inhibit.c:216
+#: tools/gnome-session-inhibit.c:226
+#, c-format
+msgid "%s requires an argument\n"
+msgstr "\"%s\" benodig 'n parameter\n"
+
+#: tools/gnome-session-selector.c:61
+#, c-format
+msgid "Session %d"
+msgstr "Sessie %d"
+
+#: tools/gnome-session-selector.c:107
+msgid ""
+"Session names are not allowed to start with “.” or contain “/” characters"
+msgstr ""
+"Sessiename mag nie met \".\" begin nie en mag nie \"/\"-karakters bevat nie"
+
+#: tools/gnome-session-selector.c:111
+msgid "Session names are not allowed to start with “.”"
+msgstr "Sessiename mag nie met \".\" begin nie"
+
+#: tools/gnome-session-selector.c:115
+msgid "Session names are not allowed to contain “/” characters"
+msgstr "Sessiename mag nie \"/\"-karakters bevat nie"
+
+#: tools/gnome-session-selector.c:123
+#, c-format
+msgid "A session named “%s” already exists"
+msgstr "'n Sessie met die naam \"%s\" bestaan reeds"
+
+#: tools/gnome-session-quit.c:50
+msgid "Log out"
+msgstr "Meld af"
+
+#: tools/gnome-session-quit.c:51
+msgid "Power off"
+msgstr "Skakel af"
+
+#: tools/gnome-session-quit.c:52
+msgid "Reboot"
+msgstr "Herbegin"
+
+#: tools/gnome-session-quit.c:53
+msgid "Ignoring any existing inhibitors"
+msgstr "Gaan enige bestaande inhibeerders ignoreer"
+
+#: tools/gnome-session-quit.c:54
+msgid "Don’t prompt for user confirmation"
+msgstr "Moenie vra vir gebruikerbevestiging nie"
+
+#: tools/gnome-session-quit.c:88 tools/gnome-session-quit.c:102
+msgid "Could not connect to the session manager"
+msgstr "Kon nie met sessiebestuurder koppel nie"
+
+#: tools/gnome-session-quit.c:198
+msgid "Program called with conflicting options"
+msgstr "Program geroep met botsende opsies"
+
+#~ msgid "Select Command"
+#~ msgstr "Kies bevel"
+
+#~ msgid "Add Startup Program"
+#~ msgstr "Voeg aanvangsprogram by"
+
+#~ msgid "Edit Startup Program"
+#~ msgstr "Redigeer aanvangsprogram"
+
+#~ msgid "The startup command cannot be empty"
+#~ msgstr "Die aanvangsbevel kan nie leeg wees nie"
+
+#~ msgid "The startup command is not valid"
+#~ msgstr "Die aanvangsbevel is nie geldig nie"
+
+#~ msgid "Enabled"
+#~ msgstr "Geaktiveer"
+
+#~ msgid "Icon"
+#~ msgstr "Ikoon"
+
+#~ msgid "Program"
+#~ msgstr "Program"
+
+#~ msgid "Startup Applications Preferences"
+#~ msgstr "Voorkeure vir aanvangstoepassings"
+
+#~ msgid "No name"
+#~ msgstr "Geen naam"
+
+#~ msgid "No description"
+#~ msgstr "Geen beskrywing"
+
+#~ msgid "Could not display help document"
+#~ msgstr "Kon nie hulpdokument vertoon nie"
+
+#~ msgid "Startup Applications"
+#~ msgstr "Aanvangstoepassings"
+
+#~ msgid "Choose what applications to start when you log in"
+#~ msgstr "Kies watter toepassings moet begin by aanmelding"
+
+#~| msgid "This session logs you into GNOME"
+#~ msgid "This session logs you into GNOME, using Wayland"
+#~ msgstr "Hierdie sessie laat mens aanmeld by GNOME m.b.v. Wayland"
+
+#~ msgid "Additional startup _programs:"
+#~ msgstr "Bykomende aanvangs_programme:"
+
+#~ msgid "Startup Programs"
+#~ msgstr "Aanvangsprogramme"
+
+#~ msgid "_Automatically remember running applications when logging out"
+#~ msgstr "_Onthou outomaties toepassings wat nog loop by afgemelding"
+
+#~| msgid "_Remember Currently Running Application"
+#~ msgid "_Remember Currently Running Applications"
+#~ msgstr "_Onthou die toepassings wat tans loop"
+
+#~ msgid "Options"
+#~ msgstr "Opsies"
+
+#~ msgid "Browse…"
+#~ msgstr "Blaai…"
+
+#~ msgid "Comm_ent:"
+#~ msgstr "Opm_erking:"
+
+#~ msgid "Co_mmand:"
+#~ msgstr "Op_drag:"
+
+#~ msgid "_Name:"
+#~ msgstr "_Naam:"
+
+#~ msgid "File is not a valid .desktop file"
+#~ msgstr "Lêer is nie 'n geldige .desktop-lêer nie"
+
+#~ msgid "Unrecognized desktop file Version '%s'"
+#~ msgstr "Nieherkende \"desktop\"-lêerweergawe '%s'"
+
+#~ msgid "Starting %s"
+#~ msgstr "Begin tans %s"
+
+#~ msgid "Application does not accept documents on command line"
+#~ msgstr "Toepassing aanvaar nie dokumente op die opdraglyn nie"
+
+#~ msgid "Unrecognized launch option: %d"
+#~ msgstr "Nieherkende lanseerkeuse: %d"
+
+#~ msgid "Can't pass document URIs to a 'Type=Link' desktop entry"
+#~ msgstr ""
+#~ "Kan nie dokument URI's na 'n 'Type=Link' \"desktop\"-inskrywing aangee nie"
+
+#~ msgid "Not a launchable item"
+#~ msgstr "Nie 'n lanseerbare item nie"
+
+#~ msgid "Disable connection to session manager"
+#~ msgstr "Deaktiveer konneksie na sessiebestuurder"
+
+#~ msgid "Specify file containing saved configuration"
+#~ msgstr "Spesifiseer lêer wat gestoorde konfigurasie bevat"
+
+#~ msgid "FILE"
+#~ msgstr "LÊER"
+
+#~ msgid "Specify session management ID"
+#~ msgstr "Spesifiseer sessiebestuurs-ID"
+
+#~ msgid "ID"
+#~ msgstr "ID"
+
+#~ msgid "Session management options:"
+#~ msgstr "Sessiebestuurkeuses:"
+
+#~ msgid "Show session management options"
+#~ msgstr "Wys keuses vir sessiebestuur"
+
+#~ msgid "<b>Some programs are still running:</b>"
+#~ msgstr "<b>Sommige programme loop steeds:</b>"
+
+#~ msgid ""
+#~ "Waiting for the program to finish.  Interrupting the program may cause "
+#~ "you to lose work."
+#~ msgstr ""
+#~ "Wag nog vir die program om te voltooi.  Onderbreking van die program kan "
+#~ "veroorsaak dat werk verloor word."
+
+#~ msgid ""
+#~ "There is a problem with the configuration server.\n"
+#~ "(%s exited with status %d)"
+#~ msgstr ""
+#~ "Daar is 'n probleem met die opstellingbediener.\n"
+#~ "(%s het afgesluit met status %d)"
+
+#~ msgid "Icon '%s' not found"
+#~ msgstr "Ikoon '%s' nie gevind nie"
+
+#~ msgid "Unknown"
+#~ msgstr "Onbekend"
+
+#~ msgid "A program is still running:"
+#~ msgstr "'n Program loop steeds:"
+
+#~ msgid "Some programs are still running:"
+#~ msgstr "Sommige programme loop steeds:"
+
+#~ msgid ""
+#~ "Waiting for programs to finish.  Interrupting these programs may cause "
+#~ "you to lose work."
+#~ msgstr ""
+#~ "Wag nog vir programme om te voltooi.  Onderbreking van dié programme kan "
+#~ "veroorsaak dat werk verloor word."
+
+#~ msgid "Switch User Anyway"
+#~ msgstr "Wissel in elk geval van gebruiker"
+
+#~ msgid "Log Out Anyway"
+#~ msgstr "Meld in elk geval af"
+
+#~ msgid "Suspend Anyway"
+#~ msgstr "Sluimer in elk geval"
+
+#~ msgid "Hibernate Anyway"
+#~ msgstr "Hiberneer in elk geval"
+
+#~ msgid "Shut Down Anyway"
+#~ msgstr "Skakel in elk geval af"
+
+#~ msgid "Lock Screen"
+#~ msgstr "Sluit skerm"
+
+#~ msgid "Cancel"
+#~ msgstr "Kanselleer"
+
+#~ msgid "You will be automatically logged out in %d second."
+#~ msgid_plural "You will be automatically logged out in %d seconds."
+#~ msgstr[0] "U gaan outomaties afgemeld word oor %d sekonde."
+#~ msgstr[1] "U gaan outomaties afgemeld word oor %d sekondes."
+
+#~ msgid "This system will be automatically shut down in %d second."
+#~ msgid_plural "This system will be automatically shut down in %d seconds."
+#~ msgstr[0] "Dié stelsel gaan outomaties afgeskakel word oor %d sekonde."
+#~ msgstr[1] "Dié stelsel gaan outomaties afgeskakel word oor %d sekondes."
+
+#~ msgid "You are currently logged in as \"%s\"."
+#~ msgstr "U is tans aangemeld as \"%s\"."
+
+#~ msgid "Log out of this system now?"
+#~ msgstr "Meld nou af van hierdie stelsel?"
+
+#~ msgid "_Switch User"
+#~ msgstr "Wi_ssel gebruiker"
+
+#~ msgid "Shut down this system now?"
+#~ msgstr "Skakel die stelsel nou af?"
+
+#~ msgid "S_uspend"
+#~ msgstr "Sl_uimer"
+
+#~ msgid "_Hibernate"
+#~ msgstr "_Hiberneer"
+
+#~ msgid "_Restart"
+#~ msgstr "He_rbegin"
+
+#~ msgid "_Shut Down"
+#~ msgstr "_Skakel af"
+
+#~ msgid "Exited with code %d"
+#~ msgstr "Afgesluit met kode %d"
+
+#~ msgid "Killed by signal %d"
+#~ msgstr "Afsluiting geforseer met sein %d"
+
+#~ msgid "Stopped by signal %d"
+#~ msgstr "Gestop met sein %d"
+
+#~ msgid "GNOME 3 Failed to Load"
+#~ msgstr "GNOME 3 kon nie laai nie"
+
+#~ msgid ""
+#~ "Unfortunately GNOME 3 failed to start properly and started in the "
+#~ "<i>fallback mode</i>.\n"
+#~ "\n"
+#~ "This most likely means your system (graphics hardware or driver) is not "
+#~ "capable of delivering the full GNOME 3 experience."
+#~ msgstr ""
+#~ "Ongelukkig kon GNOME 3 nie behoorlik laai nie en het in <i>terugvalmodus</"
+#~ "i> begin.\n"
+#~ "\n"
+#~ "Dit beteken waarskynlik dat die stelsel (grafikahardeware of aandrywer) "
+#~ "nie in staat is om die volle ervaring van GNOME 3 te lewer nie."
+
+#~ msgid "Learn more about GNOME 3"
+#~ msgstr "Vind meer uit oor GNOME 3"
+
+#~ msgid ""
+#~ "Unable to start login session (and unable to connect to the X server)"
+#~ msgstr ""
+#~ "Kon nie 'n aanmeldsessie begin nie (en kon nie aan die X-bediener koppel "
+#~ "nie)"
+
+#~ msgid "Allow TCP connections"
+#~ msgstr "Laat TCP-konneksies toe"
+
+#~ msgid ""
+#~ "For security reasons, on platforms which have _IceTcpTransNoListen() "
+#~ "(XFree86 systems), gnome-session does not listen for connections on TCP "
+#~ "ports. This option will allow connections from (authorized) remote hosts. "
+#~ "gnome-session must be restarted for this to take effect."
+#~ msgstr ""
+#~ "Om sekuriteitsredes luister gnome-session nie uit na konneksies op TCP-"
+#~ "poorte op platforms  met _IceTcpTransNoListen() (XFree86 systems) nie. "
+#~ "Hierdie opsie laat konneksies van (gemagtide) afgeleë gashere toe.Gnome-"
+#~ "session moet oorbegin word vir die instelling om  toegepas te word."
+
+#~ msgid ""
+#~ "If enabled, gnome-session will prompt the user before ending a session."
+#~ msgstr ""
+#~ "Indien geaktiveer, sal gnome-session die gebruiker waarsku voordat 'n "
+#~ "sessie beëindig word."
+
+#~ msgid ""
+#~ "If enabled, gnome-session will save the session automatically. Otherwise, "
+#~ "the logout dialog will have an option to save the session."
+#~ msgstr ""
+#~ "Indien geaktiveer, sal gnome-session die sessie outomaties stoor. "
+#~ "Andersins sal daar op die afmeldingsdialoog 'n opsie wees om die sessie "
+#~ "te stoor."
+
+#~ msgid "Logout prompt"
+#~ msgstr "Afmeldingspor"
+
+#~ msgid ""
+#~ "Preferred Image to use for the splash screen when logging in to the GNOME "
+#~ "Desktop"
+#~ msgstr ""
+#~ "Voorkeurbeeld wat gebruik moet word vir die spatskerm wanneer daar by "
+#~ "GNOME Desktop aangemeld word"
+
+#~ msgid "Show the splash screen"
+#~ msgstr "Vertoon die spatskerm"
+
+#~ msgid "Show the splash screen when the session starts up"
+#~ msgstr "Vertoon die spatskerm wanneer die sessie begin"
+
+#~ msgid "Splash Screen Image"
+#~ msgstr "Spatskermbeeld"
+
+#~ msgid "_Order:"
+#~ msgstr "_Volgorde:"
+
+#~ msgid "The order in which applications are started in the session."
+#~ msgstr "Die volgorde waarin toepassings in die sessie begin word."
+
+#~ msgid "What happens to the application when it exits."
+#~ msgstr "Wat gebeur met die toepassing wanneer dit afsluit."
+
+#~ msgid "_Style:"
+#~ msgstr "_Styl:"
+
+#~ msgid "Order"
+#~ msgstr "Volgorde"
+
+#~ msgid "Style"
+#~ msgstr "Styl"
+
+#~ msgid "State"
+#~ msgstr "Staat"
+
+#~ msgid "Inactive"
+#~ msgstr "Onaktief"
+
+#~ msgid "Waiting to start or already finished."
+#~ msgstr "Wag om te begin of reeds klaar."
+
+#~ msgid "Started but has not yet reported state."
+#~ msgstr "Het begin maar nog nie die status gerapporteer nie."
+
+#~ msgid "Running"
+#~ msgstr "Besig om te loop"
+
+#~ msgid "A normal member of the session."
+#~ msgstr "'n Gewone lid van die sessie."
+
+#~ msgid "Saving"
+#~ msgstr "Besig om te stoor"
+
+#~ msgid "Saving session details."
+#~ msgstr "Stoor sessie-besonderhede."
+
+#~ msgid "State not reported within timeout."
+#~ msgstr "Status nie binne uitteltyd gerapporteer nie."
+
+#~ msgid "Normal"
+#~ msgstr "Normaal"
+
+#~ msgid "Unaffected by logouts but can die."
+#~ msgstr "Nie deur afmeldings geraak nie, maar kan sterf."
+
+#~ msgid "Never allowed to die."
+#~ msgstr "Mag nooit sterf nie."
+
+#~ msgid "Trash"
+#~ msgstr "Asblik"
+
+#~ msgid "Discarded on logout and can die."
+#~ msgstr "Weggegooi tydens afmelding en kan sterf."
+
+#~ msgid "Settings"
+#~ msgstr "Instellings"
+
+#~ msgid "Always started on every login."
+#~ msgstr "Altyd begin vir elke aanmelding."
+
+#~ msgid ""
+#~ "There was an error starting the GNOME Settings Daemon.\n"
+#~ "\n"
+#~ "Some things, such as themes, sounds, or background settings may not work "
+#~ "correctly."
+#~ msgstr ""
+#~ "n Fout is ondervind met die laai van die GNOME-Instellingsdaemoon.\n"
+#~ "\n"
+#~ "Sommige funksies, soos temas, klanke of agtergrondinstellings mag dalk "
+#~ "nie korrek werk nie."
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "The last error message was:\n"
+#~ "\n"
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "Die laaste foutboodskap was:\n"
+#~ "\n"
+
+#~ msgid ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME will still try to restart the Settings Daemon next time you log in."
+#~ msgstr ""
+#~ "\n"
+#~ "\n"
+#~ "GNOME sal probeer om die Instellingsdaemoon oor te begin wanneer jy weer "
+#~ "aanmeld."
+
+#~ msgid "There was an unknown activation error."
+#~ msgstr "Daar was 'n onbekende aktiveringsfout."
+
+#~ msgid "The Settings Daemon restarted too many times."
+#~ msgstr "Die Instellingsdaemoon het te veel kere oorbegin."
+
+#~ msgid "Are you sure you want to log out?"
+#~ msgstr "Is jy seker jy wil afmeld?"
+
+#~ msgid "_Save current setup"
+#~ msgstr "_Stoor huidige opstelling"
+
+#~ msgid "_Restart the computer"
+#~ msgstr "_Herbegin die rekenaar"
+
+#~ msgid "Only read saved sessions from the default.session file"
+#~ msgstr "Lees slegs gestoorde sessiesuit die verstek.sessie-lêer"
+
+#~ msgid "Millisecond period spent waiting for clients to register (0=forever)"
+#~ msgstr "Millisekonde gewag vir kliënte om te registreer (0=vir altyd)"
+
+#~ msgid "Millisecond period spent waiting for clients to respond (0=forever)"
+#~ msgstr "Millisekonde gewag vir kliënte om te reageer (0=vir altyd)"
+
+#~ msgid "Millisecond period spent waiting for clients to die (0=forever)"
+#~ msgstr "Millisekonde gewag vir kliënte om te sterf (0=vir altyd)"
+
+#~ msgid ""
+#~ "Could not look up internet address for %s.\n"
+#~ "This will prevent GNOME from operating correctly.\n"
+#~ "It may be possible to correct the problem by adding\n"
+#~ "%s to the file /etc/hosts."
+#~ msgstr ""
+#~ "Kon nie internetadres vir %s opsoek nie.\n"
+#~ "Die sal verhoed dat GNOME behoorlik funksioneer.\n"
+#~ "Die probleem mag moontlik opgelos word deur \n"
+#~ "%s by die lêer /etc/gashere te voeg."
+
+#~ msgid "Try Again"
+#~ msgstr "Probeer weer"
+
+#~ msgid "Your session has been saved"
+#~ msgstr "Jou sessie is gestoor"
+
+#~ msgid "Wait abandoned due to conflict."
+#~ msgstr "Die program het opgehou wag as gevolg van 'n konflik."
+
+#~ msgid "No response to the %s command."
+#~ msgstr "Geen reaksie op die  %s-bevel nie."
+
+#~ msgid "The program may be slow, stopped or broken."
+#~ msgstr "Die program is dalk stadig, stukkend of dit het gestop."
+
+#~ msgid "You may wait for it to respond or remove it."
+#~ msgstr "Jy mag wag totdat dit reageer, of dit verwyder."
+
+#~ msgid "Restart abandoned due to failures."
+#~ msgstr "Herbegin gestaak as gevolg van falings."
+
+#~ msgid "A session shutdown is in progress."
+#~ msgstr "'n Sessie-afsluiting neem tans plaas."
+
+#~ msgid "Set the current session"
+#~ msgstr "Stel die huidige sessie"
+
+#~ msgid "Kill session"
+#~ msgstr "Stop sessie"
+
+#~ msgid "Use dialog boxes"
+#~ msgstr "Gebruik dialoogkassies"
+
+#~ msgid "The session name cannot be empty"
+#~ msgstr "Die sessienaam kan nie leeg wees nie"
+
+#~ msgid "Add a new session"
+#~ msgstr "Voeg 'n nuwe sessie by"
+
+#~ msgid "Edit session name"
+#~ msgstr "Redigeer sessienaam"
+
+#~ msgid "_Edit"
+#~ msgstr "_Redigeer"
+
+#~ msgid ""
+#~ "Some changes are not saved.\n"
+#~ "Is it still OK to exit?"
+#~ msgstr ""
+#~ "Sommige veranderings is nie gestoor nie.\n"
+#~ "Is dit nog steeds OK om af te sluit?"
+
+#~ msgid "Show splash screen on _login"
+#~ msgstr "Vertoon spatskerm by _aanmelding"
+
+#~ msgid "Automatically save chan_ges to session"
+#~ msgstr "Stoor outomaties veran_deringe aan sessie"
+
+#~ msgid "Session Name"
+#~ msgstr "Sessienaam"
+
+#~ msgid "Remove the currently selected client from the session."
+#~ msgstr "Verwyder die huidige geselekteerde kliënt van die sessie."
+
+#~ msgid "Apply changes to the current session"
+#~ msgstr "Pas veranderinge op huidige sessie toe"
+
+#~ msgid "The list of programs in the session."
+#~ msgstr "Die lys van programme in die sessie."
+
+#~ msgid "Currently running _programs:"
+#~ msgstr "_Programme wat tans loop:"
+
+#~ msgid "Initialize session settings"
+#~ msgstr "Inisialiseer sessie-instellings"
+
+#~ msgid "Configure your sessions"
+#~ msgstr "Stel jou sessies op"
+
+#~ msgid "Sawfish Window Manager"
+#~ msgstr "Sawfish-vensterbestuurder"
+
+#~ msgid "Metacity Window Manager"
+#~ msgstr "Metacity-vensterbestuurder"
+
+#~ msgid "Window Manager"
+#~ msgstr "Vensterbestuurder"
+
+#~ msgid "The Panel"
+#~ msgstr "Die Paneel"
+
+#~ msgid "Session Manager Proxy"
+#~ msgstr "Sessiebestuurder-instaanbediener"
+
+#~ msgid "Nautilus"
+#~ msgstr "Nautilus"
+
+#~ msgid "Desktop Settings"
+#~ msgstr "Werkarea-instellings"
+
+#~ msgid "_Startup Command:"
+#~ msgstr "_Selflaaibevel:"

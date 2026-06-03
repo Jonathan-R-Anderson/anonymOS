@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=GNOME
+Comment=This session logs you into GNOME
+Exec=@bindir@/gnome-session
+TryExec=@bindir@/gnome-session
+Type=Application
+DesktopNames=GNOME
+X-GDM-SessionRegisters=true
+X-GDM-CanRunHeadless=true

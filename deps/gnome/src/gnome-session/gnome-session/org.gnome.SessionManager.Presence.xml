@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+
+<!--
+  org.gnome.SessionManager.Presence:
+  @short_description: Session Status Management
+
+  This interface is responsible for keeping track of the session's current
+  status, such as whether or not the user is currently idle.
+
+  This interface was a lot more important in early versions of GNOME, where
+  the user's presence status was integrated with Telepathy and GNOME Shell, so
+  that it would be propagated into Instant Messaging apps. This is no longer
+  common.
+
+  However, this interface is still used (as of GNOME 48) to track the user's
+  idle status.
+-->
+<node>
+  <interface name="org.gnome.SessionManager.Presence">
+    <annotation name="org.gtk.GDBus.C.Name" value="ExportedPresence"/>
+
+    <!--
+      status:
+
+      The status of the session. One of the following:
+
+      <itemizedlist>
+        <listitem><para><emphasis>0</emphasis>: Available</para></listitem>
+        <listitem><para><emphasis>1</emphasis>: Invisible</para></listitem>
+        <listitem><para><emphasis>2</emphasis>: Busy</para></listitem>
+        <listitem><para><emphasis>3</emphasis>: Idle</para></listitem>
+      </itemizedlist>
+    -->
+    <property name="status" type="u" access="readwrite"/>
+
+    <!--
+      status-text: The descriptive status for the session
+    -->
+    <property name="status-text" type="s" access="readwrite"/>
+
+    <!--
+      SetStatus:
+      @status: The new status value
+
+      Set the status value of the session.
+    -->
+    <method name="SetStatus">
+      <arg type="u" name="status" direction="in"/>
+    </method>
+
+    <!--
+      SetStatusText:
+      @status_text: The new descriptive status for the session.
+
+      Set the descriptive status text for the session.
+    -->
+    <method name="SetStatusText">
+      <arg type="s" name="status_text" direction="in"/>
+    </method>
+
+    <!--
+      StatusChanged:
+      @status: The new status value
+
+      Emitted when the session status value has changed
+    -->
+    <signal name="StatusChanged">
+      <arg name="status" type="u"/>
+    </signal>
+
+    <!--
+      StatusTextChanged:
+      @status_text: The new status text
+
+      Indicates that the descriptive session status text has changed.
+    -->
+    <signal name="StatusTextChanged">
+      <arg name="status_text" type="s"/>
+    </signal>
+
+  </interface>
+</node>

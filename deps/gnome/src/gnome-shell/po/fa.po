@@ -1,0 +1,4873 @@
+# Persian translation for gnome-shell.
+# Copyright (C) 2010-2011 Iranian Free Software Users Group (IFSUG.org)translation team.
+# This file is distributed under the same license as the gnome-shell package.
+# Mahyar Moghimi <mahyar.moqimi@gmail.com>, 2010.
+# Arash Mousavi <mousavi.arash@gmail.com>, 2010-2017.
+# Danial behzadi <dani.behzi@ubuntu.com>, 2018-2026.
+# میر سبحان <me@mirsobhan.ir>, 2025.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-shell master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-shell/issues/\n"
+"POT-Creation-Date: 2026-02-03 13:11+0000\n"
+"PO-Revision-Date: 2026-02-04 16:58+0330\n"
+"Last-Translator: Danial Behzadi <dani.behzi@ubuntu.com>\n"
+"Language-Team: Persian\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-DamnedLies-Scope: partial\n"
+"X-Generator: Poedit 3.8\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-DL-VCS-Web: https://gitlab.gnome.org/GNOME/gnome-shell/\n"
+"X-DL-Lang: fa\n"
+"X-DL-Module: gnome-shell\n"
+"X-DL-Branch: main\n"
+"X-DL-Domain: po\n"
+"X-DL-State: Translating\n"
+
+#: data/50-gnome-shell-launchers.xml:6
+msgid "Launchers"
+msgstr "اجراگرها"
+
+#: data/50-gnome-shell-launchers.xml:10
+msgid "Activate pinned app 1"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۱"
+
+#: data/50-gnome-shell-launchers.xml:14
+msgid "Activate pinned app 2"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۲"
+
+#: data/50-gnome-shell-launchers.xml:18
+msgid "Activate pinned app 3"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۳"
+
+#: data/50-gnome-shell-launchers.xml:22
+msgid "Activate pinned app 4"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۴"
+
+#: data/50-gnome-shell-launchers.xml:26
+msgid "Activate pinned app 5"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۵"
+
+#: data/50-gnome-shell-launchers.xml:30
+msgid "Activate pinned app 6"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۶"
+
+#: data/50-gnome-shell-launchers.xml:34
+msgid "Activate pinned app 7"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۷"
+
+#: data/50-gnome-shell-launchers.xml:38
+msgid "Activate pinned app 8"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۸"
+
+#: data/50-gnome-shell-launchers.xml:42
+msgid "Activate pinned app 9"
+msgstr "فعّال‌سازی کارهٔ سنجاق شدهٔ ۹"
+
+#: data/50-gnome-shell-launchers.xml:46
+msgid "Open new window of pinned app 1"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۱"
+
+#: data/50-gnome-shell-launchers.xml:50
+msgid "Open new window of pinned app 2"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۲"
+
+#: data/50-gnome-shell-launchers.xml:54
+msgid "Open new window of pinned app 3"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۳"
+
+#: data/50-gnome-shell-launchers.xml:58
+msgid "Open new window of pinned app 4"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۴"
+
+#: data/50-gnome-shell-launchers.xml:62
+msgid "Open new window of pinned app 5"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۵"
+
+#: data/50-gnome-shell-launchers.xml:66
+msgid "Open new window of pinned app 6"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۶"
+
+#: data/50-gnome-shell-launchers.xml:70
+msgid "Open new window of pinned app 7"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۷"
+
+#: data/50-gnome-shell-launchers.xml:74
+msgid "Open new window of pinned app 8"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۸"
+
+#: data/50-gnome-shell-launchers.xml:78
+msgid "Open new window of pinned app 9"
+msgstr "گشودن پنجره‌ای جدید از کارهٔ سنجاق شدهٔ ۹"
+
+#. Translators: name of the folder under ~/Pictures for screenshots.
+#: data/50-gnome-shell-screenshots.xml:6 js/ui/screenshot.js:2296
+msgid "Screenshots"
+msgstr "نماگرفت‌ها"
+
+#: data/50-gnome-shell-screenshots.xml:9 data/org.gnome.shell.gschema.xml.in:267
+msgid "Take a screenshot interactively"
+msgstr "گرفتن کنش‌پذیر یم نماگرفت"
+
+#: data/50-gnome-shell-screenshots.xml:12 data/org.gnome.shell.gschema.xml.in:279
+msgid "Take a screenshot"
+msgstr "گرفتن یک نماگرفت"
+
+#: data/50-gnome-shell-screenshots.xml:15 data/org.gnome.shell.gschema.xml.in:275
+msgid "Take a screenshot of a window"
+msgstr "گرفتن نماگرفتی از یک پنچره"
+
+#: data/50-gnome-shell-screenshots.xml:18 data/org.gnome.shell.gschema.xml.in:271
+msgid "Record a screencast interactively"
+msgstr "ضبط کنش‌پذیر صفحه"
+
+#: data/50-gnome-shell-system.xml:6 data/X-GNOME-Shell-System.directory.desktop.in:2
+#: js/ui/messageTray.js:1311
+msgid "System"
+msgstr "سامانه"
+
+#: data/50-gnome-shell-system.xml:9
+msgid "Show the notification list"
+msgstr "نمایش سیاههٔ آگاهی‌ها"
+
+#: data/50-gnome-shell-system.xml:12
+msgid "Open the quick settings menu"
+msgstr "گشودن فهرست تنظیمات سریع"
+
+#: data/50-gnome-shell-system.xml:15
+msgid "Focus the active notification"
+msgstr "تمرکز روی آگاهی فعّال"
+
+#: data/50-gnome-shell-system.xml:18
+msgid "Show the overview"
+msgstr "نمایش نمای کلّی"
+
+#: data/50-gnome-shell-system.xml:21
+msgid "Show all apps"
+msgstr "نمایش همهٔ کارهٔ"
+
+#: data/org.gnome.shell.gschema.xml.in:6
+msgid "Enable internal tools useful for developers and testers from Alt-F2"
+msgstr "به کار انداختن ابزارهای داخلی مفید برای توسعه‌دهندگان و آزمونگران از Alt-F2"
+
+#: data/org.gnome.shell.gschema.xml.in:9
+msgid ""
+"Allows access to internal debugging and monitoring tools using the Alt-F2 dialog."
+msgstr "اجازه دسترسی به ابزارهای اشکال‌زدا و پایشگر داخلی با استفاده از محاورهٔ Alt-F2."
+
+#: data/org.gnome.shell.gschema.xml.in:16
+msgid "UUIDs of extensions to enable"
+msgstr "شناسه‌های یکتای افزونه‌ها برای به کار اندازی"
+
+#: data/org.gnome.shell.gschema.xml.in:17
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which should "
+"be loaded. Any extension that wants to be loaded needs to be in this list. You can "
+"also manipulate this list with the EnableExtension and DisableExtension D-Bus "
+"methods on org.gnome.Shell."
+msgstr ""
+"افزونه‌های گنوم‌شل مشخصهٔ UUID دارند؛ این کلید، افزونه‌هایی که باید بار شوند را سیاهه "
+"می‌کند. هر افزونه‌ای که می‌خواهد بار شود، باید در این سیاهه باشد. شما همچنین می‌توانید "
+"این سیاهه را از طریق EnableExtension و DisableExtension (روش‌های D-Bus) در "
+"org.gnome.Shell نیز بسازید."
+
+#: data/org.gnome.shell.gschema.xml.in:26
+msgid "UUIDs of extensions to force disabling"
+msgstr "شناسه‌های یکتای افزونه‌ها برای از کار اندازی اجباری"
+
+#: data/org.gnome.shell.gschema.xml.in:27
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which should "
+"be disabled, even if loaded as part of the current mode. You can also manipulate "
+"this list with the EnableExtension and DisableExtension D-Bus methods on "
+"org.gnome.Shell. This key takes precedence over the “enabled-extensions” setting."
+msgstr ""
+"افزونه‌های پوستهٔ گنوم شل شناسه‌ای یکتا دارند؛ این کلید، افزونه‌هایی که باید غیرفعّال "
+"شوند را سیاهه می‌کند، حتا اگر به عنوان بخشی از حالت فعلی بار شده باشند. می‌توانید این "
+"سیاهه را از طریق روش‌های دی‌باس EnableExtension و DisableExtension در org.gnome.Shell "
+"نیز تغییر دهید."
+
+#: data/org.gnome.shell.gschema.xml.in:37
+msgid "Disable user extensions"
+msgstr "از کار انداختن افزونه‌های کاربر"
+
+#: data/org.gnome.shell.gschema.xml.in:38
+msgid ""
+"Disable all extensions the user has enabled without affecting the “enabled-"
+"extension” setting."
+msgstr ""
+"از کار انداختن تمام افزونه‌هایی که کاربر به کار انداخته، بدون اثر روی تنظیمات "
+"«افزونهٔ فعّال»."
+
+#: data/org.gnome.shell.gschema.xml.in:45
+msgid "Allow extension installation"
+msgstr "اجازهٔ نصب افزونه"
+
+#: data/org.gnome.shell.gschema.xml.in:46
+msgid ""
+"Allow users to install extensions in their home folder. If disabled, the "
+"InstallRemoteExtension D-Bus method will fail, and extensions are only loaded from "
+"system directories on startup. It does not affect extensions that are already "
+"loaded, so a change only takes full effect on the next login."
+msgstr ""
+"اجازه به کاربران برای نصب افزونه‌ها در شاخهٔ خانگیشان. اگر از کار افتاده باشد روش "
+"دی‌باس InstallRemoteExtension شکست خواهد خورد و افزونه‌ها تنها هنگام شروع از شاخه‌های "
+"سامانه بار می‌شوند. روی افزونه‌هایی که از پیش بار شده‌اند اثر ندارد، پس تغییرات در ورد "
+"بعدی تأثیر کامل می‌گذارند."
+
+#: data/org.gnome.shell.gschema.xml.in:56
+msgid "Disables the validation of extension version compatibility"
+msgstr "از کار انداختن بررسی سازگاری نسخهٔ افزونه"
+
+#: data/org.gnome.shell.gschema.xml.in:57
+msgid ""
+"GNOME Shell will only load extensions that claim to support the current running "
+"version. Enabling this option will disable this check and try to load all "
+"extensions regardless of the versions they claim to support."
+msgstr ""
+"پوستهٔ گنوم تنها نگارش‌هایی از افزونه‌ها را که ادّعا می‌کنند از نگارش درحال اجرا "
+"پشتیبانی می‌کند، بار می‌کند. به کار اندازی این گزینه، بررسی این مورد را از کار "
+"انداخته و سعی می‌کند تمام افزونه‌ها، بدون درنظر گرفتن سازگاری آنها بار شوند."
+
+#: data/org.gnome.shell.gschema.xml.in:67
+msgid "List of desktop file IDs for favorite applications"
+msgstr "سیاههٔ شناسه‌های پروندهٔ میزکار برای برنامه‌های مورد علاقه"
+
+#: data/org.gnome.shell.gschema.xml.in:68
+msgid ""
+"The applications corresponding to these identifiers will be displayed in the "
+"favorites area."
+msgstr "برنامه‌های مشابه این شناسه‌ها در قسمت مورد علاقه‌ها نمایش داده می‌شود."
+
+#: data/org.gnome.shell.gschema.xml.in:75
+msgid "History for command (Alt-F2) dialog"
+msgstr "تاریخچهٔ فرمان برای محاورهٔ (Alt-F2)"
+
+#. Translators: looking glass is a debugger and inspector tool, see https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/docs/looking-glass.md
+#: data/org.gnome.shell.gschema.xml.in:80
+msgid "History for the looking glass dialog"
+msgstr "تاریخچه برای محاورهٔ آینه"
+
+#: data/org.gnome.shell.gschema.xml.in:84
+msgid "Always show the “Log Out” action in the system menu"
+msgstr "نمایش همیشگی کنش «خروج» در فهرست سامانه"
+
+#: data/org.gnome.shell.gschema.xml.in:85
+msgid ""
+"This key overrides the automatic hiding of the “Log out” action in the system menu "
+"for logged-in situations where there is a single, local, non-system user and only a "
+"single available session type (e.g. GNOME on Wayland)."
+msgstr ""
+"این کلید، نهفتن خودکار کنش «خروج» در فهرست سامانه را در مواقعی که یک کاربر محلّی "
+"غیرسامانه‌ای وارد شده و تنها یک گونه نشست موجود است (چون گنوم روی وی‌لند) پایمال "
+"می‌کند."
+
+#: data/org.gnome.shell.gschema.xml.in:94
+msgid "Whether to remember password for mounting encrypted or remote filesystems"
+msgstr ""
+"اینکه آیا گذرواژه برای سوارکردن سامانه‌های پروندهٔ رمزنگاری شده و یا دوردست به‌خاطر "
+"سپرده شود یا خیر"
+
+#: data/org.gnome.shell.gschema.xml.in:95
+msgid ""
+"The shell will request a password when an encrypted device or a remote filesystem "
+"is mounted. If the password can be saved for future use a “Remember Password” "
+"checkbox will be present. This key sets the default state of the checkbox."
+msgstr ""
+"هنگامی که دستگاهی رمزنگاری شده یا سامانه‌پرونده‌ای دوردست سوار می‌شود، پوسته درخواست "
+"گذرواژه می‌کند. اگر گذرواژه را بتوان برای استفادهٔ آینده ذخیره کرد، گزینهٔ «به‌خاطر "
+"سپردن گذرواژه» موجود خواهد بود. این کلید، حالت پیش‌گزیدهٔ این گزینه را تنظیم می‌کند."
+
+#: data/org.gnome.shell.gschema.xml.in:104
+msgid "The last selected non-default power profile"
+msgstr "آخرین نماگر نیروی گزیدهٔ غیر پیش فرض"
+
+#: data/org.gnome.shell.gschema.xml.in:105
+msgid ""
+"Some systems support more than two power profiles. In order to still support "
+"toggling between two profiles, this key records the last selected non-default "
+"profile."
+msgstr ""
+"برخی سامانه‌ها بیش از دو نماگر نیرو را پشتیبانی می‌کنند. به منظور ادامهٔ پشتیبانی از "
+"تغییر وضعیت بین دو نماگر، این کلید آخرین نماگر نیروی گزیدهٔ غیر پیش‌فرض را نگه می‌دارد."
+
+#: data/org.gnome.shell.gschema.xml.in:113
+msgid "The last version the “Welcome to GNOME” dialog was shown for"
+msgstr "آخرین نگارش گفت‌وگوی «به گنوم خوش آمدید» نشان‌داده شده برای"
+
+#: data/org.gnome.shell.gschema.xml.in:114
+msgid ""
+"This key determines for which version the “Welcome to GNOME” dialog was last shown. "
+"An empty string represents the oldest possible version, and a huge number will "
+"represent versions that do not exist yet. This huge number can be used to "
+"effectively disable the dialog."
+msgstr ""
+"این کلید مشخّص می‌کند گفت‌وگوی «به گنوم خوش آمدید»، برای کدام نگارش نشان داده شده. یک "
+"رشتهٔ خالی، نمایانگر قدیمی‌ترین نگارش ممکن بوده و یه عدد بزرگ، نمایانگر نگارش‌هاییست "
+"که هنوز وجود ندارند. این عدد بزرگ می‌تواند برای از کار انداختن مؤثّر گفت‌وگو استفاده "
+"شود."
+
+#: data/org.gnome.shell.gschema.xml.in:125
+msgid "Layout of the app picker"
+msgstr "چینش گزینشگر کاره"
+
+#: data/org.gnome.shell.gschema.xml.in:126
+msgid ""
+"Layout of the app picker. Each entry in the array is a page. Pages are stored in "
+"the order they appear in GNOME Shell. Each page contains an “application id” → "
+"'data' pair. Currently, the following values are stored as 'data': • “position”: "
+"the position of the application icon in the page"
+msgstr ""
+"چینش گزینشگر کاره. هر ورودی در آرایه، یک صفحه است. صفحه‌ها به ترتیبی که در پوستهٔ "
+"گنوم ظاهر می‌شوند، ذخیره می‌شوند. هر صفحه دارای یک جفت «شناسهٔ برنامه» ← «داده» است. "
+"درحال حاضر، مقدارهای زیر به عنوان «داده»: • «موقعیت»: موقعیت نقشک برنامه در صفحه "
+"ذخیره شده‌اند"
+
+#: data/org.gnome.shell.gschema.xml.in:145 data/org.gnome.shell.gschema.xml.in:152
+msgid "Keybinding to shift between overview states"
+msgstr "ترکیب کلید برای تعویض بین حالت‌های نمای کلّی"
+
+#: data/org.gnome.shell.gschema.xml.in:146
+msgid "Keybinding to shift between session, window picker and app grid"
+msgstr "ترکیب کلید برای تبدیل بین نشست، پنجره‌گزین و شبکهٔ کاره"
+
+#: data/org.gnome.shell.gschema.xml.in:153
+msgid "Keybinding to shift between app grid, window picker and session"
+msgstr "ترکیب کلید برای تبدیل بین شبکهٔ کاره، پنجره‌گزین و نشست"
+
+#: data/org.gnome.shell.gschema.xml.in:159
+msgid "Keybinding to open the “Show Applications” view"
+msgstr "ترکیب کلید برای گشودن نمای «نمایش برنامه‌ها»"
+
+#: data/org.gnome.shell.gschema.xml.in:160
+msgid "Keybinding to open the “Show Applications” view of the Activities Overview."
+msgstr "ترکیب کلید برای گشودن نمای «نمایش برنامه‌ها» در نمای کلّی فعّالیت‌ها."
+
+#: data/org.gnome.shell.gschema.xml.in:167
+msgid "Keybinding to open the overview"
+msgstr "ترکیب کلید برای گشودن نمای کلّی"
+
+#: data/org.gnome.shell.gschema.xml.in:168
+msgid "Keybinding to open the Activities Overview."
+msgstr "ترکیب کلید برای گشودن نمای کلّی فعّالیت‌ها."
+
+#: data/org.gnome.shell.gschema.xml.in:174
+msgid "Keybinding to toggle the visibility of the notification list"
+msgstr "ترکیب کلید برای تغییر وضعیت نمایش سیاههٔ پیام‌ها"
+
+#: data/org.gnome.shell.gschema.xml.in:175
+msgid "Keybinding to toggle the visibility of the notification list."
+msgstr "ترکیب کلید برای تغییر وضعیت نمایش سیاههٔ پیام‌ها."
+
+#: data/org.gnome.shell.gschema.xml.in:181
+msgid "Keybinding to toggle the quick settings menu"
+msgstr "ترکیب کلید برای تغییر وضعیت فهرست تنظیمات سریع"
+
+#: data/org.gnome.shell.gschema.xml.in:182
+msgid "Keybinding to toggle the quick settings menu."
+msgstr "ترکیب کلید برای تغییر وضعیت فهرست تنظیمات سریع."
+
+#: data/org.gnome.shell.gschema.xml.in:188
+msgid "Keybinding to focus the active notification"
+msgstr "ترکیب کلید برای متمرکز کردن آگاهی فعّال"
+
+#: data/org.gnome.shell.gschema.xml.in:189
+msgid "Keybinding to focus the active notification."
+msgstr "ترکیب کلید برای متمرکز کردن آگاهی فعّال."
+
+#: data/org.gnome.shell.gschema.xml.in:195
+msgid "Switch to application 1"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۱"
+
+#: data/org.gnome.shell.gschema.xml.in:199
+msgid "Switch to application 2"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۲"
+
+#: data/org.gnome.shell.gschema.xml.in:203
+msgid "Switch to application 3"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۳"
+
+#: data/org.gnome.shell.gschema.xml.in:207
+msgid "Switch to application 4"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۴"
+
+#: data/org.gnome.shell.gschema.xml.in:211
+msgid "Switch to application 5"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۵"
+
+#: data/org.gnome.shell.gschema.xml.in:215
+msgid "Switch to application 6"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۶"
+
+#: data/org.gnome.shell.gschema.xml.in:219
+msgid "Switch to application 7"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۷"
+
+#: data/org.gnome.shell.gschema.xml.in:223
+msgid "Switch to application 8"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۸"
+
+#: data/org.gnome.shell.gschema.xml.in:227
+msgid "Switch to application 9"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۹"
+
+#: data/org.gnome.shell.gschema.xml.in:231
+msgid "Open a new instance of application 1"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۱"
+
+#: data/org.gnome.shell.gschema.xml.in:235
+msgid "Open a new instance of application 2"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۲"
+
+#: data/org.gnome.shell.gschema.xml.in:239
+msgid "Open a new instance of application 3"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۳"
+
+#: data/org.gnome.shell.gschema.xml.in:243
+msgid "Open a new instance of application 4"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۴"
+
+#: data/org.gnome.shell.gschema.xml.in:247
+msgid "Open a new instance of application 5"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۵"
+
+#: data/org.gnome.shell.gschema.xml.in:251
+msgid "Open a new instance of application 6"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۶"
+
+#: data/org.gnome.shell.gschema.xml.in:255
+msgid "Open a new instance of application 7"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۷"
+
+#: data/org.gnome.shell.gschema.xml.in:259
+msgid "Open a new instance of application 8"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۸"
+
+#: data/org.gnome.shell.gschema.xml.in:263
+msgid "Open a new instance of application 9"
+msgstr "گشودن نمونه‌ای جدید از برنامهٔ ۹"
+
+#: data/org.gnome.shell.gschema.xml.in:283
+msgid "Screen brightness up"
+msgstr "افزایش روشنایی صفحه"
+
+#: data/org.gnome.shell.gschema.xml.in:287
+msgid "Screen brightness up on current monitor"
+msgstr "افزایش روشنایی صفحه روی نمایشگر کنونی"
+
+#: data/org.gnome.shell.gschema.xml.in:291
+msgid "Screen brightness down"
+msgstr "کاهش روشنایی صفحه"
+
+#: data/org.gnome.shell.gschema.xml.in:295
+msgid "Screen brightness down on current monitor"
+msgstr "کاهش روشنایی صفحه روی نمایشگر کنونی"
+
+#: data/org.gnome.shell.gschema.xml.in:299
+msgid "Screen brightness cycle"
+msgstr "چرخهٔ روشنایی صفحه"
+
+#: data/org.gnome.shell.gschema.xml.in:303
+msgid "Screen brightness cycle on current monitor"
+msgstr "چرخهٔ روشنایی صفحه روی نمایشگر کنونی"
+
+#: data/org.gnome.shell.gschema.xml.in:312 data/org.gnome.shell.gschema.xml.in:339
+msgid "Limit switcher to current workspace."
+msgstr "محدود کردن تعویض‌گر به فضای‌کاری فعلی."
+
+#: data/org.gnome.shell.gschema.xml.in:313
+msgid ""
+"If true, only applications that have windows on the current workspace are shown in "
+"the switcher. Otherwise, all applications are included."
+msgstr ""
+"اگر درست باشد، تنها برنامه‌هایی که در فضای‌کاری فعلی پنجره دارند در تعویض‌گر نشان داده "
+"می‌شوند. در غیر این صورت، تمام برنامه‌ها نشان داده می‌شوند."
+
+#: data/org.gnome.shell.gschema.xml.in:330
+msgid "The application icon mode."
+msgstr "حالت شمایلی برنامه."
+
+#: data/org.gnome.shell.gschema.xml.in:331
+msgid ""
+"Configures how the windows are shown in the switcher. Valid possibilities are "
+"“thumbnail-only” (shows a thumbnail of the window), “app-icon-only” (shows only the "
+"application icon) or “both”."
+msgstr ""
+"نحوه نمایش پنجره‌ها را در تعویضگر پیکربندی می‌کند. مقدارهای ممکن عبارتند از "
+"«thumbnail-only» (نمایش تصویر بندانگشتی از پنجره)، «app-icon-only» (نمایش تنها "
+"شمایل برنامه) یا «both» (هر دو)."
+
+#: data/org.gnome.shell.gschema.xml.in:340
+msgid ""
+"If true, only windows from the current workspace are shown in the switcher. "
+"Otherwise, all windows are included."
+msgstr ""
+"اگر درست باشد، تنها پنجره‌های فضای‌کاری فعلی در تعویض‌گر نمایش داده می‌شود. در غیر این "
+"صورت، تمام پنجره‌ها اضافه می‌شوند."
+
+#: data/org.gnome.shell.gschema.xml.in:350
+msgid "Locations"
+msgstr "مکان‌ها"
+
+#: data/org.gnome.shell.gschema.xml.in:351
+msgid "The locations to show in world clocks"
+msgstr "مکان‌ها برای نمایش در ساعت‌های جهانی"
+
+#: data/org.gnome.shell.gschema.xml.in:361
+msgid "Automatic location"
+msgstr "مکان خودکار"
+
+#: data/org.gnome.shell.gschema.xml.in:362
+msgid "Whether to fetch the current location or not"
+msgstr "این که مکان فعلی گرفته شود یا نه"
+
+#: data/org.gnome.shell.gschema.xml.in:369
+msgid "Location"
+msgstr "مکان"
+
+#: data/org.gnome.shell.gschema.xml.in:370
+msgid "The location for which to show a forecast"
+msgstr "مکان برای نمایش پیش‌بینی"
+
+#. Keep in sync with subprojects/extensions-app
+#: data/org.gnome.Shell.Extensions.desktop.in:4
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:5
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:3
+#: subprojects/extensions-app/data/ui/extensions-window.ui:57
+msgid "Extensions"
+msgstr "افزونه‌ها"
+
+#: data/org.gnome.Shell.PortalHelper.desktop.in:2
+msgid "Network Login"
+msgstr "ورود شبکه‌ای"
+
+#: data/X-GNOME-Shell-Utilities.directory.desktop.in:2
+msgid "Utilities"
+msgstr "ابزارها"
+
+#: js/dbusServices/extensions/extensionPrefsDialog.js:70
+msgid "Extension Error"
+msgstr "خطای افزونه"
+
+#. Translators: %s is an extension name
+#: js/dbusServices/extensions/extensionPrefsDialog.js:103
+#, javascript-format
+msgid "Unable to display the settings for “%s”."
+msgstr "ناتوان در نمایش تنظیمات برای «%s»."
+
+#. Translators: Link label in the phrase "Information about this
+#. problem may be available on the extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:109
+msgid "extension website"
+msgstr "پایگاه وب افزونه"
+
+#. Translators: %s is "extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:113
+#, javascript-format
+msgid "Information about this problem may be available on the %s."
+msgstr "ممکن است %s اطّلاعاتی دربارهٔ این مشکل داشته باشد."
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:19
+#: subprojects/extensions-app/data/ui/extension-row.ui:13
+msgid "Error Details"
+msgstr "جزییات خطا"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:26
+msgid "Copy Error"
+msgstr "رونوشت از خطا"
+
+#: js/gdm/authPrompt.js:58 js/misc/timeLimitsManager.js:1427
+msgid "Screen Time Limit Reached"
+msgstr "رسیدن به کران زمان نمایش"
+
+#: js/gdm/authPrompt.js:64
+msgid "Daily limit for screen time on this device has been reached. Resume tomorrow."
+msgstr "رسیدن به کران روزانهٔ زمان صفحه روی این افزاره. ادامه در فردا."
+
+#. Translators: this is for ignoring a screen time limit for parental controls
+#: js/gdm/authPrompt.js:72
+msgid "Ignore"
+msgstr "چشم‌پوشی"
+
+#: js/gdm/authPrompt.js:256 js/gdm/loginDialog.js:514 js/ui/audioDeviceSelection.js:60
+#: js/ui/components/networkAgent.js:114 js/ui/components/polkitAgent.js:144
+#: js/ui/endSessionDialog.js:401 js/ui/extensionDownloader.js:276
+#: js/ui/shellMountOperation.js:382 js/ui/shellMountOperation.js:392
+msgid "Cancel"
+msgstr "لغو"
+
+#: js/gdm/authPrompt.js:434 js/ui/components/networkAgent.js:214
+#: js/ui/components/networkAgent.js:234 js/ui/components/networkAgent.js:266
+#: js/ui/components/networkAgent.js:299 js/ui/components/networkAgent.js:338
+#: js/ui/components/networkAgent.js:351 js/ui/components/polkitAgent.js:286
+#: js/ui/shellMountOperation.js:332
+#: subprojects/extensions-tool/src/command-upload.c:252
+msgid "Password"
+msgstr "گذرواژه"
+
+#: js/gdm/loginDialog.js:327
+msgid "Choose Session"
+msgstr "گزینش نشست"
+
+#: js/gdm/loginDialog.js:420 js/ui/status/accessibility.js:35
+msgid "Accessibility"
+msgstr "دسترسی‌پذیری"
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:472
+#, javascript-format
+msgid ""
+"Remote login is not possible because a remote session is already running for %s. To "
+"login remotely, you must log out from the remote session or force stop it."
+msgstr ""
+"ورود دوردست ممکن نیست، چرا که نشستی دوردست برای %s در حال اجراست. برای ورود دوردست "
+"باید از نشست دوردست خارج شده یا به اجبار متوقّفش کنید."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:475
+#, javascript-format
+msgid ""
+"Login is not possible because a remote session is already running for %s. To login, "
+"you must log out from the remote session or force stop it."
+msgstr ""
+"ورود ممکن نیست، چرا که نشستی دوردست برای %s در حال اجراست. برای ورود باید از نشست "
+"دوردست خارج شده یا به اجبار متوقّفش کنید."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:478
+#, javascript-format
+msgid ""
+"Remote login is not possible because a local session is already running for %s. To "
+"login remotely, you must log out from the local session or force stop it."
+msgstr ""
+"ورود دوردست ممکن نیست، چرا که نشستی محلی برای %s در حال اجراست. برای ورود دوردست "
+"باید از نشست محلی خارج شده یا به اجبار متوقّفش کنید."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:481
+#, javascript-format
+msgid ""
+"Login is not possible because a session is already running for %s. To login, you "
+"must log out from the session or force stop it."
+msgstr ""
+"ورود ممکن نیست، چرا که نشستی برای %s در حال اجراست. برای ورود باید از نشست خارج شده "
+"یا به اجبار متوقّفش کنید."
+
+#: js/gdm/loginDialog.js:490
+msgid "Session Already Running"
+msgstr "نشست در حال اجراست"
+
+#: js/gdm/loginDialog.js:502
+msgid ""
+"Force stopping will quit any running apps and processes, and could result in data "
+"loss"
+msgstr ""
+"اجبار به توقّف هر کاره و فرایند در حال اجرایی را خواهد بست و ممکن است منجر به از دست "
+"رفتن داده شود"
+
+#: js/gdm/loginDialog.js:522
+msgid "Force Stop"
+msgstr "توقّف اجباری"
+
+#: js/gdm/loginDialog.js:600
+msgid "Not listed?"
+msgstr "سیاهه نشده؟"
+
+#. Translators: this message is shown below the username entry field
+#. to clue the user in on how to login to the local network realm
+#: js/gdm/loginDialog.js:1136
+#, javascript-format
+msgid "(e.g., user or %s)"
+msgstr "(برای مثال، کاربر یا %s)"
+
+#: js/gdm/loginDialog.js:1141 js/ui/components/networkAgent.js:258
+#: js/ui/components/networkAgent.js:293 js/ui/components/networkAgent.js:327
+#: subprojects/extensions-tool/src/command-upload.c:234
+msgid "Username"
+msgstr "نام‌کاربری"
+
+#: js/gdm/loginDialog.js:1207
+msgid "Login Attempt Timed Out"
+msgstr "پایان مهلت زمانی تلاش برای ورود"
+
+#: js/gdm/loginDialog.js:1208
+msgid "Login took too long, please try again"
+msgstr "ورود بیش از حد طول کشید. لطفاً دوباره تلاش کنید"
+
+#: js/gdm/loginDialog.js:1553
+msgid "Login Window"
+msgstr "پنجرهٔ ورود به سامانه"
+
+#: js/gdm/util.js:496
+msgid "Authentication error"
+msgstr "خطا تأیید هویت"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can swipe their finger on the fingerprint reader
+#: js/gdm/util.js:731
+msgid "(or swipe finger across reader)"
+msgstr "(یا انگشتتان را روی خواننده بکشید)"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can place their finger on the fingerprint reader instead
+#: js/gdm/util.js:736
+msgid "(or place finger on reader)"
+msgstr "(یا انگشتتان را روی خواننده بگذارید)"
+
+#: js/misc/breakManager.js:774
+msgid "Break complete sound"
+msgstr "صدای پایان استراحت"
+
+#: js/misc/breakManager.js:983
+#, javascript-format
+msgid "%d second"
+msgid_plural "%d seconds"
+msgstr[0] "‫%Id ثانیه"
+msgstr[1] "‫%Id ثانیه"
+
+#: js/misc/breakManager.js:989
+#, javascript-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "‫%Id دقیقه"
+msgstr[1] "‫%Id دقیقه"
+
+#: js/misc/breakManager.js:995
+#, javascript-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "‫%Id ساعت"
+msgstr[1] "‫%Id ساعت"
+
+#: js/misc/breakManager.js:1001
+#, javascript-format
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "‫%Id روز"
+msgstr[1] "‫%Id روز"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1083
+#, javascript-format
+msgid "It will be time for a break in %s"
+msgid_plural "It will be time for a break in %s"
+msgstr[0] "زمان استراحت در %s"
+msgstr[1] "زمان استراحت در %s"
+
+#: js/misc/breakManager.js:1091
+msgid "Movement Break Soon"
+msgstr "استراحت حرکتی به زودی"
+
+#: js/misc/breakManager.js:1094
+msgid "Eyesight Break Soon"
+msgstr "استراحت بینایی به زودی"
+
+#: js/misc/breakManager.js:1097
+msgid "Break Soon"
+msgstr "استراحت به زودی"
+
+#: js/misc/breakManager.js:1142
+msgid "Movement Break in Progress"
+msgstr "در حال استراحت حرکتی"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1145
+#, javascript-format
+msgid "Continue moving around for %s"
+msgid_plural "Continue moving around for %s"
+msgstr[0] "ادامهٔ حرکت برای %s"
+msgstr[1] "ادامهٔ حرکت برای %s"
+
+#: js/misc/breakManager.js:1151
+msgid "Eyesight Break in Progress"
+msgstr "در حال استراحت بینایی"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1154
+#, javascript-format
+msgid "Continue looking away for %s"
+msgid_plural "Continue looking away for %s"
+msgstr[0] "ادامهٔ ندیدن برای %s"
+msgstr[1] "ادامهٔ ندیدن برای %s"
+
+#: js/misc/breakManager.js:1160
+msgid "Break in Progress"
+msgstr "در حال استراحت"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1163
+#, javascript-format
+msgid "%s left in your break"
+msgid_plural "%s left in your break"
+msgstr[0] "از استراحت %s مانده"
+msgstr[1] "از استراحت %s مانده"
+
+#: js/misc/breakManager.js:1202
+msgid "Time for a Movement Break"
+msgstr "زمان استراحت حرکتی"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1205
+#, javascript-format
+msgid "Take a break from the device and move around for %s"
+msgid_plural "Take a break from the device and move around for %s"
+msgstr[0] "جدا شدن از افزاره و حرکت به اطراف برای %s"
+msgstr[1] "جدا شدن از افزاره و حرکت به اطراف برای %s"
+
+#: js/misc/breakManager.js:1211
+msgid "Time for an Eyesight Break"
+msgstr "زمان استراحت بینایی"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1214
+#, javascript-format
+msgid "Take a break from the screen. Look at least 6 meters away for at least %s"
+msgid_plural ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgstr[0] "جدا شدن از صفحه. نگاه کردن به کمینه ۶ متر آن طرف‌تر برای %s"
+msgstr[1] "جدا شدن از صفحه. نگاه کردن به کمینه ۶ متر آن طرف‌تر برای %s"
+
+#: js/misc/breakManager.js:1220
+msgid "Time for a Break"
+msgstr "زمانِ استراحت"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1223
+#, javascript-format
+msgid "It’s time to take a break. Get away from the device for %s!"
+msgid_plural "It’s time to take a break. Get away from the device for %s!"
+msgstr[0] "زمان استراحت است. دور شدن از افزاره برای %s!"
+msgstr[1] "زمان استراحت است. دور شدن از افزاره برای %s!"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1247
+#, javascript-format
+msgid "You were due to take a break %s ago"
+msgid_plural "You were due to take a break %s ago"
+msgstr[0] "زمان‌بندی شده بود که %s پیش استراحت کنید"
+msgstr[1] "زمان‌بندی شده بود که %s پیش استراحت کنید"
+
+#: js/misc/breakManager.js:1253
+msgid "Break Overdue"
+msgstr "رد شدن زمان استراحت"
+
+#: js/misc/breakManager.js:1269
+#, javascript-format
+msgid "There is %s remaining in your break"
+msgid_plural "There are %s remaining in your break"
+msgstr[0] "از استراحتتان %s مانده است"
+msgstr[1] "از استراحتتان %s مانده است"
+
+#: js/misc/breakManager.js:1275
+msgid "Break Interrupted"
+msgstr "استراحت وقفه خورد"
+
+#. Translators: As in "Delay the break"
+#: js/misc/breakManager.js:1353
+msgid "Delay"
+msgstr "تأخیر"
+
+#. Translators: As in "Skip the break"
+#: js/misc/breakManager.js:1375 js/ui/welcomeDialog.js:61
+msgid "Skip"
+msgstr "پرش"
+
+#. Translators: As in "Take the break"
+#: js/misc/breakManager.js:1397
+msgid "Take"
+msgstr "انجام"
+
+#. Translators: This is a notification to warn the user that a
+#. screen time break will start shortly.
+#: js/misc/breakManager.js:1460
+#, javascript-format
+msgid "Break in %d second"
+msgid_plural "Break in %d seconds"
+msgstr[0] "استراحت در %Id دقیقه"
+msgstr[1] "استراحت در %Id دقیقه"
+
+#: js/misc/brightnessManager.js:171 js/ui/status/brightness.js:10
+msgid "Brightness"
+msgstr "روشنایی"
+
+#. Translators: The name of the power-off action in search
+#: js/misc/systemActions.js:94
+msgctxt "search-result"
+msgid "Power Off"
+msgstr "خاموش کردن"
+
+#. Translators: A list of keywords that match the power-off action, separated by semicolons
+#: js/misc/systemActions.js:97
+msgid "power off;poweroff;shutdown;halt;stop"
+msgstr "power off;poweroff;shutdown;halt;stop;خاموش;توقف"
+
+#. Translators: The name of the restart action in search
+#: js/misc/systemActions.js:102
+msgctxt "search-result"
+msgid "Restart"
+msgstr "راه‌اندازی دوباره"
+
+#. Translators: A list of keywords that match the restart action, separated by semicolons
+#: js/misc/systemActions.js:105
+msgid "reboot;restart;"
+msgstr "reboot;restart;شروع دوباره;خاموش و روشن;راه‌اندازی دوباره;"
+
+#. Translators: The name of the lock screen action in search
+#: js/misc/systemActions.js:110
+msgctxt "search-result"
+msgid "Lock Screen"
+msgstr "صفحهٔ قفل"
+
+#. Translators: A list of keywords that match the lock screen action, separated by semicolons
+#: js/misc/systemActions.js:113
+msgid "lock screen"
+msgstr "قفل کردن صفحه"
+
+#. Translators: The name of the logout action in search
+#: js/misc/systemActions.js:118
+msgctxt "search-result"
+msgid "Log Out"
+msgstr "خروج"
+
+#. Translators: A list of keywords that match the logout action, separated by semicolons
+#: js/misc/systemActions.js:121
+msgid "logout;log out;sign off"
+msgstr "logout;log out;sign off;خروج;خارج"
+
+#. Translators: The name of the suspend action in search
+#: js/misc/systemActions.js:126
+msgctxt "search-result"
+msgid "Suspend"
+msgstr "تعلیق"
+
+#. Translators: A list of keywords that match the suspend action, separated by semicolons
+#: js/misc/systemActions.js:129
+msgid "suspend;sleep"
+msgstr "suspend;sleep;تعلیق;خواب"
+
+#. Translators: The name of the switch user action in search
+#: js/misc/systemActions.js:134
+msgctxt "search-result"
+msgid "Switch User"
+msgstr "تعویض کاربر"
+
+#. Translators: A list of keywords that match the switch user action, separated by semicolons
+#: js/misc/systemActions.js:137
+msgid "switch user"
+msgstr "تعویض کاربر"
+
+#. Translators: A list of keywords that match the lock orientation action, separated by semicolons
+#: js/misc/systemActions.js:144
+msgid "lock orientation;unlock orientation;screen;rotation"
+msgstr "lock orientation;unlock orientation;screen;rotation;قفل;جهت;چرخش;صفحه"
+
+#. Translators: The name of the screenshot UI action in search
+#: js/misc/systemActions.js:149
+msgctxt "search-result"
+msgid "Take a Screenshot"
+msgstr "گرفتن یک نماگرفت"
+
+#. Translators: A list of keywords that match the screenshot UI action, separated by semicolons
+#: js/misc/systemActions.js:152
+msgid "screenshot;screencast;snip;capture;record"
+msgstr ""
+"screenshot;screencast;snip;capture;record;نماگرفت;اسکرین‌شات;اسکرین‌کست;ضبط صفحه"
+
+#: js/misc/systemActions.js:256
+msgctxt "search-result"
+msgid "Unlock Screen Rotation"
+msgstr "قفل‌گشایی چرخش صفحه"
+
+#: js/misc/systemActions.js:257
+msgctxt "search-result"
+msgid "Lock Screen Rotation"
+msgstr "قفل چرخش صفحه"
+
+#: js/misc/timeLimitsManager.js:468
+msgid "GNOME needs to save screen time data"
+msgstr "لازم است گنوم داده‌های زمانی صفحه را ذخیره کند"
+
+#: js/misc/timeLimitsManager.js:1392
+msgid "Screen Time Limit is almost up"
+msgstr "زمان صفحه تقریباً به کران رسیده"
+
+#: js/misc/timeLimitsManager.js:1394
+#, javascript-format
+msgid "The computer will lock in %d second."
+msgid_plural "The computer will lock in %d seconds."
+msgstr[0] "رایانه تا %Id ثانیهٔ دیگر قفل خواهد شد."
+msgstr[1] "رایانه تا %Id ثانیهٔ دیگر قفل خواهد شد."
+
+#: js/misc/timeLimitsManager.js:1402
+#, javascript-format
+msgid "Screen Time Limit in %d Minute"
+msgid_plural "Screen Time Limit in %d Minutes"
+msgstr[0] "کران زمان نمایش در %Id دقیقه"
+msgstr[1] "کران زمان نمایش در %Id دقیقه"
+
+#: js/misc/timeLimitsManager.js:1406
+msgid "Your screen time limit is approaching"
+msgstr "نزدیک شدن به کران زمان نمایش"
+
+#: js/misc/timeLimitsManager.js:1428
+msgid "It’s time to stop using the device"
+msgstr "زمان پایان استفاده از افزاره است"
+
+#: js/misc/util.js:131
+msgid "Command not found"
+msgstr "فرمان پیدا نشد"
+
+#: js/misc/util.js:169
+#, javascript-format
+msgid "Execution of “%s” failed:"
+msgstr "اجرای «%s» شکست خورد:"
+
+#: js/misc/dateUtils.js:69
+msgid "Just now"
+msgstr "همین الآن"
+
+#: js/misc/dateUtils.js:72
+#, javascript-format
+msgid "%d minute ago"
+msgid_plural "%d minutes ago"
+msgstr[0] "‫%Id دقیقه پیش"
+msgstr[1] "‫%Id دقیقه پیش"
+
+#: js/misc/dateUtils.js:79
+#, javascript-format
+msgid "%d hour ago"
+msgid_plural "%d hours ago"
+msgstr[0] "‫%Id ساعت پیش"
+msgstr[1] "‫%Id ساعت پیش"
+
+#: js/misc/dateUtils.js:85 js/ui/dateMenu.js:184
+msgid "Yesterday"
+msgstr "دیروز"
+
+#: js/misc/dateUtils.js:88
+#, javascript-format
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] "‫%Id روز پیش"
+msgstr[1] "‫%Id روز پیش"
+
+#: js/misc/dateUtils.js:95
+#, javascript-format
+msgid "%d week ago"
+msgid_plural "%d weeks ago"
+msgstr[0] "‫%Id هفته پیش"
+msgstr[1] "‫%Id هفته پیش"
+
+#: js/misc/dateUtils.js:102
+#, javascript-format
+msgid "%d month ago"
+msgid_plural "%d months ago"
+msgstr[0] "‫%Id ماه پیش"
+msgstr[1] "‫%Id ماه پیش"
+
+#: js/misc/dateUtils.js:108
+#, javascript-format
+msgid "%d year ago"
+msgid_plural "%d years ago"
+msgstr[0] "‫%Id سال پیش"
+msgstr[1] "‫%Id سال پیش"
+
+#. Translators: Time in 24h format
+#: js/misc/dateUtils.js:155
+msgid "%H:%M"
+msgstr "⁦%OH:%OM⁩"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 24h format. i.e. "Yesterday, 14:30"
+#: js/misc/dateUtils.js:161
+#, no-c-format
+msgid "Yesterday, %H:%M"
+msgstr "دیروز، ⁦%OH∶%OM⁩"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the week day name followed by a time
+#. string in 24h format. i.e. "Monday, 14:30"
+#: js/misc/dateUtils.js:167
+#, no-c-format
+msgid "%A, %H:%M"
+msgstr "%A، ⁦%OH∶%OM⁩"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the month name and day number
+#. followed by a time string in 24h format.
+#. i.e. "May 25, 14:30"
+#: js/misc/dateUtils.js:173
+#, no-c-format
+msgid "%B %-d, %H:%M"
+msgstr "%-Od %OB، ⁦%OH∶%OM⁩"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 24h format.
+#. i.e. "May 25 2012, 14:30"
+#: js/misc/dateUtils.js:179
+#, no-c-format
+msgid "%B %-d %Y, %H:%M"
+msgstr "%-Od %OB %OY، ⁦%OH∶%OM⁩"
+
+#. Show only the time if date is on today
+#. eslint-disable-line no-lonely-if
+#. Translators: Time in 12h format
+#: js/misc/dateUtils.js:184
+msgid "%l:%M %p"
+msgstr "⁦%Ol:%OM⁩ %p"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 12h format. i.e. "Yesterday, 2:30 pm"
+#: js/misc/dateUtils.js:190
+#, no-c-format
+msgid "Yesterday, %l:%M %p"
+msgstr "دیروز، ⁦%Ol∶%OM⁩ %p"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the week day name followed by a time
+#. string in 12h format. i.e. "Monday, 2:30 pm"
+#: js/misc/dateUtils.js:196
+#, no-c-format
+msgid "%A, %l:%M %p"
+msgstr "%A، ⁦%Ol∶%OM⁩ %Op"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the month name and day number
+#. followed by a time string in 12h format.
+#. i.e. "May 25, 2:30 pm"
+#: js/misc/dateUtils.js:202
+#, no-c-format
+msgid "%B %-d, %l:%M %p"
+msgstr "%-Od %OB، ⁦%Ol∶%OM⁩ %Op"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 12h format.
+#. i.e. "May 25 2012, 2:30 pm"
+#: js/misc/dateUtils.js:208
+#, no-c-format
+msgid "%B %-d %Y, %l:%M %p"
+msgstr "%-Od %OB %OY، ⁦%Ol∶%OM⁩ %Op"
+
+#: js/portalHelper/main.js:98
+msgid "Your connection seems to be secure"
+msgstr "اتّصالتان امن به نظر می‌رسد"
+
+#: js/portalHelper/main.js:104
+msgid ""
+"Your connection to this hotspot login is not secure. Passwords or other information "
+"you enter on this page can be viewed by people nearby."
+msgstr ""
+"اتّصال شما به این ورود نقطهٔ داغ امن نیست. گذرواژه‌ها یا دیگر اطّلاعاتی که در این صفحه "
+"وارد می‌کنید، می‌تواند توسّط افراد اطراف دیده شود."
+
+#: js/portalHelper/main.js:115
+msgid "Hotspot Login"
+msgstr "ورود به نقطهٔ داغ"
+
+#. No support for non-modal system dialogs, so ignore the option
+#. let modal = options['modal'] || true;
+#: js/ui/accessDialog.js:51 js/ui/inhibitShortcutsDialog.js:92
+msgid "Deny"
+msgstr "رد کردن"
+
+#: js/ui/accessDialog.js:52 js/ui/inhibitShortcutsDialog.js:101
+msgid "Allow"
+msgstr "اجازه دادن"
+
+#: js/ui/appDisplay.js:1731
+msgid "Unnamed Folder"
+msgstr "پوشهٔ بی‌نام"
+
+#: js/ui/appFavorites.js:89
+#, javascript-format
+msgid "%s has been pinned to the dash."
+msgstr "%s به دش سنحاق شد."
+
+#: js/ui/appFavorites.js:120
+#, javascript-format
+msgid "%s has been unpinned from the dash."
+msgstr "سنجاق %s از دش برداشته شد."
+
+#: js/ui/appFavorites.js:134 js/ui/main.js:304
+msgid "Undo"
+msgstr "برگردان"
+
+#. Translators: This is the heading of a list of open windows
+#: js/ui/appMenu.js:49
+msgid "Open Windows"
+msgstr "پنجره‌های باز"
+
+#: js/ui/appMenu.js:57
+msgid "New Window"
+msgstr "پنجرهٔ جدید"
+
+#: js/ui/appMenu.js:84
+msgid "App Details"
+msgstr "جزییات کاره"
+
+#: js/ui/appMenu.js:100
+msgid "Quit"
+msgstr "خروج"
+
+#: js/ui/appMenu.js:160 js/ui/dash.js:245
+msgid "Unpin"
+msgstr "سنجاق نکردن"
+
+#: js/ui/appMenu.js:161
+msgid "Pin to Dash"
+msgstr "سنجاق به دش"
+
+#: js/ui/appMenu.js:178
+msgid "Launch Using Integrated Graphics Card"
+msgstr "اجرا با کارت گرافیک یکپارچه"
+
+#: js/ui/appMenu.js:179
+msgid "Launch Using Discrete Graphics Card"
+msgstr "اجرا با کارت گرافیک جداگانه"
+
+#: js/ui/audioDeviceSelection.js:46
+msgid "Select Audio Device"
+msgstr "گزینش افزارهٔ صوتی"
+
+#: js/ui/audioDeviceSelection.js:67 js/ui/status/volume.js:81
+msgid "Sound Settings"
+msgstr "تنظیمات صدا"
+
+#: js/ui/audioDeviceSelection.js:75
+msgid "Headphones"
+msgstr "هدفون‌ها"
+
+#: js/ui/audioDeviceSelection.js:77
+msgid "Headset"
+msgstr "هدست"
+
+#: js/ui/audioDeviceSelection.js:79 js/ui/status/volume.js:371
+msgid "Microphone"
+msgstr "صدابَر"
+
+#: js/ui/backgroundMenu.js:13
+msgid "Change Background…"
+msgstr "تغییر پس‌زمینه…"
+
+#: js/ui/backgroundMenu.js:15
+msgid "Display Settings"
+msgstr "تنظیمات نمایشگر"
+
+#: js/ui/backgroundMenu.js:16
+msgid "Settings"
+msgstr "تنظیمات"
+
+#. Translators: Enter 0-6 (Sunday-Saturday) for non-work days. Examples: "0" (Sunday) "6" (Saturday) "06" (Sunday and Saturday).
+#: js/ui/calendar.js:34
+msgctxt "calendar-no-work"
+msgid "06"
+msgstr "45"
+
+#. Translators: Calendar grid abbreviation for Sunday.
+#. *
+#. * NOTE: These grid abbreviations are always shown together
+#. * and in order, e.g. "S M T W T F S".
+#.
+#: js/ui/calendar.js:60
+msgctxt "grid sunday"
+msgid "S"
+msgstr "ی"
+
+#. Translators: Calendar grid abbreviation for Monday
+#: js/ui/calendar.js:62
+msgctxt "grid monday"
+msgid "M"
+msgstr "د"
+
+#. Translators: Calendar grid abbreviation for Tuesday
+#: js/ui/calendar.js:64
+msgctxt "grid tuesday"
+msgid "T"
+msgstr "س"
+
+#. Translators: Calendar grid abbreviation for Wednesday
+#: js/ui/calendar.js:66
+msgctxt "grid wednesday"
+msgid "W"
+msgstr "چ"
+
+#. Translators: Calendar grid abbreviation for Thursday
+#: js/ui/calendar.js:68
+msgctxt "grid thursday"
+msgid "T"
+msgstr "پ"
+
+#. Translators: Calendar grid abbreviation for Friday
+#: js/ui/calendar.js:70
+msgctxt "grid friday"
+msgid "F"
+msgstr "آ"
+
+#. Translators: Calendar grid abbreviation for Saturday
+#: js/ui/calendar.js:72
+msgctxt "grid saturday"
+msgid "S"
+msgstr "ش"
+
+#. *
+#. * Translators: The header displaying just the month name
+#. * standalone, when this is a month of the current year.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not change it.
+#.
+#: js/ui/calendar.js:425
+msgid "%OB"
+msgstr "%OB"
+
+#. *
+#. * Translators: The header displaying the month name and the year
+#. * number, when this is a month of a different year.  You can
+#. * reorder the format specifiers or add other modifications
+#. * according to the requirements of your language.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not use the old "%B" here unless you
+#. * absolutely know what you are doing.
+#.
+#: js/ui/calendar.js:435
+msgid "%OB %Y"
+msgstr "%OB %OY"
+
+#: js/ui/calendar.js:505
+msgid "Previous month"
+msgstr "ماه پیش"
+
+#: js/ui/calendar.js:523
+msgid "Next month"
+msgstr "ماه بعد"
+
+#: js/ui/calendar.js:675
+#, no-javascript-format
+msgctxt "date day number format"
+msgid "%d"
+msgstr "%Od"
+
+#: js/ui/calendar.js:734
+msgid "Week %V"
+msgstr "هفته %OV"
+
+#: js/ui/calendar.js:787
+msgid "No Notifications"
+msgstr "بدون آگاهی"
+
+#: js/ui/calendar.js:828
+msgid "Clear"
+msgstr "پاک‌سازی"
+
+#: js/ui/calendar.js:832
+msgctxt "action"
+msgid "Clear all notifications"
+msgstr "پاک‌سازی همهٔ آگاهی‌ها"
+
+#. Translators: %s is an application name
+#: js/ui/closeDialog.js:40
+#, javascript-format
+msgid "“%s” Is Not Responding"
+msgstr "«%s» پاسخگو نیست"
+
+#: js/ui/closeDialog.js:41
+msgid ""
+"You may choose to wait a short while for it to continue or force the app to quit "
+"entirely"
+msgstr ""
+"ممکن است بخواهید مدت کوتاهی منتظر مانده تا ادامه دهد یا کاره را مجبور به خروج کامل "
+"کنید"
+
+#: js/ui/closeDialog.js:69
+msgid "Force Quit"
+msgstr "خروج اجباری"
+
+#: js/ui/closeDialog.js:74
+msgid "Wait"
+msgstr "انتظار"
+
+#: js/ui/components/automountManager.js:81
+msgid "External drive connected"
+msgstr "گردانندهٔ خارجی وصل شد"
+
+#: js/ui/components/automountManager.js:93
+msgid "External drive disconnected"
+msgstr "اتّصال گردانندهٔ خارجی قطع شد"
+
+#: js/ui/components/automountManager.js:207
+msgid "Unable to unlock volume"
+msgstr "ناتوانی در قفل‌گشایی حجم"
+
+#: js/ui/components/automountManager.js:208
+msgid "The installed udisks version does not support the PIM setting"
+msgstr "نگارش نصب‌شدهٔ udisk از تنظیمات PIM پشتیبانی نمی‌کند"
+
+#. Translators: %s is the name of a partition on a external drive
+#: js/ui/components/autorunManager.js:189
+#, javascript-format
+msgid "“%s” connected"
+msgstr "«%s» وصل‌شد"
+
+#: js/ui/components/autorunManager.js:190
+msgid "Disk can now be used"
+msgstr "اکنون دیسک می‌تواند استفاده شود"
+
+#: js/ui/components/autorunManager.js:202
+#, javascript-format
+msgid "Open with %s"
+msgstr "گشودن با %s"
+
+#: js/ui/components/networkAgent.js:96
+msgid "Alternatively you can connect by pushing the “WPS” button on your router"
+msgstr "همچنین می‌توانید با فشردن دکمهٔ WPS روی مسیریابتان وصل شوید"
+
+#: js/ui/components/networkAgent.js:108 js/ui/status/bluetooth.js:245
+#: js/ui/status/network.js:360 js/ui/status/network.js:444
+msgid "Connect"
+msgstr "اتّصال"
+
+#: js/ui/components/networkAgent.js:223
+msgid "Key"
+msgstr "کلید"
+
+#: js/ui/components/networkAgent.js:274 js/ui/components/networkAgent.js:313
+msgid "Private key password"
+msgstr "گذرواژهٔ کلید خصوصی"
+
+#: js/ui/components/networkAgent.js:307
+msgid "Identity"
+msgstr "شناسه"
+
+#: js/ui/components/networkAgent.js:333
+msgid "Service"
+msgstr "خدمت"
+
+#: js/ui/components/networkAgent.js:371 js/ui/components/networkAgent.js:407
+#: js/ui/components/networkAgent.js:744 js/ui/components/networkAgent.js:765
+msgid "Authentication required"
+msgstr "نیاز به تأیید هویت است"
+
+#: js/ui/components/networkAgent.js:372 js/ui/components/networkAgent.js:745
+#, javascript-format
+msgid "Passwords or encryption keys are required to access the wireless network “%s”"
+msgstr "برای دسترسی به شبکهٔ بی‌سیم «%s» نیاز به گذرواژه یا کلیدهای رمزنگاری است"
+
+#: js/ui/components/networkAgent.js:376 js/ui/components/networkAgent.js:749
+msgid "Wired 802.1X authentication"
+msgstr "تأیید هویت 802.1X سیمی"
+
+#: js/ui/components/networkAgent.js:379
+msgid "Network name"
+msgstr "نام شبکه"
+
+#: js/ui/components/networkAgent.js:387 js/ui/components/networkAgent.js:753
+msgid "DSL authentication"
+msgstr "تأیید هویت DSL"
+
+#: js/ui/components/networkAgent.js:394 js/ui/components/networkAgent.js:758
+msgid "PIN code required"
+msgstr "رمز پین لازم است"
+
+#: js/ui/components/networkAgent.js:395 js/ui/components/networkAgent.js:759
+msgid "PIN code is needed for the mobile broadband device"
+msgstr "رمز پین برای دستگاه پهن‌باند همراه لازم است"
+
+#: js/ui/components/networkAgent.js:397
+msgid "PIN"
+msgstr "پین"
+
+#: js/ui/components/networkAgent.js:408 js/ui/components/networkAgent.js:750
+#: js/ui/components/networkAgent.js:754 js/ui/components/networkAgent.js:766
+#: js/ui/components/networkAgent.js:770
+#, javascript-format
+msgid "A password is required to connect to “%s”"
+msgstr "برای وصل شدن به «%s» نیاز به گذرواژه است"
+
+#: js/ui/components/networkAgent.js:769
+msgid "VPN password"
+msgstr "گذرواژهٔ وی‌پی‌ان"
+
+#: js/ui/components/polkitAgent.js:44
+msgid "Authentication Required"
+msgstr "تأیید هویت لازم است"
+
+#: js/ui/components/polkitAgent.js:84
+msgid "Administrator"
+msgstr "مدیر"
+
+#: js/ui/components/polkitAgent.js:149
+msgid "Authenticate"
+msgstr "تأیید هویت"
+
+#. Translators: "that didn't work" refers to the fact that the
+#. * requested authentication was not gained; this can happen
+#. * because of an authentication error (like invalid password),
+#. * for instance.
+#: js/ui/components/polkitAgent.js:263 js/ui/shellMountOperation.js:415
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "متاسفانه اثری نداشت! لطفاً دوباره تلاش کنید."
+
+#: js/ui/ctrlAltTab.js:23 js/ui/overviewControls.js:407
+msgid "Windows"
+msgstr "پنجره‌‌ها"
+
+#: js/ui/dash.js:201 js/ui/dash.js:247
+msgid "Show Apps"
+msgstr "نمایش کاره‌ها"
+
+#. Translators: this is the name of the dock/favorites area on
+#. the bottom of the overview
+#: js/ui/dash.js:405
+msgid "Dash"
+msgstr "دَش"
+
+#. Translators: This is the date format to use when the calendar popup is
+#. * shown - it is shown just below the time in the top bar (e.g.,
+#. * "Tue 9:29 AM").  The string itself should become a full date, e.g.,
+#. * "February 17 2015".
+#.
+#: js/ui/dateMenu.js:99
+msgid "%B %-d %Y"
+msgstr "%-Od %OB %OY"
+
+#. Translators: This is the accessible name of the date button shown
+#. * below the time in the shell; it should combine the weekday and the
+#. * date, e.g. "Tuesday February 17 2015".
+#.
+#: js/ui/dateMenu.js:106
+msgid "%A %B %e %Y"
+msgstr "%A %Od %OB %OY"
+
+#. Translators: Shown on calendar heading when selected day occurs on current year
+#: js/ui/dateMenu.js:173
+msgctxt "calendar heading"
+msgid "%B %-d"
+msgstr "%-Od %OB"
+
+#. Translators: Shown on calendar heading when selected day occurs on different year
+#: js/ui/dateMenu.js:176
+msgctxt "calendar heading"
+msgid "%B %-d %Y"
+msgstr "%-Od %OB %OY"
+
+#: js/ui/dateMenu.js:182
+msgid "Today"
+msgstr "امروز"
+
+#: js/ui/dateMenu.js:186
+msgid "Tomorrow"
+msgstr "فردا"
+
+#. Translators: Shown in calendar event list for all day events
+#. * Keep it short, best if you can use less then 10 characters
+#.
+#: js/ui/dateMenu.js:217
+msgctxt "event list time"
+msgid "All Day"
+msgstr "تمام روز"
+
+#. Translators: Shown in calendar event list as the start/end of events
+#. * that only show day and month
+#.
+#: js/ui/dateMenu.js:239
+msgid "%m/%d"
+msgstr "%m/%d"
+
+#: js/ui/dateMenu.js:290
+msgid "No Events"
+msgstr "بدون رویداد"
+
+#: js/ui/dateMenu.js:412
+msgid "Add World Clocks…"
+msgstr "افزودن ساعت‌های جهانی…"
+
+#: js/ui/dateMenu.js:413
+msgid "World Clocks"
+msgstr "ساعت‌های جهانی"
+
+#: js/ui/dateMenu.js:704
+msgid "Loading…"
+msgstr "درحال بار کردن…"
+
+#: js/ui/dateMenu.js:714
+msgid "Go Online for Weather Information"
+msgstr "برای اطّلاعات آب‌وهوا برخط شوید"
+
+#: js/ui/dateMenu.js:716
+msgid "Weather Information Unavailable"
+msgstr "اطّلاعات آب‌وهوا ناموجود"
+
+#: js/ui/dateMenu.js:726
+msgid "Weather"
+msgstr "آب‌وهوا"
+
+#: js/ui/dateMenu.js:728
+msgid "Select Weather Location…"
+msgstr "گزینش مکان آب‌وهوا…"
+
+#: js/ui/endSessionDialog.js:46
+#, javascript-format
+msgctxt "title"
+msgid "Log Out %s"
+msgstr "خروج از %s"
+
+#: js/ui/endSessionDialog.js:47
+msgctxt "title"
+msgid "Log Out"
+msgstr "خروج"
+
+#: js/ui/endSessionDialog.js:50
+#, javascript-format
+msgid "%s will be logged out automatically in %d second"
+msgid_plural "%s will be logged out automatically in %d seconds"
+msgstr[0] "%s پس از %Id ثانیه به طور خودکار از سامانه خارج خواهد شد"
+msgstr[1] "%s پس از %Id ثانیه به طور خودکار از سامانه خارج خواهد شد"
+
+#: js/ui/endSessionDialog.js:56
+#, javascript-format
+msgid "You will be logged out automatically in %d second"
+msgid_plural "You will be logged out automatically in %d seconds"
+msgstr[0] "پس از %Id ثانیه به طور خودکار از سامانه خارج می‌شوید"
+msgstr[1] "پس از %Id ثانیه به طور خودکار از سامانه خارج می‌شوید"
+
+#: js/ui/endSessionDialog.js:63
+msgctxt "button"
+msgid "Log Out"
+msgstr "خروج"
+
+#: js/ui/endSessionDialog.js:69 js/ui/status/system.js:181
+msgctxt "title"
+msgid "Power Off"
+msgstr "خاموش کردن"
+
+#: js/ui/endSessionDialog.js:70
+msgctxt "title"
+msgid "Install Updates & Power Off"
+msgstr "نصب به‌روز رسانی‌ها و خاموش کردن"
+
+#: js/ui/endSessionDialog.js:73
+#, javascript-format
+msgid "The system will power off automatically in %d second"
+msgid_plural "The system will power off automatically in %d seconds"
+msgstr[0] "سامانه پس از %Id ثانیه به طور خودکار خاموش می‌شود"
+msgstr[1] "سامانه پس از %Id ثانیه به طور خودکار خاموش می‌شود"
+
+#: js/ui/endSessionDialog.js:77 js/ui/endSessionDialog.js:96
+msgctxt "checkbox"
+msgid "Install pending software updates"
+msgstr "نصب به‌روز رسانی‌های منتظر"
+
+#: js/ui/endSessionDialog.js:81
+msgctxt "button"
+msgid "Power Off"
+msgstr "خاموش کردن"
+
+#: js/ui/endSessionDialog.js:88
+msgctxt "title"
+msgid "Restart"
+msgstr "راه‌اندازی دوباره"
+
+#: js/ui/endSessionDialog.js:89
+msgctxt "title"
+msgid "Install Updates & Restart"
+msgstr "نصب به‌روز رسانی‌ها و راه‌اندازی دوباره"
+
+#: js/ui/endSessionDialog.js:92
+#, javascript-format
+msgid "The system will restart automatically in %d second"
+msgid_plural "The system will restart automatically in %d seconds"
+msgstr[0] "سامانه پس از %Id ثانیه به طور خودکار دوباره راه‌اندازی می‌شود"
+msgstr[1] "سامانه پس از %Id ثانیه به طور خودکار دوباره راه‌اندازی می‌شود"
+
+#: js/ui/endSessionDialog.js:100
+msgctxt "button"
+msgid "Restart"
+msgstr "راه‌اندازی دوباره"
+
+#: js/ui/endSessionDialog.js:108
+msgctxt "title"
+msgid "Restart & Install Updates"
+msgstr "راه‌اندازی دوباره و نصب به‌روز رسانی‌ها"
+
+#: js/ui/endSessionDialog.js:111
+#, javascript-format
+msgid "The system will automatically restart and install updates in %d second"
+msgid_plural "The system will automatically restart and install updates in %d seconds"
+msgstr[0] ""
+"سامانه پس از %Id ثانیه به طور خودکار دوباره راه‌اندازی شده و به‌روز رسانی‌ها را نصب "
+"می‌کند"
+msgstr[1] ""
+"سامانه پس از %Id ثانیه به طور خودکار دوباره راه‌اندازی شده و به‌روز رسانی‌ها را نصب "
+"می‌کند"
+
+#: js/ui/endSessionDialog.js:118
+msgctxt "button"
+msgid "Restart & Install"
+msgstr "راه‌اندازی دوباره و نصب"
+
+#: js/ui/endSessionDialog.js:120
+msgctxt "button"
+msgid "Install & Power Off"
+msgstr "نصب و خاموش کردن"
+
+#: js/ui/endSessionDialog.js:121
+msgctxt "checkbox"
+msgid "Power off after updates are installed"
+msgstr "خاموش کردن پس از نصب به‌روز رسانی‌ها"
+
+#: js/ui/endSessionDialog.js:262
+msgid "Low battery power: please plug in before installing updates"
+msgstr "باتری کم است: لطفاً پیش از نصب به‌روز رسانی‌ها به برق بزنید"
+
+#: js/ui/endSessionDialog.js:271
+msgid "Some applications are busy or have unsaved work"
+msgstr "برخی برنامه‌ها مشغول بوده یا کار ذخیره نشده دارند"
+
+#: js/ui/endSessionDialog.js:276
+msgid "Other users are logged in"
+msgstr "کاربران دیگری وارد شده هستند"
+
+#: js/ui/endSessionDialog.js:431
+msgctxt "button"
+msgid "Boot Options"
+msgstr "گزینه‌های راه‌اندازی"
+
+#. Translators: Remote here refers to a remote session, like a ssh login
+#: js/ui/endSessionDialog.js:635
+#, javascript-format
+msgid "%s (remote)"
+msgstr "%s (دوردست)"
+
+#. Translators: Console here refers to a tty like a VT console
+#: js/ui/endSessionDialog.js:638
+#, javascript-format
+msgid "%s (console)"
+msgstr "%s (پایانه)"
+
+#: js/ui/extensionDownloader.js:280
+msgid "Install"
+msgstr "نصب"
+
+#: js/ui/extensionDownloader.js:286
+msgid "Install Extension"
+msgstr "نصب افزونه"
+
+#: js/ui/extensionDownloader.js:287
+#, javascript-format
+msgid "Download and install “%s” from extensions.gnome.org?"
+msgstr "بارگیری و نصب «%s» از extensions.gnome.org؟"
+
+#: js/ui/extensionSystem.js:353
+msgid "Extension Updates Available"
+msgstr "به‌روز رسانی‌های افزونه موجودند"
+
+#: js/ui/extensionSystem.js:354
+msgid "Extension updates are ready to be installed"
+msgstr "به‌روز رسانی‌های افزونه‌ها آمادهٔ نصبند"
+
+#: js/ui/inhibitShortcutsDialog.js:70
+msgid "Allow inhibiting shortcuts"
+msgstr "اجازه به جلوگیری از میان‌بر ها"
+
+#. Translators: %s is an application name like "Settings"
+#: js/ui/inhibitShortcutsDialog.js:73
+#, javascript-format
+msgid "The app %s wants to inhibit shortcuts"
+msgstr "کارهٔ %s می‌خواهد جلوی میان‌برها را بگیرد"
+
+#: js/ui/inhibitShortcutsDialog.js:74
+msgid "An app wants to inhibit shortcuts"
+msgstr "کاره‌ای می‌خواهد جلوی میان‌برها را بگیرد"
+
+#. Translators: %s is a keyboard shortcut like "Super+x"
+#: js/ui/inhibitShortcutsDialog.js:81
+#, javascript-format
+msgid "You can restore shortcuts by pressing %s"
+msgstr "می‌توانید با زدن %s میان‌برها را برگردانید"
+
+#: js/ui/kbdA11yDialog.js:34
+msgid "Slow Keys Turned On"
+msgstr "کلیدهای آهسته روشن شدند"
+
+#: js/ui/kbdA11yDialog.js:35
+msgid "Slow Keys Turned Off"
+msgstr "کلیدهای آهسته خاموش شدند"
+
+#: js/ui/kbdA11yDialog.js:36
+msgid ""
+"You just held down the Shift key for 8 seconds. This is the shortcut for the Slow "
+"Keys feature, which affects the way your keyboard works."
+msgstr ""
+"دکمهٔ تبدیل را ۸ ثانیه نگه داشتید. این میان‌بری برای ویژگی دکمه‌های آهسته است که بر "
+"نحوهٔ کار صفحه‌کلیدتان اثر می‌گذارد."
+
+#: js/ui/kbdA11yDialog.js:42
+msgid "Sticky Keys Turned On"
+msgstr "کلیدهای چسبان روشن شدند"
+
+#: js/ui/kbdA11yDialog.js:43
+msgid "Sticky Keys Turned Off"
+msgstr "کلیدهای چسبان خاموش شدند"
+
+#: js/ui/kbdA11yDialog.js:45
+msgid ""
+"You just pressed the Shift key 5 times in a row. This is the shortcut for the "
+"Sticky Keys feature, which affects the way your keyboard works."
+msgstr ""
+"کلید تبدیل را ۵ بار پشت سر هم زدید. این میان‌بری برای ویژگی کلید‌های چسبان است که بر "
+"نحوهٔ کار صفحه‌کلیدتان اثر می‌گذارد."
+
+#: js/ui/kbdA11yDialog.js:47
+msgid ""
+"You just pressed two keys at once, or pressed the Shift key 5 times in a row. This "
+"turns off the Sticky Keys feature, which affects the way your keyboard works."
+msgstr ""
+"دو کلید را هم‌زمان فشرده یا کلید تبدیل را ۵ بار پشت سر هم زدید. این میان‌بری برای "
+"ویژگی کلید‌های چسبان است که بر نحوهٔ کار صفحه‌کلیدتان اثر می‌گذارد."
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Leave On"
+msgstr "روشن گذاشتن"
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Turn On"
+msgstr "روشن کردن"
+
+#: js/ui/kbdA11yDialog.js:67 js/ui/status/network.js:455
+msgid "Turn Off"
+msgstr "خاموش کردن"
+
+#: js/ui/kbdA11yDialog.js:67
+msgid "Leave Off"
+msgstr "خاموش گذاشتن"
+
+#: js/ui/keyboard.js:179 js/ui/status/keyboard.js:888
+msgid "Keyboard Settings"
+msgstr "تنظیمات صفحه‌کلید"
+
+#: js/ui/lookingGlass.js:737
+msgid "No extensions installed"
+msgstr "هیچ افزونه‌ای نصب نشده است"
+
+#. Translators: argument is an extension UUID.
+#: js/ui/lookingGlass.js:800
+#, javascript-format
+msgid "%s has not emitted any errors"
+msgstr "افزونهٔ %s هیچ خطایی منتشر نکرده"
+
+#: js/ui/lookingGlass.js:806
+msgid "Hide Errors"
+msgstr "نهفتن خطاها"
+
+#: js/ui/lookingGlass.js:810 js/ui/lookingGlass.js:890
+msgid "Show Errors"
+msgstr "نمایش خطاها"
+
+#: js/ui/lookingGlass.js:819
+msgid "Active"
+msgstr "فعّال"
+
+#: js/ui/lookingGlass.js:822
+msgid "Inactive"
+msgstr "غیرفعال"
+
+#: js/ui/lookingGlass.js:824
+msgid "Error"
+msgstr "خطا"
+
+#: js/ui/lookingGlass.js:826
+msgid "Out of date"
+msgstr "قدیمی"
+
+#: js/ui/lookingGlass.js:828
+msgid "Downloading"
+msgstr "درحال بارگیری"
+
+#: js/ui/lookingGlass.js:830
+msgid "Deactivating"
+msgstr "غیرفعّال کردن"
+
+#: js/ui/lookingGlass.js:832
+msgid "Activating"
+msgstr "فعّال کردن"
+
+#: js/ui/lookingGlass.js:868
+msgid "View Source"
+msgstr "نمایش منبع"
+
+#: js/ui/lookingGlass.js:879
+msgid "Web Page"
+msgstr "صفحهٔ وب"
+
+#: js/ui/main.js:300
+msgid "System was put in unsafe mode"
+msgstr "سامانه در حالت ناامن گذاشته شده بود"
+
+#: js/ui/main.js:301
+msgid "Apps now have unrestricted access"
+msgstr "کاره اکنون دسترسی نامحدود دارد"
+
+#: js/ui/main.js:362
+msgid "Logged in as a privileged user"
+msgstr "واردشده به عنوان کاربری ممتاز"
+
+#: js/ui/main.js:363
+msgid ""
+"Running a session as a privileged user should be avoided for security reasons. If "
+"possible, you should log in as a normal user."
+msgstr ""
+"به دلایل امنیتی باید از اجرای یک نشست به عنوان کاربری ممتاز خودداری کرد. در صورت "
+"امکان، با کاربری عادی وارد شوید."
+
+#: js/ui/main.js:409
+msgid "Screen Lock disabled"
+msgstr "قفل صفحه از کار افتاده"
+
+#: js/ui/main.js:410
+msgid "Screen Locking requires the GNOME display manager"
+msgstr "قفل کردن صفحه نیاز به مدیر نمایش گنوم دارد"
+
+#. Translators: this is the string displayed in the header when a message
+#. source doesn't have a name
+#: js/ui/messageList.js:403
+msgid "Unknown App"
+msgstr "کارهٔ ناشناخته"
+
+#: js/ui/messageTray.js:325 js/ui/messageTray.js:327
+msgid "Notification sound"
+msgstr "صدای آگاهی"
+
+#: js/ui/mpris.js:144
+msgid "Unknown artist"
+msgstr "هنرمند ناشناس"
+
+#: js/ui/mpris.js:154
+msgid "Unknown title"
+msgstr "عنوان ناشناس"
+
+#. Translators: this is the text displayed
+#. in the search entry when no search is
+#. active; it should not exceed ~30
+#. characters.
+#: js/ui/overviewControls.js:330
+msgid "Type to search"
+msgstr "نوشتن برای جست‌وجو"
+
+#: js/ui/overviewControls.js:395
+msgid "Apps"
+msgstr "کاره‌ها"
+
+#. Translators: This is the main view to select
+#. activities. See also note for "Activities" string.
+#: js/ui/overview.js:33
+msgid "Overview"
+msgstr "نمای کلّی"
+
+#: js/ui/padOsd.js:98
+msgid "New shortcut…"
+msgstr "میان‌بر جدید…"
+
+#: js/ui/padOsd.js:151
+msgid "App defined"
+msgstr "تعریف شده در کاره"
+
+#: js/ui/padOsd.js:152
+msgid "Show on-screen help"
+msgstr "نمایش راهنمای روی صفحه"
+
+#: js/ui/padOsd.js:153
+msgid "Switch monitor"
+msgstr "تعویض نمایشگر"
+
+#: js/ui/padOsd.js:154
+msgid "Assign keystroke"
+msgstr "تخصیص دنبالهٔ کلید"
+
+#: js/ui/padOsd.js:223
+msgid "Done"
+msgstr "انجام شد"
+
+#: js/ui/padOsd.js:743
+msgid "Edit…"
+msgstr "ویرایش…"
+
+#: js/ui/padOsd.js:791
+msgid "None"
+msgstr "هیچ‌کدام"
+
+#: js/ui/padOsd.js:868
+msgid "Press a button to configure"
+msgstr "برای پیکربندی، کلیدی را بزنید"
+
+#: js/ui/padOsd.js:869
+msgid "Press Esc to exit"
+msgstr "برای خروج، گریز را بزنید"
+
+#: js/ui/padOsd.js:872
+msgid "Press any key to exit"
+msgstr "برای خروج، هر کلیدی را بزنید"
+
+#. Translators: If there is no suitable word for "Activities"
+#. in your language, you can use the word for "Overview".
+#: js/ui/panel.js:208
+msgid "Activities"
+msgstr "فعّالیت‌ها"
+
+#: js/ui/panel.js:289
+msgctxt "System menu in the top bar"
+msgid "System"
+msgstr "سامانه"
+
+#: js/ui/panel.js:470
+msgid "Top Bar"
+msgstr "نوار بالا"
+
+#: js/ui/quickSettings.js:164 js/ui/quickSettings.js:263
+msgid "Open menu"
+msgstr "گشودن فهرست"
+
+#: js/ui/runDialog.js:61
+msgid "Run a Command"
+msgstr "اجرای یک فرمان"
+
+#: js/ui/runDialog.js:79
+msgid "Press ESC to close"
+msgstr "برای بستن، گریز را بزنید"
+
+#: js/ui/screenShield.js:220
+msgid "GNOME needs to lock the screen"
+msgstr "لازم است گنوم صفحه را قفل کند"
+
+#. Translators: notification source name for screenshots and recordings.
+#: js/ui/screenshot.js:40
+msgid "Screen Capture"
+msgstr "ضبط صفحه"
+
+#: js/ui/screenshot.js:1267
+msgid "Selection"
+msgstr "گزینش"
+
+#: js/ui/screenshot.js:1277
+msgid "Area Selection"
+msgstr "گزینش ناحیه"
+
+#: js/ui/screenshot.js:1282
+msgid "Screen"
+msgstr "صفحه"
+
+#: js/ui/screenshot.js:1292
+msgid "Screen Selection"
+msgstr "گزینش صفحه"
+
+#: js/ui/screenshot.js:1297
+msgid "Window"
+msgstr "پنجره‌"
+
+#: js/ui/screenshot.js:1307
+msgid "Window Selection"
+msgstr "گزینش پنجره"
+
+#: js/ui/screenshot.js:1332 js/ui/status/system.js:118
+msgid "Take Screenshot"
+msgstr "گرفتن نماگرفت"
+
+#: js/ui/screenshot.js:1348
+msgid "Record Screen"
+msgstr "ضبط صفحه"
+
+#. Translators: since this string refers to an action,
+#. it needs to be phrased as a verb.
+#: js/ui/screenshot.js:1365
+msgid "Capture"
+msgstr "ضبط"
+
+#: js/ui/screenshot.js:1387
+msgid "Show Pointer"
+msgstr "نمایش اشاره‌گر"
+
+#. Translators: this is the folder where recorded
+#. screencasts are stored.
+#: js/ui/screenshot.js:2020
+msgid "Screencasts"
+msgstr "ضبط‌های صفحه"
+
+#. Translators: this is a filename used for screencast
+#. * recording, where "%d" and "%t" date and time, e.g.
+#. * "Screencast From 07-17-2013 10:00:46 PM"
+#: js/ui/screenshot.js:2025
+#, no-c-format
+msgid "Screencast From %d %t"
+msgstr "ضبط صفحه از %Id %t"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2071
+msgid "Screencast recorded"
+msgstr "صفحه ضبط شد"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2084
+msgid "Screencast failed to start"
+msgstr "آغاز ضبط صفحه شکست خورد"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2090
+msgid "Screencast ended: Out of disk space"
+msgstr "صفحه ضبط پایان یافت: بدون فضای دیسک"
+
+#. We can encourage user to try again on service crashes since the
+#. recorder will auto-blocklist the pipeline that crashed.
+#. Translators: notification title.
+#: js/ui/screenshot.js:2096
+msgid "Screencast ended unexpectedly, please try again"
+msgstr "صفحه ضبط به طور غیرمنتظره‌ای پایان یافت. لطفاً دوباره تلاش کنید"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2099
+msgid "Screencast ended unexpectedly"
+msgstr "صفحه ضبط به طور غیرمنتظره‌ای پایان یافت"
+
+#. Translators: notification body when a screencast was recorded.
+#: js/ui/screenshot.js:2112
+msgid "Click here to view the video"
+msgstr "زدن برای دیدن ویدیو"
+
+#. Translators: button on the screencast notification.
+#. Translators: button on the screenshot notification.
+#: js/ui/screenshot.js:2120 js/ui/screenshot.js:2363
+msgid "Show in Files"
+msgstr "نمایش در پرونده‌ها"
+
+#. Translators: this is the name of the file that the screenshot is
+#. saved to. The placeholder is a timestamp, e.g. "2017-05-21 12-24-03".
+#: js/ui/screenshot.js:2309
+#, javascript-format
+msgid "Screenshot From %s"
+msgstr "نماگرفت از %s"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2353
+msgid "Screenshot captured"
+msgstr "نماگرفت ضبط شد"
+
+#. Translators: notification body when a screenshot was captured.
+#: js/ui/screenshot.js:2355
+msgid "You can paste the image from the clipboard"
+msgstr "می‌توانید تصویر را از تخته‌گیره بچسبانید"
+
+#: js/ui/screenshot.js:2413 js/ui/screenshot.js:2575
+msgid "Screenshot taken"
+msgstr "نماگرفت انجام شد"
+
+#: js/ui/search.js:846
+msgid "Searching"
+msgstr "جست‌وجو کردن"
+
+#: js/ui/search.js:849
+msgid "No results"
+msgstr "بدون نتیجه"
+
+#: js/ui/search.js:984
+#, javascript-format
+msgid "%d more"
+msgid_plural "%d more"
+msgstr[0] "‫%Id بیش‌تر"
+msgstr[1] "‫%Id بیش‌تر"
+
+#: js/ui/searchController.js:86
+#: subprojects/extensions-app/data/ui/extensions-window.ui:73
+msgid "Search"
+msgstr "جست‌وجو"
+
+#: js/ui/shellEntry.js:22
+msgid "Copy"
+msgstr "رونوشت"
+
+#: js/ui/shellEntry.js:27
+msgid "Paste"
+msgstr "جای‌گذاری"
+
+#: js/ui/shellEntry.js:79
+msgid "Show Text"
+msgstr "نمایش متن"
+
+#: js/ui/shellEntry.js:81
+msgid "Hide Text"
+msgstr "نهفتن متن"
+
+#: js/ui/shellEntry.js:170
+msgid "Caps lock is on"
+msgstr "قفل تبدیل روشن است"
+
+#: js/ui/shellMountOperation.js:286
+msgid "Hidden Volume"
+msgstr "حجم مخفی"
+
+#: js/ui/shellMountOperation.js:289
+msgid "Windows System Volume"
+msgstr "حجم سامانه‌ای ویندوز"
+
+#: js/ui/shellMountOperation.js:292
+msgid "Uses Keyfiles"
+msgstr "از پرونده‌های کلید استفاده می‌کند"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:300
+#, javascript-format
+msgid "To unlock a volume that uses keyfiles, use the <i>%s</i> utility instead"
+msgstr ""
+"استفاده از ابزار <i>%s</i> برای قفل‌گشایی حجمی که از پرونده‌های کلید استفاده می‌کند"
+
+#: js/ui/shellMountOperation.js:304
+msgid ""
+"You need an external utility like <i>Disks</i> to unlock a volume that uses keyfiles"
+msgstr ""
+"برای قفل‌گشایی از حجمی که از پرونده‌های کلید استفاده می‌کند نیاز به ابزاری خارجی چون "
+"<i>دیسک‌ها</i> دارید"
+
+#: js/ui/shellMountOperation.js:312
+msgid "PIM Number"
+msgstr "شمارهٔ PIM"
+
+#: js/ui/shellMountOperation.js:371
+msgid "Remember Password"
+msgstr "به‌خاطر سپردن گذرواژه"
+
+#: js/ui/shellMountOperation.js:386
+msgid "Unlock"
+msgstr "قفل‌گشایی"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:400
+#, javascript-format
+msgid "Open %s"
+msgstr "گشودن %s"
+
+#: js/ui/shellMountOperation.js:436
+msgid "The PIM must be a number or empty"
+msgstr "PIM باید یک شماره یا خالی باشد"
+
+#: js/ui/status/accessibility.js:45 js/ui/status/accessibility.js:153
+msgid "High Contrast"
+msgstr "کنتراست بالا"
+
+#: js/ui/status/accessibility.js:48 js/ui/status/accessibility.js:169
+msgid "Zoom"
+msgstr "بزرگنمایی"
+
+#: js/ui/status/accessibility.js:55 js/ui/status/accessibility.js:221
+msgid "Screen Reader"
+msgstr "صفحه‌نمایش خوان"
+
+#: js/ui/status/accessibility.js:59 js/ui/status/accessibility.js:237
+msgid "Screen Keyboard"
+msgstr "صفحه‌کلید مجازی"
+
+#: js/ui/status/accessibility.js:63 js/ui/status/accessibility.js:253
+msgid "Visual Alerts"
+msgstr "هشدارهای نمایشی"
+
+#: js/ui/status/accessibility.js:67 js/ui/status/accessibility.js:269
+msgid "Sticky Keys"
+msgstr "کلیدهای چسبان"
+
+#: js/ui/status/accessibility.js:71 js/ui/status/accessibility.js:285
+msgid "Slow Keys"
+msgstr "کلیدهای آهسته"
+
+#: js/ui/status/accessibility.js:75 js/ui/status/accessibility.js:301
+msgid "Bounce Keys"
+msgstr "کلیدهای پرشی"
+
+#: js/ui/status/accessibility.js:79 js/ui/status/accessibility.js:317
+msgid "Mouse Keys"
+msgstr "کلیدهای موشی"
+
+#: js/ui/status/accessibility.js:84
+msgid "Accessibility Settings"
+msgstr "تنظیمات دسترسی‌پذیری"
+
+#: js/ui/status/accessibility.js:122 js/ui/status/accessibility.js:185
+msgid "Large Text"
+msgstr "متن درشت"
+
+#: js/ui/status/autoRotate.js:14
+msgid "Auto Rotate"
+msgstr "چرخاندن خودکار"
+
+#: js/ui/status/backgroundApps.js:155
+msgctxt "title"
+msgid "Background Apps"
+msgstr "کاره‌های پس‌زمینه"
+
+#: js/ui/status/backgroundApps.js:170
+msgid "Apps known to be running without a window"
+msgstr "کاره‌های شناخته برای اجرای بدون پنجره"
+
+#: js/ui/status/backgroundApps.js:181
+msgid "App Settings"
+msgstr "تنظیمات کاره"
+
+#: js/ui/status/backgroundApps.js:238
+msgid "No Background Apps"
+msgstr "بدون کارهٔ پس‌زمینه"
+
+#: js/ui/status/backgroundApps.js:240
+#, javascript-format
+msgid "%d Background App"
+msgid_plural "%d Background Apps"
+msgstr[0] "‫%Id کارهٔ پس‌زمینه"
+msgstr[1] "‫%Id کارهٔ پس‌زمینه"
+
+#: js/ui/status/backlight.js:39
+msgid "Keyboard Brightness"
+msgstr "روشنایی صفحه‌کلید"
+
+#: js/ui/status/backlight.js:87
+msgid "Off"
+msgstr "خاموش"
+
+#: js/ui/status/backlight.js:88
+msgid "Low"
+msgstr "کم"
+
+#: js/ui/status/backlight.js:89
+msgid "High"
+msgstr "زیاد"
+
+#: js/ui/status/backlight.js:162 js/ui/status/keyboard.js:870
+msgid "Keyboard"
+msgstr "صفحه‌کلید"
+
+#: js/ui/status/backlight.js:164
+msgid "Open keyboard brightness menu"
+msgstr "گشودن فهرست روشنایی صفحه‌کلید"
+
+#: js/ui/status/bluetooth.js:245 js/ui/status/network.js:360
+msgid "Disconnect"
+msgstr "قطع ارتباط"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:266 js/ui/status/network.js:354
+#, javascript-format
+msgid "Disconnect %s"
+msgstr "قطع شدن از %s"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:268 js/ui/status/network.js:356
+#, javascript-format
+msgid "Connect to %s"
+msgstr "وصل شدن به %s"
+
+#: js/ui/status/bluetooth.js:276 js/ui/status/bluetooth.js:280
+msgid "Bluetooth"
+msgstr "بلوتوث"
+
+#: js/ui/status/bluetooth.js:277
+msgid "Open Bluetooth menu"
+msgstr "گشودن فهرست بلوتوث"
+
+#: js/ui/status/bluetooth.js:303 js/ui/status/network.js:1925
+msgid "Bluetooth Settings"
+msgstr "تنظیمات بلوتوث"
+
+#: js/ui/status/bluetooth.js:350
+msgid "No available or connected devices"
+msgstr "بدون افزارهٔ وصل شده یا موجود"
+
+#: js/ui/status/bluetooth.js:351
+msgid "Turn on Bluetooth to connect to devices"
+msgstr "برای وصل شدن به افزاره‌ها بلوتوث را روشن کنید"
+
+#. Translators: This is the number of connected bluetooth devices
+#: js/ui/status/bluetooth.js:415
+#, javascript-format
+msgid "%d Connected"
+msgid_plural "%d Connected"
+msgstr[0] "‫%Id وصل‌شده"
+msgstr[1] "‫%Id وصل‌شده"
+
+#: js/ui/status/brightness.js:42
+msgid "Open brightness menu"
+msgstr "گشودن فهرست روشنایی"
+
+#: js/ui/status/darkMode.js:12
+msgid "Dark Style"
+msgstr "سبک تیره"
+
+#: js/ui/status/doNotDisturb.js:10
+msgid "Do Not Disturb"
+msgstr "مزاحم نشوید"
+
+#: js/ui/status/dwellClick.js:14
+msgid "Single Click"
+msgstr "تک کلیک"
+
+#: js/ui/status/dwellClick.js:19
+msgid "Double Click"
+msgstr "دوبار کلیک"
+
+#: js/ui/status/dwellClick.js:24
+msgid "Drag"
+msgstr "کشیدن"
+
+#: js/ui/status/dwellClick.js:29
+msgid "Secondary Click"
+msgstr "کلیک دوم"
+
+#: js/ui/status/dwellClick.js:38
+msgid "Dwell Click"
+msgstr "کلیک طولانی"
+
+#: js/ui/status/keyboard.js:887
+msgid "Show Keyboard Layout"
+msgstr "نمایش چیدمان صفحه‌کلید"
+
+#: js/ui/status/location.js:337
+msgid "Allow location access"
+msgstr "اجازهٔ دسترسی به مکان"
+
+#. Translators: %s is an application name
+#: js/ui/status/location.js:339
+#, javascript-format
+msgid "The app %s wants to access your location"
+msgstr "برنامهٔ %s می‌خواهد به مکانتان دسترسی داشته باشد"
+
+#: js/ui/status/location.js:349
+msgid "Location access can be changed at any time from the privacy settings"
+msgstr "دسترسی به مکان در هر زمانی می‌تواند از طریق تنظیمات حریم‌خصوصی تغییر کند"
+
+#: js/ui/status/location.js:357
+msgid "Deny Access"
+msgstr "رد دسترسی"
+
+#: js/ui/status/location.js:362
+msgid "Grant Access"
+msgstr "پذیرفتن دسترسی"
+
+#: js/ui/status/network.js:62
+msgid "<unknown>"
+msgstr "<ناشناخته>"
+
+#: js/ui/status/network.js:1060
+msgid "Secure"
+msgstr "امن"
+
+#: js/ui/status/network.js:1060
+msgid "Not secure"
+msgstr "ناامن"
+
+#: js/ui/status/network.js:1061
+#, javascript-format
+msgid "Signal strength %s%%"
+msgstr "قدرت سیگنال %s٪"
+
+#. translators: The first placeholder is the network name, the second and indication whether it is secure, and the last the signal strength indication
+#: js/ui/status/network.js:1063
+#, javascript-format
+msgid "%s, %s, %s"
+msgstr "%s، %s، %s"
+
+#. Translators: %s is a network identifier
+#: js/ui/status/network.js:1166
+#, javascript-format
+msgid "%s Hotspot"
+msgstr "نقطهٔ داغ %s"
+
+#: js/ui/status/network.js:1447
+#, javascript-format
+msgid "%d connected"
+msgid_plural "%d connected"
+msgstr[0] "‫%Id وصل‌شده"
+msgstr[1] "‫%Id وصل‌شده"
+
+#: js/ui/status/network.js:1545 js/ui/status/network.js:1562
+msgid "VPN"
+msgstr "وی‌پی‌ان"
+
+#: js/ui/status/network.js:1546
+msgid "Open VPN menu"
+msgstr "گشودن فهرست وی‌پی‌ان"
+
+#: js/ui/status/network.js:1547
+msgid "VPN Settings"
+msgstr "تنظیمات وی‌پی‌ان"
+
+#: js/ui/status/network.js:1807
+msgid "Wi–Fi"
+msgstr "وای‌فای"
+
+#: js/ui/status/network.js:1808
+msgid "Open Wi–Fi menu"
+msgstr "گشودن فهرست وای‌فای"
+
+#: js/ui/status/network.js:1810
+msgid "All Networks"
+msgstr "تمامی شبکه‌ها"
+
+#: js/ui/status/network.js:1907
+msgid "Wired Connections"
+msgstr "اتّصال‌های سیمی"
+
+#: js/ui/status/network.js:1908
+msgid "Open wired connections menu"
+msgstr "گشودن فهرست اتّصال‌های سیمی"
+
+#: js/ui/status/network.js:1909
+msgid "Wired Settings"
+msgstr "تنظیمات اتّصال سیمی"
+
+#: js/ui/status/network.js:1923
+msgid "Bluetooth Tethers"
+msgstr "چتر‌های بلوتوثی"
+
+#: js/ui/status/network.js:1924
+msgid "Open Bluetooth tethers menu"
+msgstr "گشودن فهرست چتر‌های بلوتوثی"
+
+#. Translators: "Tether" from "Bluetooth Tether"
+#: js/ui/status/network.js:1931
+msgid "Tether"
+msgstr "چتر"
+
+#: js/ui/status/network.js:1944
+msgid "Mobile Connections"
+msgstr "اتّصال‌های همراه"
+
+#: js/ui/status/network.js:1945
+msgid "Open mobile connections menu"
+msgstr "گشودن فهرست اتّصال‌های همراه"
+
+#: js/ui/status/network.js:1947
+msgid "Mobile Broadband Settings"
+msgstr "تنظیمات پهن‌باند همراه"
+
+#. Translators: "Mobile" from "Mobile Broadband"
+#: js/ui/status/network.js:1956
+msgid "Mobile"
+msgstr "تلفن همراه"
+
+#: js/ui/status/network.js:1990
+msgid "Sign in to Network"
+msgstr "ورود به شبکه"
+
+#: js/ui/status/network.js:2177
+msgid "Connection failed"
+msgstr "اتّصال شکست خورد"
+
+#: js/ui/status/network.js:2178
+msgid "Activation of network connection failed"
+msgstr "فعّال‌سازی اتّصال شبکه شکست خورد"
+
+#: js/ui/status/nightLight.js:19
+msgid "Night Light"
+msgstr "نور شب"
+
+#: js/ui/status/powerProfiles.js:19
+msgctxt "Power profile"
+msgid "Performance"
+msgstr "کارایی"
+
+#: js/ui/status/powerProfiles.js:24
+msgctxt "Power profile"
+msgid "Balanced"
+msgstr "تعادل"
+
+#: js/ui/status/powerProfiles.js:29
+msgctxt "Power profile"
+msgid "Power Saver"
+msgstr "ذخیرهٔ نیرو"
+
+#: js/ui/status/powerProfiles.js:35
+msgctxt "Power profile"
+msgid "Custom"
+msgstr "سفارشی"
+
+#: js/ui/status/powerProfiles.js:45
+msgctxt "Quick settings button title"
+msgid "Power Mode"
+msgstr "حالت نیرو"
+
+#: js/ui/status/powerProfiles.js:46
+msgid "Open power profiles menu"
+msgstr "گشودن فهرست نماگرهای نیرو"
+
+#: js/ui/status/powerProfiles.js:77
+msgctxt "Quick settings menu header"
+msgid "Power Mode"
+msgstr "حالت نیرو"
+
+#: js/ui/status/powerProfiles.js:79
+msgid "Power Settings"
+msgstr "تنظیمات انرژی"
+
+#: js/ui/status/remoteAccess.js:73
+msgid "Stop Screencast"
+msgstr "توقّف ضبط صفحه"
+
+#: js/ui/status/remoteAccess.js:141
+msgid "Stop Screen Sharing"
+msgstr "توقّف هم‌رسانی صفحه"
+
+#: js/ui/status/rfkill.js:97
+msgid "Airplane Mode"
+msgstr "حالت هواپیمایی"
+
+#: js/ui/status/system.js:175
+msgid "Power Off Menu"
+msgstr "فهرست خاموشی"
+
+#: js/ui/status/system.js:183
+msgid "Suspend"
+msgstr "تعلیق"
+
+#: js/ui/status/system.js:188
+msgid "Restart…"
+msgstr "راه‌اندازی دوباره…"
+
+#: js/ui/status/system.js:193
+msgid "Power Off…"
+msgstr "خاموش کردن…"
+
+#: js/ui/status/system.js:200
+msgid "Log Out…"
+msgstr "خروج…"
+
+#: js/ui/status/system.js:205
+msgid "Switch User…"
+msgstr "تعویض کاربر…"
+
+#: js/ui/status/system.js:249
+msgctxt "action"
+msgid "Lock Screen"
+msgstr "قفل صفحه"
+
+#: js/ui/status/thunderbolt.js:310
+msgid "Unknown Thunderbolt device"
+msgstr "افزارهٔ تاندربولت ناشناخته"
+
+#: js/ui/status/thunderbolt.js:311
+msgid ""
+"New device has been detected while you were away. Please disconnect and reconnect "
+"the device to start using it."
+msgstr ""
+"هنگام نبودنتان، افزارهٔ جدید شناسایی شد. لطفاً برای شروع به استفاده از آن، قطعش کرده "
+"و دوباره وصل کنید."
+
+#: js/ui/status/thunderbolt.js:314
+msgid "Unauthorized Thunderbolt device"
+msgstr "افزارهٔ تاندربولت تأییدنشده"
+
+#: js/ui/status/thunderbolt.js:315
+msgid "New device has been detected and needs to be authorized by an administrator"
+msgstr "افزارهٔ جدیدی شناسایی شده و نیازه به تأیید هویت به دست یک مدیر دارد"
+
+#: js/ui/status/thunderbolt.js:321
+msgid "Thunderbolt authorization error"
+msgstr "خطای تأیید هویت تاندربولت"
+
+#: js/ui/status/thunderbolt.js:322
+#, javascript-format
+msgid "Could not authorize the Thunderbolt device: %s"
+msgstr "نمی‌توان افزارهٔ تاندربولت را تأیید هویت کرد: %s"
+
+#: js/ui/status/volume.js:217
+msgid "Volume changed"
+msgstr "حجم صدا تغییر کرد"
+
+#: js/ui/status/volume.js:230
+msgid "Unmute"
+msgstr "باصدا"
+
+#: js/ui/status/volume.js:230
+msgid "Mute"
+msgstr "بی‌صدا"
+
+#: js/ui/status/volume.js:297
+msgid "Volume"
+msgstr "حجم صدا"
+
+#: js/ui/status/volume.js:313
+msgid "Sound Output"
+msgstr "خروجی صدا"
+
+#: js/ui/status/volume.js:314
+msgid "Open sound output menu"
+msgstr "گشودن فهرست خروجی صدا"
+
+#: js/ui/status/volume.js:389
+msgid "Sound Input"
+msgstr "ورودی صدا"
+
+#: js/ui/status/volume.js:390
+msgid "Open sound input menu"
+msgstr "گشودن فهرست ورودی صدا"
+
+#. Translators: this is for display mirroring i.e. cloning.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:20
+msgid "Mirror"
+msgstr "آینه"
+
+#. Translators: this is for the desktop spanning displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:29
+msgid "Join Displays"
+msgstr "پیوند نمایشگرها"
+
+#. Translators: this is for using only external displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:39
+msgid "External Only"
+msgstr "فقط خارجی"
+
+#. Translators: this is for using only the laptop display.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:47
+msgid "Built-in Only"
+msgstr "فقط داخلی"
+
+#. Translators: This is a time format for a date in
+#. long format
+#: js/ui/unlockDialog.js:415
+msgid "%A %B %-d"
+msgstr "%A %-Od %OB"
+
+#: js/ui/unlockDialog.js:421
+msgid "Swipe up to unlock"
+msgstr "برای قفل‌گشایی، بالا بکشید"
+
+#: js/ui/unlockDialog.js:422
+msgid "Click or press a key to unlock"
+msgstr "برای قفل‌گشایی، کلیک کرده یا دکمه‌ای را بزنید"
+
+#: js/ui/unlockDialog.js:610
+msgid "Unlock Window"
+msgstr "گشودن قفل پنجره"
+
+#: js/ui/unlockDialog.js:619
+msgid "Log in as another user"
+msgstr "ورود به عنوان کاربری دیگر"
+
+#: js/ui/welcomeDialog.js:47
+#, javascript-format
+msgid "GNOME %s"
+msgstr "گنوم %s"
+
+#: js/ui/welcomeDialog.js:51
+#, javascript-format
+msgid "Welcome to %s"
+msgstr "به %s خوش آمدید"
+
+#: js/ui/welcomeDialog.js:52
+msgid "If you want to learn your way around, check out the tour"
+msgstr "دیدن گشت برای آموختن راهتان در اطراف"
+
+#: js/ui/welcomeDialog.js:66
+msgid "Take Tour"
+msgstr "گردش کردن"
+
+#: js/ui/windowAttentionHandler.js:18
+#, javascript-format
+msgid "“%s” is ready"
+msgstr "«%s» آماده است"
+
+#. Translators: This string should be shorter than 30 characters
+#: js/ui/windowManager.js:60
+msgid "Keep these display settings?"
+msgstr "تنظیمات نمایشگر نگه‌داشته شود؟"
+
+#: js/ui/windowManager.js:70
+msgid "Revert Settings"
+msgstr "بازنشانی تنظیمات"
+
+#: js/ui/windowManager.js:75
+msgid "Keep Changes"
+msgstr "نگه‌داری تغییرات"
+
+#: js/ui/windowManager.js:95
+#, javascript-format
+msgid "Settings changes will revert in %d second"
+msgid_plural "Settings changes will revert in %d seconds"
+msgstr[0] "تغییرات تنظیمات در %Id ثانیه بازنشانی می‌شود"
+msgstr[1] "تغییرات تنظیمات در %Id ثانیه بازنشانی می‌شود"
+
+#. Translators: This represents the size of a window. The first number is
+#. * the width of the window and the second is the height.
+#: js/ui/windowManager.js:490
+#, javascript-format
+msgid "%d × %d"
+msgstr "%Id‏ × %Id"
+
+#. Translators: entry in the window right click menu.
+#: js/ui/windowMenu.js:28
+msgctxt "window-menu"
+msgid "Take Screenshot"
+msgstr "گرفتن نماگرفت"
+
+#: js/ui/windowMenu.js:40
+msgid "Hide"
+msgstr "نهفتن"
+
+#: js/ui/windowMenu.js:47
+msgid "Restore"
+msgstr "بازآوری"
+
+#: js/ui/windowMenu.js:51
+msgid "Maximize"
+msgstr "بیشینه کردن"
+
+#: js/ui/windowMenu.js:58
+msgid "Move"
+msgstr "جابه‌جایی"
+
+#: js/ui/windowMenu.js:72
+msgid "Resize"
+msgstr "تغییر اندازه"
+
+#: js/ui/windowMenu.js:86
+msgid "Always on Top"
+msgstr "همیشه در بالا"
+
+#: js/ui/windowMenu.js:105
+msgid "Always on Visible Workspace"
+msgstr "همیشه روی فضای کاری قابل دیدن"
+
+#: js/ui/windowMenu.js:119
+msgid "Move to Workspace Left"
+msgstr "انتقال به فضای کاری چپ"
+
+#: js/ui/windowMenu.js:125
+msgid "Move to Workspace Right"
+msgstr "انتقال به فضای کاری راست"
+
+#: js/ui/windowMenu.js:131
+msgid "Move to Workspace Up"
+msgstr "انتقال به فضای کاری بالا"
+
+#: js/ui/windowMenu.js:137
+msgid "Move to Workspace Down"
+msgstr "انتقال به فضای کاری پایین"
+
+#: js/ui/windowMenu.js:155
+msgid "Move to Monitor Up"
+msgstr "انتقال به نمایشگر بالا"
+
+#: js/ui/windowMenu.js:164
+msgid "Move to Monitor Down"
+msgstr "انتقال به نمایشگر پایین"
+
+#: js/ui/windowMenu.js:173
+msgid "Move to Monitor Left"
+msgstr "انتقال به نمایشگر چپ"
+
+#: js/ui/windowMenu.js:182
+msgid "Move to Monitor Right"
+msgstr "انتقال به نمایشگر راست"
+
+#: js/ui/windowMenu.js:190
+msgid "Close"
+msgstr "بستن"
+
+#: src/main.c:513 subprojects/extensions-tool/src/main.c:336
+msgid "Print version"
+msgstr "چاپ نگارش"
+
+#: src/main.c:519
+msgid "Mode used by GDM for login screen"
+msgstr "حالت استفاده شده توسط GDM برای صفحهٔ ورود"
+
+#: src/main.c:525
+msgid "Use a specific mode, e.g. “gdm” for login screen"
+msgstr "استفاده از یک حالت مشخص، مثلاً «gdm» برای صفحهٔ ورود"
+
+#: src/main.c:531
+msgid "List possible modes"
+msgstr "سیاهه کردن حالت‌های ممکن"
+
+#: src/main.c:537
+msgid "Force animations to be enabled"
+msgstr "اجبار به کار افتادن پویانمایی‌ها"
+
+#: src/shell-app.c:267
+msgctxt "program"
+msgid "Unknown"
+msgstr "ناشناس"
+
+#: src/shell-app.c:518
+#, c-format
+msgid "Failed to launch “%s”"
+msgstr "راه‌اندازی «%s» شکست خورد"
+
+#: src/shell-keyring-prompt.c:779
+msgid "Passwords do not match"
+msgstr "گذرواژه‌ها مطابق نیستند"
+
+#: src/shell-keyring-prompt.c:787
+msgid "Password cannot be blank"
+msgstr "گذرواژه نمی‌تواند خالی باشد"
+
+#: src/shell-polkit-authentication-agent.c:342
+msgid "Authentication dialog was dismissed by the user"
+msgstr "محاوره تأیید هویت از طرف کاربر رد شد"
+
+#: src/st/st-icon-theme.c:1857
+#, c-format
+msgid "Icon '%s' not present in theme %s"
+msgstr "نقشک «%s» در زمینهٔ %s موجود نیست"
+
+#: src/st/st-icon-theme.c:3450 src/st/st-icon-theme.c:3753
+msgid "Failed to load icon"
+msgstr "شکست در بار کردن نقشک"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:6
+msgid "Manage your GNOME Extensions"
+msgstr "مدیریت افزونه‌های پوستهٔ گنوم"
+
+#. developer_name tag deprecated with Appstream 1.0
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:20
+msgid "The GNOME Project"
+msgstr "پروژهٔ گنوم"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:52
+msgid ""
+"GNOME Extensions handles updating extensions, configuring extension preferences and "
+"removing or disabling unwanted extensions."
+msgstr ""
+"افزونه‌های گنوم؛ به‌روز رسانی، پیکربندی، برداشتن یا از کار انداختن افزونه‌ها را مدیریت "
+"می‌کند."
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:64
+msgid "Main Window"
+msgstr "پنجرهٔ اصلی"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:68
+msgid "Available Updates"
+msgstr "به‌روز رسانی‌های موجود"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:72
+msgid "Search View"
+msgstr "نمای جست‌وجو"
+
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:6
+msgid "Configure GNOME Shell Extensions"
+msgstr "پیکربندی افزونه‌های پوستهٔ گنوم"
+
+#: subprojects/extensions-app/js/extensionManager.js:237
+#, javascript-format
+msgid ""
+"The installed version of this extension (%s) is incompatible with the current "
+"version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"نگارش نصب شدهٔ این افزونه (%s) با نگارش کنونی گنوم (%s) ناسازگار است. افزونه از کار "
+"افتاد."
+
+#: subprojects/extensions-app/js/extensionManager.js:238
+#, javascript-format
+msgid ""
+"The installed version of this extension is incompatible with the current version of "
+"GNOME (%s). The extension has been disabled."
+msgstr ""
+"نگارش نصب شدهٔ این افزونه با نگارش کنونی گنوم (%s) ناسازگار است. افزونه از کار افتاد."
+
+#: subprojects/extensions-app/js/extensionManager.js:242
+msgid ""
+"An error has occurred in this extension. This could cause issues elsewhere in the "
+"system. It is recommended to turn the extension off until the error is resolved."
+msgstr ""
+"خطایی در این افزونه رخ داد. این خطا می‌توانست موحب مشکلاتی در جاهای دیگر سامانه شود. "
+"توصیه می‌شود تا رفع خطا، افزونه را خاموش کنید."
+
+#. translators: Details for an extension error
+#: subprojects/extensions-app/js/extensionManager.js:248
+msgid "Error details:"
+msgstr "جزییات خطا:"
+
+#: subprojects/extensions-app/js/extensionRow.js:82
+#, javascript-format
+msgid "Version %s"
+msgstr "نگارش %s"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:108
+#, javascript-format
+msgid "Remove “%s”?"
+msgstr "برداشتن «%s»؟"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:109
+msgid ""
+"If you remove the extension, you need to return to download it if you want to "
+"enable it again"
+msgstr "اگر افزونه را بردارید، باید برای به کار انداختن دوباره‌اش، بارگیریش کنید"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:112
+msgid "_Cancel"
+msgstr "_لغو"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:113
+msgid "_Remove"
+msgstr "_برداشتن"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:153
+msgid "translator-credits"
+msgstr ""
+"دانیال بهزادی <dani.behzi@ubuntu.com>\n"
+"سید اسحاق مقیم شهیدانی <eshagh094@gmail.com>\n"
+"گودرز جعفری <me@goudarzjafari.com>"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:198
+#, javascript-format
+msgid "%d extension will be updated on next login."
+msgid_plural "%d extensions will be updated on next login."
+msgstr[0] "تعداد %Id افزونه در ورود بعدی به‌روز خواهد شد."
+msgstr[1] "تعداد %Id افزونه در ورود بعدی به‌روز خواهند شد."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:51
+msgid "Updates Details"
+msgstr "جزییات به‌روز رسانی‌ها"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:68
+msgid "A new version of this extension is ready and will be loaded on next login."
+msgstr "نگارشی جدید از این افزونه آماده است و در ورود بعدی بار خواهد شد."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:100
+msgid "Extension Details"
+msgstr "جزییات افزونه"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:188
+msgid "_Website"
+msgstr "_پایگاه وب"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:215
+msgid "_Settings"
+msgstr "_تنظیمات"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:242
+msgid "_Remove…"
+msgstr "_برداشتن…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:6
+msgid "Keyboard Shortcuts"
+msgstr "میان‌برهای صفحه‌کلید"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:10
+msgid "About Extensions"
+msgstr "دربارهٔ افزونه‌ها"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:64
+msgid "Main Menu"
+msgstr "فهرست اصلی"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:106
+msgid "Search extensions"
+msgstr "جست‌وجوی افزونه‌ها"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:123
+msgid "_Log Out…"
+msgstr "_خروج…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:131
+msgid "_Extensions"
+msgstr "_افزونه‌ها"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:136
+msgid "More Information"
+msgstr "اطّلاعات بیش‌تر"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:148
+msgid ""
+"Extensions can cause performance and stability issues. It is recommended to disable "
+"all extensions if you experience problems with your system."
+msgstr ""
+"افزونه‌ها می‌توانند مشکلات پایداری و کارایی ایجاد کنند. توصیه می‌شود اگر مشکلاتی با "
+"سامانه‌تان یافتید، همهٔ افزونه‌ها را از کار بیندازید."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:175
+msgid "User Extensions"
+msgstr "افزونه‌های کاربر"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:184
+msgid "System Extensions"
+msgstr "افزونه‌های سامانه"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:203
+msgid "Search Results"
+msgstr "نتایج جست‌وجو"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:217
+msgid "No Results Found"
+msgstr "هیچ نتیجه‌ای پیدا نشد"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:218
+msgid "Try a different search"
+msgstr "آزمودن جست‌وجویی متفاوت"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:229
+msgid "No Installed Extensions"
+msgstr "هیچ افزونه‌ای نصب نشده"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:230
+msgid ""
+"To find and add extensions, visit <a href=\"https://"
+"extensions.gnome.org\">extensions.gnome.org</a>."
+msgstr ""
+"برای یافتن و افزودن افزونه‌ها، <a href=\"https://extensions.gnome.org\">پایگاه "
+"افزونه‌های گنوم</a> را ببینید."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:240
+msgid "Something’s gone wrong"
+msgstr "اشتباهی صورت گرفت"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:241
+msgid ""
+"We’re very sorry, but it was not possible to get the list of installed extensions. "
+"Make sure you are logged into GNOME and try again."
+msgstr ""
+"متأسفیم، ولی امکان گرفتن سیاههٔ افزونه‌های نصب‌شده نبود. مطمئن شوید که به گنوم وارد "
+"شده‌اید و دوباره تلاش کنید."
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:6
+msgctxt "shortcut window"
+msgid "General"
+msgstr "عمومی"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:9
+msgctxt "shortcut window"
+msgid "Open Menu"
+msgstr "گشودن فهرست"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:15
+msgctxt "shortcut window"
+msgid "Toggle Search"
+msgstr "تغییر وضعیت جست‌وجو"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:21
+msgctxt "shortcut window"
+msgid "Show Shortcuts"
+msgstr "نمایش میان‌برها"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:27
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "خروج"
+
+#. Translators: a file path to an extension directory
+#: subprojects/extensions-tool/src/command-create.c:284
+#, c-format
+msgid "The new extension was successfully created in %s.\n"
+msgstr "افزونهٔ جدید با موفقبت در %s ایجاد شد.\n"
+
+#: subprojects/extensions-tool/src/command-create.c:376
+#, c-format
+msgid ""
+"Name should be a very short (ideally descriptive) string.\n"
+"Examples are: %s"
+msgstr ""
+"نام باید رشته‌ای بسیار کوتاه و توصیفی باشد.\n"
+"مانند: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:382
+#: subprojects/extensions-tool/src/main.c:243
+msgid "Name"
+msgstr "نام"
+
+#: subprojects/extensions-tool/src/command-create.c:396
+#, c-format
+msgid ""
+"Description is a single-sentence explanation of what your extension does.\n"
+"Examples are: %s"
+msgstr ""
+"شرح تک‌جمله‌ای است که توضیح می‌دهد افزونه‌تان چه می‌کند.\n"
+"مانند: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:402
+#: subprojects/extensions-tool/src/main.c:246
+msgid "Description"
+msgstr "شرح"
+
+#: subprojects/extensions-tool/src/command-create.c:416
+#, c-format
+msgid ""
+"UUID is a globally-unique identifier for your extension.\n"
+"This should be in the format of an email address "
+"(clicktofocus@janedoe.example.com)\n"
+msgstr ""
+"شناسهٔ یکتا، شناسهٔ بی‌تکراری برای افزونه‌تان است.\n"
+"این شناسه باید در قالب یک نشانی رایانامه باشد (clicktofocus@janedoe.example.com)\n"
+
+#: subprojects/extensions-tool/src/command-create.c:443
+#, c-format
+msgid "Choose one of the available templates:\n"
+msgstr "گزینش یکی از الگوهای موجود:\n"
+
+#: subprojects/extensions-tool/src/command-create.c:457
+msgid "Template"
+msgstr "الگو"
+
+#: subprojects/extensions-tool/src/command-create.c:515
+msgid "The unique identifier of the new extension"
+msgstr "شناسهٔ یکتای افزونهٔ جدید"
+
+#: subprojects/extensions-tool/src/command-create.c:518
+msgid "NAME"
+msgstr "NAME"
+
+#: subprojects/extensions-tool/src/command-create.c:519
+msgid "The user-visible name of the new extension"
+msgstr "نام قابل مشاهده توسّط کاربر برای افزونهٔ جدید"
+
+#: subprojects/extensions-tool/src/command-create.c:521
+msgid "DESCRIPTION"
+msgstr "DESCRIPTION"
+
+#: subprojects/extensions-tool/src/command-create.c:523
+msgid "A short description of what the extension does"
+msgstr "شرح کوتاهی از کارکرد افزونه"
+
+#: subprojects/extensions-tool/src/command-create.c:525
+#: subprojects/extensions-tool/src/command-pack.c:455
+msgid "DOMAIN"
+msgstr "DOMAIN"
+
+#: subprojects/extensions-tool/src/command-create.c:527
+msgid "The gettext domain used by the extension"
+msgstr "دامنهٔ gettext استفاده شده به دست افزونه"
+
+#: subprojects/extensions-tool/src/command-create.c:529
+#: subprojects/extensions-tool/src/command-pack.c:448
+msgid "SCHEMA"
+msgstr "SCHEMA"
+
+#: subprojects/extensions-tool/src/command-create.c:531
+msgid "The GSettings schema used by the extension"
+msgstr "طرحوارهٔ GSettings استفاده شده به دست افزونه"
+
+#: subprojects/extensions-tool/src/command-create.c:534
+msgid "TEMPLATE"
+msgstr "TEMPLATE"
+
+#: subprojects/extensions-tool/src/command-create.c:535
+msgid "The template to use for the new extension"
+msgstr "الگوی استفاده شده برای افزونهٔ جدید"
+
+#: subprojects/extensions-tool/src/command-create.c:538
+msgid "Include prefs.js template"
+msgstr "شامل قالب prefs.js"
+
+#: subprojects/extensions-tool/src/command-create.c:544
+msgid "Enter extension information interactively"
+msgstr "اطّلاعات افزونه را به صورت تعاملی وارد کنید"
+
+#: subprojects/extensions-tool/src/command-create.c:552
+msgid "Create a new extension"
+msgstr "ایجاد افزونه‌ای جدید"
+
+#: subprojects/extensions-tool/src/command-create.c:570
+#: subprojects/extensions-tool/src/command-list.c:190
+msgid "Unknown arguments"
+msgstr "آرگومان ناشناخته"
+
+#: subprojects/extensions-tool/src/command-create.c:595
+msgid "UUID, name and description are required"
+msgstr "شناسهٔ یکتا، نام و شرح مورد نیازند"
+
+#: subprojects/extensions-tool/src/command-disable.c:62
+#: subprojects/extensions-tool/src/command-enable.c:62
+#, c-format
+msgid "Extension “%s” does not exist\n"
+msgstr "افزونهٔ «%s» وجود ندارد\n"
+
+#: subprojects/extensions-tool/src/command-disable.c:98
+msgid "Disable an extension"
+msgstr "از کار انداختن یک افزونه"
+
+#: subprojects/extensions-tool/src/command-disable.c:116
+#: subprojects/extensions-tool/src/command-enable.c:116
+#: subprojects/extensions-tool/src/command-info.c:103
+#: subprojects/extensions-tool/src/command-prefs.c:105
+#: subprojects/extensions-tool/src/command-reset.c:76
+#: subprojects/extensions-tool/src/command-uninstall.c:104
+msgid "No UUID given"
+msgstr "هیچ شناسهٔ یکتایی داده نشده"
+
+#: subprojects/extensions-tool/src/command-disable.c:121
+#: subprojects/extensions-tool/src/command-enable.c:121
+#: subprojects/extensions-tool/src/command-info.c:108
+#: subprojects/extensions-tool/src/command-prefs.c:110
+#: subprojects/extensions-tool/src/command-reset.c:81
+#: subprojects/extensions-tool/src/command-uninstall.c:109
+msgid "More than one UUID given"
+msgstr "بیش از یک شناسهٔ یکتا داده شده"
+
+#: subprojects/extensions-tool/src/command-enable.c:98
+msgid "Enable an extension"
+msgstr "به کار انداختن یک افزونه"
+
+#: subprojects/extensions-tool/src/command-info.c:50
+#: subprojects/extensions-tool/src/command-list.c:66
+#: subprojects/extensions-tool/src/main.c:150
+#, c-format
+msgid "Failed to connect to GNOME Shell\n"
+msgstr "شکست در وصل شدن به پوستهٔ گنوم\n"
+
+#: subprojects/extensions-tool/src/command-info.c:59
+#: subprojects/extensions-tool/src/main.c:159
+#, c-format
+msgid "Extension “%s” doesn't exist\n"
+msgstr "افزونهٔ «%s» وجود ندارد\n"
+
+#: subprojects/extensions-tool/src/command-info.c:85
+msgid "Show extensions info"
+msgstr "نمایش اطّلاعات افزونه"
+
+#: subprojects/extensions-tool/src/command-install.c:195
+msgid "Overwrite an existing extension"
+msgstr "بازنویسی روی افزونهٔ موجود"
+
+#: subprojects/extensions-tool/src/command-install.c:198
+msgid "Print extension UUID on success"
+msgstr "چاپ شناسهٔ یکتای افزونه در صورت موفّقیت"
+
+#: subprojects/extensions-tool/src/command-install.c:200
+msgid "EXTENSION_BUNDLE"
+msgstr "EXTENSION_BUNDLE"
+
+#: subprojects/extensions-tool/src/command-install.c:209
+msgid "Install an extension bundle"
+msgstr "نصب یک دستهٔ افزونه"
+
+#: subprojects/extensions-tool/src/command-install.c:227
+msgid "No extension bundle specified"
+msgstr "هیچ دستهٔ افزونه‌ای مشخّص نشده است"
+
+#: subprojects/extensions-tool/src/command-install.c:233
+msgid "More than one extension bundle specified"
+msgstr "بیش از یک دسته افزونه مشخّص شده است"
+
+#: subprojects/extensions-tool/src/command-list.c:140
+msgid "Show user-installed extensions"
+msgstr "نمایش افزونه‌های نصب شده توسّط کاربر"
+
+#: subprojects/extensions-tool/src/command-list.c:143
+msgid "Show system-installed extensions"
+msgstr "نمایش افزونه‌های نصب شده توسّط سامانه"
+
+#: subprojects/extensions-tool/src/command-list.c:146
+msgid "Show enabled extensions"
+msgstr "نمایش افزونه‌های به کار افتاده"
+
+#: subprojects/extensions-tool/src/command-list.c:149
+msgid "Show disabled extensions"
+msgstr "نمایش افزونه‌های از کار افتاده"
+
+#: subprojects/extensions-tool/src/command-list.c:152
+msgid "Show extensions in active state"
+msgstr "نمایش افزونه‌های فعّال"
+
+#: subprojects/extensions-tool/src/command-list.c:155
+msgid "Show extensions in inactive state"
+msgstr "نمایش افزونه‌های غیرفعّال"
+
+#: subprojects/extensions-tool/src/command-list.c:158
+msgid "Show extensions with preferences"
+msgstr "نمایش افزونه‌های با ترجیحات"
+
+#: subprojects/extensions-tool/src/command-list.c:161
+msgid "Show extensions with updates"
+msgstr "نمایش افزونه‌های با به‌روز رسانی"
+
+#: subprojects/extensions-tool/src/command-list.c:164
+msgid "Print extension details"
+msgstr "چاپ جزییات افزونه"
+
+#: subprojects/extensions-tool/src/command-list.c:172
+msgid "List installed extensions"
+msgstr "سیاههٔ افزونه‌های نصب‌شده"
+
+#: subprojects/extensions-tool/src/command-pack.c:444
+#: subprojects/extensions-tool/src/command-upload.c:427
+msgid "FILE"
+msgstr "FILE"
+
+#: subprojects/extensions-tool/src/command-pack.c:445
+msgid "Additional source to include in the bundle"
+msgstr "منبع اضافی برای قرار گرفتن در دسته"
+
+#: subprojects/extensions-tool/src/command-pack.c:449
+msgid "A GSettings schema that should be included"
+msgstr "یک شمای Gsettings که باید شامل شود"
+
+#: subprojects/extensions-tool/src/command-pack.c:451
+#: subprojects/extensions-tool/src/command-pack.c:462
+msgid "DIRECTORY"
+msgstr "DIRECTORY"
+
+#: subprojects/extensions-tool/src/command-pack.c:453
+msgid "The directory where translations are found"
+msgstr "شاخه‌ای که ترجمه‌ها پیدا می‌شوند"
+
+#: subprojects/extensions-tool/src/command-pack.c:457
+msgid "The gettext domain to use for translations"
+msgstr "دامنهٔ gettext برای استفاده توسّط ترجمه‌ها"
+
+#: subprojects/extensions-tool/src/command-pack.c:460
+msgid "Overwrite an existing pack"
+msgstr "بازنویسی روی یک بستهٔ موجود"
+
+#: subprojects/extensions-tool/src/command-pack.c:464
+msgid "The directory where the pack should be created"
+msgstr "شاخه‌ای که بسته باید ایجاد شود"
+
+#: subprojects/extensions-tool/src/command-pack.c:466
+msgid "SOURCE_DIRECTORY"
+msgstr "SOURCE_DIRECTORY"
+
+#: subprojects/extensions-tool/src/command-pack.c:475
+msgid "Create an extension bundle"
+msgstr "ایجاد یک دستهٔ افزونه"
+
+#: subprojects/extensions-tool/src/command-pack.c:495
+msgid "More than one source directory specified"
+msgstr "بیش از یک شاخهٔ منبع مشخّص شده است"
+
+#: subprojects/extensions-tool/src/command-prefs.c:47
+#, c-format
+msgid "Extension “%s” doesn't have preferences\n"
+msgstr "افزونهٔ «%s» ترجیحات ندارد\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:62
+#, c-format
+msgid "Failed to open prefs for extension “%s”: %s\n"
+msgstr "شکست در گشودن ترجیحات برای افزونهٔ «%s»: %s\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:87
+msgid "Opens extension preferences"
+msgstr "ترجیحات افزونه را می‌گشاید"
+
+#: subprojects/extensions-tool/src/command-reset.c:58
+msgid "Reset an extension"
+msgstr "بازنشانی یک افزونه"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:49
+#, c-format
+msgid "Cannot uninstall system extensions\n"
+msgstr "نمی‌توان افزونه‌های سامانه‌ای را حذف نصب کرد\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:64
+#, c-format
+msgid "Failed to uninstall “%s”\n"
+msgstr "شکست در حذف نصب «%s»\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:86
+msgid "Uninstall an extension"
+msgstr "حذف نصب یک افزونه"
+
+#: subprojects/extensions-tool/src/command-upload.c:226
+#, c-format
+msgid "Login to extensions.gnome.org\n"
+msgstr "ورود به extensions.gnome.org\n"
+
+#: subprojects/extensions-tool/src/command-upload.c:256
+#, c-format
+msgid "Warning! Password will be echoed"
+msgstr "هشدار! گذرواژه نوشته خواهد شد"
+
+#: subprojects/extensions-tool/src/command-upload.c:419
+msgid "USERNAME"
+msgstr "USERNAME"
+
+#: subprojects/extensions-tool/src/command-upload.c:421
+msgid "Username to log into https://extensions.gnome.org"
+msgstr "نام کاربری برای ورود به https://extensions.gnome.org"
+
+#: subprojects/extensions-tool/src/command-upload.c:423
+msgid "PASSWORD"
+msgstr "PASSWORD"
+
+#: subprojects/extensions-tool/src/command-upload.c:425
+msgid "Password to log into https://extensions.gnome.org"
+msgstr "گذرواژهٔ ورود به https://extensions.gnome.org"
+
+#: subprojects/extensions-tool/src/command-upload.c:429
+msgid "Read https://extensions.gnome.org password from file, use \"-\" for stdin"
+msgstr ""
+"خواندن گذرواژهٔ https://extensions.gnome.org از پرونده. استفاده از «-» برای ورودی "
+"استاندارد"
+
+#: subprojects/extensions-tool/src/command-upload.c:432
+msgid "Accept the terms of service at https://extensions.gnome.org/upload/"
+msgstr "پذیرش شرایط خدمت در https://extensions.gnome.org/upload"
+
+#: subprojects/extensions-tool/src/command-upload.c:434
+msgid "FILE…"
+msgstr "FILE…"
+
+#: subprojects/extensions-tool/src/command-upload.c:443
+msgid "Upload new extension versions"
+msgstr "بارگذاری نگارش‌های جدید افزونه"
+
+#: subprojects/extensions-tool/src/command-upload.c:461
+msgid "Only one of --password and --password-file can be used"
+msgstr "تنها می‌توان یکی از گزینه‌های ‪--password‬ و ‪--password-file‬ را استفاده کرد"
+
+#: subprojects/extensions-tool/src/command-upload.c:467
+msgid "You must accept the terms of service to upload extensions"
+msgstr "برای بارگذاری افزونه باید شرایط خدمت را بپذیرید"
+
+#: subprojects/extensions-tool/src/command-upload.c:473
+msgid "No files given"
+msgstr "هیچ پرونده‌ای داده نشده"
+
+#: subprojects/extensions-tool/src/main.c:76
+msgid "Do not print error messages"
+msgstr "چاپ نکردن پیام‌های خطا"
+
+#: subprojects/extensions-tool/src/main.c:249
+msgid "Path"
+msgstr "مسیر"
+
+#: subprojects/extensions-tool/src/main.c:252
+msgid "URL"
+msgstr "نشانی"
+
+#: subprojects/extensions-tool/src/main.c:255
+msgid "Original author"
+msgstr "نگارندهٔ اصلی"
+
+#: subprojects/extensions-tool/src/main.c:261
+#: subprojects/extensions-tool/src/main.c:263
+#: subprojects/extensions-tool/src/main.c:265
+msgid "Version"
+msgstr "نگارش"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Enabled"
+msgstr "به کار افتاده"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Yes"
+msgstr "بله"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "No"
+msgstr "نه"
+
+#: subprojects/extensions-tool/src/main.c:271
+msgid "State"
+msgstr "وضعیت"
+
+#: subprojects/extensions-tool/src/main.c:309
+msgid "“version” takes no arguments"
+msgstr "«version» آرگومانی نمی‌گیرد"
+
+#: subprojects/extensions-tool/src/main.c:311
+#: subprojects/extensions-tool/src/main.c:331
+msgid "Usage:"
+msgstr "استفاده:"
+
+#: subprojects/extensions-tool/src/main.c:314
+msgid "Print version information and exit."
+msgstr "چاپ اطّلاعات نگارش و خروج."
+
+#: subprojects/extensions-tool/src/main.c:329
+#: subprojects/extensions-tool/src/main.c:332
+msgid "COMMAND"
+msgstr "COMMAND"
+
+#: subprojects/extensions-tool/src/main.c:332
+msgid "[ARGS…]"
+msgstr "[ARGS…]"
+
+#: subprojects/extensions-tool/src/main.c:334
+msgid "Commands:"
+msgstr "دستورات:"
+
+#: subprojects/extensions-tool/src/main.c:335
+msgid "Print help"
+msgstr "چاپ راهنما"
+
+#: subprojects/extensions-tool/src/main.c:337
+msgid "Enable extension"
+msgstr "به کار انداختن افزونه"
+
+#: subprojects/extensions-tool/src/main.c:338
+msgid "Disable extension"
+msgstr "از کار انداختن افزونه"
+
+#: subprojects/extensions-tool/src/main.c:339
+msgid "Reset extension"
+msgstr "بازنشانی افزونه"
+
+#: subprojects/extensions-tool/src/main.c:340
+msgid "Uninstall extension"
+msgstr "حذف نصب افزونه"
+
+#: subprojects/extensions-tool/src/main.c:341
+msgid "List extensions"
+msgstr "سیاههٔ افزونه‌ها"
+
+#: subprojects/extensions-tool/src/main.c:342
+#: subprojects/extensions-tool/src/main.c:343
+msgid "Show extension info"
+msgstr "نمایش اطّلاعات افزونه"
+
+#: subprojects/extensions-tool/src/main.c:344
+msgid "Open extension preferences"
+msgstr "گشودن ترجیحات افزونه"
+
+#: subprojects/extensions-tool/src/main.c:345
+msgid "Create extension"
+msgstr "ایجاد افزونه"
+
+#: subprojects/extensions-tool/src/main.c:346
+msgid "Package extension"
+msgstr "بسته‌بندی افزونه"
+
+#: subprojects/extensions-tool/src/main.c:347
+msgid "Install extension bundle"
+msgstr "نصب دستهٔ افزونه"
+
+#: subprojects/extensions-tool/src/main.c:349
+#, c-format
+msgid "Use “%s” to get detailed help.\n"
+msgstr "برای گرفتن راهنمای با جزییات از «%s» استفاده کنید.\n"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:3
+msgid "Plain"
+msgstr "خام"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:4
+msgid "An empty extension"
+msgstr "افزونه‌ای خالی"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:3
+msgid "Indicator"
+msgstr "نشانگر"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:4
+msgid "Add an icon to the top bar"
+msgstr "افزودن نقشکی به نوار بالا"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:3
+msgid "Quick Settings Item"
+msgstr "مورد تنظیمات سریع"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:4
+msgid "Add an item to quick settings"
+msgstr "افزودن موردی به تنظیمات سریع"
+
+#. translators:
+#. * The device has been disabled
+#: subprojects/gvc/gvc-mixer-control.c:1872
+msgid "Disabled"
+msgstr "از کار افتاده"
+
+#. translators:
+#. * The number of sound outputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1879
+#, c-format
+msgid "%u Output"
+msgid_plural "%u Outputs"
+msgstr[0] "%Iu خروجی"
+msgstr[1] "%Iu خروجی"
+
+#. translators:
+#. * The number of sound inputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1889
+#, c-format
+msgid "%u Input"
+msgid_plural "%u Inputs"
+msgstr[0] "%Iu ورودی"
+msgstr[1] "%Iu ورودی"
+
+#: subprojects/gvc/gvc-mixer-control.c:2872
+msgid "System Sounds"
+msgstr "صداهای سامانه"
+
+#~ msgctxt "title"
+#~ msgid "Restart & Install Upgrade"
+#~ msgstr "راه‌اندازی دوباره و نصب ارتقا"
+
+#, javascript-format
+#~ msgid ""
+#~ "%s %s will be installed after restart. Upgrade installation can take a long "
+#~ "time: ensure that you have backed up and that the computer is plugged in."
+#~ msgstr ""
+#~ "پس از راه‌اندازی دوباره %s %s نصب خواهد شد. نصب ارتقا ممکن است زمان زیادی طول "
+#~ "بکشد: مطمئن شوید که پشتیبان دارید و رایانه به برق وصل است."
+
+#~ msgid "Unable to lock"
+#~ msgstr "نمی‌توان قفل کرد"
+
+#~ msgid "Lock was blocked by an app"
+#~ msgstr "قفل به دست کاره‌ای مسدود شده بود"
+
+#~ msgid "Restart is not available on Wayland"
+#~ msgstr "راه‌اندازی دوباره در وی‌لند موجود نیست"
+
+#~ msgid "Restarting…"
+#~ msgstr "درحال راه‌اندازی دوباره…"
+
+#~ msgid "GNOME Shell"
+#~ msgstr "پوستهٔ گنوم"
+
+#~ msgid "Window management and application launching"
+#~ msgstr "مدیریت پنجره‌ها و اجرا کنندهٔ برنامه‌ها"
+
+#~ msgid ""
+#~ "We’re very sorry, but there’s been a problem: the settings for this extension "
+#~ "can’t be displayed. We recommend that you report the issue to the extension "
+#~ "authors."
+#~ msgstr ""
+#~ "متأسفیم، ولی مشکلی وجود داشت: تنظیمات این افزونه نمی‌تواند نشان داده شوند. توصیه "
+#~ "می‌کنیم مشکل را به نگارندهٔ افزونه گزارش دهید."
+
+#~ msgid "Technical Details"
+#~ msgstr "جزییات فنّی"
+
+#~ msgid "Homepage"
+#~ msgstr "صفحهٔ خانگی"
+
+#~ msgid "Visit extension homepage"
+#~ msgstr "مشاهدهٔ صفحهٔ خانگی افزونه"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#~ msgid "%H∶%M"
+#~ msgstr "⁦%OH∶%OM⁩"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#~ msgid "%l∶%M %p"
+#~ msgstr "⁦%Ol∶%OM⁩ %Op"
+
+#~ msgid "Screenshot"
+#~ msgstr "نماگرفت"
+
+#~ msgid "Could not parse command:"
+#~ msgstr "عدم توانایی در تجزیه فرمان:"
+
+#~ msgid "Move Titlebar Onscreen"
+#~ msgstr "جابه‌جایی نوار عنوان روی صفحه"
+
+#~ msgid "Stop conflicting session dialog closed"
+#~ msgstr "گفت‌وگوی توقّف نشست متداخل بسته شد"
+
+#, javascript-format
+#~ msgid "Try to login again to start a session for user %s."
+#~ msgstr "آزمودن ورود دوباره برای آغاز نشست کاربر %s."
+
+# در این رشته از نویسه RLM استفاده شده است
+#, javascript-format
+#~ msgid "%s is now known as %s"
+#~ msgstr "‏%s با عنوان %s شناخته می‌شود"
+
+#~ msgid "Network Manager"
+#~ msgstr "مدیر شبکه"
+
+#~ msgid "System Information"
+#~ msgstr "اطّلاعات سامانه"
+
+#~ msgid "Thunderbolt"
+#~ msgstr "تاندربولت"
+
+#~ msgid "Disabling"
+#~ msgstr "از کار انداختن"
+
+#~ msgid "Enabling"
+#~ msgstr "به کار انداختن"
+
+# در این ترجمه از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+#, javascript-format
+#~ msgid "%d %%"
+#~ msgstr "⁦%Id٪⁩"
+
+#~ msgid "No Thanks"
+#~ msgstr "نه، ممنون"
+
+#~ msgid "No Matches"
+#~ msgstr "بدون مطابقت"
+
+#~ msgid "The extension had an error"
+#~ msgstr "افزونه خطایی داشت"
+
+#~ msgid "The extension can be updated"
+#~ msgstr "افزونه می‌تواند به‌روز شود"
+
+#~ msgid "Help"
+#~ msgstr "راهنما"
+
+#~ msgid "Manually Installed"
+#~ msgstr "نصب‌شده به صورت دستی"
+
+#~ msgid "Built-In"
+#~ msgstr "توکار"
+
+#~ msgid "Extension Updates Ready"
+#~ msgstr "به‌روز رسانی‌های افزونه آماده‌اند"
+
+#~ msgid "Screenshot / Screencast"
+#~ msgstr "نماگرفت / ضبط صفحه"
+
+#~ msgid "Evolution Calendar"
+#~ msgstr "تقویم اوولوشن"
+
+#~ msgid "Attach modal dialog to the parent window"
+#~ msgstr "چسباندن محاورهٔ مقید به پنجره والد"
+
+#~ msgid "This key overrides the key in org.gnome.mutter when running GNOME Shell."
+#~ msgstr "این کلید، کلید org.gnome.mutter را در زمان اجرای گنوم‌شل بازنویسی می‌کند."
+
+#~ msgid "Enable edge tiling when dropping windows on screen edges"
+#~ msgstr "به کار انداختن کاشی‌کاری گوشته‌ها هنگام رها کردن پنجره‌ها در گوشه‌های صفحه"
+
+#~ msgid "Workspaces are managed dynamically"
+#~ msgstr "فضاهای کاری به‌صورت پویا مدیریت می‌شوند"
+
+#~ msgid "Workspaces only on primary monitor"
+#~ msgstr "فضاهای کاری تنها در صفحه‌نمایش اصلی"
+
+#~ msgid "Delay focus changes in mouse mode until the pointer stops moving"
+#~ msgstr ""
+#~ "به تأخیر انداختن تغییر تمرکز در حالت موشی تا زمانی که نشانگر از حرکت باز ایستد"
+
+#~ msgid "Region & Language Settings"
+#~ msgstr "تنظیمات ناحیه و زبان"
+
+#~ msgid "Applications"
+#~ msgstr "برنامه‌ها"
+
+#, javascript-format
+#~ msgid "Unable to start %s"
+#~ msgstr "نمی‌توان %s را آغاز کرد"
+
+#, javascript-format
+#~ msgid "Couldn’t find the %s application"
+#~ msgstr "نمی‌توان برنامهٔ %s را یافت"
+
+#~ msgid "Whether the default Bluetooth adapter had set up devices associated to it"
+#~ msgstr "اینکه آداپتور بلوتوث پیش‌گزیده دستگاه‌هایی متّصل به خود دارد یا خیر"
+
+#~ msgid ""
+#~ "The shell will only show a Bluetooth menu item if a Bluetooth adapter is "
+#~ "powered, or if there were devices set up associated with the default adapter. "
+#~ "This will be reset if the default adapter is ever seen not to have devices "
+#~ "associated to it."
+#~ msgstr ""
+#~ "پوسته تنها زمانی فهرست بلوتوث را نمایش می‌دهد که آداپتور بلوتوث روشن باشد، یا "
+#~ "دستگاه‌هایی به گونه‌ای تنظیم شده باشند که به آداپتور پیش‌گزیده متّصل شوند."
+
+#~ msgid "Log Out"
+#~ msgstr "خروج"
+
+#~ msgid "Connect to Internet"
+#~ msgstr "وصل شدن به اینترنت"
+
+#~ msgid "Airplane Mode is On"
+#~ msgstr "حالت هواپیمایی روشن است"
+
+#~ msgid "Wi-Fi is disabled when airplane mode is on."
+#~ msgstr "در زمان روشن بودن حالت هواپیمایی، وای‌فای از کار می‌افتد."
+
+#~ msgid "Turn Off Airplane Mode"
+#~ msgstr "خاموش کردن حالت هواپیمایی"
+
+#~ msgid "Wi-Fi is Off"
+#~ msgstr "وای‌فای خاموش است"
+
+#~ msgid "Wi-Fi needs to be turned on in order to connect to a network."
+#~ msgstr "برای وصل شدن به شبکه باید وای‌فای روشن شود."
+
+#~ msgid "Turn On Wi-Fi"
+#~ msgstr "روشن کردن وای‌فای"
+
+#~ msgid "Select a network"
+#~ msgstr "شبکه‌ای برگزینید"
+
+#~ msgid "Use hardware switch to turn off"
+#~ msgstr "برای خاموش کردن از کلید سخت‌افزاری استفاده کنید"
+
+#~ msgid "Select Network"
+#~ msgstr "گزینش شبکه"
+
+#~ msgid "Wi-Fi Settings"
+#~ msgstr "تنظیمات وای‌فای"
+
+#~ msgid "VPN Off"
+#~ msgstr "وی‌پی‌ان خاموش است"
+
+#~ msgid "Network Settings"
+#~ msgstr "تنظیمات شبکه"
+
+#, javascript-format
+#~ msgid "%s Wi-Fi Connection"
+#~ msgid_plural "%s Wi-Fi Connections"
+#~ msgstr[0] "اتّصال وای‌فای %s"
+#~ msgstr[1] "اتّصال وای‌فای %s"
+
+#, javascript-format
+#~ msgid "%s Bluetooth Connection"
+#~ msgid_plural "%s Bluetooth Connections"
+#~ msgstr[0] "اتّصال بلوتوثی %s"
+#~ msgstr[1] "اتّصال‌های بلوتوثی %s"
+
+#, javascript-format
+#~ msgid "%s Off"
+#~ msgstr "%s خاموش است"
+
+#, javascript-format
+#~ msgid "%s Unmanaged"
+#~ msgstr "%s مدیریت نشده"
+
+#, javascript-format
+#~ msgid "%s Connecting"
+#~ msgstr "درحال اتّصال %s"
+
+#, javascript-format
+#~ msgid "%s Requires Authentication"
+#~ msgstr "%s نیاز به تأیید هویت دارد"
+
+#, javascript-format
+#~ msgid "Firmware Missing For %s"
+#~ msgstr "میان‌افزار برای %s موجود نیست"
+
+#, javascript-format
+#~ msgid "%s Unavailable"
+#~ msgstr "%s در دسترس نیست"
+
+#, javascript-format
+#~ msgid "%s Connection Failed"
+#~ msgstr "اتّصال %s شکست خورد"
+
+#, javascript-format
+#~ msgid "%s Hardware Disabled"
+#~ msgstr "سخت‌افزار %s از کار افتاده"
+
+#, javascript-format
+#~ msgid "%s Disabled"
+#~ msgstr "%s از کار افتاده"
+
+#, javascript-format
+#~ msgid "%s Not Connected"
+#~ msgstr "%s متّصل نشد"
+
+#~ msgid "unknown"
+#~ msgstr "ناشناخته"
+
+#~ msgid "connecting…"
+#~ msgstr "درحال اتّصال…"
+
+#~ msgid "authentication required"
+#~ msgstr "تأیید هویت لازم است"
+
+#~ msgid "connection failed"
+#~ msgstr "اتّصال شکست خورد"
+
+#~ msgid "Lock"
+#~ msgstr "قفل کردن"
+
+#~ msgid "Power Off / Log Out"
+#~ msgstr "خاموش کردن / خروج"
+
+#~ msgid "Bluetooth Off"
+#~ msgstr "بلوتوث خاموش"
+
+#~ msgid "Location In Use"
+#~ msgstr "مکان درحال استفاده است"
+
+#~ msgid "Location Disabled"
+#~ msgstr "مکان از کار افتاده"
+
+#~ msgid "Night Light Disabled"
+#~ msgstr "نور شب از کار افتاده است"
+
+#~ msgid "Resume"
+#~ msgstr "از سرگیری"
+
+#~ msgid "Disable Until Tomorrow"
+#~ msgstr "از کار انداختن تا فردا"
+
+#~ msgid "Fully Charged"
+#~ msgstr "کاملاً شارژ شده"
+
+#~ msgid "Not Charging"
+#~ msgstr "درحال شارژ نیست"
+
+#~ msgid "Estimating…"
+#~ msgstr "درحال برآورد…"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+# پدینگ برداشته شده. زیرا با صفر انگلیسی پر می‌شد
+#, javascript-format
+#~ msgid "%d∶%02d Remaining (%d %%)"
+#~ msgstr "⁦%Id∶%Id⁩ باقی‌مانده (⁦%Id٪⁩)"
+
+# در این رشته از نویسه‌های ایزوله چپ‌به‌راست استفاده شده است
+# پدینگ برداشته شده. زیرا با صفر انگلیسی پر می‌شد
+#, javascript-format
+#~ msgid "%d∶%02d Until Full (%d %%)"
+#~ msgstr "⁦%Id∶%Id⁩ تا شارژ کامل (⁦%Id٪⁩)"
+
+#~ msgid "Screen is Being Shared"
+#~ msgstr "صفحه هم‌رسانی می‌شود"
+
+#~ msgid "Turn off"
+#~ msgstr "خاموش کردن"
+
+#~ msgid "Remove from Favorites"
+#~ msgstr "برداشتن از مورد علاقه‌ها"
+
+#~ msgid "Add to Favorites"
+#~ msgstr "افزودن به مورد علاقه‌ها"
+
+#~ msgid "Author"
+#~ msgstr "نگارنده"
+
+#~ msgid "Warning"
+#~ msgstr "هشدار"
+
+#~ msgid ""
+#~ "Extensions can cause system issues, including performance problems. If you "
+#~ "encounter problems with your system, it is recommended to disable all extensions."
+#~ msgstr ""
+#~ "افزونه‌ها می‌توانند موجب اشکال‌های سامانه‌ای مانند مشکلات اجرایی شوند. اگر با "
+#~ "مشکلاتی روی سامانه‌تان مواجه شدید، پیشنهاد می‌شود تمام افزونه‌ها را از کار بندازید."
+
+#~ msgid "Failed to connect to GNOME Shell"
+#~ msgstr "شکست در وصل شدن به پوستهٔ گنوم"
+
+#~ msgid "Enable introspection API"
+#~ msgstr "به کار انداختن رابط برنامه‌نویسی درون‌نگر"
+
+#~ msgid ""
+#~ "Enables a D-Bus API that allows to introspect the application state of the shell."
+#~ msgstr ""
+#~ "رابط برنامه‌‌نویسی دی‌باسی را به کار می‌اندازد که اجازهٔ درون‌نگری وضعیت برنامهٔ پوسته "
+#~ "را می‌دهد."
+
+#~ msgid "Minimize"
+#~ msgstr "کمینه کردن"
+
+#~ msgid "Unmaximize"
+#~ msgstr "نابیشینه کردن"
+
+#~ msgid "App Picker View"
+#~ msgstr "نمای گزینش برنامه"
+
+#~ msgid "Index of the currently selected view in the application picker."
+#~ msgstr "اندیس نمای گزیده در گزینشگر برنامه."
+
+#~ msgid "Frequently used applications will appear here"
+#~ msgstr "برنامه‌های بیشتر استفاده شده در اینجا نمایش داده می‌شود"
+
+#~ msgid "Frequent"
+#~ msgstr "پُر استفاده"
+
+#~ msgid "All"
+#~ msgstr "همه"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d"
+#~ msgstr "%A %-Od %OB"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d, %Y"
+#~ msgstr "%A %-Od %OB %Y"
+
+#~ msgid "On"
+#~ msgstr "روشن"
+
+#~ msgid "Username…"
+#~ msgstr "نام‌کاربری…"
+
+#~ msgid "Password: "
+#~ msgstr "گذرواژه: "
+
+#~ msgid "Enter Password…"
+#~ msgstr "ورود گذرواژه…"
+
+#~ msgid "Next"
+#~ msgstr "بعدی"
+
+#~ msgctxt "button"
+#~ msgid "Sign In"
+#~ msgstr "ورود"
+
+#~ msgid "%A, %B %d"
+#~ msgstr "%A، %Od %B"
+
+#~ msgid "%d new message"
+#~ msgid_plural "%d new messages"
+#~ msgstr[0] "‫%Id پیام جدید"
+#~ msgstr[1] "‫%Id پیام جدید"
+
+#~ msgid "Browse in Software"
+#~ msgstr "مرور در نرم‌افزارها"
+
+#~ msgid "Rename"
+#~ msgstr "تغییر نام"
+
+#~ msgid "Type again:"
+#~ msgstr "تلاش دوباره:"
+
+#~ msgid "Authentication required by wireless network"
+#~ msgstr "تایید هویت برای شبکه بی‌سیم لازم است"
+
+#~ msgid "Mobile broadband network password"
+#~ msgstr "گذرواژه شبکه پهن‌باند تلفن همراه"
+
+#~ msgid "Account Settings"
+#~ msgstr "تنظیمات حساب"
+
+#~ msgid "Orientation Lock"
+#~ msgstr "قفل جهت"
+
+#~ msgid ""
+#~ "Keybinding that pauses and resumes all running tweens, for debugging purposes"
+#~ msgstr ""
+#~ "کلیدهای مقید برای مکث کردن و اجرا کردن تمام دوغلوهای در حال اجرا، برای مصارف رفع "
+#~ "اشکال"
+
+#~ msgid "Which keyboard to use"
+#~ msgstr "استفاده از کدام صفحه‌کلید"
+
+#~ msgid "The type of keyboard to use."
+#~ msgstr "نوع صفحه‌کلید برای استفاده."
+
+#~ msgid "network-workgroup"
+#~ msgstr "network-workgroup"
+
+#~ msgid "There was an error loading the preferences dialog for %s:"
+#~ msgstr "خطایی هنگام باز کردن محاوره‌ی ترجیحات برای %s رُخ داد:"
+
+#~ msgctxt "search-result"
+#~ msgid "Log out"
+#~ msgstr "خروج"
+
+#~ msgctxt "search-result"
+#~ msgid "Switch user"
+#~ msgstr "تعویض کاربر"
+
+#~ msgid "%s all day."
+#~ msgstr "کل روز %s."
+
+#~ msgid "%s, then %s later."
+#~ msgstr "%s سپس %s بعد."
+
+#~ msgid "%s, then %s, followed by %s later."
+#~ msgstr "%s، بعد %s، در ادامه %s بعد."
+
+#~ msgid "Feels like %s."
+#~ msgstr "حسی شبیه به %s."
+
+#~ msgid "toggle-switch-us"
+#~ msgstr "toggle-switch-intl"
+
+#~ msgid "Web Authentication Redirect"
+#~ msgstr "تغییر مسیر برای تایید هویت وب"
+
+#~ msgid "Events"
+#~ msgstr "رویدادها"
+
+#~ msgid "Hide tray"
+#~ msgstr "مخفی‌کردن سینی"
+
+#~ msgid "Status Icons"
+#~ msgstr "شمایل‌های وضعیت"
+
+#~ msgid "Media"
+#~ msgstr "رسانه"
+
+#~ msgid "%d x %d"
+#~ msgstr "‫%Id x %Id"
+
+#~ msgid "Show the week date in the calendar"
+#~ msgstr "نمایش هفته در تقویم"
+
+#~ msgid "If true, display the ISO week date in the calendar."
+#~ msgstr "در صورت تنظیم بر روی «درست»، تاریخ هفتگی ایزو را در تقویم نشان می‌دهد."
+
+#~ msgid "Use as Internet connection"
+#~ msgstr "استفاده به عنوان اتصال اینترنت"
+
+#~ msgid "GNOME Shell (wayland compositor)"
+#~ msgstr "گنوم‌شل (چینشگر wayland)"
+
+#~ msgid "Show the message tray"
+#~ msgstr "نمایش سینی پیام"
+
+#~ msgid "Captive Portal"
+#~ msgstr "پرتال درگیر"
+
+#~ msgctxt "event list time"
+#~ msgid "%H∶%M"
+#~ msgstr "%OH∶%OM"
+
+#~ msgctxt "event list time"
+#~ msgid "%l∶%M %p"
+#~ msgstr "%Ol∶%OM %p"
+
+#~ msgctxt "list sunday"
+#~ msgid "Su"
+#~ msgstr "۱ش"
+
+#~ msgctxt "list monday"
+#~ msgid "M"
+#~ msgstr "۲ش"
+
+#~ msgctxt "list tuesday"
+#~ msgid "T"
+#~ msgstr "۳ش"
+
+#~ msgctxt "list wednesday"
+#~ msgid "W"
+#~ msgstr "۴ش"
+
+#~ msgctxt "list thursday"
+#~ msgid "Th"
+#~ msgstr "۵ش"
+
+#~ msgctxt "list friday"
+#~ msgid "F"
+#~ msgstr "ج"
+
+#~ msgctxt "list saturday"
+#~ msgid "S"
+#~ msgstr "ش"
+
+#~ msgid "Nothing Scheduled"
+#~ msgstr "بدون برنامه‌ریزی"
+
+#~ msgid "This week"
+#~ msgstr "این هفته"
+
+#~ msgid "Next week"
+#~ msgstr "هفته آینده"
+
+#~ msgid "Removable Devices"
+#~ msgstr "دستگاه‌های جدا شدنی"
+
+#~ msgid "Eject"
+#~ msgstr "بیرون دادن"
+
+#~ msgid "Invitation"
+#~ msgstr "دعوتنامه"
+
+#~ msgid "Call"
+#~ msgstr "تماس"
+
+#~ msgid "File Transfer"
+#~ msgstr "انتقال پرونده"
+
+#~ msgid "Chat"
+#~ msgstr "گپ"
+
+#~ msgid "Invitation to %s"
+#~ msgstr "دعوتنامه به %s"
+
+#~ msgid "%s is inviting you to join %s"
+#~ msgstr "‏%s از شما دعوت می‌کند که به %s بپیوندید"
+
+#~ msgid "Decline"
+#~ msgstr "رد کردن"
+
+#~ msgid "Accept"
+#~ msgstr "پذیرفتن"
+
+#~ msgid "Video call from %s"
+#~ msgstr "تماس ویدئویی از طریق %s"
+
+#~ msgid "Call from %s"
+#~ msgstr "تماس از طرف %s"
+
+#~ msgid "Answer"
+#~ msgstr "پاسخگویی"
+
+#~ msgid "%s is sending you %s"
+#~ msgstr "‏%s در حال ارسال %s به شما است"
+
+#~ msgid "%s would like permission to see when you are online"
+#~ msgstr "‏%s اجازه دسترسی برای دیدن زمان‌هایی که شما برخط هستید را دارد"
+
+#~ msgid "Authentication failed"
+#~ msgstr "تایید هویت شکست خورد"
+
+#~ msgid "Encryption error"
+#~ msgstr "خطا رمزنگاری"
+
+#~ msgid "Certificate not provided"
+#~ msgstr "گواهینامه ارائه نشده"
+
+#~ msgid "Certificate untrusted"
+#~ msgstr "گواهینامه نامعتبر است"
+
+#~ msgid "Certificate expired"
+#~ msgstr "گواهینامه منقضی شده"
+
+#~ msgid "Certificate not activated"
+#~ msgstr "گواهینامه فعال نشده"
+
+#~ msgid "Certificate hostname mismatch"
+#~ msgstr "نام کارگزار گواهینامه نامنطبق است"
+
+#~ msgid "Certificate fingerprint mismatch"
+#~ msgstr "اثرانگشت گواهینامه نامنطبق است"
+
+#~ msgid "Certificate self-signed"
+#~ msgstr "گواهینامه خود-امضا شده"
+
+#~ msgid "Status is set to offline"
+#~ msgstr "وضعیت بر روی برون خط تنظیم شده"
+
+#~ msgid "Certificate is invalid"
+#~ msgstr "گواهینامه نامعتبر است"
+
+#~ msgid "Connection has been refused"
+#~ msgstr "اتصال رد شده است"
+
+#~ msgid "Connection can't be established"
+#~ msgstr "اتصال نمی‌تواند برقرار شود"
+
+#~ msgid "Connection has been lost"
+#~ msgstr "اتصال از دست رفته است"
+
+#~ msgid "This account is already connected to the server"
+#~ msgstr "این حساب قبلا به کارگزار متصل شده است"
+
+#~ msgid "Connection has been replaced by a new connection using the same resource"
+#~ msgstr "اتصال توسط یک اتصال جدید که از منبع مشابه استفاده می‌کند، جایگزین شده است"
+
+#~ msgid "The account already exists on the server"
+#~ msgstr "حساب از قبل بر روی کارگزار وجود دارد"
+
+#~ msgid "Server is currently too busy to handle the connection"
+#~ msgstr "کارگزار در حال حاضر برای دست گرفتن اتصال بسیار مشغول است"
+
+#~ msgid "Certificate has been revoked"
+#~ msgstr "گواهینامه لغو شده است"
+
+#~ msgid "Certificate uses an insecure cipher algorithm or is cryptographically weak"
+#~ msgstr ""
+#~ "گواهینامه از الگوریتم رمزی نامطمئنی استفاده می‌کند یا از نظر cryptography ضعیف است"
+
+#~ msgid ""
+#~ "The length of the server certificate, or the depth of the server certificate "
+#~ "chain, exceed the limits imposed by the cryptography library"
+#~ msgstr ""
+#~ "اندازه گواهینامه کارگزار، یا عمق حلقه‌ی گواهینامه کارگزار، از محدودیت اعمال شده "
+#~ "توسط کتابخانه cryptography تجاوز کرد"
+
+#~ msgid "Internal error"
+#~ msgstr "خطای داخلی"
+
+#~ msgid "View account"
+#~ msgstr "نمایش حساب"
+
+#~ msgid "Date & Time Settings"
+#~ msgstr "تنظیمات تاریخ و ساعت"
+
+#~ msgid "Open"
+#~ msgstr "بازکردن"
+
+#~ msgid "Clear Messages"
+#~ msgstr "پاک کردن پیام‌ها"
+
+#~ msgid "Notification Settings"
+#~ msgstr "تنظیمات اعلان‌ها"
+
+#~ msgid "No Messages"
+#~ msgstr "پیامی وجود ندارد"
+
+#~ msgid "Message Tray"
+#~ msgstr "سینی پیام"
+
+#~ msgid "%d Connected Device"
+#~ msgid_plural "%d Connected Devices"
+#~ msgstr[0] "‫%Id دستگاه متصل شد"
+#~ msgstr[1] "‫%Id دستگاه متصل شد"
+
+#~ msgid "UPS"
+#~ msgstr "UPS"
+
+#~ msgid "Battery"
+#~ msgstr "باتری"
+
+#~ msgid "List of categories that should be displayed as folders"
+#~ msgstr "فهرست دسته‌هایی که باید به شکل پوشه نمایش داده شوند"
+
+#~ msgid ""
+#~ "Each category name in this list will be represented as folder in the application "
+#~ "view, rather than being displayed inline in the main view."
+#~ msgstr ""
+#~ "هر نام دسته در این فهرست، بجای اینکه پشت سر هم در نمای اصلی نمایش داده شود، "
+#~ "به‌عنوان پوشه در نمای برنامه‌ها نشان داده می‌شود."
+
+#~ msgid "Arrangement of buttons on the titlebar"
+#~ msgstr "چیدمان دکمه‌ها در نوار عنوان"
+
+#~ msgid ""
+#~ "This key overrides the key in org.gnome.desktop.wm.preferences when running "
+#~ "GNOME Shell."
+#~ msgstr ""
+#~ "این کلید، کلید org.gnome.desktop.wm.preferences را در زمان اجرای گنوم‌شل بازنویسی "
+#~ "می‌کند."
+
+#~ msgid "Select an extension to configure using the combobox above."
+#~ msgstr "با استفاده از جعبه‌ی بالا یک افزونه برای پیکربندی انتخاب کنید."
+
+#~ msgid "calendar:MY"
+#~ msgstr "تقویم:من"
+
+#~ msgid "<b>%A</b>, <b>%H:%M</b>"
+#~ msgstr "<b>%A</b>، <b>%OH:%OM</b>"
+
+#~ msgid "<b>%B</b> <b>%d</b>, <b>%H:%M</b>"
+#~ msgstr "<b>%B</b> <b>%Od</b>، <b>%OH:%OM</b>"
+
+#~ msgid "<b>%B</b> <b>%d</b> <b>%Y</b>, <b>%H:%M</b> "
+#~ msgstr "<b>%B</b> <b>%Od</b> <b>%y</b>, <b>%OH:%OM</b> "
+
+#~ msgid "Authorization request from %s"
+#~ msgstr "درخواست تایید هویت از %s"
+
+#~ msgid "Device %s wants to pair with this computer"
+#~ msgstr "دستگاه %s می‌خواهد با این رایانه جفت شود"
+
+#~ msgid "Device %s wants access to the service '%s'"
+#~ msgstr "دستگاه %s می‌خواهد به سرویس «%s» دسترسی داشته باشد"
+
+#~ msgid "Grant this time only"
+#~ msgstr "موافقت تنها در همین زمان"
+
+#~ msgid "Reject"
+#~ msgstr "رد کردن"
+
+#~ msgid "Pairing confirmation for %s"
+#~ msgstr "تایید جهت جفت‌شدن با %s"
+
+#~ msgid "Please confirm whether the Passkey '%06d' matches the one on the device."
+#~ msgstr ""
+#~ "لطفا تایید کنید که آیا کلید عبور مربوط به «%I06d» با همتای آن در دستگاه مطابقت "
+#~ "دارد یا خیر."
+
+#~ msgid "Does not match"
+#~ msgstr "منطبق نیست"
+
+#~ msgid "Pairing request for %s"
+#~ msgstr "درخواست جفت‌شدن برای %s"
+
+#~ msgid "Please enter the PIN mentioned on the device."
+#~ msgstr "لطفا PIN ذکر شده در دستگاه را وارد کنید."
+
+#~ msgid "OK"
+#~ msgstr "تایید"
+
+#~ msgid "unavailable"
+#~ msgstr "خارج از دسترس"
+
+#~ msgid ""
+#~ "Sorry, no wisdom for you today:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "شرمنده، هیچ تعبیری امروز برای شما وجود ندارد:\n"
+#~ "%s"
+
+#~ msgid "%s the Oracle says"
+#~ msgstr "‏%s پیشگو می‌گوید"
+
+#~ msgid "Whether to collect stats about applications usage"
+#~ msgstr "اینکه اطلاعات برنامه‌ها درباره‌ی میزان استفاده از منابع جمع‌آوری شود یا خیر"
+
+#~ msgid ""
+#~ "The shell normally monitors active applications in order to present the most "
+#~ "used ones (e.g. in launchers). While this data will be kept private, you may "
+#~ "want to disable this for privacy reasons. Please note that doing so won't remove "
+#~ "already saved data."
+#~ msgstr ""
+#~ "پوسته گنوم در حالت عادی برنامه‌های فعال را جهت ارائه برنامه‌های بیشتر استفاده شده "
+#~ "پایش می کند. (برای مثال در اجرا کننده‌ها). با اینکه که این اطلاعات به صورت خصوصی "
+#~ "نگاه‌داری می‌شود، ممکن است شما بخواهید این امکان را به دلایل امنیتی غیرفعال کنید. "
+#~ "لطفا توجه کنید این کار باعث پاک شدن اطلاعاتی که تاکنون ذخیره شده‌اند نمی‌شود."
+
+#~ msgid ""
+#~ "Internally used to store the last IM presence explicitly set by the user. The "
+#~ "value here is from the TpConnectionPresenceType enumeration."
+#~ msgstr ""
+#~ "به‌طور داخلی جهت ذخیره‌ی آخرین وضعیتِ حاضرِ ثبت شده‌ی توسط کاربر استفاده می‌شود. مقدار "
+#~ "اینجا از محل محاسبه‌ی TpConnectionPresenceType است."
+
+#~ msgid ""
+#~ "Internally used to store the last session presence status for the user. The "
+#~ "value here is from the GsmPresenceStatus enumeration."
+#~ msgstr ""
+#~ "به‌طور داخلی برای ذخیره آخرین نشستی که کاربر در آن وضعیت حاضر داشته است استفاده "
+#~ "می‌شود. مقدار اینجا از محاسبه GsmPresenceStatus است."
+
+#~ msgid "Keybinding to toggle the screen recorder"
+#~ msgstr "کلید مقید برای تغییر وضعیت ضبط کننده‌ی صفحه"
+
+#~ msgid "Keybinding to start/stop the builtin screen recorder."
+#~ msgstr "کلید مقید برای شروع/توقف ضبط کننده‌ی صفحه پیش ساخته."
+
+#~ msgid "Framerate used for recording screencasts."
+#~ msgstr "سرعت فریم استفاده شده در تصویربرداری از صفحه‌نمایش."
+
+#~ msgid ""
+#~ "The framerate of the resulting screencast recordered by GNOME Shell's screencast "
+#~ "recorder in frames-per-second."
+#~ msgstr ""
+#~ "سرعت فریم حاصل از تصویربرداری از صفحه نمایش با استفاده از ضبط کننده نمایشگر "
+#~ "پوسته‌ی گنوم بر اساس فریم بر ثانیه"
+
+#~ msgid "The gstreamer pipeline used to encode the screencast"
+#~ msgstr "مجرای ارتباطی gstreamer برای کدگذاری تصویربرداری از صفحه نمایش"
+
+#~ msgid ""
+#~ "Sets the GStreamer pipeline used to encode recordings. It follows the syntax "
+#~ "used for gst-launch. The pipeline should have an unconnected sink pad where the "
+#~ "recorded video is recorded. It will normally have a unconnected source pad; "
+#~ "output from that pad will be written into the output file. However the pipeline "
+#~ "can also take care of its own output - this might be used to send the output to "
+#~ "an icecast server via shout2send or similar. When unset or set to an empty "
+#~ "value, the default pipeline will be used. This is currently 'vp8enc "
+#~ "min_quantizer=13 max_quantizer=13 cpu-used=5 deadline=1000000 threads=%T ! "
+#~ "queue ! webmmux' and records to WEBM using the VP8 codec. %T is used as a "
+#~ "placeholder for a guess at the optimal thread count on the system."
+#~ msgstr ""
+#~ "Sets the GStreamer pipeline used to encode recordings. It follows the syntax "
+#~ "used for gst-launch. The pipeline should have an unconnected sink pad where the "
+#~ "recorded video is recorded. It will normally have a unconnected source pad; "
+#~ "output from that pad will be written into the output file. However the pipeline "
+#~ "can also take care of its own output - this might be used to send the output to "
+#~ "an icecast server via shout2send or similar. When unset or set to an empty "
+#~ "value, the default pipeline will be used. This is currently 'vp8enc "
+#~ "min_quantizer=13 max_quantizer=13 cpu-used=5 deadline=1000000 threads=%T ! "
+#~ "queue ! webmmux' and records to WEBM using the VP8 codec. %T is used as a "
+#~ "placeholder for a guess at the optimal thread count on the system."
+
+#~ msgid "File extension used for storing the screencast"
+#~ msgstr "پسوند پرونده‌ی قابل استفاده برای ذخیره تصویربرداری از صفحه‌نمایش"
+
+#~ msgid ""
+#~ "The filename for recorded screencasts will be a unique filename based on the "
+#~ "current date, and use this extension. It should be changed when recording to a "
+#~ "different container format."
+#~ msgstr ""
+#~ "نام پرونده‌ی ضبط شده برای تصویربرداری از صفحه‌نمایش یکتا و براساس تاریخ جاری خواهد "
+#~ "بود و از این افزونه استفاده خواهد کرد. اگر در زمان ضبط از قالب دیگری استفاده "
+#~ "کنید باید تغییر کند."
+
+#~| msgid "Session..."
+#~ msgid "Session…"
+#~ msgstr "نشست..."
+
+#~ msgid "Power"
+#~ msgstr "انرژی"
+
+#~ msgctxt "event list time"
+#~ msgid "%H\\u2236%M"
+#~ msgstr "%OH\\u2236%OM"
+
+#~ msgctxt "event list time"
+#~ msgid "%l\\u2236%M\\u2009%p"
+#~ msgstr "%Ol\\u2236%OM\\u2009%p"
+
+#~ msgid "Click Log Out to quit these applications and log out of the system."
+#~ msgstr ""
+#~ "بر روی خروج از سیستم کلیک کنید تا از این برنامه‌ها خارج و از سیستم خارج شوید."
+
+#~ msgid "Logging out of the system."
+#~ msgstr "درحال خروج از سیستم."
+
+#~ msgid "Click Power Off to quit these applications and power off the system."
+#~ msgstr "بر روی خاموش کردن کلیک کنید تا از این برنامه‌ها خارج و سیستم خاموش شود."
+
+#~ msgid "Powering off the system."
+#~ msgstr "درحال خاموش کردن سیستم."
+
+#~ msgid "Click Restart to quit these applications and restart the system."
+#~ msgstr ""
+#~ "بر روی راه‌اندازی مجدد کلیک کنید تا از این برنامه‌ها خارج و سیستم مجددا راه‌اندازی "
+#~ "گردد."
+
+#~ msgid "Restarting the system."
+#~ msgstr "درحال راه‌اندازی مجدد سیستم."
+
+#~ msgid "Universal Access Settings"
+#~ msgstr "تنظیمات دسترسی جامع"
+
+#~ msgid "Visibility"
+#~ msgstr "قابلیت دیدن"
+
+#~| msgid "Set up a New Device..."
+#~ msgid "Set Up a New Device…"
+#~ msgstr "برپاسازی یک دستگاه جدید..."
+
+#~| msgid "Send Files..."
+#~ msgid "Send Files…"
+#~ msgstr "ارسال پرونده‌ها..."
+
+#~ msgid "Mouse Settings"
+#~ msgstr "تنظیمات موشی"
+
+#~ msgid "Volume, network, battery"
+#~ msgstr "جلد، شبکه، باتری"
+
+#~ msgid "disabled"
+#~ msgstr "از کار افتاد"
+
+#~ msgid "cable unplugged"
+#~ msgstr "کابل قطع شد"
+
+#~ msgid "More…"
+#~ msgstr "بیشتر..."
+
+#~ msgid "Wired"
+#~ msgstr "سیمی"
+
+#~ msgid "Auto Ethernet"
+#~ msgstr "اترنت خودکار"
+
+#~ msgid "Auto broadband"
+#~ msgstr "پهن‌باند خودکار"
+
+#~ msgid "Auto dial-up"
+#~ msgstr "دایال‌آپ خودکار"
+
+#~ msgid "Auto %s"
+#~ msgstr "اتصال بیسیم %s خودکار"
+
+#~ msgid "Auto bluetooth"
+#~ msgstr "بلوتوث خودکار"
+
+#~ msgid "Auto wireless"
+#~ msgstr "بیسیم خودکار"
+
+#~ msgid "Wi-Fi"
+#~ msgstr "وای-فای"
+
+#~ msgid "%d %s %d %s remaining"
+#~ msgstr "‫%Id %s %Id %s باقی‌مانده"
+
+#~ msgid "hour"
+#~ msgid_plural "hours"
+#~ msgstr[0] "ساعت"
+#~ msgstr[1] "ساعت"
+
+#~ msgid "minute"
+#~ msgid_plural "minutes"
+#~ msgstr[0] "‫%Id دقیقه‌"
+#~ msgstr[1] "‫%Id دقیقه‌"
+
+#~| msgid "AC adapter"
+#~ msgid "AC Adapter"
+#~ msgstr "آداپتور برق مستقیم"
+
+#~| msgid "Laptop battery"
+#~ msgid "Laptop Battery"
+#~ msgstr "باتری لپ‌تاپ"
+
+#~ msgid "Monitor"
+#~ msgstr "صفحه نمایش"
+
+#~ msgid "Mouse"
+#~ msgstr "موشی"
+
+#~ msgid "PDA"
+#~ msgstr "دستیار دیجیتال شخصی"
+
+#~| msgid "Cell phone"
+#~ msgid "Cell Phone"
+#~ msgstr "تلفن سلولی"
+
+#~| msgid "Media player"
+#~ msgid "Media Player"
+#~ msgstr "پخش‌کننده‌ی رسانه"
+
+#~ msgid "Tablet"
+#~ msgstr "لوح‌رایانه"
+
+#~ msgid "Computer"
+#~ msgstr "رایانه"
+
+#~ msgctxt "device"
+#~ msgid "Unknown"
+#~ msgstr "ناشناس"
+
+#~ msgid "Busy"
+#~ msgstr "مشغول"
+
+#~ msgid "Invisible"
+#~ msgstr "نامرئی"
+
+#~ msgid "Away"
+#~ msgstr "غائب"
+
+#~ msgid "Idle"
+#~ msgstr "بی‌کار"
+
+#~ msgid "Your chat status will be set to busy"
+#~ msgstr "وضعیت گپ شما «مشغول» تنظیم می‌شود"
+
+#~ msgid ""
+#~ "Notifications are now disabled, including chat messages. Your online status has "
+#~ "been adjusted to let others know that you might not see their messages."
+#~ msgstr ""
+#~ "هم‌اکنون اعلان‌ها، از جمله پیام‌های گپ، غیرفعال هستند. وضعیتِ برخطِ شما به گونه‌ای "
+#~ "تنظیم شده است که به دیگران نشان دهد ممکن است شما پیام‌هایشان را نبینید."
+
+#~ msgid "Shutting down might cause them to lose unsaved work."
+#~ msgstr "خاموش‌کردن ممکن است باعث شود که کارهای ذخیره نشده خود را از دست بدهند."
+
+#~ msgctxt "title"
+#~ msgid "Sign In"
+#~ msgstr "ورود"
+
+#~ msgid "APPLICATIONS"
+#~ msgstr "برنامه‌ها"
+
+#~ msgid "SETTINGS"
+#~ msgstr "تنظیمات"
+
+#~ msgid "Subscription request"
+#~ msgstr "درخواست اشتراک"
+
+#~ msgid "Sent at <b>%X</b> on <b>%A</b>"
+#~ msgstr "ارسال در <b>%OH:%OM</b> در <b>%A</b>"
+
+#~ msgid "Sent on <b>%A</b>, <b>%B %d</b>, %Y"
+#~ msgstr "ارسال در <b>%A</b>, <b>%B %d</b>, %Y"
+
+#~ msgid "Connection to %s failed"
+#~ msgstr "اتصال به %s شکست خورد"
+
+#~ msgid "Reconnect"
+#~ msgstr "اتصال مجدد"
+
+#~ msgid "tray"
+#~ msgstr "سینی"
+
+#~ msgid "Browse Files..."
+#~ msgstr "مرور پرونده‌ها..."
+
+#~ msgid "Error browsing device"
+#~ msgstr "خطا در مرور دستگاه"
+
+#~ msgid "The requested device cannot be browsed, error is '%s'"
+#~ msgstr "دستگاه درخواست شده قابلیت مرور ندارد، خطا: «%s»"
+
+#~ msgid "More..."
+#~ msgstr "بیشتر..."
+
+#~ msgid "Wireless"
+#~ msgstr "بیسیم"
+
+#~ msgid "VPN Connections"
+#~ msgstr "اتصال‌های وی‌پی‌ان"
+
+#~ msgid "System Settings"
+#~ msgstr "تنظیمات سیستم"
+
+#~ msgid "Your favorite Easter Egg"
+#~ msgstr "تخم‌مرغ شانسی مورد علاقه شما"
+
+#~ msgid "United Kingdom"
+#~ msgstr "بریتانیا"
+
+#~ msgid "Default"
+#~ msgstr "پیش‌فرض"
+
+#~ msgid "disabled OpenSearch providers"
+#~ msgstr "غیرفعال کردنِ تامین‌کننده‌گان OpenSearch"
+
+#~ msgid "Failed to unmount '%s'"
+#~ msgstr "عدم توانایی در پیاده کردن «%s»"
+
+#~ msgid "Retry"
+#~ msgstr "سعی مجدد"
+
+#~ msgid "PLACES & DEVICES"
+#~ msgstr "محل‌ها و ابزارها"
+
+#~ msgid "%1$s: %2$s"
+#~ msgstr "%1$s: %2$s"
+
+#~ msgid "Passphrase"
+#~ msgstr "عبارت‌عبور"
+
+#~ msgid "Show time with seconds"
+#~ msgstr "نمایش ساعت همراه با ثانیه"
+
+#~ msgid "If true, display seconds in time."
+#~ msgstr "در صورت تنظیم بر روی «درست»، ثانیه‌ها را در ساعت نشان می‌دهد."
+
+#~ msgid "Show date in clock"
+#~ msgstr "نمایش تاریخ در ساعت"
+
+#~ msgid "If true, display date in the clock, in addition to time."
+#~ msgstr "اگر روی «درست» تنظیم شود، تاریخ را در کنار ساعت نشان می‌دهد."
+
+#~ msgid "CONTACTS"
+#~ msgstr "CONTACTS"
+
+#~ msgid "%a %b %e, %R:%S"
+#~ msgstr "%a %Od %b %OH:%OM:%OS"
+
+#~ msgid "%a %b %e, %R"
+#~ msgstr "%a %Od %b %OH:%OM"
+
+#~ msgid "%a %R:%S"
+#~ msgstr "%a %OH:%OM:%OS"
+
+#~ msgid "%a %R"
+#~ msgstr "%a %OH:%OM"
+
+#~ msgid "%a %b %e, %l:%M:%S %p"
+#~ msgstr "%a Od% %b %OH:%OM:%OS"
+
+#~ msgid "%a %l:%M:%S %p"
+#~ msgstr "%a %OH:%OM:%OS"
+
+#~ msgid "%s is online."
+#~ msgstr "‏%s بر خط است."
+
+#~ msgid "%s is offline."
+#~ msgstr "‏%s برون خط است."
+
+#~ msgid "%s is away."
+#~ msgstr "‏%s غایب است."
+
+#~ msgid "%s is busy."
+#~ msgstr "‏%s مشغول است."
+
+#~ msgid "Hidden"
+#~ msgstr "نامرئی"
+
+#~ msgid "Power Off..."
+#~ msgstr "خاموش کردن..."
+
+#~ msgid "Online Accounts"
+#~ msgstr "حساب‌های برخط"
+
+#~ msgid "Log Out..."
+#~ msgstr "خروج از سیستم..."
+
+#~ msgid "RECENT ITEMS"
+#~ msgstr "موارد اخیر"
+
+#~ msgid "Show password"
+#~ msgstr "نمایش گذرواژه"
+
+#~ msgid "If true, display onscreen keyboard."
+#~ msgstr "در صورت تنظیم بر روی «درست»، صفحه‌کلید مجازی نمایش داده می‌شود."
+
+#~ msgid "%s has finished starting"
+#~ msgstr "راه‌اندازی %s پایان یافته است"

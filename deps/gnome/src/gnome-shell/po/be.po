@@ -1,0 +1,3721 @@
+# Ihar Hrachyshka <ihar.hrachyshka@gmail.com>, 2011, 2013, 2014.
+# Kasia Bondarava <kasia.bondarava@gmail.com>, 2012.
+# Yuras Shumovich <shumovichy@gmail.com>, 2017
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-shell.master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-shell/issues/\n"
+"POT-Creation-Date: 2025-06-12 12:05+0000\n"
+"PO-Revision-Date: 2025-06-15 16:18+0300\n"
+"Last-Translator: Yuras Shumovich <shumovichy@gmail.com>\n"
+"Language-Team: Belarusian <i18n-bel-gnome@googlegroups.com>\n"
+"Language: be\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Poedit 3.5\n"
+"X-Project-Style: gnome\n"
+
+#: data/50-gnome-shell-launchers.xml:6
+msgid "Launchers"
+msgstr "Запуск праграм"
+
+#: data/50-gnome-shell-launchers.xml:10
+msgid "Activate pinned app 1"
+msgstr "Актываваць прымацаваную праграму 1"
+
+#: data/50-gnome-shell-launchers.xml:14
+msgid "Activate pinned app 2"
+msgstr "Актываваць прымацаваную праграму 2"
+
+#: data/50-gnome-shell-launchers.xml:18
+msgid "Activate pinned app 3"
+msgstr "Актываваць прымацаваную праграму 3"
+
+#: data/50-gnome-shell-launchers.xml:22
+msgid "Activate pinned app 4"
+msgstr "Актываваць прымацаваную праграму 4"
+
+#: data/50-gnome-shell-launchers.xml:26
+msgid "Activate pinned app 5"
+msgstr "Актываваць прымацаваную праграму 5"
+
+#: data/50-gnome-shell-launchers.xml:30
+msgid "Activate pinned app 6"
+msgstr "Актываваць прымацаваную праграму 6"
+
+#: data/50-gnome-shell-launchers.xml:34
+msgid "Activate pinned app 7"
+msgstr "Актываваць прымацаваную праграму 7"
+
+#: data/50-gnome-shell-launchers.xml:38
+msgid "Activate pinned app 8"
+msgstr "Актываваць прымацаваную праграму 8"
+
+#: data/50-gnome-shell-launchers.xml:42
+msgid "Activate pinned app 9"
+msgstr "Актываваць прымацаваную праграму 9"
+
+#: data/50-gnome-shell-launchers.xml:46
+msgid "Open new window of pinned app 1"
+msgstr "Адкрыць новае акно прымацаванай праграмы 1"
+
+#: data/50-gnome-shell-launchers.xml:50
+msgid "Open new window of pinned app 2"
+msgstr "Адкрыць новае акно прымацаванай праграмы 2"
+
+#: data/50-gnome-shell-launchers.xml:54
+msgid "Open new window of pinned app 3"
+msgstr "Адкрыць новае акно прымацаванай праграмы 3"
+
+#: data/50-gnome-shell-launchers.xml:58
+msgid "Open new window of pinned app 4"
+msgstr "Адкрыць новае акно прымацаванай праграмы 4"
+
+#: data/50-gnome-shell-launchers.xml:62
+msgid "Open new window of pinned app 5"
+msgstr "Адкрыць новае акно прымацаванай праграмы 5"
+
+#: data/50-gnome-shell-launchers.xml:66
+msgid "Open new window of pinned app 6"
+msgstr "Адкрыць новае акно прымацаванай праграмы 6"
+
+#: data/50-gnome-shell-launchers.xml:70
+msgid "Open new window of pinned app 7"
+msgstr "Адкрыць новае акно прымацаванай праграмы 7"
+
+#: data/50-gnome-shell-launchers.xml:74
+msgid "Open new window of pinned app 8"
+msgstr "Адкрыць новае акно прымацаванай праграмы 8"
+
+#: data/50-gnome-shell-launchers.xml:78
+msgid "Open new window of pinned app 9"
+msgstr "Адкрыць новае акно прымацаванай праграмы 9"
+
+#. Translators: name of the folder under ~/Pictures for screenshots.
+#: data/50-gnome-shell-screenshots.xml:6 js/ui/screenshot.js:2275
+msgid "Screenshots"
+msgstr "Здымкі экрана"
+
+#: data/50-gnome-shell-screenshots.xml:9
+#: data/org.gnome.shell.gschema.xml.in:267
+msgid "Take a screenshot interactively"
+msgstr "Зрабіць здымак экрана інтэрактыўна"
+
+#: data/50-gnome-shell-screenshots.xml:12
+#: data/org.gnome.shell.gschema.xml.in:279
+msgid "Take a screenshot"
+msgstr "Зрабіць здымак экрана"
+
+#: data/50-gnome-shell-screenshots.xml:15
+#: data/org.gnome.shell.gschema.xml.in:275
+msgid "Take a screenshot of a window"
+msgstr "Зрабіць здымак акна"
+
+#: data/50-gnome-shell-screenshots.xml:18
+#: data/org.gnome.shell.gschema.xml.in:271
+msgid "Record a screencast interactively"
+msgstr "Зрабіць запіс экрана інтэрактыўна"
+
+#: data/50-gnome-shell-system.xml:6
+#: data/X-GNOME-Shell-System.directory.desktop.in:3 js/ui/messageTray.js:1307
+msgid "System"
+msgstr "Сістэма"
+
+#: data/50-gnome-shell-system.xml:9
+msgid "Show the notification list"
+msgstr "Паказаць спіс апавяшчэнняў"
+
+#: data/50-gnome-shell-system.xml:12
+msgid "Open the quick settings menu"
+msgstr "Адкрыць меню хуткіх налад"
+
+#: data/50-gnome-shell-system.xml:15
+msgid "Focus the active notification"
+msgstr "Перанесці фокус на актыўнае апавяшчэнне"
+
+#: data/50-gnome-shell-system.xml:18
+msgid "Show the overview"
+msgstr "Паказаць агляд"
+
+#: data/50-gnome-shell-system.xml:21
+msgid "Show all apps"
+msgstr "Паказаць усе праграмы"
+
+#: data/org.gnome.Shell.desktop.in.in:4
+msgid "GNOME Shell"
+msgstr "Абалонка GNOME"
+
+#: data/org.gnome.Shell.desktop.in.in:5
+msgid "Window management and application launching"
+msgstr "Кіраванне вокнамі і запуск праграм"
+
+#: data/org.gnome.shell.gschema.xml.in:6
+msgid "Enable internal tools useful for developers and testers from Alt-F2"
+msgstr ""
+"Уключыць унутраныя інструменты з Alt-F2 для распрацоўшчыкаў і тэсціроўшчыкаў"
+
+#: data/org.gnome.shell.gschema.xml.in:9
+msgid ""
+"Allows access to internal debugging and monitoring tools using the Alt-F2 "
+"dialog."
+msgstr ""
+"Дазваляе доступ да ўнутраных інструментаў адладкі і назірання праз "
+"дыялогавае акно Alt-F2."
+
+#: data/org.gnome.shell.gschema.xml.in:16
+msgid "UUIDs of extensions to enable"
+msgstr "UUID пашырэнняў, якія трэба ўключыць"
+
+#: data/org.gnome.shell.gschema.xml.in:17
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be loaded. Any extension that wants to be loaded needs to be in this "
+"list. You can also manipulate this list with the EnableExtension and "
+"DisableExtension D-Bus methods on org.gnome.Shell."
+msgstr ""
+"Пашырэнні абалонкі GNOME маюць уласцівасць UUID; у гэтым ключы пералічаны "
+"пашырэнні, якія неабходна загрузіць. Усе пашырэнні, якія вы хочаце "
+"загрузіць, трэба ўпісаць у гэты спіс. Спісам таксама можна кіраваць метадамі "
+"DBus EnableExtension і DisableExtension у org.gnome.Shell."
+
+#: data/org.gnome.shell.gschema.xml.in:26
+msgid "UUIDs of extensions to force disabling"
+msgstr "UUID пашырэнняў, якія трэба прымусова адключыць"
+
+#: data/org.gnome.shell.gschema.xml.in:27
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be disabled, even if loaded as part of the current mode. You can also "
+"manipulate this list with the EnableExtension and DisableExtension D-Bus "
+"methods on org.gnome.Shell. This key takes precedence over the “enabled-"
+"extensions” setting."
+msgstr ""
+"Пашырэнні абалонкі GNOME маюць уласцівасць UUID; у гэтым ключы пералічаны "
+"пашырэнні, якія неабходна адключыць, нават калі яны загрузіліся як частка "
+"бягучага рэжыму. Спісам таксама можна кіраваць метадамі DBus EnableExtension "
+"і DisableExtension у org.gnome.Shell. Прыярытэт гэтага ключа вышэйшы за "
+"значэнне налады «enabled-extensions»."
+
+#: data/org.gnome.shell.gschema.xml.in:37
+msgid "Disable user extensions"
+msgstr "Адключыць пашырэнні карыстальніка"
+
+#: data/org.gnome.shell.gschema.xml.in:38
+msgid ""
+"Disable all extensions the user has enabled without affecting the “enabled-"
+"extension” setting."
+msgstr ""
+"Адключыць усе пашырэнні, якія ўключыў карыстальнік без змянення налады "
+"«enabled-extension»."
+
+#: data/org.gnome.shell.gschema.xml.in:45
+msgid "Allow extension installation"
+msgstr "Дазволіць усталяванне пашырэнняў"
+
+#: data/org.gnome.shell.gschema.xml.in:46
+msgid ""
+"Allow users to install extensions in their home folder. If disabled, the "
+"InstallRemoteExtension D-Bus method will fail, and extensions are only "
+"loaded from system directories on startup. It does not affect extensions "
+"that are already loaded, so a change only takes full effect on the next "
+"login."
+msgstr ""
+"Дазволіць карыстальнікам усталёўваць пашырэнні ў сваю хатнюю папку. Калі "
+"адключана, метад D-Bus InstallRemoteExtension не спрацуе і, пры запуску "
+"пашырэнні будуць загружацца толькі з сістэмных каталогаў. Не ўплывае на ўжо "
+"загружаныя пашырэнні, таму змены ўжываюцца толькі падчас наступнага ўваходу "
+"ў сістэму."
+
+#: data/org.gnome.shell.gschema.xml.in:56
+msgid "Disables the validation of extension version compatibility"
+msgstr "Адключае праверку сумяшчальнасці версій пашырэнняў"
+
+#: data/org.gnome.shell.gschema.xml.in:57
+msgid ""
+"GNOME Shell will only load extensions that claim to support the current "
+"running version. Enabling this option will disable this check and try to "
+"load all extensions regardless of the versions they claim to support."
+msgstr ""
+"Абалонка GNOME запускае толькі пашырэнні, для якіх заяўлена падтрымка яе "
+"бягучай версіі. Гэты параметр адключыць праверку сумяшчальнасці і абалонка "
+"паспрабуе загрузіць усе пашырэнні незалежна ад заяўленай падтрымкі."
+
+#: data/org.gnome.shell.gschema.xml.in:67
+msgid "List of desktop file IDs for favorite applications"
+msgstr "Спіс ідэнтыфікатараў файлаў для абраных праграм"
+
+#: data/org.gnome.shell.gschema.xml.in:68
+msgid ""
+"The applications corresponding to these identifiers will be displayed in the "
+"favorites area."
+msgstr "Праграмы з адпаведнымі ідэнтыфікатарамі будуць паказаны ў абраным."
+
+#: data/org.gnome.shell.gschema.xml.in:75
+msgid "History for command (Alt-F2) dialog"
+msgstr "Гісторыя каманд дыялогавага акна (Alt-F2)"
+
+#. Translators: looking glass is a debugger and inspector tool, see https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/docs/looking-glass.md
+#: data/org.gnome.shell.gschema.xml.in:80
+msgid "History for the looking glass dialog"
+msgstr "Гісторыя дыялогавага акна Looking Glass"
+
+#: data/org.gnome.shell.gschema.xml.in:84
+msgid "Always show the “Log Out” action in the system menu"
+msgstr "Заўсёды паказваць элемент «Выйсці» ў меню сістэмы"
+
+#: data/org.gnome.shell.gschema.xml.in:85
+msgid ""
+"This key overrides the automatic hiding of the “Log out” action in the "
+"system menu for logged-in situations where there is a single, local, non-"
+"system user and only a single available session type (e.g. GNOME on Wayland)."
+msgstr ""
+"Гэты ключ перавызначае аўтаматычнае хаванне элемента «Выйсці» ў меню "
+"сістэмы, для выпадкаў з адным (лакальным, не сістэмным) карыстальнікам і "
+"адным тыпам сеанса (напр. GNOME на Wayland)."
+
+#: data/org.gnome.shell.gschema.xml.in:94
+msgid ""
+"Whether to remember password for mounting encrypted or remote filesystems"
+msgstr ""
+"Ці запамінаць пароль для падключэння зашыфраваных і аддаленых файлавых сістэм"
+
+#: data/org.gnome.shell.gschema.xml.in:95
+msgid ""
+"The shell will request a password when an encrypted device or a remote "
+"filesystem is mounted. If the password can be saved for future use a "
+"“Remember Password” checkbox will be present. This key sets the default "
+"state of the checkbox."
+msgstr ""
+"Абалонка запытвае пароль пры падключэнні зашыфраванай прылады або аддаленай "
+"файлавай сістэмы. Калі пароль магчыма захаваць на будучыню, будзе паказаны "
+"пераключальнік «Запомніць пароль». Гэты ключ вызначае прадвызначаны стан для "
+"пераключальніка."
+
+#: data/org.gnome.shell.gschema.xml.in:104
+msgid "The last selected non-default power profile"
+msgstr "Апошні выбраны нестандартны профіль электрасілкавання"
+
+#: data/org.gnome.shell.gschema.xml.in:105
+msgid ""
+"Some systems support more than two power profiles. In order to still support "
+"toggling between two profiles, this key records the last selected non-"
+"default profile."
+msgstr ""
+"Некаторыя сістэмы падтрымліваюць больш за два профілі электрасілкавання. Каб "
+"захаваць падтрымку пераключэння паміж двума профілямі, гэты ключ запісвае "
+"апошні выбраны нестандартны профіль."
+
+#: data/org.gnome.shell.gschema.xml.in:113
+msgid "The last version the “Welcome to GNOME” dialog was shown for"
+msgstr "Апошняя версія дыялогу «Вітаем у GNOME» была паказана для"
+
+#: data/org.gnome.shell.gschema.xml.in:114
+msgid ""
+"This key determines for which version the “Welcome to GNOME” dialog was last "
+"shown. An empty string represents the oldest possible version, and a huge "
+"number will represent versions that do not exist yet. This huge number can "
+"be used to effectively disable the dialog."
+msgstr ""
+"Гэты ключ вызначае для якой версіі ў апошні раз паказваўся дыялог «Вітаем у "
+"GNOME». Пусты радок азначае самую старую з магчымых версій, а занадта вялікі "
+"нумар будзе імітаваць неіснуючую версію. Можна выкарыстаць занадта вялікі "
+"нумар версіі, каб адключыць дыялогавае акно."
+
+#: data/org.gnome.shell.gschema.xml.in:125
+msgid "Layout of the app picker"
+msgstr "Макет для сродку выбару праграм"
+
+#: data/org.gnome.shell.gschema.xml.in:126
+msgid ""
+"Layout of the app picker. Each entry in the array is a page. Pages are "
+"stored in the order they appear in GNOME Shell. Each page contains an "
+"“application id” → 'data' pair. Currently, the following values are stored "
+"as 'data': • “position”: the position of the application icon in the page"
+msgstr ""
+"Макет для сродку выбару праграм. Кожны запіс у масіве - гэта старонка. "
+"Старонкі захоўваюцца ў парадку з'яўлення ў абалонцы GNOME. Кожная старонка "
+"змяшчае пару «id праграмы» → «даныя». Зараз як «даныя» захоўваюцца наступныя "
+"значэнні: • «position» – пазіцыя значка праграмы на старонцы"
+
+#: data/org.gnome.shell.gschema.xml.in:145
+#: data/org.gnome.shell.gschema.xml.in:152
+msgid "Keybinding to shift between overview states"
+msgstr "Спалучэнне клавіш, каб пераключацца паміж станамі меню агляд"
+
+#: data/org.gnome.shell.gschema.xml.in:146
+msgid "Keybinding to shift between session, window picker and app grid"
+msgstr ""
+"Спалучэнне клавіш, каб пераключацца паміж сесіяй, выбарам акон і сеткай "
+"праграм"
+
+#: data/org.gnome.shell.gschema.xml.in:153
+msgid "Keybinding to shift between app grid, window picker and session"
+msgstr ""
+"Спалучэнне клавіш, каб пераключацца паміж сеткай праграм, выбарам акон і "
+"сесіяй"
+
+#: data/org.gnome.shell.gschema.xml.in:159
+msgid "Keybinding to open the “Show Applications” view"
+msgstr "Спалучэнне клавіш, каб адкрыць «Паказаць праграмы»"
+
+#: data/org.gnome.shell.gschema.xml.in:160
+msgid ""
+"Keybinding to open the “Show Applications” view of the Activities Overview."
+msgstr ""
+"Спалучэнне клавіш, каб адкрыць «Паказаць праграмы» ў меню агляд дзейнасці."
+
+#: data/org.gnome.shell.gschema.xml.in:167
+msgid "Keybinding to open the overview"
+msgstr "Спалучэнне клавіш, каб адкрыць меню агляд"
+
+#: data/org.gnome.shell.gschema.xml.in:168
+msgid "Keybinding to open the Activities Overview."
+msgstr "Спалучэнне клавіш, каб адкрыць меню агляд дзейнасці."
+
+#: data/org.gnome.shell.gschema.xml.in:174
+msgid "Keybinding to toggle the visibility of the notification list"
+msgstr "Спалучэнне клавіш, каб пераключыць бачнасць спіса апавяшчэнняў"
+
+#: data/org.gnome.shell.gschema.xml.in:175
+msgid "Keybinding to toggle the visibility of the notification list."
+msgstr "Спалучэнне клавіш, каб пераключыць бачнасць спіса апавяшчэнняў."
+
+#: data/org.gnome.shell.gschema.xml.in:181
+msgid "Keybinding to toggle the quick settings menu"
+msgstr "Спалучэнне клавіш, каб пераключыць бачнасць меню хуткіх налад"
+
+#: data/org.gnome.shell.gschema.xml.in:182
+msgid "Keybinding to toggle the quick settings menu."
+msgstr "Спалучэнне клавіш, каб пераключыць бачнасць меню хуткіх налад."
+
+#: data/org.gnome.shell.gschema.xml.in:188
+msgid "Keybinding to focus the active notification"
+msgstr "Спалучэнне клавіш, каб перанесці фокус на актыўнае апавяшчэнне"
+
+#: data/org.gnome.shell.gschema.xml.in:189
+msgid "Keybinding to focus the active notification."
+msgstr "Спалучэнне клавіш, каб перанесці фокус на актыўнае апавяшчэнне."
+
+#: data/org.gnome.shell.gschema.xml.in:195
+msgid "Switch to application 1"
+msgstr "Пераключыцца на праграму 1"
+
+#: data/org.gnome.shell.gschema.xml.in:199
+msgid "Switch to application 2"
+msgstr "Пераключыцца на праграму 2"
+
+#: data/org.gnome.shell.gschema.xml.in:203
+msgid "Switch to application 3"
+msgstr "Пераключыцца на праграму 3"
+
+#: data/org.gnome.shell.gschema.xml.in:207
+msgid "Switch to application 4"
+msgstr "Пераключыцца на праграму 4"
+
+#: data/org.gnome.shell.gschema.xml.in:211
+msgid "Switch to application 5"
+msgstr "Пераключыцца на праграму 5"
+
+#: data/org.gnome.shell.gschema.xml.in:215
+msgid "Switch to application 6"
+msgstr "Пераключыцца на праграму 6"
+
+#: data/org.gnome.shell.gschema.xml.in:219
+msgid "Switch to application 7"
+msgstr "Пераключыцца на праграму 7"
+
+#: data/org.gnome.shell.gschema.xml.in:223
+msgid "Switch to application 8"
+msgstr "Пераключыцца на праграму 8"
+
+#: data/org.gnome.shell.gschema.xml.in:227
+msgid "Switch to application 9"
+msgstr "Пераключыцца на праграму 9"
+
+#: data/org.gnome.shell.gschema.xml.in:231
+msgid "Open a new instance of application 1"
+msgstr "Адкрыць новы экзэмпляр праграмы 1"
+
+#: data/org.gnome.shell.gschema.xml.in:235
+msgid "Open a new instance of application 2"
+msgstr "Адкрыць новы экзэмпляр праграмы 2"
+
+#: data/org.gnome.shell.gschema.xml.in:239
+msgid "Open a new instance of application 3"
+msgstr "Адкрыць новы экзэмпляр праграмы 3"
+
+#: data/org.gnome.shell.gschema.xml.in:243
+msgid "Open a new instance of application 4"
+msgstr "Адкрыць новы экзэмпляр праграмы 4"
+
+#: data/org.gnome.shell.gschema.xml.in:247
+msgid "Open a new instance of application 5"
+msgstr "Адкрыць новы экзэмпляр праграмы 5"
+
+#: data/org.gnome.shell.gschema.xml.in:251
+msgid "Open a new instance of application 6"
+msgstr "Адкрыць новы экзэмпляр праграмы 6"
+
+#: data/org.gnome.shell.gschema.xml.in:255
+msgid "Open a new instance of application 7"
+msgstr "Адкрыць новы экзэмпляр праграмы 7"
+
+#: data/org.gnome.shell.gschema.xml.in:259
+msgid "Open a new instance of application 8"
+msgstr "Адкрыць новы экзэмпляр праграмы 8"
+
+#: data/org.gnome.shell.gschema.xml.in:263
+msgid "Open a new instance of application 9"
+msgstr "Адкрыць новы экзэмпляр праграмы 9"
+
+#: data/org.gnome.shell.gschema.xml.in:288
+#: data/org.gnome.shell.gschema.xml.in:315
+msgid "Limit switcher to current workspace."
+msgstr "Абмежаваць пераключальнік бягучай працоўнай прасторай."
+
+#: data/org.gnome.shell.gschema.xml.in:289
+msgid ""
+"If true, only applications that have windows on the current workspace are "
+"shown in the switcher. Otherwise, all applications are included."
+msgstr ""
+"Калі актыўная, у пераключальніку паказваюцца толькі праграмы з бягучай "
+"працоўнай прасторы. Іначай – паказваюцца ўсе праграмы."
+
+#: data/org.gnome.shell.gschema.xml.in:306
+msgid "The application icon mode."
+msgstr "Рэжым значкоў праграм."
+
+#: data/org.gnome.shell.gschema.xml.in:307
+msgid ""
+"Configures how the windows are shown in the switcher. Valid possibilities "
+"are “thumbnail-only” (shows a thumbnail of the window), “app-icon-only” "
+"(shows only the application icon) or “both”."
+msgstr ""
+"Вызначае як паказваюцца вокны ў пераключальніку. Магчымыя значэнні: "
+"«thumbnail-only» (паказваць мініяцюры вокнаў), «app-icon-only» (паказваць "
+"толькі значкі праграм) і «both» (паказваць мініяцюры і значкі)."
+
+#: data/org.gnome.shell.gschema.xml.in:316
+msgid ""
+"If true, only windows from the current workspace are shown in the switcher. "
+"Otherwise, all windows are included."
+msgstr ""
+"Калі актыўная, у пераключальніку паказваюцца толькі вокны з бягучай "
+"працоўнай прасторы. Іначай – паказваюцца ўсе вокны."
+
+#: data/org.gnome.shell.gschema.xml.in:326
+msgid "Locations"
+msgstr "Месцазнаходжанні"
+
+#: data/org.gnome.shell.gschema.xml.in:327
+msgid "The locations to show in world clocks"
+msgstr "Месцазнаходжанне ў сусветных гадзінніках"
+
+#: data/org.gnome.shell.gschema.xml.in:337
+msgid "Automatic location"
+msgstr "Аўтаматычна вызначаць месцазнаходжанне"
+
+#: data/org.gnome.shell.gschema.xml.in:338
+msgid "Whether to fetch the current location or not"
+msgstr "Ці атрымліваць бягучае месцазнаходжанне"
+
+#: data/org.gnome.shell.gschema.xml.in:345
+msgid "Location"
+msgstr "Месцазнаходжанне"
+
+#: data/org.gnome.shell.gschema.xml.in:346
+msgid "The location for which to show a forecast"
+msgstr "Месцазнаходжанне для якога паказваецца надвор'е"
+
+#. Keep in sync with subprojects/extensions-app
+#: data/org.gnome.Shell.Extensions.desktop.in.in:5
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:5
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:4
+#: subprojects/extensions-app/data/ui/extensions-window.ui:57
+msgid "Extensions"
+msgstr "Пашырэнні"
+
+#: data/org.gnome.Shell.PortalHelper.desktop.in.in:3
+msgid "Network Login"
+msgstr "Сеткавы ўваход"
+
+#: data/X-GNOME-Shell-Utilities.directory.desktop.in:3
+msgid "Utilities"
+msgstr "Утыліты"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:15
+#: subprojects/extensions-app/data/ui/extensions-window.ui:275
+msgid "Something’s gone wrong"
+msgstr "Нешта пайшло не так"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:23
+msgid ""
+"We’re very sorry, but there’s been a problem: the settings for this "
+"extension can’t be displayed. We recommend that you report the issue to the "
+"extension authors."
+msgstr ""
+"На жаль, узнікла праблема: немагчыма паказаць налады гэтага пашырэння. Мы "
+"раім вам паведаміць аб праблеме аўтарам пашырэння."
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:48
+msgid "Technical Details"
+msgstr "Тэхнічныя падрабязнасці"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:90
+msgid "Homepage"
+msgstr "Хатняя старонка"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:91
+msgid "Visit extension homepage"
+msgstr "Наведаць хатнюю старонку пашырэння"
+
+#: js/gdm/authPrompt.js:155 js/gdm/loginDialog.js:468
+#: js/ui/audioDeviceSelection.js:60 js/ui/components/networkAgent.js:114
+#: js/ui/components/polkitAgent.js:144 js/ui/endSessionDialog.js:437
+#: js/ui/extensionDownloader.js:276 js/ui/shellMountOperation.js:382
+#: js/ui/shellMountOperation.js:392
+msgid "Cancel"
+msgstr "Скасаваць"
+
+#: js/gdm/authPrompt.js:323 js/ui/components/networkAgent.js:214
+#: js/ui/components/networkAgent.js:234 js/ui/components/networkAgent.js:266
+#: js/ui/components/networkAgent.js:299 js/ui/components/networkAgent.js:338
+#: js/ui/components/networkAgent.js:351 js/ui/components/polkitAgent.js:286
+#: js/ui/shellMountOperation.js:332
+msgid "Password"
+msgstr "Пароль"
+
+#: js/gdm/loginDialog.js:328
+msgid "Choose Session"
+msgstr "Выбраць сеанс"
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:426
+#, javascript-format
+msgid ""
+"Remote login is not possible because a remote session is already running for "
+"%s. To login remotely, you must log out from the remote session or force "
+"stop it."
+msgstr ""
+"Аддалены ўваход немагчымы, таму што ўжо запушчаны аддалены сеанс для %s. Для "
+"аддаленага ўваходу ў сістэму, патрабуецца з яго выйсці або прымусова спыніць."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:429
+#, javascript-format
+msgid ""
+"Login is not possible because a remote session is already running for %s. To "
+"login, you must log out from the remote session or force stop it."
+msgstr ""
+"Уваход у сістэму немагчымы, таму што ўжо запушчаны аддалены сеанс для %s. "
+"Каб увайсці ў сістэму, патрабуецца з яго выйсці або прымусова спыніць."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:432
+#, javascript-format
+msgid ""
+"Remote login is not possible because a local session is already running for "
+"%s. To login remotely, you must log out from the local session or force stop "
+"it."
+msgstr ""
+"Аддалены ўваход немагчымы, таму што ўжо запушчаны лакальны сеанс для %s. Для "
+"аддаленага ўваходу ў сістэму, патрабуецца з яго выйсці або прымусова спыніць."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:435
+#, javascript-format
+msgid ""
+"Login is not possible because a session is already running for %s. To login, "
+"you must log out from the session or force stop it."
+msgstr ""
+"Уваход у сістэму немагчымы, таму што сеанс для %s ужо запушчаны. Для ўваходу "
+"ў сістэму, патрабуецца з яго выйсці або прымусова спыніць."
+
+#: js/gdm/loginDialog.js:444
+msgid "Session Already Running"
+msgstr "Сеанс ужо запушчаны"
+
+#: js/gdm/loginDialog.js:456
+msgid ""
+"Force stopping will quit any running apps and processes, and could result in "
+"data loss"
+msgstr ""
+"Прымусовае спыненне прывядзе да завяршэння запушчаных праграм і працэсаў, а "
+"таксама можа прывесці да страты даных"
+
+#: js/gdm/loginDialog.js:476
+msgid "Force Stop"
+msgstr "Прымусова спыніць"
+
+#: js/gdm/loginDialog.js:554
+msgid "Not listed?"
+msgstr "Няма ў спісе?"
+
+#. Translators: this message is shown below the username entry field
+#. to clue the user in on how to login to the local network realm
+#: js/gdm/loginDialog.js:1075
+#, javascript-format
+msgid "(e.g., user or %s)"
+msgstr "(напр. карыстальнік ці %s)"
+
+#: js/gdm/loginDialog.js:1080 js/ui/components/networkAgent.js:258
+#: js/ui/components/networkAgent.js:293 js/ui/components/networkAgent.js:327
+msgid "Username"
+msgstr "Імя карыстальніка"
+
+#: js/gdm/loginDialog.js:1146
+msgid "Login Attempt Timed Out"
+msgstr "Скончыўся тэрмін чакання ўваходу ў сістэму"
+
+#: js/gdm/loginDialog.js:1147
+msgid "Login took too long, please try again"
+msgstr "Уваход у сістэму заняў занадта шмат часу, паўтарыце спробу"
+
+#: js/gdm/loginDialog.js:1496
+msgid "Login Window"
+msgstr "Акно ўваходу ў сістэму"
+
+#: js/gdm/util.js:498
+msgid "Authentication error"
+msgstr "Памылка праверкі сапраўднасці"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can swipe their finger on the fingerprint reader
+#: js/gdm/util.js:729
+msgid "(or swipe finger across reader)"
+msgstr "(або правядзіце пальцам па чытальніку)"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can place their finger on the fingerprint reader instead
+#: js/gdm/util.js:734
+msgid "(or place finger on reader)"
+msgstr "(або прыкладзіце палец да чытальніка)"
+
+#: js/misc/breakManager.js:770
+msgid "Break complete sound"
+msgstr "Гук заканчэння перапынку"
+
+#: js/misc/breakManager.js:980
+#, javascript-format
+msgid "%d second"
+msgid_plural "%d seconds"
+msgstr[0] "%d секунду"
+msgstr[1] "%d секунды"
+msgstr[2] "%d секунд"
+
+#: js/misc/breakManager.js:986
+#, javascript-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "%d хвіліну"
+msgstr[1] "%d хвіліны"
+msgstr[2] "%d хвілін"
+
+#: js/misc/breakManager.js:992
+#, javascript-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "%d гадзіну"
+msgstr[1] "%d гадзіны"
+msgstr[2] "%d гадзін"
+
+#: js/misc/breakManager.js:998
+#, javascript-format
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "%d дзень"
+msgstr[1] "%d дні"
+msgstr[2] "%d дзён"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1081
+#, javascript-format
+msgid "It will be time for a break in %s"
+msgid_plural "It will be time for a break in %s"
+msgstr[0] "Праз %s настане час перапынку"
+msgstr[1] "It will be time for a break in %s"
+msgstr[2] "It will be time for a break in %s"
+
+#: js/misc/breakManager.js:1089
+msgid "Movement Break Soon"
+msgstr "Хутка перапынак для руху"
+
+#: js/misc/breakManager.js:1092
+msgid "Eyesight Break Soon"
+msgstr "Хутка перапынак для вачэй"
+
+#: js/misc/breakManager.js:1095
+msgid "Break Soon"
+msgstr "Хутка перапынак"
+
+#: js/misc/breakManager.js:1140
+msgid "Movement Break in Progress"
+msgstr "Ідзе перапынак для руху"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1143
+#, javascript-format
+msgid "Continue moving around for %s"
+msgid_plural "Continue moving around for %s"
+msgstr[0] "Пахадзіце %s, каб размяць ногі"
+msgstr[1] "Пахадзіце %s, каб размяць ногі"
+msgstr[2] "Пахадзіце %s, каб размяць ногі"
+
+#: js/misc/breakManager.js:1149
+msgid "Eyesight Break in Progress"
+msgstr "Ідзе перапынак для вачэй"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1152
+#, javascript-format
+msgid "Continue looking away for %s"
+msgid_plural "Continue looking away for %s"
+msgstr[0] "Перавядзіце позірк з экрана на %s"
+msgstr[1] "Перавядзіце позірк з экрана на %s"
+msgstr[2] "Перавядзіце позірк з экрана на %s"
+
+#: js/misc/breakManager.js:1158
+msgid "Break in Progress"
+msgstr "Ідзе перапынак"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1161
+#, javascript-format
+msgid "%s left in your break"
+msgid_plural "%s left in your break"
+msgstr[0] "Адпачніце %s"
+msgstr[1] "Адпачніце %s"
+msgstr[2] "Адпачніце %s"
+
+#: js/misc/breakManager.js:1200
+msgid "Time for a Movement Break"
+msgstr "Час перапынку для руху"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1203
+#, javascript-format
+msgid "Take a break from the device and move around for %s"
+msgid_plural "Take a break from the device and move around for %s"
+msgstr[0] "Прыпыніце працу за прыладай і пахадзіце %s, каб размяць ногі"
+msgstr[1] "Прыпыніце працу за прыладай і пахадзіце %s, каб размяць ногі"
+msgstr[2] "Прыпыніце працу за прыладай і пахадзіце %s, каб размяць ногі"
+
+#: js/misc/breakManager.js:1209
+msgid "Time for an Eyesight Break"
+msgstr "Час перапынку для вачэй"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1212
+#, javascript-format
+msgid ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgid_plural ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgstr[0] ""
+"Перавядзіце позірк з экрана і глядзіце прынамсі %s на аб'ект у шасці ці "
+"болей метрах ад вас"
+msgstr[1] ""
+"Перавядзіце позірк з экрана і глядзіце прынамсі %s на аб'ект у шасці ці "
+"болей метрах ад вас"
+msgstr[2] ""
+"Перавядзіце позірк з экрана і глядзіце прынамсі %s на аб'ект у шасці ці "
+"болей метрах ад вас"
+
+#: js/misc/breakManager.js:1218
+msgid "Time for a Break"
+msgstr "Час перапынку"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1221
+#, javascript-format
+msgid "It’s time to take a break. Get away from the device for %s!"
+msgid_plural "It’s time to take a break. Get away from the device for %s!"
+msgstr[0] "Час адпачыць. Прыпыніце працу з прыладай на %s."
+msgstr[1] "Час адпачыць. Прыпыніце працу з прыладай на %s."
+msgstr[2] "Час адпачыць. Прыпыніце працу з прыладай на %s."
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1245
+#, javascript-format
+msgid "You were due to take a break %s ago"
+msgid_plural "You were due to take a break %s ago"
+msgstr[0] "Вы былі павінны зрабіць перапынак %s таму"
+msgstr[1] "Вы былі павінны зрабіць перапынак %s таму"
+msgstr[2] "Вы былі павінны зрабіць перапынак %s таму"
+
+#: js/misc/breakManager.js:1251
+msgid "Break Overdue"
+msgstr "Перапынак не зроблены"
+
+#: js/misc/breakManager.js:1267
+#, javascript-format
+msgid "There is %s remaining in your break"
+msgid_plural "There are %s remaining in your break"
+msgstr[0] "Перапынак скончыцца праз %s"
+msgstr[1] "Да канца перапынку %s"
+msgstr[2] "Да канца перапынку %s"
+
+#: js/misc/breakManager.js:1273
+msgid "Break Interrupted"
+msgstr "Перапынак перарваны"
+
+#. Translators: As in "Delay the break"
+#: js/misc/breakManager.js:1351
+msgid "Delay"
+msgstr "Адкласці"
+
+#. Translators: As in "Skip the break"
+#: js/misc/breakManager.js:1373 js/ui/welcomeDialog.js:61
+msgid "Skip"
+msgstr "Прапусціць"
+
+#. Translators: As in "Take the break"
+#: js/misc/breakManager.js:1395
+msgid "Take"
+msgstr "Зрабіць"
+
+#. Translators: This is a notification to warn the user that a
+#. screen time break will start shortly.
+#: js/misc/breakManager.js:1458
+#, javascript-format
+msgid "Break in %d second"
+msgid_plural "Break in %d seconds"
+msgstr[0] "Перапынак праз %d секунду"
+msgstr[1] "Перапынак праз %d секунды"
+msgstr[2] "Перапынак праз %d секунд"
+
+#. Translators: The name of the power-off action in search
+#: js/misc/systemActions.js:91
+msgctxt "search-result"
+msgid "Power Off"
+msgstr "Выключыць"
+
+#. Translators: A list of keywords that match the power-off action, separated by semicolons
+#: js/misc/systemActions.js:94
+msgid "power off;poweroff;shutdown;halt;stop"
+msgstr ""
+"power off;poweroff;shutdown;halt;stop;выключыць;спыніць;прыпыніць;завяршыць"
+
+#. Translators: The name of the restart action in search
+#: js/misc/systemActions.js:99
+msgctxt "search-result"
+msgid "Restart"
+msgstr "Перазапусціць"
+
+#. Translators: A list of keywords that match the restart action, separated by semicolons
+#: js/misc/systemActions.js:102
+msgid "reboot;restart;"
+msgstr "reboot;restart;перазапусціць;перазапуск;перазагрузіць;"
+
+#. Translators: The name of the lock screen action in search
+#: js/misc/systemActions.js:107
+msgctxt "search-result"
+msgid "Lock Screen"
+msgstr "Заблакіраваць экран"
+
+#. Translators: A list of keywords that match the lock screen action, separated by semicolons
+#: js/misc/systemActions.js:110
+msgid "lock screen"
+msgstr "заблакіраваць экран"
+
+#. Translators: The name of the logout action in search
+#: js/misc/systemActions.js:115
+msgctxt "search-result"
+msgid "Log Out"
+msgstr "Завяршыць сеанс"
+
+#. Translators: A list of keywords that match the logout action, separated by semicolons
+#: js/misc/systemActions.js:118
+msgid "logout;log out;sign off"
+msgstr "logout;log out;выйсці;завяршыць сеанс"
+
+#. Translators: The name of the suspend action in search
+#: js/misc/systemActions.js:123
+msgctxt "search-result"
+msgid "Suspend"
+msgstr "Прыпыніць працу"
+
+#. Translators: A list of keywords that match the suspend action, separated by semicolons
+#: js/misc/systemActions.js:126
+msgid "suspend;sleep"
+msgstr "suspend;прыпыніць;заснуць;сон"
+
+#. Translators: The name of the switch user action in search
+#: js/misc/systemActions.js:131
+msgctxt "search-result"
+msgid "Switch User"
+msgstr "Змяніць карыстальніка"
+
+#. Translators: A list of keywords that match the switch user action, separated by semicolons
+#: js/misc/systemActions.js:134
+msgid "switch user"
+msgstr "змяніць карыстальніка"
+
+#. Translators: A list of keywords that match the lock orientation action, separated by semicolons
+#: js/misc/systemActions.js:141
+msgid "lock orientation;unlock orientation;screen;rotation"
+msgstr ""
+"lock orientation;rotation;заблакіраваць арыентацыю; разблакіраваць;экран;"
+"паварот"
+
+#. Translators: The name of the screenshot UI action in search
+#: js/misc/systemActions.js:146
+msgctxt "search-result"
+msgid "Take a Screenshot"
+msgstr "Зрабіць здымак экрана"
+
+#. Translators: A list of keywords that match the screenshot UI action, separated by semicolons
+#: js/misc/systemActions.js:149
+msgid "screenshot;screencast;snip;capture;record"
+msgstr "screenshot;capture;здымак;запіс;экрана;экранны здымак;нажніцы;захоп"
+
+#: js/misc/systemActions.js:249
+msgctxt "search-result"
+msgid "Unlock Screen Rotation"
+msgstr "Разблакіраваць паварот экрана"
+
+#: js/misc/systemActions.js:250
+msgctxt "search-result"
+msgid "Lock Screen Rotation"
+msgstr "Заблакіраваць паварот экрана"
+
+#: js/misc/timeLimitsManager.js:342
+msgid "GNOME needs to save screen time data"
+msgstr "GNOME патрабуе захаваць даныя экраннага часу"
+
+#: js/misc/timeLimitsManager.js:1123
+#, javascript-format
+msgid "Screen Time Limit in %d Minute"
+msgid_plural "Screen Time Limit in %d Minutes"
+msgstr[0] "Абмежаванне экраннага часу ў %d хвіліну"
+msgstr[1] "Абмежаванне экраннага часу ў %d хвіліны"
+msgstr[2] "Абмежаванне экраннага часу ў %d хвілін"
+
+#: js/misc/timeLimitsManager.js:1130
+msgid "Your screen time limit is approaching"
+msgstr "Хутка будзе дасягнута абмежаванне экраннага часу"
+
+#: js/misc/timeLimitsManager.js:1144
+msgid "Screen Time Limit Reached"
+msgstr "Дасягнута абмежаванне экраннага часу"
+
+#: js/misc/timeLimitsManager.js:1145
+msgid "It’s time to stop using the device"
+msgstr "Час спыніць выкарыстанне прылады"
+
+#: js/misc/util.js:130
+msgid "Command not found"
+msgstr "Каманда не знойдзена"
+
+#: js/misc/util.js:168
+#, javascript-format
+msgid "Execution of “%s” failed:"
+msgstr "Не ўдалося выканаць «%s»:"
+
+#: js/misc/dateUtils.js:69
+msgid "Just now"
+msgstr "Толькі што"
+
+#: js/misc/dateUtils.js:72
+#, javascript-format
+msgid "%d minute ago"
+msgid_plural "%d minutes ago"
+msgstr[0] "%d хвіліну таму"
+msgstr[1] "%d хвіліны таму"
+msgstr[2] "%d хвілін таму"
+
+#: js/misc/dateUtils.js:79
+#, javascript-format
+msgid "%d hour ago"
+msgid_plural "%d hours ago"
+msgstr[0] "%d гадзіну таму"
+msgstr[1] "%d гадзіны таму"
+msgstr[2] "%d гадзін таму"
+
+#: js/misc/dateUtils.js:85 js/ui/dateMenu.js:183
+msgid "Yesterday"
+msgstr "Учора"
+
+#: js/misc/dateUtils.js:88
+#, javascript-format
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] "%d дзень таму"
+msgstr[1] "%d дні таму"
+msgstr[2] "%d дзён таму"
+
+#: js/misc/dateUtils.js:95
+#, javascript-format
+msgid "%d week ago"
+msgid_plural "%d weeks ago"
+msgstr[0] "%d тыдзень таму"
+msgstr[1] "%d тыдні таму"
+msgstr[2] "%d тыдняў таму"
+
+#: js/misc/dateUtils.js:102
+#, javascript-format
+msgid "%d month ago"
+msgid_plural "%d months ago"
+msgstr[0] "%d месяц таму"
+msgstr[1] "%d месяцы таму"
+msgstr[2] "%d месяцаў таму"
+
+#: js/misc/dateUtils.js:108
+#, javascript-format
+msgid "%d year ago"
+msgid_plural "%d years ago"
+msgstr[0] "%d год таму"
+msgstr[1] "%d гады таму"
+msgstr[2] "%d гадоў таму"
+
+#. Translators: Time in 24h format
+#: js/misc/dateUtils.js:155
+msgid "%H:%M"
+msgstr "%H:%M"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 24h format. i.e. "Yesterday, 14:30"
+#: js/misc/dateUtils.js:161
+#, no-c-format
+msgid "Yesterday, %H:%M"
+msgstr "Учора, %H:%M"
+
+#. Translators: this is the week day name followed by a time
+#. string in 24h format. i.e. "Monday, 14:30"
+#: js/misc/dateUtils.js:167
+#, no-c-format
+msgid "%A, %H:%M"
+msgstr "%A, %H:%M"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 24h format.
+#. i.e. "May 25, 14:30"
+#: js/misc/dateUtils.js:173
+#, no-c-format
+msgid "%B %-d, %H:%M"
+msgstr "%-d %B, %H:%M"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 24h format.
+#. i.e. "May 25 2012, 14:30"
+#: js/misc/dateUtils.js:179
+#, no-c-format
+msgid "%B %-d %Y, %H:%M"
+msgstr "%-d %B %Y, %H:%M"
+
+#. Show only the time if date is on today
+#. eslint-disable-line no-lonely-if
+#. Translators: Time in 12h format
+#: js/misc/dateUtils.js:184
+msgid "%l:%M %p"
+msgstr "%l:%M %p"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 12h format. i.e. "Yesterday, 2:30 pm"
+#: js/misc/dateUtils.js:190
+#, no-c-format
+msgid "Yesterday, %l:%M %p"
+msgstr "Учора, %l:%M %p"
+
+#. Translators: this is the week day name followed by a time
+#. string in 12h format. i.e. "Monday, 2:30 pm"
+#: js/misc/dateUtils.js:196
+#, no-c-format
+msgid "%A, %l:%M %p"
+msgstr "%A, %-l:%M %p"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 12h format.
+#. i.e. "May 25, 2:30 pm"
+#: js/misc/dateUtils.js:202
+#, no-c-format
+msgid "%B %-d, %l:%M %p"
+msgstr "%-d %B, %l:%M %p"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 12h format.
+#. i.e. "May 25 2012, 2:30 pm"
+#: js/misc/dateUtils.js:208
+#, no-c-format
+msgid "%B %-d %Y, %l:%M %p"
+msgstr "%-d %B %Y, %l:%M %p"
+
+#: js/portalHelper/main.js:98
+msgid "Your connection seems to be secure"
+msgstr "Злучэнне выглядае бяспечным"
+
+#: js/portalHelper/main.js:104
+msgid ""
+"Your connection to this hotspot login is not secure. Passwords or other "
+"information you enter on this page can be viewed by people nearby."
+msgstr ""
+"Злучэнне з гэтым хот-спотам не бяспечнае. Людзі вакол могуць атрымаць паролі "
+"або іншую інфармацыю, якую вы ўводзіце на старонцы."
+
+#: js/portalHelper/main.js:115
+msgid "Hotspot Login"
+msgstr "Уваход у хот-спот"
+
+#. No support for non-modal system dialogs, so ignore the option
+#. let modal = options['modal'] || true;
+#: js/ui/accessDialog.js:51 js/ui/inhibitShortcutsDialog.js:92
+msgid "Deny"
+msgstr "Забараніць"
+
+#: js/ui/accessDialog.js:52 js/ui/inhibitShortcutsDialog.js:101
+msgid "Allow"
+msgstr "Дазволіць"
+
+#: js/ui/appDisplay.js:1762
+msgid "Unnamed Folder"
+msgstr "Неназваная папка"
+
+#: js/ui/appFavorites.js:89
+#, javascript-format
+msgid "%s has been pinned to the dash."
+msgstr "%s замацавана на панэлі праграм."
+
+#: js/ui/appFavorites.js:120
+#, javascript-format
+msgid "%s has been unpinned from the dash."
+msgstr "%s адмацавана ад панэлі праграм."
+
+#: js/ui/appFavorites.js:134 js/ui/main.js:309
+msgid "Undo"
+msgstr "Адрабіць"
+
+#. Translators: This is the heading of a list of open windows
+#: js/ui/appMenu.js:49
+msgid "Open Windows"
+msgstr "Адкрытыя вокны"
+
+#: js/ui/appMenu.js:57
+msgid "New Window"
+msgstr "Новае акно"
+
+#: js/ui/appMenu.js:84
+msgid "App Details"
+msgstr "Падрабязнасці праграмы"
+
+#: js/ui/appMenu.js:100
+msgid "Quit"
+msgstr "Выйсці"
+
+#: js/ui/appMenu.js:160 js/ui/dash.js:248
+msgid "Unpin"
+msgstr "Адмацаваць"
+
+#: js/ui/appMenu.js:161
+msgid "Pin to Dash"
+msgstr "Замацаваць на панэлі праграм"
+
+#: js/ui/appMenu.js:178
+msgid "Launch using Integrated Graphics Card"
+msgstr "Запусціць з выкарыстаннем інтэграванай відэакарты"
+
+#: js/ui/appMenu.js:179
+msgid "Launch using Discrete Graphics Card"
+msgstr "Запусціць з выкарыстаннем дыскрэтнай відэакарты"
+
+#: js/ui/audioDeviceSelection.js:46
+msgid "Select Audio Device"
+msgstr "Выберыце аўдыяпрыладу"
+
+#: js/ui/audioDeviceSelection.js:67 js/ui/status/volume.js:81
+msgid "Sound Settings"
+msgstr "Налады гуку"
+
+#: js/ui/audioDeviceSelection.js:75
+msgid "Headphones"
+msgstr "Навушнікі"
+
+#: js/ui/audioDeviceSelection.js:77
+msgid "Headset"
+msgstr "Гарнітура"
+
+#: js/ui/audioDeviceSelection.js:79 js/ui/status/volume.js:366
+msgid "Microphone"
+msgstr "Мікрафон"
+
+#: js/ui/backgroundMenu.js:13
+msgid "Change Background…"
+msgstr "Змяніць фон…"
+
+#: js/ui/backgroundMenu.js:15
+msgid "Display Settings"
+msgstr "Налады дысплэя"
+
+#: js/ui/backgroundMenu.js:16
+msgid "Settings"
+msgstr "Налады"
+
+#. Translators: Enter 0-6 (Sunday-Saturday) for non-work days. Examples: "0" (Sunday) "6" (Saturday) "06" (Sunday and Saturday).
+#: js/ui/calendar.js:33
+msgctxt "calendar-no-work"
+msgid "06"
+msgstr "06"
+
+#. Translators: Calendar grid abbreviation for Sunday.
+#. *
+#. * NOTE: These grid abbreviations are always shown together
+#. * and in order, e.g. "S M T W T F S".
+#.
+#: js/ui/calendar.js:59
+msgctxt "grid sunday"
+msgid "S"
+msgstr "Н"
+
+#. Translators: Calendar grid abbreviation for Monday
+#: js/ui/calendar.js:61
+msgctxt "grid monday"
+msgid "M"
+msgstr "П"
+
+#. Translators: Calendar grid abbreviation for Tuesday
+#: js/ui/calendar.js:63
+msgctxt "grid tuesday"
+msgid "T"
+msgstr "А"
+
+#. Translators: Calendar grid abbreviation for Wednesday
+#: js/ui/calendar.js:65
+msgctxt "grid wednesday"
+msgid "W"
+msgstr "С"
+
+#. Translators: Calendar grid abbreviation for Thursday
+#: js/ui/calendar.js:67
+msgctxt "grid thursday"
+msgid "T"
+msgstr "Ч"
+
+#. Translators: Calendar grid abbreviation for Friday
+#: js/ui/calendar.js:69
+msgctxt "grid friday"
+msgid "F"
+msgstr "П"
+
+#. Translators: Calendar grid abbreviation for Saturday
+#: js/ui/calendar.js:71
+msgctxt "grid saturday"
+msgid "S"
+msgstr "С"
+
+#. *
+#. * Translators: The header displaying just the month name
+#. * standalone, when this is a month of the current year.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not change it.
+#.
+#: js/ui/calendar.js:422
+msgid "%OB"
+msgstr "%OB"
+
+#. *
+#. * Translators: The header displaying the month name and the year
+#. * number, when this is a month of a different year.  You can
+#. * reorder the format specifiers or add other modifications
+#. * according to the requirements of your language.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not use the old "%B" here unless you
+#. * absolutely know what you are doing.
+#.
+#: js/ui/calendar.js:432
+msgid "%OB %Y"
+msgstr "%OB %Y"
+
+#: js/ui/calendar.js:494
+msgid "Previous month"
+msgstr "Папярэдні месяц"
+
+#: js/ui/calendar.js:512
+msgid "Next month"
+msgstr "Наступны месяц"
+
+#: js/ui/calendar.js:663
+#, no-javascript-format
+msgctxt "date day number format"
+msgid "%d"
+msgstr "%-d"
+
+#: js/ui/calendar.js:722
+msgid "Week %V"
+msgstr "Тыдзень %V"
+
+#: js/ui/calendar.js:774
+msgid "No Notifications"
+msgstr "Няма апавяшчэнняў"
+
+#: js/ui/calendar.js:832
+msgid "Do Not Disturb"
+msgstr "Не турбаваць"
+
+#: js/ui/calendar.js:853
+msgid "Clear"
+msgstr "Ачысціць"
+
+#: js/ui/calendar.js:857
+msgctxt "action"
+msgid "Clear all notifications"
+msgstr "Ачысціць усе апавяшчэнні"
+
+#. Translators: %s is an application name
+#: js/ui/closeDialog.js:42
+#, javascript-format
+msgid "“%s” Is Not Responding"
+msgstr "«%s» не адказвае"
+
+#: js/ui/closeDialog.js:43
+msgid ""
+"You may choose to wait a short while for it to continue or force the app to "
+"quit entirely"
+msgstr "Вы можаце пачакаць адказу або прымусова завяршыць працу праграмы"
+
+#: js/ui/closeDialog.js:71
+msgid "Force Quit"
+msgstr "Прымусова завяршыць"
+
+#: js/ui/closeDialog.js:76
+msgid "Wait"
+msgstr "Пачакаць"
+
+#: js/ui/components/automountManager.js:82
+msgid "External drive connected"
+msgstr "Падлучаны знешні дыск"
+
+#: js/ui/components/automountManager.js:94
+msgid "External drive disconnected"
+msgstr "Адлучаны знешні дыск"
+
+#: js/ui/components/automountManager.js:208
+msgid "Unable to unlock volume"
+msgstr "Немагчыма разблакіраваць том"
+
+#: js/ui/components/automountManager.js:209
+msgid "The installed udisks version does not support the PIM setting"
+msgstr "Усталяваная версія udisks не падтрымлівае налады PIM"
+
+#. Translators: %s is the name of a partition on a external drive
+#: js/ui/components/autorunManager.js:189
+#, javascript-format
+msgid "“%s” connected"
+msgstr "«%s» падлучаны"
+
+#: js/ui/components/autorunManager.js:190
+msgid "Disk can now be used"
+msgstr "Цяпер дыск можна выкарыстоўваць"
+
+#: js/ui/components/autorunManager.js:202
+#, javascript-format
+msgid "Open with %s"
+msgstr "Адкрыць праз %s"
+
+#: js/ui/components/networkAgent.js:96
+msgid ""
+"Alternatively you can connect by pushing the “WPS” button on your router"
+msgstr "Таксама можна злучыцца, націснуўшы кнопку «WPS» на маршрутызатары"
+
+#: js/ui/components/networkAgent.js:108 js/ui/status/bluetooth.js:246
+#: js/ui/status/network.js:360 js/ui/status/network.js:444
+msgid "Connect"
+msgstr "Злучыцца"
+
+#: js/ui/components/networkAgent.js:223
+msgid "Key"
+msgstr "Ключ"
+
+#: js/ui/components/networkAgent.js:274 js/ui/components/networkAgent.js:313
+msgid "Private key password"
+msgstr "Пароль прыватнага ключа"
+
+#: js/ui/components/networkAgent.js:307
+msgid "Identity"
+msgstr "Ідэнтычнасць"
+
+#: js/ui/components/networkAgent.js:333
+msgid "Service"
+msgstr "Сэрвіс"
+
+#: js/ui/components/networkAgent.js:371 js/ui/components/networkAgent.js:407
+#: js/ui/components/networkAgent.js:745 js/ui/components/networkAgent.js:766
+msgid "Authentication required"
+msgstr "Патрабуецца праверка сапраўднасці"
+
+#: js/ui/components/networkAgent.js:372 js/ui/components/networkAgent.js:746
+#, javascript-format
+msgid ""
+"Passwords or encryption keys are required to access the wireless network “%s”"
+msgstr ""
+"Для доступу да бесправадной сеткі «%s» патрабуецца пароль або ключ шыфравання"
+
+#: js/ui/components/networkAgent.js:376 js/ui/components/networkAgent.js:750
+msgid "Wired 802.1X authentication"
+msgstr "Правадны доступ, праверка сапраўднасці 802.1X"
+
+#: js/ui/components/networkAgent.js:379
+msgid "Network name"
+msgstr "Назва сеткі"
+
+#: js/ui/components/networkAgent.js:387 js/ui/components/networkAgent.js:754
+msgid "DSL authentication"
+msgstr "DSL-аўтэнтыфікацыя"
+
+#: js/ui/components/networkAgent.js:394 js/ui/components/networkAgent.js:759
+msgid "PIN code required"
+msgstr "Патрабуецца PIN-код"
+
+#: js/ui/components/networkAgent.js:395 js/ui/components/networkAgent.js:760
+msgid "PIN code is needed for the mobile broadband device"
+msgstr "Прыладзе шырокапалоснай мабільнай сеткі патрабуецца PIN-код"
+
+#: js/ui/components/networkAgent.js:397
+msgid "PIN"
+msgstr "PIN"
+
+#: js/ui/components/networkAgent.js:408 js/ui/components/networkAgent.js:751
+#: js/ui/components/networkAgent.js:755 js/ui/components/networkAgent.js:767
+#: js/ui/components/networkAgent.js:771
+#, javascript-format
+msgid "A password is required to connect to “%s”"
+msgstr "Каб злучыцца з «%s», патрабуецца пароль"
+
+#: js/ui/components/networkAgent.js:770
+msgid "VPN password"
+msgstr "Пароль VPN"
+
+#: js/ui/components/polkitAgent.js:44
+msgid "Authentication Required"
+msgstr "Патрабуецца праверка сапраўднасці"
+
+#: js/ui/components/polkitAgent.js:84
+msgid "Administrator"
+msgstr "Адміністратар"
+
+#: js/ui/components/polkitAgent.js:149
+msgid "Authenticate"
+msgstr "Пацвердзіць"
+
+#. Translators: "that didn't work" refers to the fact that the
+#. * requested authentication was not gained; this can happen
+#. * because of an authentication error (like invalid password),
+#. * for instance.
+#: js/ui/components/polkitAgent.js:263 js/ui/shellMountOperation.js:415
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Не ўдалося пацвердзіць сапраўднасць. Паўтарыце спробу."
+
+#: js/ui/ctrlAltTab.js:23 js/ui/overviewControls.js:404
+msgid "Windows"
+msgstr "Вокны"
+
+#: js/ui/dash.js:204 js/ui/dash.js:250
+msgid "Show Apps"
+msgstr "Паказаць праграмы"
+
+#. Translators: this is the name of the dock/favorites area on
+#. the bottom of the overview
+#: js/ui/dash.js:408
+msgid "Dash"
+msgstr "Панэль праграм"
+
+#. Translators: This is the date format to use when the calendar popup is
+#. * shown - it is shown just below the time in the top bar (e.g.,
+#. * "Tue 9:29 AM").  The string itself should become a full date, e.g.,
+#. * "February 17 2015".
+#.
+#: js/ui/dateMenu.js:99
+msgid "%B %-d %Y"
+msgstr "%-d %B %Y"
+
+#. Translators: This is the accessible name of the date button shown
+#. * below the time in the shell; it should combine the weekday and the
+#. * date, e.g. "Tuesday February 17 2015".
+#.
+#: js/ui/dateMenu.js:106
+msgid "%A %B %e %Y"
+msgstr "%A, %e %B %Y"
+
+#. Translators: Shown on calendar heading when selected day occurs on current year
+#: js/ui/dateMenu.js:172
+msgctxt "calendar heading"
+msgid "%B %-d"
+msgstr "%-d %B"
+
+#. Translators: Shown on calendar heading when selected day occurs on different year
+#: js/ui/dateMenu.js:175
+msgctxt "calendar heading"
+msgid "%B %-d %Y"
+msgstr "%-d %B %Y"
+
+#: js/ui/dateMenu.js:181
+msgid "Today"
+msgstr "Сёння"
+
+#: js/ui/dateMenu.js:185
+msgid "Tomorrow"
+msgstr "Заўтра"
+
+#. Translators: Shown in calendar event list for all day events
+#. * Keep it short, best if you can use less then 10 characters
+#.
+#: js/ui/dateMenu.js:216
+msgctxt "event list time"
+msgid "All Day"
+msgstr "Увесь дзень"
+
+#. Translators: Shown in calendar event list as the start/end of events
+#. * that only show day and month
+#.
+#: js/ui/dateMenu.js:238
+msgid "%m/%d"
+msgstr "%d/%m"
+
+#: js/ui/dateMenu.js:289
+msgid "No Events"
+msgstr "Няма падзей"
+
+#: js/ui/dateMenu.js:411
+msgid "Add World Clocks…"
+msgstr "Дадаць сусветныя гадзіннікі…"
+
+#: js/ui/dateMenu.js:412
+msgid "World Clocks"
+msgstr "Сусветныя гадзіннікі"
+
+#: js/ui/dateMenu.js:702
+msgid "Loading…"
+msgstr "Загрузка…"
+
+#: js/ui/dateMenu.js:712
+msgid "Go Online for Weather Information"
+msgstr "Злучыцеся з інтэрнэтам, каб атрымаць звесткі пра надвор'е"
+
+#: js/ui/dateMenu.js:714
+msgid "Weather Information Unavailable"
+msgstr "Звесткі пра надвор'е зараз недаступны"
+
+#: js/ui/dateMenu.js:724
+msgid "Weather"
+msgstr "Надвор'е"
+
+#: js/ui/dateMenu.js:726
+msgid "Select Weather Location…"
+msgstr "Выбраць месцазнаходжанне…"
+
+#: js/ui/endSessionDialog.js:47
+#, javascript-format
+msgctxt "title"
+msgid "Log Out %s"
+msgstr "Завяршэнне сеанса %s"
+
+#: js/ui/endSessionDialog.js:48
+msgctxt "title"
+msgid "Log Out"
+msgstr "Завяршэнне сеанса"
+
+#: js/ui/endSessionDialog.js:51
+#, javascript-format
+msgid "%s will be logged out automatically in %d second"
+msgid_plural "%s will be logged out automatically in %d seconds"
+msgstr[0] "Сеанс карыстальніка %s аўтаматычна завершыцца праз %d секунду"
+msgstr[1] "Сеанс карыстальніка %s аўтаматычна завершыцца праз %d секунды"
+msgstr[2] "Сеанс карыстальніка %s аўтаматычна завершыцца праз %d секунд"
+
+#: js/ui/endSessionDialog.js:57
+#, javascript-format
+msgid "You will be logged out automatically in %d second"
+msgid_plural "You will be logged out automatically in %d seconds"
+msgstr[0] "Ваш сеанс аўтаматычна завершыцца праз %d секунду"
+msgstr[1] "Ваш сеанс аўтаматычна завершыцца праз %d секунды"
+msgstr[2] "Ваш сеанс аўтаматычна завершыцца праз %d секунд"
+
+#: js/ui/endSessionDialog.js:64
+msgctxt "button"
+msgid "Log Out"
+msgstr "Выйсці"
+
+#: js/ui/endSessionDialog.js:70 js/ui/status/system.js:174
+msgctxt "title"
+msgid "Power Off"
+msgstr "Выключэнне камп'ютара"
+
+#: js/ui/endSessionDialog.js:71
+msgctxt "title"
+msgid "Install Updates & Power Off"
+msgstr "Усталяваць абнаўленні і выключыць камп'ютар"
+
+#: js/ui/endSessionDialog.js:74
+#, javascript-format
+msgid "The system will power off automatically in %d second"
+msgid_plural "The system will power off automatically in %d seconds"
+msgstr[0] "Сістэма аўтаматычна выключыцца праз %d секунду"
+msgstr[1] "Сістэма аўтаматычна выключыцца праз %d секунды"
+msgstr[2] "Сістэма аўтаматычна выключыцца праз %d секунд"
+
+#: js/ui/endSessionDialog.js:78 js/ui/endSessionDialog.js:97
+msgctxt "checkbox"
+msgid "Install pending software updates"
+msgstr "Усталяваць адкладзеныя абнаўленні ПЗ"
+
+#: js/ui/endSessionDialog.js:82
+msgctxt "button"
+msgid "Power Off"
+msgstr "Выключыць"
+
+#: js/ui/endSessionDialog.js:89
+msgctxt "title"
+msgid "Restart"
+msgstr "Перазапуск"
+
+#: js/ui/endSessionDialog.js:90
+msgctxt "title"
+msgid "Install Updates & Restart"
+msgstr "Усталяваць абнаўленні і перазапусціць"
+
+#: js/ui/endSessionDialog.js:93
+#, javascript-format
+msgid "The system will restart automatically in %d second"
+msgid_plural "The system will restart automatically in %d seconds"
+msgstr[0] "Сістэма аўтаматычна перазапусціцца праз %d секунду"
+msgstr[1] "Сістэма аўтаматычна перазапусціцца праз %d секунды"
+msgstr[2] "Сістэма аўтаматычна перазапусціцца праз %d секунд"
+
+#: js/ui/endSessionDialog.js:101
+msgctxt "button"
+msgid "Restart"
+msgstr "Перазапусціць"
+
+#: js/ui/endSessionDialog.js:109
+msgctxt "title"
+msgid "Restart & Install Updates"
+msgstr "Перазапусціць і ўсталяваць абнаўленні"
+
+#: js/ui/endSessionDialog.js:112
+#, javascript-format
+msgid "The system will automatically restart and install updates in %d second"
+msgid_plural ""
+"The system will automatically restart and install updates in %d seconds"
+msgstr[0] ""
+"Сістэма аўтаматычна перазапусціцца і ўсталюе абнаўленні праз %d секунду"
+msgstr[1] ""
+"Сістэма аўтаматычна перазапусціцца і ўсталюе абнаўленні праз %d секунды"
+msgstr[2] ""
+"Сістэма аўтаматычна перазапусціцца і ўсталюе абнаўленні праз %d секунд"
+
+#: js/ui/endSessionDialog.js:119 js/ui/endSessionDialog.js:140
+msgctxt "button"
+msgid "Restart & Install"
+msgstr "Перазапусціць і ўсталяваць"
+
+#: js/ui/endSessionDialog.js:121
+msgctxt "button"
+msgid "Install & Power Off"
+msgstr "Усталяваць і выключыць камп'ютар"
+
+#: js/ui/endSessionDialog.js:122
+msgctxt "checkbox"
+msgid "Power off after updates are installed"
+msgstr "Выключыць камп'ютар пасля ўсталявання абнаўленняў"
+
+#: js/ui/endSessionDialog.js:129
+msgctxt "title"
+msgid "Restart & Install Upgrade"
+msgstr "Перазапусціць і ўсталяваць абнаўленне"
+
+#. Translators: This is the text displayed for system upgrades in the
+#. shut down dialog. First %s gets replaced with the distro name and
+#. second %s with the distro version to upgrade to
+#: js/ui/endSessionDialog.js:134
+#, javascript-format
+msgid ""
+"%s %s will be installed after restart. Upgrade installation can take a long "
+"time: ensure that you have backed up and that the computer is plugged in."
+msgstr ""
+"%s %s будзе ўсталявана пасля перазапуску. Абнаўленне можа заняць шмат часу, "
+"пераканайцеся, што вы маеце рэзервовую копію, а камп'ютар працуе ад "
+"электрасеткі."
+
+#: js/ui/endSessionDialog.js:283
+msgid "Low battery power: please plug in before installing updates"
+msgstr ""
+"Нізкі зарад акумулятара. Падключыце зарадную прыладу перад усталяваннем "
+"абнаўленняў"
+
+#: js/ui/endSessionDialog.js:292
+msgid "Some applications are busy or have unsaved work"
+msgstr "Некаторыя праграмы заняты або маюць незахаваныя вынікі працы"
+
+#: js/ui/endSessionDialog.js:297
+msgid "Other users are logged in"
+msgstr "Іншыя карыстальнікі не завяршылі сеанс"
+
+#: js/ui/endSessionDialog.js:467
+msgctxt "button"
+msgid "Boot Options"
+msgstr "Параметры запуску"
+
+#. Translators: Remote here refers to a remote session, like a ssh login
+#: js/ui/endSessionDialog.js:672
+#, javascript-format
+msgid "%s (remote)"
+msgstr "%s (аддалены сеанс)"
+
+#. Translators: Console here refers to a tty like a VT console
+#: js/ui/endSessionDialog.js:675
+#, javascript-format
+msgid "%s (console)"
+msgstr "%s (кансоль)"
+
+#: js/ui/extensionDownloader.js:280
+msgid "Install"
+msgstr "Усталяваць"
+
+#: js/ui/extensionDownloader.js:286
+msgid "Install Extension"
+msgstr "Усталяваць пашырэнне"
+
+#: js/ui/extensionDownloader.js:287
+#, javascript-format
+msgid "Download and install “%s” from extensions.gnome.org?"
+msgstr "Спампаваць і ўсталяваць «%s» з extensions.gnome.org?"
+
+#: js/ui/extensionSystem.js:354
+msgid "Extension Updates Available"
+msgstr "Даступны абнаўленні пашырэнняў"
+
+#: js/ui/extensionSystem.js:355
+msgid "Extension updates are ready to be installed"
+msgstr "Абнаўленні пашырэнняў гатовыя да ўсталявання"
+
+#: js/ui/inhibitShortcutsDialog.js:70
+msgid "Allow inhibiting shortcuts"
+msgstr "Дазволіць блакіраванне спалучэнняў клавіш"
+
+#. Translators: %s is an application name like "Settings"
+#: js/ui/inhibitShortcutsDialog.js:73
+#, javascript-format
+msgid "The app %s wants to inhibit shortcuts"
+msgstr "Праграма %s спрабуе заблакіраваць спалучэнні клавіш"
+
+#: js/ui/inhibitShortcutsDialog.js:74
+msgid "An app wants to inhibit shortcuts"
+msgstr "Праграма спрабуе заблакіраваць спалучэнні клавіш"
+
+#. Translators: %s is a keyboard shortcut like "Super+x"
+#: js/ui/inhibitShortcutsDialog.js:81
+#, javascript-format
+msgid "You can restore shortcuts by pressing %s"
+msgstr "Каб аднавіць спалучэнні клавіш, націсніце %s"
+
+#: js/ui/kbdA11yDialog.js:34
+msgid "Slow Keys Turned On"
+msgstr "Павольныя клавішы ўключаны"
+
+#: js/ui/kbdA11yDialog.js:35
+msgid "Slow Keys Turned Off"
+msgstr "Павольныя клавішы выключаны"
+
+#: js/ui/kbdA11yDialog.js:36
+msgid ""
+"You just held down the Shift key for 8 seconds. This is the shortcut for the "
+"Slow Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Вы на працягу васьмі секунд утрымлівалі клавішу Shift націснутай. Гэта "
+"спалучэнне клавіш уключае функцыю «павольныя клавішы», якая ўплывае на працу "
+"клавіятуры."
+
+#: js/ui/kbdA11yDialog.js:42
+msgid "Sticky Keys Turned On"
+msgstr "Ліпкія клавішы ўключаны"
+
+#: js/ui/kbdA11yDialog.js:43
+msgid "Sticky Keys Turned Off"
+msgstr "Ліпкія клавішы выключаны"
+
+#: js/ui/kbdA11yDialog.js:45
+msgid ""
+"You just pressed the Shift key 5 times in a row. This is the shortcut for "
+"the Sticky Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Вы націснулі клавішу Shift пяць разоў запар. Гэта спалучэнні клавіш уключае "
+"функцыю «ліпкія клавішы», якая ўплывае на працу клавіятуры."
+
+#: js/ui/kbdA11yDialog.js:47
+msgid ""
+"You just pressed two keys at once, or pressed the Shift key 5 times in a "
+"row. This turns off the Sticky Keys feature, which affects the way your "
+"keyboard works."
+msgstr ""
+"Вы націснулі дзве клавішы адначасова або клавішу Shift пяць разоў запар. "
+"Гэта дзеянне выключае функцыю «ліпкія клавішы», якая ўплывае на працу "
+"клавіятуры."
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Leave On"
+msgstr "Пакінуць уключанай"
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Turn On"
+msgstr "Уключыць"
+
+#: js/ui/kbdA11yDialog.js:67 js/ui/status/network.js:455
+msgid "Turn Off"
+msgstr "Выключыць"
+
+#: js/ui/kbdA11yDialog.js:67
+msgid "Leave Off"
+msgstr "Пакінуць выключанай"
+
+#: js/ui/keyboard.js:180 js/ui/status/keyboard.js:901
+msgid "Keyboard Settings"
+msgstr "Налады клавіятуры"
+
+#: js/ui/lookingGlass.js:742
+msgid "No extensions installed"
+msgstr "Няма ўсталяваных пашырэнняў"
+
+#. Translators: argument is an extension UUID.
+#: js/ui/lookingGlass.js:805
+#, javascript-format
+msgid "%s has not emitted any errors"
+msgstr "%s не генеруе ніякіх памылак"
+
+#: js/ui/lookingGlass.js:811
+msgid "Hide Errors"
+msgstr "Схаваць памылкі"
+
+#: js/ui/lookingGlass.js:815 js/ui/lookingGlass.js:895
+msgid "Show Errors"
+msgstr "Паказаць памылкі"
+
+#: js/ui/lookingGlass.js:824
+msgid "Active"
+msgstr "Актыўна"
+
+#: js/ui/lookingGlass.js:827
+msgid "Inactive"
+msgstr "Неактыўна"
+
+#: js/ui/lookingGlass.js:829
+msgid "Error"
+msgstr "Памылка"
+
+#: js/ui/lookingGlass.js:831
+msgid "Out of date"
+msgstr "Састарэла"
+
+#: js/ui/lookingGlass.js:833
+msgid "Downloading"
+msgstr "Спампоўванне"
+
+#: js/ui/lookingGlass.js:835
+msgid "Deactivating"
+msgstr "Дэактывацыя"
+
+#: js/ui/lookingGlass.js:837
+msgid "Activating"
+msgstr "Актывацыя"
+
+#: js/ui/lookingGlass.js:873
+msgid "View Source"
+msgstr "Зыходны код"
+
+#: js/ui/lookingGlass.js:884
+msgid "Web Page"
+msgstr "Вэб-старонка"
+
+#: js/ui/main.js:305
+msgid "System was put in unsafe mode"
+msgstr "Сістэма пераведзена ў небяспечны рэжым"
+
+#: js/ui/main.js:306
+msgid "Apps now have unrestricted access"
+msgstr "Цяпер праграмы маюць неабмежаваны доступ"
+
+#: js/ui/main.js:367
+msgid "Logged in as a privileged user"
+msgstr "Увайшоў як прывілеяваны карыстальнік"
+
+#: js/ui/main.js:368
+msgid ""
+"Running a session as a privileged user should be avoided for security "
+"reasons. If possible, you should log in as a normal user."
+msgstr ""
+"У мэтах бяспекі неабходна пазбягаць запуску сеанса ў якасці прывілеяванага "
+"карыстальніка. Калі магчыма, увайдзіце як звычайны карыстальнік."
+
+#: js/ui/main.js:430
+msgid "Screen Lock disabled"
+msgstr "Блакіраванне экрана адключана"
+
+#: js/ui/main.js:431
+msgid "Screen Locking requires the GNOME display manager"
+msgstr "Для блакіравання экрана патрабуецца GNOME display manager"
+
+#. Translators: this is the string displayed in the header when a message
+#. source doesn't have a name
+#: js/ui/messageList.js:409
+msgid "Unknown App"
+msgstr "Невядомая праграма"
+
+#: js/ui/messageTray.js:325 js/ui/messageTray.js:327
+msgid "Notification sound"
+msgstr "Гук апавяшчэння"
+
+#: js/ui/mpris.js:144
+msgid "Unknown artist"
+msgstr "Невядомы выканаўца"
+
+#: js/ui/mpris.js:154
+msgid "Unknown title"
+msgstr "Невядомая назва"
+
+#. Translators: this is the text displayed
+#. in the search entry when no search is
+#. active; it should not exceed ~30
+#. characters.
+#: js/ui/overviewControls.js:328
+msgid "Type to search"
+msgstr "Увядзіце пошукавы запыт"
+
+#: js/ui/overviewControls.js:392
+msgid "Apps"
+msgstr "Праграмы"
+
+#. Translators: This is the main view to select
+#. activities. See also note for "Activities" string.
+#: js/ui/overview.js:33
+msgid "Overview"
+msgstr "Агляд"
+
+#: js/ui/padOsd.js:98
+msgid "New shortcut…"
+msgstr "Новае спалучэнні клавіш…"
+
+#: js/ui/padOsd.js:151
+msgid "App defined"
+msgstr "Праграма вызначана"
+
+#: js/ui/padOsd.js:152
+msgid "Show on-screen help"
+msgstr "Паказваць даведку на экране"
+
+#: js/ui/padOsd.js:153
+msgid "Switch monitor"
+msgstr "Пераключыць манітор"
+
+#: js/ui/padOsd.js:154
+msgid "Assign keystroke"
+msgstr "Прызначыць клавішу"
+
+#: js/ui/padOsd.js:223
+msgid "Done"
+msgstr "Гатова"
+
+#: js/ui/padOsd.js:743
+msgid "Edit…"
+msgstr "Рэдагаваць…"
+
+#: js/ui/padOsd.js:791
+msgid "None"
+msgstr "Няма"
+
+#: js/ui/padOsd.js:868
+msgid "Press a button to configure"
+msgstr "Націсніце кнопку, каб наладзіць"
+
+#: js/ui/padOsd.js:869
+msgid "Press Esc to exit"
+msgstr "Націсніце Esc, каб выйсці"
+
+#: js/ui/padOsd.js:872
+msgid "Press any key to exit"
+msgstr "Націсніце любую клавішу, каб выйсці"
+
+#. Translators: If there is no suitable word for "Activities"
+#. in your language, you can use the word for "Overview".
+#: js/ui/panel.js:423
+msgid "Activities"
+msgstr "Дзейнасць"
+
+#: js/ui/panel.js:504
+msgctxt "System menu in the top bar"
+msgid "System"
+msgstr "Сістэма"
+
+#: js/ui/panel.js:678
+msgid "Top Bar"
+msgstr "Верхняя панэль"
+
+#: js/ui/quickSettings.js:185 js/ui/quickSettings.js:340
+msgid "Open menu"
+msgstr "Адкрыць меню"
+
+#: js/ui/runDialog.js:61
+msgid "Run a Command"
+msgstr "Выканаць каманду"
+
+#: js/ui/runDialog.js:77
+msgid "Press ESC to close"
+msgstr "Націсніце ESC, каб выйсці"
+
+#: js/ui/runDialog.js:254
+msgid "Restart is not available on Wayland"
+msgstr "Перазапуск недаступны на Wayland"
+
+#: js/ui/runDialog.js:259
+msgid "Restarting…"
+msgstr "Перазапуск…"
+
+#: js/ui/screenShield.js:233
+msgid "GNOME needs to lock the screen"
+msgstr "GNOME патрабуе заблакіраваць экран"
+
+#: js/ui/screenShield.js:274 js/ui/screenShield.js:667
+msgid "Unable to lock"
+msgstr "Не ўдалося заблакіраваць"
+
+#: js/ui/screenShield.js:275 js/ui/screenShield.js:668
+msgid "Lock was blocked by an app"
+msgstr "Блакіраванне спынена праграмай"
+
+#: js/ui/screenshot.js:1250
+msgid "Selection"
+msgstr "Вылучэнне"
+
+#: js/ui/screenshot.js:1260
+msgid "Area Selection"
+msgstr "Вылучэнне вобласці"
+
+#: js/ui/screenshot.js:1265
+msgid "Screen"
+msgstr "Экран"
+
+#: js/ui/screenshot.js:1275
+msgid "Screen Selection"
+msgstr "Выбар экрана"
+
+#: js/ui/screenshot.js:1280
+msgid "Window"
+msgstr "Акно"
+
+#: js/ui/screenshot.js:1290
+msgid "Window Selection"
+msgstr "Выбар акна"
+
+#: js/ui/screenshot.js:1315 js/ui/status/system.js:111
+msgid "Take Screenshot"
+msgstr "Зрабіць здымак экрана"
+
+#: js/ui/screenshot.js:1331
+msgid "Record Screen"
+msgstr "Запіс відэа з экрана"
+
+#. Translators: since this string refers to an action,
+#. it needs to be phrased as a verb.
+#: js/ui/screenshot.js:1348
+msgid "Capture"
+msgstr "Зняць"
+
+#: js/ui/screenshot.js:1370
+msgid "Show Pointer"
+msgstr "Паказваць указальнік мышы"
+
+#. Translators: this is the folder where recorded
+#. screencasts are stored.
+#: js/ui/screenshot.js:1994
+msgid "Screencasts"
+msgstr "Запісы экрана"
+
+#. Translators: this is a filename used for screencast
+#. * recording, where "%d" and "%t" date and time, e.g.
+#. * "Screencast From 07-17-2013 10:00:46 PM"
+#: js/ui/screenshot.js:1999
+#, no-c-format
+msgid "Screencast From %d %t"
+msgstr "Запіс экрана ад %d %t"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2045
+msgid "Screencast recorded"
+msgstr "Запіс экрана зроблены"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2058
+msgid "Screencast failed to start"
+msgstr "Не ўдалося пачаць запіс відэа з экрана"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2064
+msgid "Screencast ended: Out of disk space"
+msgstr "Запіс экрана завершаны. Скончылася месца на дыску"
+
+#. We can encourage user to try again on service crashes since the
+#. recorder will auto-blocklist the pipeline that crashed.
+#. Translators: notification title.
+#: js/ui/screenshot.js:2070
+msgid "Screencast ended unexpectedly, please try again"
+msgstr "Запіс экрана нечакана завяршыўся, паўтарыце спробу"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2073
+msgid "Screencast ended unexpectedly"
+msgstr "Запіс экрана нечакана завяршыўся"
+
+#. Translators: notification source name.
+#: js/ui/screenshot.js:2083 js/ui/screenshot.js:2330
+msgid "Screenshot"
+msgstr "Здымак экрана"
+
+#. Translators: notification body when a screencast was recorded.
+#: js/ui/screenshot.js:2090
+msgid "Click here to view the video."
+msgstr "Націсніце сюды, каб праглядзець відэа."
+
+#. Translators: button on the screencast notification.
+#. Translators: button on the screenshot notification.
+#: js/ui/screenshot.js:2098 js/ui/screenshot.js:2346
+msgid "Show in Files"
+msgstr "Паказаць праз «Файлы»"
+
+#. Translators: this is the name of the file that the screenshot is
+#. saved to. The placeholder is a timestamp, e.g. "2017-05-21 12-24-03".
+#: js/ui/screenshot.js:2288
+#, javascript-format
+msgid "Screenshot From %s"
+msgstr "Здымак экрана ад %s"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2336
+msgid "Screenshot captured"
+msgstr "Здымак экрана захоплены"
+
+#. Translators: notification body when a screenshot was captured.
+#: js/ui/screenshot.js:2338
+msgid "You can paste the image from the clipboard."
+msgstr "Вы можаце ўставіць выяву з буфера абмену."
+
+#: js/ui/screenshot.js:2397 js/ui/screenshot.js:2561
+msgid "Screenshot taken"
+msgstr "Здымак экрана атрыманы"
+
+#: js/ui/search.js:832
+msgid "Searching…"
+msgstr "Пошук…"
+
+#: js/ui/search.js:834
+msgid "No results"
+msgstr "Нічога не знойдзена"
+
+#: js/ui/search.js:965
+#, javascript-format
+msgid "%d more"
+msgid_plural "%d more"
+msgstr[0] "Яшчэ %d"
+msgstr[1] "Яшчэ %d"
+msgstr[2] "Яшчэ %d"
+
+#: js/ui/searchController.js:87
+#: subprojects/extensions-app/data/ui/extensions-window.ui:73
+msgid "Search"
+msgstr "Пошук"
+
+#: js/ui/shellEntry.js:21
+msgid "Copy"
+msgstr "Капіяваць"
+
+#: js/ui/shellEntry.js:26
+msgid "Paste"
+msgstr "Уставіць"
+
+#: js/ui/shellEntry.js:78
+msgid "Show Text"
+msgstr "Паказаць тэкст"
+
+#: js/ui/shellEntry.js:80
+msgid "Hide Text"
+msgstr "Схаваць тэкст"
+
+#: js/ui/shellEntry.js:174
+msgid "Caps lock is on"
+msgstr "Caps lock уключаны"
+
+#: js/ui/shellMountOperation.js:286
+msgid "Hidden Volume"
+msgstr "Схаваны том"
+
+#: js/ui/shellMountOperation.js:289
+msgid "Windows System Volume"
+msgstr "Сістэмны том Windows"
+
+#: js/ui/shellMountOperation.js:292
+msgid "Uses Keyfiles"
+msgstr "Выкарыстоўвае файлы-ключы"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:300
+#, javascript-format
+msgid ""
+"To unlock a volume that uses keyfiles, use the <i>%s</i> utility instead"
+msgstr ""
+"Каб разблакіраваць том, які выкарыстоўвае файлы-ключы, скарыстайцеся замест "
+"іх утылітай <i>%s</i>"
+
+#: js/ui/shellMountOperation.js:304
+msgid ""
+"You need an external utility like <i>Disks</i> to unlock a volume that uses "
+"keyfiles"
+msgstr ""
+"Каб разблакіраваць том, які выкарыстоўвае файлы-ключы, патрабуецца знешняя "
+"ўтыліта, напрыклад <i>Дыскі</i>"
+
+#: js/ui/shellMountOperation.js:312
+msgid "PIM Number"
+msgstr "Нумар PIM"
+
+#: js/ui/shellMountOperation.js:371
+msgid "Remember Password"
+msgstr "Запомніць пароль"
+
+#: js/ui/shellMountOperation.js:386
+msgid "Unlock"
+msgstr "Разблакіраваць"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:400
+#, javascript-format
+msgid "Open %s"
+msgstr "Адкрыць %s"
+
+#: js/ui/shellMountOperation.js:436
+msgid "The PIM must be a number or empty"
+msgstr "PIM павінен быць лічбавым або пустым"
+
+#: js/ui/status/accessibility.js:34
+msgid "Accessibility"
+msgstr "Спецыяльныя магчымасці"
+
+#: js/ui/status/accessibility.js:44
+msgid "High Contrast"
+msgstr "Высокая кантраснасць"
+
+#: js/ui/status/accessibility.js:47
+msgid "Zoom"
+msgstr "Маштабаванне"
+
+#: js/ui/status/accessibility.js:54
+msgid "Screen Reader"
+msgstr "Чытанне з экрана"
+
+#: js/ui/status/accessibility.js:58
+msgid "Screen Keyboard"
+msgstr "Экранная клавіятура"
+
+#: js/ui/status/accessibility.js:62
+msgid "Visual Alerts"
+msgstr "Візуальныя сігналы"
+
+#: js/ui/status/accessibility.js:66
+msgid "Sticky Keys"
+msgstr "Ліпкія клавішы"
+
+#: js/ui/status/accessibility.js:70
+msgid "Slow Keys"
+msgstr "Павольныя клавішы"
+
+#: js/ui/status/accessibility.js:74
+msgid "Bounce Keys"
+msgstr "Пругкія клавішы"
+
+#: js/ui/status/accessibility.js:78
+msgid "Mouse Keys"
+msgstr "Кіраванне ўказальнікам мышы"
+
+#: js/ui/status/accessibility.js:83
+msgid "Accessibility Settings"
+msgstr "Налады спецыяльных магчымасцей"
+
+#: js/ui/status/accessibility.js:123
+msgid "Large Text"
+msgstr "Вялікі тэкст"
+
+#: js/ui/status/autoRotate.js:14
+msgid "Auto Rotate"
+msgstr "Аўтапаварот"
+
+#: js/ui/status/backgroundApps.js:156
+msgctxt "title"
+msgid "Background Apps"
+msgstr "Праграмы ў фоне"
+
+#: js/ui/status/backgroundApps.js:171
+msgid "Apps known to be running without a window"
+msgstr "Вядомыя праграмы, якія выконваюцца без акна"
+
+#: js/ui/status/backgroundApps.js:182
+msgid "App Settings"
+msgstr "Налады праграм"
+
+#: js/ui/status/backgroundApps.js:239
+msgid "No Background Apps"
+msgstr "Няма праграм у фоне"
+
+#: js/ui/status/backgroundApps.js:241
+#, javascript-format
+msgid "%d Background App"
+msgid_plural "%d Background Apps"
+msgstr[0] "%d праграма ў фоне"
+msgstr[1] "%d праграмы ў фоне"
+msgstr[2] "%d праграм у фоне"
+
+#: js/ui/status/backlight.js:39
+msgid "Keyboard Brightness"
+msgstr "Яркасць падсветкі клавіятуры"
+
+#: js/ui/status/backlight.js:87
+msgid "Off"
+msgstr "Выключана"
+
+#: js/ui/status/backlight.js:88
+msgid "Low"
+msgstr "Нізкая"
+
+#: js/ui/status/backlight.js:89
+msgid "High"
+msgstr "Высокая"
+
+#: js/ui/status/backlight.js:162 js/ui/status/keyboard.js:883
+msgid "Keyboard"
+msgstr "Клавіятура"
+
+#: js/ui/status/bluetooth.js:246 js/ui/status/network.js:360
+msgid "Disconnect"
+msgstr "Адлучыцца"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:267 js/ui/status/network.js:354
+#, javascript-format
+msgid "Disconnect %s"
+msgstr "Адлучыцца ад %s"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:269 js/ui/status/network.js:356
+#, javascript-format
+msgid "Connect to %s"
+msgstr "Злучыцца з %s"
+
+#: js/ui/status/bluetooth.js:276 js/ui/status/bluetooth.js:278
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+#: js/ui/status/bluetooth.js:301 js/ui/status/network.js:1919
+msgid "Bluetooth Settings"
+msgstr "Налады Bluetooth"
+
+#: js/ui/status/bluetooth.js:348
+msgid "No available or connected devices"
+msgstr "Няма даступных або падлучаных прылад"
+
+#: js/ui/status/bluetooth.js:349
+msgid "Turn on Bluetooth to connect to devices"
+msgstr "Уключыце Bluetooth, каб падлучыцца да прылад"
+
+#. Translators: This is the number of connected bluetooth devices
+#: js/ui/status/bluetooth.js:413
+#, javascript-format
+msgid "%d Connected"
+msgid_plural "%d Connected"
+msgstr[0] "Падлучана %d"
+msgstr[1] "Падлучана %d"
+msgstr[2] "Падлучана %d"
+
+#: js/ui/status/brightness.js:12
+msgid "Brightness"
+msgstr "Яркасць"
+
+#: js/ui/status/darkMode.js:12
+msgid "Dark Style"
+msgstr "Цёмны стыль"
+
+#: js/ui/status/dwellClick.js:15
+msgid "Single Click"
+msgstr "Адзінарнае націсканне"
+
+#: js/ui/status/dwellClick.js:20
+msgid "Double Click"
+msgstr "Падвойнае націсканне"
+
+#: js/ui/status/dwellClick.js:25
+msgid "Drag"
+msgstr "Перацягванне"
+
+#: js/ui/status/dwellClick.js:30
+msgid "Secondary Click"
+msgstr "Націсканне другой кнопкай"
+
+#: js/ui/status/dwellClick.js:39
+msgid "Dwell Click"
+msgstr "Націсканне пры спыненні ўказальніка"
+
+#: js/ui/status/keyboard.js:900
+msgid "Show Keyboard Layout"
+msgstr "Паказаць раскладку клавіятуры"
+
+#: js/ui/status/location.js:337
+msgid "Allow location access"
+msgstr "Дазволіць доступ да месцазнаходжання"
+
+#. Translators: %s is an application name
+#: js/ui/status/location.js:339
+#, javascript-format
+msgid "The app %s wants to access your location"
+msgstr "Праграма %s спрабуе атрымаць доступ да вашага месцазнаходжання"
+
+#: js/ui/status/location.js:349
+msgid "Location access can be changed at any time from the privacy settings"
+msgstr ""
+"Доступ да месцазнаходжанне заўсёды можна змяніць праз налады прыватнасці"
+
+#: js/ui/status/location.js:357
+msgid "Deny Access"
+msgstr "Забараніць доступ"
+
+#: js/ui/status/location.js:362
+msgid "Grant Access"
+msgstr "Дазволіць доступ"
+
+#: js/ui/status/network.js:62
+msgid "<unknown>"
+msgstr "<невядома>"
+
+#: js/ui/status/network.js:1059
+msgid "Secure"
+msgstr "Бяспечная"
+
+#: js/ui/status/network.js:1059
+msgid "Not secure"
+msgstr "Небяспечная"
+
+#: js/ui/status/network.js:1060
+#, javascript-format
+msgid "Signal strength %s%%"
+msgstr "Сіла сігналу %s%%"
+
+#. translators: The first placeholder is the network name, the second and indication whether it is secure, and the last the signal strength indication
+#: js/ui/status/network.js:1062
+#, javascript-format
+msgid "%s, %s, %s"
+msgstr "%s, %s, %s"
+
+#. Translators: %s is a network identifier
+#: js/ui/status/network.js:1164
+#, javascript-format
+msgid "%s Hotspot"
+msgstr "Хот-спот %s"
+
+#: js/ui/status/network.js:1445
+#, javascript-format
+msgid "%d connected"
+msgid_plural "%d connected"
+msgstr[0] "Падлучана %d"
+msgstr[1] "Падлучана %d"
+msgstr[2] "Падлучана %d"
+
+#: js/ui/status/network.js:1543 js/ui/status/network.js:1559
+msgid "VPN"
+msgstr "VPN"
+
+#: js/ui/status/network.js:1544
+msgid "VPN Settings"
+msgstr "Налады VPN"
+
+#: js/ui/status/network.js:1804
+msgid "Wi–Fi"
+msgstr "Wi–Fi"
+
+#: js/ui/status/network.js:1806
+msgid "All Networks"
+msgstr "Усе сеткі"
+
+#: js/ui/status/network.js:1903
+msgid "Wired Connections"
+msgstr "Правадныя злучэнні"
+
+#: js/ui/status/network.js:1904
+msgid "Wired Settings"
+msgstr "Налады праваднога злучэння"
+
+#: js/ui/status/network.js:1918
+msgid "Bluetooth Tethers"
+msgstr "Bluetooth Tethers"
+
+#. Translators: "Tether" from "Bluetooth Tether"
+#: js/ui/status/network.js:1925
+msgid "Tether"
+msgstr "Tether"
+
+#: js/ui/status/network.js:1938
+msgid "Mobile Connections"
+msgstr "Мабільныя злучэнні"
+
+#: js/ui/status/network.js:1940
+msgid "Mobile Broadband Settings"
+msgstr "Налады мабільнага злучэння"
+
+#. Translators: "Mobile" from "Mobile Broadband"
+#: js/ui/status/network.js:1949
+msgid "Mobile"
+msgstr "Мабільны"
+
+#: js/ui/status/network.js:1983
+msgid "Sign in to Network"
+msgstr "Уваход у сетку"
+
+#: js/ui/status/network.js:2170
+msgid "Connection failed"
+msgstr "Не ўдалося злучыцца"
+
+#: js/ui/status/network.js:2171
+msgid "Activation of network connection failed"
+msgstr "Не ўдалося актываваць сеткавае злучэнне"
+
+#: js/ui/status/nightLight.js:19
+msgid "Night Light"
+msgstr "Начное святло"
+
+#: js/ui/status/powerProfiles.js:19
+msgctxt "Power profile"
+msgid "Performance"
+msgstr "Прадукцыйнасць"
+
+#: js/ui/status/powerProfiles.js:24
+msgctxt "Power profile"
+msgid "Balanced"
+msgstr "Збалансаваны"
+
+#: js/ui/status/powerProfiles.js:29
+msgctxt "Power profile"
+msgid "Power Saver"
+msgstr "Энергазберажэнне"
+
+# Трэба Рэжым сілкавання, але ўлазіць толькі Рэжым сіл... або Рэжым с...
+#: js/ui/status/powerProfiles.js:39 js/ui/status/powerProfiles.js:69
+msgid "Power Mode"
+msgstr "Рэжым ⚡"
+
+#: js/ui/status/powerProfiles.js:71
+msgid "Power Settings"
+msgstr "Налады сілкавання"
+
+#: js/ui/status/remoteAccess.js:74
+msgid "Stop Screencast"
+msgstr "Спыніць запіс экрана"
+
+#: js/ui/status/remoteAccess.js:144
+msgid "Stop Screen Sharing"
+msgstr "Спыніць супольны доступ да экрана"
+
+#: js/ui/status/rfkill.js:99
+msgid "Airplane Mode"
+msgstr "Рэжым палёту"
+
+#: js/ui/status/system.js:168
+msgid "Power Off Menu"
+msgstr "Меню выключэння"
+
+#: js/ui/status/system.js:176
+msgid "Suspend"
+msgstr "Прыпыніць працу"
+
+#: js/ui/status/system.js:181
+msgid "Restart…"
+msgstr "Перазапуск…"
+
+#: js/ui/status/system.js:186
+msgid "Power Off…"
+msgstr "Выключыць…"
+
+#: js/ui/status/system.js:193
+#: subprojects/extensions-app/data/ui/extensions-window.ui:124
+msgid "Log Out…"
+msgstr "Выйсці…"
+
+#: js/ui/status/system.js:198
+msgid "Switch User…"
+msgstr "Змяніць карыстальніка…"
+
+#: js/ui/status/system.js:242
+msgctxt "action"
+msgid "Lock Screen"
+msgstr "Заблакіраваць экран"
+
+#: js/ui/status/thunderbolt.js:308
+msgid "Unknown Thunderbolt device"
+msgstr "Невядомая прылада Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:309
+msgid ""
+"New device has been detected while you were away. Please disconnect and "
+"reconnect the device to start using it."
+msgstr ""
+"Падчас вашай адсутнасці была выяўлена новая прылада. Каб пачаць ёй "
+"карыстацца, адлучыце і зноў падлучыце прыладу."
+
+#: js/ui/status/thunderbolt.js:312
+msgid "Unauthorized Thunderbolt device"
+msgstr "Несанкцыянаваная прылада Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:313
+msgid ""
+"New device has been detected and needs to be authorized by an administrator"
+msgstr "Выяўлена новая прылада. Патрабуецца аўтарызацыя ад адміністратара"
+
+#: js/ui/status/thunderbolt.js:319
+msgid "Thunderbolt authorization error"
+msgstr "Памылка аўтарызацыі Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:320
+#, javascript-format
+msgid "Could not authorize the Thunderbolt device: %s"
+msgstr "Не ўдалося аўтарызаваць прыладу Thunderbolt: %s"
+
+#: js/ui/status/volume.js:218
+msgid "Volume changed"
+msgstr "Гучнасць зменена"
+
+#: js/ui/status/volume.js:231
+msgid "Unmute"
+msgstr "Уключыць гук"
+
+#: js/ui/status/volume.js:231
+msgid "Mute"
+msgstr "Адключыць гук"
+
+#: js/ui/status/volume.js:293
+msgid "Volume"
+msgstr "Гучнасць"
+
+#: js/ui/status/volume.js:309
+msgid "Sound Output"
+msgstr "Аўдыявыхад"
+
+#: js/ui/status/volume.js:384
+msgid "Sound Input"
+msgstr "Аўдыяўваход"
+
+#. Translators: this is for display mirroring i.e. cloning.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:20
+msgid "Mirror"
+msgstr "Адлюстраванне"
+
+#. Translators: this is for the desktop spanning displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:29
+msgid "Join Displays"
+msgstr "Аб'яднаць дысплэі"
+
+#. Translators: this is for using only external displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:39
+msgid "External Only"
+msgstr "Толькі знешні"
+
+#. Translators: this is for using only the laptop display.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:47
+msgid "Built-in Only"
+msgstr "Толькі ўбудаваны"
+
+#. Translators: This is a time format for a date in
+#. long format
+#: js/ui/unlockDialog.js:384
+msgid "%A %B %-d"
+msgstr "%A, %-d %B"
+
+#: js/ui/unlockDialog.js:390
+msgid "Swipe up to unlock"
+msgstr "Правядзіце пальцам, каб разблакіраваць"
+
+#: js/ui/unlockDialog.js:391
+msgid "Click or press a key to unlock"
+msgstr "Каб разблакіраваць, націсніце кнопку мышы ці клавіятуры"
+
+#: js/ui/unlockDialog.js:576
+msgid "Unlock Window"
+msgstr "Разблакіраваць акно"
+
+#: js/ui/unlockDialog.js:585
+msgid "Log in as another user"
+msgstr "Увайсці як іншы карыстальнік"
+
+#: js/ui/welcomeDialog.js:47
+#, javascript-format
+msgid "GNOME %s"
+msgstr "GNOME %s"
+
+#: js/ui/welcomeDialog.js:51
+#, javascript-format
+msgid "Welcome to %s"
+msgstr "Вітаем у %s"
+
+#: js/ui/welcomeDialog.js:52
+msgid "If you want to learn your way around, check out the tour"
+msgstr ""
+"Калі хочаце азнаёміцца з новымі магчымасцямі, прапануем вам кароткі агляд"
+
+#: js/ui/welcomeDialog.js:66
+msgid "Take Tour"
+msgstr "Азнаёміцца"
+
+#: js/ui/windowAttentionHandler.js:18
+#, javascript-format
+msgid "“%s” is ready"
+msgstr "«%s» гатова"
+
+#. Translators: This string should be shorter than 30 characters
+#: js/ui/windowManager.js:68
+msgid "Keep these display settings?"
+msgstr "Захаваць гэтыя налады дысплэя?"
+
+#: js/ui/windowManager.js:78
+msgid "Revert Settings"
+msgstr "Скінуць змены налад"
+
+#: js/ui/windowManager.js:83
+msgid "Keep Changes"
+msgstr "Захаваць змены"
+
+#: js/ui/windowManager.js:103
+#, javascript-format
+msgid "Settings changes will revert in %d second"
+msgid_plural "Settings changes will revert in %d seconds"
+msgstr[0] "Змены налад будуць скінуты праз %d секунду"
+msgstr[1] "Змены налад будуць скінуты праз %d секунды"
+msgstr[2] "Змены налад будуць скінуты праз %d секунд"
+
+#. Translators: This represents the size of a window. The first number is
+#. * the width of the window and the second is the height.
+#: js/ui/windowManager.js:500
+#, javascript-format
+msgid "%d × %d"
+msgstr "%d × %d"
+
+#. Translators: entry in the window right click menu.
+#: js/ui/windowMenu.js:28
+msgctxt "window-menu"
+msgid "Take Screenshot"
+msgstr "Зрабіць здымак экрана"
+
+#: js/ui/windowMenu.js:40
+msgid "Hide"
+msgstr "Схаваць"
+
+#: js/ui/windowMenu.js:47
+msgid "Restore"
+msgstr "Аднавіць"
+
+#: js/ui/windowMenu.js:51
+msgid "Maximize"
+msgstr "Разгарнуць"
+
+#: js/ui/windowMenu.js:58
+msgid "Move"
+msgstr "Перамясціць"
+
+#: js/ui/windowMenu.js:78
+msgid "Resize"
+msgstr "Змяніць памер"
+
+#: js/ui/windowMenu.js:98
+msgid "Always on Top"
+msgstr "Заўсёды зверху"
+
+#: js/ui/windowMenu.js:117
+msgid "Always on Visible Workspace"
+msgstr "Заўсёды на бачнай працоўнай прасторы"
+
+#: js/ui/windowMenu.js:131
+msgid "Move to Workspace Left"
+msgstr "Перамясціць на працоўную прастору лявей"
+
+#: js/ui/windowMenu.js:137
+msgid "Move to Workspace Right"
+msgstr "Перамясціць на працоўную прастору правей"
+
+#: js/ui/windowMenu.js:143
+msgid "Move to Workspace Up"
+msgstr "Перамясціць на працоўную прастору вышэй"
+
+#: js/ui/windowMenu.js:149
+msgid "Move to Workspace Down"
+msgstr "Перамясціць на працоўную прастору ніжэй"
+
+#: js/ui/windowMenu.js:167
+msgid "Move to Monitor Up"
+msgstr "Перамясціць на манітор вышэй"
+
+#: js/ui/windowMenu.js:176
+msgid "Move to Monitor Down"
+msgstr "Перамясціць на манітор ніжэй"
+
+#: js/ui/windowMenu.js:185
+msgid "Move to Monitor Left"
+msgstr "Перамясціць на манітор лявей"
+
+#: js/ui/windowMenu.js:194
+msgid "Move to Monitor Right"
+msgstr "Перамясціць на манітор правей"
+
+#: js/ui/windowMenu.js:202
+msgid "Close"
+msgstr "Закрыць"
+
+#: src/main.c:512 subprojects/extensions-tool/src/main.c:336
+msgid "Print version"
+msgstr "Вывесці нумар версіі"
+
+#: src/main.c:518
+msgid "Mode used by GDM for login screen"
+msgstr "Рэжым, які выкарыстоўвае GDM для экрана ўваходу"
+
+#: src/main.c:524
+msgid "Use a specific mode, e.g. “gdm” for login screen"
+msgstr "Выкарыстоўваць вызначаны рэжым, напрыклад, «gdm» для экрана ўваходу"
+
+#: src/main.c:530
+msgid "List possible modes"
+msgstr "Спіс магчымых рэжымаў"
+
+#: src/main.c:536
+msgid "Force animations to be enabled"
+msgstr "Прымусовае ўключэнне анімацыі"
+
+#: src/shell-app.c:267
+msgctxt "program"
+msgid "Unknown"
+msgstr "Невядомая"
+
+#: src/shell-app.c:518
+#, c-format
+msgid "Failed to launch “%s”"
+msgstr "Не ўдалося запусціць «%s»"
+
+#: src/shell-keyring-prompt.c:779
+msgid "Passwords do not match"
+msgstr "Паролі не супадаюць"
+
+#: src/shell-keyring-prompt.c:787
+msgid "Password cannot be blank"
+msgstr "Пароль не можа быць пустым"
+
+#: src/shell-polkit-authentication-agent.c:344
+msgid "Authentication dialog was dismissed by the user"
+msgstr "Праверкі сапраўднасці адхілена карыстальнікам"
+
+#: src/st/st-icon-theme.c:1859
+#, c-format
+msgid "Icon '%s' not present in theme %s"
+msgstr "Значок «%s» адсутнічае ў тэме %s"
+
+#: src/st/st-icon-theme.c:3452 src/st/st-icon-theme.c:3755
+msgid "Failed to load icon"
+msgstr "Не ўдалося загрузіць значок"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:6
+msgid "Manage your GNOME Extensions"
+msgstr "Кіраванне пашырэннямі GNOME"
+
+#. developer_name tag deprecated with Appstream 1.0
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:20
+msgid "The GNOME Project"
+msgstr "Праект GNOME"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:52
+msgid ""
+"GNOME Extensions handles updating extensions, configuring extension "
+"preferences and removing or disabling unwanted extensions."
+msgstr ""
+"Пашырэнні GNOME ажыццяўляюць абнаўленне і змяненне параметраў пашырэнняў, "
+"выдаленне або адключэнне непажаданых пашырэнняў."
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:70
+msgid "Main Window"
+msgstr "Галоўнае акно"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:74
+msgid "Available Updates"
+msgstr "Даступны абнаўленні"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:78
+msgid "Search View"
+msgstr "Пошук"
+
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:7
+msgid "Configure GNOME Shell Extensions"
+msgstr "Наладзіць пашырэнні абалонкі GNOME"
+
+#: subprojects/extensions-app/js/extensionManager.js:237
+#, javascript-format
+msgid ""
+"The installed version of this extension (%s) is incompatible with the "
+"current version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Усталяваная версія пашырэння (%s) несумяшчальная з бягучай версіяй GNOME "
+"(%s). Пашырэнне адключана."
+
+#: subprojects/extensions-app/js/extensionManager.js:238
+#, javascript-format
+msgid ""
+"The installed version of this extension is incompatible with the current "
+"version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Усталяваная версія пашырэння несумяшчальная з бягучай версіяй GNOME (%s). "
+"Пашырэнне адключана."
+
+#: subprojects/extensions-app/js/extensionManager.js:242
+msgid ""
+"An error has occurred in this extension. This could cause issues elsewhere "
+"in the system. It is recommended to turn the extension off until the error "
+"is resolved."
+msgstr ""
+"У гэтым пашырэнні адбылася памылка, што можа прывесці да праблем у іншых "
+"частках сістэмы. Пакуль памылка не будзе выпраўлена, рэкамендуецца адключыць "
+"пашырэнне."
+
+#. translators: Details for an extension error
+#: subprojects/extensions-app/js/extensionManager.js:248
+msgid "Error details:"
+msgstr "Падрабязнасці памылкі:"
+
+#: subprojects/extensions-app/js/extensionRow.js:82
+#, javascript-format
+msgid "Version %s"
+msgstr "Версія %s"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:113
+#, javascript-format
+msgid "Remove “%s”?"
+msgstr "Выдаліць «%s»?"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:114
+msgid ""
+"If you remove the extension, you need to return to download it if you want "
+"to enable it again"
+msgstr ""
+"Калі выдаліць пашырэнне і потым уключыць яго зноў, спатрэбіцца паўторнае "
+"спампоўванне"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:117
+msgid "_Cancel"
+msgstr "_Скасаваць"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:118
+msgid "_Remove"
+msgstr "_Выдаліць"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:158
+msgid "translator-credits"
+msgstr ""
+"Ihar Hrachyshka <ihar.hrachyshka@gmail.com>\n"
+"Kasia Bondarava <kasia.bondarava@gmail.com>\n"
+"Yuras Shumovich <shumovichy@gmail.com>"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:203
+#, javascript-format
+msgid "%d extension will be updated on next login."
+msgid_plural "%d extensions will be updated on next login."
+msgstr[0] "Падчас наступнага ўваходу ў сістэму абновіцца %d пашырэнне."
+msgstr[1] "Падчас наступнага ўваходу ў сістэму абновіцца %d пашырэнні."
+msgstr[2] "Падчас наступнага ўваходу ў сістэму абновіцца %d пашырэнняў."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:13
+msgid "Error Details"
+msgstr "Падрабязнасці памылкі"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:51
+msgid "Updates Details"
+msgstr "Падрабязнасці абнаўлення"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:68
+msgid ""
+"A new version of this extension is ready and will be loaded on next login."
+msgstr ""
+"Новая версія пашырэння гатова да выкарыстання, яна будзе загружана падчас "
+"наступнага ўваходу ў сістэму."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:100
+msgid "Extension Details"
+msgstr "Звесткі аб пашырэнні"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:188
+msgid "_Website"
+msgstr "_Вэб-сайт"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:215
+msgid "_Settings"
+msgstr "_Налады"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:242
+msgid "_Remove…"
+msgstr "_Выдаліць…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:6
+msgid "Keyboard Shortcuts"
+msgstr "Спалучэнні клавіш"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:10
+msgid "About Extensions"
+msgstr "Пра пашырэнні"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:64
+msgid "Main Menu"
+msgstr "Галоўнае меню"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:106
+msgid "Search extensions"
+msgstr "Пошук пашырэнняў"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:134
+msgid "_Extensions"
+msgstr "_Пашырэнні"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:139
+msgid "More Information"
+msgstr "Дадатковыя звесткі"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:151
+msgid ""
+"Extensions can cause performance and stability issues. It is recommended to "
+"disable all extensions if you experience problems with your system."
+msgstr ""
+"Пашырэнні могуць выклікаць праблемы з прадукцыйнасцю і стабільнасцю. "
+"Рэкамендуецца адключыць усе пашырэнні, калі вы сутыкнуліся з праблемамі ў "
+"сваёй сістэме."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:178
+msgid "User Extensions"
+msgstr "Пашырэнні карыстальніка"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:198
+msgid "System Extensions"
+msgstr "Сістэмныя пашырэнні"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:233
+msgid "Search Results"
+msgstr "Вынікі пошуку"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:252
+msgid "No Results Found"
+msgstr "Нічога не знойдзена"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:253
+msgid "Try a different search"
+msgstr "Паспрабуйце змяніць пошукавы запыт"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:264
+msgid "No Installed Extensions"
+msgstr "Няма ўсталяваных пашырэнняў"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:265
+msgid ""
+"To find and add extensions, visit <a href=\"https://extensions.gnome."
+"org\">extensions.gnome.org</a>."
+msgstr ""
+"Каб знайсці і дадаць пашырэнні, наведайце <a href=\"https://extensions.gnome."
+"org\">extensions.gnome.org</a>."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:276
+msgid ""
+"We’re very sorry, but it was not possible to get the list of installed "
+"extensions. Make sure you are logged into GNOME and try again."
+msgstr ""
+"На жаль, немагчыма атрымаць спіс усталяваных пашырэнняў. Праверце, ці "
+"ўвайшлі вы ў GNOME і паўтарыце спробу."
+
+#: subprojects/extensions-app/data/ui/help-overlay.ui:9
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Агульныя"
+
+#: subprojects/extensions-app/data/ui/help-overlay.ui:12
+msgctxt "shortcut window"
+msgid "Open Menu"
+msgstr "Адкрыць меню"
+
+#: subprojects/extensions-app/data/ui/help-overlay.ui:18
+msgctxt "shortcut window"
+msgid "Toggle Search"
+msgstr "Пошук"
+
+#: subprojects/extensions-app/data/ui/help-overlay.ui:24
+msgctxt "shortcut window"
+msgid "Show Shortcuts"
+msgstr "Паказаць спалучэнні клавіш"
+
+#: subprojects/extensions-app/data/ui/help-overlay.ui:30
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "Выйсці"
+
+#. Translators: a file path to an extension directory
+#: subprojects/extensions-tool/src/command-create.c:284
+#, c-format
+msgid "The new extension was successfully created in %s.\n"
+msgstr "Новае пашырэнне створана ў %s.\n"
+
+#: subprojects/extensions-tool/src/command-create.c:376
+#, c-format
+msgid ""
+"Name should be a very short (ideally descriptive) string.\n"
+"Examples are: %s"
+msgstr ""
+"Назва — кароткая (лепш за ўсё апісальная) фраза ці слова.\n"
+"Прыклады: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:382
+#: subprojects/extensions-tool/src/main.c:243
+msgid "Name"
+msgstr "Назва"
+
+#: subprojects/extensions-tool/src/command-create.c:396
+#, c-format
+msgid ""
+"Description is a single-sentence explanation of what your extension does.\n"
+"Examples are: %s"
+msgstr ""
+"Апісанне — тлумачэнне адным сказам, што робіць ваша пашырэнне.\n"
+"Прыклады: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:402
+#: subprojects/extensions-tool/src/main.c:246
+msgid "Description"
+msgstr "Апісанне"
+
+#: subprojects/extensions-tool/src/command-create.c:416
+msgid ""
+"UUID is a globally-unique identifier for your extension.\n"
+"This should be in the format of an email address (clicktofocus@janedoe."
+"example.com)\n"
+msgstr ""
+"UUID — усеагульны ўнікальны ідэнтыфікатар вашага пашырэння.\n"
+"Ён павінен мець фармат адраса электроннай пошты (nazva@jankupala.pryklad."
+"com)\n"
+
+#: subprojects/extensions-tool/src/command-create.c:443
+msgid "Choose one of the available templates:\n"
+msgstr "Выберыце адзін з даступных шаблонаў:\n"
+
+#: subprojects/extensions-tool/src/command-create.c:457
+msgid "Template"
+msgstr "Шаблон"
+
+#: subprojects/extensions-tool/src/command-create.c:515
+msgid "The unique identifier of the new extension"
+msgstr "Унікальны ідэнтыфікатар новага пашырэння"
+
+#: subprojects/extensions-tool/src/command-create.c:518
+msgid "NAME"
+msgstr "НАЗВА"
+
+#: subprojects/extensions-tool/src/command-create.c:519
+msgid "The user-visible name of the new extension"
+msgstr "Назва новага пашырэння, якую бачыць карыстальнік"
+
+#: subprojects/extensions-tool/src/command-create.c:521
+msgid "DESCRIPTION"
+msgstr "АПІСАННЕ"
+
+#: subprojects/extensions-tool/src/command-create.c:523
+msgid "A short description of what the extension does"
+msgstr "Кароткае апісанне, што робіць пашырэнне"
+
+#: subprojects/extensions-tool/src/command-create.c:525
+#: subprojects/extensions-tool/src/command-pack.c:455
+msgid "DOMAIN"
+msgstr "ДАМЕН"
+
+#: subprojects/extensions-tool/src/command-create.c:527
+msgid "The gettext domain used by the extension"
+msgstr "Дамен gettext, які выкарыстоўваецца пашырэннем"
+
+#: subprojects/extensions-tool/src/command-create.c:529
+#: subprojects/extensions-tool/src/command-pack.c:448
+msgid "SCHEMA"
+msgstr "СХЕМА"
+
+#: subprojects/extensions-tool/src/command-create.c:531
+msgid "The GSettings schema used by the extension"
+msgstr "Схема GSettings, якая выкарыстоўваецца пашырэннем"
+
+#: subprojects/extensions-tool/src/command-create.c:534
+msgid "TEMPLATE"
+msgstr "ШАБЛОН"
+
+#: subprojects/extensions-tool/src/command-create.c:535
+msgid "The template to use for the new extension"
+msgstr "Шаблон для новых пашырэнняў"
+
+#: subprojects/extensions-tool/src/command-create.c:538
+msgid "Include prefs.js template"
+msgstr "Уключыць шаблон prefs.js"
+
+#: subprojects/extensions-tool/src/command-create.c:544
+msgid "Enter extension information interactively"
+msgstr "Інтэрактыўны ўвод інфармацыі аб пашырэнні"
+
+#: subprojects/extensions-tool/src/command-create.c:552
+msgid "Create a new extension"
+msgstr "Стварыць новае пашырэнне"
+
+#: subprojects/extensions-tool/src/command-create.c:570
+#: subprojects/extensions-tool/src/command-list.c:190
+msgid "Unknown arguments"
+msgstr "Невядомыя аргументы"
+
+#: subprojects/extensions-tool/src/command-create.c:595
+msgid "UUID, name and description are required"
+msgstr "Патрабуецца UUID, назва і апісанне"
+
+#: subprojects/extensions-tool/src/command-disable.c:62
+#: subprojects/extensions-tool/src/command-enable.c:62
+#, c-format
+msgid "Extension “%s” does not exist\n"
+msgstr "Пашырэнне «%s» не існуе\n"
+
+#: subprojects/extensions-tool/src/command-disable.c:98
+msgid "Disable an extension"
+msgstr "Адключыць пашырэнне"
+
+#: subprojects/extensions-tool/src/command-disable.c:116
+#: subprojects/extensions-tool/src/command-enable.c:116
+#: subprojects/extensions-tool/src/command-info.c:103
+#: subprojects/extensions-tool/src/command-prefs.c:105
+#: subprojects/extensions-tool/src/command-reset.c:76
+#: subprojects/extensions-tool/src/command-uninstall.c:104
+msgid "No UUID given"
+msgstr "UUID не ўказаны"
+
+#: subprojects/extensions-tool/src/command-disable.c:121
+#: subprojects/extensions-tool/src/command-enable.c:121
+#: subprojects/extensions-tool/src/command-info.c:108
+#: subprojects/extensions-tool/src/command-prefs.c:110
+#: subprojects/extensions-tool/src/command-reset.c:81
+#: subprojects/extensions-tool/src/command-uninstall.c:109
+msgid "More than one UUID given"
+msgstr "Указана больш за адзін UUID"
+
+#: subprojects/extensions-tool/src/command-enable.c:98
+msgid "Enable an extension"
+msgstr "Уключыць пашырэнне"
+
+#: subprojects/extensions-tool/src/command-info.c:50
+#: subprojects/extensions-tool/src/command-list.c:66
+#: subprojects/extensions-tool/src/main.c:150
+msgid "Failed to connect to GNOME Shell\n"
+msgstr "Не ўдалося злучыцца з абалонкай GNOME\n"
+
+#: subprojects/extensions-tool/src/command-info.c:59
+#: subprojects/extensions-tool/src/main.c:159
+#, c-format
+msgid "Extension “%s” doesn't exist\n"
+msgstr "Пашырэнне «%s» не існуе\n"
+
+#: subprojects/extensions-tool/src/command-info.c:85
+msgid "Show extensions info"
+msgstr "Паказаць звесткі аб пашырэнні"
+
+#: subprojects/extensions-tool/src/command-install.c:190
+msgid "Overwrite an existing extension"
+msgstr "Перазапісаць існуючае пашырэнне"
+
+#: subprojects/extensions-tool/src/command-install.c:192
+msgid "EXTENSION_BUNDLE"
+msgstr "ПАКЕТ_ПАШЫРЭННЯ"
+
+#: subprojects/extensions-tool/src/command-install.c:201
+msgid "Install an extension bundle"
+msgstr "Усталяваць пакет пашырэння"
+
+#: subprojects/extensions-tool/src/command-install.c:219
+msgid "No extension bundle specified"
+msgstr "Не ўказаны пакет пашырэння"
+
+#: subprojects/extensions-tool/src/command-install.c:225
+msgid "More than one extension bundle specified"
+msgstr "Указана больш за адзін пакет пашырэння"
+
+#: subprojects/extensions-tool/src/command-list.c:140
+msgid "Show user-installed extensions"
+msgstr "Паказаць пашырэнні ўсталяваныя карыстальнікам"
+
+#: subprojects/extensions-tool/src/command-list.c:143
+msgid "Show system-installed extensions"
+msgstr "Паказаць пашырэнні ўсталяваныя сістэмай"
+
+#: subprojects/extensions-tool/src/command-list.c:146
+msgid "Show enabled extensions"
+msgstr "Паказаць уключаныя пашырэнні"
+
+#: subprojects/extensions-tool/src/command-list.c:149
+msgid "Show disabled extensions"
+msgstr "Паказаць адключаныя пашырэнні"
+
+#: subprojects/extensions-tool/src/command-list.c:152
+msgid "Show extensions in active state"
+msgstr "Паказаць актыўныя пашырэнні"
+
+#: subprojects/extensions-tool/src/command-list.c:155
+msgid "Show extensions in inactive state"
+msgstr "Паказаць неактыўныя пашырэнні"
+
+#: subprojects/extensions-tool/src/command-list.c:158
+msgid "Show extensions with preferences"
+msgstr "Паказаць пашырэнні з параметрамі"
+
+#: subprojects/extensions-tool/src/command-list.c:161
+msgid "Show extensions with updates"
+msgstr "Паказаць пашырэнні з абнаўленнямі"
+
+#: subprojects/extensions-tool/src/command-list.c:164
+msgid "Print extension details"
+msgstr "Вывесці звесткі аб пашырэнні"
+
+#: subprojects/extensions-tool/src/command-list.c:172
+msgid "List installed extensions"
+msgstr "Спіс усталяваных пашырэнняў"
+
+#: subprojects/extensions-tool/src/command-pack.c:444
+msgid "FILE"
+msgstr "ФАЙЛ"
+
+#: subprojects/extensions-tool/src/command-pack.c:445
+msgid "Additional source to include in the bundle"
+msgstr "Дадатковая крыніца для ўключэння ў пакет"
+
+#: subprojects/extensions-tool/src/command-pack.c:449
+msgid "A GSettings schema that should be included"
+msgstr "Схема GSettings якую трэба ўключыць"
+
+#: subprojects/extensions-tool/src/command-pack.c:451
+#: subprojects/extensions-tool/src/command-pack.c:462
+msgid "DIRECTORY"
+msgstr "КАТАЛОГ"
+
+#: subprojects/extensions-tool/src/command-pack.c:453
+msgid "The directory where translations are found"
+msgstr "Каталог, у якім знаходзяцца пераклады"
+
+#: subprojects/extensions-tool/src/command-pack.c:457
+msgid "The gettext domain to use for translations"
+msgstr "Дамен gettext, які выкарыстоўваецца для перакладу"
+
+#: subprojects/extensions-tool/src/command-pack.c:460
+msgid "Overwrite an existing pack"
+msgstr "Перазапісаць існуючы пакет"
+
+#: subprojects/extensions-tool/src/command-pack.c:464
+msgid "The directory where the pack should be created"
+msgstr "Каталог, у якім будзе створаны пакет"
+
+#: subprojects/extensions-tool/src/command-pack.c:466
+msgid "SOURCE_DIRECTORY"
+msgstr "ЗЫХОДНЫ_КАТАЛОГ"
+
+#: subprojects/extensions-tool/src/command-pack.c:475
+msgid "Create an extension bundle"
+msgstr "Стварыць пакет пашырэння"
+
+#: subprojects/extensions-tool/src/command-pack.c:495
+msgid "More than one source directory specified"
+msgstr "Указана больш за адзін зыходны каталог"
+
+#: subprojects/extensions-tool/src/command-prefs.c:47
+#, c-format
+msgid "Extension “%s” doesn't have preferences\n"
+msgstr "У пашырэння «%s» няма параметраў\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:62
+#, c-format
+msgid "Failed to open prefs for extension “%s”: %s\n"
+msgstr "Не ўдалося адкрыць параметры пашырэння «%s»: %s\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:87
+msgid "Opens extension preferences"
+msgstr "Адкрывае параметры пашырэння"
+
+#: subprojects/extensions-tool/src/command-reset.c:58
+msgid "Reset an extension"
+msgstr "Скінуць пашырэнне"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:49
+msgid "Cannot uninstall system extensions\n"
+msgstr "Нельга выдаляць сістэмныя пашырэнні\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:64
+#, c-format
+msgid "Failed to uninstall “%s”\n"
+msgstr "Не ўдалося выдаліць «%s»\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:86
+msgid "Uninstall an extension"
+msgstr "Выдаліць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:76
+msgid "Do not print error messages"
+msgstr "Не выводзіць паведамленні пра памылкі"
+
+#: subprojects/extensions-tool/src/main.c:249
+msgid "Path"
+msgstr "Шлях"
+
+#: subprojects/extensions-tool/src/main.c:252
+msgid "URL"
+msgstr "URL-адрас"
+
+#: subprojects/extensions-tool/src/main.c:255
+msgid "Original author"
+msgstr "Першы аўтар"
+
+#: subprojects/extensions-tool/src/main.c:261
+#: subprojects/extensions-tool/src/main.c:263
+#: subprojects/extensions-tool/src/main.c:265
+msgid "Version"
+msgstr "Версія"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Enabled"
+msgstr "Уключана"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Yes"
+msgstr "Так"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "No"
+msgstr "Не"
+
+#: subprojects/extensions-tool/src/main.c:271
+msgid "State"
+msgstr "Стан"
+
+#: subprojects/extensions-tool/src/main.c:309
+msgid "“version” takes no arguments"
+msgstr "«version» не прымае аргументаў"
+
+#: subprojects/extensions-tool/src/main.c:311
+#: subprojects/extensions-tool/src/main.c:331
+msgid "Usage:"
+msgstr "Выкарыстанне:"
+
+#: subprojects/extensions-tool/src/main.c:314
+msgid "Print version information and exit."
+msgstr "Вывесці звесткі пра версію і выйсці."
+
+#: subprojects/extensions-tool/src/main.c:329
+#: subprojects/extensions-tool/src/main.c:332
+msgid "COMMAND"
+msgstr "КАМАНДА"
+
+#: subprojects/extensions-tool/src/main.c:332
+msgid "[ARGS…]"
+msgstr "[АРГУМЕНТЫ…]"
+
+#: subprojects/extensions-tool/src/main.c:334
+msgid "Commands:"
+msgstr "Каманды:"
+
+#: subprojects/extensions-tool/src/main.c:335
+msgid "Print help"
+msgstr "Вывесці даведку"
+
+#: subprojects/extensions-tool/src/main.c:337
+msgid "Enable extension"
+msgstr "Уключыць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:338
+msgid "Disable extension"
+msgstr "Адключыць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:339
+msgid "Reset extension"
+msgstr "Скінуць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:340
+msgid "Uninstall extension"
+msgstr "Выдаліць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:341
+msgid "List extensions"
+msgstr "Спіс пашырэнняў"
+
+#: subprojects/extensions-tool/src/main.c:342
+#: subprojects/extensions-tool/src/main.c:343
+msgid "Show extension info"
+msgstr "Паказаць звесткі аб пашырэнні"
+
+#: subprojects/extensions-tool/src/main.c:344
+msgid "Open extension preferences"
+msgstr "Адкрыць параметры пашырэння"
+
+#: subprojects/extensions-tool/src/main.c:345
+msgid "Create extension"
+msgstr "Стварыць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:346
+msgid "Package extension"
+msgstr "Запакаваць пашырэнне"
+
+#: subprojects/extensions-tool/src/main.c:347
+msgid "Install extension bundle"
+msgstr "Усталяваць пакет пашырэння"
+
+#: subprojects/extensions-tool/src/main.c:349
+#, c-format
+msgid "Use “%s” to get detailed help.\n"
+msgstr "Выкарыстоўвайце «%s», каб атрымаць падрабязную даведку.\n"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:4
+msgid "Plain"
+msgstr "Просты"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:5
+msgid "An empty extension"
+msgstr "Пустое пашырэнне"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:4
+msgid "Indicator"
+msgstr "Індыкатар"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:5
+msgid "Add an icon to the top bar"
+msgstr "Дадаць значок на верхнюю панэль"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:4
+msgid "Quick Settings Item"
+msgstr "Элемент хуткіх налад"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:5
+msgid "Add an item to quick settings"
+msgstr "Дадаць элемент у хуткія налады"
+
+#. translators:
+#. * The device has been disabled
+#: subprojects/gvc/gvc-mixer-control.c:1872
+msgid "Disabled"
+msgstr "Выключана"
+
+#. translators:
+#. * The number of sound outputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1879
+#, c-format
+msgid "%u Output"
+msgid_plural "%u Outputs"
+msgstr[0] "%u выхад"
+msgstr[1] "%u выхады"
+msgstr[2] "%u выхадаў"
+
+#. translators:
+#. * The number of sound inputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1889
+#, c-format
+msgid "%u Input"
+msgid_plural "%u Inputs"
+msgstr[0] "%u аўдыяўваход"
+msgstr[1] "%u аўдыяўваходы"
+msgstr[2] "%u аўдыяўваходаў"
+
+#: subprojects/gvc/gvc-mixer-control.c:2872
+msgid "System Sounds"
+msgstr "Сістэмныя гукі"
+
+#~ msgid "%H∶%M"
+#~ msgstr "%H∶%M"
+
+#~ msgid "Could not parse command:"
+#~ msgstr "Не ўдалося разабраць каманду:"
+
+#~ msgid "Move Titlebar Onscreen"
+#~ msgstr "Перамясціць панэль загалоўка на экран"
+
+#, javascript-format
+#~ msgid "%s is now known as %s"
+#~ msgstr "%s змяніў імя на %s"
+
+#~ msgid "Network Manager"
+#~ msgstr "Менеджар сетак"
+
+#~ msgid "System Information"
+#~ msgstr "Сістэмная інфармацыя"
+
+#~ msgid "Thunderbolt"
+#~ msgstr "Thunderbolt"
+
+#~ msgid "Disabling"
+#~ msgstr "Адключэнне"
+
+#~ msgid "Enabling"
+#~ msgstr "Уключэнне"
+
+#, javascript-format
+#~ msgid "%d %%"
+#~ msgstr "%d %%"
+
+#~ msgid "No Thanks"
+#~ msgstr "Не, дзякуй"
+
+#~ msgid "No Matches"
+#~ msgstr "Няма супадзенняў"
+
+#~ msgid "The extension had an error"
+#~ msgstr "Пашырэнне змяшчае памылку"
+
+#~ msgid "The extension can be updated"
+#~ msgstr "Пашырэнне можа быць абноўлена"
+
+#~ msgid "Help"
+#~ msgstr "Даведка"
+
+#~ msgid "Manually Installed"
+#~ msgstr "Усталяваныя ўручную"
+
+#~ msgid "Built-In"
+#~ msgstr "Убудаваныя"
+
+#~ msgid "Extension Updates Ready"
+#~ msgstr "Даступны абнаўленні пашырэнняў"
+
+#~ msgid "Open the app menu"
+#~ msgstr "Адкрыць меню праграм"
+
+#~ msgid "Keybinding to open the application menu"
+#~ msgstr "Спалучэнне клавіш, каб адкрыць меню актыўнай праграмы"
+
+#~ msgid "Keybinding to open the application menu."
+#~ msgstr "Спалучэнне клавіш, каб адкрыць меню актыўнай праграмы."
+
+#~ msgid "Screenshot / Screencast"
+#~ msgstr "Здымак экрана / Запіс экрана"
+
+#~ msgid "Power Profiles"
+#~ msgstr "Профілі сілкавання"
+
+#~ msgid "Evolution Calendar"
+#~ msgstr "Каляндар Evolution"
+
+#~ msgid "Applications"
+#~ msgstr "Праграмы"
+
+#, javascript-format
+#~ msgid "Unable to start %s"
+#~ msgstr "Не ўдалося запусціць %s"
+
+#, javascript-format
+#~ msgid "Couldn’t find the %s application"
+#~ msgstr "Не ўдалося знайсці праграму %s"

@@ -1,0 +1,53 @@
+option('camera_monitor',
+  type: 'boolean',
+  value: true,
+  description: 'Enable the camera monitor'
+)
+
+option('extensions_tool',
+  type: 'boolean',
+  value: true,
+  description: 'Build gnome-extensions CLI tool'
+)
+
+option('extensions_app',
+  type: 'boolean',
+  value: true,
+  description: 'Build gnome-extensions GUI application'
+)
+
+option('gtk_doc',
+  type: 'boolean',
+  value: false,
+  description: 'Build API reference'
+)
+
+option('man',
+  type: 'boolean',
+  value: true,
+  description: 'Generate man pages'
+)
+
+option('tests',
+  type: 'boolean',
+  value: true,
+  description: 'Enable tests'
+)
+
+option('networkmanager',
+  type: 'boolean',
+  value: true,
+  description: 'Enable NetworkManager support'
+)
+
+option('portal_helper',
+  type: 'boolean',
+  value: true,
+  description: 'Enable build-in network portal login'
+)
+
+option('systemd',
+  type: 'boolean',
+  value: true,
+  description: 'Enable systemd integration'
+)

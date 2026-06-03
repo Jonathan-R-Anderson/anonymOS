@@ -1,0 +1,5141 @@
+# Kostas Papadimas <pkst@gnome.org>, 2012.
+# Dimitris Spingos (Δημήτρης Σπίγγος) <dmtrs32@gmail.com>, 2013, 2014, 2015.
+# Vangelis Skarmoutsos <skarmoutsosv@gmail.com>, 2013.
+# Efstathios Iosifidis <iosifidis@opensuse.org>, 2013-2019.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: gnome-shell.po.master\n"
+"Report-Msgid-Bugs-To: https://gitlab.gnome.org/GNOME/gnome-shell/issues/\n"
+"POT-Creation-Date: 2026-02-04 22:50+0000\n"
+"PO-Revision-Date: 2025-10-18 22:44+0300\n"
+"Last-Translator: Efstathios Iosifidis <eiosifidis@gnome.org>\n"
+"Language-Team: Greek, Modern (1453-) <gnome-el-list@gnome.org>\n"
+"Language: el\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 3.7\n"
+"X-DamnedLies-Scope: partial\n"
+"X-Poedit-SourceCharset: utf-8\n"
+"X-Project-Style: gnome\n"
+
+#: data/50-gnome-shell-launchers.xml:6
+msgid "Launchers"
+msgstr "Εκκινητές"
+
+#: data/50-gnome-shell-launchers.xml:10
+msgid "Activate pinned app 1"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 1"
+
+#: data/50-gnome-shell-launchers.xml:14
+msgid "Activate pinned app 2"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 2"
+
+#: data/50-gnome-shell-launchers.xml:18
+msgid "Activate pinned app 3"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 3"
+
+#: data/50-gnome-shell-launchers.xml:22
+msgid "Activate pinned app 4"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 4"
+
+#: data/50-gnome-shell-launchers.xml:26
+msgid "Activate pinned app 5"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 5"
+
+#: data/50-gnome-shell-launchers.xml:30
+msgid "Activate pinned app 6"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 6"
+
+#: data/50-gnome-shell-launchers.xml:34
+msgid "Activate pinned app 7"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 7"
+
+#: data/50-gnome-shell-launchers.xml:38
+msgid "Activate pinned app 8"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 8"
+
+#: data/50-gnome-shell-launchers.xml:42
+msgid "Activate pinned app 9"
+msgstr "Ενεργοποίηση καρφιτσωμένης εφαρμογής 9"
+
+#: data/50-gnome-shell-launchers.xml:46
+msgid "Open new window of pinned app 1"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 1"
+
+#: data/50-gnome-shell-launchers.xml:50
+msgid "Open new window of pinned app 2"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 2"
+
+#: data/50-gnome-shell-launchers.xml:54
+msgid "Open new window of pinned app 3"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 3"
+
+#: data/50-gnome-shell-launchers.xml:58
+msgid "Open new window of pinned app 4"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 4"
+
+#: data/50-gnome-shell-launchers.xml:62
+msgid "Open new window of pinned app 5"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 5"
+
+#: data/50-gnome-shell-launchers.xml:66
+msgid "Open new window of pinned app 6"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 6"
+
+#: data/50-gnome-shell-launchers.xml:70
+msgid "Open new window of pinned app 7"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 7"
+
+#: data/50-gnome-shell-launchers.xml:74
+msgid "Open new window of pinned app 8"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 8"
+
+#: data/50-gnome-shell-launchers.xml:78
+msgid "Open new window of pinned app 9"
+msgstr "Άνοιγμα νέου παραθύρου της καρφιτσωμένης εφαρμογής 9"
+
+#. Translators: name of the folder under ~/Pictures for screenshots.
+#: data/50-gnome-shell-screenshots.xml:6 js/ui/screenshot.js:2296
+msgid "Screenshots"
+msgstr "Στιγμιότυπα οθόνης"
+
+#: data/50-gnome-shell-screenshots.xml:9
+#: data/org.gnome.shell.gschema.xml.in:267
+msgid "Take a screenshot interactively"
+msgstr "Λήψη στιγμιότυπου οθόνης διαδραστικά"
+
+#: data/50-gnome-shell-screenshots.xml:12
+#: data/org.gnome.shell.gschema.xml.in:279
+msgid "Take a screenshot"
+msgstr "Λήψη στιγμιότυπου οθόνης"
+
+#: data/50-gnome-shell-screenshots.xml:15
+#: data/org.gnome.shell.gschema.xml.in:275
+msgid "Take a screenshot of a window"
+msgstr "Λήψη στιγμιότυπου παραθύρου"
+
+#: data/50-gnome-shell-screenshots.xml:18
+#: data/org.gnome.shell.gschema.xml.in:271
+msgid "Record a screencast interactively"
+msgstr "Καταγραφή βίντεο οθόνης διαδραστικά"
+
+#: data/50-gnome-shell-system.xml:6
+#: data/X-GNOME-Shell-System.directory.desktop.in:2 js/ui/messageTray.js:1311
+msgid "System"
+msgstr "Σύστημα"
+
+#: data/50-gnome-shell-system.xml:9
+msgid "Show the notification list"
+msgstr "Εμφάνιση της λίστας ειδοποιήσεων"
+
+#: data/50-gnome-shell-system.xml:12
+msgid "Open the quick settings menu"
+msgstr "Άνοιγμα του μενού γρήγορων ρυθμίσεων"
+
+#: data/50-gnome-shell-system.xml:15
+msgid "Focus the active notification"
+msgstr "Εστίαση στην ενεργή ειδοποίηση"
+
+#: data/50-gnome-shell-system.xml:18
+msgid "Show the overview"
+msgstr "Εμφάνιση της επισκόπησης"
+
+#: data/50-gnome-shell-system.xml:21
+msgid "Show all apps"
+msgstr "Εμφάνιση όλων των εφαρμογών"
+
+#: data/org.gnome.shell.gschema.xml.in:6
+msgid "Enable internal tools useful for developers and testers from Alt-F2"
+msgstr ""
+"Ενεργοποίηση εσωτερικών εργαλείων χρήσιμων για προγραμματιστές και "
+"δοκιμαστές από το Alt-F2"
+
+#: data/org.gnome.shell.gschema.xml.in:9
+msgid ""
+"Allows access to internal debugging and monitoring tools using the Alt-F2 "
+"dialog."
+msgstr ""
+"Επιτρέπει την πρόσβαση σε εσωτερικά εργαλεία αποσφαλμάτωσης και "
+"παρακολούθησης μέσω του διαλόγου Alt-F2."
+
+#: data/org.gnome.shell.gschema.xml.in:16
+msgid "UUIDs of extensions to enable"
+msgstr "UUID επεκτάσεων προς ενεργοποίηση"
+
+#: data/org.gnome.shell.gschema.xml.in:17
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be loaded. Any extension that wants to be loaded needs to be in this "
+"list. You can also manipulate this list with the EnableExtension and "
+"DisableExtension D-Bus methods on org.gnome.Shell."
+msgstr ""
+"Οι επεκτάσεις του GNOME Shell έχουν μια ιδιότητα UUID· αυτό το κλειδί "
+"καταγράφει τις επεκτάσεις που πρέπει να φορτωθούν. Οποιαδήποτε επέκταση που "
+"θέλει να φορτωθεί πρέπει να βρίσκεται σε αυτήν τη λίστα. Μπορείτε επίσης να "
+"διαχειριστείτε αυτήν τη λίστα με τις μεθόδους D-Bus EnableExtension και "
+"DisableExtension στο org.gnome.Shell."
+
+#: data/org.gnome.shell.gschema.xml.in:26
+msgid "UUIDs of extensions to force disabling"
+msgstr "UUID επεκτάσεων για εξαναγκαστική απενεργοποίηση"
+
+#: data/org.gnome.shell.gschema.xml.in:27
+msgid ""
+"GNOME Shell extensions have a UUID property; this key lists extensions which "
+"should be disabled, even if loaded as part of the current mode. You can also "
+"manipulate this list with the EnableExtension and DisableExtension D-Bus "
+"methods on org.gnome.Shell. This key takes precedence over the “enabled-"
+"extensions” setting."
+msgstr ""
+"Οι επεκτάσεις του GNOME Shell έχουν μια ιδιότητα UUID· αυτό το κλειδί "
+"καταγράφει τις επεκτάσεις που πρέπει να απενεργοποιηθούν, ακόμα και αν "
+"φορτώνονται ως μέρος της τρέχουσας λειτουργίας. Μπορείτε επίσης να "
+"διαχειριστείτε αυτήν τη λίστα με τις μεθόδους D-Bus EnableExtension και "
+"DisableExtension στο org.gnome.Shell. Αυτό το κλειδί έχει προτεραιότητα "
+"έναντι της ρύθμισης «enabled-extensions»."
+
+#: data/org.gnome.shell.gschema.xml.in:37
+msgid "Disable user extensions"
+msgstr "Απενεργοποίηση επεκτάσεων χρήστη"
+
+#: data/org.gnome.shell.gschema.xml.in:38
+msgid ""
+"Disable all extensions the user has enabled without affecting the “enabled-"
+"extension” setting."
+msgstr ""
+"Απενεργοποίηση όλων των επεκτάσεων που έχει ενεργοποιήσει ο χρήστης χωρίς να "
+"επηρεαστεί η ρύθμιση «enabled-extension»."
+
+#: data/org.gnome.shell.gschema.xml.in:45
+msgid "Allow extension installation"
+msgstr "Να επιτρέπεται η εγκατάσταση επεκτάσεων"
+
+#: data/org.gnome.shell.gschema.xml.in:46
+msgid ""
+"Allow users to install extensions in their home folder. If disabled, the "
+"InstallRemoteExtension D-Bus method will fail, and extensions are only "
+"loaded from system directories on startup. It does not affect extensions "
+"that are already loaded, so a change only takes full effect on the next "
+"login."
+msgstr ""
+"Επιτρέπει στους χρήστες να εγκαθιστούν επεκτάσεις στον προσωπικό τους "
+"φάκελο. Εάν απενεργοποιηθεί, η μέθοδος D-Bus InstallRemoteExtension θα "
+"αποτύχει και οι επεκτάσεις φορτώνονται μόνο από καταλόγους συστήματος κατά "
+"την εκκίνηση. Δεν επηρεάζει τις επεκτάσεις που έχουν ήδη φορτωθεί, επομένως "
+"μια αλλαγή έχει πλήρη επίδραση μόνο στην επόμενη σύνδεση."
+
+#: data/org.gnome.shell.gschema.xml.in:56
+msgid "Disables the validation of extension version compatibility"
+msgstr "Απενεργοποιεί την επικύρωση συμβατότητας έκδοσης επέκτασης"
+
+#: data/org.gnome.shell.gschema.xml.in:57
+msgid ""
+"GNOME Shell will only load extensions that claim to support the current "
+"running version. Enabling this option will disable this check and try to "
+"load all extensions regardless of the versions they claim to support."
+msgstr ""
+"Το GNOME Shell θα φορτώσει μόνο επεκτάσεις που δηλώνουν ότι υποστηρίζουν την "
+"τρέχουσα εκτελούμενη έκδοση. Η ενεργοποίηση αυτής της επιλογής θα "
+"απενεργοποιήσει αυτόν τον έλεγχο και θα προσπαθήσει να φορτώσει όλες τις "
+"επεκτάσεις ανεξάρτητα από τις εκδόσεις που δηλώνουν ότι υποστηρίζουν."
+
+#: data/org.gnome.shell.gschema.xml.in:67
+msgid "List of desktop file IDs for favorite applications"
+msgstr "Λίστα IDs αρχείων επιφάνειας εργασίας για αγαπημένες εφαρμογές"
+
+#: data/org.gnome.shell.gschema.xml.in:68
+msgid ""
+"The applications corresponding to these identifiers will be displayed in the "
+"favorites area."
+msgstr ""
+"Οι εφαρμογές που αντιστοιχούν σε αυτά τα αναγνωριστικά θα εμφανίζονται στην "
+"περιοχή των αγαπημένων."
+
+#: data/org.gnome.shell.gschema.xml.in:75
+msgid "History for command (Alt-F2) dialog"
+msgstr "Ιστορικό για τον διάλογο εντολών (Alt-F2)"
+
+#. Translators: looking glass is a debugger and inspector tool, see https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/main/docs/looking-glass.md
+#: data/org.gnome.shell.gschema.xml.in:80
+msgid "History for the looking glass dialog"
+msgstr "Ιστορικό για τον διάλογο looking glass"
+
+#: data/org.gnome.shell.gschema.xml.in:84
+msgid "Always show the “Log Out” action in the system menu"
+msgstr "Να εμφανίζεται πάντα η ενέργεια «Αποσύνδεση» στο μενού συστήματος"
+
+#: data/org.gnome.shell.gschema.xml.in:85
+msgid ""
+"This key overrides the automatic hiding of the “Log out” action in the "
+"system menu for logged-in situations where there is a single, local, non-"
+"system user and only a single available session type (e.g. GNOME on Wayland)."
+msgstr ""
+"Αυτό το κλειδί αντικαθιστά την αυτόματη απόκρυψη της ενέργειας «Αποσύνδεση» "
+"στο μενού συστήματος για καταστάσεις σύνδεσης όπου υπάρχει ένας μόνο, "
+"τοπικός, μη-συστημικός χρήστης και μόνο ένας διαθέσιμος τύπος συνεδρίας "
+"(π.χ. GNOME στο Wayland)."
+
+#: data/org.gnome.shell.gschema.xml.in:94
+msgid ""
+"Whether to remember password for mounting encrypted or remote filesystems"
+msgstr ""
+"Εάν θα απομνημονεύεται το συνθηματικό για την προσάρτηση κρυπτογραφημένων ή "
+"απομακρυσμένων συστημάτων αρχείων"
+
+#: data/org.gnome.shell.gschema.xml.in:95
+msgid ""
+"The shell will request a password when an encrypted device or a remote "
+"filesystem is mounted. If the password can be saved for future use a "
+"“Remember Password” checkbox will be present. This key sets the default "
+"state of the checkbox."
+msgstr ""
+"Το κέλυφος θα ζητήσει συνθηματικό όταν προσαρτάται μια κρυπτογραφημένη "
+"συσκευή ή ένα απομακρυσμένο σύστημα αρχείων. Εάν το συνθηματιό μπορεί να "
+"αποθηκευτεί για μελλοντική χρήση, θα υπάρχει ένα πλαίσιο ελέγχου "
+"«Απομνημόνευση κωδικού πρόσβασης». Αυτό το κλειδί ορίζει την προεπιλεγμένη "
+"κατάσταση του πλαισίου ελέγχου."
+
+#: data/org.gnome.shell.gschema.xml.in:104
+msgid "The last selected non-default power profile"
+msgstr "Το τελευταίο επιλεγμένο μη προεπιλεγμένο προφίλ ισχύος"
+
+#: data/org.gnome.shell.gschema.xml.in:105
+msgid ""
+"Some systems support more than two power profiles. In order to still support "
+"toggling between two profiles, this key records the last selected non-"
+"default profile."
+msgstr ""
+"Ορισμένα συστήματα υποστηρίζουν περισσότερα από δύο προφίλ ισχύος. Για να "
+"συνεχίσει να υποστηρίζεται η εναλλαγή μεταξύ δύο προφίλ, αυτό το κλειδί "
+"καταγράφει το τελευταίο επιλεγμένο μη προεπιλεγμένο προφίλ."
+
+#: data/org.gnome.shell.gschema.xml.in:113
+msgid "The last version the “Welcome to GNOME” dialog was shown for"
+msgstr ""
+"Η τελευταία έκδοση για την οποία εμφανίστηκε ο διάλογος «Καλώς ορίσατε στο "
+"GNOME»"
+
+#: data/org.gnome.shell.gschema.xml.in:114
+msgid ""
+"This key determines for which version the “Welcome to GNOME” dialog was last "
+"shown. An empty string represents the oldest possible version, and a huge "
+"number will represent versions that do not exist yet. This huge number can "
+"be used to effectively disable the dialog."
+msgstr ""
+"Αυτό το κλειδί καθορίζει για ποια έκδοση εμφανίστηκε τελευταία ο διάλογος "
+"«Καλώς ορίσατε στο GNOME». Μια κενή συμβολοσειρά αντιπροσωπεύει την "
+"παλαιότερη δυνατή έκδοση και ένας τεράστιος αριθμός θα αντιπροσωπεύει "
+"εκδόσεις που δεν υπάρχουν ακόμα. Αυτός ο τεράστιος αριθμός μπορεί να "
+"χρησιμοποιηθεί για την αποτελεσματική απενεργοποίηση του διαλόγου."
+
+#: data/org.gnome.shell.gschema.xml.in:125
+msgid "Layout of the app picker"
+msgstr "Διάταξη του επιλογέα εφαρμογών"
+
+#: data/org.gnome.shell.gschema.xml.in:126
+msgid ""
+"Layout of the app picker. Each entry in the array is a page. Pages are "
+"stored in the order they appear in GNOME Shell. Each page contains an "
+"“application id” → 'data' pair. Currently, the following values are stored "
+"as 'data': • “position”: the position of the application icon in the page"
+msgstr ""
+"Διάταξη του επιλογέα εφαρμογών. Κάθε καταχώρηση στον πίνακα είναι μια "
+"σελίδα. Οι σελίδες αποθηκεύονται με τη σειρά που εμφανίζονται στο GNOME "
+"Shell. Κάθε σελίδα περιέχει ένα ζεύγος «application id» → 'data'. Προς το "
+"παρόν, οι ακόλουθες τιμές αποθηκεύονται ως 'data': • «position»: η θέση του "
+"εικονιδίου εφαρμογής στη σελίδα"
+
+#: data/org.gnome.shell.gschema.xml.in:145
+#: data/org.gnome.shell.gschema.xml.in:152
+msgid "Keybinding to shift between overview states"
+msgstr "Συντόμευση πληκτρολογίου για εναλλαγή μεταξύ καταστάσεων επισκόπησης"
+
+#: data/org.gnome.shell.gschema.xml.in:146
+msgid "Keybinding to shift between session, window picker and app grid"
+msgstr ""
+"Συντόμευση πληκτρολογίου για εναλλαγή μεταξύ συνεδρίας, επιλογέα παραθύρου "
+"και πλέγματος εφαρμογών"
+
+#: data/org.gnome.shell.gschema.xml.in:153
+msgid "Keybinding to shift between app grid, window picker and session"
+msgstr ""
+"Συντόμευση πληκτρολογίου για εναλλαγή μεταξύ πλέγματος εφαρμογών, επιλογέα "
+"παραθύρου και συνεδρίας"
+
+#: data/org.gnome.shell.gschema.xml.in:159
+msgid "Keybinding to open the “Show Applications” view"
+msgstr "Συντόμευση πληκτρολογίου για άνοιγμα της προβολής «Εμφάνιση εφαρμογών»"
+
+#: data/org.gnome.shell.gschema.xml.in:160
+msgid ""
+"Keybinding to open the “Show Applications” view of the Activities Overview."
+msgstr ""
+"Συντόμευση πληκτρολογίου για άνοιγμα της προβολής «Εμφάνιση εφαρμογών» της "
+"Επισκόπησης Δραστηριοτήτων."
+
+#: data/org.gnome.shell.gschema.xml.in:167
+msgid "Keybinding to open the overview"
+msgstr "Συντόμευση πληκτρολογίου για άνοιγμα της επισκόπησης"
+
+#: data/org.gnome.shell.gschema.xml.in:168
+msgid "Keybinding to open the Activities Overview."
+msgstr "Συντόμευση πληκτρολογίου για άνοιγμα της Επισκόπησης Δραστηριοτήτων."
+
+#: data/org.gnome.shell.gschema.xml.in:174
+msgid "Keybinding to toggle the visibility of the notification list"
+msgstr ""
+"Συντόμευση πληκτρολογίου για εναλλαγή ορατότητας της λίστας ειδοποιήσεων"
+
+#: data/org.gnome.shell.gschema.xml.in:175
+msgid "Keybinding to toggle the visibility of the notification list."
+msgstr ""
+"Συντόμευση πληκτρολογίου για εναλλαγή ορατότητας της λίστας ειδοποιήσεων."
+
+#: data/org.gnome.shell.gschema.xml.in:181
+msgid "Keybinding to toggle the quick settings menu"
+msgstr "Συντόμευση πληκτρολογίου για εναλλαγή του μενού γρήγορων ρυθμίσεων"
+
+#: data/org.gnome.shell.gschema.xml.in:182
+msgid "Keybinding to toggle the quick settings menu."
+msgstr "Συντόμευση πληκτρολογίου για εναλλαγή του μενού γρήγορων ρυθμίσεων."
+
+#: data/org.gnome.shell.gschema.xml.in:188
+msgid "Keybinding to focus the active notification"
+msgstr "Συντόμευση πληκτρολογίου για εστίαση στην ενεργή ειδοποίηση"
+
+#: data/org.gnome.shell.gschema.xml.in:189
+msgid "Keybinding to focus the active notification."
+msgstr "Συντόμευση πληκτρολογίου για εστίαση στην ενεργή ειδοποίηση."
+
+#: data/org.gnome.shell.gschema.xml.in:195
+msgid "Switch to application 1"
+msgstr "Εναλλαγή στην εφαρμογή 1"
+
+#: data/org.gnome.shell.gschema.xml.in:199
+msgid "Switch to application 2"
+msgstr "Εναλλαγή στην εφαρμογή 2"
+
+#: data/org.gnome.shell.gschema.xml.in:203
+msgid "Switch to application 3"
+msgstr "Εναλλαγή στην εφαρμογή 3"
+
+#: data/org.gnome.shell.gschema.xml.in:207
+msgid "Switch to application 4"
+msgstr "Εναλλαγή στην εφαρμογή 4"
+
+#: data/org.gnome.shell.gschema.xml.in:211
+msgid "Switch to application 5"
+msgstr "Εναλλαγή στην εφαρμογή 5"
+
+#: data/org.gnome.shell.gschema.xml.in:215
+msgid "Switch to application 6"
+msgstr "Εναλλαγή στην εφαρμογή 6"
+
+#: data/org.gnome.shell.gschema.xml.in:219
+msgid "Switch to application 7"
+msgstr "Εναλλαγή στην εφαρμογή 7"
+
+#: data/org.gnome.shell.gschema.xml.in:223
+msgid "Switch to application 8"
+msgstr "Εναλλαγή στην εφαρμογή 8"
+
+#: data/org.gnome.shell.gschema.xml.in:227
+msgid "Switch to application 9"
+msgstr "Εναλλαγή στην εφαρμογή 9"
+
+#: data/org.gnome.shell.gschema.xml.in:231
+msgid "Open a new instance of application 1"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 1"
+
+#: data/org.gnome.shell.gschema.xml.in:235
+msgid "Open a new instance of application 2"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 2"
+
+#: data/org.gnome.shell.gschema.xml.in:239
+msgid "Open a new instance of application 3"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 3"
+
+#: data/org.gnome.shell.gschema.xml.in:243
+msgid "Open a new instance of application 4"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 4"
+
+#: data/org.gnome.shell.gschema.xml.in:247
+msgid "Open a new instance of application 5"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 5"
+
+#: data/org.gnome.shell.gschema.xml.in:251
+msgid "Open a new instance of application 6"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 6"
+
+#: data/org.gnome.shell.gschema.xml.in:255
+msgid "Open a new instance of application 7"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 7"
+
+#: data/org.gnome.shell.gschema.xml.in:259
+msgid "Open a new instance of application 8"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 8"
+
+#: data/org.gnome.shell.gschema.xml.in:263
+msgid "Open a new instance of application 9"
+msgstr "Άνοιγμα νέας παρουσίας της εφαρμογής 9"
+
+#: data/org.gnome.shell.gschema.xml.in:283
+msgid "Screen brightness up"
+msgstr "Αύξηση φωτεινότητας οθόνης"
+
+#: data/org.gnome.shell.gschema.xml.in:287
+msgid "Screen brightness up on current monitor"
+msgstr "Αύξηση φωτεινότητας οθόνης στον τρέχοντα οθονό"
+
+#: data/org.gnome.shell.gschema.xml.in:291
+msgid "Screen brightness down"
+msgstr "Μείωση φωτεινότητας οθόνης"
+
+#: data/org.gnome.shell.gschema.xml.in:295
+msgid "Screen brightness down on current monitor"
+msgstr "Μείωση φωτεινότητας οθόνης στον τρέχοντα οθονό"
+
+#: data/org.gnome.shell.gschema.xml.in:299
+msgid "Screen brightness cycle"
+msgstr "Κύκλος φωτεινότητας οθόνης"
+
+#: data/org.gnome.shell.gschema.xml.in:303
+msgid "Screen brightness cycle on current monitor"
+msgstr "Κύκλος φωτεινότητας οθόνης στον τρέχοντα οθονό"
+
+#: data/org.gnome.shell.gschema.xml.in:312
+#: data/org.gnome.shell.gschema.xml.in:339
+msgid "Limit switcher to current workspace."
+msgstr "Περιορισμός εναλλαγής στον τρέχοντα χώρο εργασίας."
+
+#: data/org.gnome.shell.gschema.xml.in:313
+msgid ""
+"If true, only applications that have windows on the current workspace are "
+"shown in the switcher. Otherwise, all applications are included."
+msgstr ""
+"Εάν είναι αληθές, μόνο εφαρμογές που έχουν παράθυρα στον τρέχοντα χώρο "
+"εργασίας εμφανίζονται στον εναλλακτή. Διαφορετικά, περιλαμβάνονται όλες οι "
+"εφαρμογές."
+
+#: data/org.gnome.shell.gschema.xml.in:330
+msgid "The application icon mode."
+msgstr "Η λειτουργία εικονιδίου εφαρμογής."
+
+#: data/org.gnome.shell.gschema.xml.in:331
+msgid ""
+"Configures how the windows are shown in the switcher. Valid possibilities "
+"are “thumbnail-only” (shows a thumbnail of the window), “app-icon-only” "
+"(shows only the application icon) or “both”."
+msgstr ""
+"Διαμορφώνει πώς εμφανίζονται τα παράθυρα στον εναλλακτή. Έγκυρες δυνατότητες "
+"είναι «thumbnail-only» (εμφανίζει μια μικρογραφία του παραθύρου), «app-icon-"
+"only» (εμφανίζει μόνο το εικονίδιο της εφαρμογής) ή «both» (και τα δύο)."
+
+#: data/org.gnome.shell.gschema.xml.in:340
+msgid ""
+"If true, only windows from the current workspace are shown in the switcher. "
+"Otherwise, all windows are included."
+msgstr ""
+"Εάν είναι αληθές, μόνο παράθυρα από τον τρέχοντα χώρο εργασίας εμφανίζονται "
+"στον εναλλακτή. Διαφορετικά, περιλαμβάνονται όλα τα παράθυρα."
+
+#: data/org.gnome.shell.gschema.xml.in:350
+msgid "Locations"
+msgstr "Τοποθεσίες"
+
+#: data/org.gnome.shell.gschema.xml.in:351
+msgid "The locations to show in world clocks"
+msgstr "Οι τοποθεσίες που θα εμφανίζονται στα παγκόσμια ρολόγια"
+
+#: data/org.gnome.shell.gschema.xml.in:361
+msgid "Automatic location"
+msgstr "Αυτόματη τοποθεσία"
+
+#: data/org.gnome.shell.gschema.xml.in:362
+msgid "Whether to fetch the current location or not"
+msgstr "Εάν θα ανακτάται η τρέχουσα τοποθεσία ή όχι"
+
+#: data/org.gnome.shell.gschema.xml.in:369
+msgid "Location"
+msgstr "Τοποθεσία"
+
+#: data/org.gnome.shell.gschema.xml.in:370
+msgid "The location for which to show a forecast"
+msgstr "Η τοποθεσία για την οποία θα εμφανίζεται πρόβλεψη καιρού"
+
+#. Keep in sync with subprojects/extensions-app
+#: data/org.gnome.Shell.Extensions.desktop.in:4
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:5
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:3
+#: subprojects/extensions-app/data/ui/extensions-window.ui:57
+msgid "Extensions"
+msgstr "Επεκτάσεις"
+
+#: data/org.gnome.Shell.PortalHelper.desktop.in:2
+msgid "Network Login"
+msgstr "Σύνδεση δικτύου"
+
+#: data/X-GNOME-Shell-Utilities.directory.desktop.in:2
+msgid "Utilities"
+msgstr "Βοηθήματα"
+
+#: js/dbusServices/extensions/extensionPrefsDialog.js:70
+msgid "Extension Error"
+msgstr "Σφάλμα επέκτασης"
+
+#. Translators: %s is an extension name
+#: js/dbusServices/extensions/extensionPrefsDialog.js:103
+#, javascript-format
+msgid "Unable to display the settings for “%s”."
+msgstr "Αδυναμία εμφάνισης των ρυθμίσεων για «%s»."
+
+#. Translators: Link label in the phrase "Information about this
+#. problem may be available on the extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:109
+msgid "extension website"
+msgstr "ιστοσελίδα επέκτασης"
+
+#. Translators: %s is "extension website"
+#: js/dbusServices/extensions/extensionPrefsDialog.js:113
+#, javascript-format
+msgid "Information about this problem may be available on the %s."
+msgstr "Πληροφορίες για αυτό το πρόβλημα μπορεί να είναι διαθέσιμες στην %s."
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:19
+#: subprojects/extensions-app/data/ui/extension-row.ui:13
+msgid "Error Details"
+msgstr "Λεπτομέρειες σφάλματος"
+
+#: js/dbusServices/extensions/ui/extension-error-page.ui:26
+msgid "Copy Error"
+msgstr "Αντιγραφή σφάλματος"
+
+#: js/gdm/authPrompt.js:58 js/misc/timeLimitsManager.js:1427
+msgid "Screen Time Limit Reached"
+msgstr "Φτάσατε το Όριο Χρόνου Οθόνης"
+
+#: js/gdm/authPrompt.js:64
+msgid ""
+"Daily limit for screen time on this device has been reached. Resume tomorrow."
+msgstr "ο ημερήσιο όριο χρήσης της οθόνης σε αυτή τη συσκευή έχει εξαντληθεί. Συνεχίστε αύριο."
+
+#. Translators: this is for ignoring a screen time limit for parental controls
+#: js/gdm/authPrompt.js:72
+msgid "Ignore"
+msgstr "Αγνόηση"
+
+#: js/gdm/authPrompt.js:256 js/gdm/loginDialog.js:514
+#: js/ui/audioDeviceSelection.js:60 js/ui/components/networkAgent.js:114
+#: js/ui/components/polkitAgent.js:144 js/ui/endSessionDialog.js:401
+#: js/ui/extensionDownloader.js:276 js/ui/shellMountOperation.js:382
+#: js/ui/shellMountOperation.js:392
+msgid "Cancel"
+msgstr "Ακύρωση"
+
+#: js/gdm/authPrompt.js:434 js/ui/components/networkAgent.js:214
+#: js/ui/components/networkAgent.js:234 js/ui/components/networkAgent.js:266
+#: js/ui/components/networkAgent.js:299 js/ui/components/networkAgent.js:338
+#: js/ui/components/networkAgent.js:351 js/ui/components/polkitAgent.js:286
+#: js/ui/shellMountOperation.js:332
+#: subprojects/extensions-tool/src/command-upload.c:252
+msgid "Password"
+msgstr "Συνθηματικό"
+
+#: js/gdm/loginDialog.js:327
+msgid "Choose Session"
+msgstr "Επιλογή συνεδρίας"
+
+#: js/gdm/loginDialog.js:420 js/ui/status/accessibility.js:35
+msgid "Accessibility"
+msgstr "Προσιτότητα"
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:472
+#, javascript-format
+msgid ""
+"Remote login is not possible because a remote session is already running for "
+"%s. To login remotely, you must log out from the remote session or force "
+"stop it."
+msgstr ""
+"Η απομακρυσμένη σύνδεση δεν είναι δυνατή επειδή μια απομακρυσμένη συνεδρία "
+"εκτελείται ήδη για %s. Για να συνδεθείτε απομακρυσμένα, πρέπει να "
+"αποσυνδεθείτε από την απομακρυσμένη συνεδρία ή να τη διακόψετε εξαναγκαστικά."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:475
+#, javascript-format
+msgid ""
+"Login is not possible because a remote session is already running for %s. To "
+"login, you must log out from the remote session or force stop it."
+msgstr ""
+"Η σύνδεση δεν είναι δυνατή επειδή μια απομακρυσμένη συνεδρία εκτελείται ήδη "
+"για %s. Για να συνδεθείτε, πρέπει να αποσυνδεθείτε από την απομακρυσμένη "
+"συνεδρία ή να τη διακόψετε εξαναγκαστικά."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:478
+#, javascript-format
+msgid ""
+"Remote login is not possible because a local session is already running for "
+"%s. To login remotely, you must log out from the local session or force stop "
+"it."
+msgstr ""
+"Η απομακρυσμένη σύνδεση δεν είναι δυνατή επειδή μια τοπική συνεδρία "
+"εκτελείται ήδη για %s. Για να συνδεθείτε απομακρυσμένα, πρέπει να "
+"αποσυνδεθείτε από την τοπική συνεδρία ή να τη διακόψετε εξαναγκαστικά."
+
+#. Translators: is running for <username>
+#: js/gdm/loginDialog.js:481
+#, javascript-format
+msgid ""
+"Login is not possible because a session is already running for %s. To login, "
+"you must log out from the session or force stop it."
+msgstr ""
+"Η σύνδεση δεν είναι δυνατή επειδή μια συνεδρία εκτελείται ήδη για %s. Για να "
+"συνδεθείτε, πρέπει να αποσυνδεθείτε από τη συνεδρία ή να τη διακόψετε "
+"εξαναγκαστικά."
+
+#: js/gdm/loginDialog.js:490
+msgid "Session Already Running"
+msgstr "Συνεδρία εκτελείται ήδη"
+
+#: js/gdm/loginDialog.js:502
+msgid ""
+"Force stopping will quit any running apps and processes, and could result in "
+"data loss"
+msgstr ""
+"Η εξαναγκαστική διακοπή θα τερματίσει όλες τις εφαρμογές και διεργασίες που "
+"εκτελούνται και θα μπορούσε να οδηγήσει σε απώλεια δεδομένων"
+
+#: js/gdm/loginDialog.js:522
+msgid "Force Stop"
+msgstr "Εξαναγκαστική διακοπή"
+
+#: js/gdm/loginDialog.js:600
+msgid "Not listed?"
+msgstr "Δεν είστε στη λίστα;"
+
+#. Translators: this message is shown below the username entry field
+#. to clue the user in on how to login to the local network realm
+#: js/gdm/loginDialog.js:1136
+#, javascript-format
+msgid "(e.g., user or %s)"
+msgstr "(π.χ., χρήστης ή %s)"
+
+#: js/gdm/loginDialog.js:1141 js/ui/components/networkAgent.js:258
+#: js/ui/components/networkAgent.js:293 js/ui/components/networkAgent.js:327
+#: subprojects/extensions-tool/src/command-upload.c:234
+msgid "Username"
+msgstr "Όνομα χρήστη"
+
+#: js/gdm/loginDialog.js:1207
+msgid "Login Attempt Timed Out"
+msgstr "Λήξη χρονικού ορίου προσπάθειας σύνδεσης"
+
+#: js/gdm/loginDialog.js:1208
+msgid "Login took too long, please try again"
+msgstr "Η σύνδεση διήρκησε πολύ, παρακαλώ δοκιμάστε ξανά"
+
+#: js/gdm/loginDialog.js:1553
+msgid "Login Window"
+msgstr "Παράθυρο σύνδεσης"
+
+#: js/gdm/util.js:496
+msgid "Authentication error"
+msgstr "Σφάλμα πιστοποίησης"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can swipe their finger on the fingerprint reader
+#: js/gdm/util.js:731
+msgid "(or swipe finger across reader)"
+msgstr "(ή σύρετε το δάκτυλο στον αναγνώστη)"
+
+#. Translators: this message is shown below the password entry field
+#. to indicate the user can place their finger on the fingerprint reader instead
+#: js/gdm/util.js:736
+msgid "(or place finger on reader)"
+msgstr "(ή τοποθετήστε το δάκτυλο στον αναγνώστη)"
+
+#: js/misc/breakManager.js:774
+msgid "Break complete sound"
+msgstr "Ήχος ολοκλήρωσης διαλείμματος"
+
+#: js/misc/breakManager.js:983
+#, javascript-format
+msgid "%d second"
+msgid_plural "%d seconds"
+msgstr[0] "%d δευτερόλεπτο"
+msgstr[1] "%d δευτερόλεπτα"
+
+#: js/misc/breakManager.js:989
+#, javascript-format
+msgid "%d minute"
+msgid_plural "%d minutes"
+msgstr[0] "%d λεπτό"
+msgstr[1] "%d λεπτά"
+
+#: js/misc/breakManager.js:995
+#, javascript-format
+msgid "%d hour"
+msgid_plural "%d hours"
+msgstr[0] "%d ώρα"
+msgstr[1] "%d ώρες"
+
+#: js/misc/breakManager.js:1001
+#, javascript-format
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "%d ημέρα"
+msgstr[1] "%d ημέρες"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1083
+#, javascript-format
+msgid "It will be time for a break in %s"
+msgid_plural "It will be time for a break in %s"
+msgstr[0] "Θα είναι ώρα για διάλειμμα σε %s"
+msgstr[1] "Θα είναι ώρα για διάλειμμα σε %s"
+
+#: js/misc/breakManager.js:1091
+msgid "Movement Break Soon"
+msgstr "Διάλειμμα Κίνησης Σύντομα"
+
+#: js/misc/breakManager.js:1094
+msgid "Eyesight Break Soon"
+msgstr "Διάλειμμα Όρασης Σύντομα"
+
+#: js/misc/breakManager.js:1097
+msgid "Break Soon"
+msgstr "Διάλειμμα Σύντομα"
+
+#: js/misc/breakManager.js:1142
+msgid "Movement Break in Progress"
+msgstr "Διάλειμμα Κίνησης σε Εξέλιξη"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1145
+#, javascript-format
+msgid "Continue moving around for %s"
+msgid_plural "Continue moving around for %s"
+msgstr[0] "Συνεχίστε να κινείστε για %s"
+msgstr[1] "Συνεχίστε να κινείστε για %s"
+
+#: js/misc/breakManager.js:1151
+msgid "Eyesight Break in Progress"
+msgstr "Διάλειμμα Όρασης σε Εξέλιξη"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1154
+#, javascript-format
+msgid "Continue looking away for %s"
+msgid_plural "Continue looking away for %s"
+msgstr[0] "Συνεχίστε να κοιτάτε μακριά για %s"
+msgstr[1] "Συνεχίστε να κοιτάτε μακριά για %s"
+
+#: js/misc/breakManager.js:1160
+msgid "Break in Progress"
+msgstr "Διάλειμμα σε Εξέλιξη"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1163
+#, javascript-format
+msgid "%s left in your break"
+msgid_plural "%s left in your break"
+msgstr[0] "%s απομένει στο διάλειμμά σας"
+msgstr[1] "%s απομένουν στο διάλειμμά σας"
+
+#: js/misc/breakManager.js:1202
+msgid "Time for a Movement Break"
+msgstr "Ώρα για Διάλειμμα Κίνησης"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1205
+#, javascript-format
+msgid "Take a break from the device and move around for %s"
+msgid_plural "Take a break from the device and move around for %s"
+msgstr[0] "Κάντε διάλειμμα από τη συσκευή και κινηθείτε για %s"
+msgstr[1] "Κάντε διάλειμμα από τη συσκευή και κινηθείτε για %s"
+
+#: js/misc/breakManager.js:1211
+msgid "Time for an Eyesight Break"
+msgstr "Ώρα για Διάλειμμα Όρασης"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1214
+#, javascript-format
+msgid ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgid_plural ""
+"Take a break from the screen. Look at least 6 meters away for at least %s"
+msgstr[0] ""
+"Κάντε διάλειμμα από την οθόνη. Κοιτάξτε τουλάχιστον 6 μέτρα μακριά για "
+"τουλάχιστον %s"
+msgstr[1] ""
+"Κάντε διάλειμμα από την οθόνη. Κοιτάξτε τουλάχιστον 6 μέτρα μακριά για "
+"τουλάχιστον %s"
+
+#: js/misc/breakManager.js:1220
+msgid "Time for a Break"
+msgstr "Ώρα για Διάλειμμα"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1223
+#, javascript-format
+msgid "It’s time to take a break. Get away from the device for %s!"
+msgid_plural "It’s time to take a break. Get away from the device for %s!"
+msgstr[0] "Είναι ώρα για διάλειμμα. Απομακρυνθείτε από τη συσκευή για %s!"
+msgstr[1] "Είναι ώρα για διάλειμμα. Απομακρυνθείτε από τη συσκευή για %s!"
+
+#. %s will be replaced with a string that describes a time interval, such as “2 minutes”, “40 seconds” or “1 hour”
+#: js/misc/breakManager.js:1247
+#, javascript-format
+msgid "You were due to take a break %s ago"
+msgid_plural "You were due to take a break %s ago"
+msgstr[0] "Θα έπρεπε να έχετε κάνει διάλειμμα %s πριν"
+msgstr[1] "Θα έπρεπε να έχετε κάνει διάλειμμα %s πριν"
+
+#: js/misc/breakManager.js:1253
+msgid "Break Overdue"
+msgstr "Καθυστερημένο Διάλειμμα"
+
+#: js/misc/breakManager.js:1269
+#, javascript-format
+msgid "There is %s remaining in your break"
+msgid_plural "There are %s remaining in your break"
+msgstr[0] "Απομένει %s στο διάλειμμά σας"
+msgstr[1] "Απομένουν %s στο διάλειμμά σας"
+
+#: js/misc/breakManager.js:1275
+msgid "Break Interrupted"
+msgstr "Διάλειμμα Διακοπή"
+
+#. Translators: As in "Delay the break"
+#: js/misc/breakManager.js:1353
+msgid "Delay"
+msgstr "Καθυστέρηση"
+
+#. Translators: As in "Skip the break"
+#: js/misc/breakManager.js:1375 js/ui/welcomeDialog.js:61
+msgid "Skip"
+msgstr "Παράλειψη"
+
+#. Translators: As in "Take the break"
+#: js/misc/breakManager.js:1397
+msgid "Take"
+msgstr "Κάντε"
+
+#. Translators: This is a notification to warn the user that a
+#. screen time break will start shortly.
+#: js/misc/breakManager.js:1460
+#, javascript-format
+msgid "Break in %d second"
+msgid_plural "Break in %d seconds"
+msgstr[0] "Διάλειμμα σε %d δευτερόλεπτο"
+msgstr[1] "Διάλειμμα σε %d δευτερόλεπτα"
+
+#: js/misc/brightnessManager.js:171 js/ui/status/brightness.js:10
+msgid "Brightness"
+msgstr "Φωτεινότητα"
+
+#. Translators: The name of the power-off action in search
+#: js/misc/systemActions.js:94
+msgctxt "search-result"
+msgid "Power Off"
+msgstr "Απενεργοποίηση"
+
+#. Translators: A list of keywords that match the power-off action, separated by semicolons
+#: js/misc/systemActions.js:97
+msgid "power off;poweroff;shutdown;halt;stop"
+msgstr "απενεργοποίηση;poweroff;τερματισμός;διακοπή;stop"
+
+#. Translators: The name of the restart action in search
+#: js/misc/systemActions.js:102
+msgctxt "search-result"
+msgid "Restart"
+msgstr "Επανεκκίνηση"
+
+#. Translators: A list of keywords that match the restart action, separated by semicolons
+#: js/misc/systemActions.js:105
+msgid "reboot;restart;"
+msgstr "επανεκκίνηση;restart;"
+
+#. Translators: The name of the lock screen action in search
+#: js/misc/systemActions.js:110
+msgctxt "search-result"
+msgid "Lock Screen"
+msgstr "Κλείδωμα Οθόνης"
+
+#. Translators: A list of keywords that match the lock screen action, separated by semicolons
+#: js/misc/systemActions.js:113
+msgid "lock screen"
+msgstr "κλείδωμα οθόνης"
+
+#. Translators: The name of the logout action in search
+#: js/misc/systemActions.js:118
+msgctxt "search-result"
+msgid "Log Out"
+msgstr "Αποσύνδεση"
+
+#. Translators: A list of keywords that match the logout action, separated by semicolons
+#: js/misc/systemActions.js:121
+msgid "logout;log out;sign off"
+msgstr "αποσύνδεση;log out;sign off"
+
+#. Translators: The name of the suspend action in search
+#: js/misc/systemActions.js:126
+msgctxt "search-result"
+msgid "Suspend"
+msgstr "Αναστολή"
+
+#. Translators: A list of keywords that match the suspend action, separated by semicolons
+#: js/misc/systemActions.js:129
+msgid "suspend;sleep"
+msgstr "αναστολή;sleep"
+
+#. Translators: The name of the switch user action in search
+#: js/misc/systemActions.js:134
+msgctxt "search-result"
+msgid "Switch User"
+msgstr "Αλλαγή Χρήστη"
+
+#. Translators: A list of keywords that match the switch user action, separated by semicolons
+#: js/misc/systemActions.js:137
+msgid "switch user"
+msgstr "αλλαγή χρήστη"
+
+#. Translators: A list of keywords that match the lock orientation action, separated by semicolons
+#: js/misc/systemActions.js:144
+msgid "lock orientation;unlock orientation;screen;rotation"
+msgstr "κλείδωμα προσανατολισμού;ξεκλείδωμα προσανατολισμού;οθόνη;περιστροφή"
+
+#. Translators: The name of the screenshot UI action in search
+#: js/misc/systemActions.js:149
+msgctxt "search-result"
+msgid "Take a Screenshot"
+msgstr "Λήψη Στιγμιότυπου Οθόνης"
+
+#. Translators: A list of keywords that match the screenshot UI action, separated by semicolons
+#: js/misc/systemActions.js:152
+msgid "screenshot;screencast;snip;capture;record"
+msgstr "στιγμιότυπο οθόνης;βίντεο οθόνης;απόκομμα;καταγραφή;εγγραφή"
+
+#: js/misc/systemActions.js:256
+msgctxt "search-result"
+msgid "Unlock Screen Rotation"
+msgstr "Ξεκλείδωμα Περιστροφής Οθόνης"
+
+#: js/misc/systemActions.js:257
+msgctxt "search-result"
+msgid "Lock Screen Rotation"
+msgstr "Κλείδωμα Περιστροφής Οθόνης"
+
+#: js/misc/timeLimitsManager.js:468
+msgid "GNOME needs to save screen time data"
+msgstr "Το GNOME χρειάζεται να αποθηκεύσει δεδομένα χρόνου οθόνης"
+
+#: js/misc/timeLimitsManager.js:1392
+#| msgid "Screen Time Limit in %d Minute"
+#| msgid_plural "Screen Time Limit in %d Minutes"
+msgid "Screen Time Limit is almost up"
+msgstr "Ο χρόνος χρήσης της οθόνης έχει σχεδόν τελειώσει"
+
+#: js/misc/timeLimitsManager.js:1394
+#, javascript-format
+#| msgid "The system will restart automatically in %d second"
+#| msgid_plural "The system will restart automatically in %d seconds"
+msgid "The computer will lock in %d second."
+msgid_plural "The computer will lock in %d seconds."
+msgstr[0] "Ο υπολογιστής θα κλειδώσει σε %d δευτερόλεπτο"
+msgstr[1] "Ο υπολογιστής θα κλειδώσει σε %d δευτερόλεπτα."
+
+#: js/misc/timeLimitsManager.js:1402
+#, javascript-format
+msgid "Screen Time Limit in %d Minute"
+msgid_plural "Screen Time Limit in %d Minutes"
+msgstr[0] "Όριο Χρόνου Οθόνης σε %d Λεπτό"
+msgstr[1] "Όριο Χρόνου Οθόνης σε %d Λεπτά"
+
+#: js/misc/timeLimitsManager.js:1406
+msgid "Your screen time limit is approaching"
+msgstr "Το όριο χρόνου οθόνης σας πλησιάζει"
+
+#: js/misc/timeLimitsManager.js:1428
+msgid "It’s time to stop using the device"
+msgstr "Είναι ώρα να σταματήσετε τη χρήση της συσκευής"
+
+#: js/misc/util.js:131
+msgid "Command not found"
+msgstr "Η εντολή δεν βρέθηκε"
+
+#: js/misc/util.js:169
+#, javascript-format
+msgid "Execution of “%s” failed:"
+msgstr "Η εκτέλεση του «%s» απέτυχε:"
+
+#: js/misc/dateUtils.js:69
+msgid "Just now"
+msgstr "Μόλις τώρα"
+
+#: js/misc/dateUtils.js:72
+#, javascript-format
+msgid "%d minute ago"
+msgid_plural "%d minutes ago"
+msgstr[0] "%d λεπτό πριν"
+msgstr[1] "%d λεπτά πριν"
+
+#: js/misc/dateUtils.js:79
+#, javascript-format
+msgid "%d hour ago"
+msgid_plural "%d hours ago"
+msgstr[0] "%d ώρα πριν"
+msgstr[1] "%d ώρες πριν"
+
+#: js/misc/dateUtils.js:85 js/ui/dateMenu.js:184
+msgid "Yesterday"
+msgstr "Χθες"
+
+#: js/misc/dateUtils.js:88
+#, javascript-format
+msgid "%d day ago"
+msgid_plural "%d days ago"
+msgstr[0] "%d ημέρα πριν"
+msgstr[1] "%d ημέρες πριν"
+
+#: js/misc/dateUtils.js:95
+#, javascript-format
+msgid "%d week ago"
+msgid_plural "%d weeks ago"
+msgstr[0] "%d εβδομάδα πριν"
+msgstr[1] "%d εβδομάδες πριν"
+
+#: js/misc/dateUtils.js:102
+#, javascript-format
+msgid "%d month ago"
+msgid_plural "%d months ago"
+msgstr[0] "%d μήνας πριν"
+msgstr[1] "%d μήνες πριν"
+
+#: js/misc/dateUtils.js:108
+#, javascript-format
+msgid "%d year ago"
+msgid_plural "%d years ago"
+msgstr[0] "%d χρόνο πριν"
+msgstr[1] "%d χρόνια πριν"
+
+#. Translators: Time in 24h format
+#: js/misc/dateUtils.js:155
+msgid "%H:%M"
+msgstr "%H:%M"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 24h format. i.e. "Yesterday, 14:30"
+#: js/misc/dateUtils.js:161
+#, no-c-format
+msgid "Yesterday, %H:%M"
+msgstr "Χθες, %H:%M"
+
+#. Translators: this is the week day name followed by a time
+#. string in 24h format. i.e. "Monday, 14:30"
+#: js/misc/dateUtils.js:167
+#, no-c-format
+msgid "%A, %H:%M"
+msgstr "%A, %H:%M"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 24h format.
+#. i.e. "May 25, 14:30"
+#: js/misc/dateUtils.js:173
+#, no-c-format
+msgid "%B %-d, %H:%M"
+msgstr "%-d %B, %H:%M"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 24h format.
+#. i.e. "May 25 2012, 14:30"
+#: js/misc/dateUtils.js:179
+#, no-c-format
+msgid "%B %-d %Y, %H:%M"
+msgstr "%-d %B %Y, %H:%M"
+
+#. Show only the time if date is on today
+#. eslint-disable-line no-lonely-if
+#. Translators: Time in 12h format
+#: js/misc/dateUtils.js:184
+msgid "%l:%M %p"
+msgstr "%l:%M %p"
+
+#. Translators: this is the word "Yesterday" followed by a
+#. time string in 12h format. i.e. "Yesterday, 2:30 pm"
+#: js/misc/dateUtils.js:190
+#, no-c-format
+msgid "Yesterday, %l:%M %p"
+msgstr "Χθες, %l:%M %p"
+
+#. Translators: this is the week day name followed by a time
+#. string in 12h format. i.e. "Monday, 2:30 pm"
+#: js/misc/dateUtils.js:196
+#, no-c-format
+msgid "%A, %l:%M %p"
+msgstr "%A, %l:%M %p"
+
+#. Translators: this is the month name and day number
+#. followed by a time string in 12h format.
+#. i.e. "May 25, 2:30 pm"
+#: js/misc/dateUtils.js:202
+#, no-c-format
+msgid "%B %-d, %l:%M %p"
+msgstr "%-d %B, %l:%M %p"
+
+#. Translators: this is the month name, day number, year
+#. number followed by a time string in 12h format.
+#. i.e. "May 25 2012, 2:30 pm"
+#: js/misc/dateUtils.js:208
+#, no-c-format
+msgid "%B %-d %Y, %l:%M %p"
+msgstr "%-d %B %Y, %l:%M %p"
+
+#: js/portalHelper/main.js:98
+msgid "Your connection seems to be secure"
+msgstr "Η σύνδεσή σας φαίνεται ασφαλής"
+
+#: js/portalHelper/main.js:104
+msgid ""
+"Your connection to this hotspot login is not secure. Passwords or other "
+"information you enter on this page can be viewed by people nearby."
+msgstr ""
+"Η σύνδεσή σας σε αυτή τη σύνδεση σημείου πρόσβασης δεν είναι ασφαλής. "
+"Κωδικοί πρόσβασης ή άλλες πληροφορίες που εισάγετε σε αυτή τη σελίδα μπορούν "
+"να προβληθούν από άτομα κοντά σας."
+
+#: js/portalHelper/main.js:115
+msgid "Hotspot Login"
+msgstr "Σύνδεση Σημείου Πρόσβασης"
+
+#. No support for non-modal system dialogs, so ignore the option
+#. let modal = options['modal'] || true;
+#: js/ui/accessDialog.js:51 js/ui/inhibitShortcutsDialog.js:92
+msgid "Deny"
+msgstr "Απόρριψη"
+
+#: js/ui/accessDialog.js:52 js/ui/inhibitShortcutsDialog.js:101
+msgid "Allow"
+msgstr "Να επιτραπεί"
+
+#: js/ui/appDisplay.js:1731
+msgid "Unnamed Folder"
+msgstr "Ανώνυμος Φάκελος"
+
+#: js/ui/appFavorites.js:89
+#, javascript-format
+msgid "%s has been pinned to the dash."
+msgstr "Το %s καρφιτσώθηκε στο ταμπλό."
+
+#: js/ui/appFavorites.js:120
+#, javascript-format
+msgid "%s has been unpinned from the dash."
+msgstr "Το %s ξεκαρφιτσώθηκε από το ταμπλό."
+
+#: js/ui/appFavorites.js:134 js/ui/main.js:304
+msgid "Undo"
+msgstr "Αναίρεση"
+
+#. Translators: This is the heading of a list of open windows
+#: js/ui/appMenu.js:49
+msgid "Open Windows"
+msgstr "Ανοιχτά Παράθυρα"
+
+#: js/ui/appMenu.js:57
+msgid "New Window"
+msgstr "Νέο Παράθυρο"
+
+#: js/ui/appMenu.js:84
+msgid "App Details"
+msgstr "Λεπτομέρειες Εφαρμογής"
+
+#: js/ui/appMenu.js:100
+msgid "Quit"
+msgstr "Έξοδος"
+
+#: js/ui/appMenu.js:160 js/ui/dash.js:245
+msgid "Unpin"
+msgstr "Ξεκαρφίτσωμα"
+
+#: js/ui/appMenu.js:161
+msgid "Pin to Dash"
+msgstr "Καρφίτσωμα στο Ταμπλό"
+
+#: js/ui/appMenu.js:178
+msgid "Launch Using Integrated Graphics Card"
+msgstr "Εκκίνηση με Χρήση Ενσωματωμένης Κάρτας Γραφικών"
+
+#: js/ui/appMenu.js:179
+msgid "Launch Using Discrete Graphics Card"
+msgstr "Εκκίνηση με Χρήση Διακριτής Κάρτας Γραφικών"
+
+#: js/ui/audioDeviceSelection.js:46
+msgid "Select Audio Device"
+msgstr "Επιλογή Συσκευής Ήχου"
+
+#: js/ui/audioDeviceSelection.js:67 js/ui/status/volume.js:81
+msgid "Sound Settings"
+msgstr "Ρυθμίσεις Ήχου"
+
+#: js/ui/audioDeviceSelection.js:75
+msgid "Headphones"
+msgstr "Ακουστικά"
+
+#: js/ui/audioDeviceSelection.js:77
+msgid "Headset"
+msgstr "Ακουστικό"
+
+#: js/ui/audioDeviceSelection.js:79 js/ui/status/volume.js:371
+msgid "Microphone"
+msgstr "Μικρόφωνο"
+
+#: js/ui/backgroundMenu.js:13
+msgid "Change Background…"
+msgstr "Αλλαγή Φόντου…"
+
+#: js/ui/backgroundMenu.js:15
+msgid "Display Settings"
+msgstr "Ρυθμίσεις Οθόνης"
+
+#: js/ui/backgroundMenu.js:16
+msgid "Settings"
+msgstr "Ρυθμίσεις"
+
+#. Translators: Enter 0-6 (Sunday-Saturday) for non-work days. Examples: "0" (Sunday) "6" (Saturday) "06" (Sunday and Saturday).
+#: js/ui/calendar.js:34
+msgctxt "calendar-no-work"
+msgid "06"
+msgstr "06"
+
+#. Translators: Calendar grid abbreviation for Sunday.
+#. *
+#. * NOTE: These grid abbreviations are always shown together
+#. * and in order, e.g. "S M T W T F S".
+#.
+#: js/ui/calendar.js:60
+msgctxt "grid sunday"
+msgid "S"
+msgstr "Κυ"
+
+#. Translators: Calendar grid abbreviation for Monday
+#: js/ui/calendar.js:62
+msgctxt "grid monday"
+msgid "M"
+msgstr "Δε"
+
+#. Translators: Calendar grid abbreviation for Tuesday
+#: js/ui/calendar.js:64
+msgctxt "grid tuesday"
+msgid "T"
+msgstr "Τρ"
+
+#. Translators: Calendar grid abbreviation for Wednesday
+#: js/ui/calendar.js:66
+msgctxt "grid wednesday"
+msgid "W"
+msgstr "Τε"
+
+#. Translators: Calendar grid abbreviation for Thursday
+#: js/ui/calendar.js:68
+msgctxt "grid thursday"
+msgid "T"
+msgstr "Πε"
+
+#. Translators: Calendar grid abbreviation for Friday
+#: js/ui/calendar.js:70
+msgctxt "grid friday"
+msgid "F"
+msgstr "Πα"
+
+#. Translators: Calendar grid abbreviation for Saturday
+#: js/ui/calendar.js:72
+msgctxt "grid saturday"
+msgid "S"
+msgstr "Σα"
+
+#. *
+#. * Translators: The header displaying just the month name
+#. * standalone, when this is a month of the current year.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not change it.
+#.
+#: js/ui/calendar.js:425
+msgid "%OB"
+msgstr "%OB"
+
+#. *
+#. * Translators: The header displaying the month name and the year
+#. * number, when this is a month of a different year.  You can
+#. * reorder the format specifiers or add other modifications
+#. * according to the requirements of your language.
+#. * "%OB" is the new format specifier introduced in glibc 2.27,
+#. * in most cases you should not use the old "%B" here unless you
+#. * absolutely know what you are doing.
+#.
+#: js/ui/calendar.js:435
+msgid "%OB %Y"
+msgstr "%OB %Y"
+
+#: js/ui/calendar.js:505
+msgid "Previous month"
+msgstr "Προηγούμενος μήνας"
+
+#: js/ui/calendar.js:523
+msgid "Next month"
+msgstr "Επόμενος μήνας"
+
+#: js/ui/calendar.js:675
+#, no-javascript-format
+msgctxt "date day number format"
+msgid "%d"
+msgstr "%d"
+
+#: js/ui/calendar.js:734
+msgid "Week %V"
+msgstr "Εβδομάδα %V"
+
+#: js/ui/calendar.js:787
+msgid "No Notifications"
+msgstr "Καμία ειδοποίηση"
+
+#: js/ui/calendar.js:828
+msgid "Clear"
+msgstr "Εκκαθάριση"
+
+#: js/ui/calendar.js:832
+msgctxt "action"
+msgid "Clear all notifications"
+msgstr "Εκκαθάριση όλων των ειδοποιήσεων"
+
+#. Translators: %s is an application name
+#: js/ui/closeDialog.js:40
+#, javascript-format
+msgid "“%s” Is Not Responding"
+msgstr "Το «%s» δεν ανταποκρίνεται"
+
+#: js/ui/closeDialog.js:41
+msgid ""
+"You may choose to wait a short while for it to continue or force the app to "
+"quit entirely"
+msgstr ""
+"Μπορείτε να επιλέξετε να περιμένετε λίγο για να συνεχίσει ή να εξαναγκάσετε "
+"την εφαρμογή να τερματιστεί πλήρως"
+
+#: js/ui/closeDialog.js:69
+msgid "Force Quit"
+msgstr "Εξαναγκασμός εξόδου"
+
+#: js/ui/closeDialog.js:74
+msgid "Wait"
+msgstr "Αναμονή"
+
+#: js/ui/components/automountManager.js:81
+msgid "External drive connected"
+msgstr "Συνδέθηκε εξωτερικός δίσκος"
+
+#: js/ui/components/automountManager.js:93
+msgid "External drive disconnected"
+msgstr "Αποσυνδέθηκε εξωτερικός δίσκος"
+
+#: js/ui/components/automountManager.js:207
+msgid "Unable to unlock volume"
+msgstr "Αδυναμία ξεκλειδώματος τόμου"
+
+#: js/ui/components/automountManager.js:208
+msgid "The installed udisks version does not support the PIM setting"
+msgstr "Η εγκατεστημένη έκδοση udisks δεν υποστηρίζει τη ρύθμιση PIM"
+
+#. Translators: %s is the name of a partition on a external drive
+#: js/ui/components/autorunManager.js:189
+#, javascript-format
+msgid "“%s” connected"
+msgstr "Συνδέθηκε το «%s»"
+
+#: js/ui/components/autorunManager.js:190
+msgid "Disk can now be used"
+msgstr "Ο δίσκος μπορεί τώρα να χρησιμοποιηθεί"
+
+#: js/ui/components/autorunManager.js:202
+#, javascript-format
+msgid "Open with %s"
+msgstr "Άνοιγμα με %s"
+
+#: js/ui/components/networkAgent.js:96
+msgid ""
+"Alternatively you can connect by pushing the “WPS” button on your router"
+msgstr ""
+"Εναλλακτικά μπορείτε να συνδεθείτε πιέζοντας το κουμπί «WPS» στο δρομολογητή "
+"σας"
+
+#: js/ui/components/networkAgent.js:108 js/ui/status/bluetooth.js:245
+#: js/ui/status/network.js:360 js/ui/status/network.js:444
+msgid "Connect"
+msgstr "Σύνδεση"
+
+#: js/ui/components/networkAgent.js:223
+msgid "Key"
+msgstr "Κλειδί"
+
+#: js/ui/components/networkAgent.js:274 js/ui/components/networkAgent.js:313
+msgid "Private key password"
+msgstr "Συνθηματικό ιδιωτικού κλειδιού"
+
+#: js/ui/components/networkAgent.js:307
+msgid "Identity"
+msgstr "Ταυτότητα"
+
+#: js/ui/components/networkAgent.js:333
+msgid "Service"
+msgstr "Υπηρεσία"
+
+#: js/ui/components/networkAgent.js:371 js/ui/components/networkAgent.js:407
+#: js/ui/components/networkAgent.js:744 js/ui/components/networkAgent.js:765
+msgid "Authentication required"
+msgstr "Απαιτείται πιστοποίηση"
+
+#: js/ui/components/networkAgent.js:372 js/ui/components/networkAgent.js:745
+#, javascript-format
+msgid ""
+"Passwords or encryption keys are required to access the wireless network “%s”"
+msgstr ""
+"Απαιτούνται κωδικοί πρόσβασης ή κλειδιά κρυπτογράφησης για πρόσβαση στο "
+"ασύρματο δίκτυο «%s»"
+
+#: js/ui/components/networkAgent.js:376 js/ui/components/networkAgent.js:749
+msgid "Wired 802.1X authentication"
+msgstr "Πιστοποίηση ενσύρματου 802.1X"
+
+#: js/ui/components/networkAgent.js:379
+msgid "Network name"
+msgstr "Όνομα δικτύου"
+
+#: js/ui/components/networkAgent.js:387 js/ui/components/networkAgent.js:753
+msgid "DSL authentication"
+msgstr "Πιστοποίηση DSL"
+
+#: js/ui/components/networkAgent.js:394 js/ui/components/networkAgent.js:758
+msgid "PIN code required"
+msgstr "Απαιτείται κωδικός PIN"
+
+#: js/ui/components/networkAgent.js:395 js/ui/components/networkAgent.js:759
+msgid "PIN code is needed for the mobile broadband device"
+msgstr "Ο κωδικός PIN απαιτείται για τη συσκευή κινητής ευρυζωνικής σύνδεσης"
+
+#: js/ui/components/networkAgent.js:397
+msgid "PIN"
+msgstr "PIN"
+
+#: js/ui/components/networkAgent.js:408 js/ui/components/networkAgent.js:750
+#: js/ui/components/networkAgent.js:754 js/ui/components/networkAgent.js:766
+#: js/ui/components/networkAgent.js:770
+#, javascript-format
+msgid "A password is required to connect to “%s”"
+msgstr "Απαιτείται συνθηματικό για σύνδεση στο «%s»"
+
+#: js/ui/components/networkAgent.js:769
+msgid "VPN password"
+msgstr "Συνθηματικό VPN"
+
+#: js/ui/components/polkitAgent.js:44
+msgid "Authentication Required"
+msgstr "Απαιτείται Πιστοποίηση"
+
+#: js/ui/components/polkitAgent.js:84
+msgid "Administrator"
+msgstr "Διαχειριστής"
+
+#: js/ui/components/polkitAgent.js:149
+msgid "Authenticate"
+msgstr "Πιστοποίηση"
+
+#. Translators: "that didn't work" refers to the fact that the
+#. * requested authentication was not gained; this can happen
+#. * because of an authentication error (like invalid password),
+#. * for instance.
+#: js/ui/components/polkitAgent.js:263 js/ui/shellMountOperation.js:415
+msgid "Sorry, that didn’t work. Please try again."
+msgstr "Συγγνώμη, αυτό δεν λειτούργησε. Παρακαλούμε προσπαθήστε ξανά."
+
+#: js/ui/ctrlAltTab.js:23 js/ui/overviewControls.js:407
+msgid "Windows"
+msgstr "Παράθυρα"
+
+#: js/ui/dash.js:201 js/ui/dash.js:247
+msgid "Show Apps"
+msgstr "Εμφάνιση Εφαρμογών"
+
+#. Translators: this is the name of the dock/favorites area on
+#. the bottom of the overview
+#: js/ui/dash.js:405
+msgid "Dash"
+msgstr "Ταμπλό"
+
+#. Translators: This is the date format to use when the calendar popup is
+#. * shown - it is shown just below the time in the top bar (e.g.,
+#. * "Tue 9:29 AM").  The string itself should become a full date, e.g.,
+#. * "February 17 2015".
+#.
+#: js/ui/dateMenu.js:99
+msgid "%B %-d %Y"
+msgstr "%-d %B %Y"
+
+#. Translators: This is the accessible name of the date button shown
+#. * below the time in the shell; it should combine the weekday and the
+#. * date, e.g. "Tuesday February 17 2015".
+#.
+#: js/ui/dateMenu.js:106
+msgid "%A %B %e %Y"
+msgstr "%A %e %B %Y"
+
+#. Translators: Shown on calendar heading when selected day occurs on current year
+#: js/ui/dateMenu.js:173
+msgctxt "calendar heading"
+msgid "%B %-d"
+msgstr "%-d %B"
+
+#. Translators: Shown on calendar heading when selected day occurs on different year
+#: js/ui/dateMenu.js:176
+msgctxt "calendar heading"
+msgid "%B %-d %Y"
+msgstr "%-d %B %Y"
+
+#: js/ui/dateMenu.js:182
+msgid "Today"
+msgstr "Σήμερα"
+
+#: js/ui/dateMenu.js:186
+msgid "Tomorrow"
+msgstr "Αύριο"
+
+#. Translators: Shown in calendar event list for all day events
+#. * Keep it short, best if you can use less then 10 characters
+#.
+#: js/ui/dateMenu.js:217
+msgctxt "event list time"
+msgid "All Day"
+msgstr "Όλη μέρα"
+
+#. Translators: Shown in calendar event list as the start/end of events
+#. * that only show day and month
+#.
+#: js/ui/dateMenu.js:239
+msgid "%m/%d"
+msgstr "%d/%m"
+
+#: js/ui/dateMenu.js:290
+msgid "No Events"
+msgstr "Κανένα Συμβάν"
+
+#: js/ui/dateMenu.js:412
+msgid "Add World Clocks…"
+msgstr "Προσθήκη Παγκόσμιων Ρολογιών…"
+
+#: js/ui/dateMenu.js:413
+msgid "World Clocks"
+msgstr "Παγκόσμια Ρολόγια"
+
+#: js/ui/dateMenu.js:704
+msgid "Loading…"
+msgstr "Φορτώνεται…"
+
+#: js/ui/dateMenu.js:714
+msgid "Go Online for Weather Information"
+msgstr "Συνδεθείτε στο Διαδίκτυο για Πληροφορίες Καιρού"
+
+#: js/ui/dateMenu.js:716
+msgid "Weather Information Unavailable"
+msgstr "Οι Πληροφορίες Καιρού είναι Μη Διαθέσιμες"
+
+#: js/ui/dateMenu.js:726
+msgid "Weather"
+msgstr "Καιρός"
+
+#: js/ui/dateMenu.js:728
+msgid "Select Weather Location…"
+msgstr "Επιλέξτε Τοποθεσία Καιρού…"
+
+#: js/ui/endSessionDialog.js:46
+#, javascript-format
+msgctxt "title"
+msgid "Log Out %s"
+msgstr "Αποσύνδεση %s"
+
+#: js/ui/endSessionDialog.js:47
+msgctxt "title"
+msgid "Log Out"
+msgstr "Αποσύνδεση"
+
+#: js/ui/endSessionDialog.js:50
+#, javascript-format
+msgid "%s will be logged out automatically in %d second"
+msgid_plural "%s will be logged out automatically in %d seconds"
+msgstr[0] "Ο %s θα αποσυνδεθεί αυτόματα σε %d δευτερόλεπτο"
+msgstr[1] "Ο %s θα αποσυνδεθεί αυτόματα σε %d δευτερόλεπτα"
+
+#: js/ui/endSessionDialog.js:56
+#, javascript-format
+msgid "You will be logged out automatically in %d second"
+msgid_plural "You will be logged out automatically in %d seconds"
+msgstr[0] "Θα αποσυνδεθείτε αυτόματα σε %d δευτερόλεπτο"
+msgstr[1] "Θα αποσυνδεθείτε αυτόματα σε %d δευτερόλεπτα"
+
+#: js/ui/endSessionDialog.js:63
+msgctxt "button"
+msgid "Log Out"
+msgstr "Αποσύνδεση"
+
+#: js/ui/endSessionDialog.js:69 js/ui/status/system.js:181
+msgctxt "title"
+msgid "Power Off"
+msgstr "Τερματισμός"
+
+#: js/ui/endSessionDialog.js:70
+msgctxt "title"
+msgid "Install Updates & Power Off"
+msgstr "Εγκατάσταση Ενημερώσεων & Τερματισμός"
+
+#: js/ui/endSessionDialog.js:73
+#, javascript-format
+msgid "The system will power off automatically in %d second"
+msgid_plural "The system will power off automatically in %d seconds"
+msgstr[0] "Το σύστημα θα τερματιστεί αυτόματα σε %d δευτερόλεπτο"
+msgstr[1] "Το σύστημα θα τερματιστεί αυτόματα σε %d δευτερόλεπτα"
+
+#: js/ui/endSessionDialog.js:77 js/ui/endSessionDialog.js:96
+msgctxt "checkbox"
+msgid "Install pending software updates"
+msgstr "Εγκατάσταση εκκρεμών ενημερώσεων λογισμικού"
+
+#: js/ui/endSessionDialog.js:81
+msgctxt "button"
+msgid "Power Off"
+msgstr "Τερματισμός"
+
+#: js/ui/endSessionDialog.js:88
+msgctxt "title"
+msgid "Restart"
+msgstr "Επανεκκίνηση"
+
+#: js/ui/endSessionDialog.js:89
+msgctxt "title"
+msgid "Install Updates & Restart"
+msgstr "Εγκατάσταση Ενημερώσεων & Επανεκκίνηση"
+
+#: js/ui/endSessionDialog.js:92
+#, javascript-format
+msgid "The system will restart automatically in %d second"
+msgid_plural "The system will restart automatically in %d seconds"
+msgstr[0] "Το σύστημα θα επανεκκινήσει αυτόματα σε %d δευτερόλεπτο"
+msgstr[1] "Το σύστημα θα επανεκκινήσει αυτόματα σε %d δευτερόλεπτα"
+
+#: js/ui/endSessionDialog.js:100
+msgctxt "button"
+msgid "Restart"
+msgstr "Επανεκκίνηση"
+
+#: js/ui/endSessionDialog.js:108
+msgctxt "title"
+msgid "Restart & Install Updates"
+msgstr "Επανεκκίνηση & Εγκατάσταση Ενημερώσεων"
+
+#: js/ui/endSessionDialog.js:111
+#, javascript-format
+msgid "The system will automatically restart and install updates in %d second"
+msgid_plural ""
+"The system will automatically restart and install updates in %d seconds"
+msgstr[0] ""
+"Το σύστημα θα επανεκκινήσει αυτόματα και θα εγκαταστήσει ενημερώσεις σε %d "
+"δευτερόλεπτο"
+msgstr[1] ""
+"Το σύστημα θα επανεκκινήσει αυτόματα και θα εγκαταστήσει ενημερώσεις σε %d "
+"δευτερόλεπτα"
+
+#: js/ui/endSessionDialog.js:118
+msgctxt "button"
+msgid "Restart & Install"
+msgstr "Επανεκκίνηση & Εγκατάσταση"
+
+#: js/ui/endSessionDialog.js:120
+msgctxt "button"
+msgid "Install & Power Off"
+msgstr "Εγκατάσταση & Τερματισμός"
+
+#: js/ui/endSessionDialog.js:121
+msgctxt "checkbox"
+msgid "Power off after updates are installed"
+msgstr "Τερματισμός μετά την εγκατάσταση ενημερώσεων"
+
+#: js/ui/endSessionDialog.js:262
+msgid "Low battery power: please plug in before installing updates"
+msgstr ""
+"Χαμηλό επίπεδο μπαταρίας: παρακαλούμε συνδεθείτε στην πρίζα πριν την "
+"εγκατάσταση των ενημερώσεων"
+
+#: js/ui/endSessionDialog.js:271
+msgid "Some applications are busy or have unsaved work"
+msgstr ""
+"Κάποιες εφαρμογές είναι απασχολημένες ή έχουν δεδομένα που δεν αποθηκεύτηκαν"
+
+#: js/ui/endSessionDialog.js:276
+msgid "Other users are logged in"
+msgstr "Είναι συνδεδεμένοι άλλοι χρήστες"
+
+#: js/ui/endSessionDialog.js:431
+msgctxt "button"
+msgid "Boot Options"
+msgstr "Επιλογές Εκκίνησης"
+
+#. Translators: Remote here refers to a remote session, like a ssh login
+#: js/ui/endSessionDialog.js:635
+#, javascript-format
+msgid "%s (remote)"
+msgstr "%s (απομακρυσμένο)"
+
+#. Translators: Console here refers to a tty like a VT console
+#: js/ui/endSessionDialog.js:638
+#, javascript-format
+msgid "%s (console)"
+msgstr "%s (κονσόλα)"
+
+#: js/ui/extensionDownloader.js:280
+msgid "Install"
+msgstr "Εγκατάσταση"
+
+#: js/ui/extensionDownloader.js:286
+msgid "Install Extension"
+msgstr "Εγκατάσταση Επέκτασης"
+
+#: js/ui/extensionDownloader.js:287
+#, javascript-format
+msgid "Download and install “%s” from extensions.gnome.org?"
+msgstr "Λήψη και εγκατάσταση του «%s» από το extensions.gnome.org;"
+
+#: js/ui/extensionSystem.js:353
+msgid "Extension Updates Available"
+msgstr "Διαθέσιμες Ενημερώσεις Επεκτάσεων"
+
+#: js/ui/extensionSystem.js:354
+msgid "Extension updates are ready to be installed"
+msgstr "Οι ενημερώσεις των επεκτάσεων είναι έτοιμες προς εγκατάσταση"
+
+#: js/ui/inhibitShortcutsDialog.js:70
+msgid "Allow inhibiting shortcuts"
+msgstr "Να επιτρέπεται η αναστολή των συντομεύσεων"
+
+#. Translators: %s is an application name like "Settings"
+#: js/ui/inhibitShortcutsDialog.js:73
+#, javascript-format
+msgid "The app %s wants to inhibit shortcuts"
+msgstr "Η εφαρμογή %s θέλει να αναστείλει τις συντομεύσεις"
+
+#: js/ui/inhibitShortcutsDialog.js:74
+msgid "An app wants to inhibit shortcuts"
+msgstr "Μια εφαρμογή θέλει να αναστείλει τις συντομεύσεις"
+
+#. Translators: %s is a keyboard shortcut like "Super+x"
+#: js/ui/inhibitShortcutsDialog.js:81
+#, javascript-format
+msgid "You can restore shortcuts by pressing %s"
+msgstr "Μπορείτε να επαναφέρετε τις συντομεύσεις πιέζοντας το %s"
+
+#: js/ui/kbdA11yDialog.js:34
+msgid "Slow Keys Turned On"
+msgstr "Τα Αργά Πλήκτρα Ενεργοποιήθηκαν"
+
+#: js/ui/kbdA11yDialog.js:35
+msgid "Slow Keys Turned Off"
+msgstr "Τα Αργά Πλήκτρα Απενεργοποιήθηκαν"
+
+#: js/ui/kbdA11yDialog.js:36
+msgid ""
+"You just held down the Shift key for 8 seconds. This is the shortcut for the "
+"Slow Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Μόλις πατήσατε το πλήκτρο Shift για 8 δευτερόλεπτα. Αυτή είναι η συντόμευση "
+"για τη λειτουργία Αργά Πλήκτρα, που επηρεάζει τον τρόπο λειτουργίας του "
+"πληκτρολογίου σας."
+
+#: js/ui/kbdA11yDialog.js:42
+msgid "Sticky Keys Turned On"
+msgstr "Τα Κολλώδη Πλήκτρα Ενεργοποιήθηκαν"
+
+#: js/ui/kbdA11yDialog.js:43
+msgid "Sticky Keys Turned Off"
+msgstr "Τα Κολλώδη Πλήκτρα Απενεργοποιήθηκαν"
+
+#: js/ui/kbdA11yDialog.js:45
+msgid ""
+"You just pressed the Shift key 5 times in a row. This is the shortcut for "
+"the Sticky Keys feature, which affects the way your keyboard works."
+msgstr ""
+"Πατήσατε το πλήκτρο Shift 5 φορές στη σειρά. Αυτή είναι η συντόμευση για τη "
+"λειτουργία Κολλώδη Πλήκτρα, που επηρεάζει τον τρόπο λειτουργίας του "
+"πληκτρολογίου σας."
+
+#: js/ui/kbdA11yDialog.js:47
+msgid ""
+"You just pressed two keys at once, or pressed the Shift key 5 times in a "
+"row. This turns off the Sticky Keys feature, which affects the way your "
+"keyboard works."
+msgstr ""
+"Πατήσατε 2 πλήκτρα ταυτόχρονα, ή πατήσατε το πλήκτρο Shift 5 φορές στη "
+"σειρά. Αυτό απενεργοποιεί τη λειτουργία Κολλώδη Πλήκτρα, που επηρεάζει τον "
+"τρόπο λειτουργίας του πληκτρολογίου σας."
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Leave On"
+msgstr "Να Παραμείνει Ενεργό"
+
+#: js/ui/kbdA11yDialog.js:57
+msgid "Turn On"
+msgstr "Ενεργοποίηση"
+
+#: js/ui/kbdA11yDialog.js:67 js/ui/status/network.js:455
+msgid "Turn Off"
+msgstr "Απενεργοποίηση"
+
+#: js/ui/kbdA11yDialog.js:67
+msgid "Leave Off"
+msgstr "Να Παραμείνει Ανενεργό"
+
+#: js/ui/keyboard.js:179 js/ui/status/keyboard.js:888
+msgid "Keyboard Settings"
+msgstr "Ρυθμίσεις Πληκτρολογίου"
+
+#: js/ui/lookingGlass.js:737
+msgid "No extensions installed"
+msgstr "Δεν Υπάρχουν Εγκατεστημένες Επεκτάσεις"
+
+#. Translators: argument is an extension UUID.
+#: js/ui/lookingGlass.js:800
+#, javascript-format
+msgid "%s has not emitted any errors"
+msgstr "Το %s δεν έδωσε σφάλματα"
+
+#: js/ui/lookingGlass.js:806
+msgid "Hide Errors"
+msgstr "Απόκρυψη Σφαλμάτων"
+
+#: js/ui/lookingGlass.js:810 js/ui/lookingGlass.js:890
+msgid "Show Errors"
+msgstr "Εμφάνιση Σφαλμάτων"
+
+#: js/ui/lookingGlass.js:819
+msgid "Active"
+msgstr "Ενεργό"
+
+#: js/ui/lookingGlass.js:822
+msgid "Inactive"
+msgstr "Ανενεργό"
+
+#: js/ui/lookingGlass.js:824
+msgid "Error"
+msgstr "Σφάλμα"
+
+#: js/ui/lookingGlass.js:826
+msgid "Out of date"
+msgstr "Μη Ενημερωμένο"
+
+#: js/ui/lookingGlass.js:828
+msgid "Downloading"
+msgstr "Γίνεται Λήψη"
+
+#: js/ui/lookingGlass.js:830
+msgid "Deactivating"
+msgstr "Γίνεται Απενεργοποίηση"
+
+#: js/ui/lookingGlass.js:832
+msgid "Activating"
+msgstr "Γίνεται Ενεργοποίηση"
+
+#: js/ui/lookingGlass.js:868
+msgid "View Source"
+msgstr "Προβολή Πηγής"
+
+#: js/ui/lookingGlass.js:879
+msgid "Web Page"
+msgstr "Ιστοσελίδα"
+
+#: js/ui/main.js:300
+msgid "System was put in unsafe mode"
+msgstr "Το Σύστημα τέθηκε σε Ανασφαλή Λειτουργία"
+
+#: js/ui/main.js:301
+msgid "Apps now have unrestricted access"
+msgstr "Οι Εφαρμογές πλέον έχουν Απεριόριστη Πρόσβαση"
+
+#: js/ui/main.js:362
+msgid "Logged in as a privileged user"
+msgstr "Συνδεθήκατε ως Προνομιούχος Χρήστης"
+
+#: js/ui/main.js:363
+msgid ""
+"Running a session as a privileged user should be avoided for security "
+"reasons. If possible, you should log in as a normal user."
+msgstr ""
+"Η εκτέλεση μιας περιόδου σύνδεσης ως προνομιούχου χρήστη θα πρέπει να "
+"αποφεύγεται για λόγους ασφαλείας. Εάν είναι δυνατόν, θα πρέπει να συνδεθείτε "
+"ως κανονικός χρήστης."
+
+#: js/ui/main.js:411
+msgid "Screen Lock disabled"
+msgstr "Το Κλείδωμα Οθόνης Απενεργοποιήθηκε"
+
+#: js/ui/main.js:412
+msgid "Screen Locking requires the GNOME display manager"
+msgstr "Το Κλείδωμα Οθόνης απαιτεί τον Διαχειριστή Οθόνης του GNOME"
+
+#. Translators: this is the string displayed in the header when a message
+#. source doesn't have a name
+#: js/ui/messageList.js:403
+msgid "Unknown App"
+msgstr "Άγνωστη Εφαρμογή"
+
+#: js/ui/messageTray.js:325 js/ui/messageTray.js:327
+msgid "Notification sound"
+msgstr "Ήχος Ειδοποιήσεων"
+
+#: js/ui/mpris.js:144
+msgid "Unknown artist"
+msgstr "Άγνωστος Καλλιτέχνης"
+
+#: js/ui/mpris.js:154
+msgid "Unknown title"
+msgstr "Άγνωστος Τίτλος"
+
+#. Translators: this is the text displayed
+#. in the search entry when no search is
+#. active; it should not exceed ~30
+#. characters.
+#: js/ui/overviewControls.js:330
+msgid "Type to search"
+msgstr "Πληκτρολογήστε για Αναζήτηση"
+
+#: js/ui/overviewControls.js:395
+msgid "Apps"
+msgstr "Εφαρμογές"
+
+#. Translators: This is the main view to select
+#. activities. See also note for "Activities" string.
+#: js/ui/overview.js:33
+msgid "Overview"
+msgstr "Επισκόπηση"
+
+#: js/ui/padOsd.js:98
+msgid "New shortcut…"
+msgstr "Νέα Συντόμευση…"
+
+#: js/ui/padOsd.js:151
+msgid "App defined"
+msgstr "Ορίστηκε η Εφαρμογή"
+
+#: js/ui/padOsd.js:152
+msgid "Show on-screen help"
+msgstr "Εμφάνιση Βοήθειας στην Οθόνη"
+
+#: js/ui/padOsd.js:153
+msgid "Switch monitor"
+msgstr "Εναλλαγή Οθόνης"
+
+#: js/ui/padOsd.js:154
+msgid "Assign keystroke"
+msgstr "Αντιστοίχηση Πλήκτρων"
+
+#: js/ui/padOsd.js:223
+msgid "Done"
+msgstr "Έτοιμο"
+
+#: js/ui/padOsd.js:743
+msgid "Edit…"
+msgstr "Επεξεργασία…"
+
+#: js/ui/padOsd.js:791
+msgid "None"
+msgstr "Κανένα"
+
+#: js/ui/padOsd.js:868
+msgid "Press a button to configure"
+msgstr "Πατήστε ένα Κουμπί για Ρύθμιση"
+
+#: js/ui/padOsd.js:869
+msgid "Press Esc to exit"
+msgstr "Πατήστε Esc για Έξοδο"
+
+#: js/ui/padOsd.js:872
+msgid "Press any key to exit"
+msgstr "Πατήστε Οποιοδήποτε Πλήκτρο για Έξοδο"
+
+#. Translators: If there is no suitable word for "Activities"
+#. in your language, you can use the word for "Overview".
+#: js/ui/panel.js:208
+msgid "Activities"
+msgstr "Δραστηριότητες"
+
+#: js/ui/panel.js:289
+msgctxt "System menu in the top bar"
+msgid "System"
+msgstr "Σύστημα"
+
+#: js/ui/panel.js:470
+msgid "Top Bar"
+msgstr "Πάνω Μπάρα"
+
+#: js/ui/quickSettings.js:164 js/ui/quickSettings.js:263
+msgid "Open menu"
+msgstr "Άνοιγμα Μενού"
+
+#: js/ui/runDialog.js:61
+msgid "Run a Command"
+msgstr "Εκτέλεση Εντολής"
+
+#: js/ui/runDialog.js:79
+msgid "Press ESC to close"
+msgstr "Πατήστε ESC για Κλείσιμο"
+
+#: js/ui/screenShield.js:220
+msgid "GNOME needs to lock the screen"
+msgstr "Το GNOME χρειάζεται να Κλειδώσει την Οθόνη"
+
+#. Translators: notification source name for screenshots and recordings.
+#: js/ui/screenshot.js:40
+msgid "Screen Capture"
+msgstr "Αποτύπωση Οθόνης"
+
+#: js/ui/screenshot.js:1267
+msgid "Selection"
+msgstr "Επιλογή"
+
+#: js/ui/screenshot.js:1277
+msgid "Area Selection"
+msgstr "Επιλογή Περιοχής"
+
+#: js/ui/screenshot.js:1282
+msgid "Screen"
+msgstr "Οθόνη"
+
+#: js/ui/screenshot.js:1292
+msgid "Screen Selection"
+msgstr "Επιλογή Οθόνης"
+
+#: js/ui/screenshot.js:1297
+msgid "Window"
+msgstr "Παράθυρο"
+
+#: js/ui/screenshot.js:1307
+msgid "Window Selection"
+msgstr "Επιλογή Παραθύρου"
+
+#: js/ui/screenshot.js:1332 js/ui/status/system.js:118
+msgid "Take Screenshot"
+msgstr "Λήψη Στιγμιότυπου Οθόνης"
+
+#: js/ui/screenshot.js:1348
+msgid "Record Screen"
+msgstr "Εγγραφή Οθόνης"
+
+#. Translators: since this string refers to an action,
+#. it needs to be phrased as a verb.
+#: js/ui/screenshot.js:1365
+msgid "Capture"
+msgstr "Αποτύπωση"
+
+#: js/ui/screenshot.js:1387
+msgid "Show Pointer"
+msgstr "Εμφάνιση Δρομέα"
+
+#. Translators: this is the folder where recorded
+#. screencasts are stored.
+#: js/ui/screenshot.js:2020
+msgid "Screencasts"
+msgstr "Βίντεο Οθόνης"
+
+#. Translators: this is a filename used for screencast
+#. * recording, where "%d" and "%t" date and time, e.g.
+#. * "Screencast From 07-17-2013 10:00:46 PM"
+#: js/ui/screenshot.js:2025
+#, no-c-format
+msgid "Screencast From %d %t"
+msgstr "Βίντεο Οθόνης από %d %t"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2071
+msgid "Screencast recorded"
+msgstr "Καταγράφηκε Βίντεο Οθόνης"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2084
+msgid "Screencast failed to start"
+msgstr "Αποτυχία Εκκίνησης Βίντεο Οθόνης"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2090
+msgid "Screencast ended: Out of disk space"
+msgstr "Το Βίντεο Οθόνης Τερματίστηκε: Δεν Υπάρχει Χώρος στο Δίσκο"
+
+#. We can encourage user to try again on service crashes since the
+#. recorder will auto-blocklist the pipeline that crashed.
+#. Translators: notification title.
+#: js/ui/screenshot.js:2096
+msgid "Screencast ended unexpectedly, please try again"
+msgstr "Το Βίντεο Οθόνης Τερματίστηκε, Παρακαλούμε Ξαναπροσπαθήστε"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2099
+msgid "Screencast ended unexpectedly"
+msgstr "Η Εγγραφή Οθόνης Τερματίστηκε Απροσδόκητα"
+
+#. Translators: notification body when a screencast was recorded.
+#: js/ui/screenshot.js:2112
+msgid "Click here to view the video"
+msgstr "Κάντε Κλικ Εδώ για Προβολή του Βίντεο"
+
+#. Translators: button on the screencast notification.
+#. Translators: button on the screenshot notification.
+#: js/ui/screenshot.js:2120 js/ui/screenshot.js:2363
+msgid "Show in Files"
+msgstr "Εμφάνιση στα Αρχεία"
+
+#. Translators: this is the name of the file that the screenshot is
+#. saved to. The placeholder is a timestamp, e.g. "2017-05-21 12-24-03".
+#: js/ui/screenshot.js:2309
+#, javascript-format
+msgid "Screenshot From %s"
+msgstr "Στιγμιότυπο Οθόνης από %s"
+
+#. Translators: notification title.
+#: js/ui/screenshot.js:2353
+msgid "Screenshot captured"
+msgstr "Καταγράφηκε Στιγμιότυπο Οθόνης"
+
+#. Translators: notification body when a screenshot was captured.
+#: js/ui/screenshot.js:2355
+msgid "You can paste the image from the clipboard"
+msgstr "Μπορείτε να Επικολλήσετε την Εικόνα από το Πρόχειρο"
+
+#: js/ui/screenshot.js:2413 js/ui/screenshot.js:2575
+msgid "Screenshot taken"
+msgstr "Ελήφθη Στιγμιότυπο Οθόνης"
+
+#: js/ui/search.js:846
+msgid "Searching"
+msgstr "Αναζήτηση"
+
+#: js/ui/search.js:849
+msgid "No results"
+msgstr "Δε Βρέθηκαν Αποτελέσματα"
+
+#: js/ui/search.js:984
+#, javascript-format
+msgid "%d more"
+msgid_plural "%d more"
+msgstr[0] "%d περισσότερο"
+msgstr[1] "%d περισσότερα"
+
+#: js/ui/searchController.js:86
+#: subprojects/extensions-app/data/ui/extensions-window.ui:73
+msgid "Search"
+msgstr "Αναζήτηση"
+
+#: js/ui/shellEntry.js:22
+msgid "Copy"
+msgstr "Αντιγραφή"
+
+#: js/ui/shellEntry.js:27
+msgid "Paste"
+msgstr "Επικόλληση"
+
+#: js/ui/shellEntry.js:79
+msgid "Show Text"
+msgstr "Εμφάνιση Κειμένου"
+
+#: js/ui/shellEntry.js:81
+msgid "Hide Text"
+msgstr "Απόκρυψη Κειμένου"
+
+#: js/ui/shellEntry.js:170
+msgid "Caps lock is on"
+msgstr "Τα Κεφαλαία είναι Ενεργοποιημένα"
+
+#: js/ui/shellMountOperation.js:286
+msgid "Hidden Volume"
+msgstr "Κρυφός Τόμος"
+
+#: js/ui/shellMountOperation.js:289
+msgid "Windows System Volume"
+msgstr "Τομέας Συστήματος Windows"
+
+#: js/ui/shellMountOperation.js:292
+msgid "Uses Keyfiles"
+msgstr "Χρησιμοποιεί Αρχεία Κλειδιά"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:300
+#, javascript-format
+msgid ""
+"To unlock a volume that uses keyfiles, use the <i>%s</i> utility instead"
+msgstr ""
+"Για να ξεκλειδώσετε έναν τόμο που χρησιμοποιεί αρχεία κλειδιά, "
+"χρησιμοποιήστε το βοηθητικό εργαλείο <i>%s</i> αντ' αυτού"
+
+#: js/ui/shellMountOperation.js:304
+msgid ""
+"You need an external utility like <i>Disks</i> to unlock a volume that uses "
+"keyfiles"
+msgstr ""
+"Χρειάζεστε ένα εξωτερικό βοηθητικό πρόγραμμα όπως το <i>Δίσκοι</i> για να "
+"ξεκλειδώσετε έναν τόμο που χρησιμοποιεί αρχεία κλειδιά"
+
+#: js/ui/shellMountOperation.js:312
+msgid "PIM Number"
+msgstr "Αριθμός PIM"
+
+#: js/ui/shellMountOperation.js:371
+msgid "Remember Password"
+msgstr "Απομνημόνευση Συνθηματικού"
+
+#: js/ui/shellMountOperation.js:386
+msgid "Unlock"
+msgstr "Ξεκλείδωμα"
+
+#. Translators: %s is the Disks application
+#: js/ui/shellMountOperation.js:400
+#, javascript-format
+msgid "Open %s"
+msgstr "Άνοιγμα %s"
+
+#: js/ui/shellMountOperation.js:436
+msgid "The PIM must be a number or empty"
+msgstr "Το PIM πρέπει να είναι Αριθμός ή Κενό"
+
+#: js/ui/status/accessibility.js:45 js/ui/status/accessibility.js:153
+msgid "High Contrast"
+msgstr "Υψηλή Αντίθεση"
+
+#: js/ui/status/accessibility.js:48 js/ui/status/accessibility.js:169
+msgid "Zoom"
+msgstr "Εστίαση"
+
+#: js/ui/status/accessibility.js:55 js/ui/status/accessibility.js:221
+msgid "Screen Reader"
+msgstr "Αναγνώστης Οθόνης"
+
+#: js/ui/status/accessibility.js:59 js/ui/status/accessibility.js:237
+msgid "Screen Keyboard"
+msgstr "Πληκτρολόγιο Οθόνης"
+
+#: js/ui/status/accessibility.js:63 js/ui/status/accessibility.js:253
+msgid "Visual Alerts"
+msgstr "Οπτικές Ειδοποιήσεις"
+
+#: js/ui/status/accessibility.js:67 js/ui/status/accessibility.js:269
+msgid "Sticky Keys"
+msgstr "Κολλώδη Πλήκτρα"
+
+#: js/ui/status/accessibility.js:71 js/ui/status/accessibility.js:285
+msgid "Slow Keys"
+msgstr "Αργά Πλήκτρα"
+
+#: js/ui/status/accessibility.js:75 js/ui/status/accessibility.js:301
+msgid "Bounce Keys"
+msgstr "Πλήκτρα Αναπήδησης"
+
+#: js/ui/status/accessibility.js:79 js/ui/status/accessibility.js:317
+msgid "Mouse Keys"
+msgstr "Πλήκτρα Ποντικιού"
+
+#: js/ui/status/accessibility.js:84
+msgid "Accessibility Settings"
+msgstr "Ρυθμίσεις Προσιτότητας"
+
+#: js/ui/status/accessibility.js:122 js/ui/status/accessibility.js:185
+msgid "Large Text"
+msgstr "Μεγάλο Κείμενο"
+
+#: js/ui/status/autoRotate.js:14
+msgid "Auto Rotate"
+msgstr "Αυτόματη Περιστροφή"
+
+#: js/ui/status/backgroundApps.js:155
+msgctxt "title"
+msgid "Background Apps"
+msgstr "Εφαρμογές Φόντου"
+
+#: js/ui/status/backgroundApps.js:170
+msgid "Apps known to be running without a window"
+msgstr "Εφαρμογές που είναι Γνωστό ότι Εκτελούνται χωρίς Παράθυρο"
+
+#: js/ui/status/backgroundApps.js:181
+msgid "App Settings"
+msgstr "Ρυθμίσεις Εφαρμογής"
+
+#: js/ui/status/backgroundApps.js:238
+msgid "No Background Apps"
+msgstr "Καμία Εφαρμογή στο Παρασκήνιο"
+
+#: js/ui/status/backgroundApps.js:240
+#, javascript-format
+msgid "%d Background App"
+msgid_plural "%d Background Apps"
+msgstr[0] "%d Εφαρμογή στο Παρασκήνιο"
+msgstr[1] "%d Εφαρμογές στο Παρασκήνιο"
+
+#: js/ui/status/backlight.js:39
+msgid "Keyboard Brightness"
+msgstr "Φωτεινότητα Πληκτρολογίου"
+
+#: js/ui/status/backlight.js:87
+msgid "Off"
+msgstr "Απενεργό"
+
+#: js/ui/status/backlight.js:88
+msgid "Low"
+msgstr "Χαμηλό"
+
+#: js/ui/status/backlight.js:89
+msgid "High"
+msgstr "Υψηλό"
+
+#: js/ui/status/backlight.js:162 js/ui/status/keyboard.js:870
+msgid "Keyboard"
+msgstr "Πληκτρολόγιο"
+
+#: js/ui/status/backlight.js:164
+msgid "Open keyboard brightness menu"
+msgstr "Άνοιγμα μενού φωτεινότητας πληκτρολογίου"
+
+#: js/ui/status/bluetooth.js:245 js/ui/status/network.js:360
+msgid "Disconnect"
+msgstr "Αποσύνδεση"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:266 js/ui/status/network.js:354
+#, javascript-format
+msgid "Disconnect %s"
+msgstr "Αποσύνδεση %s"
+
+#. Translators: %s is a device name like "MyPhone"
+#: js/ui/status/bluetooth.js:268 js/ui/status/network.js:356
+#, javascript-format
+msgid "Connect to %s"
+msgstr "Σύνδεση %s"
+
+#: js/ui/status/bluetooth.js:276 js/ui/status/bluetooth.js:280
+msgid "Bluetooth"
+msgstr "Bluetooth"
+
+#: js/ui/status/bluetooth.js:277
+msgid "Open Bluetooth menu"
+msgstr "Άνοιγμα μενού Bluetooth"
+
+#: js/ui/status/bluetooth.js:303 js/ui/status/network.js:1925
+msgid "Bluetooth Settings"
+msgstr "Ρυθμίσεις Bluetooth"
+
+#: js/ui/status/bluetooth.js:350
+msgid "No available or connected devices"
+msgstr "Δεν Υπάρχουν Διαθέσιμες ή Συνδεδεμένες Συσκευές"
+
+#: js/ui/status/bluetooth.js:351
+msgid "Turn on Bluetooth to connect to devices"
+msgstr "Ενεργοποιήστε το Bluetooth για να Συνδεθείτε σε Συσκευές"
+
+#. Translators: This is the number of connected bluetooth devices
+#: js/ui/status/bluetooth.js:415
+#, javascript-format
+msgid "%d Connected"
+msgid_plural "%d Connected"
+msgstr[0] "Συνδέθηκε %d"
+msgstr[1] "Συνδέθηκαν %d"
+
+#: js/ui/status/brightness.js:42
+msgid "Open brightness menu"
+msgstr "Άνοιγμα μενού φωτεινότητας"
+
+#: js/ui/status/darkMode.js:12
+msgid "Dark Style"
+msgstr "Σκούρο Θέμα"
+
+#: js/ui/status/doNotDisturb.js:10
+msgid "Do Not Disturb"
+msgstr "Μην Ενοχλείτε"
+
+#: js/ui/status/dwellClick.js:14
+msgid "Single Click"
+msgstr "Μονό Κλικ"
+
+#: js/ui/status/dwellClick.js:19
+msgid "Double Click"
+msgstr "Διπλό Κλικ"
+
+#: js/ui/status/dwellClick.js:24
+msgid "Drag"
+msgstr "Σύρσιμο"
+
+#: js/ui/status/dwellClick.js:29
+msgid "Secondary Click"
+msgstr "Δευτερεύον Κλικ"
+
+#: js/ui/status/dwellClick.js:38
+msgid "Dwell Click"
+msgstr "Κράτημα Κλικ"
+
+#: js/ui/status/keyboard.js:887
+msgid "Show Keyboard Layout"
+msgstr "Εμφάνιση Διάταξης Πληκτρολογίου"
+
+#: js/ui/status/location.js:337
+msgid "Allow location access"
+msgstr "Να επιτρέπεται η πρόσβαση τοποθεσίας"
+
+#. Translators: %s is an application name
+#: js/ui/status/location.js:339
+#, javascript-format
+msgid "The app %s wants to access your location"
+msgstr "Η εφαρμογή %s θέλει να έχει πρόσβαση στην τοποθεσία σας"
+
+#: js/ui/status/location.js:349
+msgid "Location access can be changed at any time from the privacy settings"
+msgstr ""
+"Η πρόσβαση τοποθεσίας μπορεί να αλλαχτεί οποιαδήποτε στιγμή από τις "
+"ρυθμίσεις ιδιωτικότητας"
+
+#: js/ui/status/location.js:357
+msgid "Deny Access"
+msgstr "Άρνηση Πρόσβασης"
+
+#: js/ui/status/location.js:362
+msgid "Grant Access"
+msgstr "Παραχώρηση Πρόσβασης"
+
+#: js/ui/status/network.js:62
+msgid "<unknown>"
+msgstr "<άγνωστο>"
+
+#: js/ui/status/network.js:1060
+msgid "Secure"
+msgstr "Ασφαλές"
+
+#: js/ui/status/network.js:1060
+msgid "Not secure"
+msgstr "Μη ασφαλές"
+
+#: js/ui/status/network.js:1061
+#, javascript-format
+msgid "Signal strength %s%%"
+msgstr "Ένταση σήματος %s%%"
+
+#. translators: The first placeholder is the network name, the second and indication whether it is secure, and the last the signal strength indication
+#: js/ui/status/network.js:1063
+#, javascript-format
+msgid "%s, %s, %s"
+msgstr "%s, %s, %s"
+
+#. Translators: %s is a network identifier
+#: js/ui/status/network.js:1166
+#, javascript-format
+msgid "%s Hotspot"
+msgstr "Σημείο πρόσβασης %s"
+
+#: js/ui/status/network.js:1447
+#, javascript-format
+msgid "%d connected"
+msgid_plural "%d connected"
+msgstr[0] "Συνδέθηκε %d"
+msgstr[1] "Συνδέθηκαν %d"
+
+#: js/ui/status/network.js:1545 js/ui/status/network.js:1562
+msgid "VPN"
+msgstr "VPN"
+
+#: js/ui/status/network.js:1546
+msgid "Open VPN menu"
+msgstr "Άνοιγμα μενού VPN"
+
+#: js/ui/status/network.js:1547
+msgid "VPN Settings"
+msgstr "Ρυθμίσεις VPN"
+
+#: js/ui/status/network.js:1807
+msgid "Wi–Fi"
+msgstr "Wi-Fi"
+
+#: js/ui/status/network.js:1808
+msgid "Open Wi–Fi menu"
+msgstr "Άνοιγμα μενού Wi-Fi"
+
+#: js/ui/status/network.js:1810
+msgid "All Networks"
+msgstr "Όλα τα δίκτυα"
+
+#: js/ui/status/network.js:1907
+msgid "Wired Connections"
+msgstr "Ενσύρματες συνδέσεις"
+
+#: js/ui/status/network.js:1908
+msgid "Open wired connections menu"
+msgstr "Άνοιγμα μενού ενσύρματων συνδέσεων"
+
+#: js/ui/status/network.js:1909
+msgid "Wired Settings"
+msgstr "Ρυθμίσεις ενσύρματης σύνδεσης"
+
+#: js/ui/status/network.js:1923
+msgid "Bluetooth Tethers"
+msgstr "Συνδέσεις Bluetooth"
+
+#: js/ui/status/network.js:1924
+msgid "Open Bluetooth tethers menu"
+msgstr "Άνοιγμα μενού συνδέσεων Bluetooth"
+
+#. Translators: "Tether" from "Bluetooth Tether"
+#: js/ui/status/network.js:1931
+msgid "Tether"
+msgstr "Σύνδεση"
+
+#: js/ui/status/network.js:1944
+msgid "Mobile Connections"
+msgstr "Κινητές συνδέσεις"
+
+#: js/ui/status/network.js:1945
+msgid "Open mobile connections menu"
+msgstr "Άνοιγμα μενού κινητών συνδέσεων"
+
+#: js/ui/status/network.js:1947
+msgid "Mobile Broadband Settings"
+msgstr "Ρυθμίσεις Κινητής Ευρυζωνικής Σύνδεσης"
+
+#. Translators: "Mobile" from "Mobile Broadband"
+#: js/ui/status/network.js:1956
+msgid "Mobile"
+msgstr "Κινητό"
+
+#: js/ui/status/network.js:1990
+msgid "Sign in to Network"
+msgstr "Σύνδεση στο δίκτυο"
+
+#: js/ui/status/network.js:2177
+msgid "Connection failed"
+msgstr "Αποτυχία σύνδεσης"
+
+#: js/ui/status/network.js:2178
+msgid "Activation of network connection failed"
+msgstr "Απέτυχε η ενεργοποίηση της σύνδεσης δικτύου"
+
+#: js/ui/status/nightLight.js:19
+msgid "Night Light"
+msgstr "Φως βραδινού"
+
+#: js/ui/status/powerProfiles.js:19
+msgctxt "Power profile"
+msgid "Performance"
+msgstr "Απόδοση"
+
+#: js/ui/status/powerProfiles.js:24
+msgctxt "Power profile"
+msgid "Balanced"
+msgstr "Ισορροπημένο"
+
+#: js/ui/status/powerProfiles.js:29
+msgctxt "Power profile"
+msgid "Power Saver"
+msgstr "Εξοικονόμηση ενέργειας"
+
+#: js/ui/status/powerProfiles.js:35
+msgctxt "Power profile"
+msgid "Custom"
+msgstr "Προσαρμοσμένο"
+
+#: js/ui/status/powerProfiles.js:45
+#| msgid "Power Mode"
+msgctxt "Quick settings button title"
+msgid "Power Mode"
+msgstr "Λειτουργία ισχύος"
+
+#: js/ui/status/powerProfiles.js:46
+msgid "Open power profiles menu"
+msgstr "Άνοιγμα μενού προφίλ ισχύος"
+
+#: js/ui/status/powerProfiles.js:77
+#| msgid "Power Mode"
+msgctxt "Quick settings menu header"
+msgid "Power Mode"
+msgstr "Λειτουργία ισχύος"
+
+#: js/ui/status/powerProfiles.js:79
+msgid "Power Settings"
+msgstr "Ρυθμίσεις τροφοδοσίας"
+
+#: js/ui/status/remoteAccess.js:73
+msgid "Stop Screencast"
+msgstr "Διακοπή καταγραφής βίντεο οθόνης"
+
+#: js/ui/status/remoteAccess.js:141
+msgid "Stop Screen Sharing"
+msgstr "Διακοπή κοινής χρήσης οθόνης"
+
+#: js/ui/status/rfkill.js:97
+msgid "Airplane Mode"
+msgstr "Λειτουργία πτήσης"
+
+#: js/ui/status/system.js:175
+msgid "Power Off Menu"
+msgstr "Μενού τερματισμού"
+
+#: js/ui/status/system.js:183
+msgid "Suspend"
+msgstr "Αναστολή"
+
+#: js/ui/status/system.js:188
+msgid "Restart…"
+msgstr "Επανεκκίνηση…"
+
+#: js/ui/status/system.js:193
+msgid "Power Off…"
+msgstr "Τερματισμός…"
+
+#: js/ui/status/system.js:200
+msgid "Log Out…"
+msgstr "Αποσύνδεση…"
+
+#: js/ui/status/system.js:205
+msgid "Switch User…"
+msgstr "Εναλλαγή χρήστη…"
+
+#: js/ui/status/system.js:249
+msgctxt "action"
+msgid "Lock Screen"
+msgstr "Κλείδωμα οθόνης"
+
+#: js/ui/status/thunderbolt.js:310
+msgid "Unknown Thunderbolt device"
+msgstr "Άγνωστη συσκευή Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:311
+msgid ""
+"New device has been detected while you were away. Please disconnect and "
+"reconnect the device to start using it."
+msgstr ""
+"Έχει εντοπιστεί νέα συσκευή ενώ λείπατε. Παρακαλούμε αποσυνδέστε και "
+"επανασυνδέστε τη συσκευή για να την χρησιμοποιήσετε."
+
+#: js/ui/status/thunderbolt.js:314
+msgid "Unauthorized Thunderbolt device"
+msgstr "Μη εξουσιοδοτημένη συσκευή Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:315
+msgid ""
+"New device has been detected and needs to be authorized by an administrator"
+msgstr "Έχει εντοπιστεί νέα συσκευή και πρέπει να εγκριθεί από Διαχειριστή"
+
+#: js/ui/status/thunderbolt.js:321
+msgid "Thunderbolt authorization error"
+msgstr "Σφάλμα πιστοποίησης Thunderbolt"
+
+#: js/ui/status/thunderbolt.js:322
+#, javascript-format
+msgid "Could not authorize the Thunderbolt device: %s"
+msgstr "Αδυναμία πιστοποίησης της συσκευής Thunderbolt: %s"
+
+#: js/ui/status/volume.js:217
+msgid "Volume changed"
+msgstr "Άλλαξε η ένταση"
+
+#: js/ui/status/volume.js:230
+msgid "Unmute"
+msgstr "Άρση σίγασης"
+
+#: js/ui/status/volume.js:230
+msgid "Mute"
+msgstr "Σίγαση"
+
+#: js/ui/status/volume.js:297
+msgid "Volume"
+msgstr "Ένταση"
+
+#: js/ui/status/volume.js:313
+msgid "Sound Output"
+msgstr "Έξοδος ήχου"
+
+#: js/ui/status/volume.js:314
+msgid "Open sound output menu"
+msgstr "Άνοιγμα μενού εξόδου ήχου"
+
+#: js/ui/status/volume.js:389
+msgid "Sound Input"
+msgstr "Είσοδος ήχου"
+
+#: js/ui/status/volume.js:390
+msgid "Open sound input menu"
+msgstr "Άνοιγμα μενού εισόδου ήχου"
+
+#. Translators: this is for display mirroring i.e. cloning.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:20
+msgid "Mirror"
+msgstr "Κατοπτρισμός"
+
+#. Translators: this is for the desktop spanning displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:29
+msgid "Join Displays"
+msgstr "Ένωση οθονών"
+
+#. Translators: this is for using only external displays.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:39
+msgid "External Only"
+msgstr "Μόνο εξωτερικό"
+
+#. Translators: this is for using only the laptop display.
+#. * Try to keep it under around 15 characters.
+#.
+#: js/ui/switchMonitor.js:47
+msgid "Built-in Only"
+msgstr "Μόνο ενσωματωμένο"
+
+#. Translators: This is a time format for a date in
+#. long format
+#: js/ui/unlockDialog.js:415
+msgid "%A %B %-d"
+msgstr "%A %-d %B"
+
+#: js/ui/unlockDialog.js:421
+msgid "Swipe up to unlock"
+msgstr "Σύρετε για ξεκλείδωμα"
+
+#: js/ui/unlockDialog.js:422
+msgid "Click or press a key to unlock"
+msgstr "Κάντε κλικ ή πατήστε ένα πλήκτρο για ξεκλείδωμα"
+
+#: js/ui/unlockDialog.js:610
+msgid "Unlock Window"
+msgstr "Ξεκλείδωμα παραθύρου"
+
+#: js/ui/unlockDialog.js:619
+msgid "Log in as another user"
+msgstr "Σύνδεση ως άλλος χρήστης"
+
+#: js/ui/welcomeDialog.js:47
+#, javascript-format
+msgid "GNOME %s"
+msgstr "GNOME %s"
+
+#: js/ui/welcomeDialog.js:51
+#, javascript-format
+msgid "Welcome to %s"
+msgstr "Καλώς ήλθατε στο %s"
+
+#: js/ui/welcomeDialog.js:52
+msgid "If you want to learn your way around, check out the tour"
+msgstr "Εάν θέλετε να μάθετε να μάθετε περισσότερα, δοκιμάστε την περιήγηση"
+
+#: js/ui/welcomeDialog.js:66
+msgid "Take Tour"
+msgstr "Κάντε περιήγηση"
+
+#: js/ui/windowAttentionHandler.js:18
+#, javascript-format
+msgid "“%s” is ready"
+msgstr "Το «%s» είναι έτοιμο"
+
+#. Translators: This string should be shorter than 30 characters
+#: js/ui/windowManager.js:60
+msgid "Keep these display settings?"
+msgstr "Διατήρηση ρυθμίσεων οθόνης;"
+
+#: js/ui/windowManager.js:70
+msgid "Revert Settings"
+msgstr "Επαναφορά ρυθμίσεων"
+
+#: js/ui/windowManager.js:75
+msgid "Keep Changes"
+msgstr "Διατήρηση αλλαγών"
+
+#: js/ui/windowManager.js:95
+#, javascript-format
+msgid "Settings changes will revert in %d second"
+msgid_plural "Settings changes will revert in %d seconds"
+msgstr[0] "Οι αλλαγές ρυθμίσεων θα επανέλθουν σε %d δευτερόλεπτο"
+msgstr[1] "Οι αλλαγές ρυθμίσεων θα επανέλθουν σε %d δευτερόλεπτα"
+
+#. Translators: This represents the size of a window. The first number is
+#. * the width of the window and the second is the height.
+#: js/ui/windowManager.js:490
+#, javascript-format
+msgid "%d × %d"
+msgstr "%d × %d"
+
+#. Translators: entry in the window right click menu.
+#: js/ui/windowMenu.js:28
+msgctxt "window-menu"
+msgid "Take Screenshot"
+msgstr "Λήψη στιγμιοτύπου οθόνης"
+
+#: js/ui/windowMenu.js:40
+msgid "Hide"
+msgstr "Απόκρυψη"
+
+#: js/ui/windowMenu.js:47
+msgid "Restore"
+msgstr "Επαναφορά"
+
+#: js/ui/windowMenu.js:51
+msgid "Maximize"
+msgstr "Μεγιστοποίηση"
+
+#: js/ui/windowMenu.js:58
+msgid "Move"
+msgstr "Μετακίνηση"
+
+#: js/ui/windowMenu.js:72
+msgid "Resize"
+msgstr "Αλλαγή μεγέθους"
+
+#: js/ui/windowMenu.js:86
+msgid "Always on Top"
+msgstr "Πάντα στην κορυφή"
+
+#: js/ui/windowMenu.js:105
+msgid "Always on Visible Workspace"
+msgstr "Πάντα σε ορατό χώρο εργασίας"
+
+#: js/ui/windowMenu.js:119
+msgid "Move to Workspace Left"
+msgstr "Μετακίνηση στο χώρο εργασίας αριστερά"
+
+#: js/ui/windowMenu.js:125
+msgid "Move to Workspace Right"
+msgstr "Μετακίνηση στο χώρο εργασίας δεξιά"
+
+#: js/ui/windowMenu.js:131
+msgid "Move to Workspace Up"
+msgstr "Μετακίνηση στο χώρο εργασίας πάνω"
+
+#: js/ui/windowMenu.js:137
+msgid "Move to Workspace Down"
+msgstr "Μετακίνηση στο χώρο εργασίας κάτω"
+
+#: js/ui/windowMenu.js:155
+msgid "Move to Monitor Up"
+msgstr "Μετακίνηση στην πάνω οθόνη"
+
+#: js/ui/windowMenu.js:164
+msgid "Move to Monitor Down"
+msgstr "Μετακίνηση στην κάτω οθόνη"
+
+#: js/ui/windowMenu.js:173
+msgid "Move to Monitor Left"
+msgstr "Μετακίνηση στην αριστερή οθόνη"
+
+#: js/ui/windowMenu.js:182
+msgid "Move to Monitor Right"
+msgstr "Μετακίνηση στη δεξιά οθόνη"
+
+#: js/ui/windowMenu.js:190
+msgid "Close"
+msgstr "Κλείσιμο"
+
+#: src/main.c:515 subprojects/extensions-tool/src/main.c:336
+msgid "Print version"
+msgstr "Εμφάνιση έκδοσης"
+
+#: src/main.c:521
+msgid "Mode used by GDM for login screen"
+msgstr "Λειτουργία που χρησιμοποιείται από το GDM για την οθόνη σύνδεσης"
+
+#: src/main.c:527
+msgid "Use a specific mode, e.g. “gdm” for login screen"
+msgstr ""
+"Χρήση μιας συγκεκριμένης λειτουργίας, π.χ. «gdm» για την οθόνη σύνδεσης"
+
+#: src/main.c:533
+msgid "List possible modes"
+msgstr "Λίστα πιθανών λειτουργιών"
+
+#: src/main.c:539
+msgid "Force animations to be enabled"
+msgstr "Αναγκαστική ενεργοποίηση κίνησης"
+
+#: src/shell-app.c:267
+msgctxt "program"
+msgid "Unknown"
+msgstr "Άγνωστο"
+
+#: src/shell-app.c:518
+#, c-format
+msgid "Failed to launch “%s”"
+msgstr "Αποτυχία εκκίνησης του «%s»"
+
+#: src/shell-keyring-prompt.c:779
+msgid "Passwords do not match"
+msgstr "Τα συνθηματικά δεν ταιριάζουν"
+
+#: src/shell-keyring-prompt.c:787
+msgid "Password cannot be blank"
+msgstr "Το συνθηματικό δεν μπορεί να είναι κενός"
+
+#: src/shell-polkit-authentication-agent.c:342
+msgid "Authentication dialog was dismissed by the user"
+msgstr "Το παράθυρο πιστοποίησης έκλεισε από τον χρήστη"
+
+#: src/st/st-icon-theme.c:1857
+#, c-format
+msgid "Icon '%s' not present in theme %s"
+msgstr "Το εικονίδιο '%s' δεν υπάρχει στο θέμα %s"
+
+#: src/st/st-icon-theme.c:3450 src/st/st-icon-theme.c:3753
+msgid "Failed to load icon"
+msgstr "Αδυναμία φόρτωσης εικονιδίου"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:6
+msgid "Manage your GNOME Extensions"
+msgstr "Διαχείριση επεκτάσεων GNOME"
+
+#. developer_name tag deprecated with Appstream 1.0
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:20
+msgid "The GNOME Project"
+msgstr "Το έργο GNOME"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:52
+msgid ""
+"GNOME Extensions handles updating extensions, configuring extension "
+"preferences and removing or disabling unwanted extensions."
+msgstr ""
+"Το πρόγραμμα Επεκτάσεις GNOME χειρίζεται την ενημέρωση επεκτάσεων, τη "
+"ρύθμιση προτιμήσεων και την αφαίρεση ή απενεργοποίηση ανεπιθύμητων "
+"επεκτάσεων."
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:65
+msgid "Main Window"
+msgstr "Κυρίως παράθυρο"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:69
+msgid "Available Updates"
+msgstr "Διαθέσιμες ενημερώσεις"
+
+#: subprojects/extensions-app/data/metainfo/org.gnome.Extensions.metainfo.xml.in:73
+msgid "Search View"
+msgstr "Προβολή αναζήτησης"
+
+#: subprojects/extensions-app/data/org.gnome.Extensions.desktop.in.in:6
+msgid "Configure GNOME Shell Extensions"
+msgstr "Ρύθμιση επεκτάσεων του GNOME Shell"
+
+#: subprojects/extensions-app/js/extensionManager.js:237
+#, javascript-format
+msgid ""
+"The installed version of this extension (%s) is incompatible with the "
+"current version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Η εγκατεστημένη έκδοση αυτής της επέκτασης (%s) δεν είναι συμβατή με την "
+"τρέχουσα έκδοση GNOME (%s). Η επέκταση έχει απενεργοποιηθεί."
+
+#: subprojects/extensions-app/js/extensionManager.js:238
+#, javascript-format
+msgid ""
+"The installed version of this extension is incompatible with the current "
+"version of GNOME (%s). The extension has been disabled."
+msgstr ""
+"Η εγκατεστημένη έκδοση αυτής της επέκτασης δεν είναι συμβατή με την τρέχουσα "
+"έκδοση GNOME (%s). Η επέκταση έχει απενεργοποιηθεί."
+
+#: subprojects/extensions-app/js/extensionManager.js:242
+msgid ""
+"An error has occurred in this extension. This could cause issues elsewhere "
+"in the system. It is recommended to turn the extension off until the error "
+"is resolved."
+msgstr ""
+"Ένα σφάλμα συνέβη με αυτή την επέκταση. Αυτό θα μπορούσε να δημιουργήσει "
+"προβλήματα αλλού στο σύστημα. Συνιστάται να απενεργοποιήσετε την επέκταση "
+"ωσότου το σφάλμα να επιλυθεί."
+
+#. translators: Details for an extension error
+#: subprojects/extensions-app/js/extensionManager.js:248
+msgid "Error details:"
+msgstr "Λεπτομέρειες σφάλματος:"
+
+#: subprojects/extensions-app/js/extensionRow.js:82
+#, javascript-format
+msgid "Version %s"
+msgstr "Έκδοση %s"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:108
+#, javascript-format
+msgid "Remove “%s”?"
+msgstr "Αφαίρεση «%s»;"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:109
+msgid ""
+"If you remove the extension, you need to return to download it if you want "
+"to enable it again"
+msgstr ""
+"Εάν αφαιρέσετε την επέκταση και θέλετε να την ενεργοποιήσετε ξανά, "
+"χρειάζεται να πραγματοποιηθεί λήψη εκ νέου"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:112
+msgid "_Cancel"
+msgstr "_Ακύρωση"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:113
+msgid "_Remove"
+msgstr "_Αφαίρεση"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:153
+msgid "translator-credits"
+msgstr ""
+"Ελληνική μεταφραστική ομάδα GNOME\n"
+" Ευστάθιος Ιωσηφίδης <iosifidis@opensuse.org>\n"
+"\n"
+"\n"
+"Για περισσότερες πληροφορίες, επισκεφθείτε τη σελίδα\n"
+"http://gnome.gr/"
+
+#: subprojects/extensions-app/js/extensionsWindow.js:198
+#, javascript-format
+msgid "%d extension will be updated on next login."
+msgid_plural "%d extensions will be updated on next login."
+msgstr[0] "Η %d επέκταση θα ενημερωθεί στην επόμενη είσοδο."
+msgstr[1] "Οι %d επεκτάσεις θα ενημερωθούν στην επόμενη είσοδο."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:51
+msgid "Updates Details"
+msgstr "Λεπτομέρειες ενημερώσεων"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:68
+msgid ""
+"A new version of this extension is ready and will be loaded on next login."
+msgstr ""
+"Μια νέα έκδοση αυτής της επέκτασης είναι έτοιμη και θα φορτωθεί στην επόμενη "
+"σύνδεση."
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:100
+msgid "Extension Details"
+msgstr "Λεπτομέρειες επέκτασης"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:188
+msgid "_Website"
+msgstr "_Ιστότοπος"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:215
+msgid "_Settings"
+msgstr "_Ρυθμίσεις"
+
+#: subprojects/extensions-app/data/ui/extension-row.ui:242
+msgid "_Remove…"
+msgstr "_Αφαίρεση…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:6
+msgid "Keyboard Shortcuts"
+msgstr "Συντομεύσεις πληκτρολογίου"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:10
+msgid "About Extensions"
+msgstr "Περί επεκτάσεων"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:64
+msgid "Main Menu"
+msgstr "Κυρίως μενού"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:106
+msgid "Search extensions"
+msgstr "Αναζήτηση επεκτάσεων"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:123
+msgid "_Log Out…"
+msgstr "_Αποσύνδεση…"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:131
+msgid "_Extensions"
+msgstr "_Επεκτάσεις"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:136
+msgid "More Information"
+msgstr "Περισσότερες πληροφορίες"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:148
+msgid ""
+"Extensions can cause performance and stability issues. It is recommended to "
+"disable all extensions if you experience problems with your system."
+msgstr ""
+"Οι επεκτάσεις ενδέχεται να προκαλέσουν θέματα απόδοσης και σταθερότητας. "
+"Συνιστάται να απενεργοποιήσετε όλες τις επεκτάσεις αν αντιμετωπίσετε "
+"προβλήματα με το σύστημά σας."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:175
+msgid "User Extensions"
+msgstr "Επεκτάσεις χρήστη"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:184
+msgid "System Extensions"
+msgstr "Επεκτάσεις συστήματος"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:203
+msgid "Search Results"
+msgstr "Αποτελέσματα αναζήτησης"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:217
+msgid "No Results Found"
+msgstr "Δεν βρέθηκαν αποτελέσματα"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:218
+msgid "Try a different search"
+msgstr "Επιχειρήστε μια διαφορετική αναζήτηση"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:229
+msgid "No Installed Extensions"
+msgstr "Καμία εγκατεστημένη επέκταση"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:230
+msgid ""
+"To find and add extensions, visit <a href=\"https://"
+"extensions.gnome.org\">extensions.gnome.org</a>."
+msgstr ""
+"Για να βρείτε και να εγκαταστήσετε επεκτάσεις, επισκεφθείτε την ιστοσελίδα "
+"<a href=\"https://extensions.gnome.org\">extensions.gnome.org</a>."
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:240
+msgid "Something’s gone wrong"
+msgstr "Κάτι πήγε στραβά"
+
+#: subprojects/extensions-app/data/ui/extensions-window.ui:241
+msgid ""
+"We’re very sorry, but it was not possible to get the list of installed "
+"extensions. Make sure you are logged into GNOME and try again."
+msgstr ""
+"Λυπούμαστε πολύ, αλλά δεν ήταν δυνατή η λήψη της λίστας εγκατεστημένων "
+"επεκτάσεων. Βεβαιωθείτε ότι έχετε συνδεθεί στο GNOME και προσπαθήστε ξανά."
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:6
+msgctxt "shortcut window"
+msgid "General"
+msgstr "Γενικά"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:9
+msgctxt "shortcut window"
+msgid "Open Menu"
+msgstr "Άνοιγμα μενού"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:15
+msgctxt "shortcut window"
+msgid "Toggle Search"
+msgstr "Εναλλαγή αναζήτησης"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:21
+msgctxt "shortcut window"
+msgid "Show Shortcuts"
+msgstr "Εμφάνιση συντομεύσεων"
+
+#: subprojects/extensions-app/data/ui/shortcuts-dialog.ui:27
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr "'Εξοδος"
+
+#. Translators: a file path to an extension directory
+#: subprojects/extensions-tool/src/command-create.c:284
+#, c-format
+msgid "The new extension was successfully created in %s.\n"
+msgstr "Η νέα επέκταση δημιουργήθηκε επιτυχώς την %s.\n"
+
+#: subprojects/extensions-tool/src/command-create.c:376
+#, c-format
+msgid ""
+"Name should be a very short (ideally descriptive) string.\n"
+"Examples are: %s"
+msgstr ""
+"Το όνομα πρέπει να είναι μια πολύ σύντομη (ιδανικά περιγραφική) "
+"συμβολοσειρά.\n"
+"Παραδείγματα είναι: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:382
+#: subprojects/extensions-tool/src/main.c:243
+msgid "Name"
+msgstr "Όνομα"
+
+#: subprojects/extensions-tool/src/command-create.c:396
+#, c-format
+msgid ""
+"Description is a single-sentence explanation of what your extension does.\n"
+"Examples are: %s"
+msgstr ""
+"Η περιγραφή είναι μια εξήγηση μιας μόνο φράσης για το τι κάνει η επέκτασή "
+"σας.\n"
+"Παραδείγματα είναι: %s"
+
+#: subprojects/extensions-tool/src/command-create.c:402
+#: subprojects/extensions-tool/src/main.c:246
+msgid "Description"
+msgstr "Περιγραφή"
+
+#: subprojects/extensions-tool/src/command-create.c:416
+#, c-format
+msgid ""
+"UUID is a globally-unique identifier for your extension.\n"
+"This should be in the format of an email address "
+"(clicktofocus@janedoe.example.com)\n"
+msgstr ""
+"Το UUID είναι ένα παγκόσμιο μοναδικό αναγνωριστικό για την επέκτασή σας.\n"
+"Αυτό θα πρέπει να έχει τη μορφή μιας διεύθυνσης ηλεκτρονικού ταχυδρομείου "
+"(clicktofocus@janedoe.example.com)\n"
+
+#: subprojects/extensions-tool/src/command-create.c:443
+#, c-format
+msgid "Choose one of the available templates:\n"
+msgstr "Επιλέξτε ένα από τα διαθέσιμα πρότυπα:\n"
+
+#: subprojects/extensions-tool/src/command-create.c:457
+msgid "Template"
+msgstr "Πρότυπο"
+
+#: subprojects/extensions-tool/src/command-create.c:515
+msgid "The unique identifier of the new extension"
+msgstr "Το μοναδικό αναγνωριστικό της νέας επέκτασης"
+
+#: subprojects/extensions-tool/src/command-create.c:518
+msgid "NAME"
+msgstr "ΟΝΟΜΑ"
+
+#: subprojects/extensions-tool/src/command-create.c:519
+msgid "The user-visible name of the new extension"
+msgstr "Το ορατό από το χρήστη όνομα της νέας επέκτασης"
+
+#: subprojects/extensions-tool/src/command-create.c:521
+msgid "DESCRIPTION"
+msgstr "ΠΕΡΙΓΡΑΦΗ"
+
+#: subprojects/extensions-tool/src/command-create.c:523
+msgid "A short description of what the extension does"
+msgstr "Μια σύντομη περιγραφή του τι κάνει η επέκταση"
+
+#: subprojects/extensions-tool/src/command-create.c:525
+#: subprojects/extensions-tool/src/command-pack.c:455
+msgid "DOMAIN"
+msgstr "ΤΟΜΕΑΣ"
+
+#: subprojects/extensions-tool/src/command-create.c:527
+msgid "The gettext domain used by the extension"
+msgstr "Ο τομέας gettext που χρησιμοποιείται από την επέκταση"
+
+#: subprojects/extensions-tool/src/command-create.c:529
+#: subprojects/extensions-tool/src/command-pack.c:448
+msgid "SCHEMA"
+msgstr "ΔΙΑΤΑΞΗ"
+
+#: subprojects/extensions-tool/src/command-create.c:531
+msgid "The GSettings schema used by the extension"
+msgstr "Η διάταξη GSettings που χρησιμοποιείται από την επέκταση"
+
+#: subprojects/extensions-tool/src/command-create.c:534
+msgid "TEMPLATE"
+msgstr "ΠΡΟΤΥΠΟ"
+
+#: subprojects/extensions-tool/src/command-create.c:535
+msgid "The template to use for the new extension"
+msgstr "Το πρότυπο που θα χρησιμοποιηθεί για τη νέα επέκταση"
+
+#: subprojects/extensions-tool/src/command-create.c:538
+msgid "Include prefs.js template"
+msgstr "Συμπερίληψη προτύπου prefs.js"
+
+#: subprojects/extensions-tool/src/command-create.c:544
+msgid "Enter extension information interactively"
+msgstr "Εισαγάγετε τις πληροφορίες επέκτασης διαδραστικά"
+
+#: subprojects/extensions-tool/src/command-create.c:552
+msgid "Create a new extension"
+msgstr "Δημιουργία νέας επέκτασης"
+
+#: subprojects/extensions-tool/src/command-create.c:570
+#: subprojects/extensions-tool/src/command-list.c:190
+msgid "Unknown arguments"
+msgstr "Άγνωστα ορίσματα"
+
+#: subprojects/extensions-tool/src/command-create.c:595
+msgid "UUID, name and description are required"
+msgstr "Απαιτούνται UUID, όνομα και περιγραφή"
+
+#: subprojects/extensions-tool/src/command-disable.c:62
+#: subprojects/extensions-tool/src/command-enable.c:62
+#, c-format
+msgid "Extension “%s” does not exist\n"
+msgstr "Η επέκταση «%s» δεν υπάρχει\n"
+
+#: subprojects/extensions-tool/src/command-disable.c:98
+msgid "Disable an extension"
+msgstr "Απενεργοποίηση επέκτασης"
+
+#: subprojects/extensions-tool/src/command-disable.c:116
+#: subprojects/extensions-tool/src/command-enable.c:116
+#: subprojects/extensions-tool/src/command-info.c:103
+#: subprojects/extensions-tool/src/command-prefs.c:105
+#: subprojects/extensions-tool/src/command-reset.c:76
+#: subprojects/extensions-tool/src/command-uninstall.c:104
+msgid "No UUID given"
+msgstr "Δεν δόθηκε UUID"
+
+#: subprojects/extensions-tool/src/command-disable.c:121
+#: subprojects/extensions-tool/src/command-enable.c:121
+#: subprojects/extensions-tool/src/command-info.c:108
+#: subprojects/extensions-tool/src/command-prefs.c:110
+#: subprojects/extensions-tool/src/command-reset.c:81
+#: subprojects/extensions-tool/src/command-uninstall.c:109
+msgid "More than one UUID given"
+msgstr "Έχουν δοθεί περισσότερα από ένα UUID"
+
+#: subprojects/extensions-tool/src/command-enable.c:98
+msgid "Enable an extension"
+msgstr "Ενεργοποίηση επέκτασης"
+
+#: subprojects/extensions-tool/src/command-info.c:50
+#: subprojects/extensions-tool/src/command-list.c:66
+#: subprojects/extensions-tool/src/main.c:150
+#, c-format
+msgid "Failed to connect to GNOME Shell\n"
+msgstr "Αποτυχία σύνδεσης στο κέλυφος GNOME\n"
+
+#: subprojects/extensions-tool/src/command-info.c:59
+#: subprojects/extensions-tool/src/main.c:159
+#, c-format
+msgid "Extension “%s” doesn't exist\n"
+msgstr "Η επέκταση «%s» δεν υπάρχει\n"
+
+#: subprojects/extensions-tool/src/command-info.c:85
+msgid "Show extensions info"
+msgstr "Εμφάνιση πληροφοριών επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-install.c:195
+msgid "Overwrite an existing extension"
+msgstr "Αντικατάσταση μιας υπάρχουσας επέκτασης"
+
+#: subprojects/extensions-tool/src/command-install.c:198
+#| msgid "Print extension details"
+msgid "Print extension UUID on success"
+msgstr "Εμφάνιση UUID επέκτασης σε περίπτωση επιτυχίας"
+
+#: subprojects/extensions-tool/src/command-install.c:200
+msgid "EXTENSION_BUNDLE"
+msgstr "ΔΕΣΜΗ_ΕΠΕΚΤΑΣΗΣ"
+
+#: subprojects/extensions-tool/src/command-install.c:209
+msgid "Install an extension bundle"
+msgstr "Εγκατάσταση μιας δέσμης επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-install.c:227
+msgid "No extension bundle specified"
+msgstr "Δεν έχει οριστεί δέσμη επέκτασεων"
+
+#: subprojects/extensions-tool/src/command-install.c:233
+msgid "More than one extension bundle specified"
+msgstr "Έχουν καθοριστεί περισσότερες από μία δέσμες επέκτασης"
+
+#: subprojects/extensions-tool/src/command-list.c:140
+msgid "Show user-installed extensions"
+msgstr "Εμφάνιση εγκατεστημένων επεκτάσεων χρήστη"
+
+#: subprojects/extensions-tool/src/command-list.c:143
+msgid "Show system-installed extensions"
+msgstr "Εμφάνιση εγκατεστημένων επεκτάσεων συστήματος"
+
+#: subprojects/extensions-tool/src/command-list.c:146
+msgid "Show enabled extensions"
+msgstr "Εμφάνιση ενεργοποιημένων επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-list.c:149
+msgid "Show disabled extensions"
+msgstr "Εμφάνιση απενεργοποιημένων επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-list.c:152
+msgid "Show extensions in active state"
+msgstr "Εμφάνιση επεκτάσεων σε ενεργό κατάσταση"
+
+#: subprojects/extensions-tool/src/command-list.c:155
+msgid "Show extensions in inactive state"
+msgstr "Εμφάνιση επεκτάσεων σε ανενεργό κατάσταση"
+
+#: subprojects/extensions-tool/src/command-list.c:158
+msgid "Show extensions with preferences"
+msgstr "Εμφάνιση επεκτάσεων με προτιμήσεις"
+
+#: subprojects/extensions-tool/src/command-list.c:161
+msgid "Show extensions with updates"
+msgstr "Εμφάνιση επεκτάσεων με ενημερώσεις"
+
+#: subprojects/extensions-tool/src/command-list.c:164
+msgid "Print extension details"
+msgstr "Εμφάνιση λεπτομερειών επέκτασης"
+
+#: subprojects/extensions-tool/src/command-list.c:172
+msgid "List installed extensions"
+msgstr "Λίστα εγκατεστημένων επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-pack.c:444
+#: subprojects/extensions-tool/src/command-upload.c:427
+msgid "FILE"
+msgstr "ΑΡΧΕΙΟ"
+
+#: subprojects/extensions-tool/src/command-pack.c:445
+msgid "Additional source to include in the bundle"
+msgstr "Πρόσθετη πηγή για να συμπεριληφθεί στη δέσμη"
+
+#: subprojects/extensions-tool/src/command-pack.c:449
+msgid "A GSettings schema that should be included"
+msgstr "Μια διάταξη GSettings που πρέπει να συμπεριληφθεί"
+
+#: subprojects/extensions-tool/src/command-pack.c:451
+#: subprojects/extensions-tool/src/command-pack.c:462
+msgid "DIRECTORY"
+msgstr "ΚΑΤΑΛΟΓΟΣ"
+
+#: subprojects/extensions-tool/src/command-pack.c:453
+msgid "The directory where translations are found"
+msgstr "Ο κατάλογος όπου βρίσκονται οι μεταφράσεις"
+
+#: subprojects/extensions-tool/src/command-pack.c:457
+msgid "The gettext domain to use for translations"
+msgstr "Ο τομέας gettext που χρησιμοποιείται για μεταφράσεις"
+
+#: subprojects/extensions-tool/src/command-pack.c:460
+msgid "Overwrite an existing pack"
+msgstr "Αντικαταστήστε ενός υπάρχοντος πακέτου"
+
+#: subprojects/extensions-tool/src/command-pack.c:464
+msgid "The directory where the pack should be created"
+msgstr "Ο κατάλογος όπου πρέπει να δημιουργηθεί το πακέτο"
+
+#: subprojects/extensions-tool/src/command-pack.c:466
+msgid "SOURCE_DIRECTORY"
+msgstr "ΠΗΓΑΙΟΣ_ΚΑΤΑΛΟΓΟΣ"
+
+#: subprojects/extensions-tool/src/command-pack.c:475
+msgid "Create an extension bundle"
+msgstr "Δημιουργία μια δέσμης επέκτασης"
+
+#: subprojects/extensions-tool/src/command-pack.c:495
+msgid "More than one source directory specified"
+msgstr "Έχουν καθοριστεί περισσότεροι από ένας κατάλογος πηγών"
+
+#: subprojects/extensions-tool/src/command-prefs.c:47
+#, c-format
+msgid "Extension “%s” doesn't have preferences\n"
+msgstr "Η επέκταση «%s» δεν έχει προτιμήσεις\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:62
+#, c-format
+msgid "Failed to open prefs for extension “%s”: %s\n"
+msgstr "Αποτυχία ανοίγματος των προτιμήσεων της επέκτασης “%s”: %s\n"
+
+#: subprojects/extensions-tool/src/command-prefs.c:87
+msgid "Opens extension preferences"
+msgstr "Άνοιγμα προτιμήσεων επέκτασης"
+
+#: subprojects/extensions-tool/src/command-reset.c:58
+msgid "Reset an extension"
+msgstr "Επαναφορά επέκτασης"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:49
+#, c-format
+msgid "Cannot uninstall system extensions\n"
+msgstr "Αδυναμία απεγκατάστασης επεκτάσεων συστήματος\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:64
+#, c-format
+msgid "Failed to uninstall “%s”\n"
+msgstr "Αποτυχία απεγκατάστασης του «%s»\n"
+
+#: subprojects/extensions-tool/src/command-uninstall.c:86
+msgid "Uninstall an extension"
+msgstr "Απεγκατάσταση επέκτασης"
+
+#: subprojects/extensions-tool/src/command-upload.c:226
+#, c-format
+msgid "Login to extensions.gnome.org\n"
+msgstr "Σύνδεση στο extensions.gnome.org\n"
+
+#: subprojects/extensions-tool/src/command-upload.c:256
+#, c-format
+msgid "Warning! Password will be echoed"
+msgstr "Προσοχή! Ο κωδικός πρόσβασης θα εμφανιστεί"
+
+#: subprojects/extensions-tool/src/command-upload.c:419
+msgid "USERNAME"
+msgstr "ΟΝΟΜΑΧΡΗΣΤΗ"
+
+#: subprojects/extensions-tool/src/command-upload.c:421
+msgid "Username to log into https://extensions.gnome.org"
+msgstr "Όνομα χρήστη για σύνδεση στο https://extensions.gnome.org"
+
+#: subprojects/extensions-tool/src/command-upload.c:423
+msgid "PASSWORD"
+msgstr "ΣΥΝΘΗΜΑΤΙΚΟ"
+
+#: subprojects/extensions-tool/src/command-upload.c:425
+msgid "Password to log into https://extensions.gnome.org"
+msgstr "Κωδικός πρόσβασης για σύνδεση στο https://extensions.gnome.org"
+
+#: subprojects/extensions-tool/src/command-upload.c:429
+msgid ""
+"Read https://extensions.gnome.org password from file, use \"-\" for stdin"
+msgstr ""
+"Ανάγνωση κωδικού πρόσβασης https://extensions.gnome.org από αρχείο, χρήση \"-"
+"\" για stdin"
+
+#: subprojects/extensions-tool/src/command-upload.c:432
+msgid "Accept the terms of service at https://extensions.gnome.org/upload/"
+msgstr "Αποδοχή των όρων χρήσης στο https://extensions.gnome.org/upload/"
+
+#: subprojects/extensions-tool/src/command-upload.c:434
+msgid "FILE…"
+msgstr "ΑΡΧΕΙΟ…"
+
+#: subprojects/extensions-tool/src/command-upload.c:443
+msgid "Upload new extension versions"
+msgstr "Μεταφόρτωση νέων εκδόσεων επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-upload.c:461
+msgid "Only one of --password and --password-file can be used"
+msgstr ""
+"Μόνο ένα από τα --password και --password-file μπορεί να χρησιμοποιηθεί"
+
+#: subprojects/extensions-tool/src/command-upload.c:467
+msgid "You must accept the terms of service to upload extensions"
+msgstr "Πρέπει να αποδεχτείτε τους όρους χρήσης για μεταφόρτωση επεκτάσεων"
+
+#: subprojects/extensions-tool/src/command-upload.c:473
+msgid "No files given"
+msgstr "Δεν δόθηκαν αρχεία"
+
+#: subprojects/extensions-tool/src/main.c:76
+msgid "Do not print error messages"
+msgstr "Να μην εμφανίζονται μηνύματα σφαλμάτων"
+
+#: subprojects/extensions-tool/src/main.c:249
+msgid "Path"
+msgstr "Διαδρομή"
+
+#: subprojects/extensions-tool/src/main.c:252
+msgid "URL"
+msgstr "URL"
+
+#: subprojects/extensions-tool/src/main.c:255
+msgid "Original author"
+msgstr "Αρχικός δημιουργός"
+
+#: subprojects/extensions-tool/src/main.c:261
+#: subprojects/extensions-tool/src/main.c:263
+#: subprojects/extensions-tool/src/main.c:265
+msgid "Version"
+msgstr "Έκδοση"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Enabled"
+msgstr "Ενεργοποιημένο"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "Yes"
+msgstr "Ναι"
+
+#: subprojects/extensions-tool/src/main.c:268
+msgid "No"
+msgstr "Όχι"
+
+#: subprojects/extensions-tool/src/main.c:271
+msgid "State"
+msgstr "Κατάσταση"
+
+#: subprojects/extensions-tool/src/main.c:309
+msgid "“version” takes no arguments"
+msgstr "Η «έκδοση» δεν λαμβάνει παραμέτρους"
+
+#: subprojects/extensions-tool/src/main.c:311
+#: subprojects/extensions-tool/src/main.c:331
+msgid "Usage:"
+msgstr "Χρήση:"
+
+#: subprojects/extensions-tool/src/main.c:314
+msgid "Print version information and exit."
+msgstr "Προβολή πληροφοριών έκδοσης και έξοδος."
+
+#: subprojects/extensions-tool/src/main.c:329
+#: subprojects/extensions-tool/src/main.c:332
+msgid "COMMAND"
+msgstr "ΕΝΤΟΛΗ"
+
+#: subprojects/extensions-tool/src/main.c:332
+msgid "[ARGS…]"
+msgstr "[ARGS…]"
+
+#: subprojects/extensions-tool/src/main.c:334
+msgid "Commands:"
+msgstr "Εντολές:"
+
+#: subprojects/extensions-tool/src/main.c:335
+msgid "Print help"
+msgstr "Εμφάνιση βοήθειας"
+
+#: subprojects/extensions-tool/src/main.c:337
+msgid "Enable extension"
+msgstr "Ενεργοποίηση επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:338
+msgid "Disable extension"
+msgstr "Απενεργοποίηση επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:339
+msgid "Reset extension"
+msgstr "Επαναφορά επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:340
+msgid "Uninstall extension"
+msgstr "Απεγκατάσταση επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:341
+msgid "List extensions"
+msgstr "Λίστα επεκτάσεων"
+
+#: subprojects/extensions-tool/src/main.c:342
+#: subprojects/extensions-tool/src/main.c:343
+msgid "Show extension info"
+msgstr "Εμφάνιση πληροφοριών επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:344
+msgid "Open extension preferences"
+msgstr "Άνοιγμα προτιμήσεων επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:345
+msgid "Create extension"
+msgstr "Δημιουργία επέκτασης"
+
+#: subprojects/extensions-tool/src/main.c:346
+msgid "Package extension"
+msgstr "Επέκταση πακέτου"
+
+#: subprojects/extensions-tool/src/main.c:347
+msgid "Install extension bundle"
+msgstr "Εγκατάσταση δέσμης επεκτάσεων"
+
+#: subprojects/extensions-tool/src/main.c:349
+#, c-format
+msgid "Use “%s” to get detailed help.\n"
+msgstr "Χρήση του «%s» για να λάβετε λεπτομερή βοήθεια.\n"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:3
+msgid "Plain"
+msgstr "Απλό"
+
+#: subprojects/extensions-tool/src/templates/00-plain.desktop.in:4
+msgid "An empty extension"
+msgstr "Μια κενή επέκταση"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:3
+msgid "Indicator"
+msgstr "Δείκτης"
+
+#: subprojects/extensions-tool/src/templates/indicator.desktop.in:4
+msgid "Add an icon to the top bar"
+msgstr "Προσθήκη εικονιδίου στην επάνω γραμμή"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:3
+msgid "Quick Settings Item"
+msgstr "Στοιχείο γρήγορων ρυθμίσεων"
+
+#: subprojects/extensions-tool/src/templates/quick-settings.desktop.in:4
+msgid "Add an item to quick settings"
+msgstr "Προσθήκη στοιχείου στις γρήγορες ρυθμίσεις"
+
+#. translators:
+#. * The device has been disabled
+#: subprojects/gvc/gvc-mixer-control.c:1872
+msgid "Disabled"
+msgstr "Απενεργοποιημένο"
+
+#. translators:
+#. * The number of sound outputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1879
+#, c-format
+msgid "%u Output"
+msgid_plural "%u Outputs"
+msgstr[0] "%u έξοδος"
+msgstr[1] "%u έξοδοι"
+
+#. translators:
+#. * The number of sound inputs on a particular device
+#: subprojects/gvc/gvc-mixer-control.c:1889
+#, c-format
+msgid "%u Input"
+msgid_plural "%u Inputs"
+msgstr[0] "%u είσοδος"
+msgstr[1] "%u είσοδοι"
+
+#: subprojects/gvc/gvc-mixer-control.c:2872
+msgid "System Sounds"
+msgstr "Ήχοι συστήματος"
+
+#~ msgctxt "title"
+#~ msgid "Restart & Install Upgrade"
+#~ msgstr "Επανεκκίνηση & Εγκατάσταση Αναβάθμισης"
+
+#, javascript-format
+#~ msgid ""
+#~ "%s %s will be installed after restart. Upgrade installation can take a "
+#~ "long time: ensure that you have backed up and that the computer is "
+#~ "plugged in."
+#~ msgstr ""
+#~ "Το %s %s θα εγκατασταθεί μετά την επανεκκίνηση. Η διαδικασία αναβάθμισης "
+#~ "μπορεί να πάρει αρκετή ώρα: σιγουρευτείτε ότι έχετε αντίγραφα ασφαλείας "
+#~ "και πως ο υπολογιστής σας είναι συνδεδεμένος στην παροχή ρεύματος."
+
+#~ msgid "Restart is not available on Wayland"
+#~ msgstr "Η Επανεκκίνηση δεν είναι Διαθέσιμη στο Wayland"
+
+#~ msgid "Restarting…"
+#~ msgstr "Επανεκκίνηση…"
+
+#~ msgid "Unable to lock"
+#~ msgstr "Αδυναμία Κλειδώματος"
+
+#~ msgid "Lock was blocked by an app"
+#~ msgstr "Το Κλείδωμα Εμποδίσθηκε από μια Εφαρμογή"
+
+#~ msgid "GNOME Shell"
+#~ msgstr "Κέλυφος GNOME"
+
+#~ msgid "Window management and application launching"
+#~ msgstr "Διαχείριση παραθύρων και εκκίνηση εφαρμογών"
+
+#~ msgid ""
+#~ "We’re very sorry, but there’s been a problem: the settings for this "
+#~ "extension can’t be displayed. We recommend that you report the issue to "
+#~ "the extension authors."
+#~ msgstr ""
+#~ "Λυπούμαστε πολύ, αλλά παρουσιάστηκε πρόβλημα: οι ρυθμίσεις για αυτήν την "
+#~ "επέκταση δεν είναι δυνατό να εμφανιστούν. Σας συνιστούμε να αναφέρετε το "
+#~ "ζήτημα στους συγγραφείς επέκτασης."
+
+#~ msgid "Technical Details"
+#~ msgstr "Τεχνικές λεπτομέρειες"
+
+#~ msgid "Homepage"
+#~ msgstr "Ιστοσελίδα"
+
+#~ msgid "Visit extension homepage"
+#~ msgstr "Επισκεφθείτε την ιστοσελίδα της επέκτασης"
+
+#~ msgid "Could not parse command:"
+#~ msgstr "Δεν ήταν δυνατό να γίνει ανάλυση της εντολής:"
+
+#~ msgid "%H∶%M"
+#~ msgstr "%H∶%M"
+
+#~ msgid "%l∶%M %p"
+#~ msgstr "%l∶%M %p"
+
+#~ msgid "Screenshot"
+#~ msgstr "Στιγμιότυπο οθόνης"
+
+#~ msgid "Move Titlebar Onscreen"
+#~ msgstr "Μετακίνηση μπάρας τίτλου στην οθόνη"
+
+#~ msgid "Network Manager"
+#~ msgstr "Διαχειριστής δικτύου"
+
+#, javascript-format
+#~ msgid "%s is now known as %s"
+#~ msgstr "Ο %s είναι τώρα γνωστός ως %s"
+
+#~| msgid "Disable"
+#~ msgid "Disabling"
+#~ msgstr "Απενεργοποίηση"
+
+#~| msgid "Enable"
+#~ msgid "Enabling"
+#~ msgstr "Ενεργοποίηση"
+
+#~ msgid "Thunderbolt"
+#~ msgstr "Thunderbolt"
+
+#~ msgid "No Thanks"
+#~ msgstr "Όχι, ευχαριστώ"
+
+#~ msgid "No Matches"
+#~ msgstr "Καμιά αντιστοιχία"
+
+#~ msgid "The extension had an error"
+#~ msgstr "Η επέκταση παρουσίασε σφάλμα"
+
+#~ msgid "The extension can be updated"
+#~ msgstr "Η επέκταση μπορεί να ενημερωθεί"
+
+#~ msgid "Help"
+#~ msgstr "Βοήθεια"
+
+#~ msgid "Manually Installed"
+#~ msgstr "Εγκατεστημένες χειροκίνητα"
+
+#~ msgid "Built-In"
+#~ msgstr "Ενσωματωμένο"
+
+#~ msgid "Extension Updates Ready"
+#~ msgstr "Έτοιμες οι ενημερώσεις επεκτάσεων"
+
+#~ msgid "Attach modal dialog to the parent window"
+#~ msgstr "Προσάρτηση αποκλειστικού διαλόγου στο γονικό παράθυρο"
+
+#~ msgid ""
+#~ "This key overrides the key in org.gnome.mutter when running GNOME Shell."
+#~ msgstr ""
+#~ "Αυτό το κλειδί υπερισχύει του κλειδιού που υπάρχει στο org.gnome.mutter "
+#~ "όταν εκτελείται το GNOME Shell."
+
+#~ msgid "Enable edge tiling when dropping windows on screen edges"
+#~ msgstr ""
+#~ "Ενεργοποίηση της προσάρτησης άκρων, όταν αφήνετε παράθυρα στις άκρες της "
+#~ "οθόνης"
+
+#~ msgid "Workspaces are managed dynamically"
+#~ msgstr "Η διαχείριση των χώρων γίνεται δυναμικά"
+
+#~ msgid "Workspaces only on primary monitor"
+#~ msgstr "Χώροι εργασίας μόνο στην κύρια οθόνη"
+
+#~ msgid "Delay focus changes in mouse mode until the pointer stops moving"
+#~ msgstr ""
+#~ "Καθυστέρηση εστίασης αλλαγών στην λειτουργία ποντικιού μέχρι να "
+#~ "σταματήσει να κινείται ο δείκτης"
+
+#~ msgid "Region & Language Settings"
+#~ msgstr "Ρυθμίσεις περιοχής και γλώσσας"
+
+#~ msgid "Applications"
+#~ msgstr "Εφαρμογές"
+
+#~ msgid "Screenshot / Screencast"
+#~ msgstr "Στιγμιότυπο/βίντεο οθόνης"
+
+#, javascript-format
+#~ msgid "Unable to start %s"
+#~ msgstr "Αδυναμία εκκίνησης %s"
+
+#, javascript-format
+#~ msgid "Couldn’t find the %s application"
+#~ msgstr "Αδύνατη η εύρεση της εφαρμογής %s"
+
+#, javascript-format
+#~ msgid "%d %%"
+#~ msgstr "%d %%"
+
+#~ msgid "Evolution Calendar"
+#~ msgstr "Ημερολόγιο Evolution"
+
+#~ msgid ""
+#~ "Whether the default Bluetooth adapter had set up devices associated to it"
+#~ msgstr ""
+#~ "Αν ο προεπιλεγμένος προσαρμογέας Bluetooth έχει ρυθμιστεί με "
+#~ "συσχετισμένες συσκευές"
+
+#~ msgid ""
+#~ "The shell will only show a Bluetooth menu item if a Bluetooth adapter is "
+#~ "powered, or if there were devices set up associated with the default "
+#~ "adapter. This will be reset if the default adapter is ever seen not to "
+#~ "have devices associated to it."
+#~ msgstr ""
+#~ "Το κέλυφος θα εμφανίσει ένα μενού Bluetooth αν είναι ενεργός ο "
+#~ "προσαρμογέας, ή αν υπάρχουν συσχετισμένες συσκευές με αυτόν. Αυτό θα "
+#~ "επαναφερθεί αν δεν υπάρχουν συσχετισμένες συσκευές με τον προσαρμογέα."
+
+#~ msgid "Remove from Favorites"
+#~ msgstr "Αφαίρεση από τα αγαπημένα"
+
+#~ msgid "Add to Favorites"
+#~ msgstr "Προσθήκη στα αγαπημένα"
+
+#~ msgid "Bluetooth Off"
+#~ msgstr "Bluetooth ανενεργό"
+
+#~ msgid "Location In Use"
+#~ msgstr "Τοποθεσία σε χρήση"
+
+#~ msgid "Location Disabled"
+#~ msgstr "Απενεργοποιήθηκε η τοποθεσία"
+
+#, javascript-format
+#~ msgid "%s Off"
+#~ msgstr "Απενεργοποιημένο %s"
+
+#, javascript-format
+#~ msgid "%s Connected"
+#~ msgstr "%s συνδεδεμένο"
+
+#, javascript-format
+#~ msgid "%s Unmanaged"
+#~ msgstr "Χωρίς διαχείριση %s"
+
+#, javascript-format
+#~ msgid "%s Connecting"
+#~ msgstr "Γίνεται σύνδεση %s"
+
+#, javascript-format
+#~ msgid "%s Requires Authentication"
+#~ msgstr "Το %s απαιτεί πιστοποίηση"
+
+#, javascript-format
+#~ msgid "Firmware Missing For %s"
+#~ msgstr "Λείπει υλικολογισμικό για το %s"
+
+#, javascript-format
+#~ msgid "%s Unavailable"
+#~ msgstr "Το %s δεν είναι διαθέσιμο"
+
+#, javascript-format
+#~ msgid "%s Connection Failed"
+#~ msgstr "Αποτυχία σύνδεσης του %s"
+
+#, javascript-format
+#~ msgid "%s Hardware Disabled"
+#~ msgstr "Το υλικό απενεργοποιήθηκε για το %s"
+
+#, javascript-format
+#~ msgid "%s Disabled"
+#~ msgstr "Απενεργοποιήθηκε το %s"
+
+#~ msgid "Connect to Internet"
+#~ msgstr "Σύνδεση στο διαδίκτυο"
+
+#~ msgid "Airplane Mode is On"
+#~ msgstr "Η λειτουργία πτήσης είναι ενεργή"
+
+#~ msgid "Wi-Fi is disabled when airplane mode is on."
+#~ msgstr ""
+#~ "Η ασύρματη σύνδεση είναι ανενεργή όταν η λειτουργία πτήσηςα είναι ενεργή."
+
+#~ msgid "Turn Off Airplane Mode"
+#~ msgstr "Απενεργοποίηση της λειτουργίας πτήσης"
+
+#~ msgid "Wi-Fi is Off"
+#~ msgstr "Το Wi-Fi είναι ανενεργό"
+
+#~ msgid "Wi-Fi needs to be turned on in order to connect to a network."
+#~ msgstr ""
+#~ "Το Wi-Fi χρειάζεται να ενεργοποιηθεί για να συνδεθείτε σε ένα δίκτυο."
+
+#~ msgid "Turn On Wi-Fi"
+#~ msgstr "Ενεργοποίηση Wi-Fi"
+
+#~ msgid "Select a network"
+#~ msgstr "Επιλογή δικτύου"
+
+#~ msgid "Use hardware switch to turn off"
+#~ msgstr "Χρήση διακόπτη υλικού για απενεργοποίηση"
+
+#~ msgid "Select Network"
+#~ msgstr "Επιλογή δικτύου"
+
+#~ msgid "Wi-Fi Settings"
+#~ msgstr "Ρυθμίσεις Wi-Fi"
+
+#, javascript-format
+#~ msgid "%s Not Connected"
+#~ msgstr "Χωρίς σύνδεση το %s"
+
+#~ msgid "connecting…"
+#~ msgstr "γίνεται σύνδεση…"
+
+#~ msgid "authentication required"
+#~ msgstr "απαιτείται πιστοποίηση"
+
+#~ msgid "connection failed"
+#~ msgstr "αποτυχία σύνδεσης"
+
+#~ msgid "VPN Off"
+#~ msgstr "Απενεργοποιημένο VPN"
+
+#~ msgid "Network Settings"
+#~ msgstr "Ρυθμίσεις δικτύου"
+
+#, javascript-format
+#~ msgid "%s Wi-Fi Connection"
+#~ msgid_plural "%s Wi-Fi Connections"
+#~ msgstr[0] "%s Wi-Fi σύνδεση"
+#~ msgstr[1] "%s Wi-Fi συνδέσεις"
+
+#~ msgid "Night Light Disabled"
+#~ msgstr "Λειτουργία νυχτός ανενεργή"
+
+#~ msgid "Resume"
+#~ msgstr "Συνέχιση"
+
+#~ msgid "Disable Until Tomorrow"
+#~ msgstr "Απενεργοποίηση έως αύριο"
+
+#~ msgid "Fully Charged"
+#~ msgstr "Πλήρως φορτισμένη"
+
+#~ msgid "Not Charging"
+#~ msgstr "Δεν φορτίζεται"
+
+#~ msgid "Estimating…"
+#~ msgstr "Εκτίμηση…"
+
+#, javascript-format
+#~ msgid "%d∶%02d Remaining (%d %%)"
+#~ msgstr "%d∶%02d Απομένει (%d %%)"
+
+#, javascript-format
+#~ msgid "%d∶%02d Until Full (%d %%)"
+#~ msgstr "%d∶%02d Πλήρης μέχρι (%d %%)"
+
+#~ msgid "Screen is Being Shared"
+#~ msgstr "Οθόνη σε κοινή χρήση"
+
+#~ msgid "Turn off"
+#~ msgstr "Απενεργοποίηση"
+
+#~ msgid "Airplane Mode On"
+#~ msgstr "Λειτουργία πτήσης ενεργή"
+
+#~ msgid "Lock"
+#~ msgstr "Κλείδωμα"
+
+#~ msgid "Power Off / Log Out"
+#~ msgstr "Τερματισμός / Αποσύνδεση"
+
+#~ msgid "Log Out"
+#~ msgstr "Αποσύνδεση"
+
+#~ msgid "Author"
+#~ msgstr "Συγγραφέας"
+
+#~ msgid "Warning"
+#~ msgstr "Προειδοποίηση"
+
+#~ msgid ""
+#~ "Extensions can cause system issues, including performance problems. If "
+#~ "you encounter problems with your system, it is recommended to disable all "
+#~ "extensions."
+#~ msgstr ""
+#~ "Οι επεκτάσεις μπορεί να προκαλέσουν προβλήματα στο σύστημα, "
+#~ "συμπεριλαμβανομένων προβλημάτων απόδοσης. Εάν αντιμετωπίσετε προβλήματα "
+#~ "με το σύστημά σας, συνίσταται να απενεργοποιήσετε όλες τις επεκτάσεις."
+
+#~ msgid "Failed to connect to GNOME Shell"
+#~ msgstr "Αποτυχία σύνδεσης στο κέλυφος GNOME"
+
+#~ msgid "Enable introspection API"
+#~ msgstr "Ενεργοποίηση ενδοσκόπησης API"
+
+#~ msgid ""
+#~ "Enables a D-Bus API that allows to introspect the application state of "
+#~ "the shell."
+#~ msgstr ""
+#~ "Ενεργοποιεί ένα API D-Bus που επιτρέπει την εισαγωγή της κατάστασης "
+#~ "εφαρμογής του κελύφους."
+
+#~ msgid "Minimize"
+#~ msgstr "Ελαχιστοποίηση"
+
+#~ msgid "Unmaximize"
+#~ msgstr "Απομεγιστοποίηση"
+
+#~ msgid "App Picker View"
+#~ msgstr "Προβολή επιλογέα εφαρμογών"
+
+#~ msgid "Index of the currently selected view in the application picker."
+#~ msgstr ""
+#~ "Ευρετήριο της τρέχουσας επιλεγμένης προβολής του επιλογέα εφαρμογών."
+
+#~ msgid "Frequently used applications will appear here"
+#~ msgstr "Οι πιο συχνά χρησιμοποιούμενες εφαρμογές θα εμφανιστούν εδώ"
+
+#~ msgid "Frequent"
+#~ msgstr "Συχνά"
+
+#~ msgid "All"
+#~ msgstr "Όλα"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d"
+#~ msgstr "%A, %B %-d"
+
+#~ msgctxt "calendar heading"
+#~ msgid "%A, %B %-d, %Y"
+#~ msgstr "%A, %B %-d, %Y"
+
+#~ msgid "On"
+#~ msgstr "Ενεργοποίηση"
+
+#~ msgid "Browse in Software"
+#~ msgstr "Εξερεύνηση στο Λογισμικό"
+
+#~ msgid "Next"
+#~ msgstr "Επόμενο"
+
+#~ msgctxt "button"
+#~ msgid "Sign In"
+#~ msgstr "Σύνδεση"
+
+#, fuzzy
+#~| msgctxt "search-result"
+#~| msgid "Lock orientation"
+#~ msgctxt "search-result"
+#~ msgid "Lock Orientation"
+#~ msgstr "Κλείδωμα προσανατολισμού"
+
+#~ msgid "Rename"
+#~ msgstr "Μετονομασία"
+
+#~ msgid "Password:"
+#~ msgstr "Συνθηματικό:"
+
+#~ msgid "Type again:"
+#~ msgstr "Πληκτρολογήστε ξανά:"
+
+#~ msgid "Password: "
+#~ msgstr "Συνθηματικό: "
+
+#~ msgid "Authentication required by wireless network"
+#~ msgstr "Απαιτείται πιστοποίηση από το ασύρματο δίκτυο"
+
+#~ msgid "Mobile broadband network password"
+#~ msgstr "Συνθηματικό δικτύου κινητής ευρυζωνικής σύνδεσης"
+
+#~ msgid "%A, %B %d"
+#~ msgstr "%A, %B %d"
+
+#~ msgid "%d new message"
+#~ msgid_plural "%d new messages"
+#~ msgstr[0] "%d νέο μήνυμα"
+#~ msgstr[1] "%d νέα μηνύματα"
+
+#~ msgid "Account Settings"
+#~ msgstr "Ρυθμίσεις λογαριασμού"
+
+#~ msgid "Orientation Lock"
+#~ msgstr "Κλείδωμα προσανατολισμού"
+
+#~ msgid ""
+#~ "Keybinding that pauses and resumes all running tweens, for debugging "
+#~ "purposes"
+#~ msgstr ""
+#~ "Συνδυασμός πλήκτρων που κάνει παύση και συνέχιση όλων των tween που "
+#~ "εκτελούνται, για σκοπούς αποσφαλμάτωσης"
+
+#~ msgid "Which keyboard to use"
+#~ msgstr "Ποιο πληκτρολόγιο θα χρησιμοποιηθεί"
+
+#~ msgid "The type of keyboard to use."
+#~ msgstr "Ο τύπος του πληκτρολογίου που θα χρησιμοποιηθεί."
+
+#~ msgid "network-workgroup"
+#~ msgstr "network-workgroup"
+
+#~ msgid "There was an error loading the preferences dialog for %s:"
+#~ msgstr ""
+#~ "Προέκυψε ένα σφάλμα κατά τη φόρτωση του παραθύρου διαλόγου των "
+#~ "προτιμήσεων για %s:"
+
+#~ msgid "%s all day."
+#~ msgstr "Όλη μέρα %s."
+
+#~ msgid "%s, then %s later."
+#~ msgstr "%s, αργότερα %s."
+
+#~ msgid "%s, then %s, followed by %s later."
+#~ msgstr "%s, αργότερα %s, στη συνέχεια %s."
+
+#~ msgid "Feels like %s."
+#~ msgstr "Αισθητή θερμοκρασία %s."
+
+#~ msgid "toggle-switch-us"
+#~ msgstr "toggle-switch-intl"
+
+#~| msgid "Log Out"
+#~ msgctxt "search-result"
+#~ msgid "Log out"
+#~ msgstr "Αποσύνδεση"
+
+#~| msgid "Switch User"
+#~ msgctxt "search-result"
+#~ msgid "Switch user"
+#~ msgstr "Αλλαγή χρήστη"
+
+#~ msgid "Hide tray"
+#~ msgstr "Απόκρυψη περιοχής ειδοποιήσεων"
+
+#~ msgid "Status Icons"
+#~ msgstr "Εικονίδια κατάστασης"
+
+#~ msgid "Web Authentication Redirect"
+#~ msgstr "Ανακατεύθυνση πιστοποίησης ιστού"
+
+#~ msgid "Events"
+#~ msgstr "Συμβάντα"
+
+#~ msgid "Media"
+#~ msgstr "Πολυμέσα"
+
+#~ msgid "%d x %d"
+#~ msgstr "%d x %d"
+
+#~ msgid "Show the week date in the calendar"
+#~ msgstr "Εμφάνιση του αριθμού εβδομάδας στο ημερολόγιο"
+
+#~ msgid "If true, display the ISO week date in the calendar."
+#~ msgstr ""
+#~ "Αν είναι αληθές, εμφανίζει τον αριθμό εβδομάδας κατά ISO στο ημερολόγιο."
+
+#~ msgid "Use as Internet connection"
+#~ msgstr "Χρήση ως σύνδεση διαδικτύου"
+
+#~ msgid "%s is requesting access to your location."
+#~ msgstr "Το %s ζητά πρόσβαση στην τοποθεσία σας."
+
+#~ msgid "GNOME Shell (wayland compositor)"
+#~ msgstr "GNOME Shell (συνθετητής wayland)"
+
+#~ msgid "%d Connected Device"
+#~ msgid_plural "%d Connected Devices"
+#~ msgstr[0] "%d συνδεδεμένη συσκευή"
+#~ msgstr[1] "%d συνδεδεμένες συσκευές"
+
+#~ msgid "UPS"
+#~ msgstr "UPS"
+
+#~ msgid "Battery"
+#~ msgstr "Μπαταρία"
+
+#~ msgctxt "event list time"
+#~ msgid "%H∶%M"
+#~ msgstr "%H∶%M"
+
+#~ msgctxt "event list time"
+#~ msgid "%l∶%M %p"
+#~ msgstr "%l∶%M %p"
+
+#~ msgid "Invitation"
+#~ msgstr "Πρόσκληση"
+
+#~ msgid "Call"
+#~ msgstr "Κλήση"
+
+#~ msgid "File Transfer"
+#~ msgstr "Μεταφορά αρχείου"
+
+#~ msgid "Chat"
+#~ msgstr "Συνομιλία"
+
+#~ msgid "Invitation to %s"
+#~ msgstr "Πρόσκληση στο %s"
+
+#~ msgid "%s is inviting you to join %s"
+#~ msgstr "Ο %s σας προσκαλεί να μπείτε στο %s"
+
+#~ msgid "Decline"
+#~ msgstr "Απόρριψη"
+
+#~ msgid "Accept"
+#~ msgstr "Αποδοχή"
+
+#~ msgid "Video call from %s"
+#~ msgstr "Βιντεοκλήση από %s"
+
+#~ msgid "Call from %s"
+#~ msgstr "Κλήση από %s"
+
+#~ msgid "Answer"
+#~ msgstr "Απάντηση"
+
+#~ msgid "%s is sending you %s"
+#~ msgstr "Ο %s σας στέλνει το %s"
+
+#~ msgid "%s would like permission to see when you are online"
+#~ msgstr "Ο %s ζητάει άδεια για να βλέπει πότε είστε συνδεδεμένος"
+
+#~ msgid "Authentication failed"
+#~ msgstr "Απέτυχε η πιστοποίηση"
+
+#~ msgid "Encryption error"
+#~ msgstr "Σφάλμα κρυπτογράφησης"
+
+#~ msgid "Certificate not provided"
+#~ msgstr "Δεν υπάρχει πιστοποιητικό"
+
+#~ msgid "Certificate untrusted"
+#~ msgstr "Μη έμπιστο πιστοποιητικό"
+
+#~ msgid "Certificate expired"
+#~ msgstr "Ληγμένο πιστοποιητικό"
+
+#~ msgid "Certificate not activated"
+#~ msgstr "Το πιστοποιητικό δεν ενεργοποιήθηκε"
+
+#~ msgid "Certificate hostname mismatch"
+#~ msgstr "Αναντιστοιχία ονόματος κεντρικού υπολογιστή στο πιστοποιητικό"
+
+#~ msgid "Certificate fingerprint mismatch"
+#~ msgstr "Αναντιστοιχία αποτυπώματος πιστοποιητικού"
+
+#~ msgid "Certificate self-signed"
+#~ msgstr "Αυτο-υπογεγραμμένο πιστοποιητικό"
+
+#~ msgid "Status is set to offline"
+#~ msgstr "Η κατάσταση έχει ορισθεί σε εκτός σύνδεσης"
+
+#~ msgid "Certificate is invalid"
+#~ msgstr "Μη έγκυρο πιστοποιητικό"
+
+#~ msgid "Connection has been refused"
+#~ msgstr "Άρνηση σύνδεσης"
+
+#~ msgid "Connection can't be established"
+#~ msgstr "Δεν είναι δυνατή η σύνδεση"
+
+#~ msgid "Connection has been lost"
+#~ msgstr "Χάθηκε η σύνδεση"
+
+#~ msgid "This account is already connected to the server"
+#~ msgstr "Αυτός ο λογαριασμός είναι ήδη συνδεδεμένος στον διακομιστή"
+
+#~ msgid ""
+#~ "Connection has been replaced by a new connection using the same resource"
+#~ msgstr ""
+#~ "Η σύνδεση έχει αντικατασταθεί από μια νέα σύνδεση που χρησιμοποιεί τον "
+#~ "ίδιο πόρο"
+
+#~ msgid "The account already exists on the server"
+#~ msgstr "Ο λογαριασμός υπάρχει ήδη στον διακομιστή"
+
+#~ msgid "Server is currently too busy to handle the connection"
+#~ msgstr "Ο διακομιστής είναι πολύ απασχολημένος ώστε να χειριστεί τη σύνδεση"
+
+#~ msgid "Certificate has been revoked"
+#~ msgstr "Το πιστοποιητικό έχει ανακληθεί"
+
+#~ msgid ""
+#~ "Certificate uses an insecure cipher algorithm or is cryptographically weak"
+#~ msgstr ""
+#~ "Το πιστοποιητικό χρησιμοποιεί έναν μη ασφαλή αλγόριθμο αποκρυπτογράφησης "
+#~ "αποτυπώματος ή είναι κρυπτογραφικά ασθενές"
+
+#~ msgid ""
+#~ "The length of the server certificate, or the depth of the server "
+#~ "certificate chain, exceed the limits imposed by the cryptography library"
+#~ msgstr ""
+#~ "Το μέγεθος πιστοποιητικού του διακομιστή, ή το βάθος της αλυσίδας "
+#~ "πιστοποιητικού του διακομιστή υπερβαίνει τα όρια που επιτρέπει η "
+#~ "βιβλιοθήκη κρυπτογραφίας"
+
+#~ msgid "Internal error"
+#~ msgstr "Εσωτερικό σφάλμα"
+
+#~ msgid "View account"
+#~ msgstr "Προβολή λογαριασμού"
+
+#~ msgid "Unknown reason"
+#~ msgstr "Άγνωστος λόγος"
+
+#~ msgid "Show the message list"
+#~ msgstr "Εμφάνιση της λίστας μηνυμάτων"
+
+#~ msgid "Captive Portal"
+#~ msgstr "Πύλη υποδοχής"
+
+#~ msgctxt "list sunday"
+#~ msgid "Su"
+#~ msgstr "Κυ"
+
+#~ msgctxt "list monday"
+#~ msgid "M"
+#~ msgstr "Δε"
+
+#~ msgctxt "list tuesday"
+#~ msgid "T"
+#~ msgstr "Τρ"
+
+#~ msgctxt "list wednesday"
+#~ msgid "W"
+#~ msgstr "Τε"
+
+#~ msgctxt "list thursday"
+#~ msgid "Th"
+#~ msgstr "Πε"
+
+#~ msgctxt "list friday"
+#~ msgid "F"
+#~ msgstr "Πα"
+
+#~ msgctxt "list saturday"
+#~ msgid "S"
+#~ msgstr "Σα"
+
+#~ msgid "Nothing Scheduled"
+#~ msgstr "Τίποτα προγραμματισμένο"
+
+#~ msgid "This week"
+#~ msgstr "Αυτή η εβδομάδα"
+
+#~ msgid "Next week"
+#~ msgstr "Επόμενη εβδομάδα"
+
+#~ msgid "Removable Devices"
+#~ msgstr "Αφαιρούμενες συσκευές"
+
+#~ msgid "Eject"
+#~ msgstr "Εξαγωγή"
+
+#~ msgid "Date & Time Settings"
+#~ msgstr "Ρυθμίσεις ημερομηνίας & ώρας"
+
+#~ msgid "Open"
+#~ msgstr "Άνοιγμα"
+
+#~ msgid "Clear Messages"
+#~ msgstr "Εκκαθάριση μηνυμάτων"
+
+#~ msgid "Notification Settings"
+#~ msgstr "Ρυθμίσεις ειδοποιήσεων"
+
+#~ msgid "No Messages"
+#~ msgstr "Χωρίς μηνύματα"
+
+#~ msgid "Message Tray"
+#~ msgstr "Περιοχή ειδοποιήσεων μηνυμάτων"
+
+#~ msgid "The maximum accuracy level of location."
+#~ msgstr "Το μέγιστο επίπεδο ακρίβειας της θέσης."
+
+#~ msgid ""
+#~ "Configures the maximum level of location accuracy applications are "
+#~ "allowed to see. Valid options are 'off' (disable location tracking), "
+#~ "'country', 'city', 'neighborhood', 'street', and 'exact' (typically "
+#~ "requires GPS receiver). Please keep in mind that this only controls what "
+#~ "GeoClue will allow applications to see and they can find user's location "
+#~ "on their own using network resources (albeit with street-level accuracy "
+#~ "at best)."
+#~ msgstr ""
+#~ "Ρυθμίζει το μέγιστο επίπεδο ακρίβειας στην εντόπιση θέσης το οποίο "
+#~ "επιτρέπεται να βλέπουν οι εφαρμογές. Οι έγκυρες επιλογές είναι 'όχι' "
+#~ "(απενεργοποίηση εντοπισμού θέσης), 'χώρα', 'πόλη', 'γειτονιά', 'οδός' και "
+#~ "'ακριβώς' (τυπικά, απαιτεί δέκτη GPS). Παρακαλούμε να θυμάστε ότι αυτό "
+#~ "ελέγχει μόνο τι θα επιτρέπει το Geoclue να βλέπουν οι εφαρμογές, ενώ "
+#~ "αυτές μπορούν να βρουν τη θέση του χρήστη και από μόνες τους, "
+#~ "χρησιμοποιώντας πόρους δικτύου (αν και, στην καλύτερη περίπτωση, με "
+#~ "ακρίβεια επιπέδου οδού)."
+
+#~ msgid "Arrangement of buttons on the titlebar"
+#~ msgstr "Διάταξη των κουμπιών στη γραμμή τίτλου"
+
+#~ msgid ""
+#~ "This key overrides the key in org.gnome.desktop.wm.preferences when "
+#~ "running GNOME Shell."
+#~ msgstr ""
+#~ "Αυτό το κλειδί υπερισχύει του κλειδιού που υπάρχει στο "
+#~ "org.gnome.desktop.wm.preferences όταν εκτελείται το GNOME Shell."
+
+#~ msgid "Select an extension to configure using the combobox above."
+#~ msgstr ""
+#~ "Επιλέξτε μια επέκταση για να την ρυθμίσετε χρησιμοποιώντας το σύνθετο "
+#~ "πλαίσιο παραπάνω."
+
+#~ msgid "calendar:MY"
+#~ msgstr "ημερολόγιο:MY"
+
+#~ msgid "unavailable"
+#~ msgstr "μη διαθέσιμο"
+
+#~ msgid "<b>%A</b>, <b>%H:%M</b>"
+#~ msgstr "<b>%ΗΗΗΗ</b>, <b>%Ω:%Λ</b>"
+
+#~ msgid "<b>%B</b> <b>%d</b>, <b>%H:%M</b>"
+#~ msgstr "<b>%Η</b> <b>%ΜΜΜΜ</b>, <b>%Ω:%Λ</b>"
+
+#~ msgid "<b>%B</b> <b>%d</b> <b>%Y</b>, <b>%H:%M</b> "
+#~ msgstr "<b>%Η</b> <b>%ΜΜΜΜ</b> <b>%ΕΕΕΕ</b>, <b>%Ω:%Λ</b> "
+
+#~ msgid "List of categories that should be displayed as folders"
+#~ msgstr "Η λίστα των κατηγοριών που πρέπει να εμφανίζονται ως φάκελοι"
+
+#~ msgid ""
+#~ "Each category name in this list will be represented as folder in the "
+#~ "application view, rather than being displayed inline in the main view."
+#~ msgstr ""
+#~ "Το όνομα κάθε κατηγορίας σε αυτή τη λίστα θα αναπαριστάται ως φάκελος "
+#~ "στην προβολή εφαρμογής, αντί να εμφανίζεται ενσωματωμένο στην κύρια "
+#~ "προβολή."
+
+#~ msgid "Authorization request from %s"
+#~ msgstr "Αίτηση εξουσιοδότησης από %s"
+
+#~ msgid "Device %s wants to pair with this computer"
+#~ msgstr "Η συσκευή %s επιθυμεί να συζευχθεί με αυτόν τον υπολογιστή"
+
+#~ msgid "Device %s wants access to the service '%s'"
+#~ msgstr "Η συσκευή %s επιθυμεί πρόσβαση στην υπηρεσία '%s'"
+
+#~ msgid "Grant this time only"
+#~ msgstr "Μόνο για αυτή τη φορά"
+
+#~ msgid "Reject"
+#~ msgstr "Απόρριψη"
+
+#~ msgid "Pairing confirmation for %s"
+#~ msgstr "Επιβεβαίωση σύζευξης για %s"
+
+#~ msgid ""
+#~ "Please confirm whether the Passkey '%06d' matches the one on the device."
+#~ msgstr ""
+#~ "Παρακαλώ επιβεβαιώστε αν το κλειδί πρόσβασης '%06d' ταιριάζει με αυτό της "
+#~ "συσκευής."
+
+#~ msgid "Does not match"
+#~ msgstr "Δεν ταιριάζει"
+
+#~ msgid "Pairing request for %s"
+#~ msgstr "Αίτηση σύζευξης για %s"
+
+#~ msgid "Please enter the PIN mentioned on the device."
+#~ msgstr "Παρακαλώ εισάγετε το PIN που αναφέρεται στη συσκευή."
+
+#~ msgid "OK"
+#~ msgstr "Εντάξει"
+
+#~ msgid ""
+#~ "Sorry, no wisdom for you today:\n"
+#~ "%s"
+#~ msgstr ""
+#~ "Συγγνώμη, κανένα απόφθεγμα για εσάς σήμερα:\n"
+#~ "%s"
+
+#~ msgid "%s the Oracle says"
+#~ msgstr "%s ο Προφήτης λέει"
+
+#~ msgctxt "event list time"
+#~ msgid "%H\\u2236%M"
+#~ msgstr "%Ω\\u2236%Λ"
+
+#~ msgctxt "event list time"
+#~ msgid "%l\\u2236%M\\u2009%p"
+#~ msgstr "%l\\u2236%M\\u2009%p"
+
+#~ msgid "Whether to collect stats about applications usage"
+#~ msgstr "Εάν θα συλλέγονται στατιστικά χρήσης των εφαρμογών"
+
+#~ msgid ""
+#~ "The shell normally monitors active applications in order to present the "
+#~ "most used ones (e.g. in launchers). While this data will be kept private, "
+#~ "you may want to disable this for privacy reasons. Please note that doing "
+#~ "so won't remove already saved data."
+#~ msgstr ""
+#~ "Το κέλυφος κανονικά παρακολουθεί τις ενεργές εφαρμογές για να παρουσιάσει "
+#~ "τις πιο συχνά χρησιμοποιούμενες (π.χ. στους εκκινητές). Παρόλο που αυτά "
+#~ "τα δεδομένα θα παραμείνουν ιδιωτικά, μπορεί να επιθυμείτε να "
+#~ "απενεργοποιήσετε αυτή τη λειτουργία για λόγους απορρήτου. Παρακαλούμε "
+#~ "έχετε υπ' όψιν ότι η απενεργοποίηση δεν θα αφαιρέσει τα ήδη αποθηκευμένα "
+#~ "δεδομένα."
+
+#~ msgid ""
+#~ "Internally used to store the last IM presence explicitly set by the user. "
+#~ "The value here is from the TpConnectionPresenceType enumeration."
+#~ msgstr ""
+#~ "Χρησιμοποιείται εσωτερικά για την αποθήκευση της συνομιλίας που έχει "
+#~ "ορισθεί από τον χρήστη. Η τιμή εδώ είναι από την απαρίθμηση του "
+#~ "TpConnectionPresenceType."
+
+#~ msgid ""
+#~ "Internally used to store the last session presence status for the user. "
+#~ "The value here is from the GsmPresenceStatus enumeration."
+#~ msgstr ""
+#~ "Χρησιμοποιείται εσωτερικά για την αποθήκευση της κατάστασης παρουσίας της "
+#~ "τελευταίας συνόδου του χρήστη. Η τιμή εδώ είναι από την απαρίθμηση του "
+#~ "GsmPresenceStatus."
+
+#~ msgid "Keybinding to toggle the screen recorder"
+#~ msgstr "Συνδυασμός πλήκτρων για την εναλλαγή της μαγνητοσκόπησης οθόνης"
+
+#~ msgid "Keybinding to start/stop the builtin screen recorder."
+#~ msgstr ""
+#~ "Συνδυασμός πλήκτρων για το άνοιγμα/κλείσιμο της ενσωματωμένης "
+#~ "μαγνητοσκόπησης οθόνης."
+
+#~ msgid "Framerate used for recording screencasts."
+#~ msgstr ""
+#~ "Ο ρυθμός καρέ που θα χρησιμοποιηθεί για την καταγραφή του βίντεο οθόνης."
+
+#~ msgid ""
+#~ "The framerate of the resulting screencast recordered by GNOME Shell's "
+#~ "screencast recorder in frames-per-second."
+#~ msgstr ""
+#~ "Ο ρυθμός καρέ του στιγμιότυπου που παράγεται από τον εγγραφέα βίντεο "
+#~ "οθόνης του GNOME Shell σε καρέ ανά δευτερόλεπτο."
+
+#~ msgid "The gstreamer pipeline used to encode the screencast"
+#~ msgstr ""
+#~ "Ο δίαυλος του gstreamer που χρησιμοποιήθηκε για την κωδικοποίηση του "
+#~ "βίντεο οθόνης"
+
+#~ msgid ""
+#~ "Sets the GStreamer pipeline used to encode recordings. It follows the "
+#~ "syntax used for gst-launch. The pipeline should have an unconnected sink "
+#~ "pad where the recorded video is recorded. It will normally have a "
+#~ "unconnected source pad; output from that pad will be written into the "
+#~ "output file. However the pipeline can also take care of its own output - "
+#~ "this might be used to send the output to an icecast server via shout2send "
+#~ "or similar. When unset or set to an empty value, the default pipeline "
+#~ "will be used. This is currently 'vp8enc min_quantizer=13 max_quantizer=13 "
+#~ "cpu-used=5 deadline=1000000 threads=%T ! queue ! webmmux' and records to "
+#~ "WEBM using the VP8 codec. %T is used as a placeholder for a guess at the "
+#~ "optimal thread count on the system."
+#~ msgstr ""
+#~ "Ορίζει το δίαυλο του GStreamer που θα χρησιμοποιηθεί για την κωδικοποίηση "
+#~ "των εγγραφών. Ακολουθεί το συντακτικό που χρησιμοποιείται για το gst-"
+#~ "launch. Ο δίαυλος θα πρέπει να έχει έναν μη συνδεδεμένο απαγωγέα όπου θα "
+#~ "εγγράφεται το καταγραφέα βίντεο. Φυσιολογικά θα έχει μια μη συνδεδεμένη "
+#~ "πηγή· η έξοδος της πηγής θα εγγράφεται στο αρχείο εξόδου. Όμως, ο δίαυλος "
+#~ "μπορεί να επιληφθεί της δικής του εξόδου - αυτό μπορεί να χρησιμοποιηθεί "
+#~ "για την αποστολή της εξόδου σε έναν διακομιστή icecast μέσω του "
+#~ "shout2send ή κάποιου παρόμοιου. Όταν δεν έχει ορισθεί ή έχει ορισθεί σε "
+#~ "κενή τιμή, θα χρησιμοποιηθεί ο προεπιλεγμένος δίαυλος. Αυτός είναι αυτή "
+#~ "τη στιγμή ο 'vp8enc min_quantizer=13 max_quantizer=13 cpu-used=5 "
+#~ "deadline=1000000 threads=%T ! queue ! webmmux' και γράφει σε WEBM με "
+#~ "κωδικοποίηση VP8. Το %T χρησιμοποιείται ως παράδειγμα για το πιθανό "
+#~ "βέλτιστο αριθμό πυρήνων του συστήματος."
+
+#~ msgid "File extension used for storing the screencast"
+#~ msgstr ""
+#~ "Επέκταση αρχείου που θα χρησιμοποιηθεί για την αποθήκευση του βίντεο "
+#~ "οθόνης"
+
+#~ msgid ""
+#~ "The filename for recorded screencasts will be a unique filename based on "
+#~ "the current date, and use this extension. It should be changed when "
+#~ "recording to a different container format."
+#~ msgstr ""
+#~ "Το όνομα αρχείου για τα καταγεγραμμένα βίντεο οθόνης θα είναι μοναδικό, "
+#~ "βασισμένο στην τρέχουσα ημερομηνία και θα χρησιμοποιεί αυτή την επέκταση. "
+#~ "Θα πρέπει να αλλάζει όταν γίνεται εγγραφή σε διαφορετικό πρότυπο περιέκτη."
+
+#~ msgid "Session…"
+#~ msgstr "Συνεδρία…"
+
+#~ msgid "Power"
+#~ msgstr "Ενέργεια"
+
+#~ msgid "Click Log Out to quit these applications and log out of the system."
+#~ msgstr ""
+#~ "Πατήστε Αποσύνδεση για να κλείσετε αυτές τις εφαρμογές και να "
+#~ "αποσυνδεθείτε από το σύστημα."
+
+#~ msgid "Logging out of the system."
+#~ msgstr "Αποσύνδεση από το σύστημα."
+
+#~ msgid "Click Power Off to quit these applications and power off the system."
+#~ msgstr ""
+#~ "Πατήστε Απενεργοποίηση για να κλείσετε αυτές τις εφαρμογές και να "
+#~ "τερματίσετε το σύστημα."
+
+#~ msgid "Powering off the system."
+#~ msgstr "Απενεργοποίηση του συστήματος."
+
+#~ msgid "Click Restart to quit these applications and restart the system."
+#~ msgstr ""
+#~ "Πατήστε Επανεκκίνηση για να κλείσετε αυτές τις εφαρμογές και να "
+#~ "επανεκκινήσετε το σύστημα."
+
+#~ msgid "Restarting the system."
+#~ msgstr "Επανεκκινείται το σύστημα."
+
+#~ msgid "Universal Access Settings"
+#~ msgstr "Ρυθμίσεις καθολικής πρόσβασης"
+
+#~ msgid "Visibility"
+#~ msgstr "Ορατότητα"
+
+#~ msgid "Send Files to Device…"
+#~ msgstr "Αποστολή αρχείων σε συσκευή…"
+
+#~ msgid "Set Up a New Device…"
+#~ msgstr "Ρύθμιση νέας συσκευής…"
+
+#~ msgid "Send Files…"
+#~ msgstr "Αποστολή αρχείων…"
+
+#~ msgid "Mouse Settings"
+#~ msgstr "Ρυθμίσεις ποντικιού"
+
+#~ msgid "Volume, network, battery"
+#~ msgstr "Ένταση, δίκτυο, μπαταρία"
+
+#~ msgid "disabled"
+#~ msgstr "απενεργοποιημένο"
+
+#~ msgid "cable unplugged"
+#~ msgstr "το καλώδιο αποσυνδέθηκε"
+
+#~ msgid "More…"
+#~ msgstr "Περισσότερα…"
+
+#~ msgid "Wired"
+#~ msgstr "Ενσύρματο"
+
+#~ msgid "Auto Ethernet"
+#~ msgstr "Αυτόματα Ethernet"
+
+#~ msgid "Auto broadband"
+#~ msgstr "Αυτόματα ευρυζωνική"
+
+#~ msgid "Auto dial-up"
+#~ msgstr "Αυτόματα dial-up"
+
+#~ msgid "Auto %s"
+#~ msgstr "Αυτόματα %s"
+
+#~ msgid "Auto bluetooth"
+#~ msgstr "Αυτόματα bluetooth"
+
+#~ msgid "Auto wireless"
+#~ msgstr "Αυτόματα ασύρματο"
+
+#~ msgid "Wi-Fi"
+#~ msgstr "Ασύρματη πιστότητα"
+
+#~ msgid "%d hour remaining"
+#~ msgid_plural "%d hours remaining"
+#~ msgstr[0] "%d ώρα απομένει"
+#~ msgstr[1] "%d ώρες απομένουν"
+
+#~ msgid "%d %s %d %s remaining"
+#~ msgstr "Απομένουν %d %s %d %s"
+
+#~ msgid "hour"
+#~ msgid_plural "hours"
+#~ msgstr[0] "ώρα"
+#~ msgstr[1] "ώρες"
+
+#~ msgid "minute"
+#~ msgid_plural "minutes"
+#~ msgstr[0] "λεπτό"
+#~ msgstr[1] "λεπτά"
+
+#~ msgid "%d minute remaining"
+#~ msgid_plural "%d minutes remaining"
+#~ msgstr[0] "%d λεπτό απομένει"
+#~ msgstr[1] "%d λεπτά απομένουν"
+
+#~ msgid "AC Adapter"
+#~ msgstr "Μετασχηματιστής εναλλασσόμενου"
+
+#~ msgid "Laptop Battery"
+#~ msgstr "Μπαταρία φορητού"
+
+#~ msgid "Monitor"
+#~ msgstr "Οθόνη"
+
+#~ msgid "Mouse"
+#~ msgstr "Ποντίκι"
+
+#~ msgid "PDA"
+#~ msgstr "PDA"
+
+#~ msgid "Cell Phone"
+#~ msgstr "Κινητό τηλέφωνο"
+
+#~ msgid "Media Player"
+#~ msgstr "Αναπαραγωγή πολυμέσων"
+
+#~ msgid "Tablet"
+#~ msgstr "Ταμπλέτα"
+
+#~ msgid "Computer"
+#~ msgstr "Υπολογιστής"
+
+#~ msgctxt "device"
+#~ msgid "Unknown"
+#~ msgstr "Άγνωστο"
+
+#~ msgid "Busy"
+#~ msgstr "Απασχολημένος-η"
+
+#~ msgid "Invisible"
+#~ msgstr "Αόρατος-η"
+
+#~ msgid "Away"
+#~ msgstr "Απουσιάζει"
+
+#~ msgid "Idle"
+#~ msgstr "Αδρανής"
+
+#~ msgid "Your chat status will be set to busy"
+#~ msgstr "Η κατάσταση συνομιλίας σας θα ορισθεί σε απασχολημένος"
+
+#~ msgid ""
+#~ "Notifications are now disabled, including chat messages. Your online "
+#~ "status has been adjusted to let others know that you might not see their "
+#~ "messages."
+#~ msgstr ""
+#~ "Οι ειδοποιήσεις είναι απενεργοποιημένες, όπως και τα μηνύματα συζητήσεων. "
+#~ "Η κατάσταση σας έχει ορισθεί έτσι ώστε να γίνεται γνωστό ότι πιθανόν να "
+#~ "μην δείτε τα μηνύματα τους."
+
+#~ msgid "Shutting down might cause them to lose unsaved work."
+#~ msgstr ""
+#~ "Κλείνοντας μπορεί να τους προκαλέσετε την απώλεια αναποθήκευτης εργασίας."
+
+#~ msgctxt "title"
+#~ msgid "Sign In"
+#~ msgstr "Σύνδεση"
+
+#~ msgid "tray"
+#~ msgstr "περιοχή"
+
+#~ msgid "More..."
+#~ msgstr "Περισσότερα..."
+
+#~ msgid "APPLICATIONS"
+#~ msgstr "ΕΦΑΡΜΟΓΕΣ"
+
+#~ msgid "SETTINGS"
+#~ msgstr "ΡΥΘΜΙΣΕΙΣ"
+
+#~ msgid "Subscription request"
+#~ msgstr "Αίτηση συνδρομής"
+
+#~ msgid "Sent at <b>%X</b> on <b>%A</b>"
+#~ msgstr "Στάλθηκε στις <b>%A</b> και ώρα <b>%X</b>"
+
+#~ msgid "Sent on <b>%A</b>, <b>%B %d</b>, %Y"
+#~ msgstr "Στάλθηκε την <b>%A</b>, <b>%d %B</b>, %Y"
+
+#~ msgid "Connection to %s failed"
+#~ msgstr "Απέτυχε η σύνδεση στο %s"
+
+#~ msgid "Reconnect"
+#~ msgstr "Επανασύνδεση"
+
+#~ msgid "Browse Files..."
+#~ msgstr "Περιήγηση αρχείων..."
+
+#~ msgid "Error browsing device"
+#~ msgstr "Σφάλμα περιήγησης συσκευής"
+
+#~ msgid "The requested device cannot be browsed, error is '%s'"
+#~ msgstr ""
+#~ "Δεν είναι δυνατή η περιήγηση στην αιτούμενη συσκευή, το σφάλμα είναι '%s'"
+
+#~ msgid "Wireless"
+#~ msgstr "Ασύρματο"
+
+#~ msgid "VPN Connections"
+#~ msgstr "Συνδέσεις VPN"
+
+#~ msgid "System Settings"
+#~ msgstr "Ρυθμίσεις συστήματος"
+
+#~ msgid "Your favorite Easter Egg"
+#~ msgstr "Το αγαπημένο σας Πασχαλινό Αυγό"
+
+#~ msgid "United Kingdom"
+#~ msgstr "Ηνωμένο Βασίλειο"
+
+#~ msgid "Default"
+#~ msgstr "Προεπιλογή"
+
+#~ msgid "disabled OpenSearch providers"
+#~ msgstr "απενεργοποιημένοι πάροχοι OpenSearch"
+
+#~ msgid "Failed to unmount '%s'"
+#~ msgstr "Αποτυχία αποπροσάρτησης '%s'"
+
+#~ msgid "Retry"
+#~ msgstr "Προσπάθεια ξανά"
+
+#~ msgid "PLACES & DEVICES"
+#~ msgstr "ΤΟΠΟΘΕΣΙΕΣ & ΣΥΣΚΕΥΕΣ"
+
+#~ msgid "%1$s: %2$s"
+#~ msgstr "%1$s: %2$s"
+
+#~ msgid "Passphrase"
+#~ msgstr "Συνθηματική φράση"
+
+#~ msgctxt "contact"
+#~ msgid "Unknown"
+#~ msgstr "Άγνωστο"
+
+#~ msgid "CONTACTS"
+#~ msgstr "ΕΠΑΦΕΣ"
+
+#~ msgid "%s is online."
+#~ msgstr "Ο/η %s είναι συνδεδεμένος"
+
+#~ msgid "%s is offline."
+#~ msgstr "Ο/η %s είναι αποσυνδεδεμένος"
+
+#~ msgid "%s is away."
+#~ msgstr "Ο/η '%s' είναι εκτός. "
+
+#~ msgid "%s is busy."
+#~ msgstr "%s είναι απασχολημένος/η"
+
+#~ msgid "Show time with seconds"
+#~ msgstr "Εμφάνιση ώρας με δευτερόλεπτα"
+
+#~ msgid "If true, display seconds in time."
+#~ msgstr "Αν αληθές, εμφανίζει δευτερόλεπτα στην ώρα."
+
+#~ msgid "Show date in clock"
+#~ msgstr "Εμφάνιση ημερομηνίας στο ρολόι"
+
+#~ msgid "If true, display date in the clock, in addition to time."
+#~ msgstr "Αν αληθές, εμφανίζει την ημερομηνία στο ρολόι επιπλέον της ώρας."
+
+#~ msgid "%a %b %e, %R:%S"
+#~ msgstr "%a %e %b, %R:%S"
+
+#~ msgid "%a %b %e, %R"
+#~ msgstr "%a %e %b, %R"
+
+#~ msgid "%a %R:%S"
+#~ msgstr "%a %R%a %R:%S"
+
+#~ msgid "%a %R"
+#~ msgstr "%a %R"
+
+#~ msgid "%a %b %e, %l:%M:%S %p"
+#~ msgstr "%a %e %b, %l:%M:%S %p"
+
+#~ msgid "%a %l:%M:%S %p"
+#~ msgstr "%a %l:%M:%S %p"
+
+#~ msgid "Hidden"
+#~ msgstr "Αόρατος"
+
+#~ msgid "Power Off..."
+#~ msgstr "Απενεργοποίηση..."
+
+#~ msgid "Online Accounts"
+#~ msgstr "Διαδικτυακοί λογαριασμοί"
+
+#~ msgid "Log Out..."
+#~ msgstr "Αποσύνδεση..."
+
+#~ msgid "RECENT ITEMS"
+#~ msgstr "ΠΡΟΣΦΑΤΑ ΑΝΤΙΚΕΙΜΕΝΑ"
+
+#~ msgid ""
+#~ "GNOME Shell extensions have a uuid property; this key lists extensions "
+#~ "which should not be loaded."
+#~ msgstr ""
+#~ "Οι επεκτάσεις του GNOME Shell έχουν μια ιδιότητα uuid. Αυτό το κλειδί "
+#~ "απαριθμεί ποιες επεκτάσεις δεν θα πρέπει να φορτωθούν."
+
+#~ msgid "Localization Settings"
+#~ msgstr "Ρυθμίσεις γλώσσας"
+
+#~ msgid "You're now connected to mobile broadband connection '%s'"
+#~ msgstr "Είστε συνδεμένοι στο δίκτυο κινητής ευρυζωνικής '%s'"
+
+#~ msgid "You're now connected to wireless network '%s'"
+#~ msgstr "Είστε συνδεμένοι στο ασύρματο δίκτυο '%s'"
+
+#~ msgid "You're now connected to wired network '%s'"
+#~ msgstr "Είστε συνδεμένοι στο ενσύρματο δίκτυο '%s'"
+
+#~ msgid "You're now connected to VPN network '%s'"
+#~ msgstr "Είστε συνδεμένοι στο VPN δίκτυο '%s'"
+
+#~ msgid "%s has finished starting"
+#~ msgstr "Το %s ολοκλήρωσε την εκκίνηση "
+
+#~ msgid "Less than a minute ago"
+#~ msgstr "Λιγότερο από ένα λεπτό πριν"
+
+#, fuzzy
+#~ msgid "Shut Down"
+#~ msgstr "Τερματισμός..."
+
+#~ msgid "Clip the crosshairs at the center"
+#~ msgstr "Περικοπή του σκοπεύτρου στο κέντρο"
+
+#~ msgid "Color of the crosshairs"
+#~ msgstr "Χρώμα του σκόπευτρου"
+
+#~ msgid ""
+#~ "Determines the length of the vertical and horizontal lines that make up "
+#~ "the crosshairs."
+#~ msgstr ""
+#~ "Καθορίζει το μήκος των κάθετων και οριζόντιων γραμμών που απαρτίζουν το "
+#~ "σκόπευτρο"
+
+#~ msgid "Enable lens mode"
+#~ msgstr "Ενεργοποίηση λειτουργίας φακού"
+
+#~ msgid ""
+#~ "Enables/disables display of crosshairs centered on the magnified mouse "
+#~ "sprite."
+#~ msgstr ""
+#~ "Ενεργοποιεί/απενεργοποιεί την εμφάνιση σκοπεύτρου στο δείκτη μεγέθυνσης "
+#~ "του ποντικιού"
+
+#~ msgid "Length of the crosshairs"
+#~ msgstr "Μήκος του σκοπεύτρου"
+
+#~ msgid "Magnification factor"
+#~ msgstr "Παράγοντας μεγέθυνσης"
+
+#~ msgid "Mouse Tracking Mode"
+#~ msgstr "Λειτουργία Mouse Tracking "
+
+#~ msgid "Opacity of the crosshairs"
+#~ msgstr "Αδιαφάνεια του σκοπεύτρου"
+
+#~ msgid "Scroll magnified contents beyond the edges of the desktop"
+#~ msgstr ""
+#~ "Κύλιση σε μεγεθυμένα περιεχόμενα που βρίσκονται έξω από την επιφάνεια"
+
+#~ msgid "Show or hide crosshairs"
+#~ msgstr "Προβολή ή απόκρυψη του σκοπεύτρου"
+
+#~ msgid "Show or hide the magnifier"
+#~ msgstr "Προβολή ή απόκρυψη του μεγεθυντή"
+
+#~ msgid "Show or hide the magnifier and all of its zoom regions."
+#~ msgstr "Προβολή ή απόκρυψη του μεγεθυντή και όλων των περιοχών μεγέθυνσης"
+
+#~ msgid ""
+#~ "The color of the the vertical and horizontal lines that make up the "
+#~ "crosshairs."
+#~ msgstr ""
+#~ "Το χρώμα των κάθετων και οριζόντιων γραμμών που απαρτίζουν το σκόπευτρο"
+
+#~ msgid "Thickness of the crosshairs"
+#~ msgstr "Πάχος των γραμμών σκοπεύτρου"
+
+#~ msgid ""
+#~ "Width of the vertical and horizontal lines that make up the crosshairs."
+#~ msgstr ""
+#~ " Το πάχος των κάθετων και οριζόντιων γραμμών που απαρτίζουν το σκόπευτρο"
+
+#~ msgid "PREFERENCES"
+#~ msgstr "ΠΡΟΤΙΜΗΣΕΙΣ"
+
+#~ msgid "Shut Down..."
+#~ msgstr "Τερματισμός..."
+
+#~ msgid "Search your computer"
+#~ msgstr "Αναζήτηση στον υπολογιστή σας"
+
+#~ msgid ""
+#~ "Can't add a new workspace because maximum workspaces limit has been "
+#~ "reached."
+#~ msgstr ""
+#~ "Αδυναμία προσθήκης νέου χώρου εργασίας επειδή έχετε φτάσει το μέγιστο "
+#~ "αριθμό χώρων εργασίας."
+
+#~ msgid "Can't remove the first workspace."
+#~ msgstr "Δεν είναι δυνατή η αφαίρεση του πρώτου χώρου εργασίας."

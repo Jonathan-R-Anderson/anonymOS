@@ -1,0 +1,43 @@
+.TH xcb_shm_create_pixmap 3  "libxcb 1.17.0" "X Version 11" "XCB Requests"
+.ad l
+.SH NAME
+xcb_shm_create_pixmap \- Create a pixmap backed by shared memory.
+.SH SYNOPSIS
+.hy 0
+.B #include <xcb/shm.h>
+.SS Request function
+.HP
+xcb_void_cookie_t \fBxcb_shm_create_pixmap\fP(xcb_connection_t\ *\fIconn\fP, xcb_pixmap_t\ \fIpid\fP, xcb_drawable_t\ \fIdrawable\fP, uint16_t\ \fIwidth\fP, uint16_t\ \fIheight\fP, uint8_t\ \fIdepth\fP, xcb_shm_seg_t\ \fIshmseg\fP, uint32_t\ \fIoffset\fP);
+.br
+.hy 1
+.SH REQUEST ARGUMENTS
+.IP \fIconn\fP 1i
+The XCB connection to X11.
+.IP \fIpid\fP 1i
+A pixmap ID created with xcb_generate_id().
+.IP \fIdrawable\fP 1i
+The drawable to create the pixmap in.
+.IP \fIwidth\fP 1i
+The width of the pixmap to create.  Must be nonzero, or a Value error results.
+.IP \fIheight\fP 1i
+The height of the pixmap to create.  Must be nonzero, or a Value error results.
+.IP \fIdepth\fP 1i
+The depth of the pixmap to create.  Must be nonzero, or a Value error results.
+.IP \fIshmseg\fP 1i
+The shared memory segment to use to create the pixmap.
+.IP \fIoffset\fP 1i
+The offset in the segment to create the pixmap at.
+.SH DESCRIPTION
+Create a pixmap backed by shared memory.  Writes to the shared memory will be
+reflected in the contents of the pixmap, and writes to the pixmap will be
+reflected in the contents of the shared memory.
+.SH RETURN VALUE
+Returns an \fIxcb_void_cookie_t\fP. Errors (if any) have to be handled in the event loop.
+
+If you want to handle errors directly with \fIxcb_request_check\fP instead, use \fIxcb_shm_create_pixmap_checked\fP. See \fBxcb-requests(3)\fP for details.
+.SH ERRORS
+This request does never generate any errors.
+.SH SEE ALSO
+.BR xcb-requests (3)
+.SH AUTHOR
+Generated from shm.xml. Contact xcb@lists.freedesktop.org for corrections and improvements.

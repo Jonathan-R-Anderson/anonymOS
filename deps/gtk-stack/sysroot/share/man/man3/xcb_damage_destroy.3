@@ -1,0 +1,30 @@
+.TH xcb_damage_destroy 3  "libxcb 1.17.0" "X Version 11" "XCB Requests"
+.ad l
+.SH NAME
+xcb_damage_destroy \- Destroys a previously created Damage object.
+.SH SYNOPSIS
+.hy 0
+.B #include <xcb/damage.h>
+.SS Request function
+.HP
+xcb_void_cookie_t \fBxcb_damage_destroy\fP(xcb_connection_t\ *\fIconn\fP, xcb_damage_damage_t\ \fIdamage\fP);
+.br
+.hy 1
+.SH REQUEST ARGUMENTS
+.IP \fIconn\fP 1i
+The XCB connection to X11.
+.IP \fIdamage\fP 1i
+The ID you provided to \fIxcb_create_damage\fP.
+.SH DESCRIPTION
+This destroys a Damage object and requests the X server stop reporting
+the changes it was tracking.
+.SH RETURN VALUE
+Returns an \fIxcb_void_cookie_t\fP. Errors (if any) have to be handled in the event loop.
+
+If you want to handle errors directly with \fIxcb_request_check\fP instead, use \fIxcb_damage_destroy_checked\fP. See \fBxcb-requests(3)\fP for details.
+.SH ERRORS
+This request does never generate any errors.
+.SH SEE ALSO
+.BR xcb-requests (3)
+.SH AUTHOR
+Generated from damage.xml. Contact xcb@lists.freedesktop.org for corrections and improvements.

@@ -1,0 +1,29 @@
+.TH xcb_dbe_deallocate_back_buffer 3  "libxcb 1.17.0" "X Version 11" "XCB Requests"
+.ad l
+.SH NAME
+xcb_dbe_deallocate_back_buffer \- Deallocates a back buffer
+.SH SYNOPSIS
+.hy 0
+.B #include <xcb/dbe.h>
+.SS Request function
+.HP
+xcb_void_cookie_t \fBxcb_dbe_deallocate_back_buffer\fP(xcb_connection_t\ *\fIconn\fP, xcb_dbe_back_buffer_t\ \fIbuffer\fP);
+.br
+.hy 1
+.SH REQUEST ARGUMENTS
+.IP \fIconn\fP 1i
+The XCB connection to X11.
+.IP \fIbuffer\fP 1i
+The back buffer to deallocate.
+.SH DESCRIPTION
+Deallocates the given \fIbuffer\fP. If \fIbuffer\fP is an invalid id, a \fIBadBuffer\fP error is returned. Because a window may have allocated multiple back buffer ids, the back buffer itself is not deleted until all these ids are deallocated by this call.
+.SH RETURN VALUE
+Returns an \fIxcb_void_cookie_t\fP. Errors (if any) have to be handled in the event loop.
+
+If you want to handle errors directly with \fIxcb_request_check\fP instead, use \fIxcb_dbe_deallocate_back_buffer_checked\fP. See \fBxcb-requests(3)\fP for details.
+.SH ERRORS
+This request does never generate any errors.
+.SH SEE ALSO
+.BR xcb-requests (3)
+.SH AUTHOR
+Generated from dbe.xml. Contact xcb@lists.freedesktop.org for corrections and improvements.

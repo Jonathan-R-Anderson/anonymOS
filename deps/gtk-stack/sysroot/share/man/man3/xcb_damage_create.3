@@ -1,0 +1,57 @@
+.TH xcb_damage_create 3  "libxcb 1.17.0" "X Version 11" "XCB Requests"
+.ad l
+.SH NAME
+xcb_damage_create \- Creates a Damage object to monitor changes to a drawable.
+.SH SYNOPSIS
+.hy 0
+.B #include <xcb/damage.h>
+.SS Request function
+.HP
+xcb_void_cookie_t \fBxcb_damage_create\fP(xcb_connection_t\ *\fIconn\fP, xcb_damage_damage_t\ \fIdamage\fP, xcb_drawable_t\ \fIdrawable\fP, uint8_t\ \fIlevel\fP);
+.br
+.hy 1
+.SH REQUEST ARGUMENTS
+.IP \fIconn\fP 1i
+The XCB connection to X11.
+.IP \fIdamage\fP 1i
+The ID with which you will refer to the new Damage object, created by
+\fIxcb_generate_id\fP.
+.IP \fIdrawable\fP 1i
+The ID of the drawable to be monitored.
+.IP \fIlevel\fP 1i
+The level of detail to be provided in Damage events.
+.SH DESCRIPTION
+This creates a Damage object to monitor changes to a drawable, and specifies
+the level of detail to be reported for changes.
+
+We call changes made to pixel contents of windows and pixmaps 'damage'
+throughout this extension.
+
+Damage accumulates as drawing occurs in the drawable.  Each drawing operation
+'damages' one or more rectangular areas within the drawable.  The rectangles
+are guaranteed to include the set of pixels modified by each operation, but
+may include significantly more than just those pixels.  The desire is for
+the damage to strike a balance between the number of rectangles reported and
+the extraneous area included.  A reasonable goal is for each primitive
+object drawn (line, string, rectangle) to be represented as a single
+rectangle and for the damage area of the operation to be the union of these
+rectangles.
+
+The DAMAGE extension allows applications to either receive the raw
+rectangles as a stream of events, or to have them partially processed within
+the X server to reduce the amount of data transmitted as well as reduce the
+processing latency once the repaint operation has started.
+
+The Damage object holds any accumulated damage region and reflects the
+relationship between the drawable selected for damage notification and the
+drawable for which damage is tracked.
+.SH RETURN VALUE
+Returns an \fIxcb_void_cookie_t\fP. Errors (if any) have to be handled in the event loop.
+
+If you want to handle errors directly with \fIxcb_request_check\fP instead, use \fIxcb_damage_create_checked\fP. See \fBxcb-requests(3)\fP for details.
+.SH ERRORS
+This request does never generate any errors.
+.SH SEE ALSO
+.BR xcb-requests (3)
+.SH AUTHOR
+Generated from damage.xml. Contact xcb@lists.freedesktop.org for corrections and improvements.

@@ -1,0 +1,13 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+datarootdir=${prefix}/share
+pkgdatadir=${pc_sysrootdir}${datarootdir}/wayland
+
+Name: Wayland Server
+Description: Server side implementation of the Wayland protocol
+Version: 1.23.1
+Requires: libffi
+Libs: -L${libdir} -lwayland-server -lm -pthread -lrt
+Cflags: -I${includedir} -pthread

@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: Wayland Cursor
+Description: Wayland cursor helper library
+Version: 1.23.1
+Requires: wayland-client
+Libs: -L${libdir} -lwayland-cursor
+Cflags: -I${includedir}

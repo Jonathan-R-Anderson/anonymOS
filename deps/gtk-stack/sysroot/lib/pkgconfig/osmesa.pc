@@ -1,0 +1,10 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+includedir=${prefix}/include
+libdir=${prefix}/lib
+
+Name: osmesa
+Description: Mesa Off-screen Rendering Library
+Version: 8.0.0
+Libs: -L${libdir} -lOSMesa
+Libs.private: -lpthread -pthread -lm
+Cflags: -I${includedir}

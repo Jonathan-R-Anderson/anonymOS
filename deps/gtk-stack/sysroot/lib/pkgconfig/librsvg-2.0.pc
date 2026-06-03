@@ -1,0 +1,11 @@
+prefix=/home/bruns/Documents/EpinAnonymOS/deps/gtk-stack/sysroot
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: librsvg
+Description: librsvg stub library for EpinAnonymOS
+Version: 2.57.0
+Requires: gobject-2.0 cairo
+Libs: -L${libdir} -lrsvg-2
+Cflags: -I${includedir}

@@ -24,15 +24,16 @@ and they include a real capability manager. Ground truth today:
 | "every task is root / UID 0" | `getuid`/`geteuid`/`SO_PEERCRED` now read a **User object** (`core/user.d`); default identity is still root, but it is *sourced from an object*, not a hardcoded `0` (OO-P10). |
 
 So this spec **documents and ratifies the implemented model** and states the
-invariants the remaining rootless phases (3.x admin caps, 1.4 untyped memory, 8.3
+invariants the remaining rootless phases (3.x admin caps, 8.3
 cap-gated `mmap(PROT_EXEC)`) must preserve — rather than designing from a vacuum.
 
 What is **implemented**: cap structure, rights bits, subset derivation, transitive
 revocation, per-process cap tables, fork-narrowing, fd-surface enforcement, IPC
-delegation, and (via ORG) edge-level rights/label-monotonicity checks + an audit log.
-What is **still spec-only** (future phases): untyped-memory caps gating allocation
-(1.4), admin caps replacing the last ambient-root defaults (3.2), flipping the default
-identity to non-root (3.1), and cap-gating `mmap(PROT_EXEC)` (8.3).
+delegation, untyped-memory allocation gating (1.4), and (via ORG) edge-level
+rights/label-monotonicity checks + an audit log.
+What is **still spec-only** (future phases): admin caps replacing the last
+ambient-root defaults (3.2), flipping the default identity to non-root (3.1), and
+cap-gating `mmap(PROT_EXEC)` (8.3).
 
 ---
 
@@ -41,7 +42,7 @@ identity to non-root (3.1), and cap-gating `mmap(PROT_EXEC)` (8.3).
 ```d
 struct Capability {
     uint objId;        // the object this capability names (0 = empty slot)
-    uint rights;       // rights bitset (subset of CAP_RIGHT_ALL)
+    uint rights;       // rights bitset (subset of CAP_RIGHT_UNIVERSE)
     uint deriveParent; // handle this cap was derived from; CAP_INVALID for roots
     uint revoked;      // non-zero ⇒ explicitly revoked (and all its descendants)
 }
@@ -66,14 +67,17 @@ __gshared CapTable[CAPTAB_COUNT] g_capTabs;      // CAPTAB_COUNT = 64
 CAP_RIGHT_READ  = 1<<0   CAP_RIGHT_WRITE = 1<<1   CAP_RIGHT_CLOSE = 1<<2
 CAP_RIGHT_STAT  = 1<<3   CAP_RIGHT_IOCTL = 1<<4   CAP_RIGHT_MMAP  = 1<<5
 CAP_RIGHT_DUP   = 1<<6   CAP_RIGHT_PASS  = 1<<7
-CAP_RIGHT_ALL   = (all of the above)
+CAP_RIGHT_RETYPE = 1<<8  // Untyped-memory retype, not an fd right
+CAP_RIGHT_ALL   = (fd-surface rights above)
+CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE
 ```
 
 Rights are a **lattice under bitwise-AND (meet)**: `r1 ⊑ r2  ⟺  r1 & r2 == r1`.
 `CAP_RIGHT_ALL` is the top of the *fd-surface* lattice — note it is **not** a "god"
-right: it confers only the fd operations, never administrative authority (that is the
-future typed admin-cap set, §3.2, kept deliberately separate per mistake #2). Rights
-are per-capability, so two handles to the same object may carry different rights.
+right: it confers only the fd operations, never `RETYPE` or administrative authority
+(that is the future typed admin-cap set, §3.2, kept deliberately separate per mistake
+#2). Rights are per-capability, so two handles to the same object may carry different
+rights.
 
 ## 3. Derivation (delegate only what you hold; monotonically non-increasing)
 
@@ -140,6 +144,9 @@ capRevokeIn(tableId, handle)     // explicit table
    (§3.2), never a single all-implying right (mistake #2).
 7. **Per-process cap space is the only ambient authority.** A task's reachable
    authority is exactly its cap table; `fork` narrows it, `execve` may reset it.
+8. **No ambient RAM allocation.** Public physical allocation consumes the task's
+   active `Untyped` object through `CAP_RIGHT_RETYPE`; a task with no selected
+   untyped budget or an exhausted one is denied.
 
 ## 7. Threats this model addresses (maps to §G mistakes)
 
@@ -147,6 +154,7 @@ capRevokeIn(tableId, handle)     // explicit table
 |---|---|
 | #1 surviving `uid==0` | identity sourced from a User object; privilege checks consult caps (the remaining default-root flip is §3.1) |
 | #2 a "god" capability | `CAP_RIGHT_ALL` is fd-only; admin = many narrow typed caps (§3.2) — invariant 6 |
+| #3 ambient resource allocation | `alloc_phys_page(s)` retypes from a task-held `Untyped` object; no selected budget means denial — invariant 8 |
 | #6 forgeable / non-revocable caps | §4 unforgeability + §5 transitive revocation — invariants 3, 4 |
 | #8 global table as authority source | invariant 5: authority = caps, tables = storage |
 
@@ -154,11 +162,9 @@ capRevokeIn(tableId, handle)     // explicit table
 
 **Ratified (implemented + spec'd):** cap structure, rights lattice, subset
 derivation, IPC delegation, fork-narrowing, transitive revocation, unforgeability,
-fd-surface enforcement, the seven invariants.
+fd-surface enforcement, untyped-memory allocation gating, and the eight invariants.
 
 **Deferred to later phases (spec mandates, not yet built):**
-- **1.4 Untyped→typed memory:** allocation must consume an *untyped-memory
-  capability*, so RAM is delegated/accountable — no ambient `mmap`. (Mistake #3.)
 - **3.1/3.2 Rootless admin:** flip the default subject to non-root and express
   mount/reboot/update/etc. as distinct admin caps. (Mistakes #1, #2.)
 - **8.3 W^X / cap-gated `mmap(PROT_EXEC)`:** minting executable pages requires a
@@ -167,5 +173,5 @@ fd-surface enforcement, the seven invariants.
   objects (`core/servicemgr.d`, `core/ipc.d` endpoints); wiring connection
   establishment to *require holding* the endpoint cap is the remaining step.
 
-These are the next tasks on the rootless critical path; each must obey the seven
+These are the next tasks on the rootless critical path; each must obey the eight
 invariants above.

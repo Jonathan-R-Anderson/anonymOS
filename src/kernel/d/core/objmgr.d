@@ -41,6 +41,7 @@ enum ObjType : uint {
     LinuxSyscall,       // Phase 12: Linux syscall translator object
     LinuxELFLoader,     // Phase 12: Linux ELF-loader object
     LinuxDeviceAdapter, // Phase 12: native Device → /dev/* adapter object
+    Untyped,            // IMMUTABLE_ROOTLESS §1.4: untyped-memory capability
     Count
 }
 

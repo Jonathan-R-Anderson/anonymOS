@@ -27,9 +27,9 @@ private enum int E_AGAIN  = 11;  // EAGAIN  — queue empty / would block
 private enum int E_INVAL  = 22;  // EINVAL  — bad endpoint / argument
 private enum int E_NOSPC  = 28;  // ENOSPC  — queue / table full
 
-// Capability rights bitset universe — must match core.cap's CAP_RIGHT_ALL so a
-// delegated descriptor can never widen rights beyond what the model defines.
-private enum uint CAP_RIGHTS_UNIVERSE = (1u << 8) - 1;
+// Capability rights bitset universe — must match core.cap's CAP_RIGHT_UNIVERSE
+// so a delegated descriptor can never widen rights beyond what the model defines.
+private enum uint CAP_RIGHTS_UNIVERSE = (1u << 9) - 1;
 
 // A delegated capability, transferred *by value*: the object id it names and the
 // rights mask the holder is granted.  This is what crosses an endpoint instead of

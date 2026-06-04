@@ -3,6 +3,7 @@ module memory.mm;
 import arch.x86_64.limine;
 import core.globals;
 import core.io;
+import core.untyped : untypedRetype, untypedRelease;
 import ldc.llvmasm;
 import arch.x86_64.arch;
 
@@ -34,8 +35,18 @@ __gshared ulong  g_reuse_hits = 0;
 enum size_t PAGE_AUDIT_CAP = FREE_LIST_CAP;
 __gshared uint[PAGE_AUDIT_CAP] g_physPageMemObj;
 __gshared uint[PAGE_AUDIT_CAP] g_physPageVmoObj;
+__gshared uint[PAGE_AUDIT_CAP] g_physPageUntypedObj;
 __gshared ulong g_pageOwnerSetCalls = 0;
 __gshared ulong g_pageOwnerClearCalls = 0;
+__gshared ulong g_untypedChargeCalls = 0;
+__gshared ulong g_untypedChargeDenied = 0;
+
+// IMMUTABLE_ROOTLESS §1.4: once enabled, public physical allocation is no longer
+// ambient.  The scheduler/dispatch path selects the current task's Untyped object;
+// every page allocation retypes pages from that object and records the page owner
+// so free_phys_page() can return quota symmetrically.
+__gshared bool g_untypedAllocGateEnabled = false;
+__gshared uint g_activeUntypedObjId = 0;
 
 private size_t pageAuditIndex(ulong phys) {
     return cast(size_t)((phys & ~0xFFFUL) >> 12);
@@ -52,6 +63,33 @@ void physPageSetOwner(ulong phys, uint memObjId, uint vmoObjId = 0) {
 void physPagesSetOwner(ulong phys, size_t n, uint memObjId, uint vmoObjId = 0) {
     for (size_t i = 0; i < n; ++i)
         physPageSetOwner(phys + i * 4096, memObjId, vmoObjId);
+}
+
+void physPageSetUntypedOwner(ulong phys, uint untypedObjId) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    g_physPageUntypedObj[idx] = untypedObjId;
+}
+
+void physPagesSetUntypedOwner(ulong phys, size_t n, uint untypedObjId) {
+    for (size_t i = 0; i < n; ++i)
+        physPageSetUntypedOwner(phys + i * 4096, untypedObjId);
+}
+
+void physClearUntypedOwner(uint untypedObjId) {
+    if (untypedObjId == 0) return;
+    foreach (ref owner; g_physPageUntypedObj)
+        if (owner == untypedObjId) owner = 0;
+}
+
+private void physPageReleaseUntyped(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    uint untypedObjId = g_physPageUntypedObj[idx];
+    if (untypedObjId != 0) {
+        untypedRelease(untypedObjId, 1);
+        g_physPageUntypedObj[idx] = 0;
+    }
 }
 
 void physPageClearOwner(ulong phys) {
@@ -79,6 +117,7 @@ void free_phys_page(ulong addr) {
     if (addr < 0x100000) return;             // low memory / null
     if (addr >= g_next_phys_alloc) return;   // never came from the pool
     if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
+    physPageReleaseUntyped(addr);
     physPageClearOwner(addr);
     g_free_pages[g_free_count++] = addr;
     ++g_free_calls;
@@ -107,6 +146,41 @@ void init_mm(limine_memmap_response* r) {
     }
 
     klog("init_mm: done\n");
+}
+
+void physSetActiveUntyped(uint untypedObjId) {
+    g_activeUntypedObjId = untypedObjId;
+}
+
+uint physActiveUntyped() {
+    return g_activeUntypedObjId;
+}
+
+void physEnableUntypedGate(bool enabled = true) {
+    g_untypedAllocGateEnabled = enabled;
+}
+
+bool physUntypedGateEnabled() {
+    return g_untypedAllocGateEnabled;
+}
+
+private bool physChargeUntyped(size_t pages, out uint chargedObj) {
+    chargedObj = 0;
+    if (!g_untypedAllocGateEnabled) return true;
+    if (pages == 0) return false;
+    uint objId = g_activeUntypedObjId;
+    if (objId == 0 || !untypedRetype(objId, cast(ulong)pages)) {
+        ++g_untypedChargeDenied;
+        return false;
+    }
+    chargedObj = objId;
+    ++g_untypedChargeCalls;
+    return true;
+}
+
+private void physUnchargeUntyped(uint chargedObj, size_t pages) {
+    if (chargedObj == 0 || pages == 0) return;
+    untypedRelease(chargedObj, cast(ulong)pages);
 }
 
 void archMapKernel(ulong new_cr3) {
@@ -145,12 +219,19 @@ void archMapKernel(ulong new_cr3) {
 }
 
 ulong alloc_phys_page() {
+    uint chargedObj = 0;
+    if (!physChargeUntyped(1, chargedObj)) {
+        klog("OOM in alloc_phys_page: untyped denied\n");
+        return 0;
+    }
+
     // Reuse a freed page first (zeroed, like the bump path) so churned single-page
     // allocations (per-frame readback buffers, etc.) don't grow the high-water mark.
     if (g_free_count > 0) {
         ulong ret = g_free_pages[--g_free_count];
         ++g_reuse_hits;
         physPageClearOwner(ret);
+        physPageSetUntypedOwner(ret, chargedObj);
         if (hhdm_offset != 0) {
             ulong* ptr = cast(ulong*)(ret + hhdm_offset);
             for (size_t k = 0; k < 512; k++) ptr[k] = 0;
@@ -174,6 +255,7 @@ ulong alloc_phys_page() {
                  ulong ret = g_next_phys_alloc;
                  g_next_phys_alloc += 4096;
                  physPageClearOwner(ret);
+                 physPageSetUntypedOwner(ret, chargedObj);
 
                  // Zero the page avoiding SSE optimization
                  if (hhdm_offset != 0) {
@@ -187,11 +269,18 @@ ulong alloc_phys_page() {
         }
     }
     klog("OOM in alloc_phys_page!\n");
+    physUnchargeUntyped(chargedObj, 1);
     return 0;
 }
 
 ulong alloc_phys_pages(size_t n) {
     if (n == 0) return 0;
+
+    uint chargedObj = 0;
+    if (!physChargeUntyped(n, chargedObj)) {
+        klog("OOM in alloc_phys_pages: untyped denied\n");
+        return 0;
+    }
 
     ulong needed_size = n * 4096;
 
@@ -211,6 +300,7 @@ ulong alloc_phys_pages(size_t n) {
                  ulong ret = g_next_phys_alloc;
                  g_next_phys_alloc += needed_size;
                  physPagesSetOwner(ret, n, 0, 0);
+                 physPagesSetUntypedOwner(ret, n, chargedObj);
 
                  // Zero the pages
                  if (hhdm_offset != 0) {
@@ -224,5 +314,6 @@ ulong alloc_phys_pages(size_t n) {
         }
     }
     klog("OOM in alloc_phys_pages!\n");
+    physUnchargeUntyped(chargedObj, n);
     return 0;
 }

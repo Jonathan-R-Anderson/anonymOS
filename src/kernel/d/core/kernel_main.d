@@ -31,7 +31,10 @@ import arch.x86_64.bootstrap : g_fb, g_terminal;
 // Linux syscall implementations already in D
 import core.syscalls.posix;
 import core.objmgr : objStats; // Phase 2: object-table runtime stats (objReconcileFds comes via core.syscalls.posix)
-import core.cap : capTableSetActive, capTableClear, capStats;
+import core.cap : capTableSetActive, capTableClear, capStats,
+                  capInstallIn, CAP_INVALID, CAP_RIGHT_RETYPE;
+import core.untyped : untypedRootInit, untypedCreateProcess, untypedSelfTest,
+                      untypedStats, UNTYPED_CAP_HANDLE;
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
@@ -144,6 +147,14 @@ private void clearFutexWait(int tid, long ret) {
         t.waiting = false;
         t.regs[REG_RAX] = cast(ulong)ret;
     }
+}
+
+private void installTaskUntypedCap(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    if (task.untypedObjId == 0) return;
+    capInstallIn(task.capTabId, UNTYPED_CAP_HANDLE, task.untypedObjId,
+                 CAP_RIGHT_RETYPE, CAP_INVALID);
 }
 
 private bool refreshFutexWaiter(int tid) {
@@ -320,6 +331,7 @@ private void exitTask(int tid, int code) {
         }
     }
     clearRegions(*t);
+    objReleaseUntyped(tid);
 
     klog("[kernel] task "); klog_hex(tid); klog(" exited code="); klog_hex(code); klog("\n");
     scheduleNext();
@@ -360,10 +372,18 @@ private int forkTask(int parentTid) {
     child.brkCurrent = parent.brkCurrent;
     child.mmapNext   = parent.mmapNext;
     child.parentId   = parentTid;
+    child.untypedObjId = untypedCreateProcess(parent.untypedObjId);
+    if (child.untypedObjId == 0) {
+        releaseTask(childTid);
+        return -12;
+    }
 
     // Allocate new PML4 and copy kernel mappings
+    uint savedUntyped = physActiveUntyped();
+    physSetActiveUntyped(child.untypedObjId);
     ulong childPml4 = alloc_phys_page();
     if (childPml4 == 0) {
+        physSetActiveUntyped(savedUntyped);
         releaseTask(childTid);
         return -12;
     }
@@ -373,6 +393,7 @@ private int forkTask(int parentTid) {
     // Deep-copy all user-space pages from parent's page table
     // (must be done while parent's CR3 is active so HHDM accesses work)
     walkAndCopyUserPages(parent.pml4Phys, childPml4, child);
+    physSetActiveUntyped(savedUntyped);
 
     // Copy FS base
     d_store_task_fsbase(cast(ulong)childTid,
@@ -385,6 +406,7 @@ private int forkTask(int parentTid) {
     child.fdTabId = childTid;
     child.capTabId = childTid;
     fdtabForkCopy(parent.fdTabId, childTid);
+    installTaskUntypedCap(childTid);
     objEnsureTask(childTid);
     objSetProcess(childTid, childTid, parent.processObjId);
     objCloneNamespace(childTid, parentTid); // Phase 9: child gets a private namespace clone
@@ -478,6 +500,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     // descriptors, opens/closes are visible to all threads of the process.
     child.fdTabId    = parent.fdTabId;
     child.capTabId   = parent.capTabId;
+    child.untypedObjId = parent.untypedObjId;
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -936,6 +959,7 @@ private void dispatchSyscall(int tid) {
     // process sees its own descriptors (fork gives the child an independent copy).
     fdtabSetActive(task.fdTabId);
     capTableSetActive(task.capTabId);
+    physSetActiveUntyped(task.untypedObjId);
 
     // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): keep the core.objmgr object table
     // mirrored onto the now-active fd table.  Amortized (every 256 syscalls) and
@@ -969,6 +993,7 @@ private void dispatchSyscall(int tid) {
         orgDistSelfTest(); // ORG P11: one-shot proof of federated refs + leased edges
         orgDistTick(1);    // ORG P11: advance the distributed clock / expire stale leases
         orgTestSuite();    // ORG P12: one-shot invariant + GC-fuzz + scale test suite
+        untypedSelfTest(); // IMMUTABLE_ROOTLESS §1.4: one-shot proof no ambient allocation
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -989,6 +1014,7 @@ private void dispatchSyscall(int tid) {
             orgValidatorStats();
             auditStats();
             orgDistStats();
+            untypedStats();
         }
     }
 
@@ -1540,6 +1566,8 @@ private void kernelLoop() {
             continue;
         }
 
+        physSetActiveUntyped(task.untypedObjId);
+
         // Apply this task's FS base (for TLS)
         d_apply_task_fsbase(cast(ulong)tid);
 
@@ -1675,6 +1703,15 @@ void d_kernel_main() {
     g_tasks[0].capTabId = 0;
     g_tasks[0].mmapNext = 0x740000000000UL;
     g_current_task_id   = 0;
+    untypedRootInit();
+    g_tasks[0].untypedObjId = untypedCreateProcess(0);
+    if (g_tasks[0].untypedObjId == 0) {
+        klog("[dkernel] ERROR: no init untyped budget\n");
+        while (true) { asm @nogc nothrow { cli; hlt; } }
+    }
+    installTaskUntypedCap(0);
+    physSetActiveUntyped(g_tasks[0].untypedObjId);
+    physEnableUntypedGate(true);
 
     // Find an ELF module to use as the init process.
     // Preference order: Hyprland desktop, busybox shell, then init.elf.

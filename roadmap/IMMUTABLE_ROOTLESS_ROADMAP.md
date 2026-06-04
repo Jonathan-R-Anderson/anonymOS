@@ -161,10 +161,10 @@ task IDs below.
   > (`Capability{objId,rights,deriveParent,revoked}`, per-process `CapTable`), the
   > rights lattice + meet-narrowing `capDerive`, IPC delegation (`SCM_RIGHTS` via
   > `ipcDelegateCap`/`ipcAcceptCap`), fork-narrowing, **transitive** revocation
-  > (`capRevokeIn`, proven `[cap] revclosure PASS`), unforgeability, and the seven
+  > (`capRevokeIn`, proven `[cap] revclosure PASS`), unforgeability, and the eight
   > invariants later phases must preserve. Corrects the stale §0 assessment below
-  > and lists what is implemented vs. still spec-only (untyped-memory caps §1.4,
-  > rootless admin §3.x, cap-gated `mmap(PROT_EXEC)` §8.3).
+  > and lists what is implemented vs. still spec-only (rootless admin §3.x and
+  > cap-gated `mmap(PROT_EXEC)` §8.3).
 - **0.2 Object model spec** — P: Critical · D: 4 · deps: 0.1 · affects: docs. *Why:*
   defines the single object header (id, type, owner-cap, metadata, version) all
   subsystems adopt. *Outcome:* object ABI + lifecycle (create/retype/destroy).
@@ -176,7 +176,14 @@ task IDs below.
   deps: 0.1–0.3 · affects: tests. *Why:* §F/§G become executable gates, not prose.
   *Outcome:* a test list that fails today and must pass to claim each property.
 
-### Phase 1 — Kernel changes (make room for caps + objects)
+### Phase 1 — Kernel changes (make room for caps + objects)  ✅ DONE
+> **Status:** implemented through Object-OS/ORG plus the §1.4 allocator gate. The
+> object table has `ObjType.Untyped`; every task carries an untyped-memory object and
+> a reserved `CAP_RIGHT_RETYPE` cap outside the fd range; `memory/mm.d` charges
+> `alloc_phys_page(s)` to the active task's untyped object and records per-frame
+> untyped ownership so `free_phys_page` returns quota. Fork creates a child untyped
+> budget, clone shares the process budget, and `[untyped] selftest PASS` proves
+> denied allocation without a budget or past a small budget.
 - **1.1 `Object` header + object table** — P: Critical · D: 6 · deps: 0.2 · affects:
   new `core/object.d`, `task.d`. *Why:* unifies tasks/fds/etc. under one owned,
   versioned header. *Outcome:* objects allocatable with id/type/owner/version.
@@ -188,7 +195,7 @@ task IDs below.
   affects: `kernel_main.d` `dispatchLinuxSyscall`. *Why:* a single choke point where a
   syscall must present a cap; without it caps are decorative. *Outcome:* privileged
   ops route through `requireCap(task, kind, rights)`.
-- **1.4 Untyped→typed memory** — P: High · D: 7 · deps: 1.1, `mm.d` · affects: `mm.d`,
+- **1.4 Untyped→typed memory** — ✅ **DONE** · P: High · D: 7 · deps: 1.1, `mm.d` · affects: `mm.d`,
   object alloc. *Why:* makes RAM itself a delegated, accountable capability (no ambient
   allocation). *Outcome:* tasks allocate objects only from untyped caps they hold.
 - **1.5 Revocation** — P: High · D: 7 · deps: 1.2 · affects: object.d, cap space.

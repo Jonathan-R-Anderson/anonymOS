@@ -12,7 +12,7 @@ import core.audit : auditLog, AuditKind; // ORG P8.2: attributable revocations
 
 extern (C) @nogc nothrow:
 
-enum int CAP_MAX = 1024;
+enum int CAP_MAX = 2048;
 enum int CAPTAB_COUNT = 64;
 enum uint CAP_INVALID = uint.max;
 
@@ -24,9 +24,11 @@ enum uint CAP_RIGHT_IOCTL = 1u << 4;
 enum uint CAP_RIGHT_MMAP  = 1u << 5;
 enum uint CAP_RIGHT_DUP   = 1u << 6;
 enum uint CAP_RIGHT_PASS  = 1u << 7;
+enum uint CAP_RIGHT_RETYPE = 1u << 8; // Untyped-memory retype (§1.4), not an fd right
 enum uint CAP_RIGHT_ALL   = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_CLOSE |
                             CAP_RIGHT_STAT | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP |
                             CAP_RIGHT_DUP | CAP_RIGHT_PASS;
+enum uint CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE;
 
 struct Capability {
     uint objId;
@@ -109,7 +111,7 @@ public uint capInstallIn(int tableId, uint handle, uint objId, uint rights,
     auto cap = capGetIn(tableId, handle);
     if (cap is null || objId == 0 || objGet(objId) is null) return CAP_INVALID;
     cap.objId = objId;
-    cap.rights = rights & CAP_RIGHT_ALL;
+    cap.rights = rights & CAP_RIGHT_UNIVERSE;
     cap.deriveParent = deriveParent;
     cap.revoked = 0;
     ++g_capInstallTotal;
@@ -158,7 +160,7 @@ public uint capDeriveObjectTo(uint srcHandle, uint dstHandle, uint objId,
                               uint subsetRights) {
     capInit();
     auto src = capGet(srcHandle);
-    uint rights = subsetRights & CAP_RIGHT_ALL;
+    uint rights = subsetRights & CAP_RIGHT_UNIVERSE;
     if (capUsable(src)) {
         if ((rights & src.rights) != rights) return CAP_INVALID;
     }
@@ -169,7 +171,7 @@ public uint capDeriveObjectTo(uint srcHandle, uint dstHandle, uint objId,
 public uint capDeriveObjectToIn(int tableId, uint srcHandle, uint dstHandle,
                                 uint objId, uint subsetRights) {
     auto src = capGetIn(tableId, srcHandle);
-    uint rights = subsetRights & CAP_RIGHT_ALL;
+    uint rights = subsetRights & CAP_RIGHT_UNIVERSE;
     if (capUsable(src)) {
         if ((rights & src.rights) != rights) return CAP_INVALID;
     }

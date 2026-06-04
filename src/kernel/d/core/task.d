@@ -6,6 +6,8 @@ import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
 import core.namespace : nsAlloc, nsClone, nsRelease; // Phase 9: per-process namespace
+import core.untyped : untypedDestroy; // IMMUTABLE_ROOTLESS §1.4: task memory budget
+import core.cap : CAP_RIGHT_RETYPE; // rights on Process -> Untyped authority edges
 import core.linuxobj : linuxProcEnsure, linuxProcSweep; // Phase 12: Linux pid-view wrapper
 import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind,
                   orgClearRoots, orgAddRoot; // ORG P3/P4: edges + reachability roots
@@ -133,6 +135,9 @@ struct Task {
     // native object/capability model can eventually outgrow the Linux fd view;
     // for now fork/clone assign it in lockstep with fdTabId.
     int capTabId;
+    // IMMUTABLE_ROOTLESS §1.4: Untyped-memory object selected for this task's
+    // physical allocations. Fork gets a child budget; clone shares the process one.
+    uint untypedObjId;
     // Phase 9: this process's Namespace object (name→object bindings/mounts).
     // Threads of a process share the leader's namespace; fork clones it.
     uint namespaceObjId;
@@ -254,6 +259,20 @@ public void objReleaseNamespace(int tid) {
     nsRelease(ns);
 }
 
+public void objReleaseUntyped(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    uint ut = g_tasks[tid].untypedObjId;
+    g_tasks[tid].untypedObjId = 0;
+    if (ut == 0) return;
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (i == tid) continue;
+        if (g_tasks[i].active && !g_tasks[i].exited &&
+            g_tasks[i].untypedObjId == ut) return; // still shared by a thread
+    }
+    physClearUntypedOwner(ut);
+    untypedDestroy(ut);
+}
+
 // Allocate a task slot (id > 0 reserved for non-init tasks)
 int allocTask() {
     for (int i = 1; i < MAX_TASKS; i++) {
@@ -292,6 +311,7 @@ public int taskIdFromLinuxPid(int pid) {
 void releaseTask(int tid) {
     if (tid > 0 && tid < MAX_TASKS) {
         objReleaseTask(tid);
+        objReleaseUntyped(tid);
         clearRegions(g_tasks[tid]);
         g_tasks[tid] = Task.init;
     }
@@ -444,7 +464,7 @@ public void objReconcileTasks() {
 // typed edges, so there is a real graph to validate/GC.  Driven from the amortized
 // reconcile (idempotent `edgeEnsure` + dead-edge prune) rather than per-syscall
 // hooks — the same low-risk strategy used to adopt object identity.
-//   Process →(StrongOwn) Thread / Namespace / MemRegion     (E1, E3, E2)
+//   Process →(StrongOwn) Thread / Namespace / MemRegion / Untyped (E1, E3, E2)
 //   Process →(Weak)      parent Process                      (E5: back-edge, no pin)
 //   MemRegion →(StrongRef) Vmo                               (E8)
 public void orgReconcileOwnership() {
@@ -454,6 +474,8 @@ public void orgReconcileOwnership() {
         uint proc = task.processObjId;
         if (proc != 0 && task.objId != 0)
             edgeEnsure(proc, task.objId, EdgeKind.StrongOwn, 0); // owns its Thread
+        if (proc != 0 && task.untypedObjId != 0)
+            edgeEnsure(proc, task.untypedObjId, EdgeKind.StrongOwn, CAP_RIGHT_RETYPE);
         if (task.processLeaderTid == t) {
             if (task.namespaceObjId != 0)
                 edgeEnsure(proc, task.namespaceObjId, EdgeKind.StrongOwn, 0);

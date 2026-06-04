@@ -17,9 +17,9 @@ and they include a real capability manager. Ground truth today:
 
 | §0 claim ("Reality") | Now |
 |---|---|
-| "No capability type" | `core/cap.d`: `Capability{objId, rights, deriveParent, revoked}`. |
+| "No capability type" | `core/cap.d`: `Capability{objId, rights, deriveParent, revoked, capObjId}`; every live cap slot has an `ObjType.Capability` object. |
 | "no grant/delegate" | `capDerive`/`capDeriveObjectTo[In]` — subset-narrowing delegation; `SCM_RIGHTS` fd passing routes through it (`ipcDelegateCap`/`ipcAcceptCap`). |
-| "no enforcement" | `requireCap(tid, capId, rights)` gates the fd syscall surface (read/write/close/stat/ioctl/mmap/dup/pass) from `dispatchSyscall`. |
+| "no enforcement" | `requireCap(tid, capId, rights)` gates the fd syscall surface; endpoint calls require `CAP_RIGHT_CALL`; absolute `open()` resolves through namespace binding rights. |
 | "no revocation" | `capRevoke`/`capRevokeIn` — **transitive** derive-DAG closure (ORG P7.2). |
 | "every task is root / UID 0" | `getuid`/`geteuid`/`SO_PEERCRED` now read a **User object** (`core/user.d`); default identity is still root, but it is *sourced from an object*, not a hardcoded `0` (OO-P10). |
 
@@ -27,10 +27,11 @@ So this spec **documents and ratifies the implemented model** and states the
 invariants the remaining rootless phases (3.x admin caps, 8.3
 cap-gated `mmap(PROT_EXEC)`) must preserve — rather than designing from a vacuum.
 
-What is **implemented**: cap structure, rights bits, subset derivation, transitive
-revocation, per-process cap tables, fork-narrowing, fd-surface enforcement, IPC
-delegation, untyped-memory allocation gating (1.4), and (via ORG) edge-level
-rights/label-monotonicity checks + an audit log.
+What is **implemented**: cap structure, rights bits, first-class cap-slot objects,
+subset derivation, transitive revocation, per-process cap tables, fork-narrowing,
+fd-surface enforcement, IPC delegation, endpoint/service call gating, namespace
+binding-right checks for absolute opens, untyped-memory allocation gating (1.4), and
+(via ORG) edge-level rights/label-monotonicity checks + an audit log.
 What is **still spec-only** (future phases): admin caps replacing the last
 ambient-root defaults (3.2), flipping the default identity to non-root (3.1), and
 cap-gating `mmap(PROT_EXEC)` (8.3).
@@ -45,8 +46,9 @@ struct Capability {
     uint rights;       // rights bitset (subset of CAP_RIGHT_UNIVERSE)
     uint deriveParent; // handle this cap was derived from; CAP_INVALID for roots
     uint revoked;      // non-zero ⇒ explicitly revoked (and all its descendants)
+    uint capObjId;     // ObjType.Capability identity for this live handle
 }
-struct CapTable { Capability[CAP_MAX] caps; }   // CAP_MAX = 1024
+struct CapTable { Capability[CAP_MAX] caps; }   // CAP_MAX = 2048
 __gshared CapTable[CAPTAB_COUNT] g_capTabs;      // CAPTAB_COUNT = 64
 ```
 
@@ -54,6 +56,10 @@ __gshared CapTable[CAPTAB_COUNT] g_capTabs;      // CAPTAB_COUNT = 64
   slot.** The *handle* is the slot index — a small integer scoped to one cap table,
   **not** a pointer or a global id. A holder cannot name a capability outside its own
   table, and cannot fabricate one (see §4 unforgeability).
+- **A live cap slot is also an object.** `capInstallIn` allocates an
+  `ObjType.Capability` object for the slot (`capObjId`), and clear/revoke/table-clear
+  release it. This makes capability handles visible to the object census/graph without
+  making the handle itself forgeable.
 - **Per-process cap space.** Each `Task` references a cap table by `capTabId`
   (alongside `fdTabId`); `dispatchSyscall` selects it before servicing a syscall. This
   is the seL4 *CNode* / Genode *cap space* role: the task's authority **is** its table.
@@ -68,16 +74,17 @@ CAP_RIGHT_READ  = 1<<0   CAP_RIGHT_WRITE = 1<<1   CAP_RIGHT_CLOSE = 1<<2
 CAP_RIGHT_STAT  = 1<<3   CAP_RIGHT_IOCTL = 1<<4   CAP_RIGHT_MMAP  = 1<<5
 CAP_RIGHT_DUP   = 1<<6   CAP_RIGHT_PASS  = 1<<7
 CAP_RIGHT_RETYPE = 1<<8  // Untyped-memory retype, not an fd right
+CAP_RIGHT_CALL   = 1<<9  // Endpoint/service call, not an fd right
 CAP_RIGHT_ALL   = (fd-surface rights above)
-CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE
+CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE | CAP_RIGHT_CALL
 ```
 
 Rights are a **lattice under bitwise-AND (meet)**: `r1 ⊑ r2  ⟺  r1 & r2 == r1`.
 `CAP_RIGHT_ALL` is the top of the *fd-surface* lattice — note it is **not** a "god"
-right: it confers only the fd operations, never `RETYPE` or administrative authority
-(that is the future typed admin-cap set, §3.2, kept deliberately separate per mistake
-#2). Rights are per-capability, so two handles to the same object may carry different
-rights.
+right: it confers only the fd operations, never `RETYPE`, `CALL`, or administrative
+authority (that is the future typed admin-cap set, §3.2, kept deliberately separate
+per mistake #2). Rights are per-capability, so two handles to the same object may
+carry different rights.
 
 ## 3. Derivation (delegate only what you hold; monotonically non-increasing)
 
@@ -93,11 +100,18 @@ capDerive(srcHandle, subsetRights) -> newHandle | CAP_INVALID
   parent's).
 - **Derivation builds a DAG**, recorded by `deriveParent` (the source handle). Roots
   have `deriveParent == CAP_INVALID`.
+- **Object-to-handle derivation also requires a live source cap.**
+  `capDeriveObjectTo[In]` refuses to materialise a destination handle unless the
+  source handle is usable and covers the requested rights. Kernel-owned root grants
+  are explicit `capInstall[In]` calls with `CAP_INVALID` parent.
 - **Delegation over IPC** (`SCM_RIGHTS`): a sender delegates *by value* —
   `ipcDelegateCap(objId, rights)` produces an `IpcCapDesc{objId, rights}` validated
   against the live object table; the receiver's `recvmsg` materialises a new handle in
   **its own** cap table narrowed via `ipcAcceptCap` (`posix.d`, `core/ipc.d`). A raw
   pointer is never transferred, so a receiver can hold no more than it was sent.
+- **Service/endpoint authority is a capability.** `objCallCapIn` and
+  `ipcServiceConnectIn` accept endpoint-cap handles, not raw endpoint object ids, and
+  require the held cap to name the registered endpoint with `CAP_RIGHT_CALL`.
 - **Fork narrows, never widens.** `capTableCloneNarrowing(src, dst, rightsMask)`
   copies the parent's table into the child intersecting every cap with `rightsMask`
   (`fdtabForkCopy` path) — a child cannot inherit more authority than the parent.
@@ -147,6 +161,13 @@ capRevokeIn(tableId, handle)     // explicit table
 8. **No ambient RAM allocation.** Public physical allocation consumes the task's
    active `Untyped` object through `CAP_RIGHT_RETYPE`; a task with no selected
    untyped budget or an exhausted one is denied.
+9. **No raw endpoint calls.** A client can call a service endpoint only by presenting
+   a live endpoint cap with `CAP_RIGHT_CALL`; service-name lookup alone conveys no
+   authority.
+10. **No ambient absolute namespace root.** Absolute `open()` resolves through the
+    task's Namespace object and the matching binding must grant the requested
+    read/write rights. The default `/` binding grants all rights for compatibility,
+    but restricted namespaces can deny before the legacy resolver runs.
 
 ## 7. Threats this model addresses (maps to §G mistakes)
 
@@ -154,24 +175,23 @@ capRevokeIn(tableId, handle)     // explicit table
 |---|---|
 | #1 surviving `uid==0` | identity sourced from a User object; privilege checks consult caps (the remaining default-root flip is §3.1) |
 | #2 a "god" capability | `CAP_RIGHT_ALL` is fd-only; admin = many narrow typed caps (§3.2) — invariant 6 |
-| #3 ambient resource allocation | `alloc_phys_page(s)` retypes from a task-held `Untyped` object; no selected budget means denial — invariant 8 |
+| #3 ambient resource allocation | `alloc_phys_page(s)` retypes from a task-held `Untyped` object; absolute `open()` consumes namespace binding rights — invariants 8, 10 |
 | #6 forgeable / non-revocable caps | §4 unforgeability + §5 transitive revocation — invariants 3, 4 |
 | #8 global table as authority source | invariant 5: authority = caps, tables = storage |
 
 ## 8. What 0.1 ratifies vs. defers
 
-**Ratified (implemented + spec'd):** cap structure, rights lattice, subset
-derivation, IPC delegation, fork-narrowing, transitive revocation, unforgeability,
-fd-surface enforcement, untyped-memory allocation gating, and the eight invariants.
+**Ratified (implemented + spec'd):** cap structure, first-class cap-slot objects,
+rights lattice, subset derivation, IPC delegation, endpoint/service cap-gated
+connect, namespace binding-right enforcement, fork-narrowing, transitive revocation,
+unforgeability, fd-surface enforcement, untyped-memory allocation gating, and the ten
+invariants.
 
 **Deferred to later phases (spec mandates, not yet built):**
 - **3.1/3.2 Rootless admin:** flip the default subject to non-root and express
   mount/reboot/update/etc. as distinct admin caps. (Mistakes #1, #2.)
 - **8.3 W^X / cap-gated `mmap(PROT_EXEC)`:** minting executable pages requires a
   capability. (Mistake #7.)
-- **2.3 Endpoint/service caps as the unit of "talk to service X"** already exist as
-  objects (`core/servicemgr.d`, `core/ipc.d` endpoints); wiring connection
-  establishment to *require holding* the endpoint cap is the remaining step.
 
-These are the next tasks on the rootless critical path; each must obey the eight
+These are the next tasks on the rootless critical path; each must obey the ten
 invariants above.

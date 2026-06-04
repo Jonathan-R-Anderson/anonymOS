@@ -19,10 +19,10 @@
 
 | Property | Now (ground truth) | Originally assessed |
 |---|---|---|
-| Capability-based security | **Implemented** (`core/cap.d`): cap type, subset derive, transitive revoke, per-process cap tables; `requireCap` gates the fd surface; ORG enforces rights/label monotonicity (`[cap] revclosure PASS`). | "None." |
+| Capability-based security | **Implemented** (`core/cap.d`): first-class cap-slot objects, subset derive, transitive revoke, per-process cap tables; `requireCap` gates the fd surface; endpoint calls require `CAP_RIGHT_CALL`; namespace opens enforce binding rights; ORG enforces rights/label monotonicity (`[cap] revclosure PASS`). | "None." |
 | Rootless / no UID 0 | **Partial.** `getuid`/`geteuid`/`SO_PEERCRED` now read a **User object** (`core/user.d`), not a literal `0`; `/etc/passwd` derives from User objects. Default identity is **still root** and admin actions aren't yet distinct caps — the §3.1/§3.2 flip is the remaining rootless work. | "Opposite — every task is root." |
 | Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
-| Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it; fork clones it. | (not separately listed) |
+| Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it and checks binding read/write rights; fork clones it. | (not separately listed) |
 | Immutable system image | **Still none.** Root fs is the RAM `rtfs` overlay + synthetic namespace; nothing persisted, signed, versioned, or rolled back. Boot modules loaded by Limine unverified. **This is the core of the remaining work (Phase 4/6/8).** | "None." |
 | Atomic update / rollback / A-B | **Still none.** `make` rebuilds an ISO; "update" = reflash. | "None." |
 | Cryptographic verification | **Still none.** No hashing/signature in boot. | "None." |
@@ -30,8 +30,9 @@
 | Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
 
 **Conclusion:** "rootless" went from ~0% to **substantially built** (capability
-spine, object tree, namespaces, User/Service objects) with one critical gap — the
-default-identity flip + distinct admin caps (§3.1/§3.2). "Immutable" remains at ~0%:
+spine, object tree, endpoint caps, namespace rights, User/Service objects) with one
+critical gap — the default-identity flip + distinct admin caps (§3.1/§3.2).
+"Immutable" remains at ~0%:
 there is still no persistent, content-addressed, verified store. The biggest leverage
 point is now the inverse of the original: the **capability/object substrate is ready**,
 so the immutable store can be introduced *through* caps and namespaces from the start,
@@ -108,9 +109,8 @@ capabilities + Plan 9 per-process namespaces for the **authority model**.*
   (`drivers/block/ahci.d`) but the live fs is RAM (`g_rt`/synthetic). Immutability
   must be designed *with* the first real on-disk fs, not retrofitted after.
 - **Boot is Limine + unverified modules:** the verification chain has to start here.
-- **The capability vacuum is an opportunity:** because nothing depends on a cap type
-  yet, we can introduce `Capability` as a first-class object and route new subsystems
-  through it before they accrete ambient-authority shortcuts.
+- **The capability substrate is now ready:** new subsystems should enter through
+  object/cap/namespace APIs from the start, not through raw global ids.
 
 ---
 
@@ -127,10 +127,9 @@ capabilities + Plan 9 per-process namespaces for the **authority model**.*
   measured/verified boot.
 - AHCI block driver — the basis for a real, mountable, verifiable store.
 
-**Missing (build):** capability type + cap space + enforcement; object manager /
-object tree; per-process namespaces; content-addressed store; image
-verification/signing; A/B + rollback; user-space service manager; persistent user
-state; anti-downgrade rollback index.
+**Missing (build):** content-addressed store; image verification/signing; A/B +
+rollback; final rootless admin-cap split/default non-root identity; user-space service
+manager; persistent user state; anti-downgrade rollback index.
 
 **Should be replaced:** hardcoded UID 0 (`getuid`/`geteuid`/`SO_PEERCRED`);
 ad-hoc global tables as the *authority* source (they can remain as *storage*, but
@@ -158,10 +157,11 @@ task IDs below.
   > **Status:** ratified spec written, **grounded in the now-implemented
   > `core/cap.d`** (the capability manager that landed via `OBJECT_OS_ROADMAP.md`
   > P6 + `OBJECT_REFERENCE_GRAPH_ROADMAP.md` P7). It documents the cap structure
-  > (`Capability{objId,rights,deriveParent,revoked}`, per-process `CapTable`), the
-  > rights lattice + meet-narrowing `capDerive`, IPC delegation (`SCM_RIGHTS` via
-  > `ipcDelegateCap`/`ipcAcceptCap`), fork-narrowing, **transitive** revocation
-  > (`capRevokeIn`, proven `[cap] revclosure PASS`), unforgeability, and the eight
+  > (`Capability{objId,rights,deriveParent,revoked,capObjId}`, per-process
+  > `CapTable`), the rights lattice + meet-narrowing `capDerive`, IPC delegation
+  > (`SCM_RIGHTS` via `ipcDelegateCap`/`ipcAcceptCap`), endpoint-cap service calls,
+  > namespace binding-right checks, fork-narrowing, **transitive** revocation
+  > (`capRevokeIn`, proven `[cap] revclosure PASS`), unforgeability, and the ten
   > invariants later phases must preserve. Corrects the stale §0 assessment below
   > and lists what is implemented vs. still spec-only (rootless admin §3.x and
   > cap-gated `mmap(PROT_EXEC)` §8.3).
@@ -202,17 +202,27 @@ task IDs below.
   *Why:* delegation is useless without recall (logout, service kill, downgrade).
   *Outcome:* revoking a cap invalidates all derived caps.
 
-### Phase 2 — Capability system (the spine)
-- **2.1 `Capability` object type + rights bits + derive** — P: Critical · D: 6 · deps:
+### Phase 2 — Capability system (the spine)  ✅ DONE
+> **Status:** implemented. Live cap slots now have `ObjType.Capability` identities
+> (`Capability.capObjId`) and are released on clear/revoke/table-clear. The rights
+> universe includes fd rights plus explicit non-fd `CAP_RIGHT_RETYPE` and
+> `CAP_RIGHT_CALL`, while `CAP_RIGHT_ALL` remains fd-only. `capDerive*` refuses to
+> widen or derive from an absent source; SCM_RIGHTS delegates caps by value through
+> `ipcDelegateCap`/`ipcAcceptCap`; service connect and `objCall` require a held
+> endpoint cap with `CAP_RIGHT_CALL`; absolute `open()` resolves through the task's
+> Namespace and checks the matching binding's read/write rights before the legacy
+> resolver runs. `[ipc] selftest PASS` covers denied/no-cap service connect and
+> successful endpoint-cap connect.
+- **2.1 `Capability` object type + rights bits + derive** — ✅ **DONE** · P: Critical · D: 6 · deps:
   1.1–1.2 · affects: object.d. *Outcome:* `derive(cap, subsetRights)` only narrows.
-- **2.2 Capability delegation over IPC (SCM_RIGHTS-style)** — P: Critical · D: 6 ·
+- **2.2 Capability delegation over IPC (SCM_RIGHTS-style)** — ✅ **DONE** · P: Critical · D: 6 ·
   deps: 2.1, existing `sendmsg`/`SCM_RIGHTS` · affects: posix.d socket path. *Why:*
   user-space servers must hand caps to clients. *Outcome:* a cap can be sent on a
   channel; receiver gets an entry in *its* cap space, no forging.
-- **2.3 Service/endpoint capability** — P: High · D: 6 · deps: 2.1. *Why:* "a
+- **2.3 Service/endpoint capability** — ✅ **DONE** · P: High · D: 6 · deps: 2.1. *Why:* "a
   capability to talk to service X" is the unit of authority (Genode sessions).
   *Outcome:* connecting to a server requires holding its endpoint cap.
-- **2.4 Per-process namespace object** — P: High · D: 7 · deps: 1.1, 2.3 · affects:
+- **2.4 Per-process namespace object** — ✅ **DONE** · P: High · D: 7 · deps: 1.1, 2.3 · affects:
   fs path resolution (posix.d `sys_open`/`rtResolve`), `task.d`. *Why:* Plan 9 model —
   a task sees exactly what's bound into its namespace; kills ambient global root.
   *Outcome:* `open()` resolves against the task's namespace caps, not a global tree.

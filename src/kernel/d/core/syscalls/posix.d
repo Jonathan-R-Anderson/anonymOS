@@ -24,7 +24,7 @@ import core.cap : Capability, CAP_INVALID,
                   capTableCloneNarrowing, requireCap, requireCapIn;
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
-import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
+import core.namespace : nsResolveWithRights; // Phase 9/IR-P2: namespace object caps
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userIsAdmin; // Phase 10: identity via User objects
 import core.org : edgeEnsure, orgPruneDeadOut, edgeAdd, edgeRemove, EdgeKind,
@@ -324,6 +324,7 @@ private enum int ENOMEM = 12;
 private enum int EEXIST = 17;
 private enum int EAGAIN = 11;
 private enum int EFAULT = 14;
+private enum int EACCES = 13;
 private enum int ENOSPC = 28;
 private enum int EISDIR = 21;
 private enum int EINVAL = 22;
@@ -1523,18 +1524,40 @@ public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
     return cast(ssize_t)wop(oh, buf, count);
 }
 
-// Phase 9: the object the calling process's Namespace resolves `path` against.
-// Every namespace binds "/" to the rtfs-root Directory object, so this returns
-// that root and the existing rtfs/synthetic resolver below consumes the path as
-// before — but resolution now flows *through* the per-process namespace, not a
-// global ambient root.  Returns 0 only if the task has no namespace yet (then the
-// caller proceeds with the legacy global resolution unchanged).
-private uint namespaceRouteOpen(const(char)* path) {
+private uint openRightsForFlags(int flags) {
+    uint rights = 0;
+    switch (flags & 3) {
+        case O_WRONLY:
+            rights = CAP_RIGHT_WRITE;
+            break;
+        case O_RDWR:
+            rights = CAP_RIGHT_READ | CAP_RIGHT_WRITE;
+            break;
+        default:
+            rights = CAP_RIGHT_READ;
+            break;
+    }
+    if ((flags & (O_CREAT | O_TRUNC | O_APPEND)) != 0)
+        rights |= CAP_RIGHT_WRITE;
+    return rights;
+}
+
+// Phase 2.4: absolute opens must resolve through the calling process's Namespace
+// object, and the matching binding must grant the requested open rights. The
+// default "/" binding grants all rights, preserving current boot behavior while
+// restricted namespaces can deny access before the legacy backing resolver runs.
+private int namespaceCheckOpen(const(char)* path, int flags) {
+    if (path is null || path[0] != '/') return 0; // relative paths still use cwd shim
     int tid = cast(int)g_current_task_id;
-    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    if (tid < 0 || tid >= MAX_TASKS) return negErrno(ENOENT);
     objEnsureNamespace(tid);
     const(char)* rest;
-    return nsResolve(g_tasks[tid].namespaceObjId, path, rest);
+    uint rights;
+    uint target = nsResolveWithRights(g_tasks[tid].namespaceObjId, path, rest, rights);
+    if (target == 0) return negErrno(ENOENT);
+    uint need = openRightsForFlags(flags);
+    if ((rights & need) != need) return negErrno(EACCES);
+    return 0;
 }
 
 public int sys_open(const(char)* path, int flags) {
@@ -1543,9 +1566,8 @@ public int sys_open(const(char)* path, int flags) {
         return negErrno(EFAULT);
     }
 
-    // Phase 9: resolve the name against this process's Namespace root before the
-    // legacy rtfs/synthetic resolution (which backs the "/" mount) runs.
-    namespaceRouteOpen(path);
+    int nsOpen = namespaceCheckOpen(path, flags);
+    if (nsOpen < 0) return nsOpen;
 
     // Find free FD
     int fd = -1;

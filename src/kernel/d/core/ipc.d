@@ -19,6 +19,9 @@ module core.ipc;
 
 import core.io; // klog / klog_hex
 import core.objmgr : ObjType, ObjHeader, objAlloc, objGet, objRelease;
+import core.cap : CAPTAB_COUNT, CAP_INVALID, CAP_RIGHT_CALL,
+                  CAP_RIGHT_UNIVERSE, capGetIn, capInstallIn, capLiveCount,
+                  capTableClear, capUsable, g_activeCapTabId;
 
 extern (C) @nogc nothrow:
 
@@ -26,10 +29,7 @@ extern (C) @nogc nothrow:
 private enum int E_AGAIN  = 11;  // EAGAIN  — queue empty / would block
 private enum int E_INVAL  = 22;  // EINVAL  — bad endpoint / argument
 private enum int E_NOSPC  = 28;  // ENOSPC  — queue / table full
-
-// Capability rights bitset universe — must match core.cap's CAP_RIGHT_UNIVERSE
-// so a delegated descriptor can never widen rights beyond what the model defines.
-private enum uint CAP_RIGHTS_UNIVERSE = (1u << 9) - 1;
+private enum int E_PERM   = 1;   // EPERM   — missing endpoint capability
 
 // A delegated capability, transferred *by value*: the object id it names and the
 // rights mask the holder is granted.  This is what crosses an endpoint instead of
@@ -90,6 +90,8 @@ __gshared ulong g_ipcCapDropped    = 0;   // descriptors dropped (object gone)
 __gshared ulong g_ipcServiceReg    = 0;
 __gshared ulong g_ipcServiceLookup = 0;
 __gshared ulong g_ipcServiceMiss   = 0;
+__gshared ulong g_ipcServiceConnect = 0;
+__gshared ulong g_ipcServiceDeny   = 0;
 __gshared bool  g_ipcSelfTested    = false;
 
 // --- Endpoint lifecycle -------------------------------------------------------
@@ -151,7 +153,7 @@ public IpcCapDesc ipcDelegateCap(uint objId, uint rights) {
         return d; // {0, 0} — nothing to delegate
     }
     d.objId  = objId;
-    d.rights = rights & CAP_RIGHTS_UNIVERSE;
+    d.rights = rights & CAP_RIGHT_UNIVERSE;
     ++g_ipcDelegateTotal;
     return d;
 }
@@ -163,7 +165,7 @@ public IpcCapDesc ipcDelegateCap(uint objId, uint rights) {
 public uint ipcAcceptCap(IpcCapDesc desc) {
     if (desc.objId == 0) return 0;
     ++g_ipcAcceptTotal;
-    return desc.rights & CAP_RIGHTS_UNIVERSE;
+    return desc.rights & CAP_RIGHT_UNIVERSE;
 }
 
 // --- Message routing ----------------------------------------------------------
@@ -200,7 +202,7 @@ public int ipcSend(uint epObjId, const(IpcMessage)* msg) {
             continue; // drop authority over a dead/invalid object
         }
         slot.caps[kept].objId  = c.objId;
-        slot.caps[kept].rights = c.rights & CAP_RIGHTS_UNIVERSE;
+        slot.caps[kept].rights = c.rights & CAP_RIGHT_UNIVERSE;
         ++kept;
         ++g_ipcDelegateTotal;
     }
@@ -229,12 +231,29 @@ public int ipcRecv(uint epObjId, IpcMessage* out_) {
     return 0;
 }
 
-// Native call primitive: post `req` to the endpoint named by an endpoint object
-// id (the "endpoint capability" once routed through core.cap).  Asynchronous in
-// this phase — it enqueues and returns the send result; a future revision adds a
-// reply endpoint for round-trip rendezvous.
-public int objCall(uint endpointObjId, const(IpcMessage)* req) {
-    return ipcSend(endpointObjId, req);
+private uint endpointObjFromCap(int tableId, uint endpointCapHandle, uint rights) {
+    auto cap = capGetIn(tableId, endpointCapHandle);
+    if (!capUsable(cap) || (cap.rights & rights) != rights) return 0;
+    auto h = objGet(cap.objId);
+    if (h is null || h.type != ObjType.Endpoint) return 0;
+    return cap.objId;
+}
+
+// Native call primitive: post `req` through an endpoint capability handle.
+// A raw endpoint object id is not sufficient for clients: callers must hold a
+// live cap naming an Endpoint object with CAP_RIGHT_CALL.
+public int objCallCapIn(int tableId, uint endpointCapHandle,
+                        const(IpcMessage)* req) {
+    uint epObjId = endpointObjFromCap(tableId, endpointCapHandle, CAP_RIGHT_CALL);
+    if (epObjId == 0) {
+        ++g_ipcServiceDeny;
+        return -E_PERM;
+    }
+    return ipcSend(epObjId, req);
+}
+
+public int objCall(uint endpointCapHandle, const(IpcMessage)* req) {
+    return objCallCapIn(g_activeCapTabId, endpointCapHandle, req);
 }
 
 // --- Service registry ---------------------------------------------------------
@@ -286,6 +305,36 @@ public uint ipcServiceLookup(const(char)* name, uint len) {
     return 0;
 }
 
+public uint ipcServiceGrantTo(int tableId, const(char)* name, uint len,
+                              uint handle, uint rights) {
+    uint ep = ipcServiceLookup(name, len);
+    if (ep == 0) return CAP_INVALID;
+    uint grant = rights & CAP_RIGHT_UNIVERSE;
+    if ((grant & CAP_RIGHT_CALL) == 0) grant |= CAP_RIGHT_CALL;
+    return capInstallIn(tableId, handle, ep, grant, CAP_INVALID);
+}
+
+public int ipcServiceConnectIn(int tableId, const(char)* name, uint len,
+                               uint endpointCapHandle,
+                               const(IpcMessage)* req) {
+    uint ep = ipcServiceLookup(name, len);
+    if (ep == 0) return -E_INVAL;
+    uint held = endpointObjFromCap(tableId, endpointCapHandle, CAP_RIGHT_CALL);
+    if (held == 0 || held != ep) {
+        ++g_ipcServiceDeny;
+        return -E_PERM;
+    }
+    ++g_ipcServiceConnect;
+    return ipcSend(ep, req);
+}
+
+public int ipcServiceConnect(const(char)* name, uint len,
+                             uint endpointCapHandle,
+                             const(IpcMessage)* req) {
+    return ipcServiceConnectIn(g_activeCapTabId, name, len,
+                               endpointCapHandle, req);
+}
+
 public void ipcServiceUnregister(const(char)* name, uint len) {
     foreach (ref e; g_services)
         if (e.inUse && nameEquals(e, name, len)) e = ServiceEntry.init;
@@ -298,6 +347,9 @@ public void ipcServiceUnregister(const(char)* name, uint len) {
 public void ipcSelfTest() {
     if (g_ipcSelfTested) return;
     g_ipcSelfTested = true;
+
+    int st = CAPTAB_COUNT - 1; // scratch table, shared convention with cap self-tests
+    if (capLiveCount(st) != 0) return;
 
     uint ep = ipcEndpointAlloc();
     if (ep == 0) { klog("[ipc] selftest FAIL: no endpoint\n"); return; }
@@ -312,25 +364,28 @@ public void ipcSelfTest() {
     }
 
     // Delegate a capability for a real, live object (the endpoint itself) so the
-    // descriptor passes validation, then send it through the router.
+    // descriptor passes validation, then send it through the cap-checked router.
     IpcMessage m;
     m.srcObjId = ep;
     m.data[0] = 0x7E; m.data[1] = 0x11; m.len = 2;
-    m.caps[0] = ipcDelegateCap(ep, CAP_RIGHTS_UNIVERSE);
+    m.caps[0] = ipcDelegateCap(ep, CAP_RIGHT_UNIVERSE);
     m.ncaps   = (m.caps[0].objId != 0) ? 1 : 0;
 
-    int sr = objCall(ep, &m);
+    int denied = ipcServiceConnectIn(st, &svcName[0], 4, 21, &m);
+    uint h = ipcServiceGrantTo(st, &svcName[0], 4, 20, CAP_RIGHT_CALL);
+    int sr = ipcServiceConnectIn(st, &svcName[0], 4, 20, &m);
     IpcMessage got;
     int rr = ipcRecv(ep, &got);
 
-    bool ok = (sr == 0 && rr == 0 &&
+    bool ok = (denied == -E_PERM && h == 20 && sr == 0 && rr == 0 &&
                got.len == 2 && got.data[0] == 0x7E && got.data[1] == 0x11 &&
                got.ncaps == 1 && got.caps[0].objId == ep &&
-               ipcAcceptCap(got.caps[0]) == CAP_RIGHTS_UNIVERSE);
+               ipcAcceptCap(got.caps[0]) == CAP_RIGHT_UNIVERSE);
 
     if (ok) klog("[ipc] selftest PASS\n");
     else    klog("[ipc] selftest FAIL: roundtrip\n");
 
+    capTableClear(st);
     ipcServiceUnregister(&svcName[0], 4);
     ipcEndpointFree(ep);
 }
@@ -348,5 +403,7 @@ public void ipcStats() {
     klog(" svcreg=");        klog_hex(g_ipcServiceReg);
     klog(" svchit=");        klog_hex(g_ipcServiceLookup);
     klog(" svcmiss=");       klog_hex(g_ipcServiceMiss);
+    klog(" svcconn=");       klog_hex(g_ipcServiceConnect);
+    klog(" svcdeny=");       klog_hex(g_ipcServiceDeny);
     klog("\n");
 }

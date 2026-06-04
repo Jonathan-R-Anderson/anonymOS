@@ -352,9 +352,11 @@ void  capRevoke(uint capId);                    // invalidates derived caps
 > `core/ipc.d` provides `Endpoint` rendezvous/queue objects (allocated in the
 > central object table as `ObjType.Endpoint`), a fixed message format
 > (`IpcMessage` = inline bytes + up to 8 `IpcCapDesc{objId,rights}` capability
-> descriptors), `ipcSend`/`ipcRecv`, the native `objCall(endpointObjId, msg)`
+> descriptors), `ipcSend`/`ipcRecv`, the native `objCall(endpointCapHandle, msg)`
 > primitive, and a name→endpoint **Service registry**
-> (`ipcServiceRegister`/`ipcServiceLookup`). Authority crosses an endpoint only
+> (`ipcServiceRegister`/`ipcServiceLookup`/`ipcServiceConnect`). Client calls require
+> a live endpoint capability carrying `CAP_RIGHT_CALL`; a raw endpoint object id is
+> no longer sufficient. Authority crosses an endpoint only
 > **by value** — every queued descriptor is re-validated against the live object
 > table (`objGet`) on send, so a stale/dead object is never delegated and a raw
 > backend pointer is never enqueued.
@@ -374,12 +376,13 @@ void  capRevoke(uint capId);                    // invalidates derived caps
 > complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
 > (which exercises SCM_RIGHTS DRM/memfd fd passing over Unix sockets) with no
 > kernel fault, panic, JHC falloff, or OOM. The one-shot boot self-test logged
-> `[ipc] selftest PASS` — a message carrying a delegated capability round-tripped
-> through an endpoint and a service resolved by name. `ipcStats()` prints
+> `[ipc] selftest PASS` — a no-cap service connect was denied, then a message carrying
+> a delegated capability round-tripped through an endpoint reached via an endpoint
+> capability. `ipcStats()` prints
 > endpoint/send/recv/delegate/accept/service counters alongside `objStats()` and
 > `capStats()`.
 >
-> **Deferred out of Phase 7:** `objCall` is asynchronous (enqueue + return); a
+> **Deferred out of Phase 7:** `objCall` is cap-checked but asynchronous (enqueue + return); a
 > reply-endpoint round-trip rendezvous, blocking semantics, and routing the
 > generic message queue into a live service (vs. the per-fd SCM descriptor ring)
 > arrive with the Phase 10 service manager and Phase 12 Linux-object work.

@@ -7,7 +7,7 @@
 module core.cap;
 
 import core.io;
-import core.objmgr : objGet, objAlloc, objRelease, ObjType; // ORG P7.2 self-test
+import core.objmgr : objGet, objAlloc, objRelease, objCountType, ObjType; // ORG P7.2 self-test
 import core.audit : auditLog, AuditKind; // ORG P8.2: attributable revocations
 
 extern (C) @nogc nothrow:
@@ -25,16 +25,18 @@ enum uint CAP_RIGHT_MMAP  = 1u << 5;
 enum uint CAP_RIGHT_DUP   = 1u << 6;
 enum uint CAP_RIGHT_PASS  = 1u << 7;
 enum uint CAP_RIGHT_RETYPE = 1u << 8; // Untyped-memory retype (§1.4), not an fd right
+enum uint CAP_RIGHT_CALL  = 1u << 9; // Endpoint/service call (§2.3), not an fd right
 enum uint CAP_RIGHT_ALL   = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_CLOSE |
                             CAP_RIGHT_STAT | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP |
                             CAP_RIGHT_DUP | CAP_RIGHT_PASS;
-enum uint CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE;
+enum uint CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE | CAP_RIGHT_CALL;
 
 struct Capability {
     uint objId;
     uint rights;
     uint deriveParent; // parent handle in the same table; CAP_INVALID for roots
     uint revoked;      // non-zero means the handle was explicitly revoked
+    uint capObjId;     // ObjType.Capability identity for this live handle
 }
 
 struct CapTable {
@@ -86,6 +88,26 @@ public bool capUsable(Capability* cap) {
     return objGet(cap.objId) !is null;
 }
 
+private void capReleaseObject(Capability* cap) {
+    if (cap is null || cap.capObjId == 0) return;
+    if (objGet(cap.capObjId) !is null) objRelease(cap.capObjId);
+    cap.capObjId = 0;
+}
+
+private bool capEnsureObject(Capability* cap) {
+    if (cap is null) return false;
+    if (cap.capObjId != 0) {
+        auto h = objGet(cap.capObjId);
+        if (h !is null && h.type == ObjType.Capability &&
+            h.impl is cast(void*)cap)
+            return true;
+        if (h !is null) objRelease(cap.capObjId);
+        cap.capObjId = 0;
+    }
+    cap.capObjId = objAlloc(ObjType.Capability, cast(void*)cap);
+    return cap.capObjId != 0;
+}
+
 public bool requireCap(int tid, uint capId, uint rights) {
     ++g_capRequireTotal;
     auto cap = capGet(capId);
@@ -110,6 +132,7 @@ public uint capInstallIn(int tableId, uint handle, uint objId, uint rights,
                          uint deriveParent) {
     auto cap = capGetIn(tableId, handle);
     if (cap is null || objId == 0 || objGet(objId) is null) return CAP_INVALID;
+    if (!capEnsureObject(cap)) return CAP_INVALID;
     cap.objId = objId;
     cap.rights = rights & CAP_RIGHT_UNIVERSE;
     cap.deriveParent = deriveParent;
@@ -126,6 +149,7 @@ public uint capInstall(uint handle, uint objId, uint rights, uint deriveParent) 
 public void capClearIn(int tableId, uint handle) {
     auto cap = capGetIn(tableId, handle);
     if (cap is null) return;
+    capReleaseObject(cap);
     *cap = Capability.init;
 }
 
@@ -137,7 +161,7 @@ public void capClear(uint handle) {
 public void capTableClear(int tableId) {
     if (!validTable(tableId)) return;
     foreach (i; 0 .. CAP_MAX)
-        g_capTabs[tableId].caps[i] = Capability.init;
+        capClearIn(tableId, cast(uint)i);
 }
 
 public uint capDerive(uint capId, uint subsetRights) {
@@ -160,10 +184,9 @@ public uint capDeriveObjectTo(uint srcHandle, uint dstHandle, uint objId,
                               uint subsetRights) {
     capInit();
     auto src = capGet(srcHandle);
+    if (!capUsable(src)) return CAP_INVALID;
     uint rights = subsetRights & CAP_RIGHT_UNIVERSE;
-    if (capUsable(src)) {
-        if ((rights & src.rights) != rights) return CAP_INVALID;
-    }
+    if ((rights & src.rights) != rights) return CAP_INVALID;
     ++g_capDeriveTotal;
     return capInstall(dstHandle, objId, rights, srcHandle);
 }
@@ -171,10 +194,9 @@ public uint capDeriveObjectTo(uint srcHandle, uint dstHandle, uint objId,
 public uint capDeriveObjectToIn(int tableId, uint srcHandle, uint dstHandle,
                                 uint objId, uint subsetRights) {
     auto src = capGetIn(tableId, srcHandle);
+    if (!capUsable(src)) return CAP_INVALID;
     uint rights = subsetRights & CAP_RIGHT_UNIVERSE;
-    if (capUsable(src)) {
-        if ((rights & src.rights) != rights) return CAP_INVALID;
-    }
+    if ((rights & src.rights) != rights) return CAP_INVALID;
     ++g_capDeriveTotal;
     return capInstallIn(tableId, dstHandle, objId, rights, srcHandle);
 }
@@ -185,6 +207,7 @@ public uint capDeriveObjectToIn(int tableId, uint srcHandle, uint dstHandle,
 public void capRevokeIn(int tableId, uint capId) {
     if (!validTable(tableId) || !validHandle(capId)) return;
     auto caps = &g_capTabs[tableId].caps[0];
+    capReleaseObject(&caps[capId]);
     caps[capId].objId = 0;
     caps[capId].rights = 0;
     caps[capId].revoked = 1;
@@ -200,6 +223,7 @@ public void capRevokeIn(int tableId, uint capId) {
             auto child = &caps[i];
             if (child.objId != 0 && child.deriveParent < CAP_MAX &&
                 caps[child.deriveParent].revoked != 0) {
+                capReleaseObject(child);
                 child.objId = 0;
                 child.rights = 0;
                 child.revoked = 1;
@@ -219,14 +243,15 @@ public void capTableCloneNarrowing(int srcTableId, int dstTableId, uint rightsMa
         srcTableId == dstTableId) return;
     foreach (i; 0 .. CAP_MAX) {
         auto src = &g_capTabs[srcTableId].caps[i];
-        auto dst = &g_capTabs[dstTableId].caps[i];
         if (capUsable(src)) {
-            dst.objId = src.objId;
-            dst.rights = src.rights & rightsMask;
-            dst.deriveParent = cast(uint)i;
-            dst.revoked = 0;
+            uint narrowed = src.rights & rightsMask;
+            if (narrowed != 0)
+                capInstallIn(dstTableId, cast(uint)i, src.objId,
+                             narrowed, cast(uint)i);
+            else
+                capClearIn(dstTableId, cast(uint)i);
         } else {
-            *dst = Capability.init;
+            capClearIn(dstTableId, cast(uint)i);
         }
     }
 }
@@ -277,5 +302,6 @@ public void capStats() {
     klog(" revoke=");    klog_hex(g_capRevokeTotal);
     klog(" require=");   klog_hex(g_capRequireTotal);
     klog(" deny=");      klog_hex(g_capDenyTotal);
+    klog(" capobj=");    klog_hex(cast(ulong)objCountType(ObjType.Capability));
     klog("\n");
 }

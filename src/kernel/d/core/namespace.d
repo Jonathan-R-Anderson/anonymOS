@@ -171,8 +171,10 @@ private bool bindMatches(ref const(NsBinding) b, const(char)* path, uint plen) {
 // the path suffix relative to that mount (kept absolute for the "/" mount so the
 // existing rtfs/synthetic resolver in posix.d can consume it unchanged).  Returns
 // 0 if the namespace is unknown or nothing matches.
-public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest) {
+public uint nsResolveWithRights(uint nsObjId, const(char)* path,
+                                out const(char)* outRest, out uint outRights) {
     outRest = path;
+    outRights = 0;
     auto ns = nsRecByObj(nsObjId);
     if (ns is null || path is null || path[0] != '/') return 0;
     ++g_nsResolveTotal;
@@ -184,6 +186,7 @@ public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest)
         if (best is null || b.pathLen > best.pathLen) best = &b;
     }
     if (best is null) return 0;
+    outRights = best.rights;
     if (best.pathLen == 1) {                 // "/" mount: keep the whole path
         outRest = path;
         ++g_nsRootResolve;
@@ -192,6 +195,11 @@ public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest)
         if (outRest[0] == 0) { /* mount root itself */ }
     }
     return best.targetObjId;
+}
+
+public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest) {
+    uint rights;
+    return nsResolveWithRights(nsObjId, path, outRest, rights);
 }
 
 // ORG P4.3 — namespace validation: count bindings whose target object is no

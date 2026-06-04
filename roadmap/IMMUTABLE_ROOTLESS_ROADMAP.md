@@ -7,27 +7,36 @@
 
 ---
 
-## 0. Brutally honest assessment of where we actually are
+## 0. Assessment of where we actually are
 
-The README advertises a capability-based, object-tree OS with user-space servers.
-The **code does not implement any of that yet.** Ground truth from the source:
+> **Updated.** The original assessment (preserved in the right column for the
+> historical record) predated the `OBJECT_OS_ROADMAP.md` (Phases 2–13) and
+> `OBJECT_REFERENCE_GRAPH_ROADMAP.md` (Phases 1–12) work, both now implemented. The
+> capability/object substrate this roadmap assumed was missing **largely exists**;
+> what remains is the *immutability* stack (storage/store/verify/A-B) and the final
+> *rootless* flip (default non-root identity + admin caps). The "Now" column is
+> ground truth; see `CAPABILITY_MODEL.md` (§0.1) for the cap details.
 
-| Claimed property | Reality in `src/kernel/d/` |
-|---|---|
-| Capability-based security | **None.** No capability type, no grant/delegate, no enforcement. `grep capability` only hits Wayland strings. |
-| Rootless / no UID 0 | **Opposite.** `linux_sys_getuid`/`geteuid`/`setuid` (posix.d:3911+) hardcode **0**. Every task is root. `SO_PEERCRED` was deliberately made to return root for *any* fd. |
-| Object tree (everything is an object) | **None.** State lives in ad-hoc global tables: `g_tasks` (task.d), `g_fdTabs` (posix.d), `g_rt` rtfs nodes, sockets/pipes/memfd arrays. No unified object, ownership, or versioning. |
-| Immutable system image | **None.** There is no image. The root fs is a *synthetic, read-only-by-accident* namespace + a **RAM-only writable `rtfs` overlay** (`FD_RTFILE`, posix.d). Nothing is persisted, signed, versioned, or rolled back. Boot modules (Hyprland, libc.so, xkb.blob, assets.blob) are loaded by Limine and trusted blindly. |
-| Atomic update / rollback / A-B | **None.** `make` rebuilds an ISO; "update" = reflash. |
-| Cryptographic verification | **None.** No hashing/signature anywhere in boot (`scripts/`, limine.conf). Limine loads modules unverified. |
-| System vs user state separation | **None.** Everything is one ephemeral RAM tree. |
-| Parent→child privilege inheritance | Only `fork` copying the **fd table** (`fdtabForkCopy`). That is descriptor inheritance, not capability delegation. |
+| Property | Now (ground truth) | Originally assessed |
+|---|---|---|
+| Capability-based security | **Implemented** (`core/cap.d`): cap type, subset derive, transitive revoke, per-process cap tables; `requireCap` gates the fd surface; ORG enforces rights/label monotonicity (`[cap] revclosure PASS`). | "None." |
+| Rootless / no UID 0 | **Partial.** `getuid`/`geteuid`/`SO_PEERCRED` now read a **User object** (`core/user.d`), not a literal `0`; `/etc/passwd` derives from User objects. Default identity is **still root** and admin actions aren't yet distinct caps — the §3.1/§3.2 flip is the remaining rootless work. | "Opposite — every task is root." |
+| Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
+| Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it; fork clones it. | (not separately listed) |
+| Immutable system image | **Still none.** Root fs is the RAM `rtfs` overlay + synthetic namespace; nothing persisted, signed, versioned, or rolled back. Boot modules loaded by Limine unverified. **This is the core of the remaining work (Phase 4/6/8).** | "None." |
+| Atomic update / rollback / A-B | **Still none.** `make` rebuilds an ISO; "update" = reflash. | "None." |
+| Cryptographic verification | **Still none.** No hashing/signature in boot. | "None." |
+| System vs user state separation | **Still none** physically (one ephemeral RAM tree), though the namespace machinery to express `/usr`·`/etc`·`/var` mounts now exists. | "None." |
+| Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
 
-**Conclusion:** "immutable" and "rootless" are at ~0%. We are building them, not
-finishing them. The single biggest leverage point is that there is **no persistence
-and no capability type yet** — so we can introduce both cleanly before a real disk
-and real multi-user workloads lock in bad assumptions (a hardcoded UID 0 has already
-metastasized through `getuid`, `SO_PEERCRED`, and file ownership defaults — see §G).
+**Conclusion:** "rootless" went from ~0% to **substantially built** (capability
+spine, object tree, namespaces, User/Service objects) with one critical gap — the
+default-identity flip + distinct admin caps (§3.1/§3.2). "Immutable" remains at ~0%:
+there is still no persistent, content-addressed, verified store. The biggest leverage
+point is now the inverse of the original: the **capability/object substrate is ready**,
+so the immutable store can be introduced *through* caps and namespaces from the start,
+and the rootless flip is a contained change (kill the default-root defaults — §G #1)
+rather than a ground-up build.
 
 ---
 
@@ -141,11 +150,21 @@ Legend — **P**: Critical/High/Medium/Low · **D**: difficulty 1–10 · deps r
 task IDs below.
 
 ### Phase 0 — Foundation (decide the invariants before writing code)
-- **0.1 Capability model spec** — P: Critical · D: 4 · deps: — · affects: docs,
-  `core/`. *Why:* every later phase encodes these rules; getting "delegate only what
-  you hold, rights are monotonically non-increasing, caps are unforgeable" wrong is
-  unrecoverable. *Outcome:* written spec of cap structure, rights bits, derivation,
-  revocation.
+- **0.1 Capability model spec** — ✅ **DONE** → [`CAPABILITY_MODEL.md`](CAPABILITY_MODEL.md).
+  P: Critical · D: 4 · deps: — · affects: docs, `core/`. *Why:* every later phase
+  encodes these rules; getting "delegate only what you hold, rights are monotonically
+  non-increasing, caps are unforgeable" wrong is unrecoverable. *Outcome:* written spec
+  of cap structure, rights bits, derivation, revocation.
+  > **Status:** ratified spec written, **grounded in the now-implemented
+  > `core/cap.d`** (the capability manager that landed via `OBJECT_OS_ROADMAP.md`
+  > P6 + `OBJECT_REFERENCE_GRAPH_ROADMAP.md` P7). It documents the cap structure
+  > (`Capability{objId,rights,deriveParent,revoked}`, per-process `CapTable`), the
+  > rights lattice + meet-narrowing `capDerive`, IPC delegation (`SCM_RIGHTS` via
+  > `ipcDelegateCap`/`ipcAcceptCap`), fork-narrowing, **transitive** revocation
+  > (`capRevokeIn`, proven `[cap] revclosure PASS`), unforgeability, and the seven
+  > invariants later phases must preserve. Corrects the stale §0 assessment below
+  > and lists what is implemented vs. still spec-only (untyped-memory caps §1.4,
+  > rootless admin §3.x, cap-gated `mmap(PROT_EXEC)` §8.3).
 - **0.2 Object model spec** — P: Critical · D: 4 · deps: 0.1 · affects: docs. *Why:*
   defines the single object header (id, type, owner-cap, metadata, version) all
   subsystems adopt. *Outcome:* object ABI + lifecycle (create/retype/destroy).

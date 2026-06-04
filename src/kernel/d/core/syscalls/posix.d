@@ -21,6 +21,8 @@ import core.cap : Capability, CAP_INVALID,
                   capInstall, capInstallIn, capClear, capClearIn,
                   capDeriveObjectTo, capDeriveObjectToIn,
                   capTableCloneNarrowing, requireCap, requireCapIn;
+import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
+import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -652,9 +654,12 @@ private struct LocalSocket
     // SCM_RIGHTS: File structs passed to this socket via sendmsg ancillary data,
     // waiting to be picked up by the peer's recvmsg.  Each entry is a full copy
     // of the sender's File (so the backend id survives even if the sender closes
-    // its own fd).  Queued on the *receiver* socket's rx side.
+    // its own fd).  Queued on the *receiver* socket's rx side.  The parallel
+    // `passedCaps` ring carries the delegated **capability descriptor**
+    // ({objId, rights}) routed through the Phase 7 IPC router — fd passing is now
+    // capability delegation, not a raw Capability-struct copy.
     File[scmRightsCapacity] passedFiles;
-    Capability[scmRightsCapacity] passedCaps;
+    IpcCapDesc[scmRightsCapacity] passedCaps;
     size_t passedHead;
     size_t passedTail;
 }
@@ -1487,6 +1492,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -1496,6 +1502,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -1505,6 +1512,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -1515,6 +1523,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -1525,6 +1534,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset  = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -1538,6 +1548,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = cast(void*)cast(size_t)devIdx;
         g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
 
@@ -3863,9 +3874,14 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                     int passFd = fdArray[k];
                     size_t nextHead = (peer.passedHead + 1) % scmRightsCapacity;
                     peer.passedFiles[peer.passedHead] = g_fdTable[passFd];
+                    // Delegate the fd's authority by value through the IPC router
+                    // (validates the object id, clamps rights); a raw pointer is
+                    // never queued.
                     auto cap = capGet(cast(uint)passFd);
                     peer.passedCaps[peer.passedHead] =
-                        (cap !is null) ? *cap : Capability.init;
+                        (cap !is null && cap.objId != 0 && cap.revoked == 0)
+                            ? ipcDelegateCap(cap.objId, cap.rights)
+                            : IpcCapDesc.init;
                     peer.passedHead = nextHead;
                 }
             }
@@ -3931,12 +3947,15 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
                 auto oh = ensureFileObject(&g_fdTable[newFd]);
                 if (oh !is null) {
                     uint rights = capRightsForFile(&g_fdTable[newFd]);
+                    // Accept the delegated capability descriptor through the IPC
+                    // router; the receiver materialises its own handle narrowed
+                    // to the delegated rights.
                     auto queuedCap = &sock.passedCaps[sock.passedTail];
-                    if (queuedCap.objId != 0 && queuedCap.revoked == 0)
-                        rights &= queuedCap.rights;
+                    if (queuedCap.objId != 0)
+                        rights &= ipcAcceptCap(*queuedCap);
                     capInstall(cast(uint)newFd, oh.id, rights, CAP_INVALID);
                 }
-                sock.passedCaps[sock.passedTail] = Capability.init;
+                sock.passedCaps[sock.passedTail] = IpcCapDesc.init;
                 sock.passedTail = (sock.passedTail + 1) % scmRightsCapacity;
                 outFds[nOut++] = newFd;
             }

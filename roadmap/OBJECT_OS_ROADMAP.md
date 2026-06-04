@@ -345,7 +345,44 @@ void  capRevoke(uint capId);                    // invalidates derived caps
 
 ---
 
-## PHASE 7 — IPC Router + Endpoint objects
+## PHASE 7 — IPC Router + Endpoint objects  ✅ DONE
+
+> **Status: implemented as a native message router with Endpoint objects, a
+> Service registry, and capability-by-value delegation.** New module
+> `core/ipc.d` provides `Endpoint` rendezvous/queue objects (allocated in the
+> central object table as `ObjType.Endpoint`), a fixed message format
+> (`IpcMessage` = inline bytes + up to 8 `IpcCapDesc{objId,rights}` capability
+> descriptors), `ipcSend`/`ipcRecv`, the native `objCall(endpointObjId, msg)`
+> primitive, and a name→endpoint **Service registry**
+> (`ipcServiceRegister`/`ipcServiceLookup`). Authority crosses an endpoint only
+> **by value** — every queued descriptor is re-validated against the live object
+> table (`objGet`) on send, so a stale/dead object is never delegated and a raw
+> backend pointer is never enqueued.
+>
+> **SCM_RIGHTS becomes capability delegation:** `posix.d`'s `LocalSocket` SCM
+> queue changed `passedCaps` from a full `Capability` copy to an `IpcCapDesc`
+> ring. `sys_sendmsg` now delegates each passed fd's authority via
+> `ipcDelegateCap(objId, rights)` (validated, rights-clamped); `sys_recvmsg`
+> materialises the receiver's own handle and narrows it to `ipcAcceptCap(desc)`.
+> The `File` payload copy is retained as the Linux-compat backend-materialisation
+> detail (the `g_fdTabs` File store collapse is left to the Linux-object phases),
+> but the *authority* now flows through the router's delegate/accept primitives.
+> Drained in lockstep with the existing `passedFiles` ring, so fd passing is
+> byte-for-byte identical to before from userspace's view.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> (which exercises SCM_RIGHTS DRM/memfd fd passing over Unix sockets) with no
+> kernel fault, panic, JHC falloff, or OOM. The one-shot boot self-test logged
+> `[ipc] selftest PASS` — a message carrying a delegated capability round-tripped
+> through an endpoint and a service resolved by name. `ipcStats()` prints
+> endpoint/send/recv/delegate/accept/service counters alongside `objStats()` and
+> `capStats()`.
+>
+> **Deferred out of Phase 7:** `objCall` is asynchronous (enqueue + return); a
+> reply-endpoint round-trip rendezvous, blocking semantics, and routing the
+> generic message queue into a live service (vs. the per-fd SCM descriptor ring)
+> arrive with the Phase 10 service manager and Phase 12 Linux-object work.
 
 **Goal:** a native **IPC Router** with `Endpoint` objects; SCM_RIGHTS fd passing
 becomes capability delegation; user-space services become reachable by holding an
@@ -366,7 +403,44 @@ become IPC messages (incremental).
 
 ---
 
-## PHASE 8 — Device and Driver objects
+## PHASE 8 — Device and Driver objects  ✅ DONE
+
+> **Status: implemented as a Driver/Device object registry with `/dev`
+> resolution.** New module `core/device.d` wraps the kernel's free-standing
+> driver globals as first-class objects in the central table: `driverRegister`
+> creates a `Driver` object per class (console, mem, rng, drm, input, ahci/block,
+> net), `deviceRegister` creates a `Device` object (`ObjType.Device`, or
+> `ObjType.NetIf` for the NIC) carrying a minor, an ops table
+> (`DevReadFn`/`DevWriteFn` for in-kernel block I/O), and a back-pointer to the
+> driver-owned payload. `deviceRegistryInit()` (called from `d_kernel_main`
+> before the init process starts) stands up the synthetic `/dev/*` tree that
+> actually exists at runtime — `/dev/console`, `/dev/tty`, `/dev/zero`,
+> `/dev/random`, `/dev/urandom`, `/dev/dri/card0`, `/dev/dri/renderD128`,
+> `/dev/input/event0`, `/dev/input/event1` — plus identity `Driver` objects for
+> the AHCI block and NIC globals (`g_ahciDevices`/`g_netDevice`), registering a
+> Block `Device`/`NetIf` for each that is actually present/initialised.
+>
+> **`/dev/*` resolves to Device objects:** every `/dev/*` arm of `sys_open` in
+> `posix.d` now calls `deviceNoteOpen(path)`, which resolves the path to its
+> persistent `Device` object id and counts the binding — the proof that opening a
+> device node is "resolve a name to a Device object," not just stamping a
+> `FileType`. The fd still gets its Phase 5 `ObjType.Device` fd-object + Phase 6
+> capability; the registry adds the stable per-device identity behind it.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> (which opens `/dev/dri/card0` and `/dev/input/event*`) with no kernel fault,
+> panic, JHC falloff, or OOM. The one-shot boot self-test logged
+> `[dev] selftest PASS` — `/dev/dri/card0` and `/dev/input/event0` resolve to
+> distinct live Device objects and an unknown path resolves to 0. `deviceStats()`
+> prints driver/device/netif/open counters alongside the other subsystems.
+>
+> **Deferred out of Phase 8:** exposing block devices as `/dev/sd*` File fds that
+> route reads/writes through `g_objOps` (no consumer yet, and the AHCI controller
+> is not probed on the live cdrom boot), and gating device access behind a
+> capability ("reachable only via caps") — both land with the Linux-object
+> (Phase 12) and rootless (Phase 10) work. The ops table and Driver/Device
+> identity needed for them exist now.
 
 **Goal:** wrap existing drivers as **Device/Driver objects** reachable only via caps.
 
@@ -507,8 +581,8 @@ must not be skipped or faked (see `IMMUTABLE_ROOTLESS_ROADMAP.md` §G).
 
 ## Milestones
 
-**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 ✅, P4 ✅, P5/P6
-pending.* Phases **2 + 5 + 6**: an `Object` header +
+**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 ✅, P4 ✅, P5 ✅,
+P6 ✅ — MVOO reached; P7 ✅.* Phases **2 + 5 + 6**: an `Object` header +
 central table, `sys_read/write/close/open` dispatch via `g_objOps`, and fd tables are
 capability tables with rights-narrowing on `fork`/`dup`/`SCM_RIGHTS`. *Provable by:*
 every fd is an entry in `g_objects`; a child cannot hold more rights than its parent.

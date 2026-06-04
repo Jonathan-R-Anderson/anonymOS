@@ -32,6 +32,8 @@ import arch.x86_64.bootstrap : g_fb, g_terminal;
 import core.syscalls.posix;
 import core.objmgr : objStats; // Phase 2: object-table runtime stats (objReconcileFds comes via core.syscalls.posix)
 import core.cap : capTableSetActive, capTableClear, capStats;
+import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
+import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -923,9 +925,13 @@ private void dispatchSyscall(int tid) {
         objReconcileTasks();
         objReconcileFds();
         objReconcileRegions();
+        ipcSelfTest(); // Phase 7: one-shot proof the IPC router round-trips
+        deviceSelfTest(); // Phase 8: one-shot proof /dev resolves to Device objects
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
+            ipcStats();
+            deviceStats();
         }
     }
 
@@ -1609,6 +1615,9 @@ void d_kernel_main() {
     ulong initSize = 0;
     const(char)* initExecName = "sh\0".ptr;
     random_init();
+    // Phase 8: stand up Driver/Device objects for the synthetic /dev tree (and
+    // wrap the block/NIC driver globals) before the init process opens /dev nodes.
+    deviceRegistryInit();
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

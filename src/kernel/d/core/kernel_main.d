@@ -42,7 +42,8 @@ import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
                        linuxStats; // Phase 12: Linux-compat object subtree
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
-import core.org : orgInit, orgSelfTest, orgStats; // ORG P2: object reference graph
+import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
+                  orgApiSelfTest, orgReachCompute; // ORG P2/P3/P4
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -937,6 +938,8 @@ private void dispatchSyscall(int tid) {
         objReconcileTasks();
         objReconcileFds();
         objReconcileRegions();
+        orgReconcileOwnership(); // ORG P3: process/memory ownership edges
+        orgReconcileFdEdges();   // ORG P3: fd capability + epoll observer edges
         ipcSelfTest(); // Phase 7: one-shot proof the IPC router round-trips
         deviceSelfTest(); // Phase 8: one-shot proof /dev resolves to Device objects
         nsSelfTest(); // Phase 9: one-shot proof per-process namespaces clone & route
@@ -946,6 +949,8 @@ private void dispatchSyscall(int tid) {
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated
         orgSelfTest(); // ORG P2: one-shot proof of typed edges + weak coherence
+        orgIntegReport(); // ORG P3: one-shot proof the real graph passes I1/I4 audit
+        orgApiSelfTest(); // ORG P4: one-shot proof of query/reachability/ns-validation
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -957,6 +962,9 @@ private void dispatchSyscall(int tid) {
             windowStats();
             linuxStats();
             kernelCensusStats();
+            orgAudit(); // refresh I1/I4 violation counters for the stats line
+            orgReconcileRoots();   // ORG P4.2: register live roots
+            orgReachCompute(256);  // ORG P4.2: budgeted reachability over the live graph
             orgStats();
         }
     }

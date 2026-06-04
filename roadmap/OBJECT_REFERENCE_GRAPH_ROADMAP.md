@@ -229,7 +229,47 @@ object header. *Performance:* +1 indirection on edge ops; keep edge lists intrus
   null if target dead/epoch-stale. *Accept:* dropping the last strong ref frees the
   object even with weak in-edges; `weakGet` then null.
 
-## PHASE 3 — Object Tree Integration
+## PHASE 3 — Object Tree Integration  ✅ DONE
+
+> **Status: the legacy tables are now mirrored into one typed object graph,
+> driven from the amortized reconcile passes** (idempotent `edgeEnsure` + dead-edge
+> `orgPruneDeadOut`, not per-syscall hooks — the same low-risk adoption strategy
+> the object identity used). New `org.d` helpers: `edgeEnsure`, `orgPruneDeadOut`,
+> a `strongOwnIn` count for I1, and `orgAudit` (I1 single-owner + I4
+> refcount ≥ strong-in).
+>
+> **3.1 ownership tree (`task.d:orgReconcileOwnership`):** Process →(StrongOwn)
+> Thread / Namespace / MemRegion (E1/E3/E2), Process →(Weak) parent Process (E5),
+> MemRegion →(StrongRef) Vmo (E8). Pruning each process's dead out-edges means
+> killing a task tears its threads/regions/namespace out of the graph, and a
+> parent's death never dangles a child (the back-edge is Weak).
+> **3.2 fd/memory (`posix.d:orgReconcileFdEdges`):** fd handle →(Cap, rights)
+> object (E6); the legacy `refCount` is shown *consistent with / derived from* the
+> strong-in count by the **I4 audit holding** (`refCount ≥ strongIn`).
+> **3.3 ipc/epoll:** epoll →(Observer, weak) watched fd (E11) modeled in the
+> graph, plus a concrete **epoll nesting-depth bound** (≤5, returns `ELOOP`) added
+> at `epoll_ctl` so a watch-of-watch bomb can't build unbounded nesting (threat
+> T3). Observer/Weak edges are excluded from the life count, so these never pin.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> (Hyprland is a heavy epoll/fd user — the nesting bound and per-256-syscall edge
+> reconcile caused no regression) with no kernel fault, panic, JHC falloff, or OOM.
+> The one-shot proof logged `[org] integ PASS edges=0x5b I1ok I4ok` — the reconcile
+> built a **91-edge** graph from the live process/memory/fd relationships and the
+> invariant audit confirms single-owner (I1) and refcount ≥ strong-in (I4) both
+> hold over it. `orgStats()` adds ensure/prune/audit/i1v/i4v counters.
+>
+> **Deferred (mechanism ready, wiring follows where it pays off):** the
+> `LocalSocket.peerId` Weak edge and the `SCM_RIGHTS passedFiles[]`
+> **StrongRef-GC-tracked** edges (E9/E10) — the peer's object id isn't resolvable
+> from the socket struct cross-process, and the SCM in-flight cycle only becomes
+> *collectable* once the tracing GC exists, so modeling it as StrongRef is
+> sequenced with **P5.3/P6** (wiring it now would mirror a pin nothing yet
+> collects). The `RtNode.parent` directory tree (E12) and per-region Vmo back-edge
+> pruning are likewise left for the cycle/GC phases. The `EdgeKind` machinery
+> needed for all of them exists.
+
 *Why:* connect the disjoint legacy tables into one ownership tree so there *is* a graph
 to validate. *Affected:* `task.d` (`Task`→Threads/MemRegions), `posix.d` (`File`→backend,
 `g_fdTabs` as cap edges, `g_rt` directory tree), drivers. *Risks:* this touches every
@@ -249,7 +289,42 @@ with typed edges. *Performance:* create/destroy paths gain edge ops.
   bound; `passedFiles[]` (SCM_RIGHTS) → **StrongRef, GC-tracked** edges. *Accept:* the
   socket-pair 2-cycle and epoll-on-epoll no longer pin memory.
 
-## PHASE 4 — Object Reference Graph (core API)
+## PHASE 4 — Object Reference Graph (core API)  ✅ DONE
+
+> **Status: the queryable graph API the validator/GC/tools run on is in
+> `core/org.d`, all allocation-free.**
+> **4.1 query/iterate:** `orgEpoch`, `orgNextLiveNode` (node iteration), an
+> allocation-free out-edge cursor (`orgFirstOutEdge`/`orgNextEdge` +
+> `orgEdgeTarget`/`orgEdgeKind`/`orgEdgeRights`), `orgOutDegreeKind` (kind-filtered
+> degree), `orgInDegree` and `orgCountKind` (O(E) scans, off the hot path).
+> **4.2 reachability:** a budgeted, **resumable** mark-from-roots over *strong*
+> edges — `orgAddRoot`/`orgClearRoots`, `orgReachBegin`, `orgReachStep(budget)`
+> (returns "work remains", driven by an on-stack worklist, no heap), `orgReachable`
+> /`orgReachableCount`. Roots are the externally-anchored set (the scheduler's
+> process-leader objects, registered by `task.d:orgReconcileRoots`); anything not
+> marked after a full pass is unreachable over strong edges ⇒ the GC candidate set
+> (I3) that P6 collects. **4.3 namespace validation:** `nsValidateBindings` flags
+> every bound name whose target object is no longer live — dangling = flagged,
+> never a crash.
+>
+> **Live integration:** the periodic stats pass registers the live roots and runs
+> a 256-node-budget reachability over the real graph; `nsStats` reports dangling
+> bindings; `orgStats` reports `roots`/`reach`.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> with no kernel fault, panic, JHC falloff, or OOM. The one-shot self-test logged
+> `[org] api PASS`: 4.1 — out-degree/kind-filter/target/rights/in-degree/
+> count-by-kind/node-iteration all correct; 4.2 — a budgeted (1-node-slice)
+> reachability from a root marks its StrongOwn/StrongRef descendants
+> (`reachableCount == 3`) and excludes a disconnected node; 4.3 — a namespace
+> binding whose target is then freed is reported dangling (not a crash). `[org]
+> selftest PASS` (P2) and `[org] integ PASS` (P3) continue to hold.
+>
+> **Note:** in-degree/kind-count are O(E) scans (no reverse adjacency) used only by
+> the budgeted background validator, never on the syscall path — consistent with
+> the roadmap's "traversals must be budgeted/incremental."
+
 *Why:* the queryable graph the validator/GC/tools run on. *Affected:* new
 `core/org.d`. *Risks:* becoming a global mutable hotspot. *Refactoring:* none beyond
 P2/3. *Performance:* traversals must be budgeted/incremental.

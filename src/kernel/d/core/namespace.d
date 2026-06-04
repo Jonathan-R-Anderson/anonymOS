@@ -194,6 +194,20 @@ public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest)
     return best.targetObjId;
 }
 
+// ORG P4.3 — namespace validation: count bindings whose target object is no
+// longer live (a dangling name).  Pure query: a dangling name is *flagged*, never
+// a crash.  The validator/GC uses this to report/repair stale mounts.
+public uint nsValidateBindings() {
+    uint dangling = 0;
+    foreach (ref ns; g_namespaces) {
+        if (!ns.inUse) continue;
+        foreach (ref b; ns.binds)
+            if (b.inUse && (b.targetObjId == 0 || objGet(b.targetObjId) is null))
+                ++dangling;
+    }
+    return dangling;
+}
+
 // The object bound at "/" in this namespace (its root Directory).
 public uint nsRoot(uint nsObjId) {
     auto ns = nsRecByObj(nsObjId);
@@ -247,5 +261,6 @@ public void nsStats() {
     klog(" bind=");         klog_hex(g_nsBindTotal);
     klog(" resolve=");      klog_hex(g_nsResolveTotal);
     klog(" rootres=");      klog_hex(g_nsRootResolve);
+    klog(" dangling=");     klog_hex(cast(ulong)nsValidateBindings()); // ORG P4.3
     klog("\n");
 }

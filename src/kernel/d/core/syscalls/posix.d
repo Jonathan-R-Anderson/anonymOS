@@ -27,6 +27,7 @@ import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent; // Phase 10: identity via User objects
+import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind; // ORG P3: typed fd/epoll edges
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -181,6 +182,8 @@ private enum uint EPOLLONESHOT_F = 0x40000000;
 private enum int  EPOLL_CTL_ADD = 1;
 private enum int  EPOLL_CTL_DEL = 2;
 private enum int  EPOLL_CTL_MOD = 3;
+private enum int  EPOLL_MAX_NEST = 5;  // ORG 3.3 / T3: bound epoll-watching-epoll depth
+private enum int  ELOOP = 40;          // returned when the nesting bound is exceeded
 
 // Userspace struct epoll_event is PACKED on x86-64 (kernel ABI): the 8-byte
 // `data` (the source pointer) is at offset 4, immediately after the 4-byte
@@ -194,7 +197,7 @@ align(1):                 // pack: `data` at offset 4 (right after the 4-byte
 }
 static assert(EpollEvent.sizeof == 12);
 private struct EpollWatch { bool active; int watchFd; uint events; ulong data; }
-private struct EpollInst  { bool inUse; EpollWatch[EPOLL_MAX_WATCHES] watches; }
+private struct EpollInst  { bool inUse; ubyte nestDepth; EpollWatch[EPOLL_MAX_WATCHES] watches; }
 
 __gshared EpollInst[EPOLL_MAX_INSTANCES] g_epollTable;
 
@@ -591,6 +594,39 @@ public void objReconcileFds() {
             publishActiveFd(cast(int)i);
         }
     }
+}
+
+// ORG P3 (ORG_ARCHITECTURE.md E6, E11): mirror the active process's fd table into
+// the object reference graph as typed edges, driven from the amortized reconcile:
+//   Process →(Cap, rights) fd-object               — the fd handle is a capability
+//   epoll-object →(Observer) watched fd-object      — weak watch edge (depth-bounded)
+// Stale Cap edges (closed fds) are pruned so the process's out-set tracks its live
+// handles.  Off the I/O hot path; runs every 256 syscalls from dispatchSyscall.
+public void orgReconcileFdEdges() {
+    initFdTable();
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    uint proc = g_tasks[tid].processObjId;
+    if (proc == 0) return;
+    for (int fd = 0; fd < 1024; fd++) {
+        auto f = &g_fdTable[fd];
+        if (f.type == FileType.FD_NONE || f.objId == 0) continue;
+        edgeEnsure(proc, f.objId, EdgeKind.Cap, capRightsForFile(f));
+        if (f.type == FileType.FD_EPOLL) {
+            int eid = cast(int)cast(size_t)f.backend;
+            if (eid >= 0 && eid < EPOLL_MAX_INSTANCES) {
+                auto inst = &g_epollTable[eid];
+                for (int i = 0; i < EPOLL_MAX_WATCHES; i++) {
+                    if (!inst.watches[i].active) continue;
+                    int wfd = inst.watches[i].watchFd;
+                    if (wfd >= 0 && wfd < 1024 && g_fdTable[wfd].objId != 0)
+                        edgeEnsure(f.objId, g_fdTable[wfd].objId, EdgeKind.Observer, 0);
+                }
+            }
+            orgPruneDeadOut(f.objId); // drop observer edges to closed watched fds
+        }
+    }
+    orgPruneDeadOut(proc); // drop Cap edges to fds that have since closed
 }
 private enum int ENOTSOCK = 88;
 private enum int EDESTADDRREQ = 89;
@@ -5184,6 +5220,7 @@ public long linux_sys_epoll_create1(ulong flags) {
     if (fd < 0) return negErrno(EMFILE);
     g_epollTable[eid] = EpollInst.init;
     g_epollTable[eid].inUse = true;
+    g_epollTable[eid].nestDepth = 1; // ORG 3.3: a fresh epoll is a depth-1 leaf
     g_fdTable[fd].type    = FileType.FD_EPOLL;
     g_fdTable[fd].flags   = cast(int)flags;
     g_fdTable[fd].offset  = 0;
@@ -5211,6 +5248,20 @@ public long linux_sys_epoll_ctl(ulong epfd, ulong op, ulong fd, ulong ev_ptr) {
     }
     if (op == EPOLL_CTL_ADD || op == EPOLL_CTL_MOD) {
         if (!ev_ptr) return negErrno(EFAULT);
+        // ORG 3.3 / threat T3: bound epoll-watching-epoll nesting depth (Linux caps
+        // at 5).  Adding a child epoll lifts this instance to child.depth+1; refuse
+        // if that would exceed the bound, so a watch-bomb can't build unbounded
+        // nesting.  O(1) per add — no expensive graph walk on the hot path.
+        if (op == EPOLL_CTL_ADD && wfd >= 0 && wfd < 1024 &&
+            g_fdTable[wfd].type == FileType.FD_EPOLL) {
+            int childEid = cast(int)cast(size_t)g_fdTable[wfd].backend;
+            int childDepth = (childEid >= 0 && childEid < EPOLL_MAX_INSTANCES)
+                             ? g_epollTable[childEid].nestDepth : 1;
+            if (childDepth < 1) childDepth = 1;
+            int parentDepth = childDepth + 1;
+            if (parentDepth > EPOLL_MAX_NEST) return negErrno(ELOOP);
+            if (parentDepth > inst.nestDepth) inst.nestDepth = cast(ubyte)parentDepth;
+        }
         auto ev = cast(EpollEvent*)ev_ptr;
         int slot = -1;
         for (int i = 0; i < EPOLL_MAX_WATCHES; i++) {

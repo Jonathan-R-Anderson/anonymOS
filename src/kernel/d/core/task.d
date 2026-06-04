@@ -7,6 +7,8 @@ import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
 import core.namespace : nsAlloc, nsClone, nsRelease; // Phase 9: per-process namespace
 import core.linuxobj : linuxProcEnsure, linuxProcSweep; // Phase 12: Linux pid-view wrapper
+import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind,
+                  orgClearRoots, orgAddRoot; // ORG P3/P4: edges + reachability roots
 
 extern (C) @nogc nothrow:
 
@@ -435,4 +437,56 @@ public void objReconcileTasks() {
     objSweepType(ObjType.Process);
     objSweepType(ObjType.Thread);
     linuxProcSweep(); // Phase 12: drop Linux wrappers whose Process object is gone
+}
+
+// ORG P3 (OBJECT_REFERENCE_GRAPH_ROADMAP.md, ORG_ARCHITECTURE.md E1–E8): mirror
+// the process ownership tree and memory edges into the object reference graph as
+// typed edges, so there is a real graph to validate/GC.  Driven from the amortized
+// reconcile (idempotent `edgeEnsure` + dead-edge prune) rather than per-syscall
+// hooks — the same low-risk strategy used to adopt object identity.
+//   Process →(StrongOwn) Thread / Namespace / MemRegion     (E1, E3, E2)
+//   Process →(Weak)      parent Process                      (E5: back-edge, no pin)
+//   MemRegion →(StrongRef) Vmo                               (E8)
+public void orgReconcileOwnership() {
+    for (int t = 0; t < MAX_TASKS; ++t) {
+        auto task = &g_tasks[t];
+        if (!task.active || task.exited) continue;
+        uint proc = task.processObjId;
+        if (proc != 0 && task.objId != 0)
+            edgeEnsure(proc, task.objId, EdgeKind.StrongOwn, 0); // owns its Thread
+        if (task.processLeaderTid == t) {
+            if (task.namespaceObjId != 0)
+                edgeEnsure(proc, task.namespaceObjId, EdgeKind.StrongOwn, 0);
+            if (task.parentObjId != 0 && task.parentObjId != proc)
+                edgeEnsure(proc, task.parentObjId, EdgeKind.Weak, 0); // parent back-edge
+        }
+        for (int i = 0; i < task.regionCount; ++i) {
+            auto r = &task.regions[i];
+            if (proc != 0 && r.objId != 0)
+                edgeEnsure(proc, r.objId, EdgeKind.StrongOwn, 0);
+            if (r.objId != 0 && r.vmoObjId != 0)
+                edgeEnsure(r.objId, r.vmoObjId, EdgeKind.StrongRef, 0);
+        }
+    }
+    // Drop owner→child edges left dangling by threads/regions/namespaces that have
+    // since been freed (so killing a task tears its subtree out of the graph).
+    for (int t = 0; t < MAX_TASKS; ++t) {
+        auto task = &g_tasks[t];
+        if (task.active && !task.exited &&
+            task.processLeaderTid == t && task.processObjId != 0)
+            orgPruneDeadOut(task.processObjId);
+    }
+}
+
+// ORG P4.2: register the scheduler-anchored roots for reachability.  Every process
+// leader's Process object is an external anchor (the scheduler holds it via
+// g_tasks); anything not reachable from these over strong edges is a GC candidate.
+public void orgReconcileRoots() {
+    orgClearRoots();
+    for (int t = 0; t < MAX_TASKS; ++t) {
+        auto task = &g_tasks[t];
+        if (task.active && !task.exited &&
+            task.processLeaderTid == t && task.processObjId != 0)
+            orgAddRoot(task.processObjId);
+    }
 }

@@ -43,11 +43,12 @@ import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxStats; // Phase 12: Linux-compat object subtree
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
 import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
-                  orgApiSelfTest, orgReachCompute, orgCycleSelfTest,
-                  orgTarjanRun, orgAddAnchorRoots, orgGcStep,
-                  orgValidateInvariants, orgGcSelfTest, orgSecuritySelfTest,
-                  orgLabelAudit; // ORG P2–P7
+                  orgApiSelfTest, orgCycleSelfTest, orgGcSelfTest,
+                  orgSecuritySelfTest; // ORG P2–P7 (validator passes moved to the daemon)
 import core.cap : capRevokeClosureSelfTest; // ORG P7.2
+import core.org_validator : orgValidatorInit, orgValidatorTick,
+                            orgValidatorSelfTest, orgValidatorStats; // ORG P8
+import core.audit : auditStats; // ORG P8.2
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -959,6 +960,11 @@ private void dispatchSyscall(int tid) {
         orgGcSelfTest(); // ORG P6: one-shot proof of invariant/quarantine/GC/rebuild
         orgSecuritySelfTest(); // ORG P7: one-shot proof of label/rights escalation rejection
         capRevokeClosureSelfTest(); // ORG P7.2: one-shot proof of transitive revocation
+        orgValidatorSelfTest(); // ORG P8: one-shot proof of the validator daemon + control
+        // ORG P8: drive the runtime validator daemon one bounded step per reconcile
+        // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
+        // epoch-driven, never stalling the scheduler (replaces the old inline pass).
+        orgValidatorTick();
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -971,14 +977,9 @@ private void dispatchSyscall(int tid) {
             linuxStats();
             kernelCensusStats();
             orgAudit(); // refresh I1/I4 violation counters for the stats line
-            orgReconcileRoots();   // ORG P4.2: process-leader roots
-            orgAddAnchorRoots();   // ORG P6.2: + registry-anchored roots (complete set)
-            orgReachCompute(256);  // ORG P4.2: budgeted reachability over the live graph
-            orgTarjanRun();        // ORG P5.2: background SCC pass over the live graph
-            orgGcStep(256);        // ORG P6.2: null dead-weak + count GC candidates (safe)
-            orgValidateInvariants(false); // ORG P6.1: report-mode invariant check
-            orgLabelAudit();       // ORG P7.3: report ownership label-monotonicity violations
             orgStats();
+            orgValidatorStats();
+            auditStats();
         }
     }
 
@@ -1691,6 +1692,7 @@ void d_kernel_main() {
     // ORG P2: initialise the object reference graph (installs the free-notify hook
     // for weak-edge coherence) before any object churn.
     orgInit();
+    orgValidatorInit(); // ORG P8: stand up the validator daemon + its capability token
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

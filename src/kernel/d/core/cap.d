@@ -8,6 +8,7 @@ module core.cap;
 
 import core.io;
 import core.objmgr : objGet, objAlloc, objRelease, ObjType; // ORG P7.2 self-test
+import core.audit : auditLog, AuditKind; // ORG P8.2: attributable revocations
 
 extern (C) @nogc nothrow:
 
@@ -186,6 +187,7 @@ public void capRevokeIn(int tableId, uint capId) {
     caps[capId].rights = 0;
     caps[capId].revoked = 1;
     ++g_capRevokeTotal;
+    auditLog(AuditKind.Revocation, capId, cast(ulong)tableId); // P8.2: attributable
 
     // Transitive closure: a cap whose deriveParent has been revoked is itself
     // revoked.  Repeat until no further cap changes (depth ≤ derive-chain length).

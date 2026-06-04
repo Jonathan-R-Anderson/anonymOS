@@ -511,12 +511,44 @@ meet); revocation is O(derive-subtree).
   authority flows along Weak/Observer edges. *Accept:* a label violation anywhere in
   the ownership forest is reported; ref edges grant nothing.
 
-## PHASE 8 — Runtime Validator Daemon
-*Why:* continuous, budgeted validation without blocking syscalls. *Affected:* new
-`core/org_validator.d` (kernel task) + a userspace control object. *Risks:* the
-validator becomes an oracle/DoS lever; gate it behind a capability. *Refactoring:*
-schedule as a low-priority kernel thread. *Performance:* runs in idle/work-budgeted
-slices; must never stall the scheduler.
+## PHASE 8 — Runtime Validator Daemon  ✅ DONE
+
+> **Status: a budgeted, epoch-driven validator daemon + audit log + cap-gated
+> control surface.** New module `core/org_validator.d` runs the ORG validate/GC
+> machinery as a **state machine** — `Idle → Reach → Scc → Invariant → Gc → Audit
+> → Idle` — advancing **one bounded phase per tick**, so a full validation is
+> spread across ticks and never stalls the scheduler. It is **epoch-driven**: a new
+> cycle starts only when the graph epoch changed since the last one (no work when
+> nothing changed). It is driven from the cooperative amortized dispatch hook (one
+> tick per ~256 syscalls — the kernel's equivalent of a low-priority background
+> thread), replacing the previous inline stop-the-world pass.
+> **8.2 audit log:** new `core/audit.d` — a bounded ring of attributable events
+> (validator run, cycle/SCC found, invariant breach, revocation, quarantine,
+> weak-null, control ok/denied) with per-kind counters + a running sequence;
+> `orgQuarantine` and `capRevokeIn` now log to it.
+> **8.3 control surface:** `orgValidatorControl(op, capToken, arg)` (query / trigger
+> cycle / quarantine) requires the **validator capability token** — a kernel-held
+> secret with no syscall that hands it to userspace, so unprivileged callers cannot
+> drive the validator; denied calls are themselves audited.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — with the daemon now driving the
+> validate/GC cycle across ticks — reached Hyprland/Mesa compositor rendering with
+> no kernel fault, panic, JHC falloff, or OOM. The one-shot self-test logged
+> `[val] selftest PASS`: 8.3 — a control call without the capability is refused and
+> one with it admitted; 8.1 — an injected ownership label-inversion is **detected
+> by the daemon within ≤24 ticks** as it cycles through to the Audit phase; 8.2 —
+> the control calls and the breach are recorded in the audit log (ControlDenied,
+> ControlOk, InvariantBreach counts all advance). All P2–P7 proofs
+> (`[org] selftest/integ/api/cycle/gc/sec`, `[cap] revclosure`) still hold.
+> `orgValidatorStats` (`[val]`) and `auditStats` (`[audit]`) join the periodic dump.
+>
+> **Note:** the control surface is kernel-internal (a token gate); exposing it as a
+> userspace object reachable over an endpoint cap, and the live `/proc`-style
+> counter export, are P9 (visualization) work. The Scc phase runs Tarjan to
+> completion within its tick (bounded by graph size, off the syscall path) rather
+> than sub-tick-budgeted; the resumable `orgReachStep` already demonstrates the
+> sub-tick budgeting pattern for when the graph reaches the P12 10⁶-object scale.
 
 - **8.1** — P: High · validator · Deps: P5/6/7 · Complexity: High · *Desc:* a kernel
   daemon that cycles {incremental reachability → SCC sweep → invariant check → GC},

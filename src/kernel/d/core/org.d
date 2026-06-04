@@ -28,6 +28,7 @@ import core.objmgr : OBJ_MAX, ObjType, objGet, objAlloc, objRelease,
                      g_objFreeNotify;
 import core.namespace : nsAlloc, nsBind, nsRelease, nsValidateBindings; // P4.3
 import memory.mm : free_phys_page, alloc_phys_page; // P6.2: GC ↔ allocator integration
+import core.audit : auditLog, AuditKind; // P8.2: attributable graph events
 
 extern (C) @nogc nothrow:
 
@@ -743,6 +744,7 @@ public void orgQuarantine(uint id) {
     g_orgNodes[id].quarantined = true;
     ++g_orgQuarantined;
     ++g_orgSecurityEvents;
+    auditLog(AuditKind.Quarantine, id, 0); // P8.2: attributable
     klog("[org] SECURITY quarantine obj="); klog_hex(cast(ulong)id); klog("\n");
 }
 

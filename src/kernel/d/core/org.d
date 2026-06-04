@@ -507,7 +507,7 @@ private bool isAnchorType(ObjType t) {
         case ObjType.Directory: case ObjType.Endpoint: case ObjType.Window:
         case ObjType.Vmo: case ObjType.LinuxProcess: case ObjType.LinuxVFS:
         case ObjType.LinuxSyscall: case ObjType.LinuxELFLoader:
-        case ObjType.LinuxDeviceAdapter:
+        case ObjType.LinuxDeviceAdapter: case ObjType.Admin:
             return true;
         default: return false;
     }

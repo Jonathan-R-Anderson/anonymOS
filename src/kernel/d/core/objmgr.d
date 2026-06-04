@@ -42,6 +42,7 @@ enum ObjType : uint {
     LinuxELFLoader,     // Phase 12: Linux ELF-loader object
     LinuxDeviceAdapter, // Phase 12: native Device → /dev/* adapter object
     Untyped,            // IMMUTABLE_ROOTLESS §1.4: untyped-memory capability
+    Admin,              // IMMUTABLE_ROOTLESS §3.2: typed admin authority object
     Count
 }
 
@@ -205,6 +206,7 @@ public void objStats() {
     klog(" vmo=");       klog_hex(cast(ulong)objCountType(ObjType.Vmo));
     klog(" proc=");      klog_hex(cast(ulong)objCountType(ObjType.Process));
     klog(" thread=");    klog_hex(cast(ulong)objCountType(ObjType.Thread));
+    klog(" admin=");     klog_hex(cast(ulong)objCountType(ObjType.Admin));
     klog(" opdisp=");    klog_hex(g_objOpsDispatch);
     klog("\n");
 }

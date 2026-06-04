@@ -50,10 +50,10 @@ What exists, by subsystem (exact locations):
 | **Network iface** | `drivers/network/network.d`: `struct NetworkDevice` | **Convertible** (standalone struct). |
 | **DRM/graphics device** | `posix.d` `handleDrmIoctl` (FD_DRM), `display/`, `drivers/graphics/` | **Partially** an object (FD_DRM file) but logic is in-kernel. |
 | **Window / compositor** | `display/wayland/wserver.d`, `display/compositor/`, `display/window_manager/`, `display/server/` | **Must build** window objects; today it's an in-kernel Wayland server. |
-| **User** | `posix.d`: `getuid/geteuid`→`0`, synthetic `/etc/passwd` | **Must build** (no user object; everyone root). |
-| **Service** | userspace OpenRC/init; no kernel notion | **Must build**. |
-| **Capability** | — | **Must build** (does not exist). |
-| **Object Manager / IPC Router** | — | **Must build** (no central object table; IPC today = the Linux socket/pipe paths in posix.d). |
+| **User** | `core/user.d`: `ObjType.User`, `Task.userObjId`; `posix.d` identity/syscred path | **Implemented** (default subject uid/gid 1000; `/etc/passwd` derives from User objects). |
+| **Service** | `core/servicemgr.d`, `core/ipc.d` endpoints | **Implemented** as kernel objects with least-privilege rights metadata. |
+| **Capability** | `core/cap.d` | **Implemented** (per-task cap tables, subset derive, revoke, admin caps). |
+| **Object Manager / IPC Router** | `core/objmgr.d`, `core/ipc.d` | **Implemented** (central object table + endpoint/message router). |
 
 **Risks:** none (read-only). **Difficulty:** 2. **Prerequisites:** none.
 
@@ -528,11 +528,12 @@ Directory object, not *the* fs.
 > **Status: implemented as User objects driving identity + a Service Manager with
 > rights-narrowed Service objects.** New module `core/user.d` defines `User`
 > objects (`ObjType.User`) carrying {uid, gid, name, home, shell} plus an
-> administrative rights bitset (`USER_RIGHT_LOGIN/SPAWN/ADMIN` — admin actions are
-> distinct caps, not "uid==0"). `userRegistryInit` registers a root User (uid 0,
-> full authority) and a non-root `user` (uid 1000, login+spawn, no admin). New
+> session rights bitset (`USER_RIGHT_LOGIN/SPAWN/ADMIN`; syscall administration is
+> now represented by separate typed `ObjType.Admin` caps, not "uid==0").
+> `userRegistryInit` registers a root User (uid 0, registry marker only for legacy
+> identity data) and a non-root `user` (uid 1000, login+spawn, no admin). New
 > module `core/servicemgr.d` defines `Service` objects (`ObjType.Service`): a
-> Service Manager (PID1/init identity) holds the full authority set, and
+> Service Manager (PID1/init identity) holds a narrowed launch/session set, and
 > `serviceRegister` gives each service its own Phase 7 IPC endpoint (registered by
 > name) and an authority set **clamped to a subset of the manager's** — the
 > object-model form of "PID1 holds a minimal cap set; each service gets an
@@ -541,8 +542,9 @@ Directory object, not *the* fs.
 > **Identity routed through objects (`posix.d`):** `getuid`/`geteuid`/`getgid`/
 > `getegid`/`getresuid`/`getresgid` and `SO_PEERCRED`'s ucred now read
 > `userCurrentUid()`/`userCurrentGid()` from the current process's User object
-> instead of a hardcoded `0`. The default running identity stays the root User, so
-> the Linux personality still sees uid 0 and nothing assuming root regresses.
+> instead of a hardcoded `0`. IMMUTABLE_ROOTLESS §3 flips the default running
+> identity to the non-root User (uid/gid 1000); privileged syscalls consult typed
+> admin caps instead of uid 0.
 > The synthetic `/etc/passwd` and `/etc/group` are now **generated from the User
 > registry** (with the static table kept only as an empty-registry fallback).
 >

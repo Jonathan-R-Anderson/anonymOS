@@ -33,10 +33,12 @@
   hardening** to paper over a missing STAC/CLAC.
 - **No stack canaries in OS-built binaries.** `Makefile` `FREESTANDING_CFLAGS` uses
   `-fno-stack-protector`; no `__stack_chk_guard` randomization in the kernel.
-- **No capabilities, no MAC, no syscall filtering.** `dispatchLinuxSyscall`
-  (`kernel_main.d`) serves the full Linux surface to **every** task identically.
-- **Everyone is root.** `posix.d` `getuid`/`geteuid` return `0`; `SO_PEERCRED` returns
-  root for any fd. No subject/label notion.
+- **Capability/MAC coverage is still incomplete.** The fd surface, endpoints,
+  namespaces, untyped memory, and admin actions are cap-gated; the remaining Linux
+  personality surface still needs policy tightening.
+- **Rootless identity now exists.** `Task.userObjId` drives `getuid`/`geteuid` and
+  `SO_PEERCRED`; the default subject is uid/gid 1000 and admin actions require typed
+  caps.
 - **Unverified boot.** Limine loads kernel + modules (`Hyprland`, `libc.so`,
   `xkb.blob`, `assets.blob`) with **no hash/signature** check. No A/B, no rollback.
 - **No runtime integrity / audit.** A page fault just `exitTask(tid, 11)`; nothing is
@@ -63,7 +65,7 @@ NX — i.e. the *mechanisms* exist; the *policy* doesn't.
 | Fault handler | `kernel_main.d`: PF path → `exitTask(tid, 11)` | The hook for canary/guard/shadow-stack violation handling + audit logging. |
 | Syscall dispatch | `kernel_main.d`: `dispatchSyscall`/`dispatchLinuxSyscall` | The choke point for per-process syscall policy + capability checks. |
 | Per-process fd table | `posix.d`: `g_fdTabs`/`g_fdTable`, `fdtabForkCopy` | Proto-capability table (see `OBJECT_OS_ROADMAP.md` P6). |
-| Identity | `posix.d`: `getuid`/`geteuid`→0, `SO_PEERCRED` | Must become capability/label-based (rootless). |
+| Identity | `core/user.d` + `posix.d`: task User objects, non-root default, `SO_PEERCRED` from subject | Rootless identity is object-backed; privileged actions must stay cap-gated. |
 | Boot | `cd/boot/limine/limine.conf`, `scripts/`, Makefile ISO staging | Where verified boot + rollback attach. |
 
 ---
@@ -148,8 +150,8 @@ mitigations and touch only the mmap/exec/fault paths.)*
 
 # Phase 2 Tasks — ASLR + capability/identity foundation (required before multi-user)
 
-*(Multi-user is **not** real yet — `getuid`→0. This phase makes "another subject"
-meaningful.)*
+*(Multi-user now has object-backed subjects; this phase should broaden labels,
+policy, and isolation around those subjects.)*
 
 - **2.1 Randomized VA allocator.** *Desc:* replace the deterministic `g_nextMmapAddr` /
   `Task.mmapNext` bump with a randomized base + randomized gaps; fix the

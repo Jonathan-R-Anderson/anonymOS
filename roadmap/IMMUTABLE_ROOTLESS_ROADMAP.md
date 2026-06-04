@@ -13,14 +13,14 @@
 > historical record) predated the `OBJECT_OS_ROADMAP.md` (Phases 2–13) and
 > `OBJECT_REFERENCE_GRAPH_ROADMAP.md` (Phases 1–12) work, both now implemented. The
 > capability/object substrate this roadmap assumed was missing **largely exists**;
-> what remains is the *immutability* stack (storage/store/verify/A-B) and the final
-> *rootless* flip (default non-root identity + admin caps). The "Now" column is
+> what remains is primarily the *immutability* stack (storage/store/verify/A-B) plus
+> deeper service extraction. The "Now" column is
 > ground truth; see `CAPABILITY_MODEL.md` (§0.1) for the cap details.
 
 | Property | Now (ground truth) | Originally assessed |
 |---|---|---|
-| Capability-based security | **Implemented** (`core/cap.d`): first-class cap-slot objects, subset derive, transitive revoke, per-process cap tables; `requireCap` gates the fd surface; endpoint calls require `CAP_RIGHT_CALL`; namespace opens enforce binding rights; ORG enforces rights/label monotonicity (`[cap] revclosure PASS`). | "None." |
-| Rootless / no UID 0 | **Partial.** `getuid`/`geteuid`/`SO_PEERCRED` now read a **User object** (`core/user.d`), not a literal `0`; `/etc/passwd` derives from User objects. Default identity is **still root** and admin actions aren't yet distinct caps — the §3.1/§3.2 flip is the remaining rootless work. | "Opposite — every task is root." |
+| Capability-based security | **Implemented** (`core/cap.d`): first-class cap-slot objects, subset derive, transitive revoke, per-process cap tables; `requireCap` gates the fd surface; endpoint calls require `CAP_RIGHT_CALL`; namespace opens enforce binding rights; typed `ObjType.Admin` caps gate privileged admin actions; ORG enforces rights/label monotonicity (`[cap] revclosure PASS`). | "None." |
+| Rootless / no UID 0 | **Implemented for the kernel personality boundary.** `getuid`/`geteuid`/`SO_PEERCRED` read the task's **User object** (`Task.userObjId`); the default subject is uid/gid 1000; file-owner defaults use the active subject; privileged actions consult typed admin caps, never `uid==0`. | "Opposite — every task is root." |
 | Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
 | Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it and checks binding read/write rights; fork clones it. | (not separately listed) |
 | Immutable system image | **Still none.** Root fs is the RAM `rtfs` overlay + synthetic namespace; nothing persisted, signed, versioned, or rolled back. Boot modules loaded by Limine unverified. **This is the core of the remaining work (Phase 4/6/8).** | "None." |
@@ -30,14 +30,13 @@
 | Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
 
 **Conclusion:** "rootless" went from ~0% to **substantially built** (capability
-spine, object tree, endpoint caps, namespace rights, User/Service objects) with one
-critical gap — the default-identity flip + distinct admin caps (§3.1/§3.2).
-"Immutable" remains at ~0%:
+spine, object tree, endpoint caps, namespace rights, non-root User subjects, typed
+admin caps, User/Service objects). Remaining rootless hardening is mostly service
+extraction and broader capability coverage, not UID-0 semantics. "Immutable" remains
+at ~0%:
 there is still no persistent, content-addressed, verified store. The biggest leverage
 point is now the inverse of the original: the **capability/object substrate is ready**,
-so the immutable store can be introduced *through* caps and namespaces from the start,
-and the rootless flip is a contained change (kill the default-root defaults — §G #1)
-rather than a ground-up build.
+so the immutable store can be introduced *through* caps and namespaces from the start.
 
 ---
 
@@ -128,8 +127,8 @@ capabilities + Plan 9 per-process namespaces for the **authority model**.*
 - AHCI block driver — the basis for a real, mountable, verifiable store.
 
 **Missing (build):** content-addressed store; image verification/signing; A/B +
-rollback; final rootless admin-cap split/default non-root identity; user-space service
-manager; persistent user state; anti-downgrade rollback index.
+rollback; user-space service manager; persistent user state; anti-downgrade rollback
+index.
 
 **Should be replaced:** hardcoded UID 0 (`getuid`/`geteuid`/`SO_PEERCRED`);
 ad-hoc global tables as the *authority* source (they can remain as *storage*, but
@@ -227,20 +226,31 @@ task IDs below.
   a task sees exactly what's bound into its namespace; kills ambient global root.
   *Outcome:* `open()` resolves against the task's namespace caps, not a global tree.
 
-### Phase 3 — Rootless administration (kill UID 0)
-- **3.1 Replace UID-0 semantics with caps** — P: Critical · D: 6 · deps: 1.3, 2.1 ·
+### Phase 3 — Rootless administration (kill UID 0)  ✅ DONE
+> **Status:** implemented. `Task.userObjId` is the per-task subject, inherited by
+> fork/clone and selected by the syscall dispatcher. `core/user.d` now defaults to
+> the non-root uid/gid 1000 User object; `getuid`/`geteuid`/`getgid`/`SO_PEERCRED`
+> and stat owner defaults read that object. `core/admin.d` adds typed `ObjType.Admin`
+> capability objects for mount, reboot, update, user, device, and inspect actions;
+> `mount`/`umount2`/`chroot`, `reboot`, identity/ownership changes, and ORG graph
+> export check the specific admin cap instead of `uid==0`. PID1 starts as uid 1000
+> and receives only the mount/reboot/inspect admin caps needed by today's
+> compatibility layer; forked children do not inherit those non-fd admin caps through
+> fd-table cloning. `[admin] selftest PASS` proves action-specific admin caps are
+> required.
+- **3.1 Replace UID-0 semantics with caps** — ✅ **DONE** · P: Critical · D: 6 · deps: 1.3, 2.1 ·
   affects: posix.d `getuid`/`geteuid`/`setuid`/`SO_PEERCRED`, file-owner defaults.
   *Why:* this is *the* rootless gate; today literally everything is root. *Outcome:*
   `getuid` returns a real, non-privileged subject id; privilege checks consult caps,
   never `uid==0`.
-- **3.2 Admin capabilities (typed)** — P: Critical · D: 5 · deps: 3.1. *Why:*
+- **3.2 Admin capabilities (typed)** — ✅ **DONE** · P: Critical · D: 5 · deps: 3.1. *Why:*
   "install update", "mount", "reboot", "create user", "bind device" become *distinct*
   caps, not one root. *Outcome:* `reboot`/`mount`/update each `requireCap` a specific
   admin cap.
-- **3.3 Subject (user) as an object, not a UID table** — P: High · D: 5 · deps: 1.1,
+- **3.3 Subject (user) as an object, not a UID table** — ✅ **DONE** · P: High · D: 5 · deps: 1.1,
   3.1 · affects: `/etc/passwd` synthetic provider. *Why:* users are objects with owned
   caps; login = receiving a starting cap set. *Outcome:* no global uid→privilege map.
-- **3.4 Least-privilege init/PID1** — P: High · D: 6 · deps: 3.2, Phase 5. *Why:* PID1
+- **3.4 Least-privilege init/PID1** — ✅ **DONE** · P: High · D: 6 · deps: 3.2, Phase 5. *Why:* PID1
   today is omnipotent; it must start holding only the caps to launch services and hand
   each the minimum. *Outcome:* compromising a service ≠ compromising the system.
 
@@ -386,7 +396,7 @@ data integrity flows **up** from the verified store; nothing has ambient authori
 
 **"Rootless" (all required):**
 1. **No code path grants privilege from `uid==0`** — `getuid`/`SO_PEERCRED`/file-owner
-   shortcuts removed (§3.1). (Today this is the whole model.)
+   shortcuts removed (§3.1).
 2. Every privileged syscall/admin action **`requireCap`s a specific capability**
    (§1.3 + §3.2); there is no cap that means "everything."
 3. Caps are **unforgeable and delegate-only-what-you-hold** (§2.1), enforced by the

@@ -176,7 +176,7 @@ the white screen we saw is only the swapchain's pre-allocated buffers being
   `fds[0]` and does the handshake). On Linux `fork` *copies* the fd table so each
   side closes only its own copy; our **global fd table** meant both closes destroyed
   the shared socketpair → "Could not flush". Four kernel fixes (posix.d unless
-  noted): (1) `getsockopt(SO_PEERCRED)` returns root creds for any fd; (2) socket
+  noted): (1) `getsockopt(SO_PEERCRED)` returns User-object creds for any fd; (2) socket
   **refcounting** (dup-aware `closeLocalSocket`); (3) **per-process fd tables**
   (`g_fdTabs` + active `g_fdTable` ptr set per task at dispatch; `forkTask` copies
   the parent's table + bumps refcounts, `cloneThread` shares — task.d gains

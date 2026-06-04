@@ -1,17 +1,15 @@
 // User objects — Phase 10 of roadmap/OBJECT_OS_ROADMAP.md.
 //
 // Introduces first-class **User** objects so process identity (uid/gid) and
-// administrative authority stop being the hardcoded ambient `0` scattered through
+// process identity stop being the hardcoded ambient `0` scattered through
 // posix.d.  A User object carries {uid, gid, name, home, shell} plus an
-// administrative rights bitset (admin actions become *distinct caps*, not "am I
-// root").  The synthetic `/etc/passwd` and `/etc/group` providers now derive
-// their content from this registry.
+// initial session rights.  Administrative actions are separate typed caps in
+// core.admin, never "am I root".  The synthetic `/etc/passwd` and `/etc/group`
+// providers now derive their content from this registry.
 //
-// In the additive spirit of the earlier phases the *values* are routed through
-// User objects while the default running identity stays root (uid 0), so nothing
-// that assumes root (BusyBox/OpenRC/elogind/Hyprland) regresses; flipping the
-// default identity to the non-root user is a policy change the rootless roadmap
-// drives, and the object plumbing for it exists now.
+// IMMUTABLE_ROOTLESS §3 flips the default running identity to the non-root user.
+// PID1 may still hold explicit admin capabilities, but `getuid()`/SO_PEERCRED
+// report the task's User object, not ambient UID 0.
 //
 // Constraints mirror the rest of the kernel: -betterC, plain structs, __gshared
 // fixed tables, @nogc nothrow.
@@ -26,10 +24,10 @@ enum int USER_MAX      = 16;
 enum int USER_NAME_MAX = 32;
 enum int USER_PATH_MAX = 48;
 
-// Administrative authority bits — admin actions are distinct caps, not "uid==0".
+// Session rights. Syscall administrative authority lives in core.admin typed caps.
 enum uint USER_RIGHT_LOGIN = 1u << 0; // may own a login session
 enum uint USER_RIGHT_SPAWN = 1u << 1; // may spawn processes
-enum uint USER_RIGHT_ADMIN = 1u << 2; // root-equivalent administrative authority
+enum uint USER_RIGHT_ADMIN = 1u << 2; // registry marker only; not a syscall gate
 enum uint USER_RIGHT_ALL   = USER_RIGHT_LOGIN | USER_RIGHT_SPAWN | USER_RIGHT_ADMIN;
 
 struct UserRec {
@@ -46,9 +44,10 @@ struct UserRec {
 
 __gshared UserRec[USER_MAX] g_users;
 
-// The identity the running process acts as.  Defaults to the root User so the
-// Linux personality keeps seeing uid 0 until the rootless policy flips it.
+// The identity selected by the scheduler/dispatcher for the current task.
 __gshared uint g_currentUserObjId = 0;
+__gshared uint g_rootUserObjId    = 0;
+__gshared uint g_defaultUserObjId = 0;
 
 __gshared ulong g_userRegTotal   = 0;
 __gshared bool  g_userInited      = false;
@@ -133,9 +132,40 @@ public UserRec* userByUid(uint uid) {
     return null;
 }
 
-// The User the running process acts as (root by default / fallback).
+public UserRec* userByGid(uint gid) {
+    foreach (ref u; g_users)
+        if (u.inUse && u.gid == gid) return &u;
+    return null;
+}
+
+public uint userRootObjId() {
+    if (g_rootUserObjId != 0) return g_rootUserObjId;
+    auto u = userByUid(0);
+    return (u is null) ? 0 : u.objId;
+}
+
+public uint userDefaultObjId() {
+    if (g_defaultUserObjId != 0) return g_defaultUserObjId;
+    auto u = userByUid(1000);
+    if (u !is null) return u.objId;
+    return userRootObjId();
+}
+
+public bool userSetActiveSubject(uint objId) {
+    if (objId != 0 && userByObj(objId) !is null) {
+        g_currentUserObjId = objId;
+        return true;
+    }
+    uint d = userDefaultObjId();
+    g_currentUserObjId = d;
+    return d != 0;
+}
+
+// The User the active task acts as (non-root default / root fallback).
 public UserRec* userCurrent() {
     auto u = userByObj(g_currentUserObjId);
+    if (u !is null) return u;
+    u = userByObj(userDefaultObjId());
     if (u !is null) return u;
     return userByUid(0);
 }
@@ -150,7 +180,8 @@ public uint userCurrentGid() {
     return (u is null) ? 0 : u.gid;
 }
 
-// Does the current identity hold a given administrative authority bit?
+// Does the current identity hold a registry/session right? This is not used for
+// syscall administration; privileged actions require core.admin typed caps.
 public bool userHasRight(uint right) {
     auto u = userCurrent();
     return u !is null && (u.rights & right) == right;
@@ -212,10 +243,12 @@ public void userRegistryInit() {
                              USER_RIGHT_ALL);
     // A non-root user matching the XDG_RUNTIME_DIR=/run/user/1000 the bring-up
     // env advertises; carries login/spawn but not admin authority.
-    userRegister(1000, 1000, "user\0".ptr, "/home/user\0".ptr, "/bin/sh\0".ptr,
-                 USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
+    uint user = userRegister(1000, 1000, "user\0".ptr, "/home/user\0".ptr, "/bin/sh\0".ptr,
+                             USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
 
-    g_currentUserObjId = root; // running identity stays root (Linux-compat)
+    g_rootUserObjId = root;
+    g_defaultUserObjId = (user != 0) ? user : root;
+    g_currentUserObjId = g_defaultUserObjId;
     userRebuildPasswd();
 }
 
@@ -226,11 +259,14 @@ public void userSelfTest() {
 
     auto root = userByUid(0);
     auto user = userByUid(1000);
+    userSetActiveSubject(user !is null ? user.objId : 0);
+
     bool ok = (root !is null && user !is null &&
                objGet(root.objId) !is null && objGet(user.objId) !is null &&
-               userCurrentUid() == 0 &&            // Linux still sees root
-               userIsAdmin() &&                    // root holds admin authority
-               (user.rights & USER_RIGHT_ADMIN) == 0 && // the user does not
+               userCurrentUid() == 1000 &&         // default subject is non-root
+               !userIsAdmin() &&                   // admin is not inherited by uid
+               (root.rights & USER_RIGHT_ADMIN) != 0 &&
+               (user.rights & USER_RIGHT_ADMIN) == 0 &&
                userPasswdContent().length > 0);    // passwd derives from objects
 
     if (ok) klog("[user] selftest PASS\n");

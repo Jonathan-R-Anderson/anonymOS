@@ -141,6 +141,10 @@ struct Task {
     // Phase 9: this process's Namespace object (name→object bindings/mounts).
     // Threads of a process share the leader's namespace; fork clones it.
     uint namespaceObjId;
+    // IMMUTABLE_ROOTLESS §3.1/3.3: User object this task runs as. Threads and
+    // forked processes inherit it; setuid-style calls can replace it only with
+    // ADMIN_USER authority.
+    uint userObjId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;
@@ -476,6 +480,8 @@ public void orgReconcileOwnership() {
             edgeEnsure(proc, task.objId, EdgeKind.StrongOwn, 0); // owns its Thread
         if (proc != 0 && task.untypedObjId != 0)
             edgeEnsure(proc, task.untypedObjId, EdgeKind.StrongOwn, CAP_RIGHT_RETYPE);
+        if (proc != 0 && task.userObjId != 0)
+            edgeEnsure(proc, task.userObjId, EdgeKind.Weak, 0); // subject identity
         if (task.processLeaderTid == t) {
             if (task.namespaceObjId != 0)
                 edgeEnsure(proc, task.namespaceObjId, EdgeKind.StrongOwn, 0);

@@ -38,7 +38,9 @@ import core.untyped : untypedRootInit, untypedCreateProcess, untypedSelfTest,
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
-import core.user : userRegistryInit, userSelfTest, userStats, USER_RIGHT_ALL; // Phase 10
+import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
+                  userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
+import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
@@ -372,6 +374,7 @@ private int forkTask(int parentTid) {
     child.brkCurrent = parent.brkCurrent;
     child.mmapNext   = parent.mmapNext;
     child.parentId   = parentTid;
+    child.userObjId  = parent.userObjId;
     child.untypedObjId = untypedCreateProcess(parent.untypedObjId);
     if (child.untypedObjId == 0) {
         releaseTask(childTid);
@@ -501,6 +504,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.fdTabId    = parent.fdTabId;
     child.capTabId   = parent.capTabId;
     child.untypedObjId = parent.untypedObjId;
+    child.userObjId  = parent.userObjId;
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -960,6 +964,7 @@ private void dispatchSyscall(int tid) {
     fdtabSetActive(task.fdTabId);
     capTableSetActive(task.capTabId);
     physSetActiveUntyped(task.untypedObjId);
+    userSetActiveSubject(task.userObjId);
 
     // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): keep the core.objmgr object table
     // mirrored onto the now-active fd table.  Amortized (every 256 syscalls) and
@@ -976,6 +981,7 @@ private void dispatchSyscall(int tid) {
         deviceSelfTest(); // Phase 8: one-shot proof /dev resolves to Device objects
         nsSelfTest(); // Phase 9: one-shot proof per-process namespaces clone & route
         userSelfTest(); // Phase 10: one-shot proof identity/passwd derive from User objects
+        adminSelfTest(); // IR-P3: one-shot proof typed admin caps gate actions
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
@@ -1005,6 +1011,7 @@ private void dispatchSyscall(int tid) {
             deviceStats();
             nsStats();
             userStats();
+            adminStats();
             serviceStats();
             windowStats();
             linuxStats();
@@ -1722,11 +1729,14 @@ void d_kernel_main() {
     // Phase 8: stand up Driver/Device objects for the synthetic /dev tree (and
     // wrap the block/NIC driver globals) before the init process opens /dev nodes.
     deviceRegistryInit();
-    // Phase 10: register User objects (root + a non-root user) so identity and
-    // /etc/passwd derive from objects, and bring up the Service Manager (PID1
-    // identity) holding the full authority set that services are narrowed from.
+    // Phase 10 / IMMUTABLE_ROOTLESS §3: register User objects, flip task 0 to
+    // the non-root subject, then grant PID1 only explicit typed admin caps needed
+    // by the current compatibility stubs.
     userRegistryInit();
-    serviceManagerInit(USER_RIGHT_ALL);
+    g_tasks[0].userObjId = userDefaultObjId();
+    userSetActiveSubject(g_tasks[0].userObjId);
+    adminInstallInitCaps(g_tasks[0].capTabId);
+    serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).
     windowRegistryInit(g_fb !is null ? cast(uint)g_fb.width : 0,

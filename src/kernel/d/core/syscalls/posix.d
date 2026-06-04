@@ -18,6 +18,9 @@ import core.cap : Capability, CAP_INVALID,
                   CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CLOSE,
                   CAP_RIGHT_STAT, CAP_RIGHT_IOCTL, CAP_RIGHT_MMAP,
                   CAP_RIGHT_DUP, CAP_RIGHT_PASS, CAP_RIGHT_ALL,
+                  CAP_RIGHT_ADMIN_MOUNT, CAP_RIGHT_ADMIN_REBOOT,
+                  CAP_RIGHT_ADMIN_USER, CAP_RIGHT_ADMIN_DEVICE,
+                  CAP_RIGHT_ADMIN_INSPECT,
                   capTableSetActive, capTableClear, capGet, capGetIn,
                   capInstall, capInstallIn, capClear, capClearIn,
                   capDeriveObjectTo, capDeriveObjectToIn,
@@ -26,7 +29,9 @@ import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC route
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolveWithRights; // Phase 9/IR-P2: namespace object caps
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
-                   userGroupContent, userIsAdmin; // Phase 10: identity via User objects
+                   userGroupContent, userByUid, userByGid,
+                   userSetActiveSubject; // Phase 10 / IR-P3 User objects
+import core.admin : adminRequire; // IR-P3 typed admin caps
 import core.org : edgeEnsure, orgPruneDeadOut, edgeAdd, edgeRemove, EdgeKind,
                   orgDotContent, orgStatsContent; // ORG P3/P9/P10: edges + graph export
 extern(C) @nogc nothrow:
@@ -1093,7 +1098,7 @@ private long copySockoptUcred(ulong val, ulong len)
     if (*optLen < LinuxUcred.sizeof) return negErrno(EINVAL);
     auto cred = cast(LinuxUcred*)val;
     cred.pid = 1;
-    cred.uid = userCurrentUid(); // Phase 10: from the User object (root → 0)
+    cred.uid = userCurrentUid(); // IR-P3: from the active task's User object
     cred.gid = userCurrentGid();
     *optLen = cast(uint)LinuxUcred.sizeof;
     return 0;
@@ -1700,12 +1705,10 @@ public int sys_open(const(char)* path, int flags) {
          return publishActiveFdReturn(fd);
     }
 
-    // ORG P9.3: the object-reference-graph export (/proc/org/graph = DOT snapshot,
-    // /proc/org/stats = live counters), gated by administrative authority so a
-    // non-admin process cannot read the kernel's object topology (a capability
-    // gate, reusing the Phase 10 User authority).
+    // ORG P9.3 / IR-P3: object-reference-graph exports require the typed
+    // ADMIN_INSPECT cap; uid 0 is not consulted.
     if (cstrEq(path, "/proc/org/graph") || cstrEq(path, "/proc/org/stats")) {
-        if (!userIsAdmin()) return negErrno(13); // EACCES
+        if (!adminRequire(CAP_RIGHT_ADMIN_INSPECT)) return negErrno(EACCES);
         const(char)[] content = cstrEq(path, "/proc/org/graph")
             ? orgDotContent() : orgStatsContent();
         g_fdTable[fd].type     = FileType.FD_FILE;
@@ -1758,7 +1761,8 @@ public int sys_open(const(char)* path, int flags) {
         if ((flags & O_CREAT) && rparent >= 0 && rleaf !is null &&
             g_rt[rparent].kind == RT_DIR) {
             const int created = rtCreate(rparent, rleaf, rleafLen, RT_REG,
-                                         cast(ushort)0x1B6 /*0666*/, 0, 0);
+                                         cast(ushort)0x1B6 /*0666*/,
+                                         userCurrentUid(), userCurrentGid());
             if (created < 0) return negErrno(ENOSPC);
             g_fdTable[fd].type     = FileType.FD_RTFILE;
             g_fdTable[fd].flags    = flags;
@@ -1887,6 +1891,8 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
         } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
+            *cast(uint*)(_statBuf + 28) = userCurrentUid();
+            *cast(uint*)(_statBuf + 32) = userCurrentGid();
         } else if (f.type == FileType.FD_DRM) {
             // Report the DRM device as a character device with the DRM major
             // (226) and minor 0 (= card0, a "primary" node).  libdrm's
@@ -1894,14 +1900,20 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             // Aquamarine's dumb-buffer allocator requires.
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x01B6;     // S_IFCHR | 0666
+            *cast(uint*)(_statBuf + 28) = userCurrentUid();
+            *cast(uint*)(_statBuf + 32) = userCurrentGid();
             *cast(ulong*)(_statBuf + 40) = 0xE200;             // st_rdev = makedev(226, 0)
         } else if (f.type == FileType.FD_SOCKET) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0xC000 | 0x01B6; // S_IFSOCK | 0666
+            *cast(uint*)(_statBuf + 28) = userCurrentUid();
+            *cast(uint*)(_statBuf + 32) = userCurrentGid();
         } else if (f.type == FileType.FD_RTFILE) {
             const int idx = cast(int)cast(size_t)f.backend;
             const uint sz = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].size : 0;
-            writeLinuxStat(_statBuf, 0x8000 | 0x01B6, sz); // S_IFREG | 0666
+            const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
+            const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
+            writeLinuxStatOwned(_statBuf, 0x8000 | 0x01B6, sz, uid, gid); // S_IFREG | 0666
         } else {
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
         }
@@ -2124,12 +2136,19 @@ private void clearLinuxStat(ulong statBuf) {
     }
 }
 
-private void writeLinuxStat(ulong statBuf, uint mode, ulong size) {
+private void writeLinuxStatOwned(ulong statBuf, uint mode, ulong size,
+                                 uint uid, uint gid) {
     clearLinuxStat(statBuf);
     *cast(uint*)(statBuf + 24) = mode;
+    *cast(uint*)(statBuf + 28) = uid;
+    *cast(uint*)(statBuf + 32) = gid;
     *cast(long*)(statBuf + 48) = cast(long)size;
     *cast(long*)(statBuf + 56) = 4096;
     *cast(long*)(statBuf + 64) = cast(long)((size + 511) / 512);
+}
+
+private void writeLinuxStat(ulong statBuf, uint mode, ulong size) {
+    writeLinuxStatOwned(statBuf, mode, size, userCurrentUid(), userCurrentGid());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2310,6 +2329,8 @@ private void rtInit() {
     rtMkdirPath("/run/user/0\0".ptr,    M0700, 0, 0);
     rtMkdirPath("/run/user/1000\0".ptr, M0700, 1000, 1000);
     rtMkdirPath("/tmp\0".ptr,           M1777, 0, 0);
+    rtMkdirPath("/home\0".ptr,          M0755, 0, 0);
+    rtMkdirPath("/home/user\0".ptr,     M0700, 1000, 1000);
     rtMkdirPath("/var\0".ptr,           M0755, 0, 0);
     rtMkdirPath("/var/tmp\0".ptr,       M1777, 0, 0);
     rtMkdirPath("/var/run\0".ptr,       M0755, 0, 0);
@@ -2466,7 +2487,7 @@ private immutable VFEntry[] g_vfs = [
     { "/proc/self/environ",      ""                                                                    },
     { "/proc/self/oom_score_adj","0\n"                                                                 },
     { "/proc/self/wchan",        "0\n"                                                                 },
-    { "/proc/self/loginuid",     "0\n"                                                                 },
+    { "/proc/self/loginuid",     "1000\n"                                                              },
     { "/proc/self/sessionid",    "1\n"                                                                 },
     { "/proc/self/smaps",        ""                                                                    },
     { "/proc/self/smaps_rollup", ""                                                                    },
@@ -2781,16 +2802,16 @@ private immutable VFEntry[] g_vfs = [
     },
     { "/run/systemd/sessions/1",
       "ID=1\n" ~
-      "UID=0\n" ~
-      "USER=root\n" ~
+      "UID=1000\n" ~
+      "USER=user\n" ~
       "STATE=online\n" ~
       "SEAT=seat0\n" ~
       "TTY=tty1\n" ~
       "TYPE=wayland\n" ~
       "CLASS=user\n"
     },
-    { "/run/systemd/users/0",
-      "UID=0\n" ~
+    { "/run/systemd/users/1000",
+      "UID=1000\n" ~
       "STATE=active\n" ~
       "SESSIONS=1\n"
     },
@@ -3004,7 +3025,7 @@ private immutable VFEntry[] g_vfs = [
 
     // ── GLib/GIO proc environ (env-var source for g_getenv fallback) ──────
     { "/proc/self/environ",
-      "HOME=/root\x00" ~
+      "HOME=/home/user\x00" ~
       "PATH=/usr/bin:/bin:/usr/local/bin:/sbin:/usr/sbin\x00" ~
       "WAYLAND_DISPLAY=wayland-0\x00" ~
       "XDG_RUNTIME_DIR=/run/user/1000\x00" ~
@@ -3254,6 +3275,7 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/etc/wireplumber/main.lua.d") ||
            cstrEq(path, "/etc/modules.d") ||
            cstrEq(path, "/home") ||
+           cstrEq(path, "/home/user") ||
            cstrEq(path, "/root") ||
            cstrEq(path, "/var") ||
            cstrEq(path, "/var/run") ||
@@ -4434,9 +4456,9 @@ public long linux_sys_arch_prctl(ulong code, ulong addr) {
 }
 
 // --- Identity / session / group ---
-// Phase 10: identity is read from the current process's User object (defaults to
-// the root User → uid/gid 0, so the Linux personality is unchanged) rather than a
-// hardcoded ambient 0.
+// Phase 10 / IR-P3: identity is read from the active task's User object. The
+// default subject is non-root; privileged actions are gated by typed admin
+// capabilities, not uid 0.
 public long linux_sys_getuid()  { return cast(long)userCurrentUid(); }
 public long linux_sys_geteuid() { return cast(long)userCurrentUid(); }
 public long linux_sys_getgid()  { return cast(long)userCurrentGid(); }
@@ -4456,11 +4478,72 @@ public long linux_sys_gettid()  {
     return cast(long)linuxTidForTask(cast(int)g_current_task_id);
 }
 public long linux_sys_getgroups(ulong size, ulong list) { return 0; }
-public long linux_sys_setgroups(ulong size, ulong list) { return 0; }
-public long linux_sys_setuid(ulong uid)  { return 0; }
-public long linux_sys_setgid(ulong gid)  { return 0; }
-public long linux_sys_setresuid(ulong r, ulong e, ulong s) { return 0; }
-public long linux_sys_setresgid(ulong r, ulong e, ulong s) { return 0; }
+public long linux_sys_setgroups(ulong size, ulong list) {
+    if (size == 0) return 0;
+    return adminRequire(CAP_RIGHT_ADMIN_USER) ? 0 : negErrno(EPERM);
+}
+
+private bool setCurrentTaskUserObj(uint objId) {
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    if (!userSetActiveSubject(objId)) return false;
+    g_tasks[tid].userObjId = objId;
+    return true;
+}
+
+private long switchCurrentUid(uint uid) {
+    if (uid == userCurrentUid()) return 0;
+    if (!adminRequire(CAP_RIGHT_ADMIN_USER)) return negErrno(EPERM);
+    auto u = userByUid(uid);
+    if (u is null) return negErrno(EINVAL);
+    return setCurrentTaskUserObj(u.objId) ? 0 : negErrno(EINVAL);
+}
+
+private long switchCurrentGid(uint gid) {
+    if (gid == userCurrentGid()) return 0;
+    if (!adminRequire(CAP_RIGHT_ADMIN_USER)) return negErrno(EPERM);
+    auto u = userByGid(gid);
+    if (u is null) return negErrno(EINVAL);
+    return setCurrentTaskUserObj(u.objId) ? 0 : negErrno(EINVAL);
+}
+
+private bool idArgSpecified(ulong v) {
+    return v != ulong.max;
+}
+
+public long linux_sys_setuid(ulong uid) {
+    if (uid > uint.max) return negErrno(EINVAL);
+    return switchCurrentUid(cast(uint)uid);
+}
+
+public long linux_sys_setgid(ulong gid) {
+    if (gid > uint.max) return negErrno(EINVAL);
+    return switchCurrentGid(cast(uint)gid);
+}
+
+public long linux_sys_setresuid(ulong r, ulong e, ulong s) {
+    if ((idArgSpecified(r) && r > uint.max) ||
+        (idArgSpecified(e) && e > uint.max) ||
+        (idArgSpecified(s) && s > uint.max))
+        return negErrno(EINVAL);
+    uint target = userCurrentUid();
+    if (idArgSpecified(r)) target = cast(uint)r;
+    if (idArgSpecified(e) && cast(uint)e != target) return negErrno(EINVAL);
+    if (idArgSpecified(s) && cast(uint)s != target) return negErrno(EINVAL);
+    return switchCurrentUid(target);
+}
+
+public long linux_sys_setresgid(ulong r, ulong e, ulong s) {
+    if ((idArgSpecified(r) && r > uint.max) ||
+        (idArgSpecified(e) && e > uint.max) ||
+        (idArgSpecified(s) && s > uint.max))
+        return negErrno(EINVAL);
+    uint target = userCurrentGid();
+    if (idArgSpecified(r)) target = cast(uint)r;
+    if (idArgSpecified(e) && cast(uint)e != target) return negErrno(EINVAL);
+    if (idArgSpecified(s) && cast(uint)s != target) return negErrno(EINVAL);
+    return switchCurrentGid(target);
+}
 public long linux_sys_getresuid(ulong rp, ulong ep, ulong sp) {
     const uint uid = userCurrentUid();
     if (rp) *cast(uint*)rp = uid;
@@ -4865,7 +4948,8 @@ private long rtMkdirSyscall(const(char)* path, ushort mode) {
     if (isSyntheticDirectoryPath(path)) return negErrno(EEXIST); // exists read-only
     if (parent < 0 || leaf is null) return negErrno(EROFS);      // parent not writable
     if (g_rt[parent].kind != RT_DIR) return negErrno(ENOTDIR);
-    const int created = rtCreate(parent, leaf, leafLen, RT_DIR, mode, 0, 0);
+    const int created = rtCreate(parent, leaf, leafLen, RT_DIR, mode,
+                                 userCurrentUid(), userCurrentGid());
     if (created < 0) return negErrno(ENOSPC);
     return 0;
 }
@@ -5080,10 +5164,22 @@ public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
 public long linux_sys_chmod(ulong p, ulong m)         { return 0; }
 public long linux_sys_fchmod(ulong fd, ulong m)        { return 0; }
 public long linux_sys_fchmodat(ulong d, ulong p, ulong m, ulong f) { return 0; }
-public long linux_sys_chown(ulong p, ulong u, ulong g) { return 0; }
-public long linux_sys_lchown(ulong p, ulong u, ulong g){ return 0; }
-public long linux_sys_fchown(ulong fd, ulong u, ulong g){ return 0; }
-public long linux_sys_fchownat(ulong d, ulong p, ulong u, ulong g, ulong f) { return 0; }
+
+private bool chownIsNoop(ulong u, ulong g) {
+    bool uidOk = (u == ulong.max) || (u == userCurrentUid());
+    bool gidOk = (g == ulong.max) || (g == userCurrentGid());
+    return uidOk && gidOk;
+}
+
+private long chownStub(ulong u, ulong g) {
+    if (chownIsNoop(u, g)) return 0;
+    return adminRequire(CAP_RIGHT_ADMIN_USER) ? 0 : negErrno(EPERM);
+}
+
+public long linux_sys_chown(ulong p, ulong u, ulong g) { return chownStub(u, g); }
+public long linux_sys_lchown(ulong p, ulong u, ulong g){ return chownStub(u, g); }
+public long linux_sys_fchown(ulong fd, ulong u, ulong g){ return chownStub(u, g); }
+public long linux_sys_fchownat(ulong d, ulong p, ulong u, ulong g, ulong f) { return chownStub(u, g); }
 public long linux_sys_utimensat(ulong d, ulong p, ulong t, ulong f) { return 0; }
 public long linux_sys_utimes(ulong p, ulong t)         { return 0; }
 
@@ -5140,7 +5236,7 @@ public long linux_sys_getsockopt(ulong fd, ulong lvl, ulong opt, ulong val, ulon
     // this to identify its peer, but our socketpair/connection fd isn't always a
     // recognised FD_SOCKET, so a strict ENOTSOCK makes the builtin backend fail to
     // open the seat ("Not a socket") and aquamarine never activates the session.
-    // Everything runs as root here, so just hand back uid/gid 0 for any open fd.
+    // Return the active task's User object credentials for any open fd.
     if (lvl == SOL_SOCKET && cast(int)opt == SO_PEERCRED)
         return copySockoptUcred(val, len);
 
@@ -5527,7 +5623,9 @@ public long linux_sys_setpriority(ulong w, ulong who, ulong p) { return 0; }
 public long linux_sys_capget(ulong hdr, ulong dat)  { return 0; }
 public long linux_sys_capset(ulong hdr, ulong dat)  { return 0; }
 public long linux_sys_personality(ulong p)          { return 0; }
-public long linux_sys_chroot(ulong path)            { return 0; }
+public long linux_sys_chroot(ulong path) {
+    return adminRequire(CAP_RIGHT_ADMIN_MOUNT) ? 0 : negErrno(EPERM);
+}
 public long linux_sys_alarm(ulong sec)              { return 0; }
 public long linux_sys_pause()                       { return negErrno(EINTR); }
 public long linux_sys_setitimer(ulong w, ulong nv, ulong ov) { return 0; }
@@ -5559,8 +5657,12 @@ public long linux_sys_io_uring_setup(ulong e, ulong p) { return negErrno(ENOSYS)
 public long linux_sys_io_uring_enter(ulong fd, ulong ts, ulong mc, ulong f, ulong s, ulong ss) { return negErrno(ENOSYS); }
 public long linux_sys_io_uring_register(ulong fd, ulong op, ulong a, ulong n) { return negErrno(ENOSYS); }
 public long linux_sys_flock(ulong fd, ulong op) { return 0; }
-public long linux_sys_iopl(ulong level)         { return 0; }
-public long linux_sys_ioperm(ulong from, ulong num, ulong on) { return 0; }
+public long linux_sys_iopl(ulong level) {
+    return adminRequire(CAP_RIGHT_ADMIN_DEVICE) ? 0 : negErrno(EPERM);
+}
+public long linux_sys_ioperm(ulong from, ulong num, ulong on) {
+    return adminRequire(CAP_RIGHT_ADMIN_DEVICE) ? 0 : negErrno(EPERM);
+}
 public long linux_sys_ptrace(ulong req, ulong pid, ulong addr, ulong data) { return negErrno(ENOSYS); }
 public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong buf) {
     // glibc/libstdc++ std::filesystem::exists()/is_regular_file() use statx; it
@@ -5591,6 +5693,8 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
     if (r < 0) return r;
 
     uint  stMode = *cast(uint*) (st.ptr + 24);
+    uint  stUid  = *cast(uint*) (st.ptr + 28);
+    uint  stGid  = *cast(uint*) (st.ptr + 32);
     ulong stIno  = *cast(ulong*)(st.ptr + 8);
     ulong stSize = *cast(ulong*)(st.ptr + 48);
 
@@ -5602,6 +5706,8 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
     *cast(uint*)  (b + 0)  = STATX_BASIC_STATS;        // stx_mask
     *cast(uint*)  (b + 4)  = 4096;                     // stx_blksize
     *cast(uint*)  (b + 16) = 1;                        // stx_nlink
+    *cast(uint*)  (b + 20) = stUid;                    // stx_uid
+    *cast(uint*)  (b + 24) = stGid;                    // stx_gid
     *cast(ushort*)(b + 28) = cast(ushort)stMode;       // stx_mode
     *cast(ulong*) (b + 32) = stIno;                    // stx_ino
     *cast(ulong*) (b + 40) = stSize;                   // stx_size
@@ -5615,9 +5721,12 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
 
 // --- mount / umount2 (pretend success – no real VFS) ---
 public long linux_sys_mount(ulong src, ulong tgt, ulong fstype, ulong fl, ulong data) {
+    if (!adminRequire(CAP_RIGHT_ADMIN_MOUNT)) return negErrno(EPERM);
     return 0;
 }
-public long linux_sys_umount2(ulong tgt, ulong fl) { return 0; }
+public long linux_sys_umount2(ulong tgt, ulong fl) {
+    return adminRequire(CAP_RIGHT_ADMIN_MOUNT) ? 0 : negErrno(EPERM);
+}
 
 // --- swapon / swapoff ---
 public long linux_sys_swapon(ulong path, ulong swapfl)  { return negErrno(ENODEV); }
@@ -5635,6 +5744,7 @@ private enum uint LINUX_REBOOT_CMD_CAD_ON    = 0x89abcdef;
 private enum uint LINUX_REBOOT_CMD_CAD_OFF   = 0x00000000;
 
 public long linux_sys_reboot(ulong magic1, ulong magic2, ulong cmd, ulong arg) {
+    if (!adminRequire(CAP_RIGHT_ADMIN_REBOOT)) return negErrno(EPERM);
     if (cast(uint)magic1 != LINUX_REBOOT_MAGIC1) return negErrno(EINVAL);
     if (cmd == LINUX_REBOOT_CMD_POWER_OFF || cmd == LINUX_REBOOT_CMD_HALT) {
         // QEMU ACPI power-off: outw(0x2000, 0x604)
@@ -6602,6 +6712,8 @@ public long linux_sys_renameat(ulong olddir, ulong oldpath,
 public long linux_sys_sched_setparam(ulong pid, ulong param) { return 0; }
 public long linux_sys_sched_getparam(ulong pid, ulong param) { return 0; }
 
-public long linux_sys_setreuid(ulong ruid, ulong euid) { return 0; }
+public long linux_sys_setreuid(ulong ruid, ulong euid) {
+    return linux_sys_setresuid(ruid, euid, ulong.max);
+}
 
 public long linux_sys_userfaultfd(ulong flags) { return negErrno(ENOSYS); }

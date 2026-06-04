@@ -863,11 +863,11 @@ ulong linux_seed_initial_stack(
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
-    ulong envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOME=/root\0".ptr);
+    ulong envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOME=/home/user\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "USER=root\0".ptr);
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "USER=user\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LOGNAME=root\0".ptr);
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LOGNAME=user\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "SHELL=/bin/sh\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;

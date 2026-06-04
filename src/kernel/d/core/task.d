@@ -3,7 +3,7 @@ module core.task;
 import core.io;
 import core.globals;
 import memory.mm;
-import core.objmgr : ObjType, objAlloc, objRelease, objGet,
+import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
 
 extern (C) @nogc nothrow:
@@ -71,9 +71,12 @@ struct AddrRegion {
     // whose pages must never be reclaimed.
     bool        owned;
     // Phase 3 (roadmap/OBJECT_OS_ROADMAP.md): id of the core.objmgr MemRegion
-    // object mirroring this region (0 = none/not yet registered).  Reconciled
-    // amortized, not on the fault/mmap path.
+    // object mirroring this region (0 = none/not yet registered).
     uint        objId;
+    // Phase 3: optional VMO object id for shared physical backing (memfd / DRM
+    // GEM).  Private anonymous/file regions leave this as 0.
+    uint        vmoObjId;
+    bool        vmoRetained;
 }
 
 struct Task {
@@ -186,17 +189,44 @@ int allocTask() {
 void releaseTask(int tid) {
     if (tid > 0 && tid < MAX_TASKS) {
         objReleaseTask(tid);
+        clearRegions(g_tasks[tid]);
         g_tasks[tid] = Task.init;
     }
 }
 
-// Add a virtual address region to a task
-bool addRegion(ref Task task, ulong start, ulong end,
-               RegionType type, RegionPerms perms, ulong physBase = 0,
-               bool owned = false) {
+public void objEnsureRegion(AddrRegion* r) {
+    if (r is null) return;
+    auto h = objGet(r.objId);
+    if (h is null || h.type != ObjType.MemRegion || h.impl !is cast(void*)r) {
+        if (h !is null && h.impl is cast(void*)r && h.type == ObjType.MemRegion)
+            objRelease(r.objId);
+        r.objId = objAlloc(ObjType.MemRegion, cast(void*)r);
+    }
+    if (r.vmoObjId != 0 && !r.vmoRetained && objGet(r.vmoObjId) !is null) {
+        objRetain(r.vmoObjId);
+        r.vmoRetained = true;
+    }
+}
+
+private void objReleaseRegion(AddrRegion* r) {
+    if (r is null) return;
+    auto h = objGet(r.objId);
+    if (h !is null && h.impl is cast(void*)r && h.type == ObjType.MemRegion)
+        objRelease(r.objId);
+    if (r.vmoRetained && objGet(r.vmoObjId) !is null)
+        objRelease(r.vmoObjId);
+    r.objId = 0;
+    r.vmoObjId = 0;
+    r.vmoRetained = false;
+}
+
+// Add a virtual address region to a task.
+AddrRegion* addRegion(ref Task task, ulong start, ulong end,
+                      RegionType type, RegionPerms perms, ulong physBase = 0,
+                      bool owned = false, uint vmoObjId = 0) {
     if (task.regionCount >= MAX_REGIONS) {
         klog("[task] addRegion: full\n");
-        return false;
+        return null;
     }
     auto r          = &task.regions[task.regionCount++];
     r.start         = start;
@@ -205,9 +235,11 @@ bool addRegion(ref Task task, ulong start, ulong end,
     r.perms         = perms;
     r.physBase      = physBase;
     r.owned         = owned;
-    r.objId         = 0; // registered lazily by objReconcileRegions; a reused
-                         // (swap-removed) slot must not inherit a stale objId
-    return true;
+    r.vmoObjId      = vmoObjId;
+    r.vmoRetained   = false;
+    r.objId         = 0; // a reused slot must not inherit a stale object id
+    objEnsureRegion(r);
+    return r;
 }
 
 // Does the region containing `vaddr` own its physical pages (safe to free)?
@@ -228,6 +260,7 @@ void removeRegion(ref Task task, ulong start, ulong end) {
     while (i < n) {
         auto r = &task.regions[i];
         if (r.start >= start && r.end <= end) {
+            objReleaseRegion(r);
             task.regions[i] = task.regions[n - 1];   // swap-remove
             --n;
             continue;                                 // re-check swapped-in entry
@@ -235,6 +268,12 @@ void removeRegion(ref Task task, ulong start, ulong end) {
         ++i;
     }
     task.regionCount = n;
+}
+
+void clearRegions(ref Task task) {
+    for (int i = 0; i < task.regionCount; ++i)
+        objReleaseRegion(&task.regions[i]);
+    task.regionCount = 0;
 }
 
 // Find the region that contains vaddr (or null)
@@ -267,9 +306,7 @@ public void objReconcileRegions() {
         int n = task.regionCount;
         for (int i = 0; i < n; ++i) {
             auto r = &task.regions[i];
-            auto h = objGet(r.objId);
-            if (h is null || h.type != ObjType.MemRegion || h.impl !is cast(void*)r)
-                r.objId = objAlloc(ObjType.MemRegion, cast(void*)r);
+            objEnsureRegion(r);
             objMark(r.objId);
         }
     }

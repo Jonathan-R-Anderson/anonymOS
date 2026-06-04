@@ -184,6 +184,7 @@ public void objStats() {
     klog(" freed=");     klog_hex(g_objFreeTotal);
     klog(" file=");      klog_hex(cast(ulong)objCountType(ObjType.File));
     klog(" mem=");       klog_hex(cast(ulong)objCountType(ObjType.MemRegion));
+    klog(" vmo=");       klog_hex(cast(ulong)objCountType(ObjType.Vmo));
     klog(" proc=");      klog_hex(cast(ulong)objCountType(ObjType.Process));
     klog(" thread=");    klog_hex(cast(ulong)objCountType(ObjType.Thread));
     klog(" opdisp=");    klog_hex(g_objOpsDispatch);

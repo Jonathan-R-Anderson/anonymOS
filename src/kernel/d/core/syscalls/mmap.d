@@ -77,6 +77,8 @@ long sys_munmap(ulong addr, ulong len, bool freePages = false) {
         ulong phys = unmap_page_hhdm(addr + (i * PAGE_SIZE));
         if (freePages && phys != 0)
             free_phys_page(phys);
+        else if (phys != 0)
+            physPageClearMemOwner(phys);
     }
 
     return 0;
@@ -137,4 +139,3 @@ long sys_mprotect(ulong addr, ulong len, ulong prot) {
     
     return 0;
 }
-

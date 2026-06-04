@@ -10,7 +10,7 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
-import core.objmgr : ObjType, ObjHeader, objAlloc, objRelease, objGet,
+import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 extern(C) @nogc nothrow:
 
@@ -257,6 +257,7 @@ private struct GemBuf {
     uint   pitch;      // stride in bytes
     uint   bpp;
     ulong  size;       // total size in bytes
+    uint   vmoObjId;   // Phase 3: VMO identity for mmap/PRIME aliases
 }
 
 __gshared GemBuf[GEM_MAX] g_gemBufs;
@@ -1484,9 +1485,12 @@ public int sys_close(int fd) {
         // as-is (their pages are bump-allocated and never freed anyway).
         int mid = cast(int)cast(size_t)f.backend;
         if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
+            if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
+                objRelease(g_memfds[mid].vmoObjId);
             g_memfds[mid].inUse    = false;
             g_memfds[mid].physBase = 0;
             g_memfds[mid].size     = 0;
+            g_memfds[mid].vmoObjId = 0;
             g_memfds[mid].aliased  = false;
         }
     }
@@ -4490,11 +4494,37 @@ private struct MemFdRec {
     ulong physBase;  // 0 until ftruncate allocates backing pages
     ulong size;      // page-aligned byte size
     int   seals;
+    uint  vmoObjId;  // Phase 3: VMO identity for shared mmap backings
     bool  aliased;   // true: physBase is borrowed (e.g. a GEM dumb buffer exported
                      // via PRIME); do NOT treat as owner, and reclaim the record on
                      // close so the swapchain's buffer cycle doesn't leak slots.
 }
 __gshared MemFdRec[MEMFD_MAX] g_memfds;
+
+private uint ensureMemfdVmo(int mid) {
+    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
+    auto rec = &g_memfds[mid];
+    auto h = objGet(rec.vmoObjId);
+    if (h is null || h.type != ObjType.Vmo || h.impl !is cast(void*)rec) {
+        if (h !is null && h.impl is cast(void*)rec && h.type == ObjType.Vmo)
+            objRelease(rec.vmoObjId);
+        rec.vmoObjId = objAlloc(ObjType.Vmo, cast(void*)rec);
+    }
+    return rec.vmoObjId;
+}
+
+public uint memfdVmoObj(ulong fd) {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return 0;
+    File* f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_MEMFD) return 0;
+    int mid = cast(int)cast(size_t)f.backend;
+    if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
+    if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
+        return g_memfds[mid].vmoObjId;
+    return ensureMemfdVmo(mid);
+}
 
 public long linux_sys_ftruncate(ulong fd, ulong length) {
     initFdTable();
@@ -4519,8 +4549,10 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     size_t pages = cast(size_t)(aligned >> 12);
     ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return negErrno(ENOMEM);
+    uint vmoObjId = ensureMemfdVmo(mid);
     g_memfds[mid].physBase = phys;
     g_memfds[mid].size     = aligned;
+    physPagesSetOwner(phys, pages, 0, vmoObjId);
     f.fileSize             = length;
     return 0;
 }
@@ -4978,10 +5010,12 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
     g_memfds[mid].physBase = 0;
     g_memfds[mid].size     = 0;
     g_memfds[mid].seals    = (flags & MFD_ALLOW_SEALING) != 0 ? 0 : F_SEAL_SEAL;
+    g_memfds[mid].vmoObjId = 0;
     g_fdTable[fd].type     = FileType.FD_MEMFD;
     g_fdTable[fd].backend  = cast(void*)cast(size_t)mid;
     g_fdTable[fd].fileSize = 0;
     g_fdTable[fd].offset   = 0;
+    ensureMemfdVmo(mid);
     return fd;
 }
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }
@@ -5221,7 +5255,7 @@ public long linux_sys_open_by_handle_at(ulong mfd, ulong handle, ulong fl) {
 
 import arch.x86_64.limine : limine_framebuffer;
 extern __gshared limine_framebuffer* g_fb;
-import memory.mm : alloc_phys_pages;
+import memory.mm : alloc_phys_pages, physPagesSetOwner;
 
 // DRM ioctl command number byte (request & 0xFF)
 private enum uint DRM_NR_VERSION            = 0x00;
@@ -5261,6 +5295,27 @@ private GemBuf* findGem(uint handle) {
     foreach (ref g; g_gemBufs)
         if (g.inUse && g.handle == handle) return &g;
     return null;
+}
+
+private GemBuf* findGemByPhys(ulong phys) {
+    foreach (ref g; g_gemBufs)
+        if (g.inUse && phys >= g.physAddr && phys < g.physAddr + g.size) return &g;
+    return null;
+}
+
+private uint ensureGemVmo(GemBuf* gem) {
+    if (gem is null) return 0;
+    auto h = objGet(gem.vmoObjId);
+    if (h is null || h.type != ObjType.Vmo || h.impl !is cast(void*)gem) {
+        if (h !is null && h.impl is cast(void*)gem && h.type == ObjType.Vmo)
+            objRelease(gem.vmoObjId);
+        gem.vmoObjId = objAlloc(ObjType.Vmo, cast(void*)gem);
+    }
+    return gem.vmoObjId;
+}
+
+public uint drmVmoForPhys(ulong phys) {
+    return ensureGemVmo(findGemByPhys(phys));
 }
 
 // Fill a drm_mode_modeinfo struct (68 bytes) at ptr using g_fb dimensions.
@@ -5713,7 +5768,12 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     case DRM_NR_GEM_CLOSE: {
         uint handle = userRead!uint(arg + 0);
         GemBuf* g = findGem(handle);
-        if (g) g.inUse = false;
+        if (g) {
+            if (g.vmoObjId != 0 && objGet(g.vmoObjId) !is null)
+                objRelease(g.vmoObjId);
+            g.vmoObjId = 0;
+            g.inUse = false;
+        }
         return 0;
     }
 
@@ -5747,6 +5807,9 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         g_memfds[slot].physBase = gem.physAddr;
         g_memfds[slot].size     = gem.size;
         g_memfds[slot].seals    = 0;
+        g_memfds[slot].vmoObjId = ensureGemVmo(gem);
+        if (g_memfds[slot].vmoObjId != 0)
+            objRetain(g_memfds[slot].vmoObjId);
         g_memfds[slot].aliased  = true;
 
         g_fdTable[nfd].type     = FileType.FD_MEMFD;
@@ -5932,6 +5995,9 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         g_gemBufs[slot].pitch    = pitch;
         g_gemBufs[slot].bpp      = bpp;
         g_gemBufs[slot].size     = sz;
+        g_gemBufs[slot].vmoObjId = 0;
+        uint vmoObjId = ensureGemVmo(&g_gemBufs[slot]);
+        physPagesSetOwner(physAddr, pages, 0, vmoObjId);
 
         userWrite!uint(arg + 16, handle);
         userWrite!uint(arg + 20, pitch);
@@ -5951,7 +6017,12 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     case DRM_NR_MODE_DESTROY_DUMB: {
         uint handle = userRead!uint(arg + 0);
         GemBuf* gem = findGem(handle);
-        if (gem) gem.inUse = false;
+        if (gem) {
+            if (gem.vmoObjId != 0 && objGet(gem.vmoObjId) !is null)
+                objRelease(gem.vmoObjId);
+            gem.vmoObjId = 0;
+            gem.inUse = false;
+        }
         return 0;
     }
 

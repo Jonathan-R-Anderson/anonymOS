@@ -26,7 +26,7 @@ private enum ulong PTE_PS = 1UL << 7;
 
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page
 // from srcPml4Phys into dstPml4Phys.  Called during fork.
-void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4) {
+void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
     auto src4 = cast(ulong*)(srcPml4 + hhdm_offset);
     auto dst4 = cast(ulong*)(dstPml4 + hhdm_offset);
 
@@ -84,6 +84,17 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4) {
                     if (newPage == 0) return;
                     copy_phys_page(srcPage, newPage);
                     dpt[d] = newPage | flags;
+                    if (dstTask !is null) {
+                        ulong va = (cast(ulong)a << 39) |
+                                   (cast(ulong)b << 30) |
+                                   (cast(ulong)c << 21) |
+                                   (cast(ulong)d << 12);
+                        auto region = findRegion(*dstTask, va);
+                        if (region !is null) {
+                            objEnsureRegion(region);
+                            physPageSetOwner(newPage, region.objId, region.vmoObjId);
+                        }
+                    }
                 }
             }
         }
@@ -104,6 +115,7 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
     }
 
     ulong page = virtAddr & ~0xFFFUL;
+    objEnsureRegion(region);
 
     final switch (region.type) {
 
@@ -117,6 +129,7 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
             ulong flags   = PTE_PRESENT | PTE_USER;
             if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
             map_page_hhdm(phys, page, flags, &alloc_phys_page);
+            physPageSetOwner(phys, region.objId, region.vmoObjId);
             return true;
 
         case RegionType.CopyOnWrite:
@@ -130,11 +143,13 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
                 ulong flags = PTE_PRESENT | PTE_USER;
                 if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
                 map_page_hhdm(newPhys, page, flags, &alloc_phys_page);
+                physPageSetOwner(newPhys, region.objId, region.vmoObjId);
             } else {
                 // Read on unmapped COW page — map read-only to source
                 ulong offset  = page - region.start;
                 ulong srcPhys = region.physBase + offset;
                 map_page_hhdm(srcPhys, page, PTE_PRESENT | PTE_USER, &alloc_phys_page);
+                physPageSetOwner(srcPhys, region.objId, region.vmoObjId);
             }
             return true;
 
@@ -145,6 +160,7 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
             ulong flags = PTE_PRESENT | PTE_USER;
             if (region.perms == RegionPerms.ReadWrite) flags |= PTE_RW;
             map_page_hhdm(newPhys, page, flags, &alloc_phys_page);
+            physPageSetOwner(newPhys, region.objId, region.vmoObjId);
             return true;
     }
 }

@@ -27,6 +27,48 @@ __gshared size_t g_free_count = 0;
 __gshared ulong  g_free_calls = 0;            // diag counters
 __gshared ulong  g_reuse_hits = 0;
 
+// Phase 3 object-memory audit: physical pages can be attributed to the
+// MemRegion currently mapping them and/or to a shared VMO backing object.
+// Direct-indexed for the 512 MiB guest size this kernel targets today; pages
+// outside the table are simply left unattributed.
+enum size_t PAGE_AUDIT_CAP = FREE_LIST_CAP;
+__gshared uint[PAGE_AUDIT_CAP] g_physPageMemObj;
+__gshared uint[PAGE_AUDIT_CAP] g_physPageVmoObj;
+__gshared ulong g_pageOwnerSetCalls = 0;
+__gshared ulong g_pageOwnerClearCalls = 0;
+
+private size_t pageAuditIndex(ulong phys) {
+    return cast(size_t)((phys & ~0xFFFUL) >> 12);
+}
+
+void physPageSetOwner(ulong phys, uint memObjId, uint vmoObjId = 0) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    g_physPageMemObj[idx] = memObjId;
+    g_physPageVmoObj[idx] = vmoObjId;
+    ++g_pageOwnerSetCalls;
+}
+
+void physPagesSetOwner(ulong phys, size_t n, uint memObjId, uint vmoObjId = 0) {
+    for (size_t i = 0; i < n; ++i)
+        physPageSetOwner(phys + i * 4096, memObjId, vmoObjId);
+}
+
+void physPageClearOwner(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    g_physPageMemObj[idx] = 0;
+    g_physPageVmoObj[idx] = 0;
+    ++g_pageOwnerClearCalls;
+}
+
+void physPageClearMemOwner(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    g_physPageMemObj[idx] = 0;
+    ++g_pageOwnerClearCalls;
+}
+
 // Return a single 4K page to the free list for reuse.  GUARDED: only accepts
 // pages from the bump pool (>=1 MB and below the high-water mark), so a stray
 // device / framebuffer physical address can never be handed back out as RAM.
@@ -37,6 +79,7 @@ void free_phys_page(ulong addr) {
     if (addr < 0x100000) return;             // low memory / null
     if (addr >= g_next_phys_alloc) return;   // never came from the pool
     if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
+    physPageClearOwner(addr);
     g_free_pages[g_free_count++] = addr;
     ++g_free_calls;
 }
@@ -107,6 +150,7 @@ ulong alloc_phys_page() {
     if (g_free_count > 0) {
         ulong ret = g_free_pages[--g_free_count];
         ++g_reuse_hits;
+        physPageClearOwner(ret);
         if (hhdm_offset != 0) {
             ulong* ptr = cast(ulong*)(ret + hhdm_offset);
             for (size_t k = 0; k < 512; k++) ptr[k] = 0;
@@ -129,6 +173,7 @@ ulong alloc_phys_page() {
              if (g_next_phys_alloc + 4096 <= end) {
                  ulong ret = g_next_phys_alloc;
                  g_next_phys_alloc += 4096;
+                 physPageClearOwner(ret);
 
                  // Zero the page avoiding SSE optimization
                  if (hhdm_offset != 0) {
@@ -165,6 +210,7 @@ ulong alloc_phys_pages(size_t n) {
              if (g_next_phys_alloc + needed_size <= end) {
                  ulong ret = g_next_phys_alloc;
                  g_next_phys_alloc += needed_size;
+                 physPagesSetOwner(ret, n, 0, 0);
 
                  // Zero the pages
                  if (hhdm_offset != 0) {

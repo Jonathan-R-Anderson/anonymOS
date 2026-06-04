@@ -118,14 +118,15 @@ transition. **Difficulty:** 5. **Prerequisites:** Phase 1.
 
 ---
 
-## PHASE 3 — Convert the memory subsystem (Memory Region / VMO objects)  ◐ PARTIAL (accounting done)
+## PHASE 3 — Convert the memory subsystem (Memory Region / VMO objects)  ✅ DONE
 
-> **Status: the accounting/registration half is implemented & proven; behaviour
-> (Vmo identity, untyped-memory gating) is deferred to its dependent phases.**
-> `AddrRegion` gained `uint objId`; `task.d:objReconcileRegions()` mirrors every
-> live region of every active task as a `MemRegion` object, reconciled amortized
-> from `dispatchSyscall` alongside the fd reconcile. mmap/munmap/fault paths are
-> **untouched** (additive, per "for now just attribute … for audit").
+> **Status: implemented as additive object identity and audit accounting.**
+> `AddrRegion` has `objId` (`MemRegion`) and `vmoObjId` (`Vmo` for shared
+> backings). `addRegion` now creates the `MemRegion` object immediately, region
+> teardown releases it, and `task.d:objReconcileRegions()` remains as the
+> amortized safety net for moved/copied slots. mmap/brk/ELF-load/fault/fork paths
+> now attribute mapped physical pages to the owning `MemRegion` and, for shared
+> backings, the stable `Vmo`.
 >
 > **Key difference from Phase 2:** `AddrRegion` slots are *not* address-stable —
 > `removeRegion` swap-removes (a surviving region + its `objId` moves slots) and
@@ -135,15 +136,23 @@ transition. **Difficulty:** 5. **Prerequisites:** Phase 1.
 > any slot whose object doesn't point back at it, then sweeps every `MemRegion`
 > object no live slot claimed (orphans from swap-remove, munmap, fork, exit).
 >
-> **Proof:** `[obj] … file=39 mem=3428` with `file + mem == live (3467)` and
-> `live == alloc − freed` — every region is a `MemRegion` object, 877 orphans
-> reclaimed under Mesa map-churn, no leak, no faults.
+> **VMO identity:** `MemFdRec` and DRM `GemBuf` records carry `Vmo` object ids.
+> Normal memfds allocate a VMO at `memfd_create`; DRM dumb buffers allocate one
+> at `MODE_CREATE_DUMB`; PRIME-exported memfds retain and reference the GEM's
+> same VMO, so memfd/DRM aliases share object identity.
 >
-> **Still TODO in this phase (behavioural, deferred):** distinct **Vmo** object for
-> shared backings (memfd/DRM) so two mappings share identity; attributing physical
-> pages to the owning region's `objId` in `mm.d`; folding `RegionType`/`RegionPerms`
-> into object type+rights. These land with Phase 5/6 when behaviour routes through
-> objects.
+> **Physical-page audit:** `memory/mm.d` now keeps page-indexed
+> `{MemRegion,Vmo}` owner tables. Private pages are attributed to their
+> `MemRegion`; shared pages record the mapping `MemRegion` plus stable backing
+> `Vmo`; `free_phys_page`/`munmap` clear stale audit ownership.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. `objStats()` prints `vmo=` along with `file=`, `mem=`, `proc=`, and
+> `thread=`.
+>
+> **Deferred out of Phase 3:** folding `RegionType`/`RegionPerms` into
+> capability rights and gating allocation on an Untyped-memory capability remain
+> Phase 6 work, where permissions actually start routing through caps.
 
 **Goal:** make `AddrRegion` a first-class **MemRegion/VMO object**, so memory is
 delegable and accountable — the prerequisite for capability-scoped allocation.
@@ -447,7 +456,7 @@ must not be skipped or faked (see `IMMUTABLE_ROOTLESS_ROADMAP.md` §G).
 
 ## Milestones
 
-**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 accounting ◐, P5/P6
+**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 ✅, P4 identity ◐, P5/P6
 pending.* Phases **2 + 5 + 6**: an `Object` header +
 central table, `sys_read/write/close/open` dispatch via `g_objOps`, and fd tables are
 capability tables with rights-narrowing on `fork`/`dup`/`SCM_RIGHTS`. *Provable by:*

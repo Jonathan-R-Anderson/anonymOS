@@ -288,6 +288,7 @@ private void exitTask(int tid, int code) {
             }
         }
     }
+    clearRegions(*t);
 
     klog("[kernel] task "); klog_hex(tid); klog(" exited code="); klog_hex(code); klog("\n");
     scheduleNext();
@@ -320,6 +321,7 @@ private int forkTask(int parentTid) {
     for (int i = 0; i < parent.regionCount; i++) {
         child.regions[i] = parent.regions[i];
         child.regions[i].objId = 0;
+        child.regions[i].vmoRetained = false;
     }
 
     child.brkStart   = parent.brkStart;
@@ -338,7 +340,7 @@ private int forkTask(int parentTid) {
 
     // Deep-copy all user-space pages from parent's page table
     // (must be done while parent's CR3 is active so HHDM accesses work)
-    walkAndCopyUserPages(parent.pml4Phys, childPml4);
+    walkAndCopyUserPages(parent.pml4Phys, childPml4, child);
 
     // Copy FS base
     d_store_task_fsbase(cast(ulong)childTid,
@@ -430,6 +432,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     for (int i = 0; i < parent.regionCount; i++) {
         child.regions[i] = parent.regions[i];
         child.regions[i].objId = 0;
+        child.regions[i].vmoRetained = false;
     }
     child.brkStart   = parent.brkStart;
     child.brkCurrent = parent.brkCurrent;
@@ -518,7 +521,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     x64WriteCR3(newPml4);
 
     task.pml4Phys    = newPml4;
-    task.regionCount = 0;
+    clearRegions(*task);
     task.brkStart    = 0;
     task.brkCurrent  = 0;
     task.mmapNext    = 0x740000000000UL;
@@ -546,8 +549,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         map_page_hhdm(stackPhys + pg * 4096, stackBase + pg * 4096,
                       PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
 
-    addRegion(*task, stackBase, stackTop, RegionType.Mapped,
-              RegionPerms.ReadWrite, stackPhys);
+    auto stackRegion = addRegion(*task, stackBase, stackTop, RegionType.Mapped,
+                                 RegionPerms.ReadWrite, stackPhys, true);
+    if (stackRegion !is null)
+        physPagesSetOwner(stackPhys, stackPages, stackRegion.objId, stackRegion.vmoObjId);
 
     // Seed the initial stack.  pathPtr, argvPtr, and envpPtr are user-space
     // virtual addresses from the OLD address space (no longer reachable after
@@ -646,14 +651,23 @@ private long brkTask(int tid, ulong newBrk) {
     ulong newAligned = (newBrk + 0xFFF) & ~0xFFFUL;
 
     if (newAligned > oldAligned) {
+        auto heapRegion = addRegion(*task, oldAligned, newAligned,
+                                    RegionType.Mapped, RegionPerms.ReadWrite,
+                                    0, true);
+        if (heapRegion is null) return cast(long)task.brkCurrent;
         // Allocate pages from oldAligned to newAligned
+        ulong mappedBytes = 0;
         for (ulong pg = oldAligned; pg < newAligned; pg += 4096) {
             ulong phys = alloc_phys_page();
-            if (phys == 0) return cast(long)task.brkCurrent; // OOM
+            if (phys == 0) {
+                if (mappedBytes != 0) sys_munmap(oldAligned, mappedBytes, true);
+                removeRegion(*task, oldAligned, newAligned);
+                return cast(long)task.brkCurrent;
+            }
             map_page_hhdm(phys, pg, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+            physPageSetOwner(phys, heapRegion.objId, heapRegion.vmoObjId);
+            mappedBytes += 4096;
         }
-        addRegion(*task, oldAligned, newAligned,
-                  RegionType.Mapped, RegionPerms.ReadWrite, 0);
     }
 
     task.brkCurrent = newBrk;
@@ -938,6 +952,29 @@ private void dispatchSyscall(int tid) {
                            (mflags & MAP_ANONYMOUS) == 0 &&
                            cast(long)mfd >= 0 && mfd < 1024;
 
+            uint vmoObjId = 0;
+            ulong regionPhysBase = 0;
+            if (useDrmPhys) {
+                vmoObjId = drmVmoForPhys(moffset);
+                regionPhysBase = moffset;
+            } else if (useMemfd) {
+                vmoObjId = memfdVmoObj(mfd);
+                regionPhysBase = memfdPhys + moffset;
+            }
+
+            auto mappedRegion = addRegion(*task, vaddr, vaddr + alignedLen,
+                                           RegionType.Mapped,
+                                           RegionPerms.ReadWrite,
+                                           regionPhysBase,
+                                           !useDrmPhys && !useMemfd,
+                                           vmoObjId);
+            if (mappedRegion is null) {
+                if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
+                ret = -12;
+                break;
+            }
+
+            ulong mappedPgs = 0;
             for (ulong pg = 0; pg < numPgs; pg++) {
                 ulong phys = useDrmPhys ? (moffset + pg * 4096)
                            : useMemfd  ? (memfdPhys + moffset + pg * 4096)
@@ -948,6 +985,8 @@ private void dispatchSyscall(int tid) {
                 if (useFile)
                     mmapCopyFileRange(cast(int)mfd, moffset + pg * 4096,
                                       cast(ubyte*)phys_to_virt(phys), 4096);
+                physPageSetOwner(phys, mappedRegion.objId, mappedRegion.vmoObjId);
+                ++mappedPgs;
             }
             if (mmapOk) {
                 ret = cast(long)vaddr;
@@ -958,14 +997,10 @@ private void dispatchSyscall(int tid) {
                     klog(" len="); klog_hex(alignedLen);
                     klog(" fd="); klog_hex(mfd); klog("\n");
                 }
-                // owned = pages came from alloc_phys_page (anonymous or private
-                // file map) and are exclusively ours → safe to reclaim on munmap /
-                // exit.  DRM (g_fb) and memfd maps reference device / shared pages
-                // that must never be freed.
-                addRegion(*task, vaddr, vaddr + alignedLen,
-                          RegionType.Mapped, RegionPerms.ReadWrite, 0,
-                          !useDrmPhys && !useMemfd);
             } else {
+                if (mappedPgs != 0)
+                    sys_munmap(vaddr, mappedPgs * 4096, mappedRegion.owned);
+                removeRegion(*task, vaddr, vaddr + alignedLen);
                 if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
                 ret = -12;
             }
@@ -1700,8 +1735,12 @@ void d_kernel_main() {
         map_page_hhdm(stackPhys + pg * 4096, stackBase + pg * 4096,
                       PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
 
-    addRegion(g_tasks[0], stackBase, stackTop,
-              RegionType.Mapped, RegionPerms.ReadWrite, stackPhys);
+    auto initStackRegion = addRegion(g_tasks[0], stackBase, stackTop,
+                                     RegionType.Mapped, RegionPerms.ReadWrite,
+                                     stackPhys, true);
+    if (initStackRegion !is null)
+        physPagesSetOwner(stackPhys, stackPages, initStackRegion.objId,
+                          initStackRegion.vmoObjId);
 
     // Auxv from the loaded image (handles PIE bias + dynamic interpreter).
     ulong[7] infoWords = [

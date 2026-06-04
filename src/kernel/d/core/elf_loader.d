@@ -119,6 +119,12 @@ ElfLoadResult loadElf(ref Task task, ulong elfVirtBase, ulong elfPhysBase,
         ulong alignedStart = p_vaddr & ~0xFFFUL;
         ulong alignedEnd   = (p_vaddr + p_memsz + 0xFFF) & ~0xFFFUL;
         ulong fileEnd      = (p_vaddr + p_filesz + 0xFFF) & ~0xFFFUL;
+        auto region = addRegion(task, alignedStart, alignedEnd,
+                                RegionType.Mapped, perms, 0, true);
+        if (region is null) {
+            klog("[elf] addRegion failed\n");
+            return r;
+        }
 
         klog("[elf] LOAD va="); klog_hex(p_vaddr);
         klog(" memsz="); klog_hex(p_memsz);
@@ -160,6 +166,7 @@ ElfLoadResult loadElf(ref Task task, ulong elfVirtBase, ulong elfPhysBase,
             ulong flags = PTE_PRESENT | PTE_USER;
             if (perms == RegionPerms.ReadWrite) flags |= PTE_RW;
             map_page_hhdm(newPhys, vpage, flags, &alloc_phys_page);
+            physPageSetOwner(newPhys, region.objId, region.vmoObjId);
         }
 
         // Map BSS pages: demand-zero (already zeroed by alloc_phys_page)
@@ -172,10 +179,8 @@ ElfLoadResult loadElf(ref Task task, ulong elfVirtBase, ulong elfPhysBase,
             ulong flags = PTE_PRESENT | PTE_USER;
             if (perms == RegionPerms.ReadWrite) flags |= PTE_RW;
             map_page_hhdm(newPhys, vpage, flags, &alloc_phys_page);
+            physPageSetOwner(newPhys, region.objId, region.vmoObjId);
         }
-
-        // Record region for fault handling
-        addRegion(task, alignedStart, alignedEnd, RegionType.Mapped, perms, 0);
 
         if (alignedEnd > topVirt) topVirt = alignedEnd;
     }

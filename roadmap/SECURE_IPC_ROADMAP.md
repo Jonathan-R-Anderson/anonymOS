@@ -150,18 +150,35 @@ only after cryptographic proof, never because a message arrived.
   *(Live wiring is into a function today; routing the real socket path through it is
   the M2 integration.)*
 
-### Phase 2 — Authenticated DH + AEAD
+### Phase 2 — Authenticated DH + AEAD  ✅ DONE
+> **Status:** implemented in `core/secsession.d` (module `core.secsession`), wired
+> into the boot self-test loop. The per-endpoint `Session` layer turns a Phase-1
+> descriptor + channel into an authenticated, encrypted, replay-resistant stream
+> using the real §0 libsecipc (X25519/HKDF/ChaCha20-Poly1305) — keys never leave the
+> endpoint (K1/K2). `[secsession] selftest PASS` runs a full A↔B exchange and proves
+> all four sub-tasks plus replay/tamper/wrong-direction rejection.
 - **2.1** **Signed-DH (SIGMA-style) handshake** over the channel: each endpoint sends
   its ephemeral X25519 pub **signed by its identity key**; both verify the peer cert
-  chains to the CA **and** matches the descriptor's `{A_id,B_id}`. **Critical.**
+  chains to the CA **and** matches the descriptor's `{A_id,B_id}`. **Critical.** ✅
+  `sessionBuildHandshake`/`sessionProcessHandshake` verify the descriptor, the peer
+  cert (`identityVerifyCert`), and the peer's signature over its ephemeral + offered
+  suites; peer must be the descriptor's other party. *(Identity signatures are the
+  HMAC-SHA-256 stand-in for Ed25519 via the Identity Service.)*
 - **2.2** **HKDF** session-key derivation from the X25519 shared secret + a **transcript
   hash** (descriptor + both ephemerals + suite list) → distinct send/recv keys per
-  direction. **Critical.**
+  direction. **Critical.** ✅ `ss = X25519(ePriv,peerEPub)` (all-zero/low-order
+  rejected) → `transcript = SHA-256(descHash‖ePubA‖ePubB‖suite)` →
+  `HKDF-Extract/Expand` to per-direction keys; both endpoints derive identical keys;
+  `ss`/`ePriv`/`prk` zeroized (forward secrecy).
 - **2.3** **AEAD** record layer: encrypt every message; AAD = `sessionId‖epoch‖
   direction‖counter`; **strict monotonic counter** per direction; receiver replay
-  window. **Critical.**
+  window. **Critical.** ✅ `sessionSend`/`sessionRecv` use ChaCha20-Poly1305 with
+  nonce = `direction‖counter`, that AAD, a per-direction monotonic counter + 64-entry
+  sliding replay window; replay/MAC-failure/wrong-direction dropped fail-closed.
 - **2.4** **Downgrade resistance:** the signed transcript covers the offered suite list,
-  so an attacker cannot strip strong suites without breaking a signature. **High.**
+  so an attacker cannot strip strong suites without breaking a signature. **High.** ✅
+  the offered `suiteList` is inside the signed handshake; the self-test proves a
+  stripped-suite handshake fails the identity signature.
 
 ### Phase 3 — Lifecycle: rotation, revocation, recovery
 - **3.1** **Key rotation / rekey:** new ephemeral DH within a live session before the

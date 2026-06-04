@@ -32,7 +32,7 @@ module core.secipc;
 
 import core.io; // klog / klog_hex
 import core.objmgr : ObjType, objAlloc, objRelease, objGet;
-import core.crypto : hmacSha256, ctEqual32;
+import core.crypto : hmacSha256, ctEqual32, sha256;
 import core.cap : CAP_RIGHT_CALL, CAP_INVALID, CAPTAB_COUNT, capInstallIn,
                   requireCapIn, capRevokeIn, capClearIn, capLiveCount;
 import core.ipc : ipcEndpointAlloc;
@@ -160,6 +160,35 @@ public bool identityVerifyCert(ref const(ProcIdentity) p) {
     ubyte[32] expect;
     caSign(p.objId, p.identityPub.ptr, p.notAfter, expect.ptr);
     return ctEqual32(expect.ptr, p.certSig.ptr);
+}
+
+// Identity signing for the Phase-2 signed-DH handshake.  In the real design each
+// process holds an Ed25519 *private* key and peers verify with the public key in the
+// cert; as the HMAC-SHA-256 stand-in, the identity key is derived deterministically
+// from (CA key, objId), so the Identity Service offers a `sign`/`verify` pair that
+// models a local asymmetric verify (the seam where Ed25519 slots in).
+private void identityKey(uint objId, ubyte* key32) {
+    ubyte[4] o; put32(o.ptr, 0, objId);
+    hmacSha256(g_caKey.ptr, 32, o.ptr, 4, key32);
+}
+
+public void identitySign(uint objId, const(ubyte)* msg, ulong len, ubyte* sig32) {
+    ubyte[32] k; identityKey(objId, k.ptr);
+    hmacSha256(k.ptr, 32, msg, len, sig32);
+}
+
+public bool identityVerifySig(uint objId, const(ubyte)* msg, ulong len,
+                              const(ubyte)* sig32) {
+    ubyte[32] expect; identitySign(objId, msg, len, expect.ptr);
+    return ctEqual32(expect.ptr, sig32);
+}
+
+// SHA-256 of the descriptor's bound fields — the transcript anchor both endpoints
+// fold into the signed-DH handshake (§2.2 channel binding).
+public void secipcDescriptorHash(ref const(SessionDescriptor) d, ubyte* out32) {
+    ubyte[42] body_;
+    descBody(d, body_.ptr);
+    sha256(body_.ptr, 42, out32);
 }
 
 // === §1.2 Broker / Key Service ================================================

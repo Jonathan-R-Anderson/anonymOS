@@ -108,13 +108,33 @@ only after cryptographic proof, never because a message arrived.
   paths (e.g. unix sockets under `/run/secipc/{broker,identity}.sock`). *Deps:* service
   framework (`OBJECT_OS_ROADMAP.md` P10) — stub if absent.
 
-### Phase 1 — Identity + descriptors (no crypto on the wire yet)
+### Phase 1 — Identity + descriptors (no crypto on the wire yet)  ✅ DONE
+> **Status:** implemented in `core/secipc.d` (module `core.secipc`), wired into the
+> boot self-test loop and built on the real §8.1 HMAC-SHA-256 (the Ed25519 stand-in
+> for CA/broker signatures), the `core/cap.d` capability tables, and `core/ipc.d`
+> endpoints. The broker/identity/capability-manager run **in-kernel as object
+> services** for now (relocating them to userspace + wiring the live `LocalSocket`/
+> `sendmsg` path through `secipcKernelRoute` is the remaining integration, §7/M2).
+> `[secipc] selftest PASS` proves all three sub-tasks.
 - **1.1** Process registration → Identity cert (`identityPub` signed by CA, bound to
-  object id + launch cap). **Critical.**
+  object id + launch cap). **Critical.** ✅ `identityRegister` refuses unless the
+  process **proves it holds its launch capability** (`requireCapIn`), then issues a CA
+  HMAC cert over (objId‖identityPub‖notAfter); `identityVerifyCert` is the peer-auth
+  anchor (tampered cert rejected).
 - **1.2** Broker `RequestSession(peerId, suitePrefs)` → consults Capability Manager →
-  returns a **signed Session Descriptor** + a channel cap. **Critical.**
+  returns a **signed Session Descriptor** + a channel cap. **Critical.** ✅
+  `brokerRequestSession` checks both certs valid+unexpired and the pair authorized
+  (`brokerAuthorizePair`), picks the strongest offered suite, allocates a channel
+  endpoint, installs the **channel cap** into A's table, and returns a broker-signed
+  `SessionDescriptor{A,B,channelCap,suite,epoch,notAfter}`. Unauthorized pair refused;
+  tampered/expired/revoked descriptors rejected by `brokerVerifyDescriptor`.
 - **1.3** Kernel: **capability-gated routing** — deliver only if sender holds the
-  channel cap (`dispatchSyscall`/socket path). **Critical, minimal kernel change.**
+  channel cap (`dispatchSyscall`/socket path). **Critical, minimal kernel change.** ✅
+  `secipcKernelRoute` admits iff the sender holds the channel cap (`CAP_RIGHT_CALL`)
+  and performs **no crypto / no descriptor parsing** (invariant K1);
+  `secipcChannelRevoke` (`channel_revoke`) revokes the cap so routing then fails.
+  *(Live wiring is into a function today; routing the real socket path through it is
+  the M2 integration.)*
 
 ### Phase 2 — Authenticated DH + AEAD
 - **2.1** **Signed-DH (SIGMA-style) handshake** over the channel: each endpoint sends

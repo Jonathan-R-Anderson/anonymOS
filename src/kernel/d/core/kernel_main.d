@@ -42,6 +42,7 @@ import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
                   userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
+import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
@@ -1004,6 +1005,7 @@ private void dispatchSyscall(int tid) {
         orgTestSuite();    // ORG P12: one-shot invariant + GC-fuzz + scale test suite
         untypedSelfTest(); // IMMUTABLE_ROOTLESS §1.4: one-shot proof no ambient allocation
         storeSelfTest(); // IMMUTABLE_ROOTLESS §4: content-addr store + verity + split + generations
+        updateSelfTest(); // IMMUTABLE_ROOTLESS §6: A/B slots + signed apply + anti-downgrade + auto-rollback
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -1027,6 +1029,7 @@ private void dispatchSyscall(int tid) {
             orgDistStats();
             untypedStats();
             storeStats();
+            updateStats();
         }
     }
 
@@ -1744,6 +1747,9 @@ void d_kernel_main() {
     // IMMUTABLE_ROOTLESS §4.3: assemble the read-only /usr · overlay /etc · user-state
     // /var system namespace so its mount-rights write gate exists from first boot.
     storeMountSystem();
+    // IMMUTABLE_ROOTLESS §6.1: stand up the A/B slots with the booted generation in
+    // the active slot, marked known-good (the boot we are in succeeded this far).
+    updateInit();
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

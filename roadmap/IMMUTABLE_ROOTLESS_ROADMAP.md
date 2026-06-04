@@ -24,7 +24,7 @@
 | Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
 | Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it and checks binding read/write rights; fork clones it. | (not separately listed) |
 | Immutable system image | **Mechanism built, not yet on real storage (Phase 4).** `core/store.d` is a content-addressed, de-duplicating, write-creates-never-mutates object store with a dm-verity-style block hash tree (`storeReadVerified` faults on a tampered block). Backing is still the in-kernel content arena, not a persisted/signed on-disk fs; boot modules still loaded by Limine unverified. Remaining: AHCI/disk backing + §8 verified boot. | "None." |
-| Atomic update / rollback / A-B | **Generations + atomic deployment swap built (Phase 4.4); A/B + signed bundles still Phase 6.** `genCreate`/`genRollback` snapshot the tree and repoint the active deployment in a single store. `make` still rebuilds the ISO for the underlying image. | "None." |
+| Atomic update / rollback / A-B | **Built (Phase 4.4 + Phase 6).** Generations with atomic deployment swap (`genRollback`); A/B slots with inactive-only, cap-gated, signature-verified, anti-downgrade apply (`core/update.d` `updateApply`); boot-success counter + auto-rollback to the known-good slot. Still RAM-backed and the signature is the §8.1 ed25519 stand-in; persisting the slots to disk + real verified boot is Phase 8. | "None." |
 | Cryptographic verification | **Hash-tree verification built with a stand-in digest (Phase 4.2).** 256-bit position-sensitive FNV-1a addresses content and detects tampering; the real BLAKE3/ed25519 primitives + signature/boot chain are Phase 8.1/8.2. | "None." |
 | System vs user state separation | **Enforced logically (Phase 4.3), not yet physically.** The system namespace binds `/usr` read-only · `/etc`·`/var` read+write; `storeWritable` denies `/usr` writes. Still one ephemeral RAM tree underneath — a separate physical `/var` volume remains Phase 6.5. | "None." |
 | Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
@@ -340,20 +340,45 @@ task IDs below.
   hash (`serviceSetVersion`); upgrade = new generation + version bump
   (`serviceUpgrade`).
 
-### Phase 6 — Update / rollback system
-- **6.1 A/B slots** — P: Critical · D: 7 · deps: 4.1, 0.3, boot. *Why:* atomic upgrade
-  with a known-good fallback. *Outcome:* two system slots; boot selects active.
-- **6.2 Signed update bundles + apply** — P: Critical · D: 7 · deps: 6.1, 8.1, 4.1.
+### Phase 6 — Update / rollback system  ✅ DONE
+> **Status:** implemented in `core/update.d` (module `core.update`), wired into boot
+> (`updateInit` stands up the A/B slots with the booted generation in slot A, marked
+> known-good) and the reconcile self-test loop. Built on the §4 store/generations and
+> the existing `CAP_RIGHT_ADMIN_UPDATE` admin cap. §6.1 gives two `Slot`s with an
+> active pointer; the inactive slot is the only writable update target and
+> `updateActivateInactive` is the atomic boot-time A/B swap. §6.2 `updateApply`
+> refuses unless it holds `CAP_RIGHT_ADMIN_UPDATE` **and** the bundle's signature
+> verifies, and only ever writes the *inactive* slot — the active (running) tree is
+> never touched. §6.3 a monotonic rollback index rejects a validly-signed but
+> downgraded image. §6.4 `bootBegin`/`bootConfirm`/`bootCheckRollback` auto-revert to
+> the other known-good slot after `BOOT_FAIL_THRESHOLD` unconfirmed boots. §6.5
+> `varSnapshot`/`varRestore` capture `/var` as content-addressed store objects,
+> independent of the system generation (an OS rollback never disturbs user data).
+> `[update] selftest PASS` proves: distinct/active A/B slots; apply refused without
+> the cap, refused on a wrong-key signature, applied (inactive only) with both;
+> downgrade-index blocked while a higher index advances the counter; auto-rollback to
+> the good slot after failed boots with no spurious rollback after confirm; and a
+> `/var` snapshot surviving a generation switch.
+>
+> **Crypto note:** the signature is a keyed digest over the §4.2 content hash (the
+> kernel holds the trusted key) — it genuinely rejects tampered content and wrong-key
+> signatures, and is a drop-in for the real ed25519 verify of §8.1/§8.2.
+- **6.1 A/B slots** — ✅ **DONE** · P: Critical · D: 7 · deps: 4.1, 0.3, boot. *Why:* atomic upgrade
+  with a known-good fallback. *Outcome:* two system slots; active pointer selects the
+  running one, the inactive one is the update target (`updateActivateInactive` swaps).
+- **6.2 Signed update bundles + apply** — ✅ **DONE** · P: Critical · D: 7 · deps: 6.1, 8.1, 4.1.
   *Why:* updates are signed, content-addressed, applied to the *inactive* slot only.
-  *Outcome:* `requireCap(updateAdmin)` + signature check before any write.
-- **6.3 Rollback index (anti-downgrade)** — P: High · D: 5 · deps: 6.2 (AVB). *Why:*
+  *Outcome:* `updateApply` does `requireCap(CAP_RIGHT_ADMIN_UPDATE)` + signature check
+  before any write; the active slot is never modified. *(Signature uses the §8.1
+  ed25519 stand-in until those primitives land.)*
+- **6.3 Rollback index (anti-downgrade)** — ✅ **DONE** · P: High · D: 5 · deps: 6.2 (AVB). *Why:*
   prevents re-installing an older signed-but-vulnerable image. *Outcome:* monotonic
-  counter blocks downgrades.
-- **6.4 Boot-success counter + auto-rollback** — P: High · D: 6 · deps: 6.1, boot.
-  *Why:* a bad update must not brick the box. *Outcome:* N failed boots → revert to
-  other slot.
-- **6.5 Snapshots of user state** — P: Medium · D: 5 · deps: 4.3. *Outcome:* `/var`
-  snapshot/restore independent of system image.
+  counter blocks downgrades (`UPD_DOWNGRADE`); a higher index advances it.
+- **6.4 Boot-success counter + auto-rollback** — ✅ **DONE** · P: High · D: 6 · deps: 6.1, boot.
+  *Why:* a bad update must not brick the box. *Outcome:* `BOOT_FAIL_THRESHOLD`
+  unconfirmed boots → `bootCheckRollback` reverts to the other known-good slot.
+- **6.5 Snapshots of user state** — ✅ **DONE** · P: Medium · D: 5 · deps: 4.3. *Outcome:* `/var`
+  `varSnapshot`/`varRestore` as store objects, independent of the system generation.
 
 ### Phase 7 — Linux compatibility as capability objects
 - **7.1 Personality layer maps Linux ops → object/cap ops** — P: High · D: 7 · deps:

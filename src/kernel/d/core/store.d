@@ -159,6 +159,11 @@ public Digest256 storeRoot(uint objId) {
     return b is null ? Digest256.init : b.root;
 }
 
+// Public hash primitives (the §4.2 content digest), reused by the update/signature
+// path (§6.2) until the real §8.1 BLAKE3/ed25519 primitives land.
+public Digest256 storeHash(const(ubyte)* p, ulong len) { return digestOf(p, len); }
+public bool storeDigestEqual(ref const(Digest256) a, ref const(Digest256) b) { return digEqual(a, b); }
+
 // §4.2 — verified read.  Every leaf block covering [off, off+len) is re-hashed from
 // the backing arena and checked against the stored hash tree before any byte is
 // returned: a tampered block faults the read (dm-verity).  Returns bytes copied, or

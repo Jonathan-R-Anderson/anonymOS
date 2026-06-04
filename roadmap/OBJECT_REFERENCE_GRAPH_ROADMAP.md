@@ -651,12 +651,40 @@ meet); revocation is O(derive-subtree).
   pid/uid views derive from Process/User objects + caps; no ambient authority edge.
   *Accept:* a sandboxed Linux process holds only edges to its delegated objects.
 
-## PHASE 11 — Distributed Object Graph Preparation
-*Why:* the stated end goal; design the seams now so they're cheap later. *Affected:*
-`core/org.d` ref type, `network/`. *Risks:* distributed strong-cycle GC is intractable
-— **forbid** cross-node strong cycles by construction. *Refactoring:* widen object ref
-to `{nodeId,objId,epoch}`. *Performance:* cross-node ops are message-bound; keep local
-ORG unchanged.
+## PHASE 11 — Distributed Object Graph Preparation  ✅ DONE
+
+> **Status: the federation seams exist as a representable in-kernel model (no
+> networking yet — that is the far-future distributed OS).** New module
+> `core/org_dist.d`.
+> **11.1:** an object reference is now `OrgRef{nodeId, objId, epoch}`
+> (`orgRefLocal`/`orgRefMake`/`orgRefIsLocal`/`orgRefResolves`). Local ops are
+> unchanged when `nodeId == self` (one comparison, then the existing objId path); a
+> remote ref is representable but never resolves into a local pointer.
+> **11.2:** cross-node edges are **Weak + leased** only — `orgRemoteEdgeAdd`
+> *rejects* any strong kind, so a distributed strong cycle is impossible by
+> construction. Each edge carries a lease (`leaseExpiry` against a logical clock);
+> `orgRemoteRenew` extends it on a peer heartbeat, and `orgDistTick` reclaims every
+> edge whose lease lapsed — a dropped/partitioned peer's remote edges expire and
+> are nulled (reference-listing GC, with an inbound-lease table so a node knows who
+> references it).
+> **11.3:** `orgDetectCrossNodeCycle` reports a weak cycle that spans nodes (we hold
+> a remote edge to node N and N holds a lease back to one of our objects) for
+> diagnostics; it can never leak because both ends are leased and expire.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — now also advancing the distributed logical
+> clock each reconcile tick (a no-op in production, since there are no peers) —
+> reached Hyprland/Mesa compositor rendering with no kernel fault, panic, JHC
+> falloff, or OOM. The one-shot self-test logged `[dist] selftest PASS`: 11.1 a
+> local ref resolves while a remote ref is representable but does not; 11.2 a leased
+> remote weak edge survives within its lease, is nulled once the lease lapses
+> without renewal, and a strong cross-node edge is rejected; 11.3 a synthetic
+> cross-node weak cycle is reported and then reclaimed by lease expiry. All P2–P10
+> proofs still hold. `orgDistStats` (`[dist]`) joins the periodic dump.
+>
+> **Note:** this is *preparation* (priority Low in the roadmap) — the seams and
+> invariants are in place; binding `OrgRef` to an actual transport (`network/`),
+> real peer heartbeats, and live federation are the distributed-OS work proper.
 
 - **11.1** — P: Low · org · Deps: P4 · Complexity: Medium · *Desc:* object refs become
   `{nodeId,objId,epoch}`; local ops unchanged when `nodeId==self`. *Accept:* local

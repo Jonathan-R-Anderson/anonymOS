@@ -50,6 +50,7 @@ import core.cap : capRevokeClosureSelfTest; // ORG P7.2
 import core.org_validator : orgValidatorInit, orgValidatorTick,
                             orgValidatorSelfTest, orgValidatorStats; // ORG P8
 import core.audit : auditStats; // ORG P8.2
+import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -964,6 +965,8 @@ private void dispatchSyscall(int tid) {
         orgValidatorSelfTest(); // ORG P8: one-shot proof of the validator daemon + control
         orgVizSelfTest(); // ORG P9: one-shot proof of DOT/stats graph export
         orgLinuxSelfTest(); // ORG P10: one-shot proof SCM cycle GC + sandboxed edges
+        orgDistSelfTest(); // ORG P11: one-shot proof of federated refs + leased edges
+        orgDistTick(1);    // ORG P11: advance the distributed clock / expire stale leases
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -983,6 +986,7 @@ private void dispatchSyscall(int tid) {
             orgStats();
             orgValidatorStats();
             auditStats();
+            orgDistStats();
         }
     }
 

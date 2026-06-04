@@ -581,7 +581,45 @@ services as Process objects holding only delegated caps.
 
 ---
 
-## PHASE 11 — Window objects (display as objects)
+## PHASE 11 — Window objects (display as objects)  ✅ DONE
+
+> **Status: implemented as an Output/Window/Surface object layer over the
+> in-kernel compositor.** New module `core/window.d` registers the compositor's
+> display state as first-class objects in the central table: **Output** (a
+> screen), **Window** (a managed top-level), and **Surface** (a window's pixel
+> buffer) all live as the `ObjType.Window` display family with a `WinKind`
+> discriminator (mirroring how `core/device.d` folds every device under
+> `ObjType.Device`). Each record carries an `ownerObjId` — the cap-holding object
+> the display object belongs to, the seam for "owned via caps" — and a
+> `parentObjId` linking Surface→Window→Output. `winRegister`/`winReleaseLocal`/
+> `winSetOwner`/`winByLocal` plus per-kind convenience wrappers make up the API.
+>
+> **Live Output + dormant compositor wiring:** the primary **Output** for the
+> firmware framebuffer is registered at boot (`windowRegistryInit` from
+> `d_kernel_main`, using `g_fb` dimensions) and is genuinely live. The in-kernel
+> `WindowManager`/compositor is currently dormant on the Hyprland boot — its
+> `d_display_heartbeat` has no caller (the live compositor is userspace Hyprland
+> over synthetic DRM) — so `WindowManager.createWindow`/`destroyWindow`/`reset`
+> and `compositorAllocateSurface`/`compositorReleaseSurface` now register/release
+> Window and Surface objects, ready to populate the moment the in-kernel
+> compositor runs (the same "Driver registered, zero present units" stance Phase 8
+> took for AHCI).
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> with no kernel fault, panic, JHC falloff, or OOM. The one-shot boot self-test
+> logged `[win] selftest PASS` — an Output→Window→Surface object tree builds with
+> correct parent linkage and liveness, an owner (cap holder) is assigned to the
+> window, and releasing the surface frees exactly that object while the window and
+> output survive. `windowStats()` prints live/output/window/surface counts
+> alongside the other subsystems.
+>
+> **Deferred out of Phase 11:** moving the compositor itself into a user-space
+> **Service** (Phase 10) reachable over an endpoint cap — the `GUI_ROADMAP.md`
+> convergence — and gating window/surface operations behind the owner capability
+> rather than only recording it. The Output/Window/Surface object graph,
+> ownership field, and create/destroy registration surface needed for both exist
+> now.
 
 **Goal:** the in-kernel Wayland/compositor becomes **Window/Surface/Display Device
 objects** owned via caps (and, per `GUI_ROADMAP.md`, eventually a user-space service).

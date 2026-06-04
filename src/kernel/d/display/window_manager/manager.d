@@ -3,6 +3,7 @@ module display.window_manager.manager;
 import display.framebuffer : framebufferAvailable;
 import display.canvas : Canvas;
 import display.input_pipeline : InputEvent, InputQueue, enqueue, dequeue;
+import core.window : windowRegister, winReleaseLocal, WinKind; // Phase 11: Window objects
 
 nothrow:
 @nogc:
@@ -105,6 +106,7 @@ public:
     {
         foreach (i; 0 .. _windowCount)
         {
+            winReleaseLocal(WinKind.Window, _windows[i].id); // Phase 11
             releaseSurface(_windows[i].surfaceId);
         }
         _windowCount = 0;
@@ -182,6 +184,7 @@ public:
 
         focusWindow(w.id, damage);
         applyLayout(damage);
+        windowRegister(w.id, 0, w.width, w.height); // Phase 11: Window object
         return w.id;
     }
 
@@ -200,6 +203,7 @@ public:
 
         const wasFocused = _windows[index].focused;
         releaseSurface(_windows[index].surfaceId);
+        winReleaseLocal(WinKind.Window, id); // Phase 11: release the Window object
 
         foreach (i; index .. _windowCount - 1)
         {

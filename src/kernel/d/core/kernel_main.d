@@ -37,6 +37,7 @@ import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
 import core.user : userRegistryInit, userSelfTest, userStats, USER_RIGHT_ALL; // Phase 10
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
+import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -935,6 +936,7 @@ private void dispatchSyscall(int tid) {
         nsSelfTest(); // Phase 9: one-shot proof per-process namespaces clone & route
         userSelfTest(); // Phase 10: one-shot proof identity/passwd derive from User objects
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
+        windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -943,6 +945,7 @@ private void dispatchSyscall(int tid) {
             nsStats();
             userStats();
             serviceStats();
+            windowStats();
         }
     }
 
@@ -1634,6 +1637,10 @@ void d_kernel_main() {
     // identity) holding the full authority set that services are narrowed from.
     userRegistryInit();
     serviceManagerInit(USER_RIGHT_ALL);
+    // Phase 11: register the primary Output object for the firmware framebuffer
+    // (the in-kernel compositor's Window/Surface objects register as it runs).
+    windowRegistryInit(g_fb !is null ? cast(uint)g_fb.width : 0,
+                       g_fb !is null ? cast(uint)g_fb.height : 0);
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

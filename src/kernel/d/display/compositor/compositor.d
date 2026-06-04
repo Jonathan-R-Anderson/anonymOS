@@ -7,6 +7,7 @@ import display.fonts.font_stack : activeFontStack;
 import display.window_manager.manager;
 import display.wallpaper : drawWallpaperToBuffer;
 import display.gpu_accel : acceleratedPresentBuffer;
+import core.window : surfaceRegister, winReleaseLocal, WinKind; // Phase 11: Surface objects
 import core.stdc.string : memcpy;
 import std.conv : to;
 
@@ -433,6 +434,7 @@ bool compositorAllocateSurface(uint width, uint height, out size_t id, out Canva
         surface.poolLength = allocation.length;
 
         id = surface.id;
+        surfaceRegister(surface.id, 0, width, height); // Phase 11: Surface object
         canvas = createBufferCanvas(surface.pixels, width, height, width);
         return canvas.available;
     }
@@ -482,6 +484,7 @@ void compositorReleaseSurface(size_t id)
     }
 
     freeSurfacePixels(surface.poolOffset, surface.poolLength);
+    winReleaseLocal(WinKind.Surface, id); // Phase 11: release the Surface object
 
     *surface = Surface.init;
 }

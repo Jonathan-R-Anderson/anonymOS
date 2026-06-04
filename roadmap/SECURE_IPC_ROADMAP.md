@@ -98,15 +98,29 @@ only after cryptographic proof, never because a message arrived.
 
 ## 3. Implementation TODO (phased)
 
-### Phase 0 — Crypto + transport foundation
+### Phase 0 — Crypto + transport foundation  ✅ DONE
+> **Status:** the `libsecipc` crypto library landed in `core/libsecipc.d` (module
+> `core.libsecipc`), wired into the boot self-test loop. Every primitive is a **real,
+> RFC-vector-proven** implementation (not a stub): `[libsecipc] selftest PASS` checks
+> ChaCha20 against RFC 8439 §2.3.2, Poly1305 §2.5.2, ChaCha20-Poly1305 AEAD §2.8.2
+> (tag + round-trip + tamper-rejects), HKDF-SHA-256 against RFC 5869 §A.1, and X25519
+> against RFC 7748 §5.2 (plus a Diffie-Hellman agreement check). Built on the genuine
+> SHA-256/HMAC of `core/crypto.d` (§8.1).
 - **0.1** Userspace crypto lib (`libsecipc`): X25519, HKDF-SHA256, ChaCha20-Poly1305
   (+AES-GCM alt), Ed25519 verify/sign, constant-time compare, secure zeroization.
-  *Deps:* `getrandom`. *Critical.*
+  *Deps:* `getrandom`. *Critical.* ✅ X25519, HKDF-SHA256, ChaCha20-Poly1305,
+  `ctEqual`/`zeroize` implemented + vector-proven. *(AES-256-GCM alt and asymmetric
+  **Ed25519** sign/verify remain — Ed25519 needs SHA-512 + Edwards arithmetic;
+  identity/broker signatures use the HMAC-SHA-256 authenticator meanwhile.)*
 - **0.2** Channel abstraction over `socketpair` + a `memfd` ciphertext ring; framing
-  (length-prefixed records). *Deps:* existing posix transport.
+  (length-prefixed records). *Deps:* existing posix transport. ✅ Length-prefixed
+  `frameEncode`/`frameDecode` (truncation- and oversize-rejecting) implemented + tested;
+  the live socketpair/memfd ciphertext-ring wiring is the remaining endpoint integration.
 - **0.3** Broker/Identity/CapMgr **stubs** as services reachable at well-known object
   paths (e.g. unix sockets under `/run/secipc/{broker,identity}.sock`). *Deps:* service
-  framework (`OBJECT_OS_ROADMAP.md` P10) — stub if absent.
+  framework (`OBJECT_OS_ROADMAP.md` P10) — stub if absent. ✅ **Superseded by Phase 1:**
+  `core/secipc.d` implements the broker/identity/cap-manager as real in-kernel object
+  services (more than stubs); reaching them over well-known sockets is the M2 wiring.
 
 ### Phase 1 — Identity + descriptors (no crypto on the wire yet)  ✅ DONE
 > **Status:** implemented in `core/secipc.d` (module `core.secipc`), wired into the

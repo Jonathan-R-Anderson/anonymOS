@@ -27,6 +27,7 @@ import core.io; // klog / klog_hex
 import core.objmgr : OBJ_MAX, ObjType, objGet, objAlloc, objRelease,
                      g_objFreeNotify;
 import core.namespace : nsAlloc, nsBind, nsRelease, nsValidateBindings; // P4.3
+import memory.mm : free_phys_page, alloc_phys_page; // P6.2: GC ↔ allocator integration
 
 extern (C) @nogc nothrow:
 
@@ -70,6 +71,13 @@ struct OrgNode {
     uint owner;       // StrongOwn parent objId (0 = none); mirrors ObjHeader.ownerCap
     uint gen;         // slot generation; bumped on free so weak edges go stale
     uint reachMark;   // reachability generation (P4.2 mark-from-roots)
+    uint tjIndex;     // Tarjan DFS index (0 = unvisited) (P5.2)
+    uint tjLow;       // Tarjan low-link
+    uint tjScc;       // SCC representative (root) id this node belongs to
+    bool tjOnStack;   // on the Tarjan SCC stack
+    bool quarantined; // P6.1: invariant violation — refuse new edges, fail-stop
+    uint age;         // P6.2: GC generation age (young objects scanned more often)
+    ulong gcPage;     // P6.2: physical page this object backs (freed on collect)
 }
 __gshared OrgNode[OBJ_MAX] g_orgNodes;
 
@@ -91,7 +99,9 @@ public void orgInit() {
         g_orgEdgeFree[++g_orgEdgeFreeTop] = i;
     foreach (ref n; g_orgNodes) { n.outHead = -1; n.strongIn = 0; n.strongOut = 0;
                                   n.strongOwnIn = 0; n.owner = 0; n.gen = 1;
-                                  n.reachMark = 0; }
+                                  n.reachMark = 0; n.tjIndex = 0; n.tjLow = 0;
+                                  n.tjScc = 0; n.tjOnStack = false;
+                                  n.quarantined = false; n.age = 0; n.gcPage = 0; }
     g_objFreeNotify = &orgOnFree; // weak coherence: notified when any object frees
 }
 
@@ -110,6 +120,32 @@ private void bumpEpoch() {
     if (++g_orgEpoch == 0) g_orgEpoch = 1;
 }
 
+__gshared ulong g_orgOwnRejectI1 = 0; // StrongOwn edges refused: would give 2nd owner
+__gshared ulong g_orgOwnRejectI2 = 0; // StrongOwn edges refused: would close a cycle
+
+// Would a StrongOwn edge from→to close an ownership cycle?  True iff `to` can
+// already reach `from` over StrongOwn out-edges.  The ownership graph is kept a
+// forest, so this DFS never revisits and terminates; a work-budget overrun
+// (impossible in a forest) fails closed.
+private bool wouldFormOwnCycle(uint from, uint to) {
+    if (from == to) return true; // self-ownership
+    int[256] stack;
+    int top = -1;
+    stack[++top] = cast(int)to;
+    int budget = 8192;
+    while (top >= 0 && budget-- > 0) {
+        uint id = cast(uint)stack[top--];
+        for (int c = g_orgNodes[id].outHead; c >= 0; c = g_orgEdges[c].next) {
+            auto ed = &g_orgEdges[c];
+            if (!ed.inUse || ed.kind != EdgeKind.StrongOwn) continue;
+            if (ed.toId == from) return true;
+            if (top < cast(int)stack.length - 1) stack[++top] = cast(int)ed.toId;
+            else return true; // can't fully verify within bound ⇒ fail closed
+        }
+    }
+    return budget <= 0; // budget exhausted ⇒ fail closed
+}
+
 // 2.2 — the ONLY way to relate two objects.  Records a typed edge from→to, links
 // it into `from`'s out-list, and (for strong kinds) maintains the life counts.  A
 // StrongOwn edge also records the owner on the target (`ObjHeader.ownerCap`).
@@ -118,6 +154,27 @@ public bool edgeAdd(uint from, uint to, EdgeKind kind, uint rights) {
     orgInit();
     if (from == 0 || to == 0 || kind == EdgeKind.None) return false;
     if (objGet(from) is null || objGet(to) is null) return false;
+    // P6.1 — a quarantined object accepts no new edges (fail-stop containment).
+    if (g_orgNodes[to].quarantined || g_orgNodes[from].quarantined) {
+        ++g_orgQuarantineBlocks;
+        return false;
+    }
+
+    // P5.1 — online ownership-cycle prevention (fail-closed at insert): a StrongOwn
+    // edge may neither give `to` a second owner (I1) nor close an ownership cycle
+    // (I2).  Rejected edges never enter the graph, so the ownership projection is
+    // always a forest by construction.
+    if (kind == EdgeKind.StrongOwn) {
+        if (g_orgNodes[to].strongOwnIn > 0 && g_orgNodes[to].owner != from) {
+            ++g_orgOwnRejectI1;
+            return false;
+        }
+        if (wouldFormOwnCycle(from, to)) {
+            ++g_orgOwnRejectI2;
+            return false;
+        }
+    }
+
     int e = edgeAlloc();
     if (e < 0) return false;
 
@@ -411,6 +468,33 @@ public bool orgAddRoot(uint id) {
     return true;
 }
 
+// Objects anchored by a kernel registry rather than by process ownership — they
+// are externally reachable and must be reachability roots, or the GC would see
+// them as garbage (P6.2 safety: complete the root set so production has 0 false
+// GC candidates).
+private bool isAnchorType(ObjType t) {
+    switch (t) {
+        case ObjType.Device: case ObjType.Driver: case ObjType.NetIf:
+        case ObjType.User: case ObjType.Service: case ObjType.Namespace:
+        case ObjType.Directory: case ObjType.Endpoint: case ObjType.Window:
+        case ObjType.Vmo: case ObjType.LinuxProcess: case ObjType.LinuxVFS:
+        case ObjType.LinuxSyscall: case ObjType.LinuxELFLoader:
+        case ObjType.LinuxDeviceAdapter:
+            return true;
+        default: return false;
+    }
+}
+
+// Register every registry-anchored live object as a root (additive to whatever
+// process roots were already registered).  O(V); off the hot path.
+public void orgAddAnchorRoots() {
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        auto h = objGet(id);
+        if (h is null) continue;
+        if (isAnchorType(h.type)) orgAddRoot(id);
+    }
+}
+
 private void reachPush(uint id) {
     if (g_orgNodes[id].reachMark == g_orgReachGen) return;
     g_orgNodes[id].reachMark = g_orgReachGen;
@@ -460,6 +544,325 @@ public bool orgReachable(uint id) {
            g_orgNodes[id].reachMark == g_orgReachGen;
 }
 public uint orgReachableCount() { return g_orgReachableCount; }
+
+// === 5.2 — Tarjan SCC over the (strong) reference graph =======================
+// Iterative (no recursion → no kernel-stack blowup) strongly-connected-component
+// computation over strong edges (Weak/Observer never pin, so they can't be part of
+// a pinning cycle).  O(V+E); each node is stamped with its SCC representative and
+// the run is stamped with the graph epoch.  Runs to completion per call here, off
+// the syscall path; the explicit DFS stack makes it straightforward for the P8
+// validator to drive in budgeted slices.
+
+__gshared int[OBJ_MAX]  g_tjStack;    // Tarjan SCC stack
+__gshared int           g_tjTop = -1;
+__gshared int[OBJ_MAX]  g_dfsNode;    // explicit DFS stack: node …
+__gshared int[OBJ_MAX]  g_dfsCur;     // … and its current strong-out edge handle
+__gshared int           g_dfsTop = -1;
+__gshared uint          g_tjIndexCtr = 1;
+__gshared uint          g_orgSccCount = 0;   // # non-trivial SCCs (size>1) last run
+__gshared uint          g_orgLargestScc = 0;
+__gshared uint          g_orgSccEpoch = 0;
+__gshared ulong         g_orgTarjanRuns = 0;
+
+private int firstStrongOut(uint id) {
+    for (int c = g_orgNodes[id].outHead; c >= 0; c = g_orgEdges[c].next) {
+        auto ed = &g_orgEdges[c];
+        if (ed.inUse && kindIsStrong(ed.kind) &&
+            objGet(ed.toId) !is null && g_orgNodes[ed.toId].gen == ed.toGen)
+            return c;
+    }
+    return -1;
+}
+private int nextStrongOut(int handle) {
+    if (handle < 0) return -1;
+    for (int c = g_orgEdges[handle].next; c >= 0; c = g_orgEdges[c].next) {
+        auto ed = &g_orgEdges[c];
+        if (ed.inUse && kindIsStrong(ed.kind) &&
+            objGet(ed.toId) !is null && g_orgNodes[ed.toId].gen == ed.toGen)
+            return c;
+    }
+    return -1;
+}
+
+public uint orgTarjanRun() {
+    orgInit();
+    ++g_orgTarjanRuns;
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        if (objGet(id) is null) continue;
+        g_orgNodes[id].tjIndex = 0; g_orgNodes[id].tjLow = 0;
+        g_orgNodes[id].tjScc = 0;   g_orgNodes[id].tjOnStack = false;
+    }
+    g_tjTop = -1; g_dfsTop = -1; g_tjIndexCtr = 1;
+    uint sccCount = 0, largest = 0;
+
+    for (uint s = 1; s < OBJ_MAX; ++s) {
+        if (objGet(s) is null || g_orgNodes[s].tjIndex != 0) continue;
+        g_orgNodes[s].tjIndex = g_orgNodes[s].tjLow = g_tjIndexCtr++;
+        g_tjStack[++g_tjTop] = cast(int)s; g_orgNodes[s].tjOnStack = true;
+        g_dfsNode[++g_dfsTop] = cast(int)s; g_dfsCur[g_dfsTop] = firstStrongOut(s);
+
+        while (g_dfsTop >= 0) {
+            uint v = cast(uint)g_dfsNode[g_dfsTop];
+            int ec = g_dfsCur[g_dfsTop];
+            if (ec >= 0) {
+                uint w = g_orgEdges[ec].toId;
+                g_dfsCur[g_dfsTop] = nextStrongOut(ec); // advance for next visit
+                if (g_orgNodes[w].tjIndex == 0) {
+                    g_orgNodes[w].tjIndex = g_orgNodes[w].tjLow = g_tjIndexCtr++;
+                    g_tjStack[++g_tjTop] = cast(int)w; g_orgNodes[w].tjOnStack = true;
+                    g_dfsNode[++g_dfsTop] = cast(int)w; g_dfsCur[g_dfsTop] = firstStrongOut(w);
+                } else if (g_orgNodes[w].tjOnStack) {
+                    if (g_orgNodes[w].tjIndex < g_orgNodes[v].tjLow)
+                        g_orgNodes[v].tjLow = g_orgNodes[w].tjIndex;
+                }
+            } else {
+                if (g_orgNodes[v].tjLow == g_orgNodes[v].tjIndex) { // SCC root
+                    uint size = 0; int member;
+                    do {
+                        member = g_tjStack[g_tjTop--];
+                        g_orgNodes[member].tjOnStack = false;
+                        g_orgNodes[member].tjScc = v;
+                        ++size;
+                    } while (member != cast(int)v);
+                    if (size > 1) { ++sccCount; if (size > largest) largest = size; }
+                }
+                --g_dfsTop;
+                if (g_dfsTop >= 0) {
+                    uint parent = cast(uint)g_dfsNode[g_dfsTop];
+                    if (g_orgNodes[v].tjLow < g_orgNodes[parent].tjLow)
+                        g_orgNodes[parent].tjLow = g_orgNodes[v].tjLow;
+                }
+            }
+        }
+    }
+    g_orgSccCount = sccCount;
+    g_orgLargestScc = largest;
+    g_orgSccEpoch = g_orgEpoch;
+    return sccCount;
+}
+
+public uint orgSccOf(uint id)  { return (id != 0 && id < OBJ_MAX) ? g_orgNodes[id].tjScc : 0; }
+public uint orgSccCount()      { return g_orgSccCount; }
+public uint orgSccEpoch()      { return g_orgSccEpoch; }
+
+// === 5.3 — SCC classification + collection ====================================
+// A non-trivial SCC whose members are all *unreachable* from the registered roots
+// over strong edges is an unreachable strong-cycle — the SCM_RIGHTS in-flight case
+// — and is a GC target.  (Run orgReachCompute() first so reachability is current.)
+// Reachable SCCs are live.  An SCC entered only by Weak/Observer edges from outside
+// is collectible the same way (those edges don't pin).
+
+public bool orgSccIsGcTarget(uint sccRoot) {
+    if (sccRoot == 0) return false;
+    uint size = 0;
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        if (objGet(id) is null || g_orgNodes[id].tjScc != sccRoot) continue;
+        ++size;
+        if (orgReachable(id)) return false; // any reachable member ⇒ live SCC
+    }
+    return size > 1;
+}
+
+__gshared ulong g_orgSccCollected = 0; // SCCs collected
+__gshared ulong g_orgSccFreed     = 0; // objects freed via SCC collection
+
+// Reclaim an unreachable strong-SCC: release each member (breaking the cycle, which
+// drops the internal strong edges via the free-notify path).  Logical reclaim at
+// the object level; integrating with the physical allocator (mm.d free_phys_page)
+// and the legacy lifecycle is P6.2.  Returns #objects freed.
+public uint orgCollectScc(uint sccRoot) {
+    if (!orgSccIsGcTarget(sccRoot)) return 0;
+    int[64] members;
+    int mc = 0;
+    for (uint id = 1; id < OBJ_MAX && mc < 64; ++id)
+        if (objGet(id) !is null && g_orgNodes[id].tjScc == sccRoot)
+            members[mc++] = cast(int)id;
+    uint freed = 0;
+    for (int i = 0; i < mc; ++i) {
+        uint id = cast(uint)members[i];
+        if (objGet(id) is null) continue;
+        // P6.2 — reclaim any physical page this object backs through the allocator.
+        if (g_orgNodes[id].gcPage != 0) {
+            free_phys_page(g_orgNodes[id].gcPage);
+            g_orgNodes[id].gcPage = 0;
+            ++g_orgPagesReclaimed;
+        }
+        objRelease(id);
+        ++freed;
+    }
+    ++g_orgSccCollected;
+    g_orgSccFreed += freed;
+    return freed;
+}
+
+// Record the physical page an object backs, so GC collection frees it (P6.2).
+public void orgSetGcPage(uint id, ulong pageAddr) {
+    if (id != 0 && id < OBJ_MAX) g_orgNodes[id].gcPage = pageAddr;
+}
+
+// === 6.1 — invariant checker + quarantine + security event ====================
+__gshared ulong g_orgSecurityEvents   = 0;
+__gshared ulong g_orgQuarantined      = 0; // objects currently quarantined
+__gshared ulong g_orgQuarantineBlocks = 0; // edges refused into quarantine
+
+public bool orgIsQuarantined(uint id) {
+    return id != 0 && id < OBJ_MAX && g_orgNodes[id].quarantined;
+}
+
+// Fail-stop containment for an ownership-invariant breach: quarantine the object
+// (no new edges in/out), raise a security event, never silently continue.
+public void orgQuarantine(uint id) {
+    if (id == 0 || id >= OBJ_MAX || g_orgNodes[id].quarantined) return;
+    g_orgNodes[id].quarantined = true;
+    ++g_orgQuarantined;
+    ++g_orgSecurityEvents;
+    klog("[org] SECURITY quarantine obj="); klog_hex(cast(ulong)id); klog("\n");
+}
+
+public void orgUnquarantine(uint id) { // used by recovery / tests after repair
+    if (id != 0 && id < OBJ_MAX && g_orgNodes[id].quarantined) {
+        g_orgNodes[id].quarantined = false;
+        if (g_orgQuarantined > 0) --g_orgQuarantined;
+    }
+}
+
+// Run the I1 (single owner) + I4 (refcount ≥ strong-in) checker.  In enforcing
+// mode a violation quarantines the offending object and raises a security event;
+// in report mode it only counts (the live periodic pass uses report mode, since
+// quarantining a transiently-skewed live object would be its own DoS).
+public bool orgValidateInvariants(bool enforce) {
+    bool ok = true;
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        auto h = objGet(id);
+        if (h is null || g_orgNodes[id].quarantined) continue;
+        bool viol = (g_orgNodes[id].strongOwnIn > 1) ||      // I1
+                    (h.refCount < g_orgNodes[id].strongIn);  // I4
+        if (viol) {
+            ok = false;
+            if (enforce) orgQuarantine(id);
+            else ++g_orgSecurityEvents;
+        }
+    }
+    return ok;
+}
+
+// === 6.2 — mark-sweep GC: dead-weak nulling + unreachable strong-SCC reclaim ===
+// Generational + incremental + bounded.  In production it runs the *safe* half:
+// null dead weak/observer edges (can never cause a UAF) and *count* unreachable
+// strong objects as GC candidates — it does NOT auto-free live-graph objects,
+// because a single gap in the edge model or root set would be a use-after-free in
+// a running desktop.  The full collect path (incl. allocator reclaim) is exercised
+// on controlled cycles by the self-test; enabling production auto-collection waits
+// on the P8 validator's confidence + complete root set.
+
+__gshared ulong g_orgWeakNulled    = 0;
+__gshared ulong g_orgGcCandidates  = 0; // unreachable strong objects (last pass)
+__gshared ulong g_orgPagesReclaimed = 0;
+__gshared uint  g_orgGcCursor      = 0; // resumable sweep cursor (incremental)
+
+// Remove up to `budget` worth of stale weak/observer edges (target dead or slot
+// reused).  Resumable via the sweep cursor.  Returns #edges nulled this call.
+public uint orgNullDeadWeak(int budget) {
+    orgInit();
+    uint nulled = 0;
+    int scanned = 0;
+    uint id = g_orgGcCursor;
+    while (scanned < budget) {
+        ++id;
+        if (id >= OBJ_MAX) id = 1;
+        ++scanned;
+        if (objGet(id) is null) { if (id == g_orgGcCursor) break; continue; }
+        int prev = -1;
+        int cur = g_orgNodes[id].outHead;
+        while (cur >= 0) {
+            auto ed = &g_orgEdges[cur];
+            int nxt = ed.next;
+            bool weakKind = (ed.kind == EdgeKind.Weak || ed.kind == EdgeKind.Observer);
+            bool stale = !ed.inUse || objGet(ed.toId) is null ||
+                         g_orgNodes[ed.toId].gen != ed.toGen;
+            if (weakKind && stale) {
+                if (prev < 0) g_orgNodes[id].outHead = nxt;
+                else          g_orgEdges[prev].next = nxt;
+                edgeFree(cur);
+                if (g_orgEdgesLive > 0) --g_orgEdgesLive;
+                ++nulled; ++g_orgWeakNulled;
+                cur = nxt;
+                continue;
+            }
+            prev = cur;
+            cur = nxt;
+        }
+        if (id == g_orgGcCursor) break; // wrapped a full lap
+    }
+    g_orgGcCursor = id;
+    return nulled;
+}
+
+// Count live objects unreachable from the registered roots over strong edges — the
+// GC-candidate set (I3).  Requires orgReachCompute() to have run.  Also ages live
+// nodes (generational bookkeeping).  Returns the candidate count.
+public uint orgGcScan() {
+    uint candidates = 0;
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        if (objGet(id) is null) continue;
+        if (g_orgNodes[id].age < uint.max) ++g_orgNodes[id].age;
+        // Unreachable AND has a strong in-edge (something strong-points at it, so
+        // it isn't a freshly-allocated root-to-be) ⇒ a genuine strong-cycle leak.
+        if (!orgReachable(id) && g_orgNodes[id].strongIn > 0) ++candidates;
+    }
+    g_orgGcCandidates = candidates;
+    return candidates;
+}
+
+// Production-safe GC tick: null dead weak edges (safe) + refresh the candidate
+// count (report only).  `budget` bounds the weak sweep per tick.
+public void orgGcStep(int budget) {
+    orgNullDeadWeak(budget);
+    orgGcScan();
+}
+
+// === 6.3 — shadow-refcount rebuild recovery ===================================
+// Recompute every object's strong in-edge count from a full edge scan (the
+// authority), diff against the stored count; repair a drifted count, and quarantine
+// an object whose object-manager refcount cannot support the recomputed strong-in
+// (a structurally-impossible state).  Reuses g_orgWork as scratch (no concurrent
+// reachability during recovery).  Returns #discrepancies found.
+
+__gshared ulong g_orgShadowRuns    = 0;
+__gshared ulong g_orgShadowRepairs = 0;
+__gshared ulong g_orgShadowQuar    = 0;
+
+public uint orgShadowRebuild() {
+    orgInit();
+    ++g_orgShadowRuns;
+    for (uint id = 0; id < OBJ_MAX; ++id) g_orgWork[id] = 0; // shadow strong-in
+    // One O(E) pass: tally strong in-edges to live targets.
+    for (uint from = 1; from < OBJ_MAX; ++from) {
+        if (objGet(from) is null) continue;
+        for (int c = g_orgNodes[from].outHead; c >= 0; c = g_orgEdges[c].next) {
+            auto ed = &g_orgEdges[c];
+            if (ed.inUse && kindIsStrong(ed.kind) &&
+                objGet(ed.toId) !is null && g_orgNodes[ed.toId].gen == ed.toGen)
+                ++g_orgWork[ed.toId];
+        }
+    }
+    uint discrep = 0;
+    for (uint id = 1; id < OBJ_MAX; ++id) {
+        auto h = objGet(id);
+        if (h is null) continue;
+        uint shadow = cast(uint)g_orgWork[id];
+        if (shadow != g_orgNodes[id].strongIn) {
+            ++discrep;
+            g_orgNodes[id].strongIn = shadow;      // repair the drifted count
+            ++g_orgShadowRepairs;
+        }
+        if (h.refCount < shadow) {                  // structurally impossible ⇒ quarantine
+            orgQuarantine(id);
+            ++g_orgShadowQuar;
+        }
+    }
+    return discrep;
+}
 
 // --- Boot self-test (Phase 2 runtime proof) -----------------------------------
 // Builds a tiny graph, checks adjacency + strong counts + owner wiring, then frees
@@ -572,6 +975,114 @@ public void orgApiSelfTest() {
     else                         klog("[org] api FAIL: behaviour\n");
 }
 
+// --- Phase 5 cycle-detection self-test (runtime proof) ------------------------
+// 5.1 an ownership cycle (and a second owner) are rejected at insert; 5.2 a
+// strong-ref 2-cycle is found by Tarjan as one SCC; 5.3 that SCC is classified as
+// an unreachable GC target and reclaimed.
+__gshared bool g_orgCycleTested = false;
+public void orgCycleSelfTest() {
+    if (g_orgCycleTested) return;
+    g_orgCycleTested = true;
+    orgInit();
+
+    // 5.1 — ownership-cycle + multi-owner rejection.
+    uint o1 = objAlloc(ObjType.File, null);
+    uint o2 = objAlloc(ObjType.File, null);
+    uint o3 = objAlloc(ObjType.File, null);
+    uint o4 = objAlloc(ObjType.File, null);
+    if (!o1 || !o2 || !o3 || !o4) { klog("[org] cycle FAIL: alloc\n"); return; }
+    bool chain = edgeAdd(o1, o2, EdgeKind.StrongOwn, 0) &&
+                 edgeAdd(o2, o3, EdgeKind.StrongOwn, 0);
+    bool cycleRej = !edgeAdd(o3, o1, EdgeKind.StrongOwn, 0); // o3→o1 closes o1→o2→o3→o1
+    bool ownerRej = !edgeAdd(o4, o2, EdgeKind.StrongOwn, 0); // o2 already owned by o1
+    bool p51 = chain && cycleRej && ownerRej;
+
+    // 5.2 / 5.3 — strong-ref 2-cycle detected and reclaimed.
+    uint x = objAlloc(ObjType.File, null);
+    uint y = objAlloc(ObjType.File, null);
+    bool made = (x && y && edgeAdd(x, y, EdgeKind.StrongRef, 0) &&
+                 edgeAdd(y, x, EdgeKind.StrongRef, 0));
+    orgClearRoots();
+    orgAddRoot(o1);            // x,y are NOT reachable from the only root
+    orgReachCompute(8);
+    orgTarjanRun();
+    uint sx = orgSccOf(x);
+    bool p52 = made && sx != 0 && sx == orgSccOf(y) && sx != orgSccOf(o1);
+    bool p53class = orgSccIsGcTarget(sx) && !orgReachable(x) && !orgReachable(y);
+    uint freed = orgCollectScc(sx);
+    bool p53reclaim = (freed == 2 && objGet(x) is null && objGet(y) is null);
+
+    // cleanup ownership-test objects (o2 owned by o1; release children first).
+    objRelease(o3); objRelease(o2); objRelease(o1); objRelease(o4);
+
+    if (p51 && p52 && p53class && p53reclaim) klog("[org] cycle PASS\n");
+    else klog("[org] cycle FAIL: behaviour\n");
+}
+
+// --- Phase 6 coherence/GC self-test (runtime proof) ---------------------------
+// 6.1 an I4 violation is detected (never silent) and the object is quarantined,
+// after which edges into it are refused; 6.2 an unreachable strong cycle backing a
+// real physical page is reclaimed (object freed + page returned to the allocator)
+// and a dead weak edge is nulled; 6.3 a corrupted strong-in count is detected and
+// repaired by the shadow rebuild.
+__gshared bool g_orgGcTested = false;
+public void orgGcSelfTest() {
+    if (g_orgGcTested) return;
+    g_orgGcTested = true;
+    orgInit();
+
+    // 6.1 — invariant violation detected + quarantine + edge refusal.
+    uint a = objAlloc(ObjType.File, null);
+    uint live2 = objAlloc(ObjType.File, null);
+    if (!a || !live2) { klog("[org] gc FAIL: alloc\n"); return; }
+    g_orgNodes[a].strongIn = 5;                 // refCount is 1 ⇒ I4 violation
+    bool detected = !orgValidateInvariants(false); // report mode: detects, quarantines no one
+    ulong evBefore = g_orgSecurityEvents;
+    orgQuarantine(a);
+    bool quar = orgIsQuarantined(a) && g_orgSecurityEvents > evBefore;
+    bool refused = !edgeAdd(live2, a, EdgeKind.StrongRef, 0); // edge into quarantine refused
+    bool p61 = detected && quar && refused;
+    g_orgNodes[a].strongIn = 0; orgUnquarantine(a);
+    objRelease(a); objRelease(live2);
+
+    // 6.2 — unreachable strong cycle (page-backed) reclaimed + dead-weak nulled.
+    uint x = objAlloc(ObjType.File, null);
+    uint y = objAlloc(ObjType.File, null);
+    bool cyc = (x && y && edgeAdd(x, y, EdgeKind.StrongRef, 0) &&
+                edgeAdd(y, x, EdgeKind.StrongRef, 0));
+    ulong pg = alloc_phys_page();
+    orgSetGcPage(x, pg);
+    orgClearRoots();                            // nothing roots x/y
+    orgReachCompute(8);
+    orgTarjanRun();
+    ulong pagesBefore = g_orgPagesReclaimed;
+    uint freed = orgCollectScc(orgSccOf(x));
+    bool reclaimed = (cyc && freed == 2 && objGet(x) is null && objGet(y) is null &&
+                      g_orgPagesReclaimed > pagesBefore);
+
+    uint p = objAlloc(ObjType.File, null);
+    uint q = objAlloc(ObjType.File, null);
+    bool wk = (p && q && edgeAdd(p, q, EdgeKind.Weak, 0));
+    objRelease(q);                              // q dies ⇒ p→q is a dead weak edge
+    uint nulled = orgNullDeadWeak(OBJ_MAX);
+    bool weakNulled = (wk && nulled >= 1 && orgOutDegree(p) == 0);
+    objRelease(p);
+    bool p62 = reclaimed && weakNulled;
+
+    // 6.3 — shadow-refcount rebuild detects + repairs a drifted count.
+    uint m = objAlloc(ObjType.File, null);
+    uint n = objAlloc(ObjType.File, null);
+    bool me = (m && n && edgeAdd(m, n, EdgeKind.StrongRef, 0)); // n.strongIn == 1
+    g_orgNodes[n].strongIn = 9;                 // corrupt
+    uint disc = orgShadowRebuild();
+    bool p63 = (me && disc >= 1 && g_orgNodes[n].strongIn == 1);
+    edgeRemove(m, n, EdgeKind.StrongRef);
+    objRelease(m); objRelease(n);
+
+    if (p61 && p62 && p63) klog("[org] gc PASS\n");
+    else                   klog("[org] gc FAIL: behaviour\n");
+}
+
 public void orgStats() {
     klog("[org] edges=");   klog_hex(g_orgEdgesLive);
     klog(" adds=");         klog_hex(g_orgEdgeAdds);
@@ -585,5 +1096,12 @@ public void orgStats() {
     klog(" i4v=");          klog_hex(g_orgAuditI4Viol);
     klog(" roots=");        klog_hex(cast(ulong)g_orgRootCount);
     klog(" reach=");        klog_hex(cast(ulong)g_orgReachableCount);
+    klog(" scc=");          klog_hex(cast(ulong)g_orgSccCount);
+    klog(" ownrej=");       klog_hex(g_orgOwnRejectI1 + g_orgOwnRejectI2);
+    klog(" gccand=");       klog_hex(g_orgGcCandidates);
+    klog(" weaknull=");     klog_hex(g_orgWeakNulled);
+    klog(" pagesrec=");     klog_hex(g_orgPagesReclaimed);
+    klog(" quar=");         klog_hex(g_orgQuarantined);
+    klog(" secev=");        klog_hex(g_orgSecurityEvents);
     klog("\n");
 }

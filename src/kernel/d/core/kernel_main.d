@@ -43,7 +43,9 @@ import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxStats; // Phase 12: Linux-compat object subtree
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
 import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
-                  orgApiSelfTest, orgReachCompute; // ORG P2/P3/P4
+                  orgApiSelfTest, orgReachCompute, orgCycleSelfTest,
+                  orgTarjanRun, orgAddAnchorRoots, orgGcStep,
+                  orgValidateInvariants, orgGcSelfTest; // ORG P2–P6
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -951,6 +953,8 @@ private void dispatchSyscall(int tid) {
         orgSelfTest(); // ORG P2: one-shot proof of typed edges + weak coherence
         orgIntegReport(); // ORG P3: one-shot proof the real graph passes I1/I4 audit
         orgApiSelfTest(); // ORG P4: one-shot proof of query/reachability/ns-validation
+        orgCycleSelfTest(); // ORG P5: one-shot proof of cycle prevention + SCC GC
+        orgGcSelfTest(); // ORG P6: one-shot proof of invariant/quarantine/GC/rebuild
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -963,8 +967,12 @@ private void dispatchSyscall(int tid) {
             linuxStats();
             kernelCensusStats();
             orgAudit(); // refresh I1/I4 violation counters for the stats line
-            orgReconcileRoots();   // ORG P4.2: register live roots
+            orgReconcileRoots();   // ORG P4.2: process-leader roots
+            orgAddAnchorRoots();   // ORG P6.2: + registry-anchored roots (complete set)
             orgReachCompute(256);  // ORG P4.2: budgeted reachability over the live graph
+            orgTarjanRun();        // ORG P5.2: background SCC pass over the live graph
+            orgGcStep(256);        // ORG P6.2: null dead-weak + count GC candidates (safe)
+            orgValidateInvariants(false); // ORG P6.1: report-mode invariant check
             orgStats();
         }
     }

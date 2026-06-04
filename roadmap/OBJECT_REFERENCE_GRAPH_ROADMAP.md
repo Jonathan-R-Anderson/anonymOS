@@ -339,7 +339,44 @@ P2/3. *Performance:* traversals must be budgeted/incremental.
   validation**: every name in a Namespace resolves to a live object via a Cap edge.
   *Accept:* dangling name = flagged, not a crash.
 
-## PHASE 5 — Cycle Detection
+## PHASE 5 — Cycle Detection  ✅ DONE
+
+> **Status: online ownership-cycle prevention + background Tarjan SCC + GC-target
+> classification/collection, all in `core/org.d`.**
+> **5.1 (fail-closed at insert):** `edgeAdd(StrongOwn)` now rejects an edge that
+> would give `to` a second owner (I1) or close an ownership cycle (I2) — the
+> latter via `wouldFormOwnCycle`, a bounded DFS from `to` over StrongOwn edges
+> (the ownership graph is a forest, so it never revisits; a budget overrun fails
+> closed). No StrongOwn cycle can ever enter the graph.
+> **5.2 (Tarjan SCC):** `orgTarjanRun` is an **iterative** (no recursion → no
+> kernel-stack blowup) Tarjan over *strong* edges — O(V+E), each node stamped with
+> its SCC representative, the run stamped with the graph epoch; the explicit DFS
+> stack makes it drivable in budgeted slices by the P8 validator.
+> **5.3 (classify + collect):** `orgSccIsGcTarget` flags a non-trivial SCC whose
+> members are all unreachable from the registered roots (the SCM_RIGHTS in-flight
+> case); `orgCollectScc` reclaims it (object-level release that breaks the cycle
+> via the free-notify path). The live periodic pass runs Tarjan **read-only** (it
+> reports SCC count but never auto-collects — the root set is process-leaders only
+> for now, so auto-GC over the live graph waits for the complete root set in
+> P6/P8); collection is exercised on a controlled cycle in the self-test.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — now also running a background Tarjan SCC
+> pass over the live graph — reached Hyprland/Mesa compositor rendering with no
+> kernel fault, panic, JHC falloff, or OOM. The one-shot self-test logged
+> `[org] cycle PASS`: 5.1 — an ownership cycle (`o1→o2→o3→o1`) and a second owner
+> are both rejected at insert; 5.2 — a strong-ref 2-cycle `x↔y` is found by Tarjan
+> as a single SCC distinct from the root's; 5.3 — that SCC is classified as an
+> unreachable GC target and `orgCollectScc` reclaims both objects. `[org]
+> selftest/integ/api PASS` (P2–P4) continue to hold. `orgStats` adds
+> `scc`/`ownrej`/`sccfreed`.
+>
+> **Boundary with P6:** 5.3 here is detection + classification + *object-level*
+> reclaim of a controlled cycle; integrating the collector with the physical
+> allocator (`mm.d:free_phys_page`), the legacy refcount lifecycle, and the live
+> graph's complete root set — so the *real* SCM_RIGHTS cycle is reclaimed in
+> production — is **P6.2**.
+
 *Why:* enforce I2 (ownership acyclic) and find reference SCCs for GC. *Affected:*
 `core/org.d`. *Risks:* global Tarjan latency. *Refactoring:* none. *Performance:* must
 be incremental on insert + background full sweep.
@@ -357,7 +394,53 @@ be incremental on insert + background full sweep.
   from a root via strong edges ⇒ live; otherwise unreachable strong-SCC ⇒ **GC target**
   (the SCM_RIGHTS case). *Accept:* the in-flight socket cycle is detected and reclaimed.
 
-## PHASE 6 — Coherence Validation
+## PHASE 6 — Coherence Validation  ✅ DONE
+
+> **Status: invariant checker + quarantine, mark-sweep GC integrated with the
+> allocator, and shadow-refcount rebuild — all in `core/org.d`.** This is the
+> roadmap's flagged highest-risk phase (a GC bug = UAF), so it is built
+> **safety-first**: production runs only the operations that cannot free a live
+> object, and the dangerous collect path is proven on controlled cycles.
+> **6.1 invariant checker + quarantine:** `orgValidateInvariants(enforce)` checks
+> I1 (single owner) and I4 (refcount ≥ strong-in); a breach is **never silent** —
+> in enforcing mode `orgQuarantine` flags the object (raising a `[org] SECURITY`
+> event), and `edgeAdd` then refuses every edge in/out of it (fail-stop
+> containment). The live periodic pass runs it in **report mode** (counting only),
+> since quarantining a transiently-skewed live object would itself be a DoS.
+> **6.2 mark-sweep GC:** `orgGcStep` nulls dead Weak/Observer edges (I8 — can never
+> cause a UAF) on a resumable cursor and refreshes the unreachable-strong **GC
+> candidate** count (I3), generational (`age`) + incremental + bounded. The
+> **complete root set** is the key safety prerequisite: `orgAddAnchorRoots`
+> registers every registry-anchored object (Device/Driver/User/Service/Namespace/
+> Endpoint/Window/Vmo/Directory/Linux* …) as a reachability root alongside the
+> process leaders, so production has **zero false GC candidates**. The full collect
+> path — `orgCollectScc` freeing the SCC's objects **and returning their physical
+> pages via `mm.d:free_phys_page`** — is exercised on a constructed cycle, not run
+> against live objects.
+> **6.3 shadow-refcount rebuild:** `orgShadowRebuild` recomputes every strong-in
+> count from a full O(E) edge scan, repairs drift, and quarantines any object whose
+> object-manager refcount can't support the recomputed count.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — now also running the production GC step
+> (dead-weak null + candidate count) and report-mode invariant check over the live
+> graph with the complete root set — reached Hyprland/Mesa compositor rendering
+> with no kernel fault, panic, JHC falloff, OOM, **or any production quarantine**
+> (the only `[org] SECURITY` line is the self-test's deliberate one). The one-shot
+> self-test logged `[org] gc PASS`: 6.1 an I4 violation is detected and the object
+> quarantined + edges refused; 6.2 an unreachable page-backed strong cycle is
+> reclaimed (objects freed *and* the page returned to the allocator) and a dead
+> weak edge nulled; 6.3 a corrupted strong-in count is detected and repaired.
+> `[org] selftest/integ/api/cycle PASS` (P2–P5) all still hold. `orgStats` adds
+> `gccand`/`weaknull`/`pagesrec`/`quar`/`secev`.
+>
+> **Boundary / deferred:** production **auto-collection** of unreachable strong-SCCs
+> (vs. the current detect-and-count) is intentionally gated until the P8 validator
+> daemon provides budgeted confidence — turning it on now, against any single gap
+> in the edge model, would free a live object in a running desktop. Wiring the live
+> socket `SCM_RIGHTS` edges (E10, deferred in P3) so production traffic builds real
+> reclaimable cycles is likewise unblocked by this GC but sequenced with P10.
+
 *Why:* enforce I1/I3/I4/I8 — the graph never enters an invalid state. *Affected:*
 `core/org.d`, allocator (`mm.d`), every create/destroy path. *Risks:* false positives
 halting good work. *Refactoring:* hook destroy paths. *Performance:* shadow-refcount
@@ -495,12 +578,16 @@ use-after-free); it cannot be skipped, because refcounting alone leaks the SCM_R
 cycle that **already exists** in `posix.d`.
 
 ## Milestones
-- **ORG-MVP:** P2+P3+P4+P5.1 — every object relationship is a typed edge; ownership
-  cycles are impossible by construction (online prevention). *Provable:* `edgeAdd`
-  rejects an ownership cycle; the graph is enumerable.
-- **Coherent + safe:** +P5.2/5.3+P6+P7 — unreachable strong cycles (incl. SCM_RIGHTS)
-  are collected; no rights/label escalation. *Provable:* the in-flight socket cycle is
-  reclaimed; an escalation edge is rejected.
+- **ORG-MVP:** ✅ **Reached** (P2 ✅ + P3 ✅ + P4 ✅ + P5.1 ✅) — every object
+  relationship is a typed edge; ownership cycles are impossible by construction (online
+  prevention). *Proven:* `[org] cycle PASS` shows `edgeAdd` rejects an ownership cycle;
+  the graph is enumerable (`[org] api PASS`).
+- **Coherent + safe:** +P5.2/5.3 ✅ +P6 ✅ +P7 — unreachable strong cycles (incl.
+  SCM_RIGHTS) are collected; no rights/label escalation. *Progress:* P5.2/5.3 ✅ + P6 ✅
+  — a page-backed strong cycle is detected and reclaimed (objects + physical page) and a
+  corrupted refcount is repaired (`[org] gc PASS`); the complete root set gives 0 false
+  GC candidates in production. Remaining: P7 escalation rejection, plus turning on
+  production auto-collection + live SCM edge wiring (gated on the P8 validator).
 - **Operable:** +P8+P9+P12 — continuous budgeted validation, visualization, scale test
   to 10⁶. *Provable:* validator holds CPU budget and catches injected violations.
 

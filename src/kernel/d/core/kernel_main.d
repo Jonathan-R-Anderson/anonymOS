@@ -45,6 +45,7 @@ import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immuta
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
 import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + cap audit
+import core.distos : distosSelfTest, distosStats; // IR-P9 distributed refs + macaroons + dist store
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
@@ -1012,6 +1013,7 @@ private void dispatchSyscall(int tid) {
         updateSelfTest(); // IMMUTABLE_ROOTLESS §6: A/B slots + signed apply + anti-downgrade + auto-rollback
         cryptoSelfTest(); // IMMUTABLE_ROOTLESS §8.1/8.2: real SHA-256/HMAC + measured/verified boot
         hardeningSelfTest(); // IMMUTABLE_ROOTLESS §8.3/8.4: W^X / NX policy + capability audit log
+        distosSelfTest(); // IMMUTABLE_ROOTLESS §9: network-transparent refs + macaroon caps + dist store
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -1039,6 +1041,7 @@ private void dispatchSyscall(int tid) {
             updateStats();
             cryptoStats();
             hardeningStats();
+            distosStats();
         }
     }
 

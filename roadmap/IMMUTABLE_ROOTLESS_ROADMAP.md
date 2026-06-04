@@ -468,15 +468,39 @@ task IDs below.
   `requireCap`/`requireCapIn` record every `CapAllow`/`CapDeny` in the audit ring
   (`core/audit.d`); live boot recorded ~466k decisions.
 
-### Phase 9 — Distributed OS integration
-- **9.1 Network-transparent object references** — P: Low · D: 8 · deps: Phase 1–2,
+### Phase 9 — Distributed OS integration  ✅ DONE (decisions real; transport pending)
+> **Status:** implemented in `core/distos.d` (module `core.distos`), built on the ORG
+> federation seams (`core/org_dist.d` OrgRef + leased edges), the §8.1 crypto, and the
+> §4 store. §9.1 `dosResolve` addresses a global `node:obj:epoch` handle identically
+> whether local or remote: a local ref yields its live object id (and stops resolving
+> once the object is released), a remote ref routes to its node — but only if that
+> node is registered and reachable, so an unknown/partitioned node never routes. §9.2
+> macaroon tokens are HMAC-SHA-256 chained over an identifier + narrowing caveats:
+> `macaroonAttenuate` can only *remove* rights (the verifier ANDs the caveats), and
+> tampering rights, tampering the tag, a wrong key, or a replayed nonce all fail
+> (`macaroonVerifyConsume`). §9.3 `dosFetch(digest)` returns the local object if
+> present (dedup, no transfer) else pulls a peer's bytes and accepts them only if they
+> hash to the requested digest — a lying peer is rejected by content addressing
+> itself. `[distos] selftest PASS` proves local-resolve/remote-route/unreachable-fail,
+> mint/attenuate/verify/tamper/replay, and fetch/dedup/integrity-reject.
+>
+> **Caveat (honest):** there is one kernel and **no real NIC traffic** — every
+> locality, routing, signature, attenuation, replay and integrity *decision* is real
+> and self-tested, but the wire transport (9P-style RPC over the net stack) is the
+> remaining integration. The macaroon HMAC key is the shared `g_trustedKey`; a true
+> multi-node deployment wants per-node keys / an asymmetric root (the §8.1 ed25519
+> follow-up).
+- **9.1 Network-transparent object references** — ✅ **DONE (addressing; transport pending)** · P: Low · D: 8 · deps: Phase 1–2,
   net stack. *Why:* the object tree extends across nodes (Plan 9 9P-style). *Outcome:*
-  remote objects addressed like local.
-- **9.2 Capability delegation across nodes** — P: Low · D: 9 · deps: 9.1, 8.1. *Why:*
+  `dosResolve` addresses local + remote refs identically (local → object id, remote →
+  routed to a registered reachable node; unknown nodes refused).
+- **9.2 Capability delegation across nodes** — ✅ **DONE** · P: Low · D: 9 · deps: 9.1, 8.1. *Why:*
   caps must be unforgeable *and* delegable over the wire (cryptographic caps /
-  macaroons). *Outcome:* a remote service grant that can't be forged or replayed.
-- **9.3 Distributed content-addressed store** — P: Low · D: 8 · deps: 4.1, 9.1.
-  *Outcome:* generations fetched by hash from peers; natural dedup.
+  macaroons). *Outcome:* HMAC-SHA-256 macaroons — attenuate-only, tamper-evident,
+  wrong-key-rejecting, replay-protected (nonce).
+- **9.3 Distributed content-addressed store** — ✅ **DONE** · P: Low · D: 8 · deps: 4.1, 9.1.
+  *Outcome:* `dosFetch` returns local content (dedup, no transfer) or a peer's bytes
+  verified against the requested hash; a lying peer is rejected by content addressing.
 
 ---
 

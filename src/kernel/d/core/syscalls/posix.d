@@ -340,34 +340,82 @@ private int allocFd() @nogc nothrow {
     return -1;
 }
 
-// Phase 5 (roadmap/OBJECT_OS_ROADMAP.md): the method-table implementation of
-// read() for the random character devices.  Byte-identical to the legacy switch
-// arm (`random_get_bytes; return count`) — this is the first I/O behaviour routed
-// through g_objOps instead of `switch (f.type)`, with the legacy switch kept as a
-// fallback for every type not yet migrated.  `oh.impl` is the backing File*.
-private long devRandomRead(ObjHeader* oh, void* buf, ulong count) {
-    random_get_bytes(buf, count);
-    ++g_objOpsDispatch;
-    return cast(long)count;
+private void registerFdObjOps(ObjType t) {
+    g_objOps[t].read  = &fileObjRead;
+    g_objOps[t].write = &fileObjWrite;
+    g_objOps[t].close = &fileObjClose;
+    g_objOps[t].stat  = &fileObjStat;
+    g_objOps[t].ioctl = &fileObjIoctl;
+    g_objOps[t].mmap  = &fileObjMmap;
 }
 
-// One-time registration of the per-ObjType method tables (Phase 5).  Idempotent;
-// called from objReconcileFds so it happens once the object layer is live.
+// One-time registration of the per-ObjType method tables (Phase 5).  Idempotent.
 __gshared bool g_objOpsInited = false;
 private void initObjOps() {
     if (g_objOpsInited) return;
     g_objOpsInited = true;
-    g_objOps[ObjType.Device].read = &devRandomRead;
+    registerFdObjOps(ObjType.File);
+    registerFdObjOps(ObjType.Directory);
+    registerFdObjOps(ObjType.Device);
+    registerFdObjOps(ObjType.Vmo);
+    registerFdObjOps(ObjType.Endpoint);
 }
 
-// Phase 5: which ObjType a given fd backend should be registered as.  Only the
-// migrated kinds (random/urandom → Device, dispatched via g_objOps) diverge from
-// the default File; everything else stays File and falls through to the legacy
-// switch — keeping the migration incremental and reversible.
-private ObjType objTypeForFile(const File* f) {
-    if (f.type == FileType.FD_RANDOM || f.type == FileType.FD_URANDOM)
-        return ObjType.Device;
+// Phase 5: fd backends still keep File.type as their Linux-compat backend tag,
+// but object identity now reflects the broad object family used for dispatch.
+private ObjType objTypeForFile(File* f) {
+    if (f is null || f.type == FileType.FD_NONE) return ObjType.Invalid;
+    if (fileIsSyntheticDirectory(f)) return ObjType.Directory;
+    switch (f.type) {
+        case FileType.FD_SOCKET:
+            return ObjType.Endpoint;
+        case FileType.FD_DRM:
+        case FileType.FD_INPUT_EVENT:
+        case FileType.FD_CONSOLE:
+        case FileType.FD_ZERO:
+        case FileType.FD_RANDOM:
+        case FileType.FD_URANDOM:
+            return ObjType.Device;
+        case FileType.FD_MEMFD:
+            return ObjType.Vmo;
+        default:
+            break;
+    }
     return ObjType.File;
+}
+
+private File* fileFromObj(ObjHeader* oh) {
+    if (oh is null || oh.impl is null) return null;
+    auto f = cast(File*)oh.impl;
+    if (f.type == FileType.FD_NONE || f.objId != oh.id) return null;
+    return f;
+}
+
+private ObjHeader* ensureFileObject(File* f) {
+    if (f is null || f.type == FileType.FD_NONE) return null;
+    initObjOps();
+    ObjType want = objTypeForFile(f);
+    if (want == ObjType.Invalid) return null;
+    auto h = (f.objId != 0) ? objGet(f.objId) : null;
+    if (h !is null && h.impl is cast(void*)f && h.type == want) return h;
+    if (h !is null && h.impl is cast(void*)f) objRelease(f.objId);
+    f.objId = objAlloc(want, cast(void*)f);
+    return objGet(f.objId);
+}
+
+private ObjHeader* fdObjectByIndex(int fd) {
+    initFdTable();
+    if (fd < 0 || fd >= 1024) return null;
+    File* f = &g_fdTable[fd];
+    if (f.type == FileType.FD_NONE) return null;
+    return ensureFileObject(f);
+}
+
+private int fdIndexForFile(File* f) {
+    if (f is null || g_fdTable is null) return -1;
+    foreach (i; 0 .. 1024)
+        if (&g_fdTable[i] is f) return cast(int)i;
+    return -1;
 }
 
 // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): mirror every fd of the *active*
@@ -1007,24 +1055,10 @@ private char consolePollChar(bool block) {
 }
 
 
-public ssize_t sys_read(int fd, void* _buf, size_t _count) {
-    initFdTable();
-    if (fd < 0 || fd >= 1024) return negErrno(EBADF);
-    
-    File* f = &g_fdTable[fd];
-    if (f.type == FileType.FD_NONE) return negErrno(EBADF);
-
-    // Phase 5 (roadmap/OBJECT_OS_ROADMAP.md): route read() through the g_objOps
-    // method table when the backing object has a registered read op; otherwise
-    // fall through to the legacy `switch (f.type)` below.  The impl check ensures
-    // we only trust an object that genuinely backs this exact fd slot.
-    if (f.objId != 0) {
-        auto oh = objGet(f.objId);
-        if (oh !is null && oh.impl is cast(void*)f) {
-            auto rop = g_objOps[oh.type].read;
-            if (rop !is null) return cast(ssize_t)rop(oh, _buf, _count);
-        }
-    }
+private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
+    File* f = fileFromObj(oh);
+    if (f is null) return negErrno(EBADF);
+    ++g_objOpsDispatch;
 
     if (f.type == FileType.FD_ZERO) {
         auto buffer = cast(ubyte*)_buf;
@@ -1033,6 +1067,7 @@ public ssize_t sys_read(int fd, void* _buf, size_t _count) {
         {
             buffer[i] = 0;
         }
+        return cast(ssize_t)_count;
     }
 
     if (f.type == FileType.FD_URANDOM || f.type == FileType.FD_RANDOM) {
@@ -1204,13 +1239,19 @@ public ssize_t sys_read(int fd, void* _buf, size_t _count) {
     return 0; // EOF for others
 }
 
-public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
-    initFdTable();
-    if (buf is null && count != 0) return cast(ssize_t)negErrno(EFAULT);
-    if (fd < 0 || fd >= 1024) return cast(ssize_t)negErrno(EBADF);
+public ssize_t sys_read(int fd, void* _buf, size_t _count) {
+    ObjHeader* oh = fdObjectByIndex(fd);
+    if (oh is null) return negErrno(EBADF);
+    auto rop = g_objOps[oh.type].read;
+    if (rop is null) return negErrno(EBADF);
+    return cast(ssize_t)rop(oh, _buf, _count);
+}
 
-    File* f = &g_fdTable[fd];
-    if (f.type == FileType.FD_NONE) return cast(ssize_t)negErrno(EBADF);
+private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
+    File* f = fileFromObj(oh);
+    if (f is null) return negErrno(EBADF);
+    ++g_objOpsDispatch;
+    if (buf is null && count != 0) return cast(ssize_t)negErrno(EFAULT);
 
     if (f.type == FileType.FD_SOCKET) {
         return localSocketWrite(f, buf, count);
@@ -1273,6 +1314,14 @@ public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
 
     // Simulate success for others (e.g. /dev/null)
     return cast(ssize_t)count;
+}
+
+public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
+    ObjHeader* oh = fdObjectByIndex(fd);
+    if (oh is null) return cast(ssize_t)negErrno(EBADF);
+    auto wop = g_objOps[oh.type].write;
+    if (wop is null) return cast(ssize_t)negErrno(EBADF);
+    return cast(ssize_t)wop(oh, buf, count);
 }
 
 public int sys_open(const(char)* path, int flags) {
@@ -1465,12 +1514,11 @@ public int sys_open(const(char)* path, int flags) {
     return negErrno(ENOENT);
 }
 
-public int sys_close(int fd) {
-    initFdTable();
-    if (fd < 0 || fd >= 1024) return negErrno(EBADF);
-    
-    File* f = &g_fdTable[fd];
-    if (f.type == FileType.FD_NONE) return negErrno(EBADF);
+private long fileObjClose(ObjHeader* oh) {
+    File* f = fileFromObj(oh);
+    if (f is null) return negErrno(EBADF);
+    ++g_objOpsDispatch;
+    uint oid = oh.id;
 
     if (f.type == FileType.FD_SOCKET) {
         closeLocalSocket(f);
@@ -1517,7 +1565,17 @@ public int sys_close(int fd) {
     f.flags = 0;
     f.offset = 0;
     f.fileSize = 0;
+    f.objId = 0;
+    objRelease(oid);
     return 0;
+}
+
+public int sys_close(int fd) {
+    ObjHeader* oh = fdObjectByIndex(fd);
+    if (oh is null) return negErrno(EBADF);
+    auto cop = g_objOps[oh.type].close;
+    if (cop is null) return negErrno(EBADF);
+    return cast(int)cop(oh);
 }
 
 public long linux_sys_read(ulong fd, ulong buf, ulong count) {
@@ -1545,49 +1603,53 @@ public long linux_sys_close(ulong fd) {
     return cast(long)sys_close(cast(int)fd);
 }
 
-public long linux_sys_fstat(ulong fd, ulong _statBuf) {
-    initFdTable();
-    int ifd = cast(int)fd;
-
-    if (ifd >= 0 && ifd < 1024 && g_fdTable[ifd].type != FileType.FD_NONE) {
-        if (_statBuf != 0) {
-            File* f = &g_fdTable[ifd];
-            if (f.type == FileType.FD_BUNDLE || f.type == FileType.FD_BOOT_MODULE) {
-                writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
-                // A unique (st_dev, st_ino) per file is essential: the dynamic
-                // linker dedups shared objects by (dev, ino), so without it every
-                // .so collapses onto one and dlsym() fails.  The backend value
-                // (module phys addr / bundle offset) is unique per file.
-                *cast(ulong*)(_statBuf + 0) =
-                    (f.type == FileType.FD_BOOT_MODULE) ? 1 : 2;        // st_dev
-                *cast(ulong*)(_statBuf + 8) = cast(ulong)f.backend + 1; // st_ino
-            } else if (fileIsSyntheticDirectory(f)) {
-                writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
-            } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
-                clearLinuxStat(_statBuf);
-                *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
-            } else if (f.type == FileType.FD_DRM) {
-                // Report the DRM device as a character device with the DRM major
-                // (226) and minor 0 (= card0, a "primary" node).  libdrm's
-                // drmGetNodeTypeFromFd checks S_ISCHR + the encoded rdev, which
-                // Aquamarine's dumb-buffer allocator requires.
-                clearLinuxStat(_statBuf);
-                *cast(uint*)(_statBuf + 24) = 0x2000 | 0x01B6;     // S_IFCHR | 0666
-                *cast(ulong*)(_statBuf + 40) = 0xE200;             // st_rdev = makedev(226, 0)
-            } else if (f.type == FileType.FD_SOCKET) {
-                clearLinuxStat(_statBuf);
-                *cast(uint*)(_statBuf + 24) = 0xC000 | 0x01B6; // S_IFSOCK | 0666
-            } else if (f.type == FileType.FD_RTFILE) {
-                const int idx = cast(int)cast(size_t)f.backend;
-                const uint sz = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].size : 0;
-                writeLinuxStat(_statBuf, 0x8000 | 0x01B6, sz); // S_IFREG | 0666
-            } else {
-                writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
-            }
+private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
+    File* f = fileFromObj(oh);
+    if (f is null) return cast(long)negErrno(EBADF);
+    ++g_objOpsDispatch;
+    if (_statBuf != 0) {
+        if (f.type == FileType.FD_BUNDLE || f.type == FileType.FD_BOOT_MODULE) {
+            writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
+            // A unique (st_dev, st_ino) per file is essential: the dynamic
+            // linker dedups shared objects by (dev, ino), so without it every
+            // .so collapses onto one and dlsym() fails.  The backend value
+            // (module phys addr / bundle offset) is unique per file.
+            *cast(ulong*)(_statBuf + 0) =
+                (f.type == FileType.FD_BOOT_MODULE) ? 1 : 2;        // st_dev
+            *cast(ulong*)(_statBuf + 8) = cast(ulong)f.backend + 1; // st_ino
+        } else if (fileIsSyntheticDirectory(f)) {
+            writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
+        } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
+            clearLinuxStat(_statBuf);
+            *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
+        } else if (f.type == FileType.FD_DRM) {
+            // Report the DRM device as a character device with the DRM major
+            // (226) and minor 0 (= card0, a "primary" node).  libdrm's
+            // drmGetNodeTypeFromFd checks S_ISCHR + the encoded rdev, which
+            // Aquamarine's dumb-buffer allocator requires.
+            clearLinuxStat(_statBuf);
+            *cast(uint*)(_statBuf + 24) = 0x2000 | 0x01B6;     // S_IFCHR | 0666
+            *cast(ulong*)(_statBuf + 40) = 0xE200;             // st_rdev = makedev(226, 0)
+        } else if (f.type == FileType.FD_SOCKET) {
+            clearLinuxStat(_statBuf);
+            *cast(uint*)(_statBuf + 24) = 0xC000 | 0x01B6; // S_IFSOCK | 0666
+        } else if (f.type == FileType.FD_RTFILE) {
+            const int idx = cast(int)cast(size_t)f.backend;
+            const uint sz = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].size : 0;
+            writeLinuxStat(_statBuf, 0x8000 | 0x01B6, sz); // S_IFREG | 0666
+        } else {
+            writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
         }
-        return 0;
     }
-    return cast(long)negErrno(EBADF);
+    return 0;
+}
+
+public long linux_sys_fstat(ulong fd, ulong _statBuf) {
+    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    if (oh is null) return cast(long)negErrno(EBADF);
+    auto sop = g_objOps[oh.type].stat;
+    if (sop is null) return cast(long)negErrno(EBADF);
+    return sop(oh, _statBuf);
 }
 
 private bool bootModulePathEq(ref const(BootModuleRecord) rec, const(char)* path) {
@@ -3044,32 +3106,29 @@ private long statSyntheticPath(const(char)* path, ulong statBuf) {
     return cast(long)negErrno(ENOENT);
 }
 
-public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
-    console_putchar('I');
-    initFdTable();
+private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
+    File* f = fileFromObj(oh);
+    if (f is null) return negErrno(EBADF);
+    ++g_objOpsDispatch;
 
-    int ifd = cast(int)fd;
-    if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE)
-        return negErrno(EBADF);
-
-    if (g_fdTable[ifd].type == FileType.FD_DRM) {
+    if (f.type == FileType.FD_DRM) {
         console_putchar('D');
-        return handleDrmIoctl(ifd, cmd, arg);
+        return handleDrmIoctl(fdIndexForFile(f), cmd, arg);
     }
 
     // DRM ioctl: magic byte = 'd' (0x64)
-    if (g_fdTable[ifd].type == FileType.FD_DRM) {
+    if (f.type == FileType.FD_DRM) {
         if (((cmd >> 8) & 0xFF) == 0x64)
-            return handleDrmIoctl(ifd, cmd, arg);
+            return handleDrmIoctl(fdIndexForFile(f), cmd, arg);
         return 0; // other ioctls on DRM fd → success
     }
 
     // Input event ioctls (EVIOCGVERSION, EVIOCGNAME, EVIOCGBIT, ...)
-    if (g_fdTable[ifd].type == FileType.FD_INPUT_EVENT) {
+    if (f.type == FileType.FD_INPUT_EVENT) {
         return 0; // accept all input device ioctls silently
     }
 
-    if (g_fdTable[ifd].type != FileType.FD_CONSOLE) {
+    if (f.type != FileType.FD_CONSOLE) {
         return cast(long)negErrno(25); // ENOTTY
     }
 
@@ -3154,6 +3213,15 @@ public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     }
 
     return cast(long)negErrno(25); // ENOTTY for everything else
+}
+
+public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
+    console_putchar('I');
+    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    if (oh is null) return negErrno(EBADF);
+    auto iop = g_objOps[oh.type].ioctl;
+    if (iop is null) return negErrno(EBADF);
+    return iop(oh, cmd, arg);
 }
 
 public long linux_sys_access(ulong _path, ulong _mode) {
@@ -3257,6 +3325,15 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
             const long targetStatRes = linux_sys_fstat(cast(ulong)targetFd, statbuf);
             sys_close(cast(int)targetFd);
             return targetStatRes;
+        }
+    }
+
+    if (isSyntheticDirectoryPath(pathPtr)) {
+        const long dirFd = sys_open(pathPtr, O_RDONLY);
+        if (dirFd >= 0) {
+            const long dirStatRes = linux_sys_fstat(cast(ulong)dirFd, statbuf);
+            sys_close(cast(int)dirFd);
+            return dirStatRes;
         }
     }
 
@@ -4573,6 +4650,46 @@ public ulong memfdResolve(ulong fd, ulong* sizeOut) {
     if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
     if (sizeOut !is null) *sizeOut = g_memfds[mid].size;
     return g_memfds[mid].physBase;
+}
+
+private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
+                         ulong* sizeOut, uint* vmoOut, bool* sharedOut) {
+    File* f = fileFromObj(oh);
+    if (f is null) return negErrno(EBADF);
+    ++g_objOpsDispatch;
+    if (physOut !is null)   *physOut = 0;
+    if (sizeOut !is null)   *sizeOut = 0;
+    if (vmoOut !is null)    *vmoOut = 0;
+    if (sharedOut !is null) *sharedOut = false;
+
+    if (f.type == FileType.FD_DRM && offset != 0) {
+        if (physOut !is null)   *physOut = offset;
+        if (vmoOut !is null)    *vmoOut = drmVmoForPhys(offset);
+        if (sharedOut !is null) *sharedOut = true;
+        return 1;
+    }
+
+    if (f.type == FileType.FD_MEMFD) {
+        int mid = cast(int)cast(size_t)f.backend;
+        if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return 0;
+        if (g_memfds[mid].physBase == 0) return 0;
+        if (physOut !is null)   *physOut = g_memfds[mid].physBase + offset;
+        if (sizeOut !is null)   *sizeOut = g_memfds[mid].size;
+        if (vmoOut !is null)    *vmoOut = ensureMemfdVmo(mid);
+        if (sharedOut !is null) *sharedOut = true;
+        return 1;
+    }
+
+    return 0;
+}
+
+public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
+                          ulong* sizeOut, uint* vmoOut, bool* sharedOut) {
+    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    if (oh is null) return negErrno(EBADF);
+    auto mop = g_objOps[oh.type].mmap;
+    if (mop is null) return 0;
+    return mop(oh, offset, physOut, sizeOut, vmoOut, sharedOut);
 }
 
 // --- Permission / ownership stubs ---

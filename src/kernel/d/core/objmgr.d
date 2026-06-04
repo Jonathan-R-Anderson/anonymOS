@@ -77,15 +77,21 @@ private void objInit() {
         g_objFree[++g_objFreeTop] = cast(uint)i;
 }
 
-// Per-type method table.  Phase 5 will route read/write/close through this; it
-// is intentionally empty (all null) in Phase 2.
+// Per-type method table.  Phase 5 routes fd/file behaviour through these
+// methods; null slots mean "operation not implemented for this object type".
 alias ObjReadFn  = long function(ObjHeader*, void*, ulong) @nogc nothrow;
 alias ObjWriteFn = long function(ObjHeader*, const(void)*, ulong) @nogc nothrow;
-alias ObjCloseFn = void function(ObjHeader*) @nogc nothrow;
+alias ObjCloseFn = long function(ObjHeader*) @nogc nothrow;
+alias ObjStatFn  = long function(ObjHeader*, ulong) @nogc nothrow;
+alias ObjIoctlFn = long function(ObjHeader*, ulong, ulong) @nogc nothrow;
+alias ObjMmapFn  = long function(ObjHeader*, ulong, ulong*, ulong*, uint*, bool*) @nogc nothrow;
 struct ObjOps {
     ObjReadFn  read;
     ObjWriteFn write;
     ObjCloseFn close;
+    ObjStatFn  stat;
+    ObjIoctlFn ioctl;
+    ObjMmapFn  mmap;
 }
 __gshared ObjOps[ObjType.Count] g_objOps;
 

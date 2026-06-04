@@ -944,19 +944,17 @@ private void dispatchSyscall(int tid) {
             ulong numPgs = alignedLen >> 12;
             bool mmapOk = true;
 
-            // DRM device mmap: fd refers to an FD_DRM and offset is the physical
-            // framebuffer address (returned by MAP_DUMB). Map those pages directly.
-            bool useDrmPhys = (moffset != 0) &&
-                              (mfd < 1024) &&
-                              (g_fdTable[cast(int)mfd].type == FileType.FD_DRM);
-
-            // memfd mmap: fd refers to an FD_MEMFD with backing pages allocated by
-            // ftruncate.  Map those physical pages so two processes that share the
-            // memfd (via SCM_RIGHTS) see the same memory.
-            ulong memfdPhys = 0;
-            if (!useDrmPhys && mfd < 1024)
-                memfdPhys = memfdResolve(mfd, null);
-            bool useMemfd = (memfdPhys != 0);
+            // Shared fd backings (DRM dumb-buffer mmap and memfd mmap) now route
+            // through the fd object's mmap op instead of peeking at File.type here.
+            ulong backingPhys = 0;
+            uint vmoObjId = 0;
+            bool useObjectBacking = false;
+            if (mfd < 1024) {
+                long backing = fdMmapBacking(mfd, moffset, &backingPhys,
+                                             null, &vmoObjId,
+                                             &useObjectBacking);
+                if (backing <= 0) useObjectBacking = false;
+            }
 
             // File-backed mmap (MAP_PRIVATE of a regular file): the dynamic linker
             // maps each shared object's segments this way.  Allocate fresh pages
@@ -964,25 +962,17 @@ private void dispatchSyscall(int tid) {
             // stay writable + executable (the kernel never sets NX, so PROT_EXEC is
             // satisfied and ld.so can write relocations); ld.so tightens perms via
             // mprotect afterwards.
-            bool useFile = !useDrmPhys && !useMemfd &&
+            bool useFile = !useObjectBacking &&
                            (mflags & MAP_ANONYMOUS) == 0 &&
                            cast(long)mfd >= 0 && mfd < 1024;
 
-            uint vmoObjId = 0;
-            ulong regionPhysBase = 0;
-            if (useDrmPhys) {
-                vmoObjId = drmVmoForPhys(moffset);
-                regionPhysBase = moffset;
-            } else if (useMemfd) {
-                vmoObjId = memfdVmoObj(mfd);
-                regionPhysBase = memfdPhys + moffset;
-            }
+            ulong regionPhysBase = useObjectBacking ? backingPhys : 0;
 
             auto mappedRegion = addRegion(*task, vaddr, vaddr + alignedLen,
                                            RegionType.Mapped,
                                            RegionPerms.ReadWrite,
                                            regionPhysBase,
-                                           !useDrmPhys && !useMemfd,
+                                           !useObjectBacking,
                                            vmoObjId);
             if (mappedRegion is null) {
                 if ((mflags & MAP_FIXED) == 0) task.mmapNext -= alignedLen;
@@ -992,8 +982,7 @@ private void dispatchSyscall(int tid) {
 
             ulong mappedPgs = 0;
             for (ulong pg = 0; pg < numPgs; pg++) {
-                ulong phys = useDrmPhys ? (moffset + pg * 4096)
-                           : useMemfd  ? (memfdPhys + moffset + pg * 4096)
+                ulong phys = useObjectBacking ? (backingPhys + pg * 4096)
                            : alloc_phys_page();
                 if (phys == 0) { mmapOk = false; break; }
                 map_page_hhdm(phys, vaddr + pg * 4096,

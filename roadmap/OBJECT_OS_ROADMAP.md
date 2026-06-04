@@ -240,7 +240,29 @@ Phase 2, 3.
 
 ---
 
-## PHASE 5 — Convert fd/file backends into File/Directory/Device objects
+## PHASE 5 — Convert fd/file backends into File/Directory/Device objects  ✅ DONE
+
+> **Status: implemented as object-method dispatch for the fd syscall surface.**
+> `ObjOps` now covers `read`, `write`, `close`, `stat`, `ioctl`, and `mmap`.
+> The public Linux syscall entry points in `posix.d` validate the fd, resolve or
+> self-heal its `ObjHeader`, then call `g_objOps[obj.type].*`; backend-specific
+> behavior lives behind `fileObjRead/fileObjWrite/fileObjClose/fileObjStat/
+> fileObjIoctl/fileObjMmap`.
+>
+> **Object typing:** fd slots are now registered as broad object families:
+> `Device` for console/zero/random/input/DRM, `Directory` for synthetic
+> directories, `Endpoint` for local sockets, `Vmo` for memfds, and `File` for the
+> remaining regular/runtime/pipe/event/timer/epoll compatibility backends. The
+> old `File.type` tag is retained only inside those object methods as the Linux
+> backend discriminator; the syscall fan-in no longer switches on it.
+>
+> **mmap routing:** `kernel_main.d` case 9 no longer peeks at `FD_DRM` or
+> `FD_MEMFD`. It asks the fd object via `fdMmapBacking`, preserving shared DRM
+> dumb-buffer and memfd mappings plus VMO attribution.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A 15s headless QEMU smoke boot reached Hyprland/Mesa startup and the
+> serial log had no kernel fault, panic, JHC falloff, or OOM signatures.
 
 **Goal:** route `sys_read`/`sys_write`/`sys_close`/`sys_stat`/`mmap`/`ioctl` through
 `g_objOps` method tables instead of `switch (f.type)`. This is the **payoff** of

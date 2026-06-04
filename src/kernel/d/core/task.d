@@ -6,6 +6,7 @@ import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
 import core.namespace : nsAlloc, nsClone, nsRelease; // Phase 9: per-process namespace
+import core.linuxobj : linuxProcEnsure, linuxProcSweep; // Phase 12: Linux pid-view wrapper
 
 extern (C) @nogc nothrow:
 
@@ -424,9 +425,14 @@ public void objReconcileTasks() {
         objEnsureTask(t);
         objEnsureProcess(t);
         objEnsureNamespace(t); // Phase 9: per-process namespace (self-heal)
+        // Phase 12: ensure a LinuxProcessObject wraps each process leader's native
+        // Process object (the Linux pid view).
+        if (g_tasks[t].processLeaderTid == t)
+            linuxProcEnsure(g_tasks[t].processObjId, linuxPidForTask(t));
         objMark(g_tasks[t].objId);
         objMark(g_tasks[t].processObjId);
     }
     objSweepType(ObjType.Process);
     objSweepType(ObjType.Thread);
+    linuxProcSweep(); // Phase 12: drop Linux wrappers whose Process object is gone
 }

@@ -38,6 +38,9 @@ import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
 import core.user : userRegistryInit, userSelfTest, userStats, USER_RIGHT_ALL; // Phase 10
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
+import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
+                       linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
+                       linuxStats; // Phase 12: Linux-compat object subtree
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -553,6 +556,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     task.mmapNext    = 0x740000000000UL;
 
     ulong elfVirt = phys_to_virt(modPhys);
+    linuxNoteElfLoad(); // Phase 12: LinuxELFLoaderObject sees the execve load
     auto res = loadElf(*task, elfVirt, modPhys);
     if (!res.ok) {
         klog("[exec] loadElf failed\n");
@@ -937,6 +941,7 @@ private void dispatchSyscall(int tid) {
         userSelfTest(); // Phase 10: one-shot proof identity/passwd derive from User objects
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
+        linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -946,6 +951,7 @@ private void dispatchSyscall(int tid) {
             userStats();
             serviceStats();
             windowStats();
+            linuxStats();
         }
     }
 
@@ -1250,8 +1256,18 @@ private void dispatchSyscall(int tid) {
             return;
         }
 
-        // All other Linux syscalls are handled by posix.d
+        // All other Linux syscalls are translated by the LinuxSyscallObject
+        // (Phase 12): the personality is reached only through its gate, so the
+        // whole Linux subtree can be disabled without touching the native kernel.
+        // The translation bodies still live in posix.d, which now calls native
+        // object ops from Phases 3–11.
         default:
+            if (!linuxEnabled()) {
+                linuxNoteBlocked();
+                ret = -38; // ENOSYS — Linux personality not present
+                break;
+            }
+            linuxNoteTranslate();
             ret = dispatchLinuxSyscall(rax, rdi, rsi, rdx, r10, r8, r9);
             break;
     }
@@ -1641,6 +1657,10 @@ void d_kernel_main() {
     // (the in-kernel compositor's Window/Surface objects register as it runs).
     windowRegistryInit(g_fb !is null ? cast(uint)g_fb.width : 0,
                        g_fb !is null ? cast(uint)g_fb.height : 0);
+    // Phase 12: build the Linux-compat object subtree and enable the personality
+    // before the init process issues its first syscall (the dispatcher routes all
+    // Linux syscalls through the LinuxSyscallObject gate from here on).
+    linuxObjectInit();
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 
@@ -1745,6 +1765,7 @@ void d_kernel_main() {
     ulong mainBias = (initType == 3 /*ET_DYN*/) ? MAIN_PIE_BASE : 0;
 
     char[256] interpPath;
+    linuxNoteElfLoad(); // Phase 12: LinuxELFLoaderObject sees the init load
     auto res = loadElf(g_tasks[0], elfVirt, initPhys, mainBias,
                        interpPath.ptr, interpPath.length);
     if (!res.ok) {

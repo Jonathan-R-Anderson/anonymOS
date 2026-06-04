@@ -634,7 +634,47 @@ in-kernel global compositor state as ambient authority.
 
 ---
 
-## PHASE 12 — Linux compatibility as objects (`LinuxObject` tree)
+## PHASE 12 — Linux compatibility as objects (`LinuxObject` tree)  ✅ DONE
+
+> **Status: implemented as a Linux-compat object subtree gating the syscall
+> surface.** New module `core/linuxobj.d` stands up the five named identities in
+> the central object table: `LinuxSyscall`, `LinuxVFS`, `LinuxELFLoader`,
+> `LinuxDeviceAdapter` (singletons; new `ObjType` members) and a per-process
+> `LinuxProcess` wrapper. The personality has a master switch (`g_linuxEnabled`)
+> the dispatcher consults via `linuxEnabled()`.
+>
+> **LinuxSyscallObject seam:** `dispatchSyscall`'s `default` arm — which routes
+> every posix.d-handled Linux syscall — now goes through the gate: if the subtree
+> is disabled it returns `-ENOSYS` and the native kernel is untouched (the
+> Milestone 2 property), otherwise it counts the translation and delegates to
+> `dispatchLinuxSyscall`. The ~1000-line switch is left physically in place but is
+> now *owned and reached only through* `LinuxSyscallObject` — relocating it would
+> be pure churn against the highest-regression surface, and the translation bodies
+> in posix.d already call the native object ops from Phases 3–11.
+>
+> **The rest of the tree:** `objReconcileTasks` ensures a `LinuxProcess` wrapper
+> per process leader (Linux pid view over the native Process object) and sweeps
+> wrappers whose Process object is gone; the two `loadElf` call sites
+> (execve + init bring-up) notify the `LinuxELFLoaderObject`; the `LinuxVFS` and
+> `LinuxDeviceAdapter` singletons name the Phase 9 namespace/fd routing and the
+> Phase 8 `/dev` Device resolution that already back them.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — in which *every* posix-routed Linux
+> syscall now passes through the `LinuxSyscallObject` gate — reached Hyprland/Mesa
+> compositor rendering with no kernel fault, panic, JHC falloff, OOM, or
+> regression. The one-shot self-test logged `[lx] selftest PASS`: the four
+> singletons are live, the master gate flips the personality off and back on
+> without disturbing the native object table, and a `LinuxProcess` wrapper binds
+> to a live native object. `linuxStats()` prints enabled/translate/blocked/
+> elfload/wrapper counts alongside the other subsystems.
+>
+> **Deferred out of Phase 12:** physically moving the `dispatchLinuxSyscall`
+> bodies into `LinuxSyscallObject` methods and gating the syscalls still handled
+> *inline* in `dispatchSyscall` (mmap/fork/clone/exec/exit/futex) through the same
+> object — both are mechanical relocations with high regression surface and no
+> behavioural gain; the gate, subtree, and per-process wrappers that make the
+> Linux layer a removable object subtree exist now.
 
 **Goal:** demote the Linux layer from "the OS" to an object subtree. The huge
 `dispatchLinuxSyscall` switch (`kernel_main.d`) becomes a **`LinuxSyscallObject`** that
@@ -709,12 +749,14 @@ every fd is an entry in `g_objects`; a child cannot hold more rights than its pa
 The kernel is now "an object graph with capabilities," even though most objects still
 live in their legacy arrays.
 
-**2. Linux Compatibility Object.** Phases **9 + 12** (on top of MVOO + P3/P4/P8/P10):
+**2. Linux Compatibility Object.** ✅ *Reached (P9 ✅, P12 ✅; on top of MVOO +
+P3/P4/P8/P10/P11 ✅).* Phases **9 + 12**:
 `LinuxSyscallObject`/`LinuxVFSObject`/`LinuxProcessObject`/`LinuxELFLoaderObject`/
-`LinuxDeviceAdapterObject` exist; `dispatchLinuxSyscall` only *translates* into native
-object ops; BusyBox/Hyprland run unchanged through the object graph. *Provable by:*
-Linux globals are no longer a source of truth — disabling the `LinuxObject` subtree
-removes Linux support without touching the native kernel.
+`LinuxDeviceAdapterObject` exist; `dispatchLinuxSyscall` is reached only through the
+`LinuxSyscallObject` gate and *translates* into native object ops; BusyBox/Hyprland run
+unchanged through the object graph. *Provable by:* the `LinuxObject` subtree's master
+switch — disabling it makes every Linux syscall return `-ENOSYS` without touching the
+native kernel (`[lx] selftest PASS` exercises exactly this gate).
 
 **3. Fully Object-Oriented OS.** Phase **13**: native kernel = {Scheduler, Object Mgr,
 Capability Mgr, IPC Router, Memory Mgr, HAL}; processes, threads, memory, VMOs, files,

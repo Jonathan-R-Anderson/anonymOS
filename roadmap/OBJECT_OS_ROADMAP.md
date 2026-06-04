@@ -59,7 +59,25 @@ What exists, by subsystem (exact locations):
 
 ---
 
-## PHASE 2 — Introduce the base `Object` abstraction
+## PHASE 2 — Introduce the base `Object` abstraction  ✅ DONE
+
+> **Status: implemented & proven at runtime.** Object Manager lives in
+> `core/objmgr.d` (named *objmgr* not *object* to avoid D's special root `object`
+> module). `ObjHeader{id,type,refCount,ownerCap,version_,mark,impl}`, central
+> `g_objects[8192]` with a free-list, empty `g_objOps[ObjType.Count]` (dispatch
+> still legacy — that's Phase 5). `objAlloc/objGet/objRetain/objRelease` (release
+> is idempotent/underflow-safe) + `objStats`.
+>
+> **Adoption strategy chosen: amortized reconciliation, not per-call-site hooks.**
+> `File` gained `uint objId`; instead of editing the dozen-plus fd
+> create/dup/`SCM_RIGHTS`/fork/close sites, `posix.d:objReconcileFds()` mirrors the
+> active fd table into the object table and validates each object's `impl` points
+> back at its exact slot — one check self-heals every create/copy/close path with
+> zero per-site edits. Called every 256 syscalls from `dispatchSyscall`, off the
+> I/O path; `objStats()` every ~16k.
+>
+> **Proof:** `[obj] live=39` steady-state, invariant `live == alloc − freed` holds —
+> every fd is an entry in `g_objects`, no leak. (Acceptance met.)
 
 **Goal:** create the common object header + a central Object Manager, and make `File`
 the *first adopter* without changing syscall behaviour.
@@ -100,7 +118,32 @@ transition. **Difficulty:** 5. **Prerequisites:** Phase 1.
 
 ---
 
-## PHASE 3 — Convert the memory subsystem (Memory Region / VMO objects)
+## PHASE 3 — Convert the memory subsystem (Memory Region / VMO objects)  ◐ PARTIAL (accounting done)
+
+> **Status: the accounting/registration half is implemented & proven; behaviour
+> (Vmo identity, untyped-memory gating) is deferred to its dependent phases.**
+> `AddrRegion` gained `uint objId`; `task.d:objReconcileRegions()` mirrors every
+> live region of every active task as a `MemRegion` object, reconciled amortized
+> from `dispatchSyscall` alongside the fd reconcile. mmap/munmap/fault paths are
+> **untouched** (additive, per "for now just attribute … for audit").
+>
+> **Key difference from Phase 2:** `AddrRegion` slots are *not* address-stable —
+> `removeRegion` swap-removes (a surviving region + its `objId` moves slots) and
+> `forkTask` deep-copies the whole `Task`. The impl-pointer check alone can't free
+> the orphans those moves create, so `objmgr.d` gained a **mark-sweep generation**
+> (`mark` field + `objBeginSweep/objMark/objSweepType`): the reconcile re-registers
+> any slot whose object doesn't point back at it, then sweeps every `MemRegion`
+> object no live slot claimed (orphans from swap-remove, munmap, fork, exit).
+>
+> **Proof:** `[obj] … file=39 mem=3428` with `file + mem == live (3467)` and
+> `live == alloc − freed` — every region is a `MemRegion` object, 877 orphans
+> reclaimed under Mesa map-churn, no leak, no faults.
+>
+> **Still TODO in this phase (behavioural, deferred):** distinct **Vmo** object for
+> shared backings (memfd/DRM) so two mappings share identity; attributing physical
+> pages to the owning region's `objId` in `mm.d`; folding `RegionType`/`RegionPerms`
+> into object type+rights. These land with Phase 5/6 when behaviour routes through
+> objects.
 
 **Goal:** make `AddrRegion` a first-class **MemRegion/VMO object**, so memory is
 delegable and accountable — the prerequisite for capability-scoped allocation.
@@ -131,7 +174,31 @@ userspace. CoW/fork deep-copy (`forkTask` → `walkAndCopyUserPages`) must keep 
 
 ---
 
-## PHASE 4 — Convert the process subsystem (Process / Thread objects)
+## PHASE 4 — Convert the process subsystem (Process / Thread objects)  ◐ PARTIAL (identity/accounting done)
+
+> **Status: Process/Thread object identity is implemented and wired into the task
+> lifecycle.** `Task` gained `uint objId`; `task.d:objEnsureTask`,
+> `objReleaseTask`, and `objReconcileTasks` mirror every live task as either a
+> `Process` or `Thread` object. Classification is additive and conservative:
+> private address spaces and process leaders are `Process`; CLONE_VM siblings are
+> `Thread`; a vfork-style temporary thread is promoted to `Process` after a
+> successful `execve` gives it a private page table.
+>
+> **Lifecycle wiring:** `allocTask` creates an initial task object, `forkTask`
+> promotes the child to a Process object after assigning the new PML4/fd table,
+> `cloneThread` keeps the child as a Thread object, `execveTask` refreshes object
+> type after address-space replacement, and `exitTask`/`releaseTask` release the
+> task object. Fork/clone clear copied `AddrRegion.objId`s so each child mapping
+> receives its own MemRegion object on the next reconcile; exited tasks are skipped
+> by MemRegion reconciliation so their mapping objects are swept.
+>
+> **Proof:** `make kernel.elf` and `make hos.iso` complete. `objStats()` now prints
+> `proc=` and `thread=` counts alongside `file=`/`mem=`.
+>
+> **Still TODO in this phase (blocked on Phase 6 semantics):** a real capability
+> table copy/reset policy, separate parent→child ownership metadata, and replacing
+> the Linux PID view with an object-backed PID namespace while preserving Linux
+> compatibility.
 
 **Goal:** `Task` becomes a **Process/Thread object**; `g_tasks` is its
 implementation array; `fork`/`clone`/`exec`/`exit` become object operations.
@@ -380,7 +447,8 @@ must not be skipped or faked (see `IMMUTABLE_ROOTLESS_ROADMAP.md` §G).
 
 ## Milestones
 
-**1. Minimum Viable Object OS (MVOO).** Phases **2 + 5 + 6**: an `Object` header +
+**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 accounting ◐, P5/P6
+pending.* Phases **2 + 5 + 6**: an `Object` header +
 central table, `sys_read/write/close/open` dispatch via `g_objOps`, and fd tables are
 capability tables with rights-narrowing on `fork`/`dup`/`SCM_RIGHTS`. *Provable by:*
 every fd is an entry in `g_objects`; a child cannot hold more rights than its parent.

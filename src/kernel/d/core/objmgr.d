@@ -50,6 +50,7 @@ struct ObjHeader {
     uint    refCount;  // 0 == free slot
     uint    ownerCap;  // capability id of owner (Phase 6); 0 for now
     uint    version_;  // metadata / version-history hook
+    uint    mark;      // mark-sweep generation (Phase 3 reconcile; ORG-roadmap GC)
     void*   impl;      // subsystem payload
 }
 
@@ -88,6 +89,11 @@ struct ObjOps {
 }
 __gshared ObjOps[ObjType.Count] g_objOps;
 
+// Phase 5: count of I/O operations actually serviced through the g_objOps method
+// table (rather than the legacy switch).  Runtime proof that behaviour flows
+// through the object model; printed by objStats().
+__gshared ulong g_objOpsDispatch = 0;
+
 // Allocate a new object of `type` backed by `impl`.  Returns its id, or 0 if the
 // table is full (callers tolerate 0 = "untracked" — nothing depends on the
 // object table for behaviour in Phase 2).
@@ -101,6 +107,7 @@ public uint objAlloc(ObjType t, void* impl) {
     h.refCount = 1;
     h.ownerCap = 0;
     h.version_ = 0;
+    h.mark     = 0;
     h.impl     = impl;
     ++g_objAllocTotal;
     ++g_objLive;
@@ -135,10 +142,50 @@ public void objRelease(uint id) {
     }
 }
 
+// Number of live objects of a given type (linear scan; only used by stats/sweep,
+// never on a hot path).
+public uint objCountType(ObjType t) {
+    uint n = 0;
+    for (uint i = 1; i < OBJ_MAX; ++i)
+        if (g_objects[i].refCount != 0 && g_objects[i].type == t) ++n;
+    return n;
+}
+
+// --- Mark-sweep reconciliation support (Phase 3) ---------------------------
+// Subsystems whose backing slots are NOT address-stable (e.g. AddrRegion moves
+// under swap-remove / whole-Task fork copies) cannot be mirrored by the simple
+// impl-pointer check alone: a moved slot orphans its old object.  A mark-sweep
+// pass over one ObjType reclaims exactly those orphans.  Generation never reuses
+// 0 so a freshly-objAlloc'd object (mark==0) is never mistaken for "marked".
+__gshared uint g_objMarkGen = 1;
+
+public void objBeginSweep() {
+    if (++g_objMarkGen == 0) g_objMarkGen = 1; // skip 0 on wrap
+}
+
+public void objMark(uint id) {
+    auto h = objGet(id);
+    if (h !is null) h.mark = g_objMarkGen;
+}
+
+// Free every live object of type `t` not marked in the current generation.
+public void objSweepType(ObjType t) {
+    for (uint i = 1; i < OBJ_MAX; ++i) {
+        auto h = &g_objects[i];
+        if (h.refCount != 0 && h.type == t && h.mark != g_objMarkGen)
+            objRelease(i);
+    }
+}
+
 public void objStats() {
     klog("[obj] live="); klog_hex(cast(ulong)g_objLive);
     klog(" peak=");      klog_hex(cast(ulong)g_objPeak);
     klog(" alloc=");     klog_hex(g_objAllocTotal);
     klog(" freed=");     klog_hex(g_objFreeTotal);
+    klog(" file=");      klog_hex(cast(ulong)objCountType(ObjType.File));
+    klog(" mem=");       klog_hex(cast(ulong)objCountType(ObjType.MemRegion));
+    klog(" proc=");      klog_hex(cast(ulong)objCountType(ObjType.Process));
+    klog(" thread=");    klog_hex(cast(ulong)objCountType(ObjType.Thread));
+    klog(" opdisp=");    klog_hex(g_objOpsDispatch);
     klog("\n");
 }

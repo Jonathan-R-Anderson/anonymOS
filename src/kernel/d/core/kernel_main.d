@@ -231,6 +231,7 @@ private void exitTask(int tid, int code) {
     auto t = &g_tasks[tid];
     t.exited   = true;
     t.exitCode = code;
+    objReleaseTask(tid);
     d_do_cleartid(cast(ulong)tid);
 
     // If a vfork parent is suspended on this child, resume it (the child is gone).
@@ -316,8 +317,10 @@ private int forkTask(int parentTid) {
 
     // Copy address space regions metadata
     child.regionCount = parent.regionCount;
-    for (int i = 0; i < parent.regionCount; i++)
+    for (int i = 0; i < parent.regionCount; i++) {
         child.regions[i] = parent.regions[i];
+        child.regions[i].objId = 0;
+    }
 
     child.brkStart   = parent.brkStart;
     child.brkCurrent = parent.brkCurrent;
@@ -347,6 +350,7 @@ private int forkTask(int parentTid) {
     // copies (POSIX fork semantics — required by libseat's embedded seatd).
     child.fdTabId = childTid;
     fdtabForkCopy(parent.fdTabId, childTid);
+    objEnsureTask(childTid);
 
     klog("[fork] parent="); klog_hex(parentTid);
     klog(" child="); klog_hex(childTid); klog("\n");
@@ -423,8 +427,10 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     // Share the address space: same PML4, same region view, same brk.
     child.pml4Phys   = parent.pml4Phys;
     child.regionCount = parent.regionCount;
-    for (int i = 0; i < parent.regionCount; i++)
+    for (int i = 0; i < parent.regionCount; i++) {
         child.regions[i] = parent.regions[i];
+        child.regions[i].objId = 0;
+    }
     child.brkStart   = parent.brkStart;
     child.brkCurrent = parent.brkCurrent;
     child.parentId   = parentTid;
@@ -455,6 +461,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
         g_threadCleartidVirt[childTid] = 0;
 
     child.active = true;
+    objEnsureTask(childTid);
 
     klog("[clone] parent="); klog_hex(parentTid);
     klog(" thread="); klog_hex(childTid);
@@ -571,6 +578,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
     // Clear FS base
     d_store_task_fsbase(cast(ulong)tid, 0);
+    objEnsureTask(tid);
 
     // vfork semantics: a successful execve releases the suspended parent (the
     // child now has its own fresh address space, no longer sharing the parent's).
@@ -868,7 +876,9 @@ private void dispatchSyscall(int tid) {
     // every ~16k syscalls dump live/peak counts as runtime evidence the table
     // tracks every fd.
     if (((++g_objReconcileCtr) & 0xFF) == 0) {
+        objReconcileTasks();
         objReconcileFds();
+        objReconcileRegions();
         if ((g_objReconcileCtr & 0x3FFF) == 0) objStats();
     }
 
@@ -1620,6 +1630,7 @@ void d_kernel_main() {
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
     g_tasks[0].pml4Phys = pml4Phys;
+    objEnsureTask(0);
 
     // Copy kernel high-half mappings into the new page table
     archMapKernel(pml4Phys);

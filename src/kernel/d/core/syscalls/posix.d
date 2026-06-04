@@ -10,7 +10,8 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
-import core.objmgr : ObjType, objAlloc, objRelease, objGet; // Phase 2 object mgr
+import core.objmgr : ObjType, ObjHeader, objAlloc, objRelease, objGet,
+                     g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -337,6 +338,36 @@ private int allocFd() @nogc nothrow {
     return -1;
 }
 
+// Phase 5 (roadmap/OBJECT_OS_ROADMAP.md): the method-table implementation of
+// read() for the random character devices.  Byte-identical to the legacy switch
+// arm (`random_get_bytes; return count`) — this is the first I/O behaviour routed
+// through g_objOps instead of `switch (f.type)`, with the legacy switch kept as a
+// fallback for every type not yet migrated.  `oh.impl` is the backing File*.
+private long devRandomRead(ObjHeader* oh, void* buf, ulong count) {
+    random_get_bytes(buf, count);
+    ++g_objOpsDispatch;
+    return cast(long)count;
+}
+
+// One-time registration of the per-ObjType method tables (Phase 5).  Idempotent;
+// called from objReconcileFds so it happens once the object layer is live.
+__gshared bool g_objOpsInited = false;
+private void initObjOps() {
+    if (g_objOpsInited) return;
+    g_objOpsInited = true;
+    g_objOps[ObjType.Device].read = &devRandomRead;
+}
+
+// Phase 5: which ObjType a given fd backend should be registered as.  Only the
+// migrated kinds (random/urandom → Device, dispatched via g_objOps) diverge from
+// the default File; everything else stays File and falls through to the legacy
+// switch — keeping the migration incremental and reversible.
+private ObjType objTypeForFile(const File* f) {
+    if (f.type == FileType.FD_RANDOM || f.type == FileType.FD_URANDOM)
+        return ObjType.Device;
+    return ObjType.File;
+}
+
 // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): mirror every fd of the *active*
 // process's table as a core.objmgr Object, so "every fd is an entry in
 // g_objects" holds without hooking each of the many fd creation/copy/close
@@ -347,6 +378,7 @@ private int allocFd() @nogc nothrow {
 // Called amortized from the syscall dispatcher; not on the I/O path.
 public void objReconcileFds() {
     initFdTable();
+    initObjOps();
     foreach (i; 0 .. 1024) {
         File* f = &g_fdTable[i];
         if (f.type == FileType.FD_NONE) {
@@ -356,9 +388,14 @@ public void objReconcileFds() {
                 f.objId = 0;
             }
         } else {
+            // Re-register if the slot is unowned, the object moved/copied away
+            // (impl mismatch), or the fd's backend kind changed ObjType.
+            ObjType want = objTypeForFile(f);
             auto h = (f.objId != 0) ? objGet(f.objId) : null;
-            if (h is null || h.impl !is cast(void*)f)
-                f.objId = objAlloc(ObjType.File, cast(void*)f);
+            if (h is null || h.impl !is cast(void*)f || h.type != want) {
+                if (h !is null && h.impl is cast(void*)f) objRelease(f.objId);
+                f.objId = objAlloc(want, cast(void*)f);
+            }
         }
     }
 }
@@ -974,6 +1011,19 @@ public ssize_t sys_read(int fd, void* _buf, size_t _count) {
     
     File* f = &g_fdTable[fd];
     if (f.type == FileType.FD_NONE) return negErrno(EBADF);
+
+    // Phase 5 (roadmap/OBJECT_OS_ROADMAP.md): route read() through the g_objOps
+    // method table when the backing object has a registered read op; otherwise
+    // fall through to the legacy `switch (f.type)` below.  The impl check ensures
+    // we only trust an object that genuinely backs this exact fd slot.
+    if (f.objId != 0) {
+        auto oh = objGet(f.objId);
+        if (oh !is null && oh.impl is cast(void*)f) {
+            auto rop = g_objOps[oh.type].read;
+            if (rop !is null) return cast(ssize_t)rop(oh, _buf, _count);
+        }
+    }
+
     if (f.type == FileType.FD_ZERO) {
         auto buffer = cast(ubyte*)_buf;
 

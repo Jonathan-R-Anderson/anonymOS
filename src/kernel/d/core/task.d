@@ -3,6 +3,8 @@ module core.task;
 import core.io;
 import core.globals;
 import memory.mm;
+import core.objmgr : ObjType, objAlloc, objRelease, objGet,
+                     objBeginSweep, objMark, objSweepType; // Phase 3/4
 
 extern (C) @nogc nothrow:
 
@@ -68,6 +70,10 @@ struct AddrRegion {
     // munmap / task exit.  False for device (g_fb / DRM) and shared (memfd) maps
     // whose pages must never be reclaimed.
     bool        owned;
+    // Phase 3 (roadmap/OBJECT_OS_ROADMAP.md): id of the core.objmgr MemRegion
+    // object mirroring this region (0 = none/not yet registered).  Reconciled
+    // amortized, not on the fault/mmap path.
+    uint        objId;
 }
 
 struct Task {
@@ -76,6 +82,9 @@ struct Task {
     bool waiting;   // blocked in wait4, vfork, or a scheduler-backed futex wait
     int  exitCode;
     int  parentId;
+    // Phase 4 (roadmap/OBJECT_OS_ROADMAP.md): id of the Process/Thread object
+    // mirroring this task slot (0 = none/not yet registered).
+    uint objId;
 
     // Saved user registers (layout matches curUserSpaceState+8 / context.S)
     ulong[NUM_REGS] regs;
@@ -109,6 +118,57 @@ struct Task {
 
 __gshared Task[MAX_TASKS] g_tasks;
 
+private bool taskAddressSpaceIsShared(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return false;
+    ulong pml4 = g_tasks[tid].pml4Phys;
+    if (pml4 == 0) return false;
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (i == tid) continue;
+        auto other = &g_tasks[i];
+        if (other.active && !other.exited && other.pml4Phys == pml4)
+            return true;
+    }
+    return false;
+}
+
+private ObjType objTypeForTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return ObjType.Invalid;
+    auto task = &g_tasks[tid];
+    if (!task.active || task.exited) return ObjType.Invalid;
+
+    // A task with a private address space is a Process.  A process leader with
+    // live CLONE_VM threads remains the Process owner; its children are Threads.
+    if (task.pml4Phys == 0)
+        return (task.fdTabId == tid) ? ObjType.Process : ObjType.Thread;
+    if (!taskAddressSpaceIsShared(tid) || task.fdTabId == tid)
+        return ObjType.Process;
+    return ObjType.Thread;
+}
+
+public void objEnsureTask(int tid) {
+    ObjType want = objTypeForTask(tid);
+    if (want == ObjType.Invalid) return;
+
+    auto task = &g_tasks[tid];
+    auto h = objGet(task.objId);
+    if (h is null || h.impl !is cast(void*)task || h.type != want) {
+        if (h !is null && h.impl is cast(void*)task &&
+            (h.type == ObjType.Process || h.type == ObjType.Thread))
+            objRelease(task.objId);
+        task.objId = objAlloc(want, cast(void*)task);
+    }
+}
+
+public void objReleaseTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    auto h = objGet(task.objId);
+    if (h !is null && h.impl is cast(void*)task &&
+        (h.type == ObjType.Process || h.type == ObjType.Thread))
+        objRelease(task.objId);
+    task.objId = 0;
+}
+
 // Allocate a task slot (id > 0 reserved for non-init tasks)
 int allocTask() {
     for (int i = 1; i < MAX_TASKS; i++) {
@@ -116,6 +176,7 @@ int allocTask() {
             g_tasks[i] = Task.init;
             g_tasks[i].active = true;
             g_tasks[i].mmapNext = 0x700000000000UL;
+            objEnsureTask(i);
             return i;
         }
     }
@@ -123,8 +184,10 @@ int allocTask() {
 }
 
 void releaseTask(int tid) {
-    if (tid > 0 && tid < MAX_TASKS)
+    if (tid > 0 && tid < MAX_TASKS) {
+        objReleaseTask(tid);
         g_tasks[tid] = Task.init;
+    }
 }
 
 // Add a virtual address region to a task
@@ -142,6 +205,8 @@ bool addRegion(ref Task task, ulong start, ulong end,
     r.perms         = perms;
     r.physBase      = physBase;
     r.owned         = owned;
+    r.objId         = 0; // registered lazily by objReconcileRegions; a reused
+                         // (swap-removed) slot must not inherit a stale objId
     return true;
 }
 
@@ -180,4 +245,48 @@ AddrRegion* findRegion(ref Task task, ulong vaddr) {
             return r;
     }
     return null;
+}
+
+// Phase 3 (roadmap/OBJECT_OS_ROADMAP.md): mirror every live AddrRegion of every
+// active task as a core.objmgr MemRegion object, so "every region is an object"
+// holds for audit/accounting — additive, no behaviour change (mmap/munmap/fault
+// paths are untouched).
+//
+// Unlike the fd table, AddrRegion slots are NOT address-stable: removeRegion()
+// swap-removes (moving a surviving region — and its objId — to a different slot)
+// and forkTask deep-copies the whole Task (duplicating objIds into the child).
+// The impl-pointer check (object.impl == &slot) re-registers any slot whose
+// object no longer points back at it (moved, fork-copied, or never registered);
+// the mark-sweep then frees exactly the MemRegion objects that no live slot
+// claims this pass (orphans from swap-remove, munmap, and task exit).
+public void objReconcileRegions() {
+    objBeginSweep();
+    for (int t = 0; t < MAX_TASKS; ++t) {
+        if (!g_tasks[t].active || g_tasks[t].exited) continue;
+        auto task = &g_tasks[t];
+        int n = task.regionCount;
+        for (int i = 0; i < n; ++i) {
+            auto r = &task.regions[i];
+            auto h = objGet(r.objId);
+            if (h is null || h.type != ObjType.MemRegion || h.impl !is cast(void*)r)
+                r.objId = objAlloc(ObjType.MemRegion, cast(void*)r);
+            objMark(r.objId);
+        }
+    }
+    objSweepType(ObjType.MemRegion);
+}
+
+// Phase 4: mirror every live Task as either a Process or Thread object.  Task
+// slots are stable, but their desired object type can change: allocTask starts
+// as a generic runnable slot, fork assigns a private address space, clone shares
+// one, and vfork+exec moves a temporary Thread into its own Process identity.
+public void objReconcileTasks() {
+    objBeginSweep();
+    for (int t = 0; t < MAX_TASKS; ++t) {
+        if (!g_tasks[t].active || g_tasks[t].exited) continue;
+        objEnsureTask(t);
+        objMark(g_tasks[t].objId);
+    }
+    objSweepType(ObjType.Process);
+    objSweepType(ObjType.Thread);
 }

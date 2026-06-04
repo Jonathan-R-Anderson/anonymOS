@@ -51,6 +51,7 @@ import core.org_validator : orgValidatorInit, orgValidatorTick,
                             orgValidatorSelfTest, orgValidatorStats; // ORG P8
 import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
+import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -967,6 +968,7 @@ private void dispatchSyscall(int tid) {
         orgLinuxSelfTest(); // ORG P10: one-shot proof SCM cycle GC + sandboxed edges
         orgDistSelfTest(); // ORG P11: one-shot proof of federated refs + leased edges
         orgDistTick(1);    // ORG P11: advance the distributed clock / expire stale leases
+        orgTestSuite();    // ORG P12: one-shot invariant + GC-fuzz + scale test suite
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).

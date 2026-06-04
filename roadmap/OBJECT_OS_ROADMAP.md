@@ -290,7 +290,32 @@ readiness) must be preserved exactly (`fdReadable`). **Difficulty:** 7.
 
 ---
 
-## PHASE 6 — Capability Manager (handles → capabilities)
+## PHASE 6 — Capability Manager (handles → capabilities)  ✅ DONE
+
+> **Status: implemented as the first per-process capability table.**
+> `core/cap.d` defines `Capability{objId,rights,deriveParent,revoked}`,
+> `CapTable[64]`, rights bits for read/write/close/stat/ioctl/mmap/dup/pass,
+> `capDerive`, `capRevoke`, `requireCap`, active-table selection, clone/clear
+> helpers, and runtime stats.
+>
+> **Linux fd integration:** `Task` now has `capTabId` alongside `fdTabId`.
+> `dispatchSyscall` selects both tables before servicing a syscall, and the
+> Linux fd entry points now publish/self-heal a capability for the fd handle
+> before resolving the backing object. `read`/`write`/`close`/`fstat`/`ioctl`/
+> `mmap`, poll readiness, dup/fcntl, timer/event/epoll/socket creation, and
+> SCM_RIGHTS materialization all route through capability publication or
+> `requireCap`.
+>
+> **Compatibility boundary:** `File[]` remains the backing payload table for now.
+> Capabilities point at the Phase 5 fd-slot `File` objects and carry rights;
+> fork starts from `capTableCloneNarrowing` then rebinds each copied fd to the
+> child-local File object. Dup and SCM_RIGHTS install derived/narrowed caps for
+> the destination handle. Collapsing `File[]` fully into a pure object/cap table
+> is deferred until the Phase 7 IPC work removes raw SCM_RIGHTS payload copying.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A 15s headless QEMU smoke boot reached Hyprland/Mesa startup with no
+> kernel fault, panic, JHC falloff, OOM, or capability-denial regressions.
 
 **Goal:** turn the fd index into a **capability** (handle + rights + object id) and
 add a per-process **capability table** — generalizing `g_fdTabs`. This is where the

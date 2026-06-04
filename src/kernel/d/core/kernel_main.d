@@ -31,6 +31,7 @@ import arch.x86_64.bootstrap : g_fb, g_terminal;
 // Linux syscall implementations already in D
 import core.syscalls.posix;
 import core.objmgr : objStats; // Phase 2: object-table runtime stats (objReconcileFds comes via core.syscalls.posix)
+import core.cap : capTableSetActive, capTableClear, capStats;
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -232,6 +233,16 @@ private void exitTask(int tid, int code) {
     t.exited   = true;
     t.exitCode = code;
     objReleaseTask(tid);
+    bool capTableStillShared = false;
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (i != tid && g_tasks[i].active && !g_tasks[i].exited &&
+            g_tasks[i].capTabId == t.capTabId) {
+            capTableStillShared = true;
+            break;
+        }
+    }
+    if (!capTableStillShared)
+        capTableClear(t.capTabId);
     d_do_cleartid(cast(ulong)tid);
 
     // If a vfork parent is suspended on this child, resume it (the child is gone).
@@ -352,6 +363,7 @@ private int forkTask(int parentTid) {
     // independent copy of the parent's descriptors, so each can close() its own
     // copies (POSIX fork semantics — required by libseat's embedded seatd).
     child.fdTabId = childTid;
+    child.capTabId = childTid;
     fdtabForkCopy(parent.fdTabId, childTid);
     objEnsureTask(childTid);
     objSetProcess(childTid, childTid, parent.processObjId);
@@ -444,6 +456,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     // A thread shares its process's fd table (CLONE_FILES semantics): same
     // descriptors, opens/closes are visible to all threads of the process.
     child.fdTabId    = parent.fdTabId;
+    child.capTabId   = parent.capTabId;
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -899,6 +912,7 @@ private void dispatchSyscall(int tid) {
     // Select this task's process fd table before servicing the syscall, so each
     // process sees its own descriptors (fork gives the child an independent copy).
     fdtabSetActive(task.fdTabId);
+    capTableSetActive(task.capTabId);
 
     // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): keep the core.objmgr object table
     // mirrored onto the now-active fd table.  Amortized (every 256 syscalls) and
@@ -909,7 +923,10 @@ private void dispatchSyscall(int tid) {
         objReconcileTasks();
         objReconcileFds();
         objReconcileRegions();
-        if ((g_objReconcileCtr & 0x3FFF) == 0) objStats();
+        if ((g_objReconcileCtr & 0x3FFF) == 0) {
+            objStats();
+            capStats();
+        }
     }
 
     long ret  = 0;
@@ -1265,6 +1282,9 @@ private void dispatchSyscall(int tid) {
 // Dispatch to the large posix.d table
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
+    long capPrecheck = linuxSyscallCapPrecheck(n, a, b, c, d, e, f);
+    if (capPrecheck < 0) return capPrecheck;
+
     switch (n) {
         case 0:   return linux_sys_read(a, b, c);
         case 1:   return linux_sys_write(a, b, c);
@@ -1578,6 +1598,8 @@ void d_kernel_main() {
     g_tasks[0].active   = true;
     g_tasks[0].parentId = -1;
     g_tasks[0].processLeaderTid = 0;
+    g_tasks[0].fdTabId = 0;
+    g_tasks[0].capTabId = 0;
     g_tasks[0].mmapNext = 0x740000000000UL;
     g_current_task_id   = 0;
 

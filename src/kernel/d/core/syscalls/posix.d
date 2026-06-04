@@ -13,6 +13,14 @@ import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
+import core.cap : Capability, CAP_INVALID,
+                  CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CLOSE,
+                  CAP_RIGHT_STAT, CAP_RIGHT_IOCTL, CAP_RIGHT_MMAP,
+                  CAP_RIGHT_DUP, CAP_RIGHT_PASS, CAP_RIGHT_ALL,
+                  capTableSetActive, capTableClear, capGet, capGetIn,
+                  capInstall, capInstallIn, capClear, capClearIn,
+                  capDeriveObjectTo, capDeriveObjectToIn,
+                  capTableCloneNarrowing, requireCap, requireCapIn;
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -117,9 +125,11 @@ public void fdtabSetActive(int fdTabId) {
 public void fdtabForkCopy(int srcTabId, int dstTabId) {
     if (srcTabId < 0 || srcTabId >= FDTAB_COUNT) return;
     if (dstTabId < 0 || dstTabId >= FDTAB_COUNT || dstTabId == srcTabId) return;
+    capTableCloneNarrowing(srcTabId, dstTabId, CAP_RIGHT_ALL);
     foreach (i; 0 .. 1024) {
         g_fdTabs[dstTabId][i] = g_fdTabs[srcTabId][i];
         File* f = &g_fdTabs[dstTabId][i];
+        f.objId = 0; // copied slots get child-local File objects/capabilities
         if (f.type == FileType.FD_SOCKET) {
             auto s = fileSocket(f);
             if (s !is null) ++s.refCount;
@@ -130,6 +140,8 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
             auto p = getPipe(cast(size_t)pipeIdFromFd(f));
             if (p !is null) ++p.writers;
         }
+        if (f.type != FileType.FD_NONE)
+            publishFdInTable(dstTabId, cast(int)i, f, srcTabId, cast(int)i);
     }
 }
 __gshared bool g_fdTableInitialized = false;
@@ -408,7 +420,16 @@ private ObjHeader* fdObjectByIndex(int fd) {
     if (fd < 0 || fd >= 1024) return null;
     File* f = &g_fdTable[fd];
     if (f.type == FileType.FD_NONE) return null;
-    return ensureFileObject(f);
+    if (!publishActiveFd(fd)) return null;
+    auto h = objGet(f.objId);
+    return (h !is null && h.impl is cast(void*)f) ? h : null;
+}
+
+private ObjHeader* fdObjectByIndexWithRights(int fd, uint rights) {
+    auto h = fdObjectByIndex(fd);
+    if (h is null) return null;
+    if (!requireCap(cast(int)g_current_task_id, cast(uint)fd, rights)) return null;
+    return h;
 }
 
 private int fdIndexForFile(File* f) {
@@ -416,6 +437,120 @@ private int fdIndexForFile(File* f) {
     foreach (i; 0 .. 1024)
         if (&g_fdTable[i] is f) return cast(int)i;
     return -1;
+}
+
+private uint capRightsForFile(File* f) {
+    if (f is null || f.type == FileType.FD_NONE) return 0;
+    uint rights = CAP_RIGHT_CLOSE | CAP_RIGHT_STAT | CAP_RIGHT_DUP | CAP_RIGHT_PASS;
+    switch (f.type) {
+        case FileType.FD_PIPE_READ:
+        case FileType.FD_INPUT_EVENT:
+        case FileType.FD_ZERO:
+        case FileType.FD_RANDOM:
+        case FileType.FD_URANDOM:
+            rights |= CAP_RIGHT_READ;
+            break;
+        case FileType.FD_TIMERFD:
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE;
+            break;
+        case FileType.FD_PIPE_WRITE:
+            rights |= CAP_RIGHT_WRITE;
+            break;
+        case FileType.FD_DRM:
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP;
+            break;
+        case FileType.FD_MEMFD:
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_MMAP;
+            break;
+        case FileType.FD_CONSOLE:
+            if ((f.flags & 3) == O_WRONLY) rights |= CAP_RIGHT_WRITE;
+            else rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE;
+            rights |= CAP_RIGHT_IOCTL;
+            break;
+        default:
+            // Preserve current Linux-shim behaviour: most compatibility
+            // backends tolerate both reads and writes even when synthetic.
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_MMAP;
+            break;
+    }
+    return rights & CAP_RIGHT_ALL;
+}
+
+private bool capIsRevoked(Capability* cap) {
+    return cap !is null && cap.revoked != 0;
+}
+
+private bool publishFdInTable(int tableId, int fd, File* f,
+                              int parentTableId, int parentFd) {
+    if (fd < 0 || fd >= 1024 || f is null || f.type == FileType.FD_NONE) {
+        capClearIn(tableId, cast(uint)fd);
+        return false;
+    }
+    auto oh = ensureFileObject(f);
+    if (oh is null) {
+        capClearIn(tableId, cast(uint)fd);
+        return false;
+    }
+
+    uint rights = capRightsForFile(f);
+    if (parentTableId >= 0 && parentFd >= 0) {
+        auto parent = capGetIn(parentTableId, cast(uint)parentFd);
+        if (parent !is null && parent.objId != 0 && parent.revoked == 0)
+            rights &= parent.rights;
+    }
+    capInstallIn(tableId, cast(uint)fd, oh.id, rights,
+                 parentFd >= 0 ? cast(uint)parentFd : CAP_INVALID);
+    return true;
+}
+
+private bool publishActiveFd(int fd) {
+    if (fd < 0 || fd >= 1024 || g_fdTable is null) return false;
+    auto f = &g_fdTable[fd];
+    if (f.type == FileType.FD_NONE) {
+        capClear(cast(uint)fd);
+        return false;
+    }
+    auto cap = capGet(cast(uint)fd);
+    if (capIsRevoked(cap)) return false;
+    auto oh = ensureFileObject(f);
+    if (oh is null) {
+        capClear(cast(uint)fd);
+        return false;
+    }
+    uint rights = capRightsForFile(f);
+    if (cap is null || cap.objId != oh.id || (cap.rights & rights) != rights)
+        capInstall(cast(uint)fd, oh.id, rights, CAP_INVALID);
+    return true;
+}
+
+private int publishActiveFdReturn(int fd) {
+    publishActiveFd(fd);
+    return fd;
+}
+
+private bool deriveActiveFd(int dstFd, int srcFd) {
+    if (dstFd < 0 || dstFd >= 1024 || srcFd < 0 || srcFd >= 1024 ||
+        g_fdTable is null) return false;
+    auto dst = &g_fdTable[dstFd];
+    dst.objId = 0;
+    auto oh = ensureFileObject(dst);
+    if (oh is null) {
+        capClear(cast(uint)dstFd);
+        return false;
+    }
+    uint rights = capRightsForFile(dst);
+    auto src = capGet(cast(uint)srcFd);
+    if (src !is null && src.objId != 0 && src.revoked == 0)
+        rights &= src.rights;
+    capDeriveObjectTo(cast(uint)srcFd, cast(uint)dstFd, oh.id, rights);
+    return true;
+}
+
+public bool fdRequireCap(ulong fd, uint rights) {
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    if (!publishActiveFd(ifd)) return false;
+    return requireCap(cast(int)g_current_task_id, cast(uint)ifd, rights);
 }
 
 // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): mirror every fd of the *active*
@@ -437,6 +572,7 @@ public void objReconcileFds() {
                 if (h !is null && h.impl is cast(void*)f) objRelease(f.objId);
                 f.objId = 0;
             }
+            capClear(cast(uint)i);
         } else {
             // Re-register if the slot is unowned, the object moved/copied away
             // (impl mismatch), or the fd's backend kind changed ObjType.
@@ -446,6 +582,7 @@ public void objReconcileFds() {
                 if (h !is null && h.impl is cast(void*)f) objRelease(f.objId);
                 f.objId = objAlloc(want, cast(void*)f);
             }
+            publishActiveFd(cast(int)i);
         }
     }
 }
@@ -517,6 +654,7 @@ private struct LocalSocket
     // of the sender's File (so the backend id survives even if the sender closes
     // its own fd).  Queued on the *receiver* socket's rx side.
     File[scmRightsCapacity] passedFiles;
+    Capability[scmRightsCapacity] passedCaps;
     size_t passedHead;
     size_t passedTail;
 }
@@ -917,6 +1055,9 @@ void initFdTable() {
     rtInit();   // build the writable runtime-filesystem skeleton (/run, /tmp, …)
 
     g_fdTableInitialized = true;
+    publishActiveFd(0);
+    publishActiveFd(1);
+    publishActiveFd(2);
 }
 
 private int negErrno(int n) {
@@ -1240,7 +1381,7 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
 }
 
 public ssize_t sys_read(int fd, void* _buf, size_t _count) {
-    ObjHeader* oh = fdObjectByIndex(fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(fd, CAP_RIGHT_READ);
     if (oh is null) return negErrno(EBADF);
     auto rop = g_objOps[oh.type].read;
     if (rop is null) return negErrno(EBADF);
@@ -1317,7 +1458,7 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
 }
 
 public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
-    ObjHeader* oh = fdObjectByIndex(fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(fd, CAP_RIGHT_WRITE);
     if (oh is null) return cast(ssize_t)negErrno(EBADF);
     auto wop = g_objOps[oh.type].write;
     if (wop is null) return cast(ssize_t)negErrno(EBADF);
@@ -1346,7 +1487,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     if (cstrEq(path, "/dev/urandom")) {
@@ -1355,7 +1496,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     if (cstrEq(path, "/dev/random")) {
@@ -1364,7 +1505,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     if (cstrEq(path, "/dev/tty") || cstrEq(path, "/dev/console") || cstrEq(path, "/dev/stdin") ||
@@ -1374,7 +1515,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
@@ -1384,7 +1525,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset  = 0;
         g_fdTable[fd].backend = null;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     // /dev/input/event* → input event device; backend encodes device index (0=kbd,1=mouse)
@@ -1397,7 +1538,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = cast(void*)cast(size_t)devIdx;
         g_fdTable[fd].fileSize = 0;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     // An existing rtfs *regular file* takes priority over the synthetic-directory
@@ -1416,7 +1557,7 @@ public int sys_open(const(char)* path, int flags) {
             g_fdTable[fd].offset   = (flags & O_APPEND) ? g_rt[ri].size : 0;
             g_fdTable[fd].backend  = cast(void*)cast(size_t)ri;
             g_fdTable[fd].fileSize = g_rt[ri].size;
-            return fd;
+            return publishActiveFdReturn(fd);
         }
     }
 
@@ -1425,7 +1566,7 @@ public int sys_open(const(char)* path, int flags) {
             return negErrno(EISDIR);
         }
         initSyntheticFileFd(fd, flags, fileBackendDirectory);
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     if (cstrEq(path, "/proc/self/exe")) {
@@ -1441,7 +1582,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = cast(void*)modPhys;
         g_fdTable[fd].fileSize = modSize;
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     // Check Bundle
@@ -1452,7 +1593,7 @@ public int sys_open(const(char)* path, int flags) {
          g_fdTable[fd].offset = 0;
          g_fdTable[fd].backend = cast(void*)bf.offset;
          g_fdTable[fd].fileSize = bf.size;
-         return fd;
+         return publishActiveFdReturn(fd);
     }
 
     // Check virtual filesystem table (/proc/*, /sys/*, /etc/*, ...)
@@ -1467,7 +1608,7 @@ public int sys_open(const(char)* path, int flags) {
                 ? cast(void*)vfe.content.ptr
                 : cast(void*)cast(size_t)(fileBackendDirectory + 1);
             g_fdTable[fd].fileSize = vfe.content.length;
-            return fd;
+            return publishActiveFdReturn(fd);
         }
     }
 
@@ -1479,7 +1620,7 @@ public int sys_open(const(char)* path, int flags) {
             if (g_rt[ridx].kind == RT_DIR) {
                 if ((flags & 3) != O_RDONLY) return negErrno(EISDIR);
                 initSyntheticFileFd(fd, flags, fileBackendDirectory);
-                return fd;
+                return publishActiveFdReturn(fd);
             }
             // existing regular overlay file
             if ((flags & O_CREAT) && (flags & O_EXCL)) return negErrno(EEXIST);
@@ -1489,7 +1630,7 @@ public int sys_open(const(char)* path, int flags) {
             g_fdTable[fd].offset   = (flags & O_APPEND) ? g_rt[ridx].size : 0;
             g_fdTable[fd].backend  = cast(void*)cast(size_t)ridx;
             g_fdTable[fd].fileSize = g_rt[ridx].size;
-            return fd;
+            return publishActiveFdReturn(fd);
         }
         // create a new file when requested and the parent is a writable overlay dir
         if ((flags & O_CREAT) && rparent >= 0 && rleaf !is null &&
@@ -1502,13 +1643,13 @@ public int sys_open(const(char)* path, int flags) {
             g_fdTable[fd].offset   = 0;
             g_fdTable[fd].backend  = cast(void*)cast(size_t)created;
             g_fdTable[fd].fileSize = 0;
-            return fd;
+            return publishActiveFdReturn(fd);
         }
     }
 
     if ((flags & O_CREAT) != 0) {
         initPlainFileFd(fd, flags);
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     return negErrno(ENOENT);
@@ -1571,11 +1712,13 @@ private long fileObjClose(ObjHeader* oh) {
 }
 
 public int sys_close(int fd) {
-    ObjHeader* oh = fdObjectByIndex(fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(fd, CAP_RIGHT_CLOSE);
     if (oh is null) return negErrno(EBADF);
     auto cop = g_objOps[oh.type].close;
     if (cop is null) return negErrno(EBADF);
-    return cast(int)cop(oh);
+    int ret = cast(int)cop(oh);
+    if (ret == 0) capClear(cast(uint)fd);
+    return ret;
 }
 
 public long linux_sys_read(ulong fd, ulong buf, ulong count) {
@@ -1645,7 +1788,7 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
 }
 
 public long linux_sys_fstat(ulong fd, ulong _statBuf) {
-    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_STAT);
     if (oh is null) return cast(long)negErrno(EBADF);
     auto sop = g_objOps[oh.type].stat;
     if (sop is null) return cast(long)negErrno(EBADF);
@@ -3217,11 +3360,71 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
 
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
     console_putchar('I');
-    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;
     if (iop is null) return negErrno(EBADF);
     return iop(oh, cmd, arg);
+}
+
+public long linuxSyscallCapPrecheck(ulong n, ulong a, ulong b, ulong c,
+                                    ulong d, ulong e, ulong f) {
+    switch (n) {
+        case 0:   if (!fdRequireCap(a, CAP_RIGHT_READ))  return negErrno(EBADF); break; // read
+        case 1:   if (!fdRequireCap(a, CAP_RIGHT_WRITE)) return negErrno(EBADF); break; // write
+        case 3:   if (!fdRequireCap(a, CAP_RIGHT_CLOSE)) return negErrno(EBADF); break; // close
+        case 5:   if (!fdRequireCap(a, CAP_RIGHT_STAT))  return negErrno(EBADF); break; // fstat
+        case 8:   if (!fdRequireCap(a, CAP_RIGHT_STAT))  return negErrno(EBADF); break; // lseek
+        case 16:  if (!fdRequireCap(a, CAP_RIGHT_IOCTL)) return negErrno(EBADF); break; // ioctl
+        case 17:
+        case 19:
+        case 45:
+        case 47:
+        case 78:
+        case 217:
+        case 295:
+            if (!fdRequireCap(a, CAP_RIGHT_READ)) return negErrno(EBADF);
+            break;
+        case 18:
+        case 20:
+        case 42:
+        case 44:
+        case 46:
+        case 49:
+        case 50:
+        case 77:
+        case 286:
+        case 296:
+            if (!fdRequireCap(a, CAP_RIGHT_WRITE)) return negErrno(EBADF);
+            break;
+        case 32:
+        case 33:
+        case 292:
+            if (!fdRequireCap(a, CAP_RIGHT_DUP)) return negErrno(EBADF);
+            break;
+        case 43:
+        case 288:
+            if (!fdRequireCap(a, CAP_RIGHT_READ | CAP_RIGHT_WRITE)) return negErrno(EBADF);
+            break;
+        case 54:
+            if (!fdRequireCap(a, CAP_RIGHT_IOCTL)) return negErrno(EBADF);
+            break;
+        case 55:
+        case 72:
+        case 81:
+        case 232:
+        case 287:
+            if (!fdRequireCap(a, CAP_RIGHT_STAT)) return negErrno(EBADF);
+            break;
+        case 233:
+            if (!fdRequireCap(a, CAP_RIGHT_WRITE)) return negErrno(EBADF);
+            if ((b == 1 || b == 3) && !fdRequireCap(c, CAP_RIGHT_STAT))
+                return negErrno(EBADF);
+            break;
+        default:
+            break;
+    }
+    return 0;
 }
 
 public long linux_sys_access(ulong _path, ulong _mode) {
@@ -3245,7 +3448,7 @@ public long linux_sys_access(ulong _path, ulong _mode) {
 
     const long fd = sys_open(path, O_RDONLY);
     if (fd < 0) {
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     sys_close(cast(int)fd);
@@ -3273,7 +3476,7 @@ public long linux_sys_readlink(ulong _path, ulong _buf, ulong _bufsiz) {
             sys_close(cast(int)fd);
             return cast(long)negErrno(EINVAL);
         }
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     size_t n = cast(size_t)_bufsiz;
@@ -3344,7 +3547,7 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
 
     const long fd = sys_open(pathPtr, O_RDONLY);
     if (fd < 0) {
-        return fd;
+        return publishActiveFdReturn(fd);
     }
 
     const long statRes = linux_sys_fstat(cast(ulong)fd, statbuf);
@@ -3504,7 +3707,7 @@ public int sys_socket(int domain, int type, int protocol) {
         releaseLocalSocket(socketId);
         return negErrno(EMFILE);
     }
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 
 public int sys_bind(int sockfd, sockaddr* addr, uint addrlen) {
@@ -3617,7 +3820,7 @@ public int sys_accept(int sockfd, sockaddr* addr, uint* addrlen) {
             *addrlen = cast(uint)sockaddr_un.sizeof;
         }
     }
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 
 public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
@@ -3649,6 +3852,8 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                         g_fdTable[passFd].type == FileType.FD_NONE) {
                         return negErrno(EBADF);
                     }
+                    if (!fdRequireCap(cast(ulong)passFd, CAP_RIGHT_PASS))
+                        return negErrno(EBADF);
                 }
                 size_t queued = (peer.passedHead + scmRightsCapacity - peer.passedTail) %
                                 scmRightsCapacity;
@@ -3658,6 +3863,9 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                     int passFd = fdArray[k];
                     size_t nextHead = (peer.passedHead + 1) % scmRightsCapacity;
                     peer.passedFiles[peer.passedHead] = g_fdTable[passFd];
+                    auto cap = capGet(cast(uint)passFd);
+                    peer.passedCaps[peer.passedHead] =
+                        (cap !is null) ? *cap : Capability.init;
                     peer.passedHead = nextHead;
                 }
             }
@@ -3719,6 +3927,16 @@ public ssize_t sys_recvmsg(int sockfd, msghdr* msg, int flags) {
                 int newFd = allocFd();
                 if (newFd < 0) break;
                 g_fdTable[newFd] = sock.passedFiles[sock.passedTail];
+                g_fdTable[newFd].objId = 0;
+                auto oh = ensureFileObject(&g_fdTable[newFd]);
+                if (oh !is null) {
+                    uint rights = capRightsForFile(&g_fdTable[newFd]);
+                    auto queuedCap = &sock.passedCaps[sock.passedTail];
+                    if (queuedCap.objId != 0 && queuedCap.revoked == 0)
+                        rights &= queuedCap.rights;
+                    capInstall(cast(uint)newFd, oh.id, rights, CAP_INVALID);
+                }
+                sock.passedCaps[sock.passedTail] = Capability.init;
                 sock.passedTail = (sock.passedTail + 1) % scmRightsCapacity;
                 outFds[nOut++] = newFd;
             }
@@ -4172,10 +4390,12 @@ public long linux_sys_dup(ulong fd) {
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE)
         return negErrno(EBADF);
+    if (!fdRequireCap(fd, CAP_RIGHT_DUP)) return negErrno(EBADF);
     for (int nfd = 0; nfd < 1024; ++nfd) {
         if (g_fdTable[nfd].type == FileType.FD_NONE) {
             g_fdTable[nfd] = g_fdTable[ifd];
             incPipeRef(ifd);
+            deriveActiveFd(nfd, ifd);
             return nfd;
         }
     }
@@ -4188,6 +4408,7 @@ public long linux_sys_dup2(ulong fd, ulong newfd_) {
     int infd = cast(int)newfd_;
     if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE)
         return negErrno(EBADF);
+    if (!fdRequireCap(fd, CAP_RIGHT_DUP)) return negErrno(EBADF);
     if (infd < 0 || infd >= 1024)
         return negErrno(EBADF);
     if (ifd == infd)
@@ -4196,6 +4417,7 @@ public long linux_sys_dup2(ulong fd, ulong newfd_) {
         sys_close(infd);
     g_fdTable[infd] = g_fdTable[ifd];
     incPipeRef(ifd);
+    deriveActiveFd(infd, ifd);
     return infd;
 }
 
@@ -4221,6 +4443,8 @@ public long linux_sys_pipe2(ulong pipefd_ptr, ulong flags) {
 
     g_fdTable[rfd] = File(FileType.FD_PIPE_READ, 0, 0, cast(void*)(cast(size_t)pipeId + 1), 0);
     g_fdTable[wfd] = File(FileType.FD_PIPE_WRITE, 0, 0, cast(void*)(cast(size_t)pipeId + 1), 0);
+    publishActiveFd(rfd);
+    publishActiveFd(wfd);
 
     int* pfd = cast(int*)pipefd_ptr;
     pfd[0] = rfd;
@@ -4241,17 +4465,23 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
         case F_GETFD: return 0;
         case F_SETFD: return 0;
         case F_GETFL: return g_fdTable[ifd].flags;
-        case F_SETFL: g_fdTable[ifd].flags = cast(int)arg; return 0;
+        case F_SETFL:
+            if (!fdRequireCap(fd, CAP_RIGHT_WRITE)) return negErrno(EBADF);
+            g_fdTable[ifd].flags = cast(int)arg;
+            return 0;
         case F_DUPFD: case F_DUPFD_CLOEXEC:
+            if (!fdRequireCap(fd, CAP_RIGHT_DUP)) return negErrno(EBADF);
             for (int nfd = cast(int)arg; nfd < 1024; ++nfd) {
                 if (g_fdTable[nfd].type == FileType.FD_NONE) {
                     g_fdTable[nfd] = g_fdTable[ifd];
                     incPipeRef(ifd);
+                    deriveActiveFd(nfd, ifd);
                     return nfd;
                 }
             }
             return negErrno(EMFILE);
         case F_ADD_SEALS:
+            if (!fdRequireCap(fd, CAP_RIGHT_WRITE)) return negErrno(EBADF);
             if (g_fdTable[ifd].type != FileType.FD_MEMFD) return negErrno(EINVAL);
             if ((cast(int)arg & ~F_SEAL_VALID_MASK) != 0) return negErrno(EINVAL);
             {
@@ -4685,7 +4915,7 @@ private long fileObjMmap(ObjHeader* oh, ulong offset, ulong* physOut,
 
 public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
                           ulong* sizeOut, uint* vmoOut, bool* sharedOut) {
-    ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+    ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_MMAP);
     if (oh is null) return negErrno(EBADF);
     auto mop = g_objOps[oh.type].mmap;
     if (mop is null) return 0;
@@ -4812,7 +5042,10 @@ public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
     int fda = allocSocketFd(a, O_RDWR);
     int fdb = allocSocketFd(b, O_RDWR);
     if (fda < 0 || fdb < 0) {
-        if (fda >= 0) g_fdTable[fda] = File.init;
+        if (fda >= 0) {
+            g_fdTable[fda] = File.init;
+            capClear(cast(uint)fda);
+        }
         releaseLocalSocket(a);
         releaseLocalSocket(b);
         return negErrno(EMFILE);
@@ -4826,6 +5059,7 @@ public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
 // --- Helper: test if FD has data available for reading ---
 private bool fdReadable(int fd) @nogc nothrow {
     if (fd < 0 || fd >= 1024) return false;
+    if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_READ)) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)  return true;
     if (f.type == FileType.FD_SOCKET) {
@@ -4871,6 +5105,7 @@ private bool fdReadable(int fd) @nogc nothrow {
 // --- Helper: test if FD can accept writes ---
 private bool fdWritable(int fd) @nogc nothrow {
     if (fd < 0 || fd >= 1024) return false;
+    if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_WRITE)) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)   return true;
     if (f.type == FileType.FD_SOCKET)    return true;
@@ -4899,7 +5134,7 @@ public long linux_sys_epoll_create1(ulong flags) {
     g_fdTable[fd].offset  = 0;
     g_fdTable[fd].backend = cast(void*)cast(size_t)eid;
     g_fdTable[fd].fileSize = 0;
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 
 public long linux_sys_epoll_ctl(ulong epfd, ulong op, ulong fd, ulong ev_ptr) {
@@ -4983,7 +5218,7 @@ public long linux_sys_eventfd2(ulong initval, ulong flags) {
     g_fdTable[fd].offset  = 0;
     g_fdTable[fd].backend = cast(void*)cast(size_t)eid;
     g_fdTable[fd].fileSize = 0;
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 // ── timerfd infrastructure ────────────────────────────────────────────────────
 // Time base: ticks advance at ~1000 Hz from the PIT IRQ0 handler, so 1 tick ≈
@@ -5024,7 +5259,7 @@ public long linux_sys_timerfd_create(ulong clockid, ulong flags) {
     g_timerfds[tid].inUse = true;
     g_fdTable[fd].type    = FileType.FD_TIMERFD;
     g_fdTable[fd].backend = cast(void*)cast(size_t)tid;
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 
 // itimerspec { timespec it_interval; timespec it_value; }; timespec { long sec; long nsec; }
@@ -5137,7 +5372,7 @@ public long linux_sys_memfd_create(ulong name, ulong flags) {
     g_fdTable[fd].fileSize = 0;
     g_fdTable[fd].offset   = 0;
     ensureMemfdVmo(mid);
-    return fd;
+    return publishActiveFdReturn(fd);
 }
 public long linux_sys_seccomp(ulong op, ulong f, ulong a) { return negErrno(EINVAL); }
 public long linux_sys_bpf(ulong cmd, ulong attr, ulong sz)  { return negErrno(ENOSYS); }

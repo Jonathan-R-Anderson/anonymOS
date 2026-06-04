@@ -125,6 +125,10 @@ struct Task {
     // share their process leader's id; a fork()ed child gets its own (its task
     // id) with a copied table.  0 = the initial process (task 0).
     int fdTabId;
+    // Phase 6: per-process capability table.  Kept separate from fdTabId so the
+    // native object/capability model can eventually outgrow the Linux fd view;
+    // for now fork/clone assign it in lockstep with fdTabId.
+    int capTabId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;
@@ -205,6 +209,8 @@ int allocTask() {
             g_tasks[i].active = true;
             g_tasks[i].processLeaderTid = i;
             g_tasks[i].mmapNext = 0x700000000000UL;
+            g_tasks[i].fdTabId = i;
+            g_tasks[i].capTabId = i;
             objEnsureTask(i);
             return i;
         }

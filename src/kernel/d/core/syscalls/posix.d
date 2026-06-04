@@ -27,8 +27,8 @@ import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userIsAdmin; // Phase 10: identity via User objects
-import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind,
-                  orgDotContent, orgStatsContent; // ORG P3/P9: edges + graph export
+import core.org : edgeEnsure, orgPruneDeadOut, edgeAdd, edgeRemove, EdgeKind,
+                  orgDotContent, orgStatsContent; // ORG P3/P9/P10: edges + graph export
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -527,6 +527,12 @@ private bool publishActiveFd(int fd) {
         capClear(cast(uint)fd);
         return false;
     }
+    // ORG P10: keep each socket's backing object id current, so the peer Weak edge
+    // and the SCM in-flight StrongRef edge can name it.
+    if (f.type == FileType.FD_SOCKET) {
+        auto sk = fileSocket(f);
+        if (sk !is null) sk.fdObjId = oh.id;
+    }
     uint rights = capRightsForFile(f);
     if (cap is null || cap.objId != oh.id || (cap.rights & rights) != rights)
         capInstall(cast(uint)fd, oh.id, rights, CAP_INVALID);
@@ -626,6 +632,9 @@ public void orgReconcileFdEdges() {
             }
             orgPruneDeadOut(f.objId); // drop observer edges to closed watched fds
         }
+        // ORG P10: prune a socket object's stale in-flight StrongRef / peer Weak
+        // edges (to senders/peers that have since closed).
+        if (f.type == FileType.FD_SOCKET) orgPruneDeadOut(f.objId);
     }
     orgPruneDeadOut(proc); // drop Cap edges to fds that have since closed
 }
@@ -703,6 +712,9 @@ private struct LocalSocket
     IpcCapDesc[scmRightsCapacity] passedCaps;
     size_t passedHead;
     size_t passedTail;
+    // ORG P10: the object id of the fd backing this socket (for the peer Weak edge
+    // E9 and the SCM in-flight StrongRef edge E10).  0 until the fd is published.
+    uint fdObjId;
 }
 
 __gshared LocalSocket[localSocketMax] g_localSockets;
@@ -3968,6 +3980,16 @@ public ssize_t sys_sendmsg(int sockfd, msghdr* msg, int flags) {
                         (cap !is null && cap.objId != 0 && cap.revoked == 0)
                             ? ipcDelegateCap(cap.objId, cap.rights)
                             : IpcCapDesc.init;
+                    // ORG P10 (E10): the receiver socket now holds an *in-flight*
+                    // **StrongRef** to the passed fd's object — this is what keeps a
+                    // passed fd alive after the sender closes its own copy, and what
+                    // forms the unreachable SCM_RIGHTS cycle (collected by ORG GC,
+                    // matching Linux's net/unix/garbage.c) when two sockets pass each
+                    // other and both direct fds are then closed.
+                    publishActiveFd(passFd);
+                    if (peer.fdObjId != 0 && g_fdTable[passFd].objId != 0)
+                        edgeAdd(peer.fdObjId, g_fdTable[passFd].objId,
+                                EdgeKind.StrongRef, 0);
                     peer.passedHead = nextHead;
                 }
             }
@@ -5163,6 +5185,16 @@ public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
 
     (cast(int*)sv)[0] = fda;
     (cast(int*)sv)[1] = fdb;
+
+    // ORG P10 (E9): the two endpoints peer each other with a **Weak** edge — a
+    // mutual reference that must never pin (closing one must free it).  Resolve and
+    // record each socket's backing object, then link them both ways.
+    publishActiveFd(fda);
+    publishActiveFd(fdb);
+    if (sa.fdObjId != 0 && sb.fdObjId != 0) {
+        edgeAdd(sa.fdObjId, sb.fdObjId, EdgeKind.Weak, 0);
+        edgeAdd(sb.fdObjId, sa.fdObjId, EdgeKind.Weak, 0);
+    }
     return 0;
 }
 

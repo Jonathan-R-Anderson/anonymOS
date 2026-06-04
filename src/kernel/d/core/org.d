@@ -1371,6 +1371,54 @@ public void orgVizSelfTest() {
     else              klog("[org] viz FAIL: behaviour\n");
 }
 
+// --- Phase 10 Linux-integration self-test (runtime proof) ---------------------
+// 10.1 the SCM_RIGHTS in-flight cycle (two sockets strong-ref'ing each other with
+// no process holding either) is unreachable and collected by ORG GC, matching
+// Linux's garbage collector; 10.2 an ambient edge granting authority the holder
+// lacks is refused; 10.3 a sandboxed process reaches only its delegated objects.
+__gshared bool g_orgLinuxTested = false;
+public void orgLinuxSelfTest() {
+    if (g_orgLinuxTested) return;
+    g_orgLinuxTested = true;
+    orgInit();
+
+    // 10.1 — SCM_RIGHTS in-flight cycle.
+    uint sa = objAlloc(ObjType.Endpoint, null);
+    uint sb = objAlloc(ObjType.Endpoint, null);
+    bool built = (sa != 0 && sb != 0 &&
+                  edgeAdd(sa, sb, EdgeKind.StrongRef, 0) &&  // sa holds a passed fd → sb
+                  edgeAdd(sb, sa, EdgeKind.StrongRef, 0));   // sb holds a passed fd → sa
+    orgClearRoots();                  // no process holds either ⇒ both unreachable
+    orgReachCompute(8);
+    orgTarjanRun();
+    uint scc = orgSccOf(sa);
+    bool detected = built && scc != 0 && scc == orgSccOf(sb) &&
+                    orgSccIsGcTarget(scc) && !orgReachable(sa) && !orgReachable(sb);
+    uint freed = orgCollectScc(scc);
+    bool p101 = detected && freed == 2 && objGet(sa) is null && objGet(sb) is null;
+
+    // 10.2 — ambient authority edge refused (can't fabricate a device capability).
+    uint proc = objAlloc(ObjType.Process, null);
+    uint dev  = objAlloc(ObjType.Device, null);
+    orgSetHeldRights(proc, 0x1);                                // holds only bit 0
+    bool ambientRej = !edgeAdd(proc, dev, EdgeKind.Cap, 0x6);   // wants bits 1,2 ⇒ reject
+    bool delegOk    =  edgeAdd(proc, dev, EdgeKind.Cap, 0x1);   // its own right ⇒ ok
+    bool p102 = ambientRej && delegOk;
+
+    // 10.3 — sandboxed reachability: proc reaches its delegated `dev` but not `other`.
+    uint other = objAlloc(ObjType.File, null);
+    orgClearRoots(); orgAddRoot(proc);
+    orgReachCompute(8);
+    bool p103 = (other != 0 && orgReachable(proc) && orgReachable(dev) &&
+                 !orgReachable(other));
+
+    edgeRemove(proc, dev, EdgeKind.Cap);
+    objRelease(proc); objRelease(dev); objRelease(other);
+
+    if (p101 && p102 && p103) klog("[org] linux PASS\n");
+    else                      klog("[org] linux FAIL\n");
+}
+
 public void orgStats() {
     klog("[org] edges=");   klog_hex(g_orgEdgesLive);
     klog(" adds=");         klog_hex(g_orgEdgeAdds);

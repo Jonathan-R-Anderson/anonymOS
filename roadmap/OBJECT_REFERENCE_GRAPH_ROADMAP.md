@@ -602,13 +602,43 @@ meet); revocation is O(derive-subtree).
   (objects, edges by kind, SCCs, GC reclaimed, validator budget). *Accept:* exported
   via the synthetic fs (`/proc`-style) gated by cap.
 
-## PHASE 10 — Linux Compatibility Layer Integration
-*Why:* the Linux layer is a prolific edge creator (fds, SCM_RIGHTS, epoll, fork trees)
-and must not bypass ORG. *Affected:* `posix.d`, `kernel_main.d` dispatch,
-`LinuxObject` subtree (OO-P12). *Risks:* exact Linux semantics vs ORG rules (e.g.
-Linux *allows* the SCM_RIGHTS cycle and GCs it — ORG must match, not forbid). *Refactoring:*
-route Linux fd/socket/epoll ops through `edgeAdd`/`edgeRemove`. *Performance:* edge ops
-on hot syscalls — keep O(1).
+## PHASE 10 — Linux Compatibility Layer Integration  ✅ DONE
+
+> **Status: the live Linux fd/socket/epoll/SCM ops now create ORG edges, including
+> the SCM_RIGHTS in-flight cycle that ORG GC collects.**
+> **10.1:** `posix.d` wires the cycle-prone edges at their syscall sites —
+> `socketpair` adds the **peer Weak** edge (E9, both ways), and `sendmsg`'s
+> `SCM_RIGHTS` path adds an **in-flight StrongRef** edge (E10) from the receiver
+> socket's object to the passed fd's object (`LocalSocket.fdObjId`, maintained in
+> `publishActiveFd`). These are additive ORG-mirror edges that don't touch fd
+> behaviour. `orgReconcileFdEdges` prunes a socket object's stale in-flight/peer
+> edges when the sender/peer closes. fd→object Cap edges, epoll Observer edges, and
+> the process/fork ownership edges were already routed through `edgeAdd` in P3.
+> **10.2:** the epoll **nesting-depth bound** (≤5, `ELOOP`) lands at `epoll_ctl`
+> (from P3.3); an **ambient device edge** that grants authority the holder lacks is
+> rejected by the P7.1 rights gate; the `/proc/org/*` export is cap-gated (P9.3).
+> **10.3:** Linux pid/uid already derive from Process/User objects + caps
+> (OO-P4/P10); a sandboxed process's reachable set is exactly its delegated objects.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — in which the live socketpair peer-Weak and
+> SCM in-flight StrongRef edges are now created on the Wayland path (Hyprland passes
+> DRM/memfd fds via `SCM_RIGHTS` constantly) — reached Hyprland/Mesa compositor
+> rendering with no kernel fault, panic, JHC falloff, or OOM, confirming the edge
+> wiring is non-invasive. The one-shot self-test logged `[org] linux PASS`: 10.1 —
+> a two-socket `SCM_RIGHTS` cycle with no process holder is unreachable and
+> reclaimed by `orgCollectScc` (the canonical leak, collected exactly as Linux's
+> garbage collector would); 10.2 — an ambient authority edge granting unheld rights
+> is refused; 10.3 — a sandboxed process reaches its delegated object but not a
+> non-delegated one. All P2–P9 proofs still hold.
+>
+> **Boundary:** the self-test proves the in-flight cycle is collected *through the
+> production edge + GC path*; flipping the live validator from detect-and-count to
+> **auto-collecting** real userspace SCM cycles needs the remaining edge-model
+> completeness (e.g. a `Service →(StrongRef) Endpoint` edge so service-held
+> endpoints aren't false candidates) and a stability gate — deliberately left until
+> that audit is done, since a false positive would free a live object in a running
+> desktop.
 
 - **10.1** — P: High · linux/fd · Deps: P3, OO-P12 · Complexity: High · *Desc:* make
   `open`/`dup`/`socketpair`/`sendmsg(SCM_RIGHTS)`/`epoll_ctl`/`fork` create/destroy ORG

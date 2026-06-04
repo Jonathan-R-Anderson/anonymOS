@@ -44,7 +44,8 @@ import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
 import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
                   orgApiSelfTest, orgCycleSelfTest, orgGcSelfTest,
-                  orgSecuritySelfTest, orgVizSelfTest; // ORG P2–P9 (validator → daemon)
+                  orgSecuritySelfTest, orgVizSelfTest,
+                  orgLinuxSelfTest; // ORG P2–P10 (validator → daemon)
 import core.cap : capRevokeClosureSelfTest; // ORG P7.2
 import core.org_validator : orgValidatorInit, orgValidatorTick,
                             orgValidatorSelfTest, orgValidatorStats; // ORG P8
@@ -962,6 +963,7 @@ private void dispatchSyscall(int tid) {
         capRevokeClosureSelfTest(); // ORG P7.2: one-shot proof of transitive revocation
         orgValidatorSelfTest(); // ORG P8: one-shot proof of the validator daemon + control
         orgVizSelfTest(); // ORG P9: one-shot proof of DOT/stats graph export
+        orgLinuxSelfTest(); // ORG P10: one-shot proof SCM cycle GC + sandboxed edges
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).

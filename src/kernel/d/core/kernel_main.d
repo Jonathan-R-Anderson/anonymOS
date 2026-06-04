@@ -49,6 +49,7 @@ import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 1
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
                        linuxStats; // Phase 12: Linux-compat object subtree
+import core.linuxpers : linuxPersSelfTest, linuxPersStats; // IR-P7: Linux personality → cap/ns ops
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
 import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
                   orgApiSelfTest, orgCycleSelfTest, orgGcSelfTest,
@@ -989,6 +990,7 @@ private void dispatchSyscall(int tid) {
         servicePhase5SelfTest(); // IR-P5: dependency-ordered start, FS-first migration, versioning
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
+        linuxPersSelfTest(); // IR-P7: ephemeral-root sandbox + ns/cap op translation + gated /dev
         kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated
         orgSelfTest(); // ORG P2: one-shot proof of typed edges + weak coherence
         orgIntegReport(); // ORG P3: one-shot proof the real graph passes I1/I4 audit
@@ -1021,6 +1023,7 @@ private void dispatchSyscall(int tid) {
             serviceStats();
             windowStats();
             linuxStats();
+            linuxPersStats();
             kernelCensusStats();
             orgAudit(); // refresh I1/I4 violation counters for the stats line
             orgStats();

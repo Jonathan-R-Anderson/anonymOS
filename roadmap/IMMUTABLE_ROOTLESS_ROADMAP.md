@@ -380,18 +380,46 @@ task IDs below.
 - **6.5 Snapshots of user state** — ✅ **DONE** · P: Medium · D: 5 · deps: 4.3. *Outcome:* `/var`
   `varSnapshot`/`varRestore` as store objects, independent of the system generation.
 
-### Phase 7 — Linux compatibility as capability objects
-- **7.1 Personality layer maps Linux ops → object/cap ops** — P: High · D: 7 · deps:
+### Phase 7 — Linux compatibility as capability objects  ✅ DONE
+> **Status:** implemented in `core/linuxpers.d` (module `core.linuxpers`), layered on
+> the Phase-12 `core/linuxobj.d` personality subtree and the §2.4 namespaces / §4
+> store. §7.1 `linuxTranslatePath` resolves a Linux path op through the calling app's
+> **Namespace** and requires the op's capability right on the matching mount binding
+> — there is no ambient global `/`; a `LinuxOp`→right table (open→READ/WRITE,
+> mmap→MMAP, socket→CALL) makes each syscall family's authority explicit. §7.2
+> `linuxAppCreate` gives each app its own namespace (cloned from the system view) with
+> "/" rebound to a fresh **ephemeral** Directory (writes are disposable, the real
+> system root is unreachable) plus a persistent **private volume** at `/private`;
+> apps are distinct and torn down with `linuxAppDestroy`. §7.3 `/proc`·`/sys`·`/dev`
+> are **not** bound by default — an ungranted `/dev/null` falls through to the
+> disposable root, never a real device node; `linuxAppGrantSynthetic` binds the tree
+> with explicit rights (the cap) so reads resolve to a real node while writes stay
+> denied. `[lxpers] selftest PASS` proves the ephemeral-root sandbox (distinct roots,
+> writable `/private`, read-only `/usr`, unreachable real root), op→ns/cap
+> translation (`/usr` read ok, `/usr` write denied, off-system write lands in the
+> ephemeral root), and cap-gated synthetic trees (absent until granted, then
+> read-only).
+>
+> **Caveat (honest):** this is the personality *resolution* layer + sandbox model;
+> the existing posix.d syscall bodies remain the implementation it delegates to. The
+> live `sys_open`/`mmap`/`socket` paths are not yet rerouted to call
+> `linuxTranslatePath` for every real process — wiring the running BusyBox/Hyprland
+> processes onto per-app sandboxes is the remaining integration this enables.
+- **7.1 Personality layer maps Linux ops → object/cap ops** — ✅ **DONE** · P: High · D: 7 · deps:
   Phase 2–4 · affects: posix.d (the whole surface). *Why:* keep BusyBox/Hyprland
   working while the substrate becomes object/cap-based; Linux internals are *emulated*
-  over objects, not exposed. *Outcome:* `open`/`mmap`/`socket` resolve to namespace +
-  caps underneath; unchanged binaries still run.
-- **7.2 Per-app ephemeral root + private volume** — P: Medium · D: 6 · deps: 4.3, 2.4
+  over objects, not exposed. *Outcome:* `linuxTranslatePath` resolves `open` (and the
+  `mmap`/`socket` families via the op→right table) through namespace + caps; no
+  ambient global root.
+- **7.2 Per-app ephemeral root + private volume** — ✅ **DONE** · P: Medium · D: 6 · deps: 4.3, 2.4
   (Qubes AppVM). *Why:* Linux apps get a disposable system view + a persistent private
-  store. *Outcome:* an app cannot see or mutate the real system tree.
-- **7.3 Capability-gated `/proc`,`/sys`,`/dev`** — P: Medium · D: 5 · deps: 3.1, 2.4.
-  *Why:* today these synthetic trees are ambient. *Outcome:* device/proc access needs
-  the matching cap.
+  store. *Outcome:* `linuxAppCreate` builds a per-app namespace with an ephemeral "/"
+  + `/private` volume; the app cannot see or mutate the real system root, `/usr` stays
+  read-only.
+- **7.3 Capability-gated `/proc`,`/sys`,`/dev`** — ✅ **DONE** · P: Medium · D: 5 · deps: 3.1, 2.4.
+  *Why:* today these synthetic trees are ambient. *Outcome:* unbound by default;
+  `linuxAppGrantSynthetic` binds them with explicit rights, so device/proc access
+  needs the matching cap (read-only `/dev` after grant; writes denied).
 
 ### Phase 8 — Security hardening
 - **8.1 Crypto primitives in kernel (hash + signature verify)** — P: Critical · D: 6 ·

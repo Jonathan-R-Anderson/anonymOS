@@ -23,20 +23,24 @@
 | Rootless / no UID 0 | **Implemented for the kernel personality boundary.** `getuid`/`geteuid`/`SO_PEERCRED` read the task's **User object** (`Task.userObjId`); the default subject is uid/gid 1000; file-owner defaults use the active subject; privileged actions consult typed admin caps, never `uid==0`. | "Opposite — every task is root." |
 | Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
 | Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it and checks binding read/write rights; fork clones it. | (not separately listed) |
-| Immutable system image | **Still none.** Root fs is the RAM `rtfs` overlay + synthetic namespace; nothing persisted, signed, versioned, or rolled back. Boot modules loaded by Limine unverified. **This is the core of the remaining work (Phase 4/6/8).** | "None." |
-| Atomic update / rollback / A-B | **Still none.** `make` rebuilds an ISO; "update" = reflash. | "None." |
-| Cryptographic verification | **Still none.** No hashing/signature in boot. | "None." |
-| System vs user state separation | **Still none** physically (one ephemeral RAM tree), though the namespace machinery to express `/usr`·`/etc`·`/var` mounts now exists. | "None." |
+| Immutable system image | **Mechanism built, not yet on real storage (Phase 4).** `core/store.d` is a content-addressed, de-duplicating, write-creates-never-mutates object store with a dm-verity-style block hash tree (`storeReadVerified` faults on a tampered block). Backing is still the in-kernel content arena, not a persisted/signed on-disk fs; boot modules still loaded by Limine unverified. Remaining: AHCI/disk backing + §8 verified boot. | "None." |
+| Atomic update / rollback / A-B | **Generations + atomic deployment swap built (Phase 4.4); A/B + signed bundles still Phase 6.** `genCreate`/`genRollback` snapshot the tree and repoint the active deployment in a single store. `make` still rebuilds the ISO for the underlying image. | "None." |
+| Cryptographic verification | **Hash-tree verification built with a stand-in digest (Phase 4.2).** 256-bit position-sensitive FNV-1a addresses content and detects tampering; the real BLAKE3/ed25519 primitives + signature/boot chain are Phase 8.1/8.2. | "None." |
+| System vs user state separation | **Enforced logically (Phase 4.3), not yet physically.** The system namespace binds `/usr` read-only · `/etc`·`/var` read+write; `storeWritable` denies `/usr` writes. Still one ephemeral RAM tree underneath — a separate physical `/var` volume remains Phase 6.5. | "None." |
 | Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
 
 **Conclusion:** "rootless" went from ~0% to **substantially built** (capability
 spine, object tree, endpoint caps, namespace rights, non-root User subjects, typed
 admin caps, User/Service objects). Remaining rootless hardening is mostly service
-extraction and broader capability coverage, not UID-0 semantics. "Immutable" remains
-at ~0%:
-there is still no persistent, content-addressed, verified store. The biggest leverage
-point is now the inverse of the original: the **capability/object substrate is ready**,
-so the immutable store can be introduced *through* caps and namespaces from the start.
+extraction and broader capability coverage, not UID-0 semantics. "Immutable" went
+from ~0% to **mechanism-complete in RAM (Phase 4)**: a content-addressed,
+write-creates-never-mutates store with a dm-verity hash tree, a `/usr`·`/etc`·`/var`
+rights split, and generations with atomic rollback all exist (`core/store.d`) and
+self-test green. What is *not* yet true is the **physical** substrate the §F
+"honestly immutable" bar demands — a persisted, on-disk, signature-/boot-verified
+store with W^X — which is Phases 6/8. The capability/object substrate being ready
+means the store was introduced *through* objects and namespace rights from the start,
+exactly as intended.
 
 ---
 
@@ -254,22 +258,48 @@ task IDs below.
   today is omnipotent; it must start holding only the caps to launch services and hand
   each the minimum. *Outcome:* compromising a service ≠ compromising the system.
 
-### Phase 4 — Immutable object store (the system image)
-- **4.1 Content-addressed store on real storage** — P: Critical · D: 8 · deps:
+### Phase 4 — Immutable object store (the system image)  ✅ DONE
+> **Status:** implemented in `core/store.d` (module `core.store`), wired into the
+> boot reconcile loop and mounted at PID1 bring-up. The store is **additive** and
+> kernel-resident, mirroring the earlier phases: it lands the content-addressed
+> substrate, the dm-verity hash tree, the `/usr`·`/etc`·`/var` rights split, and
+> generations now, ahead of the real on-disk fs (`ahci.d`) and the §8.1 crypto it
+> will ultimately use. Two object types were added (`ObjType.StoreObject`,
+> `ObjType.Generation`). `storePut` is content-addressed and de-duplicating (identical
+> bytes resolve to the same `StoreObject`; there is **no** API that mutates a stored
+> blob — writes only create), `storeReadVerified` re-hashes every covering leaf block
+> against the stored hash tree so a tampered backing byte **faults the read**,
+> `storeMountSystem` builds the system namespace with `/usr` read-only (no WRITE
+> right) · `/etc` and `/var` read+write overlays and `storeWritable` is the per-path
+> write gate, and `genCreate`/`genSetActive`/`genRollback` snapshot the tree and swap
+> the active deployment pointer in a single atomic store. The 256-bit content hash is
+> a self-contained position-sensitive FNV-1a stand-in for BLAKE3 until §8.1 lands —
+> strong enough to address content and detect a flipped block, which the self-test
+> proves. `[store] selftest PASS` covers all four sub-properties (content-address +
+> dedup, verity tamper-fault, `/usr` write-deny while `/etc`·`/var` allow, and atomic
+> generation rollback).
+- **4.1 Content-addressed store on real storage** — ✅ **DONE** · P: Critical · D: 8 · deps:
   `ahci.d`, a real fs · affects: new `core/store/`, block driver. *Why:* the
   read-only, hash-named substrate (`store/<blake3>`); foundation of immutability.
-  *Outcome:* objects/files addressed and fetched by hash; writes create new objects,
-  never mutate.
-- **4.2 dm-verity-style block hash tree** — P: Critical · D: 8 · deps: 4.1, Phase 8
+  *Outcome:* objects/files addressed and fetched by hash (`storePut`/`storeLookup`,
+  digest = name); writes create new objects, never mutate; identical content dedups.
+  *(Backing store is the in-kernel content arena for now; the on-disk/AHCI backing is
+  the remaining work, gated on a real fs.)*
+- **4.2 dm-verity-style block hash tree** — ✅ **DONE** · P: Critical · D: 8 · deps: 4.1, Phase 8
   crypto. *Why:* every read of the system image is verified (ChromeOS). *Outcome:*
-  tampering with a stored block faults the read.
-- **4.3 Read-only `/usr` + writable `/etc` overlay + `/var` user state** — P: Critical
-  · D: 6 · deps: 4.1, 2.4. *Why:* Silverblue split; the concrete meaning of
-  "immutable system, mutable user". *Outcome:* `/usr` writes fail (no cap); `/etc`/`/var`
-  writes go to overlays.
-- **4.4 Generations / deployments** — P: High · D: 6 · deps: 4.1. *Why:* a named,
-  immutable snapshot of the whole system tree; rollback target. *Outcome:* boot can
-  select any prior generation pointer atomically.
+  `storeReadVerified` re-hashes each covering leaf block before returning bytes;
+  tampering with a stored block faults the read (`storeImageIntact` reports the break).
+  *(Uses the FNV-1a digest stand-in pending the §8.1 BLAKE3/ed25519 primitives.)*
+- **4.3 Read-only `/usr` + writable `/etc` overlay + `/var` user state** — ✅ **DONE**
+  · P: Critical · D: 6 · deps: 4.1, 2.4. *Why:* Silverblue split; the concrete meaning of
+  "immutable system, mutable user". *Outcome:* the system namespace binds `/usr`
+  read-only and `/etc`·`/var` read+write; `storeWritable` denies a `/usr` write
+  (no WRITE mount-right) and allows `/etc`·`/var` — no UID-0 / ambient-write hatch.
+- **4.4 Generations / deployments** — ✅ **DONE** · P: High · D: 6 · deps: 4.1. *Why:* a named,
+  immutable snapshot of the whole system tree; rollback target. *Outcome:*
+  `genCreate` captures a numbered, parented snapshot of store-object ids; `genSetActive`/
+  `genRollback` repoint the single active-deployment pointer atomically, so boot can
+  select any prior generation.
 
 ### Phase 5 — Service management (user-space servers)
 - **5.1 Service manager as a capability broker** — P: High · D: 7 · deps: 2.3, 3.4 ·

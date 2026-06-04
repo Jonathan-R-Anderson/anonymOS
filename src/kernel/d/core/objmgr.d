@@ -43,6 +43,8 @@ enum ObjType : uint {
     LinuxDeviceAdapter, // Phase 12: native Device → /dev/* adapter object
     Untyped,            // IMMUTABLE_ROOTLESS §1.4: untyped-memory capability
     Admin,              // IMMUTABLE_ROOTLESS §3.2: typed admin authority object
+    StoreObject,        // IMMUTABLE_ROOTLESS §4.1: content-addressed store blob
+    Generation,         // IMMUTABLE_ROOTLESS §4.4: immutable system-tree snapshot
     Count
 }
 

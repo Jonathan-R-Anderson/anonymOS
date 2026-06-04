@@ -41,6 +41,7 @@ import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
 import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
                   userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
+import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
@@ -1000,6 +1001,7 @@ private void dispatchSyscall(int tid) {
         orgDistTick(1);    // ORG P11: advance the distributed clock / expire stale leases
         orgTestSuite();    // ORG P12: one-shot invariant + GC-fuzz + scale test suite
         untypedSelfTest(); // IMMUTABLE_ROOTLESS §1.4: one-shot proof no ambient allocation
+        storeSelfTest(); // IMMUTABLE_ROOTLESS §4: content-addr store + verity + split + generations
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -1022,6 +1024,7 @@ private void dispatchSyscall(int tid) {
             auditStats();
             orgDistStats();
             untypedStats();
+            storeStats();
         }
     }
 
@@ -1736,6 +1739,9 @@ void d_kernel_main() {
     g_tasks[0].userObjId = userDefaultObjId();
     userSetActiveSubject(g_tasks[0].userObjId);
     adminInstallInitCaps(g_tasks[0].capTabId);
+    // IMMUTABLE_ROOTLESS §4.3: assemble the read-only /usr · overlay /etc · user-state
+    // /var system namespace so its mount-rights write gate exists from first boot.
+    storeMountSystem();
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

@@ -35,6 +35,8 @@ import core.cap : capTableSetActive, capTableClear, capStats;
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
+import core.user : userRegistryInit, userSelfTest, userStats, USER_RIGHT_ALL; // Phase 10
+import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -931,12 +933,16 @@ private void dispatchSyscall(int tid) {
         ipcSelfTest(); // Phase 7: one-shot proof the IPC router round-trips
         deviceSelfTest(); // Phase 8: one-shot proof /dev resolves to Device objects
         nsSelfTest(); // Phase 9: one-shot proof per-process namespaces clone & route
+        userSelfTest(); // Phase 10: one-shot proof identity/passwd derive from User objects
+        serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
             ipcStats();
             deviceStats();
             nsStats();
+            userStats();
+            serviceStats();
         }
     }
 
@@ -1623,6 +1629,11 @@ void d_kernel_main() {
     // Phase 8: stand up Driver/Device objects for the synthetic /dev tree (and
     // wrap the block/NIC driver globals) before the init process opens /dev nodes.
     deviceRegistryInit();
+    // Phase 10: register User objects (root + a non-root user) so identity and
+    // /etc/passwd derive from objects, and bring up the Service Manager (PID1
+    // identity) holding the full authority set that services are narrowed from.
+    userRegistryInit();
+    serviceManagerInit(USER_RIGHT_ALL);
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

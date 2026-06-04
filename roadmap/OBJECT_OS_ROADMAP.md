@@ -520,7 +520,48 @@ Directory object, not *the* fs.
 
 ---
 
-## PHASE 10 — User and Service objects; least-privilege init
+## PHASE 10 — User and Service objects; least-privilege init  ✅ DONE
+
+> **Status: implemented as User objects driving identity + a Service Manager with
+> rights-narrowed Service objects.** New module `core/user.d` defines `User`
+> objects (`ObjType.User`) carrying {uid, gid, name, home, shell} plus an
+> administrative rights bitset (`USER_RIGHT_LOGIN/SPAWN/ADMIN` — admin actions are
+> distinct caps, not "uid==0"). `userRegistryInit` registers a root User (uid 0,
+> full authority) and a non-root `user` (uid 1000, login+spawn, no admin). New
+> module `core/servicemgr.d` defines `Service` objects (`ObjType.Service`): a
+> Service Manager (PID1/init identity) holds the full authority set, and
+> `serviceRegister` gives each service its own Phase 7 IPC endpoint (registered by
+> name) and an authority set **clamped to a subset of the manager's** — the
+> object-model form of "PID1 holds a minimal cap set; each service gets an
+> endpoint cap + a narrowed cap table."
+>
+> **Identity routed through objects (`posix.d`):** `getuid`/`geteuid`/`getgid`/
+> `getegid`/`getresuid`/`getresgid` and `SO_PEERCRED`'s ucred now read
+> `userCurrentUid()`/`userCurrentGid()` from the current process's User object
+> instead of a hardcoded `0`. The default running identity stays the root User, so
+> the Linux personality still sees uid 0 and nothing assuming root regresses.
+> The synthetic `/etc/passwd` and `/etc/group` are now **generated from the User
+> registry** (with the static table kept only as an empty-registry fallback).
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> — which reads the (now User-derived) `/etc/passwd` via elogind/pam and calls
+> `getuid`/`geteuid`/`SO_PEERCRED` heavily — with no kernel fault, panic, JHC
+> falloff, OOM, or root-assumption regression. Two new one-shot self-tests logged
+> `[user] selftest PASS` (root and user 1000 are live User objects, uid still 0,
+> root holds admin authority and the user does not, passwd derives from objects)
+> and `[svc] selftest PASS` (a service requesting full authority is clamped to the
+> manager's set, one requesting a strict subset keeps exactly that, endpoints are
+> distinct and name-resolvable, and every service's rights ⊆ the manager's).
+> `userStats()`/`serviceStats()` print alongside the other subsystems.
+>
+> **Deferred out of Phase 10:** flipping the *default* running identity to the
+> non-root user (the rootless cutover `IMMUTABLE_ROOTLESS_ROADMAP.md` §3 drives),
+> and actually re-spawning userspace daemons as Process objects bound to
+> per-service narrowed `g_capTabs` (no spare table ids exist —
+> `MAX_TASKS == CAPTAB_COUNT == 64` — so a service records its entitled rights
+> subset rather than carving out a live cap table). The User/Service object graph,
+> endpoint wiring, and least-privilege invariant they depend on exist now.
 
 **Goal:** **User objects** (no UID 0) and a native **Service Manager** that spawns
 services as Process objects holding only delegated caps.

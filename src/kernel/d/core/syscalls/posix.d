@@ -25,6 +25,8 @@ import core.cap : Capability, CAP_INVALID,
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
+import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
+                   userGroupContent; // Phase 10: identity via User objects
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -1041,8 +1043,8 @@ private long copySockoptUcred(ulong val, ulong len)
     if (*optLen < LinuxUcred.sizeof) return negErrno(EINVAL);
     auto cred = cast(LinuxUcred*)val;
     cred.pid = 1;
-    cred.uid = 0;
-    cred.gid = 0;
+    cred.uid = userCurrentUid(); // Phase 10: from the User object (root → 0)
+    cred.gid = userCurrentGid();
     *optLen = cast(uint)LinuxUcred.sizeof;
     return 0;
 }
@@ -2990,6 +2992,15 @@ private immutable VFEntry[] g_vfs = [
 // Returns the content slice, or null if not found.
 private const(char)[] findVirtualFile(const(char)* path) {
     if (path is null) return null;
+    // Phase 10: /etc/passwd and /etc/group are derived from the User registry
+    // (falling back to the static entry below only if the registry is empty).
+    if (cstrEq(path, "/etc/passwd")) {
+        auto g = userPasswdContent();
+        if (g.length) return g;
+    } else if (cstrEq(path, "/etc/group")) {
+        auto g = userGroupContent();
+        if (g.length) return g;
+    }
     foreach (ref e; g_vfs) {
         if (cstrEq(path, e.path)) return e.content;
     }
@@ -4324,10 +4335,13 @@ public long linux_sys_arch_prctl(ulong code, ulong addr) {
 }
 
 // --- Identity / session / group ---
-public long linux_sys_getuid()  { return 0; }
-public long linux_sys_geteuid() { return 0; }
-public long linux_sys_getgid()  { return 0; }
-public long linux_sys_getegid() { return 0; }
+// Phase 10: identity is read from the current process's User object (defaults to
+// the root User → uid/gid 0, so the Linux personality is unchanged) rather than a
+// hardcoded ambient 0.
+public long linux_sys_getuid()  { return cast(long)userCurrentUid(); }
+public long linux_sys_geteuid() { return cast(long)userCurrentUid(); }
+public long linux_sys_getgid()  { return cast(long)userCurrentGid(); }
+public long linux_sys_getegid() { return cast(long)userCurrentGid(); }
 public long linux_sys_getppid() {
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return 0;
@@ -4349,15 +4363,17 @@ public long linux_sys_setgid(ulong gid)  { return 0; }
 public long linux_sys_setresuid(ulong r, ulong e, ulong s) { return 0; }
 public long linux_sys_setresgid(ulong r, ulong e, ulong s) { return 0; }
 public long linux_sys_getresuid(ulong rp, ulong ep, ulong sp) {
-    if (rp) *cast(uint*)rp = 0;
-    if (ep) *cast(uint*)ep = 0;
-    if (sp) *cast(uint*)sp = 0;
+    const uint uid = userCurrentUid();
+    if (rp) *cast(uint*)rp = uid;
+    if (ep) *cast(uint*)ep = uid;
+    if (sp) *cast(uint*)sp = uid;
     return 0;
 }
 public long linux_sys_getresgid(ulong rp, ulong ep, ulong sp) {
-    if (rp) *cast(uint*)rp = 0;
-    if (ep) *cast(uint*)ep = 0;
-    if (sp) *cast(uint*)sp = 0;
+    const uint gid = userCurrentGid();
+    if (rp) *cast(uint*)rp = gid;
+    if (ep) *cast(uint*)ep = gid;
+    if (sp) *cast(uint*)sp = gid;
     return 0;
 }
 

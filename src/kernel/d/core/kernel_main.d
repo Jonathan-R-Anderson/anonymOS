@@ -42,7 +42,8 @@ import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
                   userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
-import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats; // Phase 10
+import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
+                        servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
@@ -984,6 +985,7 @@ private void dispatchSyscall(int tid) {
         userSelfTest(); // Phase 10: one-shot proof identity/passwd derive from User objects
         adminSelfTest(); // IR-P3: one-shot proof typed admin caps gate actions
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
+        servicePhase5SelfTest(); // IR-P5: dependency-ordered start, FS-first migration, versioning
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated

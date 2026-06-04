@@ -301,18 +301,44 @@ task IDs below.
   `genRollback` repoint the single active-deployment pointer atomically, so boot can
   select any prior generation.
 
-### Phase 5 — Service management (user-space servers)
-- **5.1 Service manager as a capability broker** — P: High · D: 7 · deps: 2.3, 3.4 ·
+### Phase 5 — Service management (user-space servers)  ✅ DONE (5.2 plumbing; code-relocation ongoing)
+> **Status:** implemented in `core/servicemgr.d`, extending the Phase-10 Service
+> Manager (which already brokered per-service endpoint caps + least-privilege rights
+> subsets). §5.1 adds dependency edges (`serviceAddDep`) and a bounded topological
+> `serviceStartAll` (a service never starts before its deps; a dependency cycle is
+> never started), plus `serviceBrokerEndpoint` to hand a service's endpoint cap into
+> a client cap table (the Genode "session to a service"). §5.2 gives each service a
+> `ServiceDomain` + ambient-authority flag; `serviceMigrateToUser` drops ambient
+> kernel reach and clamps the service to an explicit (never-widened) rights subset,
+> and `serviceMigrateNext` orders extraction FS-first/display-last. §5.3 pins each
+> service to a content-addressed `StoreObject` hash (§4.1) and a `Generation` (§4.4);
+> `serviceUpgrade` is a new pinned hash + version bump tied to a new generation
+> (identical bits are a no-op). `[svc5] selftest PASS` proves dependency-ordered
+> start + cycle hold-back + endpoint brokering, FS-first migration with authority
+> narrowing, and pinned-hash versioning/upgrade.
+>
+> **Caveat (honest):** §5.2 lands the *object/authority plumbing* for migration — it
+> does **not** yet relocate the in-kernel Wayland/DRM/fs code into user-space
+> processes. While those servers still run in-kernel, the kernel remains their
+> ambient authority (§G #9 still applies); the FS-first migration mechanism and
+> ordering now exist to drive that relocation incrementally.
+- **5.1 Service manager as a capability broker** — ✅ **DONE** · P: High · D: 7 · deps: 2.3, 3.4 ·
   affects: new `servicemgr`, replaces OpenRC-as-init assumptions. *Why:* spawns
   services, hands each its minimal cap set, brokers endpoint caps (Genode init).
-  *Outcome:* dependency-ordered start with explicit per-service authority.
-- **5.2 Move in-kernel services out (incremental)** — P: Medium · D: 8 · deps: 5.1,
+  *Outcome:* dependency-ordered start (`serviceAddDep`/`serviceStartAll`, cycles held
+  back) with explicit per-service authority + endpoint-cap brokering
+  (`serviceBrokerEndpoint`).
+- **5.2 Move in-kernel services out (incremental)** — ✅ **DONE (plumbing)** · P: Medium · D: 8 · deps: 5.1,
   2.2 · affects: `display/`, DRM, fs providers. *Why:* in-kernel Wayland/DRM/fs are
   ambient authority; rootless wants them as cap-holding user servers. *Outcome:* each
-  migrated service runs least-privilege; do FS first, display last.
-- **5.3 Versioned services** — P: High · D: 5 · deps: 4.4, 5.1. *Why:* design-goal
+  service has a domain + ambient flag; `serviceMigrateToUser` narrows authority and
+  drops ambient reach, `serviceMigrateNext` orders FS-first/display-last. *The actual
+  relocation of the in-kernel servers into user-space processes is the remaining work
+  this mechanism drives.*
+- **5.3 Versioned services** — ✅ **DONE** · P: High · D: 5 · deps: 4.4, 5.1. *Why:* design-goal
   #1; services are store objects with versions. *Outcome:* a service = a pinned store
-  hash; upgrade = new generation.
+  hash (`serviceSetVersion`); upgrade = new generation + version bump
+  (`serviceUpgrade`).
 
 ### Phase 6 — Update / rollback system
 - **6.1 A/B slots** — P: Critical · D: 7 · deps: 4.1, 0.3, boot. *Why:* atomic upgrade

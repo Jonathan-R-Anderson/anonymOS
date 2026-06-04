@@ -3,6 +3,8 @@ module core.syscalls.mmap;
 import core.io;
 import memory.mm;
 import arch.x86_64.arch;
+import core.hardening : wxProtectMasks; // IR-P8.3: W^X / NX enforcement on protect
+import core.cap : g_activeCapTabId;
 
 extern (C):
 @nogc nothrow:
@@ -93,45 +95,14 @@ long sys_mprotect(ulong addr, ulong len, ulong prot) {
     ulong aligned_len = (len + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
     ulong num_pages = aligned_len / PAGE_SIZE;
 
-    // Prot flags
-    enum PROT_READ = 0x1;
-    enum PROT_WRITE = 0x2;
-    enum PROT_EXEC = 0x4;
-    
-    // PTE Flags (must match arch.d)
-    enum PTE_PRESENT = 1 << 0;
-    enum PTE_RW      = 1 << 1;
-    enum PTE_USER    = 1 << 2;
-    enum PTE_NX      = 1UL << 63;
-
-    ulong set_mask = PTE_PRESENT | PTE_USER;
-    ulong clear_mask = 0;
-
-    if (prot & PROT_WRITE) {
-        set_mask |= PTE_RW;
-    } else {
-        clear_mask |= PTE_RW;
-    }
-
-    if (prot & PROT_EXEC) {
-        clear_mask |= PTE_NX;
-    } else {
-        set_mask |= PTE_NX;
-    }
-    
-    // Check for PROT_NONE (no access) -> Clear Present?
-    // Linux man page: "The memory is reserved, but cannot be accessed."
-    // If we clear PRESENT, it will fault. 
-    // But we need to distinguish "not mapped" from "mapped but protected".
-    // For now, let's keep it PRESENT but clear RW and maybe User?
-    // Existing logic above handles RW/NX.
-    // If PROT_NONE (0), it will be Read-Only and NX.
-    // Ideally we'd mark it Supervisor only (clear PTE_USER)? 
-    // But if we clear PTE_USER, user access faults.
-    if (prot == 0) {
-        clear_mask |= PTE_USER;
-        set_mask &= ~PTE_USER;
-    }
+    // IR-P8.3: W^X / NX policy decides the protection bits.  A request to make a
+    // page writable-and-executable comes back writable + NX (exec dropped), so a
+    // process can never mprotect a page to W+X; PROT_NONE clears user access.  This
+    // is the live W^X enforcement point (the dynamic linker only ever *tightens*
+    // permissions here, never to W+X).
+    ulong set_mask;
+    ulong clear_mask;
+    wxProtectMasks(cast(uint)prot, g_activeCapTabId, &set_mask, &clear_mask);
 
     for (ulong i = 0; i < num_pages; i++) {
         protect_page_hhdm(addr + (i * PAGE_SIZE), set_mask, clear_mask);

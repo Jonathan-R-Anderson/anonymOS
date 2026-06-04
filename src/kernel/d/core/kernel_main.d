@@ -43,6 +43,8 @@ import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
+import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
+import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + cap audit
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
@@ -1008,6 +1010,8 @@ private void dispatchSyscall(int tid) {
         untypedSelfTest(); // IMMUTABLE_ROOTLESS §1.4: one-shot proof no ambient allocation
         storeSelfTest(); // IMMUTABLE_ROOTLESS §4: content-addr store + verity + split + generations
         updateSelfTest(); // IMMUTABLE_ROOTLESS §6: A/B slots + signed apply + anti-downgrade + auto-rollback
+        cryptoSelfTest(); // IMMUTABLE_ROOTLESS §8.1/8.2: real SHA-256/HMAC + measured/verified boot
+        hardeningSelfTest(); // IMMUTABLE_ROOTLESS §8.3/8.4: W^X / NX policy + capability audit log
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -1033,6 +1037,8 @@ private void dispatchSyscall(int tid) {
             untypedStats();
             storeStats();
             updateStats();
+            cryptoStats();
+            hardeningStats();
         }
     }
 

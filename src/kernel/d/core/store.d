@@ -14,11 +14,10 @@
 //   §4.3 /usr(ro) /etc(ovl) /var   — storeMountSystem + storeWritable (rights gate)
 //   §4.4 generations / deployments — genCreate / genSetActive / genRollback (atomic)
 //
-// Crypto note: §4.2/§6.2 ultimately chain to the BLAKE3/ed25519 primitives of
-// Phase 8.1, which are not built yet.  Until then this uses a self-contained
-// 256-bit content hash (four position-sensitive FNV-1a lanes) — strong enough to
-// *address* content and to *detect* a flipped backing-store byte (which the
-// self-test proves), and a drop-in for the real digest once §8.1 lands.
+// Crypto note: the content hash is real SHA-256 (§8.1 `core/crypto.d`, proven
+// against the NIST vectors), so content addressing and the §4.2 verity tree are
+// cryptographically sound.  (Earlier phases used an FNV stand-in here until §8.1
+// landed; §6.2 update signatures are HMAC-SHA-256 pending an asymmetric verify.)
 //
 // Constraints mirror the rest of the kernel: -betterC, plain structs, __gshared
 // fixed tables, @nogc nothrow — no GC, no druntime, no heap.
@@ -28,6 +27,7 @@ import core.io; // klog / klog_hex
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.namespace : nsAlloc, nsBind, nsResolveWithRights, nsRelease;
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE;
+import core.crypto : sha256; // IR-P8.1: real SHA-256 content hash
 
 extern (C) @nogc nothrow:
 
@@ -47,28 +47,12 @@ private bool digEqual(ref const(Digest256) a, ref const(Digest256) b) {
            a.w[2] == b.w[2] && a.w[3] == b.w[3];
 }
 
-// Four FNV-1a lanes with distinct offset bases; each input byte is folded into
-// every lane, mixed with its position so byte order matters and the lanes diverge.
-// Placeholder for BLAKE3 (§8.1) — content-addressing + tamper detection only.
+// Real SHA-256 (§8.1 `core/crypto.d`) over the content — the 32-byte digest is the
+// content address.  This replaced the earlier FNV stand-in once §8.1 landed, so
+// content addressing and the §4.2 verity tree are now cryptographically sound.
 private Digest256 digestOf(const(ubyte)* p, ulong len) {
-    enum ulong PRIME = 0x1000_0000_01b3;
     Digest256 d;
-    d.w[0] = 0xcbf2_9ce4_8422_2325;
-    d.w[1] = 0x9e37_79b9_7f4a_7c15;
-    d.w[2] = 0xff51_afd7_ed55_8ccd;
-    d.w[3] = 0xc4ce_b9fe_1a85_ec53;
-    foreach (ulong i; 0 .. len) {
-        ulong b = cast(ulong)p[i];
-        foreach (lane; 0 .. 4) {
-            ulong h = d.w[lane];
-            h ^= b + (i << (lane * 3 + 1));     // position- and lane-dependent twist
-            h *= PRIME;
-            h ^= h >> 29;
-            d.w[lane] = h;
-        }
-    }
-    // Fold the length in so distinct-length inputs never alias.
-    foreach (lane; 0 .. 4) { d.w[lane] ^= len; d.w[lane] *= PRIME; }
+    sha256(p, len, cast(ubyte*)&d);   // Digest256 is exactly 32 bytes (4 × ulong)
     return d;
 }
 
@@ -159,8 +143,8 @@ public Digest256 storeRoot(uint objId) {
     return b is null ? Digest256.init : b.root;
 }
 
-// Public hash primitives (the §4.2 content digest), reused by the update/signature
-// path (§6.2) until the real §8.1 BLAKE3/ed25519 primitives land.
+// Public hash primitives (the §4.2 content digest = SHA-256), reused by the
+// update/signature path (§6.2).
 public Digest256 storeHash(const(ubyte)* p, ulong len) { return digestOf(p, len); }
 public bool storeDigestEqual(ref const(Digest256) a, ref const(Digest256) b) { return digEqual(a, b); }
 

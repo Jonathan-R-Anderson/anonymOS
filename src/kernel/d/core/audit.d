@@ -25,6 +25,8 @@ enum AuditKind : uint {
     WeakNulled,       // dead weak edges nulled
     ControlOk,        // validator control call admitted (held the cap)
     ControlDenied,    // validator control call refused (no cap)
+    CapAllow,         // §8.4: a requireCap decision admitted (held the rights)
+    CapDeny,          // §8.4: a requireCap decision refused (missing rights)
     Count
 }
 
@@ -78,5 +80,7 @@ public void auditStats() {
     klog(" revoke=");        klog_hex(auditCount(AuditKind.Revocation));
     klog(" ctlok=");         klog_hex(auditCount(AuditKind.ControlOk));
     klog(" ctldeny=");       klog_hex(auditCount(AuditKind.ControlDenied));
+    klog(" capok=");         klog_hex(auditCount(AuditKind.CapAllow));
+    klog(" capdeny=");       klog_hex(auditCount(AuditKind.CapDeny));
     klog("\n");
 }

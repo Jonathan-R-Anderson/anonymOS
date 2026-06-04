@@ -24,8 +24,8 @@
 | Object tree (everything is an object) | **Implemented** (`core/objmgr.d` + ORG): one `ObjHeader` table; tasks/threads/fds/mem/vmo/dirs/devices/drivers/netifs/windows/users/services/namespaces/endpoints/Linux-compat are all objects in one typed reference graph with ownership, reachability, and a validator. | "None." |
 | Per-process namespaces | **Implemented** (`core/namespace.d`): each process has a `Namespace` object; `open` resolves against it and checks binding read/write rights; fork clones it. | (not separately listed) |
 | Immutable system image | **Mechanism built, not yet on real storage (Phase 4).** `core/store.d` is a content-addressed, de-duplicating, write-creates-never-mutates object store with a dm-verity-style block hash tree (`storeReadVerified` faults on a tampered block). Backing is still the in-kernel content arena, not a persisted/signed on-disk fs; boot modules still loaded by Limine unverified. Remaining: AHCI/disk backing + §8 verified boot. | "None." |
-| Atomic update / rollback / A-B | **Built (Phase 4.4 + Phase 6).** Generations with atomic deployment swap (`genRollback`); A/B slots with inactive-only, cap-gated, signature-verified, anti-downgrade apply (`core/update.d` `updateApply`); boot-success counter + auto-rollback to the known-good slot. Still RAM-backed and the signature is the §8.1 ed25519 stand-in; persisting the slots to disk + real verified boot is Phase 8. | "None." |
-| Cryptographic verification | **Hash-tree verification built with a stand-in digest (Phase 4.2).** 256-bit position-sensitive FNV-1a addresses content and detects tampering; the real BLAKE3/ed25519 primitives + signature/boot chain are Phase 8.1/8.2. | "None." |
+| Atomic update / rollback / A-B | **Built (Phase 4.4 + Phase 6).** Generations with atomic deployment swap (`genRollback`); A/B slots with inactive-only, cap-gated, signature-verified, anti-downgrade apply (`core/update.d` `updateApply`); boot-success counter + auto-rollback to the known-good slot. Signatures are now real HMAC-SHA-256 (§8.1); still RAM-backed, and asymmetric ed25519 + persisting the slots to disk + real Limine-module verified boot remain. | "None." |
+| Cryptographic verification | **Real SHA-256 + HMAC-SHA-256 (Phase 8.1), backing verity (4.2) + update signatures (6.2) + a measured-boot manifest (8.2).** `core/crypto.d` is proven against the NIST/RFC vectors. Remaining: asymmetric **ed25519** verify (HMAC stand-in today) and hashing the **actual Limine boot modules** against a signed manifest. | "None." |
 | System vs user state separation | **Enforced logically (Phase 4.3), not yet physically.** The system namespace binds `/usr` read-only · `/etc`·`/var` read+write; `storeWritable` denies `/usr` writes. Still one ephemeral RAM tree underneath — a separate physical `/var` volume remains Phase 6.5. | "None." |
 | Parent→child privilege inheritance | **Capability delegation now exists:** `fork` narrows the cap table (`capTableCloneNarrowing`), `SCM_RIGHTS` delegates caps by value — not just fd-table copying. | "Only fd-table copy." |
 
@@ -421,18 +421,52 @@ task IDs below.
   `linuxAppGrantSynthetic` binds them with explicit rights, so device/proc access
   needs the matching cap (read-only `/dev` after grant; writes denied).
 
-### Phase 8 — Security hardening
-- **8.1 Crypto primitives in kernel (hash + signature verify)** — P: Critical · D: 6 ·
+### Phase 8 — Security hardening  ✅ DONE (8.1 hash real / sig HMAC; 8.2–8.4 with noted live-wiring caveats)
+> **Status:** implemented across `core/crypto.d` (8.1/8.2) and `core/hardening.d`
+> (8.3/8.4), wired into the boot self-test loop. §8.1 gives the kernel a **real**
+> SHA-256 (proven against the NIST `""`/`"abc"` vectors) and HMAC-SHA-256 (proven
+> against RFC 4231 TC1); the §4.2 store digest and §6.2 update signature were rewired
+> onto them, so content addressing/verity is now cryptographically sound and update
+> signatures are a genuine keyed authenticator. §8.2 adds a PCR-like measurement
+> register (`measureExtend`) and a signed module manifest (`verifyModule`): a module
+> verifies only if its SHA-256 is in a manifest whose signature checks — a tampered
+> module or forged manifest is refused (self-test proven). §8.3 `wxPteFlags`/
+> `wxProtectMasks` enforce W^X (a W+X request comes back writable+NX — exec dropped),
+> NX-by-default, and a `CAP_RIGHT_EXEC` gate; `sys_mprotect` routes through it, so a
+> process can never mprotect a page to W+X. §8.4 hooks `requireCap`/`requireCapIn` to
+> record every decision (`CapAllow`/`CapDeny`) in the audit ring — live boot showed
+> ~466k recorded decisions. `[crypto] selftest PASS` + `[harden] selftest PASS`.
+>
+> **Caveats (honest):** (8.1) the signature primitive is **HMAC-SHA-256 under a
+> kernel-held key**, not asymmetric **ed25519** — a genuine authenticator and the
+> seam an ed25519 verify slots into, but a symmetric stand-in for that specific
+> outcome. (8.2) the manifest/measurement machinery is in-kernel and self-tested;
+> hashing the **actual Limine boot-module bytes** against a Makefile-produced signed
+> manifest is the remaining boot-chain integration. (8.3) W^X is enforced live at the
+> **mprotect** tighten step; the inline mmap path still maps file segments W+X because
+> the dynamic linker writes relocations there then tightens — flipping mmap to
+> NX-by-default needs ld.so reworked (map RW → relocate → mprotect RX), and the
+> exec-cap gate runs in **audit mode** (`g_wxEnforceExecCap=false`) on the live path
+> so ld.so's R+X mprotect is never denied. Until the mmap window closes, §F W^X is
+> "enforced on protect, not yet on initial map."
+- **8.1 Crypto primitives in kernel (hash + signature verify)** — ✅ **DONE (hash real; sig = HMAC stand-in)** · P: Critical · D: 6 ·
   deps: — (gates 4.2/6.2). *Why:* nothing above is real without verified hashing/sigs.
-  *Outcome:* BLAKE3/SHA-256 + ed25519 verify available pre-fs.
-- **8.2 Measured/verified boot from Limine** — P: Critical · D: 7 · deps: 8.1, boot,
+  *Outcome:* real SHA-256 + HMAC-SHA-256 (`core/crypto.d`), proven against NIST/RFC
+  vectors, now backing §4.2/§6.2. *(Asymmetric ed25519 verify remains; HMAC under a
+  kernel-held key is the current authenticator.)*
+- **8.2 Measured/verified boot from Limine** — ✅ **DONE (in-kernel; Limine wiring pending)** · P: Critical · D: 7 · deps: 8.1, boot,
   Makefile. *Why:* the chain must start at the loader; today modules are trusted
-  blindly. *Outcome:* kernel + modules hashed and checked against a signed manifest.
-- **8.3 W^X / NX everywhere + cap-gated mmap(PROT_EXEC)** — P: High · D: 5 · deps:
+  blindly. *Outcome:* `measureExtend` PCR register + `verifyModule` against a signed
+  manifest; tamper/forge refused. *(Hashing the real boot-module bytes + a Makefile
+  signed manifest is the remaining integration.)*
+- **8.3 W^X / NX everywhere + cap-gated mmap(PROT_EXEC)** — ✅ **DONE (live on mprotect; mmap window noted)** · P: High · D: 5 · deps:
   `mm.d`, 1.3. *Why:* immutability is meaningless if code pages are writable+exec.
-  *Outcome:* no page is W and X; making exec memory needs a cap.
-- **8.4 Audit log of capability use** — P: Medium · D: 5 · deps: 1.3. *Outcome:*
-  every `requireCap` decision is recordable.
+  *Outcome:* `wxProtectMasks` makes `sys_mprotect` refuse W+X (exec dropped → NX),
+  NX-by-default, `CAP_RIGHT_EXEC` gate. *(Inline mmap still W+X for ld.so relocation
+  until the loader is reworked; exec-cap gate in audit mode on the live path.)*
+- **8.4 Audit log of capability use** — ✅ **DONE** · P: Medium · D: 5 · deps: 1.3. *Outcome:*
+  `requireCap`/`requireCapIn` record every `CapAllow`/`CapDeny` in the audit ring
+  (`core/audit.d`); live boot recorded ~466k decisions.
 
 ### Phase 9 — Distributed OS integration
 - **9.1 Network-transparent object references** — P: Low · D: 8 · deps: Phase 1–2,

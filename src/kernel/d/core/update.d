@@ -16,19 +16,19 @@
 //   §6.5 user-state snapshots   — /var snapshot/restore as store objects, independent
 //        of the system generation (rolling back the OS never rolls back user data).
 //
-// Crypto note: §6.2 ultimately uses the §8.1 ed25519 verify; until that lands the
-// signature is a keyed digest over the content hash (the kernel holds the trusted
-// key) — it genuinely rejects tampered content and wrong-key signatures, which the
-// self-test proves, and is a drop-in for the real asymmetric verify.
+// Crypto note: §6.2 signatures are real HMAC-SHA-256 (§8.1 `core/crypto.d`) over the
+// SHA-256 content digest, keyed by the kernel-held trusted key — it genuinely
+// rejects tampered content and wrong-key signatures, which the self-test proves. An
+// asymmetric ed25519 verify would slot in at this same seam.
 //
 // Constraints mirror the rest of the kernel: -betterC, plain structs, __gshared
 // fixed tables, @nogc nothrow.
 module core.update;
 
 import core.io; // klog / klog_hex
-import core.store : storePut, storeRoot, storeReadVerified, storeHash,
-                    storeDigestEqual, genCreate, genSetActive, genActive,
-                    genNumber, Digest256;
+import core.store : storePut, storeRoot, storeReadVerified, genCreate,
+                    genSetActive, genActive, genNumber, Digest256;
+import core.crypto : hmacSha256, ctEqual32; // IR-P8.1: real HMAC-SHA-256 signatures
 import core.admin : adminRequireIn, adminInstallCapIn;
 import core.cap : CAP_RIGHT_ADMIN_UPDATE, CAPTAB_COUNT, capTableClear,
                   capLiveCount, g_activeCapTabId;
@@ -112,23 +112,23 @@ public bool updateActivateInactive() {
     return true;
 }
 
-// --- §6.2 signature (ed25519 stand-in) ----------------------------------------
-// Sign the content digest with `key`; the kernel verifies against UPDATE_TRUSTED_KEY.
+// --- §6.2 signature (HMAC-SHA-256 over the SHA-256 content digest) -------------
+// HMAC-SHA-256 of the image's content digest under `key`; the kernel verifies
+// against UPDATE_TRUSTED_KEY.  A genuine cryptographic authenticator (an attacker
+// without the key cannot forge it); the seam where an asymmetric ed25519 verify
+// would slot in.
 public Digest256 updateSign(uint storeObjId, ulong key) {
-    Digest256 d = storeRoot(storeObjId);
-    ubyte[Digest256.sizeof + ulong.sizeof] buf;
-    auto dp = cast(const(ubyte)*)&d;
-    foreach (i; 0 .. Digest256.sizeof) buf[i] = dp[i];
-    auto kp = cast(const(ubyte)*)&key;
-    foreach (i; 0 .. ulong.sizeof) buf[Digest256.sizeof + i] = kp[i];
-    return storeHash(buf.ptr, buf.length);
+    Digest256 d = storeRoot(storeObjId);   // = SHA-256(content)
+    Digest256 sig;
+    hmacSha256(cast(const(ubyte)*)&key, ulong.sizeof,
+               cast(const(ubyte)*)&d, Digest256.sizeof, cast(ubyte*)&sig);
+    return sig;
 }
 
 public bool updateVerify(ref const(UpdateBundle) b) {
     if (b.storeObjId == 0) return false;
     Digest256 expect = updateSign(b.storeObjId, UPDATE_TRUSTED_KEY);
-    Digest256 got = b.sig;
-    return storeDigestEqual(expect, got);
+    return ctEqual32(cast(const(ubyte)*)&expect, cast(const(ubyte)*)&b.sig);
 }
 
 // --- §6.2/§6.3 apply ----------------------------------------------------------

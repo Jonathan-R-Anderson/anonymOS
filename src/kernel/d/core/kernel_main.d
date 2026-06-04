@@ -30,6 +30,7 @@ import arch.x86_64.bootstrap : g_fb, g_terminal;
 
 // Linux syscall implementations already in D
 import core.syscalls.posix;
+import core.objmgr : objStats; // Phase 2: object-table runtime stats (objReconcileFds comes via core.syscalls.posix)
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -836,6 +837,9 @@ extern (C) ulong linux_seed_initial_stack_with_args(
 // Toggle for the very verbose per-syscall trace ([sc] t=/n=).  Off by default.
 __gshared bool g_traceSyscalls = false;
 
+// Phase 2: amortization counter for objReconcileFds()/objStats() (see dispatchSyscall).
+__gshared uint g_objReconcileCtr = 0;
+
 private void dispatchSyscall(int tid) {
     ulong rax = x64LastSyscallRax;
     ulong rdi = x64LastSyscallRdi;
@@ -857,6 +861,17 @@ private void dispatchSyscall(int tid) {
     // Select this task's process fd table before servicing the syscall, so each
     // process sees its own descriptors (fork gives the child an independent copy).
     fdtabSetActive(task.fdTabId);
+
+    // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): keep the core.objmgr object table
+    // mirrored onto the now-active fd table.  Amortized (every 256 syscalls) and
+    // off the I/O path, so the proof-of-tracking carries no per-syscall cost;
+    // every ~16k syscalls dump live/peak counts as runtime evidence the table
+    // tracks every fd.
+    if (((++g_objReconcileCtr) & 0xFF) == 0) {
+        objReconcileFds();
+        if ((g_objReconcileCtr & 0x3FFF) == 0) objStats();
+    }
+
     long ret  = 0;
 
     switch (rax) {

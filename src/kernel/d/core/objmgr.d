@@ -1,0 +1,144 @@
+// Object Manager — Phase 2 of roadmap/OBJECT_OS_ROADMAP.md.
+//
+// Introduces the common `Object` header + a central object table that all
+// subsystems will eventually adopt (files, processes, memory regions, devices,
+// ...).  In this phase it is ADDITIVE and not on the dispatch path: it mirrors
+// the existing fd layer so we can prove "every fd is an entry in g_objects"
+// before any behaviour is routed through `g_objOps` (that is Phase 5).
+//
+// Constraints: kernel is built `-betterC` (ldc2, no druntime/GC/exceptions) —
+// plain structs, __gshared fixed tables, function pointers, @nogc nothrow.
+// File is named objmgr.d (module core.objmgr) rather than object.d to avoid any
+// ambiguity with D's special root `object` module.
+module core.objmgr;
+
+import core.io; // klog / klog_hex
+
+extern (C) @nogc nothrow:
+
+// Every kind of thing that can become an object.  Order is stable (ids are
+// persisted nowhere yet, but treat additions as append-only).  `Count` is the
+// sentinel = number of real types, used to size the method-table array.
+enum ObjType : uint {
+    Invalid = 0,
+    File,
+    Process,
+    Thread,
+    MemRegion,
+    Vmo,
+    Directory,
+    Device,
+    Driver,
+    NetIf,
+    Window,
+    User,
+    Service,
+    Namespace,
+    Capability,
+    Endpoint,
+    LinuxProcess,
+    Count
+}
+
+// The common object header.  `impl` points at the subsystem payload that backs
+// this object (e.g. a `File` slot, a `Task`, an `AddrRegion`) — what used to be
+// the per-instance `void* backend`.  `ownerCap`/`version_` are hooks for the
+// capability owner (Phase 6) and version history; unused but reserved now.
+struct ObjHeader {
+    uint    id;        // dense index into g_objects (0 == the invalid object)
+    ObjType type;
+    uint    refCount;  // 0 == free slot
+    uint    ownerCap;  // capability id of owner (Phase 6); 0 for now
+    uint    version_;  // metadata / version-history hook
+    void*   impl;      // subsystem payload
+}
+
+enum int OBJ_MAX = 8192;
+__gshared ObjHeader[OBJ_MAX] g_objects;
+
+// Free-list stack of available slot indices (ids 1..OBJ_MAX-1; id 0 is the
+// reserved "invalid" object so a 0 handle always means "none").
+__gshared uint[OBJ_MAX] g_objFree;
+__gshared int           g_objFreeTop = -1;
+__gshared bool          g_objInited  = false;
+
+__gshared ulong g_objAllocTotal = 0;
+__gshared ulong g_objFreeTotal  = 0;
+__gshared uint  g_objLive        = 0;
+__gshared uint  g_objPeak        = 0;
+
+private void objInit() {
+    if (g_objInited) return;
+    g_objInited = true;
+    g_objects[0] = ObjHeader.init;          // id 0 = invalid sentinel
+    g_objFreeTop = -1;
+    for (int i = OBJ_MAX - 1; i >= 1; --i)  // hand out low ids first
+        g_objFree[++g_objFreeTop] = cast(uint)i;
+}
+
+// Per-type method table.  Phase 5 will route read/write/close through this; it
+// is intentionally empty (all null) in Phase 2.
+alias ObjReadFn  = long function(ObjHeader*, void*, ulong) @nogc nothrow;
+alias ObjWriteFn = long function(ObjHeader*, const(void)*, ulong) @nogc nothrow;
+alias ObjCloseFn = void function(ObjHeader*) @nogc nothrow;
+struct ObjOps {
+    ObjReadFn  read;
+    ObjWriteFn write;
+    ObjCloseFn close;
+}
+__gshared ObjOps[ObjType.Count] g_objOps;
+
+// Allocate a new object of `type` backed by `impl`.  Returns its id, or 0 if the
+// table is full (callers tolerate 0 = "untracked" — nothing depends on the
+// object table for behaviour in Phase 2).
+public uint objAlloc(ObjType t, void* impl) {
+    objInit();
+    if (g_objFreeTop < 0) return 0;
+    uint id = g_objFree[g_objFreeTop--];
+    auto h = &g_objects[id];
+    h.id       = id;
+    h.type     = t;
+    h.refCount = 1;
+    h.ownerCap = 0;
+    h.version_ = 0;
+    h.impl     = impl;
+    ++g_objAllocTotal;
+    ++g_objLive;
+    if (g_objLive > g_objPeak) g_objPeak = g_objLive;
+    return id;
+}
+
+public ObjHeader* objGet(uint id) {
+    if (id == 0 || id >= OBJ_MAX) return null;
+    auto h = &g_objects[id];
+    return (h.refCount == 0) ? null : h;
+}
+
+public void objRetain(uint id) {
+    auto h = objGet(id);
+    if (h !is null) ++h.refCount;
+}
+
+// Drop a reference; frees the slot at refcount 0.  Idempotent / underflow-safe so
+// a stray double-release (possible while the object table is still a best-effort
+// mirror) can never corrupt the kernel.
+public void objRelease(uint id) {
+    auto h = objGet(id);
+    if (h is null) return;
+    if (--h.refCount == 0) {
+        h.type = ObjType.Invalid;
+        h.impl = null;
+        if (g_objFreeTop < OBJ_MAX - 1)
+            g_objFree[++g_objFreeTop] = id;
+        ++g_objFreeTotal;
+        if (g_objLive > 0) --g_objLive;
+    }
+}
+
+public void objStats() {
+    klog("[obj] live="); klog_hex(cast(ulong)g_objLive);
+    klog(" peak=");      klog_hex(cast(ulong)g_objPeak);
+    klog(" alloc=");     klog_hex(g_objAllocTotal);
+    klog(" freed=");     klog_hex(g_objFreeTotal);
+    klog("\n");
+}

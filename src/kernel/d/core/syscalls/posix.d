@@ -10,6 +10,7 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
+import core.objmgr : ObjType, objAlloc, objRelease, objGet; // Phase 2 object mgr
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -76,6 +77,7 @@ struct File {
     ulong offset;
     void* backend; // Generic pointer for driver-specific data
     ulong fileSize; // Size for bundle files or others
+    uint  objId;    // Phase 2: id of the core.objmgr Object mirroring this fd (0 = none)
 }
 
 private struct BootModuleRecord {
@@ -333,6 +335,32 @@ private int allocFd() @nogc nothrow {
     for (int i = 3; i < 1024; i++)
         if (g_fdTable[i].type == FileType.FD_NONE) return i;
     return -1;
+}
+
+// Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): mirror every fd of the *active*
+// process's table as a core.objmgr Object, so "every fd is an entry in
+// g_objects" holds without hooking each of the many fd creation/copy/close
+// sites.  Reconciliation self-heals every path (open, dup, SCM_RIGHTS whole-File
+// copy, fork copy, close) because it validates the object's `impl` points back
+// at this exact slot: a copied/stale objId never matches, so the slot is
+// re-registered, and only an object that truly backs a now-dead slot is freed.
+// Called amortized from the syscall dispatcher; not on the I/O path.
+public void objReconcileFds() {
+    initFdTable();
+    foreach (i; 0 .. 1024) {
+        File* f = &g_fdTable[i];
+        if (f.type == FileType.FD_NONE) {
+            if (f.objId != 0) {
+                auto h = objGet(f.objId);
+                if (h !is null && h.impl is cast(void*)f) objRelease(f.objId);
+                f.objId = 0;
+            }
+        } else {
+            auto h = (f.objId != 0) ? objGet(f.objId) : null;
+            if (h is null || h.impl !is cast(void*)f)
+                f.objId = objAlloc(ObjType.File, cast(void*)f);
+        }
+    }
 }
 private enum int ENOTSOCK = 88;
 private enum int EDESTADDRREQ = 89;

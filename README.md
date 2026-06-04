@@ -322,19 +322,9 @@ Historically the project used the shorter name `Hos`, and that still appears thr
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b70e3-cf4c-83ea-bd42-ba2e23f7fea9 (fully homomorphic encryption)
 
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b708e-099c-83ea-a574-b84fd3f39645 (Secure IPC)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/685f2539-45d4-8007-bbed-b3de3f8b462f (acyclic object tree)
-
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/69371c98-eef4-8331-9719-070b2df3ea90 (perlin noise generator)
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/69372881-2548-8332-a7ac-1c9f0b1e0844 (blockchain)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/691e83c5-3d50-832c-9ec3-88540840f991 (android process secure)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b6ec0-a26c-83ea-b69e-bd63462a14b7 (immutable kernel)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099/c/69223f4f-0fd0-8331-9858-3588655227d6 (everything-as-an-object)
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a0cd0e9-8620-83ea-9081-8208ef797e3b (distributed os)
 

@@ -72,6 +72,12 @@ __gshared ulong g_objFreeTotal  = 0;
 __gshared uint  g_objLive        = 0;
 __gshared uint  g_objPeak        = 0;
 
+// ORG hook (OBJECT_REFERENCE_GRAPH_ROADMAP.md P2): when an object slot is freed,
+// the Object Reference Graph layer is notified so it can drop the object's
+// out-edges and stale its weak in-edges.  Set by core/org.d at init; null until
+// then (objmgr must not depend on org — this avoids the import cycle).
+__gshared void function(uint id) @nogc nothrow g_objFreeNotify = null;
+
 private void objInit() {
     if (g_objInited) return;
     g_objInited = true;
@@ -149,6 +155,7 @@ public void objRelease(uint id) {
             g_objFree[++g_objFreeTop] = id;
         ++g_objFreeTotal;
         if (g_objLive > 0) --g_objLive;
+        if (g_objFreeNotify !is null) g_objFreeNotify(id); // ORG P2: drop edges
     }
 }
 

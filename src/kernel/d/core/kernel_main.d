@@ -42,6 +42,7 @@ import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
                        linuxStats; // Phase 12: Linux-compat object subtree
 import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
+import core.org : orgInit, orgSelfTest, orgStats; // ORG P2: object reference graph
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -944,6 +945,7 @@ private void dispatchSyscall(int tid) {
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated
+        orgSelfTest(); // ORG P2: one-shot proof of typed edges + weak coherence
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -955,6 +957,7 @@ private void dispatchSyscall(int tid) {
             windowStats();
             linuxStats();
             kernelCensusStats();
+            orgStats();
         }
     }
 
@@ -1664,6 +1667,9 @@ void d_kernel_main() {
     // before the init process issues its first syscall (the dispatcher routes all
     // Linux syscalls through the LinuxSyscallObject gate from here on).
     linuxObjectInit();
+    // ORG P2: initialise the object reference graph (installs the free-notify hook
+    // for weak-edge coherence) before any object churn.
+    orgInit();
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

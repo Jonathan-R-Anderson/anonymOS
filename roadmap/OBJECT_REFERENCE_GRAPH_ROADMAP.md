@@ -134,7 +134,30 @@ global namespace via weak, capability-gated edges.
 
 ---
 
-## PHASE 1 — Architecture
+## PHASE 1 — Architecture  ✅ DONE
+
+> **Status: ratified spec written → [`ORG_ARCHITECTURE.md`](ORG_ARCHITECTURE.md).**
+> A design/docs phase (no code). The spec (a) ratifies the edge taxonomy
+> {StrongOwn, StrongRef, Weak, Cap, Observer} with per-kind life/security/cycle
+> rules and **classifies all 20 concrete edges in the current tree** (E1–E20 —
+> a superset of this roadmap's 9-row table, extended to the objects added by
+> Object-OS Phases 7–12); (b) reduces the ownership / capability-propagation /
+> security-inheritance / corruption-recovery models to **checkable predicates**
+> I1–I8, each with its enforcement point and current status; (c) maps the threat
+> model **T1–T10** (cycle-leak DoS, epoll watch-bomb, label-escalation via ref
+> edges, stale revocation, validator-as-oracle, …) to invariant(s) + mitigating
+> phase + current status, verifying no threat is unassigned.
+>
+> **Key framing correction the spec records:** this roadmap's opening premise
+> ("there is no Object Manager to graph yet") is now **outdated** — Object-OS
+> Phases 2–13 are implemented, so `ObjHeader{…ownerCap,mark}`, `Capability`, and
+> per-family `objId`s already exist. ORG-P2 therefore extends a *real* object
+> header; the remaining gaps the spec pins down are: edges are still untyped
+> subsystem fields (no `edgeAdd` chokepoint, **I6**), the `SCM_RIGHTS` in-flight
+> cycle is still uncollectable (**T1/I3**), epoll nesting is unbounded (**T3**),
+> and revocation cascades only one level (**T6/I7**). Distributed specifics
+> deferred to P11 per the risk note.
+
 *Why:* lock the two-graph model, edge kinds, and invariants before code, so later
 phases don't bake in the ownership/reference conflation. *Affected:* docs; design of
 `core/object.d` (OO roadmap). *Risks:* over-design; mitigate by deferring distributed
@@ -151,7 +174,43 @@ specifics to Phase 11. *Refactoring:* none. *Performance:* n/a.
   cycle-leak DoS, label-escalation via ref edges, validator-as-oracle. *Accept:* each
   threat maps to an invariant/phase.
 
-## PHASE 2 — Kernel Data Structures
+## PHASE 2 — Kernel Data Structures  ✅ DONE
+
+> **Status: implemented as a typed edge graph keyed by the object table.** New
+> module `core/org.d` provides the `EdgeKind` taxonomy {StrongOwn, StrongRef, Cap,
+> Weak, Observer}, a pooled intrusive out-edge list per object
+> (`OrgEdge{kind,fromId,toId,rights,toGen,next}` + `OrgNode{outHead,strongIn,
+> strongOut,owner,gen}` keyed by `objId`), and the three deliverables:
+> **2.1** per-object adjacency enumerable in O(deg) (`orgOutDegree`/`orgStrongIn`/
+> `orgStrongOut`/`orgOwner`/`orgHasEdge`) with `ObjHeader.ownerCap` wired by
+> StrongOwn edges; **2.2** `edgeAdd`/`edgeRemove` as the sole relationship
+> mutators, maintaining strong in/out counts + a global epoch; **2.3** weak
+> references — Weak/Observer edges don't count toward life, and `weakGet` returns
+> null when the target is dead or its slot was reused (per-slot `gen` snapshot).
+>
+> **Free-notify hook:** `objmgr.d` gained a `g_objFreeNotify` function pointer
+> (null until `org.d` sets it at `orgInit`, avoiding an import cycle) that
+> `objRelease` calls on every slot free; `orgOnFree` drops the object's out-edges,
+> releases the strong-in counts they held, and bumps the slot generation so all
+> weak in-edges go stale. The adjacency is a side table keyed by `objId` (not
+> embedded in the hot 8192-entry `ObjHeader`), the same choice used for the
+> device/window/namespace registries.
+>
+> **Scope:** this builds and proves the *mechanism*; rewiring the existing
+> subsystems (E1–E20 in `ORG_ARCHITECTURE.md`) to create their edges through
+> `edgeAdd`/`edgeRemove` — and thereby making the legacy `refCount` fields derived
+> from strong-in counts — is **Phase 3**.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — in which the free-notify hook now fires
+> on *every* object free during the per-256-syscall reconcile churn — reached
+> Hyprland/Mesa compositor rendering with no kernel fault, panic, JHC falloff, or
+> OOM. The one-shot self-test logged `[org] selftest PASS`: a 3-node graph shows
+> correct out-degree and strong in/out counts (the weak edge excluded from life),
+> owner wiring, and — the 2.3 acceptance — dropping a target's last strong ref
+> frees it despite a weak in-edge, after which `weakGet` reads null. `orgStats()`
+> prints edges/adds/removes/freedrops/weaknull/epoch alongside the other subsystems.
+
 *Why:* make edges **explicit, typed, and enumerable** (today they're scattered ints).
 *Affected:* `core/object.d` (new), `task.d`, `posix.d`. *Risks:* memory overhead per
 object; double-bookkeeping vs legacy arrays. *Refactoring:* add edge lists to the

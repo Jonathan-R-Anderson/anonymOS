@@ -1,0 +1,293 @@
+// Object Reference Graph — data structures — Phase 2 of
+// OBJECT_REFERENCE_GRAPH_ROADMAP.md (see roadmap/ORG_ARCHITECTURE.md for the spec).
+//
+// Makes object relationships **explicit, typed, and enumerable**: today they are
+// scattered subsystem fields (File.objId, LocalSocket.peerId, AddrRegion.vmoObjId,
+// Task.parentId, …).  This phase builds the *mechanism* — a typed edge set keyed
+// by the central object table — and proves it; rewiring the existing subsystems
+// to create their edges through `edgeAdd`/`edgeRemove` is Phase 3.
+//
+//   2.1 — per-object adjacency (intrusive out-edge list) + strongIn/strongOut
+//         counts + `ownerCap` linkage on the real ObjHeader.
+//   2.2 — `edgeAdd`/`edgeRemove` as the only relationship mutators; maintain
+//         refcounts (strong in/out) + epoch stamps.
+//   2.3 — weak references: Weak/Observer edges don't keep targets alive; `weakGet`
+//         returns null when the target is dead or its slot was reused.
+//
+// The adjacency lives in a side table keyed by objId (functionally the object's
+// own out-edges) rather than inside `ObjHeader`, to avoid bloating the hot
+// 8192-entry header array — the same side-table choice used for the device/window/
+// namespace registries.  `ObjHeader.ownerCap` (already reserved) is wired here.
+//
+// Constraints mirror the rest of the kernel: -betterC, plain structs, __gshared
+// fixed tables, @nogc nothrow.
+module core.org;
+
+import core.io; // klog / klog_hex
+import core.objmgr : OBJ_MAX, ObjType, objGet, objAlloc, objRelease,
+                     g_objFreeNotify;
+
+extern (C) @nogc nothrow:
+
+// Edge taxonomy (ORG_ARCHITECTURE.md §1.1).  Strong = {StrongOwn, StrongRef, Cap}
+// keep the target alive; Weak/Observer do not.
+enum EdgeKind : ubyte {
+    None = 0,
+    StrongOwn,   // sole ownership; defines the object forest (security flows here)
+    StrongRef,   // non-owning keep-alive (fd→backend, mapping→Vmo, in-flight fd)
+    Cap,         // capability handle → object (rights-bearing)
+    Weak,        // back-pointer/peer/cache; reads null when target dies
+    Observer     // watch (epoll); weak + depth-bounded
+}
+
+private bool kindIsStrong(EdgeKind k) {
+    return k == EdgeKind.StrongOwn || k == EdgeKind.StrongRef || k == EdgeKind.Cap;
+}
+
+enum int ORG_EDGE_MAX = 16384;
+
+struct OrgEdge {
+    bool     inUse;
+    EdgeKind kind;
+    uint     fromId;
+    uint     toId;
+    uint     rights;
+    uint     toGen;   // target slot generation at add time (weak-coherence check)
+    int      next;    // next out-edge of fromId, or -1
+}
+
+__gshared OrgEdge[ORG_EDGE_MAX] g_orgEdges;
+__gshared int[ORG_EDGE_MAX]     g_orgEdgeFree;
+__gshared int                   g_orgEdgeFreeTop = -1;
+
+// Per-object adjacency + counts, keyed by objId.
+struct OrgNode {
+    int  outHead;    // head index into g_orgEdges (-1 = no out-edges)
+    uint strongIn;   // # strong in-edges (life count)
+    uint strongOut;  // # strong out-edges
+    uint owner;      // StrongOwn parent objId (0 = none); mirrors ObjHeader.ownerCap
+    uint gen;        // slot generation; bumped on free so weak edges go stale
+}
+__gshared OrgNode[OBJ_MAX] g_orgNodes;
+
+__gshared uint  g_orgEpoch        = 1;  // global "edges changed" epoch
+__gshared bool  g_orgInited       = false;
+__gshared bool  g_orgSelfTested   = false;
+
+__gshared ulong g_orgEdgeAdds     = 0;
+__gshared ulong g_orgEdgeRemoves  = 0;
+__gshared ulong g_orgEdgesLive    = 0;
+__gshared ulong g_orgWeakNullRead = 0;
+__gshared ulong g_orgFreeDrops    = 0;
+
+public void orgInit() {
+    if (g_orgInited) return;
+    g_orgInited = true;
+    g_orgEdgeFreeTop = -1;
+    for (int i = ORG_EDGE_MAX - 1; i >= 0; --i)
+        g_orgEdgeFree[++g_orgEdgeFreeTop] = i;
+    foreach (ref n; g_orgNodes) { n.outHead = -1; n.strongIn = 0; n.strongOut = 0;
+                                  n.owner = 0; n.gen = 1; }
+    g_objFreeNotify = &orgOnFree; // weak coherence: notified when any object frees
+}
+
+private int edgeAlloc() {
+    if (g_orgEdgeFreeTop < 0) return -1;
+    return g_orgEdgeFree[g_orgEdgeFreeTop--];
+}
+
+private void edgeFree(int e) {
+    g_orgEdges[e] = OrgEdge.init;
+    if (g_orgEdgeFreeTop < ORG_EDGE_MAX - 1)
+        g_orgEdgeFree[++g_orgEdgeFreeTop] = e;
+}
+
+private void bumpEpoch() {
+    if (++g_orgEpoch == 0) g_orgEpoch = 1;
+}
+
+// 2.2 — the ONLY way to relate two objects.  Records a typed edge from→to, links
+// it into `from`'s out-list, and (for strong kinds) maintains the life counts.  A
+// StrongOwn edge also records the owner on the target (`ObjHeader.ownerCap`).
+// Returns true on success; false if an endpoint is dead or the pool is full.
+public bool edgeAdd(uint from, uint to, EdgeKind kind, uint rights) {
+    orgInit();
+    if (from == 0 || to == 0 || kind == EdgeKind.None) return false;
+    if (objGet(from) is null || objGet(to) is null) return false;
+    int e = edgeAlloc();
+    if (e < 0) return false;
+
+    auto ed = &g_orgEdges[e];
+    ed.inUse  = true;
+    ed.kind   = kind;
+    ed.fromId = from;
+    ed.toId   = to;
+    ed.rights = rights;
+    ed.toGen  = g_orgNodes[to].gen;
+    ed.next   = g_orgNodes[from].outHead;
+    g_orgNodes[from].outHead = e;
+
+    if (kindIsStrong(kind)) {
+        ++g_orgNodes[from].strongOut;
+        ++g_orgNodes[to].strongIn;
+    }
+    if (kind == EdgeKind.StrongOwn) {
+        g_orgNodes[to].owner = from;
+        auto h = objGet(to);
+        if (h !is null) h.ownerCap = from; // wire the reserved header field
+    }
+    ++g_orgEdgeAdds;
+    ++g_orgEdgesLive;
+    bumpEpoch();
+    return true;
+}
+
+// 2.2 — remove the first from→to edge of `kind`.  Maintains counts/epoch.
+public bool edgeRemove(uint from, uint to, EdgeKind kind) {
+    orgInit();
+    if (from == 0 || from >= OBJ_MAX) return false;
+    int prev = -1;
+    int cur = g_orgNodes[from].outHead;
+    while (cur >= 0) {
+        auto ed = &g_orgEdges[cur];
+        if (ed.inUse && ed.toId == to && ed.kind == kind) {
+            if (prev < 0) g_orgNodes[from].outHead = ed.next;
+            else          g_orgEdges[prev].next = ed.next;
+            if (kindIsStrong(kind)) {
+                if (g_orgNodes[from].strongOut > 0) --g_orgNodes[from].strongOut;
+                if (g_orgNodes[to].strongIn > 0)    --g_orgNodes[to].strongIn;
+            }
+            if (kind == EdgeKind.StrongOwn && g_orgNodes[to].owner == from)
+                g_orgNodes[to].owner = 0;
+            edgeFree(cur);
+            ++g_orgEdgeRemoves;
+            if (g_orgEdgesLive > 0) --g_orgEdgesLive;
+            bumpEpoch();
+            return true;
+        }
+        prev = cur;
+        cur = ed.next;
+    }
+    return false;
+}
+
+// Notified by objmgr when an object slot frees: drop its out-edges (releasing the
+// strong-in counts they held on their targets) and bump its generation so every
+// weak in-edge to it now reads stale (I8).
+public void orgOnFree(uint id) {
+    if (id == 0 || id >= OBJ_MAX || !g_orgInited) return;
+    int cur = g_orgNodes[id].outHead;
+    while (cur >= 0) {
+        auto ed = &g_orgEdges[cur];
+        int nxt = ed.next;
+        if (ed.inUse && kindIsStrong(ed.kind) &&
+            g_orgNodes[ed.toId].strongIn > 0)
+            --g_orgNodes[ed.toId].strongIn;
+        edgeFree(cur);
+        if (g_orgEdgesLive > 0) --g_orgEdgesLive;
+        cur = nxt;
+    }
+    g_orgNodes[id].outHead = -1;
+    g_orgNodes[id].strongOut = 0;
+    g_orgNodes[id].strongIn = 0;
+    g_orgNodes[id].owner = 0;
+    if (++g_orgNodes[id].gen == 0) g_orgNodes[id].gen = 1; // stale all weak in-edges
+    ++g_orgFreeDrops;
+    bumpEpoch();
+}
+
+// 2.3 — read a weak/observer edge target.  Returns `to` only if the original
+// target is still live (slot allocated AND same generation as when the edge was
+// made); otherwise null (0), the I8 "never a stale live pointer" guarantee.
+public uint weakGet(uint from, uint to) {
+    if (from == 0 || from >= OBJ_MAX) return 0;
+    int cur = g_orgNodes[from].outHead;
+    while (cur >= 0) {
+        auto ed = &g_orgEdges[cur];
+        if (ed.inUse && ed.toId == to &&
+            (ed.kind == EdgeKind.Weak || ed.kind == EdgeKind.Observer)) {
+            if (objGet(to) !is null && g_orgNodes[to].gen == ed.toGen)
+                return to;
+            ++g_orgWeakNullRead;
+            return 0;
+        }
+        cur = ed.next;
+    }
+    return 0;
+}
+
+// --- enumeration / queries (2.1: out-edges in O(deg)) -------------------------
+public uint orgOutDegree(uint id) {
+    if (id == 0 || id >= OBJ_MAX) return 0;
+    uint n = 0;
+    for (int cur = g_orgNodes[id].outHead; cur >= 0; cur = g_orgEdges[cur].next)
+        if (g_orgEdges[cur].inUse) ++n;
+    return n;
+}
+
+public uint orgStrongIn(uint id)  { return (id < OBJ_MAX) ? g_orgNodes[id].strongIn  : 0; }
+public uint orgStrongOut(uint id) { return (id < OBJ_MAX) ? g_orgNodes[id].strongOut : 0; }
+public uint orgOwner(uint id)     { return (id < OBJ_MAX) ? g_orgNodes[id].owner     : 0; }
+
+// Does `id` have an out-edge of `kind` to `to`?  O(deg).
+public bool orgHasEdge(uint from, uint to, EdgeKind kind) {
+    if (from == 0 || from >= OBJ_MAX) return false;
+    for (int cur = g_orgNodes[from].outHead; cur >= 0; cur = g_orgEdges[cur].next) {
+        auto ed = &g_orgEdges[cur];
+        if (ed.inUse && ed.toId == to && ed.kind == kind) return true;
+    }
+    return false;
+}
+
+// --- Boot self-test (Phase 2 runtime proof) -----------------------------------
+// Builds a tiny graph, checks adjacency + strong counts + owner wiring, then frees
+// a strong target and confirms (2.3) the object is freed despite a weak in-edge
+// and `weakGet` reads null afterwards.
+public void orgSelfTest() {
+    if (g_orgSelfTested) return;
+    g_orgSelfTested = true;
+    orgInit();
+
+    uint a = objAlloc(ObjType.File, null);
+    uint b = objAlloc(ObjType.File, null);
+    uint c = objAlloc(ObjType.File, null);
+    if (a == 0 || b == 0 || c == 0) { klog("[org] selftest FAIL: alloc\n"); return; }
+
+    edgeAdd(a, b, EdgeKind.StrongOwn, 0);  // a owns b
+    edgeAdd(a, c, EdgeKind.StrongRef, 0);  // a strong-refs c
+    edgeAdd(b, c, EdgeKind.Weak, 0);       // b weakly observes c
+
+    bool counts = (orgOutDegree(a) == 2 && orgStrongOut(a) == 2 &&
+                   orgStrongIn(b) == 1 &&                 // only the StrongOwn
+                   orgStrongIn(c) == 1 &&                 // StrongRef only; weak excluded
+                   orgOwner(b) == a &&
+                   weakGet(b, c) == c);                   // c live ⇒ weakGet returns it
+
+    // Drop c's only strong in-edge, then release it.  The weak b→c edge must NOT
+    // keep c alive, and weakGet must then read null (I8 / 2.3 acceptance).
+    edgeRemove(a, c, EdgeKind.StrongRef);
+    bool cHadNoStrongIn = (orgStrongIn(c) == 0);
+    objRelease(c);                                        // → orgOnFree(c)
+    bool freed = (objGet(c) is null);
+    bool weakNull = (weakGet(b, c) == 0);
+
+    bool ok = counts && cHadNoStrongIn && freed && weakNull &&
+              orgOutDegree(a) == 1;                       // a→b remains
+
+    // Clean up the self-test objects.
+    objRelease(a);
+    objRelease(b);
+
+    if (ok) klog("[org] selftest PASS\n");
+    else    klog("[org] selftest FAIL: behaviour\n");
+}
+
+public void orgStats() {
+    klog("[org] edges=");   klog_hex(g_orgEdgesLive);
+    klog(" adds=");         klog_hex(g_orgEdgeAdds);
+    klog(" removes=");      klog_hex(g_orgEdgeRemoves);
+    klog(" freedrops=");    klog_hex(g_orgFreeDrops);
+    klog(" weaknull=");     klog_hex(g_orgWeakNullRead);
+    klog(" epoch=");        klog_hex(cast(ulong)g_orgEpoch);
+    klog("\n");
+}

@@ -10,7 +10,8 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
-import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask;
+import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
+                   objEnsureNamespace;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -23,6 +24,7 @@ import core.cap : Capability, CAP_INVALID,
                   capTableCloneNarrowing, requireCap, requireCapIn;
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
+import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -1470,11 +1472,29 @@ public ssize_t sys_write(int fd, const(void)* buf, size_t count) {
     return cast(ssize_t)wop(oh, buf, count);
 }
 
+// Phase 9: the object the calling process's Namespace resolves `path` against.
+// Every namespace binds "/" to the rtfs-root Directory object, so this returns
+// that root and the existing rtfs/synthetic resolver below consumes the path as
+// before — but resolution now flows *through* the per-process namespace, not a
+// global ambient root.  Returns 0 only if the task has no namespace yet (then the
+// caller proceeds with the legacy global resolution unchanged).
+private uint namespaceRouteOpen(const(char)* path) {
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    objEnsureNamespace(tid);
+    const(char)* rest;
+    return nsResolve(g_tasks[tid].namespaceObjId, path, rest);
+}
+
 public int sys_open(const(char)* path, int flags) {
     initFdTable();
     if (path is null) {
         return negErrno(EFAULT);
     }
+
+    // Phase 9: resolve the name against this process's Namespace root before the
+    // legacy rtfs/synthetic resolution (which backs the "/" mount) runs.
+    namespaceRouteOpen(path);
 
     // Find free FD
     int fd = -1;

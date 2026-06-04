@@ -34,6 +34,7 @@ import core.objmgr : objStats; // Phase 2: object-table runtime stats (objReconc
 import core.cap : capTableSetActive, capTableClear, capStats;
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
+import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -369,6 +370,7 @@ private int forkTask(int parentTid) {
     fdtabForkCopy(parent.fdTabId, childTid);
     objEnsureTask(childTid);
     objSetProcess(childTid, childTid, parent.processObjId);
+    objCloneNamespace(childTid, parentTid); // Phase 9: child gets a private namespace clone
 
     klog("[fork] parent="); klog_hex(parentTid);
     klog(" child="); klog_hex(childTid); klog("\n");
@@ -485,6 +487,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.active = true;
     objEnsureTask(childTid);
     objSetProcess(childTid, parent.processLeaderTid, parent.processObjId);
+    objEnsureNamespace(childTid); // Phase 9: thread shares the process namespace
 
     klog("[clone] parent="); klog_hex(parentTid);
     klog(" thread="); klog_hex(childTid);
@@ -927,11 +930,13 @@ private void dispatchSyscall(int tid) {
         objReconcileRegions();
         ipcSelfTest(); // Phase 7: one-shot proof the IPC router round-trips
         deviceSelfTest(); // Phase 8: one-shot proof /dev resolves to Device objects
+        nsSelfTest(); // Phase 9: one-shot proof per-process namespaces clone & route
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
             ipcStats();
             deviceStats();
+            nsStats();
         }
     }
 

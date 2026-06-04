@@ -5,6 +5,7 @@ import core.globals;
 import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
+import core.namespace : nsAlloc, nsClone, nsRelease; // Phase 9: per-process namespace
 
 extern (C) @nogc nothrow:
 
@@ -129,6 +130,9 @@ struct Task {
     // native object/capability model can eventually outgrow the Linux fd view;
     // for now fork/clone assign it in lockstep with fdTabId.
     int capTabId;
+    // Phase 9: this process's Namespace object (name→object bindings/mounts).
+    // Threads of a process share the leader's namespace; fork clones it.
+    uint namespaceObjId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;
@@ -195,10 +199,56 @@ public void objReleaseTask(int tid) {
     if (h !is null && h.impl is cast(void*)task &&
         h.type == ObjType.Thread)
         objRelease(task.objId);
+    objReleaseNamespace(tid);
     task.objId = 0;
     task.processObjId = 0;
     task.parentObjId = 0;
     task.processLeaderTid = 0;
+}
+
+// Phase 9: ensure this task references a Namespace object.  A thread shares its
+// process leader's namespace; a process leader without one gets a fresh
+// root-bound namespace.  Idempotent — used both at create time and by the
+// amortized reconcile to self-heal (e.g. the init task, exec).
+public void objEnsureNamespace(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    if (!task.active || task.exited) return;
+
+    int leader = task.processLeaderTid;
+    if (leader < 0 || leader >= MAX_TASKS || !g_tasks[leader].active) leader = tid;
+
+    if (leader != tid) {
+        if (objGet(g_tasks[leader].namespaceObjId) is null)
+            g_tasks[leader].namespaceObjId = nsAlloc();
+        task.namespaceObjId = g_tasks[leader].namespaceObjId; // thread shares
+        return;
+    }
+    if (objGet(task.namespaceObjId) is null)
+        task.namespaceObjId = nsAlloc();
+}
+
+// fork: give the child process a private clone of the parent's namespace, so a
+// later rebind in either does not affect the other.
+public void objCloneNamespace(int childTid, int parentTid) {
+    if (childTid < 0 || childTid >= MAX_TASKS ||
+        parentTid < 0 || parentTid >= MAX_TASKS) return;
+    g_tasks[childTid].namespaceObjId = nsClone(g_tasks[parentTid].namespaceObjId);
+}
+
+// Release this task's namespace unless another active task still shares it
+// (threads of the same process).
+public void objReleaseNamespace(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    uint ns = g_tasks[tid].namespaceObjId;
+    g_tasks[tid].namespaceObjId = 0;
+    if (ns == 0) return;
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (i == tid) continue;
+        if (g_tasks[i].active && !g_tasks[i].exited &&
+            g_tasks[i].namespaceObjId == ns) return; // still shared
+    }
+    nsRelease(ns);
 }
 
 // Allocate a task slot (id > 0 reserved for non-init tasks)
@@ -373,6 +423,7 @@ public void objReconcileTasks() {
         if (!g_tasks[t].active || g_tasks[t].exited) continue;
         objEnsureTask(t);
         objEnsureProcess(t);
+        objEnsureNamespace(t); // Phase 9: per-process namespace (self-heal)
         objMark(g_tasks[t].objId);
         objMark(g_tasks[t].processObjId);
     }

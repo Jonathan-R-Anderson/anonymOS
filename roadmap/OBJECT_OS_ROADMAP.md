@@ -459,7 +459,48 @@ become IPC messages (incremental).
 
 ---
 
-## PHASE 9 — Namespace objects (per-process object graph)
+## PHASE 9 — Namespace objects (per-process object graph)  ✅ DONE
+
+> **Status: implemented as per-process Namespace objects with fork-time cloning
+> and namespace-routed open resolution.** New module `core/namespace.d` defines a
+> `Namespace` object (`ObjType.Namespace`) holding a small binding table
+> (`NsBinding` = mount-point path → target object id + rights). Every namespace
+> is created with a `"/"` → **rtfs-root Directory object** binding: the global
+> `g_rt` root is now a first-class `ObjType.Directory` object (`g_rootDirObjId`)
+> that each namespace *mounts* at `/`, rather than being "the filesystem."
+> `nsAlloc`/`nsClone`/`nsRelease`/`nsBind`/`nsResolve` (longest-prefix,
+> component-boundary match) make up the resolver.
+>
+> **Per-process lifecycle (`core/task.d`):** `Task` gains `namespaceObjId`.
+> `objEnsureNamespace` gives each process leader a namespace and makes threads
+> share their leader's; `objCloneNamespace` (called from `forkTask`) gives a fork
+> child a private clone so later rebinds don't cross the fork boundary;
+> `cloneThread` shares the process namespace; `objReleaseTask` releases the
+> namespace when the last sharing thread exits; `objReconcileTasks` self-heals
+> (the init task, post-exec) every 256 syscalls.
+>
+> **Routed resolution (`posix.d`):** `sys_open` now calls `namespaceRouteOpen`,
+> which resolves the path against the *calling task's* Namespace root via
+> `nsResolve` before the legacy rtfs/synthetic resolution runs. Because every
+> namespace binds `"/"` to the rtfs-root Directory, the existing resolver backs
+> the `/` mount and behaviour is unchanged — but resolution now flows through the
+> per-process namespace, not a global ambient root.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> (exercising `forkTask`→`objCloneNamespace` and `cloneThread`→shared namespace)
+> with no kernel fault, panic, JHC falloff, or OOM. The one-shot boot self-test
+> logged `[ns] selftest PASS` — a namespace allocates with a `/` root binding, a
+> clone is a distinct live object sharing that root, a rebind in the clone does
+> not leak into the parent, and a path resolves to the root Directory.
+> `nsStats()` prints live/alloc/clone/bind/resolve counters alongside the other
+> subsystems.
+>
+> **Deferred out of Phase 9:** divergent per-process mounts (`unshare`/`mount`/
+> bind-mounting additional Directory/Device objects) and resolving the `/dev`
+> Device tree (Phase 8) as distinct namespace mounts rather than through the
+> posix.d `/dev/*` arms — the binding table and resolver needed for both exist
+> now; only the syscall surface to drive them is left.
 
 **Goal:** replace the **global** synthetic/rtfs namespace with **per-process Namespace
 objects**; a process sees exactly the objects bound into its namespace (Plan 9 model).

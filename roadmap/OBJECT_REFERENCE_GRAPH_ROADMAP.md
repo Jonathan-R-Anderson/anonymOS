@@ -561,10 +561,36 @@ meet); revocation is O(derive-subtree).
   control surface (query/trigger/quarantine) reachable **only** with a validator
   capability. *Accept:* unprivileged callers cannot drive the validator.
 
-## PHASE 9 — Debugging and Visualization
-*Why:* an object graph is unauditable without tooling. *Affected:* `core/org.d`
-exporter; a userspace tool. *Risks:* exporting the graph leaks topology (gate by cap).
-*Refactoring:* none. *Performance:* export is a budgeted background dump.
+## PHASE 9 — Debugging and Visualization  ✅ DONE
+
+> **Status: DOT/stats graph export + a cap-gated `/proc/org/*` surface + an
+> `orgctl` userspace tool.**
+> **9.1 serialize:** `org.d` gains `orgExportDot` (whole-graph DOT snapshot,
+> nodes `n<id> [label="<id>:t<type>[:Q]"]`, edges labelled by kind),
+> `orgExportSubgraph` (a chosen node set), and `orgExportStats` (compact
+> `key value` counters). Weak/Observer edges render `style=dashed`, so strong vs
+> weak is visually distinguishable in Graphviz.
+> **9.3 live counters via synthetic fs, gated by cap:** `posix.d`'s `sys_open`
+> serves `/proc/org/graph` (DOT) and `/proc/org/stats` (counters) from the live
+> graph, **only to an administrative (capability-holding) process** — a non-admin
+> caller gets `EACCES`, so the kernel object topology isn't leaked (reuses the
+> Phase 10 User authority as the gate).
+> **9.2 `orgctl`:** `scripts/orgctl` (POSIX sh, runs in-guest over `/proc/org/*`
+> or host-side over a captured dump): `stats`, `dump`, `render` (→ PNG via
+> Graphviz), `sccs` (surface strong 2-cycles — the SCM_RIGHTS/socket-peer shape),
+> `tree` (the StrongOwn ownership forest), `diff` (nodes/edges added/removed
+> between two snapshots — i.e. *visualize a cycle's collection*).
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot reached Hyprland/Mesa compositor rendering
+> with no kernel fault, panic, JHC falloff, or OOM. The one-shot self-test logged
+> `[org] viz PASS`: a constructed strong+weak graph exports to well-formed DOT
+> (`digraph org`, `-> n`, `StrongOwn`, `Weak`, `style=dashed` all present) and the
+> stats export carries the live counters. `orgctl` was validated host-side: `sccs`
+> detects a deliberately-constructed strong 2-cycle (`cycle: n11 <-> n12`), `tree`
+> prints the ownership edges, and `diff` shows the cycle's edges removed between
+> the pre- and post-collection snapshots (the 9.2 acceptance). All P2–P8 proofs
+> still hold. `orgStats`/`[audit]`/`[val]` continue in the periodic dump.
 
 - **9.1** — P: Medium · org · Deps: 4.1 · Complexity: Low · *Desc:* serialize the graph
   to a stable format (DOT/JSON: nodes={id,type,label}, edges={kind,rights}). *Accept:*

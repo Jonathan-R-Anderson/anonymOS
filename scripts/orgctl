@@ -1,0 +1,81 @@
+#!/bin/sh
+# orgctl — Object Reference Graph control/visualization tool (ORG Phase 9.2).
+#
+# Consumes the kernel's cap-gated graph export:
+#   /proc/org/graph   a Graphviz DOT snapshot (nodes={id,type,label}, edges
+#                     labelled by kind; weak/observer edges are style=dashed so
+#                     strong vs weak is visually distinguishable)
+#   /proc/org/stats   live counters (objects, edges by kind, scc, reachable,
+#                     gccandidates, pagesreclaimed, quarantined, ...)
+#
+# Both are readable only by an administrative (capability-holding) process — a
+# non-admin caller gets EACCES, so the object topology is not leaked.
+#
+# Runs in-guest (busybox sh reading /proc/org) or on the host against a captured
+# dump: `orgctl <cmd> [dotfile]`.  Rendering commands need Graphviz `dot`.
+#
+# Usage:
+#   orgctl stats                 print the live counters
+#   orgctl dump [file]           print the DOT snapshot
+#   orgctl render [file] [out]   render the graph to PNG (default org.png)
+#   orgctl sccs [file]           list nodes that lie on a cycle (SCC members)
+#   orgctl tree [file]           print the StrongOwn ownership forest
+#   orgctl diff <a.dot> <b.dot>  show nodes/edges added/removed between snapshots
+set -eu
+
+GRAPH=/proc/org/graph
+STATS=/proc/org/stats
+
+_graph() { # $1 = optional file override
+  if [ "${1:-}" != "" ]; then cat "$1"; else cat "$GRAPH"; fi
+}
+
+cmd="${1:-stats}"
+shift || true
+
+case "$cmd" in
+  stats)
+    cat "$STATS"
+    ;;
+  dump)
+    _graph "${1:-}"
+    ;;
+  render)
+    src="${1:-}"; out="${2:-org.png}"
+    _graph "$src" | dot -Tpng -o "$out"
+    echo "wrote $out"
+    ;;
+  sccs)
+    # An SCC (cycle) shows as a directed back-edge; surface every node that has a
+    # strong edge participating in a 2-cycle (a -> b and b -> a), the canonical
+    # SCM_RIGHTS / socket-peer shape, ignoring dashed (weak) edges.
+    _graph "${1:-}" \
+      | grep -- '->' | grep -v 'style=dashed' \
+      | sed -E 's/^[[:space:]]*(n[0-9]+) -> (n[0-9]+).*/\1 \2/' \
+      | awk '{ e[$1" "$2]=1 }
+             END { for (k in e) { split(k,p," ");
+                     if ((p[2]" "p[1]) in e && p[1] < p[2])
+                       print "cycle: " p[1] " <-> " p[2] } }' \
+      | sort -u
+    ;;
+  tree)
+    # The ownership forest = the StrongOwn edges only.
+    _graph "${1:-}" \
+      | grep -- '->' | grep 'StrongOwn' \
+      | sed -E 's/^[[:space:]]*(n[0-9]+) -> (n[0-9]+).*/\1 owns \2/'
+    ;;
+  diff)
+    a="${1:?need first snapshot}"; b="${2:?need second snapshot}"
+    ta=$(mktemp); tb=$(mktemp)
+    grep -E 'n[0-9]' "$a" | sort -u > "$ta"
+    grep -E 'n[0-9]' "$b" | sort -u > "$tb"
+    echo "--- only in $a ---"; comm -23 "$ta" "$tb" || true
+    echo "+++ only in $b +++"; comm -13 "$ta" "$tb" || true
+    rm -f "$ta" "$tb"
+    ;;
+  *)
+    echo "orgctl: unknown command '$cmd'" >&2
+    echo "try: stats | dump | render | sccs | tree | diff" >&2
+    exit 2
+    ;;
+esac

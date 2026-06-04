@@ -1201,6 +1201,176 @@ public void orgSecuritySelfTest() {
     else    klog("[org] sec FAIL: behaviour\n");
 }
 
+// === Phase 9 — serialization / visualization =================================
+// 9.1: serialize the graph to a stable DOT snapshot (nodes={id,type,label},
+// edges={kind,rights}); weak/observer edges render dashed so strong vs weak is
+// visually distinguishable.  9.3: a compact counter export.  Both write into a
+// bounded buffer (a truncated snapshot) so they are allocation-free and safe to
+// expose via the synthetic fs.
+
+private void apStr(char* b, ref uint p, uint max, string s) {
+    foreach (ch; s) if (p < max) b[p++] = ch;
+}
+private void apUint(char* b, ref uint p, uint max, ulong v) {
+    char[20] t; int n = 0;
+    if (v == 0) t[n++] = '0';
+    while (v > 0 && n < 20) { t[n++] = cast(char)('0' + v % 10); v /= 10; }
+    while (n > 0 && p < max) b[p++] = t[--n];
+}
+private string kindName(EdgeKind k) {
+    final switch (k) {
+        case EdgeKind.None:      return "None";
+        case EdgeKind.StrongOwn: return "StrongOwn";
+        case EdgeKind.StrongRef: return "StrongRef";
+        case EdgeKind.Cap:       return "Cap";
+        case EdgeKind.Weak:      return "Weak";
+        case EdgeKind.Observer:  return "Observer";
+    }
+}
+private bool bufContains(const(char)* b, uint n, string needle) {
+    if (needle.length == 0) return true;
+    if (n < needle.length) return false;
+    for (uint i = 0; i + needle.length <= n; ++i) {
+        bool m = true;
+        foreach (j; 0 .. needle.length) if (b[i + j] != needle[j]) { m = false; break; }
+        if (m) return true;
+    }
+    return false;
+}
+
+// Emit one node's DOT line + its out-edges into the buffer.
+private void emitNode(char* buf, ref uint p, uint max, uint id) {
+    auto h = objGet(id);
+    if (h is null) return;
+    apStr(buf, p, max, "n"); apUint(buf, p, max, id);
+    apStr(buf, p, max, " [label=\""); apUint(buf, p, max, id);
+    apStr(buf, p, max, ":t"); apUint(buf, p, max, cast(ulong)h.type);
+    if (g_orgNodes[id].quarantined) apStr(buf, p, max, ":Q");
+    apStr(buf, p, max, "\"];\n");
+    for (int c = g_orgNodes[id].outHead; c >= 0 && p < max - 96; c = g_orgEdges[c].next) {
+        auto ed = &g_orgEdges[c];
+        if (!ed.inUse) continue;
+        apStr(buf, p, max, "n"); apUint(buf, p, max, id);
+        apStr(buf, p, max, " -> n"); apUint(buf, p, max, ed.toId);
+        apStr(buf, p, max, " [label=\""); apStr(buf, p, max, kindName(ed.kind));
+        apStr(buf, p, max, "\"");
+        if (ed.kind == EdgeKind.Weak || ed.kind == EdgeKind.Observer)
+            apStr(buf, p, max, ",style=dashed"); // weak distinguishable from strong
+        apStr(buf, p, max, "];\n");
+    }
+}
+
+// 9.1 — DOT serialization of the whole (bounded/truncated) graph into `buf`.
+public uint orgExportDot(char* buf, uint max) {
+    orgInit();
+    if (buf is null || max < 32) return 0;
+    uint p = 0;
+    apStr(buf, p, max, "digraph org {\n");
+    for (uint id = 1; id < OBJ_MAX && p < max - 160; ++id)
+        if (objGet(id) !is null) emitNode(buf, p, max, id);
+    apStr(buf, p, max, "}\n");
+    return p;
+}
+
+// 9.1/9.2 — DOT serialization of a specific node set (used by orgctl to dump a
+// constructed cycle / a reachability subtree without the rest of the graph).
+public uint orgExportSubgraph(char* buf, uint max, const(uint)* ids, uint nIds) {
+    orgInit();
+    if (buf is null || max < 32 || ids is null) return 0;
+    uint p = 0;
+    apStr(buf, p, max, "digraph org {\n");
+    foreach (k; 0 .. nIds)
+        if (p < max - 160) emitNode(buf, p, max, ids[k]);
+    apStr(buf, p, max, "}\n");
+    return p;
+}
+
+private uint orgLiveNodeCount() {
+    uint n = 0;
+    for (uint id = 1; id < OBJ_MAX; ++id) if (objGet(id) !is null) ++n;
+    return n;
+}
+
+// 9.3 — compact "key value\n" counter export.
+public uint orgExportStats(char* buf, uint max) {
+    if (buf is null || max < 32) return 0;
+    uint p = 0;
+    void line(string k, ulong v) { apStr(buf, p, max, k); apStr(buf, p, max, " ");
+                                   apUint(buf, p, max, v); apStr(buf, p, max, "\n"); }
+    line("objects",       orgLiveNodeCount());
+    line("edges",         g_orgEdgesLive);
+    line("strongown",     orgCountKind(EdgeKind.StrongOwn));
+    line("strongref",     orgCountKind(EdgeKind.StrongRef));
+    line("cap",           orgCountKind(EdgeKind.Cap));
+    line("weak",          orgCountKind(EdgeKind.Weak));
+    line("observer",      orgCountKind(EdgeKind.Observer));
+    line("scc",           g_orgSccCount);
+    line("reachable",     g_orgReachableCount);
+    line("gccandidates",  g_orgGcCandidates);
+    line("pagesreclaimed", g_orgPagesReclaimed);
+    line("weaknulled",    g_orgWeakNulled);
+    line("quarantined",   g_orgQuarantined);
+    line("securityevents", g_orgSecurityEvents);
+    line("labelviol",     g_orgLabelViol);
+    return p;
+}
+
+// Synthetic-fs content getters (regenerate a fresh snapshot per read).
+__gshared char[8192] g_orgDotBuf;
+__gshared char[2048] g_orgStatsBuf;
+public const(char)[] orgDotContent() {
+    uint n = orgExportDot(g_orgDotBuf.ptr, cast(uint)g_orgDotBuf.length);
+    return g_orgDotBuf[0 .. n];
+}
+public const(char)[] orgStatsContent() {
+    uint n = orgExportStats(g_orgStatsBuf.ptr, cast(uint)g_orgStatsBuf.length);
+    return g_orgStatsBuf[0 .. n];
+}
+
+// --- Phase 9 self-test (runtime proof) ----------------------------------------
+// A small graph with strong and weak edges (including a cycle) exports to a
+// well-formed DOT snapshot in which weak vs strong is distinguishable; the stats
+// export carries the live counters.
+__gshared bool g_orgVizTested = false;
+public void orgVizSelfTest() {
+    if (g_orgVizTested) return;
+    g_orgVizTested = true;
+    orgInit();
+
+    uint a = objAlloc(ObjType.File, null);
+    uint b = objAlloc(ObjType.File, null);
+    uint c = objAlloc(ObjType.File, null);
+    if (!a || !b || !c) { klog("[org] viz FAIL: alloc\n"); return; }
+    edgeAdd(a, b, EdgeKind.StrongOwn, 0);  // strong (solid)
+    edgeAdd(b, c, EdgeKind.StrongRef, 0);  // strong (solid)
+    edgeAdd(c, a, EdgeKind.Weak, 0);       // weak (dashed) — closes a cycle harmlessly
+
+    // Export exactly the test subgraph so the check is deterministic regardless of
+    // how large the live graph is (the full orgExportDot truncates to a snapshot).
+    uint[3] ids = [a, b, c];
+    char[1024] buf;
+    uint n = orgExportSubgraph(buf.ptr, cast(uint)buf.length, ids.ptr, 3);
+    bool dot = bufContains(buf.ptr, n, "digraph org") &&
+               bufContains(buf.ptr, n, " -> n") &&
+               bufContains(buf.ptr, n, "StrongOwn") &&
+               bufContains(buf.ptr, n, "Weak") &&
+               bufContains(buf.ptr, n, "style=dashed"); // weak distinguishable
+
+    char[512] sbuf;
+    uint sn = orgExportStats(sbuf.ptr, cast(uint)sbuf.length);
+    bool stats = bufContains(sbuf.ptr, sn, "objects ") &&
+                 bufContains(sbuf.ptr, sn, "strongown ") &&
+                 bufContains(sbuf.ptr, sn, "weak ");
+
+    edgeRemove(a, b, EdgeKind.StrongOwn);
+    edgeRemove(b, c, EdgeKind.StrongRef);
+    edgeRemove(c, a, EdgeKind.Weak);
+    objRelease(a); objRelease(b); objRelease(c);
+
+    if (dot && stats) klog("[org] viz PASS\n");
+    else              klog("[org] viz FAIL: behaviour\n");
+}
+
 public void orgStats() {
     klog("[org] edges=");   klog_hex(g_orgEdgesLive);
     klog(" adds=");         klog_hex(g_orgEdgeAdds);

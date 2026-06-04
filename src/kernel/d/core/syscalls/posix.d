@@ -26,8 +26,9 @@ import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC route
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolve; // Phase 9: resolve names against the process namespace
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
-                   userGroupContent; // Phase 10: identity via User objects
-import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind; // ORG P3: typed fd/epoll edges
+                   userGroupContent, userIsAdmin; // Phase 10: identity via User objects
+import core.org : edgeEnsure, orgPruneDeadOut, EdgeKind,
+                  orgDotContent, orgStatsContent; // ORG P3/P9: edges + graph export
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -1663,6 +1664,24 @@ public int sys_open(const(char)* path, int flags) {
          g_fdTable[fd].backend = cast(void*)bf.offset;
          g_fdTable[fd].fileSize = bf.size;
          return publishActiveFdReturn(fd);
+    }
+
+    // ORG P9.3: the object-reference-graph export (/proc/org/graph = DOT snapshot,
+    // /proc/org/stats = live counters), gated by administrative authority so a
+    // non-admin process cannot read the kernel's object topology (a capability
+    // gate, reusing the Phase 10 User authority).
+    if (cstrEq(path, "/proc/org/graph") || cstrEq(path, "/proc/org/stats")) {
+        if (!userIsAdmin()) return negErrno(13); // EACCES
+        const(char)[] content = cstrEq(path, "/proc/org/graph")
+            ? orgDotContent() : orgStatsContent();
+        g_fdTable[fd].type     = FileType.FD_FILE;
+        g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = (content.length > 0)
+            ? cast(void*)content.ptr
+            : cast(void*)cast(size_t)(fileBackendDirectory + 1);
+        g_fdTable[fd].fileSize = content.length;
+        return publishActiveFdReturn(fd);
     }
 
     // Check virtual filesystem table (/proc/*, /sys/*, /etc/*, ...)

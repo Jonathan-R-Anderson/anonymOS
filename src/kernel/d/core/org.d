@@ -78,6 +78,8 @@ struct OrgNode {
     bool quarantined; // P6.1: invariant violation — refuse new edges, fail-stop
     uint age;         // P6.2: GC generation age (young objects scanned more often)
     ulong gcPage;     // P6.2: physical page this object backs (freed on collect)
+    uint label;       // P7: MAC label/level (⊑ = ≤); monotone down ownership (I5)
+    uint heldRights;  // P7: authority this object may grant downward (I5 rights)
 }
 __gshared OrgNode[OBJ_MAX] g_orgNodes;
 
@@ -101,7 +103,8 @@ public void orgInit() {
                                   n.strongOwnIn = 0; n.owner = 0; n.gen = 1;
                                   n.reachMark = 0; n.tjIndex = 0; n.tjLow = 0;
                                   n.tjScc = 0; n.tjOnStack = false;
-                                  n.quarantined = false; n.age = 0; n.gcPage = 0; }
+                                  n.quarantined = false; n.age = 0; n.gcPage = 0;
+                                  n.label = 0; n.heldRights = uint.max; }
     g_objFreeNotify = &orgOnFree; // weak coherence: notified when any object frees
 }
 
@@ -158,6 +161,23 @@ public bool edgeAdd(uint from, uint to, EdgeKind kind, uint rights) {
     if (g_orgNodes[to].quarantined || g_orgNodes[from].quarantined) {
         ++g_orgQuarantineBlocks;
         return false;
+    }
+
+    // P7.1 — I5: authority/label may not increase downward an ownership or
+    // capability edge.  `label(c) ⊑ label(p)` (no upward MAC flow) and the granted
+    // `rights` must be a subset of what the parent holds.  Reference/observer edges
+    // carry no authority, so they are exempt (I6).  Defaults are permissive
+    // (label 0, heldRights = all), so existing edges are unaffected until a policy
+    // actually constrains an object.
+    if (kind == EdgeKind.StrongOwn || kind == EdgeKind.Cap) {
+        if (g_orgNodes[to].label > g_orgNodes[from].label) {
+            ++g_orgLabelReject;
+            return false;
+        }
+        if ((rights & ~g_orgNodes[from].heldRights) != 0) {
+            ++g_orgRightsReject;
+            return false;
+        }
     }
 
     // P5.1 — online ownership-cycle prevention (fail-closed at insert): a StrongOwn
@@ -256,6 +276,13 @@ public void orgOnFree(uint id) {
     g_orgNodes[id].strongIn = 0;
     g_orgNodes[id].strongOwnIn = 0;
     g_orgNodes[id].owner = 0;
+    // Reset transient per-slot state so a reused id starts clean (a stale
+    // quarantine/gcPage/label on a recycled slot would be a correctness/safety bug).
+    g_orgNodes[id].quarantined = false;
+    g_orgNodes[id].gcPage = 0;
+    g_orgNodes[id].age = 0;
+    g_orgNodes[id].label = 0;
+    g_orgNodes[id].heldRights = uint.max;
     if (++g_orgNodes[id].gen == 0) g_orgNodes[id].gen = 1; // stale all weak in-edges
     ++g_orgFreeDrops;
     bumpEpoch();
@@ -1083,6 +1110,95 @@ public void orgGcSelfTest() {
     else                   klog("[org] gc FAIL: behaviour\n");
 }
 
+// === Phase 7 — security validation (I5 / I6 / I7.3) ===========================
+__gshared ulong g_orgLabelReject = 0; // edges refused: child label > parent (I5)
+__gshared ulong g_orgRightsReject = 0; // edges refused: rights exceed parent (I5)
+__gshared ulong g_orgLabelViol   = 0; // ownership label-monotonicity violations (last audit)
+
+public void orgSetLabel(uint id, uint label) {
+    if (id != 0 && id < OBJ_MAX) g_orgNodes[id].label = label;
+}
+public uint orgLabel(uint id) { return (id != 0 && id < OBJ_MAX) ? g_orgNodes[id].label : 0; }
+
+public void orgSetHeldRights(uint id, uint rights) {
+    if (id != 0 && id < OBJ_MAX) g_orgNodes[id].heldRights = rights;
+}
+public uint orgHeldRights(uint id) {
+    return (id != 0 && id < OBJ_MAX) ? g_orgNodes[id].heldRights : 0;
+}
+
+// 7.3 — security-inheritance audit: labels must be monotone along **ownership**
+// edges only (`label(child) ⊑ label(parent)`).  Reference/observer edges are not
+// walked, so they grant no label authority by construction (I6).  Returns the
+// number of StrongOwn edges that violate monotonicity (post-hoc relabelings the
+// insert-time check in edgeAdd can't catch).
+public uint orgLabelAudit() {
+    uint viol = 0;
+    for (uint from = 1; from < OBJ_MAX; ++from) {
+        if (objGet(from) is null) continue;
+        for (int c = g_orgNodes[from].outHead; c >= 0; c = g_orgEdges[c].next) {
+            auto ed = &g_orgEdges[c];
+            if (!ed.inUse || ed.kind != EdgeKind.StrongOwn) continue;
+            if (objGet(ed.toId) is null) continue;
+            if (g_orgNodes[ed.toId].label > g_orgNodes[from].label) ++viol;
+        }
+    }
+    g_orgLabelViol = viol;
+    return viol;
+}
+
+// --- Phase 7 security self-test (runtime proof) -------------------------------
+// 7.1 a child label/right exceeding the parent's is rejected at insert; 7.3 a
+// post-hoc label inversion along an ownership edge is reported by the audit; ref
+// edges carry no authority.  (7.2 transitive revocation is proven in core/cap.d.)
+__gshared bool g_orgSecTested = false;
+public void orgSecuritySelfTest() {
+    if (g_orgSecTested) return;
+    g_orgSecTested = true;
+    orgInit();
+
+    uint p = objAlloc(ObjType.File, null);
+    uint c = objAlloc(ObjType.File, null);
+    if (!p || !c) { klog("[org] sec FAIL: alloc\n"); return; }
+
+    // 7.1 label: a more-sensitive child may not be owned by a less-sensitive parent.
+    orgSetLabel(p, 2);
+    orgSetLabel(c, 5);
+    bool labelRej = !edgeAdd(p, c, EdgeKind.StrongOwn, 0);  // 5 ⊑ 2 false ⇒ reject
+    orgSetLabel(c, 1);
+    bool labelOk = edgeAdd(p, c, EdgeKind.StrongOwn, 0);    // 1 ⊑ 2 ⇒ ok
+
+    // 7.1 rights: a Cap edge may not grant more than the parent holds.
+    uint pr = objAlloc(ObjType.File, null);
+    uint cr = objAlloc(ObjType.File, null);
+    orgSetHeldRights(pr, 0x3);                              // parent holds bits 0,1
+    bool rightsRej = !edgeAdd(pr, cr, EdgeKind.Cap, 0x7);   // wants bit 2 too ⇒ reject
+    bool rightsOk  =  edgeAdd(pr, cr, EdgeKind.Cap, 0x1);   // subset ⇒ ok
+
+    // I6: a Weak/Observer edge carries no authority — never rejected on label/rights.
+    uint hi = objAlloc(ObjType.File, null);
+    uint lo = objAlloc(ObjType.File, null);
+    orgSetLabel(hi, 9);                                     // "secret" object
+    bool weakExempt = edgeAdd(lo, hi, EdgeKind.Weak, 0);    // low may *see* it (no grant)
+
+    // 7.3 audit: relabel after the edge to invert monotonicity → audit flags it.
+    uint a1 = objAlloc(ObjType.File, null);
+    uint a2 = objAlloc(ObjType.File, null);
+    bool oe = edgeAdd(a1, a2, EdgeKind.StrongOwn, 0);       // both label 0 ⇒ ok
+    uint baseViol = orgLabelAudit();
+    g_orgNodes[a2].label = 9; g_orgNodes[a1].label = 1;     // post-hoc inversion
+    uint afterViol = orgLabelAudit();
+    bool auditFlags = oe && afterViol > baseViol;
+
+    bool ok = labelRej && labelOk && rightsRej && rightsOk && weakExempt && auditFlags;
+
+    objRelease(p); objRelease(c); objRelease(pr); objRelease(cr);
+    objRelease(hi); objRelease(lo); objRelease(a1); objRelease(a2);
+
+    if (ok) klog("[org] sec PASS\n");
+    else    klog("[org] sec FAIL: behaviour\n");
+}
+
 public void orgStats() {
     klog("[org] edges=");   klog_hex(g_orgEdgesLive);
     klog(" adds=");         klog_hex(g_orgEdgeAdds);
@@ -1103,5 +1219,8 @@ public void orgStats() {
     klog(" pagesrec=");     klog_hex(g_orgPagesReclaimed);
     klog(" quar=");         klog_hex(g_orgQuarantined);
     klog(" secev=");        klog_hex(g_orgSecurityEvents);
+    klog(" lblrej=");       klog_hex(g_orgLabelReject);
+    klog(" rgtrej=");       klog_hex(g_orgRightsReject);
+    klog(" lblviol=");      klog_hex(g_orgLabelViol);
     klog("\n");
 }

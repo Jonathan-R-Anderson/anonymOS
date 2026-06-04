@@ -457,7 +457,44 @@ rebuild is O(V+E) — background only.
   rebuild** recovery: mark from roots, diff against stored counts, repair or quarantine.
   *Accept:* an injected refcount corruption is detected and repaired/quarantined.
 
-## PHASE 7 — Security Validation
+## PHASE 7 — Security Validation  ✅ DONE
+
+> **Status: I5/I6/I7 enforced — labels and capabilities cannot escalate.**
+> Since no MAC label system exists yet, a minimal lattice is introduced on the ORG
+> node: a `label` (MAC level, `⊑` = `≤`) and `heldRights` (the authority an object
+> may grant downward), both defaulting permissive (`label 0`, `heldRights = all`)
+> so existing edges are unaffected until a policy constrains an object.
+> **7.1 (I5 at insert):** `edgeAdd(StrongOwn|Cap)` now rejects an edge whose child
+> label exceeds the parent's (`label(c) ⊑ label(p)`) or whose granted `rights`
+> exceed `heldRights(parent)` — O(1) per edge. Weak/Observer edges are exempt
+> (**I6**: reference/observer edges carry no authority).
+> **7.2 (I7 revocation closure):** `core/cap.d`'s `capRevoke`/new `capRevokeIn`
+> now iterate the forward derive-DAG to a **fixpoint**, so revoking a parent
+> capability renders *all* transitively-derived caps (child, grandchild, …)
+> unusable — not just the direct children.
+> **7.3 (inheritance audit):** `orgLabelAudit` walks **ownership edges only** and
+> reports any `label(child) > label(parent)` inversion (post-hoc relabelings the
+> insert check can't catch); reference edges are never walked, so they grant
+> nothing by construction. Runs in report mode in the live periodic pass.
+>
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. A headless QEMU smoke boot — now running the edge-add label/rights
+> checks and the label audit over the live graph (permissive defaults ⇒ no
+> production rejections) — reached Hyprland/Mesa compositor rendering with no
+> kernel fault, panic, JHC falloff, or OOM. Two one-shot self-tests logged
+> `[org] sec PASS` (a child label *or* right exceeding the parent's is rejected at
+> insert; a Weak edge to a high-label object is allowed since it grants nothing;
+> a post-hoc ownership label inversion is flagged by the audit) and
+> `[cap] revclosure PASS` (on a scratch cap table, revoking a root cap renders a
+> derived child *and grandchild* unusable). All P2–P6 proofs still hold. `orgStats`
+> adds `lblrej`/`rgtrej`/`lblviol`.
+>
+> **Note:** the rights subset for capability *delegation* (`capDerive`,
+> `SCM_RIGHTS` via `ipcAcceptCap`) was already enforced from OO-P6/Phase-7-IPC; ORG
+> P7.1 adds the same guarantee at the graph-edge layer plus the label dimension. A
+> full MAC label lattice with compartments (vs. the integer level used here) is
+> `SECURITY_ROADMAP.md`/`core/mac.d` work that slots into these same hooks.
+
 *Why:* enforce I5/I6/I7 — labels and capabilities never escalate. *Affected:*
 `core/cap.d`, `core/mac.d` (security roadmap), `core/org.d`. *Risks:* perf on every
 delegate. *Refactoring:* validate at edge-add. *Performance:* O(1) per edge (lattice
@@ -582,12 +619,13 @@ cycle that **already exists** in `posix.d`.
   relationship is a typed edge; ownership cycles are impossible by construction (online
   prevention). *Proven:* `[org] cycle PASS` shows `edgeAdd` rejects an ownership cycle;
   the graph is enumerable (`[org] api PASS`).
-- **Coherent + safe:** +P5.2/5.3 ✅ +P6 ✅ +P7 — unreachable strong cycles (incl.
-  SCM_RIGHTS) are collected; no rights/label escalation. *Progress:* P5.2/5.3 ✅ + P6 ✅
-  — a page-backed strong cycle is detected and reclaimed (objects + physical page) and a
-  corrupted refcount is repaired (`[org] gc PASS`); the complete root set gives 0 false
-  GC candidates in production. Remaining: P7 escalation rejection, plus turning on
-  production auto-collection + live SCM edge wiring (gated on the P8 validator).
+- **Coherent + safe:** ✅ **Reached** (P5.2/5.3 ✅ + P6 ✅ + P7 ✅) — unreachable strong
+  cycles are detected/reclaimed; no rights/label escalation. *Proven:* a page-backed
+  strong cycle is detected and reclaimed (objects + physical page) and a corrupted
+  refcount repaired (`[org] gc PASS`); an escalation edge is rejected and revocation is
+  transitive (`[org] sec PASS`, `[cap] revclosure PASS`); the complete root set gives 0
+  false GC candidates in production. Remaining for full production GC: turning on
+  auto-collection + live SCM edge wiring, gated on the P8 validator's confidence.
 - **Operable:** +P8+P9+P12 — continuous budgeted validation, visualization, scale test
   to 10⁶. *Provable:* validator holds CPU budget and catches injected violations.
 

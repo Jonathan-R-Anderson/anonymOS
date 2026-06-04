@@ -7,7 +7,7 @@
 module core.cap;
 
 import core.io;
-import core.objmgr : objGet;
+import core.objmgr : objGet, objAlloc, objRelease, ObjType; // ORG P7.2 self-test
 
 extern (C) @nogc nothrow:
 
@@ -176,25 +176,38 @@ public uint capDeriveObjectToIn(int tableId, uint srcHandle, uint dstHandle,
     return capInstallIn(tableId, dstHandle, objId, rights, srcHandle);
 }
 
-public void capRevoke(uint capId) {
-    capInit();
-    if (!validHandle(capId)) return;
-    auto cap = &g_capTable[capId];
-    cap.objId = 0;
-    cap.rights = 0;
-    cap.revoked = 1;
+// ORG P7.2 (I7 revocation closure): revoking a capability invalidates the entire
+// forward derive-DAG, not just its direct children.  Iterates to a fixpoint over
+// the deriveParent edges so a grandchild (and deeper) cap is rendered unusable too.
+public void capRevokeIn(int tableId, uint capId) {
+    if (!validTable(tableId) || !validHandle(capId)) return;
+    auto caps = &g_capTabs[tableId].caps[0];
+    caps[capId].objId = 0;
+    caps[capId].rights = 0;
+    caps[capId].revoked = 1;
     ++g_capRevokeTotal;
 
-    // Revocation is intentionally local to the active table in this phase.  It
-    // still cascades to handles explicitly derived from this handle.
-    foreach (i; 0 .. CAP_MAX) {
-        auto child = &g_capTable[i];
-        if (child.objId != 0 && child.deriveParent == capId) {
-            child.objId = 0;
-            child.rights = 0;
-            child.revoked = 1;
+    // Transitive closure: a cap whose deriveParent has been revoked is itself
+    // revoked.  Repeat until no further cap changes (depth ≤ derive-chain length).
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        foreach (i; 0 .. CAP_MAX) {
+            auto child = &caps[i];
+            if (child.objId != 0 && child.deriveParent < CAP_MAX &&
+                caps[child.deriveParent].revoked != 0) {
+                child.objId = 0;
+                child.rights = 0;
+                child.revoked = 1;
+                changed = true;
+            }
         }
     }
+}
+
+public void capRevoke(uint capId) {
+    capInit();
+    capRevokeIn(g_activeCapTabId, capId);
 }
 
 public void capTableCloneNarrowing(int srcTableId, int dstTableId, uint rightsMask) {
@@ -220,6 +233,36 @@ public uint capLiveCount(int tableId) {
     foreach (i; 0 .. CAP_MAX)
         if (capUsable(&g_capTabs[tableId].caps[i])) ++n;
     return n;
+}
+
+// ORG P7.2 self-test (I7 revocation closure): on a scratch capability table, a
+// root → child → grandchild derive chain is built; revoking the root must render
+// *all three* unusable.  Guarded on the scratch table being idle, cleared after,
+// so it never disturbs a live process's capabilities.
+__gshared bool g_capRevTested = false;
+public void capRevokeClosureSelfTest() {
+    if (g_capRevTested) return;
+    g_capRevTested = true;
+    int st = CAPTAB_COUNT - 1; // scratch table (highest id)
+    if (capLiveCount(st) != 0) return; // table in use by a real task — skip safely
+    uint to = objAlloc(ObjType.File, null);
+    if (to == 0) return;
+
+    capInstallIn(st, 10, to, CAP_RIGHT_ALL, CAP_INVALID);    // root cap
+    capDeriveObjectToIn(st, 10, 11, to, CAP_RIGHT_READ);     // child  ← root
+    capDeriveObjectToIn(st, 11, 12, to, CAP_RIGHT_READ);     // grandchild ← child
+    bool before = capUsable(capGetIn(st, 10)) && capUsable(capGetIn(st, 11)) &&
+                  capUsable(capGetIn(st, 12));
+
+    capRevokeIn(st, 10);                                     // revoke the root
+    bool closed = !capUsable(capGetIn(st, 10)) && !capUsable(capGetIn(st, 11)) &&
+                  !capUsable(capGetIn(st, 12));              // grandchild dies too
+
+    capTableClear(st);
+    objRelease(to);
+
+    if (before && closed) klog("[cap] revclosure PASS\n");
+    else                  klog("[cap] revclosure FAIL\n");
 }
 
 public void capStats() {

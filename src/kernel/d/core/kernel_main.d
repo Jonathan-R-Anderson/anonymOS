@@ -45,7 +45,9 @@ import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pil
 import core.org : orgInit, orgSelfTest, orgStats, orgAudit, orgIntegReport,
                   orgApiSelfTest, orgReachCompute, orgCycleSelfTest,
                   orgTarjanRun, orgAddAnchorRoots, orgGcStep,
-                  orgValidateInvariants, orgGcSelfTest; // ORG P2–P6
+                  orgValidateInvariants, orgGcSelfTest, orgSecuritySelfTest,
+                  orgLabelAudit; // ORG P2–P7
+import core.cap : capRevokeClosureSelfTest; // ORG P7.2
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -955,6 +957,8 @@ private void dispatchSyscall(int tid) {
         orgApiSelfTest(); // ORG P4: one-shot proof of query/reachability/ns-validation
         orgCycleSelfTest(); // ORG P5: one-shot proof of cycle prevention + SCC GC
         orgGcSelfTest(); // ORG P6: one-shot proof of invariant/quarantine/GC/rebuild
+        orgSecuritySelfTest(); // ORG P7: one-shot proof of label/rights escalation rejection
+        capRevokeClosureSelfTest(); // ORG P7.2: one-shot proof of transitive revocation
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -973,6 +977,7 @@ private void dispatchSyscall(int tid) {
             orgTarjanRun();        // ORG P5.2: background SCC pass over the live graph
             orgGcStep(256);        // ORG P6.2: null dead-weak + count GC candidates (safe)
             orgValidateInvariants(false); // ORG P6.1: report-mode invariant check
+            orgLabelAudit();       // ORG P7.3: report ownership label-monotonicity violations
             orgStats();
         }
     }

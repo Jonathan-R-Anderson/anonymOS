@@ -183,31 +183,35 @@ userspace. CoW/fork deep-copy (`forkTask` → `walkAndCopyUserPages`) must keep 
 
 ---
 
-## PHASE 4 — Convert the process subsystem (Process / Thread objects)  ◐ PARTIAL (identity/accounting done)
+## PHASE 4 — Convert the process subsystem (Process / Thread objects)  ✅ DONE
 
-> **Status: Process/Thread object identity is implemented and wired into the task
-> lifecycle.** `Task` gained `uint objId`; `task.d:objEnsureTask`,
-> `objReleaseTask`, and `objReconcileTasks` mirror every live task as either a
-> `Process` or `Thread` object. Classification is additive and conservative:
-> private address spaces and process leaders are `Process`; CLONE_VM siblings are
-> `Thread`; a vfork-style temporary thread is promoted to `Process` after a
-> successful `execve` gives it a private page table.
+> **Status: implemented as split Process/Thread object identity.** Every runnable
+> `Task` is now scheduled as a `Thread` object (`Task.objId`), including process
+> leaders. Process ownership is separate (`Task.processObjId`), with
+> `Task.processLeaderTid` and `Task.parentObjId` recording the first real
+> parent→child object-tree metadata. Fork creates a new Process object plus a
+> leader Thread; clone creates a new Thread sharing the parent's Process object;
+> a vfork-style child is promoted to its own Process object after successful
+> `execve`.
 >
-> **Lifecycle wiring:** `allocTask` creates an initial task object, `forkTask`
-> promotes the child to a Process object after assigning the new PML4/fd table,
-> `cloneThread` keeps the child as a Thread object, `execveTask` refreshes object
-> type after address-space replacement, and `exitTask`/`releaseTask` release the
-> task object. Fork/clone clear copied `AddrRegion.objId`s so each child mapping
-> receives its own MemRegion object on the next reconcile; exited tasks are skipped
-> by MemRegion reconciliation so their mapping objects are swept.
+> **Lifecycle wiring:** `allocTask` creates the Thread object; `forkTask` creates
+> the child Process object after assigning the new PML4/fd table; `cloneThread`
+> inherits the parent Process object; `execveTask` resets MemRegions and refreshes
+> process ownership; `exitTask`/`releaseTask` release Thread objects and region
+> children. `objReconcileTasks()` marks/sweeps both Thread and Process objects.
 >
-> **Proof:** `make kernel.elf` and `make hos.iso` complete. `objStats()` now prints
-> `proc=` and `thread=` counts alongside `file=`/`mem=`.
+> **Linux compatibility view:** `getpid`/`gettid`/`getppid`, fork/clone return
+> values, `set_tid_address`, and `wait4` now use the same object-backed PID/TID
+> view instead of `getpid→1` and raw scheduler-slot assumptions. The scheduler
+> still runs `g_tasks`/`g_current_task_id`; Linux sees stable small ids derived
+> from the Process/Thread object metadata.
 >
-> **Still TODO in this phase (blocked on Phase 6 semantics):** a real capability
-> table copy/reset policy, separate parent→child ownership metadata, and replacing
-> the Linux PID view with an object-backed PID namespace while preserving Linux
-> compatibility.
+> **Proof:** `make -C src/kernel/d`, `make -B kernel.elf`, and `make hos.iso`
+> complete. `objStats()` prints `proc=` and `thread=` counts alongside
+> `file=`/`mem=`/`vmo=`.
+>
+> **Deferred out of Phase 4:** capability table copy/reset policy remains Phase 6,
+> where capabilities actually exist. Namespace objects remain Phase 9.
 
 **Goal:** `Task` becomes a **Process/Thread object**; `g_tasks` is its
 implementation array; `fork`/`clone`/`exec`/`exit` become object operations.
@@ -456,7 +460,7 @@ must not be skipped or faked (see `IMMUTABLE_ROOTLESS_ROADMAP.md` §G).
 
 ## Milestones
 
-**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 ✅, P4 identity ◐, P5/P6
+**1. Minimum Viable Object OS (MVOO).** *Progress: P2 ✅, P3 ✅, P4 ✅, P5/P6
 pending.* Phases **2 + 5 + 6**: an `Object` header +
 central table, `sys_read/write/close/open` dispatch via `g_objOps`, and fd tables are
 capability tables with rights-narrowing on `fork`/`dup`/`SCM_RIGHTS`. *Provable by:*

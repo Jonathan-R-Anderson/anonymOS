@@ -10,6 +10,7 @@ import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
 import core.random;
 import core.io;
 import core.stdc.string : memcpy;
+import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 extern(C) @nogc nothrow:
@@ -3767,7 +3768,7 @@ public long linux_sys_uname(ulong buf) {
 }
 
 public long linux_sys_getpid() {
-    return 1; // Always return PID 1 for now (init)
+    return cast(long)linuxPidForTask(cast(int)g_current_task_id);
 }
 
 public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong sigsetsize) {
@@ -3806,8 +3807,7 @@ public long linux_sys_futex(ulong uaddr, ulong op, ulong val, ulong timeout, ulo
 }
 
 public long linux_sys_set_tid_address(ulong tidptr) {
-    // Returns the caller's TID (which is PID for single-threaded).
-    return 1; 
+    return cast(long)linuxTidForTask(cast(int)g_current_task_id);
 }
 
 public long linux_sys_set_robust_list(ulong head, ulong len) {
@@ -3994,15 +3994,19 @@ public long linux_sys_getuid()  { return 0; }
 public long linux_sys_geteuid() { return 0; }
 public long linux_sys_getgid()  { return 0; }
 public long linux_sys_getegid() { return 0; }
-public long linux_sys_getppid() { return 0; }
+public long linux_sys_getppid() {
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    int parent = g_tasks[tid].parentId;
+    if (parent < 0 || parent >= MAX_TASKS) return 0;
+    return cast(long)linuxPidForTask(parent);
+}
 public long linux_sys_getpgid(ulong pid) { return 1; }
 public long linux_sys_setpgid(ulong pid, ulong pgid) { return 0; }
 public long linux_sys_getpgrp() { return 1; }
 public long linux_sys_setsid()  { return 1; }
 public long linux_sys_gettid()  {
-    // Per-thread id.  Task 0 is the main thread (tid == pid == 1); other tasks
-    // (pthreads created via clone) report their own task slot as the tid.
-    return cast(long)(g_current_task_id == 0 ? 1 : g_current_task_id);
+    return cast(long)linuxTidForTask(cast(int)g_current_task_id);
 }
 public long linux_sys_getgroups(ulong size, ulong list) { return 0; }
 public long linux_sys_setgroups(ulong size, ulong list) { return 0; }

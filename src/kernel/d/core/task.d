@@ -85,9 +85,17 @@ struct Task {
     bool waiting;   // blocked in wait4, vfork, or a scheduler-backed futex wait
     int  exitCode;
     int  parentId;
-    // Phase 4 (roadmap/OBJECT_OS_ROADMAP.md): id of the Process/Thread object
-    // mirroring this task slot (0 = none/not yet registered).
+    // Phase 4 (roadmap/OBJECT_OS_ROADMAP.md): scheduled identity for this task.
+    // Every runnable task is a Thread object, including process leaders.
     uint objId;
+    // Owning Process object.  Process leaders point at their own process object;
+    // CLONE_VM threads inherit their leader's process object.
+    uint processObjId;
+    // Parent object in the process/thread tree: fork children point at the
+    // parent's Process object; clone threads point at their owning Process.
+    uint parentObjId;
+    // Task slot of the process leader for Linux pid view and process ownership.
+    int  processLeaderTid;
 
     // Saved user registers (layout matches curUserSpaceState+8 / context.S)
     ulong[NUM_REGS] regs;
@@ -134,32 +142,46 @@ private bool taskAddressSpaceIsShared(int tid) {
     return false;
 }
 
-private ObjType objTypeForTask(int tid) {
-    if (tid < 0 || tid >= MAX_TASKS) return ObjType.Invalid;
-    auto task = &g_tasks[tid];
-    if (!task.active || task.exited) return ObjType.Invalid;
+public void objEnsureTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
 
-    // A task with a private address space is a Process.  A process leader with
-    // live CLONE_VM threads remains the Process owner; its children are Threads.
-    if (task.pml4Phys == 0)
-        return (task.fdTabId == tid) ? ObjType.Process : ObjType.Thread;
-    if (!taskAddressSpaceIsShared(tid) || task.fdTabId == tid)
-        return ObjType.Process;
-    return ObjType.Thread;
+    auto task = &g_tasks[tid];
+    if (!task.active || task.exited) return;
+    auto h = objGet(task.objId);
+    if (h is null || h.impl !is cast(void*)task || h.type != ObjType.Thread) {
+        if (h !is null && h.impl is cast(void*)task &&
+            h.type == ObjType.Thread)
+            objRelease(task.objId);
+        task.objId = objAlloc(ObjType.Thread, cast(void*)task);
+    }
 }
 
-public void objEnsureTask(int tid) {
-    ObjType want = objTypeForTask(tid);
-    if (want == ObjType.Invalid) return;
-
+public void objEnsureProcess(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
     auto task = &g_tasks[tid];
-    auto h = objGet(task.objId);
-    if (h is null || h.impl !is cast(void*)task || h.type != want) {
-        if (h !is null && h.impl is cast(void*)task &&
-            (h.type == ObjType.Process || h.type == ObjType.Thread))
-            objRelease(task.objId);
-        task.objId = objAlloc(want, cast(void*)task);
+    if (!task.active || task.exited) return;
+
+    int leader = task.processLeaderTid;
+    if (leader < 0 || leader >= MAX_TASKS || !g_tasks[leader].active)
+        leader = tid;
+    auto impl = cast(void*)&g_tasks[leader];
+    auto h = objGet(task.processObjId);
+    if (h is null || h.impl !is impl || h.type != ObjType.Process)
+        task.processObjId = objAlloc(ObjType.Process, impl);
+}
+
+public void objSetProcess(int tid, int leaderTid, uint parentObjId) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    task.processLeaderTid = leaderTid;
+    task.parentObjId = parentObjId;
+    if (leaderTid >= 0 && leaderTid < MAX_TASKS && leaderTid != tid) {
+        task.processObjId = g_tasks[leaderTid].processObjId;
+    } else {
+        task.processObjId = 0;
+        task.processLeaderTid = tid;
     }
+    objEnsureProcess(tid);
 }
 
 public void objReleaseTask(int tid) {
@@ -167,9 +189,12 @@ public void objReleaseTask(int tid) {
     auto task = &g_tasks[tid];
     auto h = objGet(task.objId);
     if (h !is null && h.impl is cast(void*)task &&
-        (h.type == ObjType.Process || h.type == ObjType.Thread))
+        h.type == ObjType.Thread)
         objRelease(task.objId);
     task.objId = 0;
+    task.processObjId = 0;
+    task.parentObjId = 0;
+    task.processLeaderTid = 0;
 }
 
 // Allocate a task slot (id > 0 reserved for non-init tasks)
@@ -178,11 +203,30 @@ int allocTask() {
         if (!g_tasks[i].active) {
             g_tasks[i] = Task.init;
             g_tasks[i].active = true;
+            g_tasks[i].processLeaderTid = i;
             g_tasks[i].mmapNext = 0x700000000000UL;
             objEnsureTask(i);
             return i;
         }
     }
+    return -1;
+}
+
+public int linuxTidForTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    return tid + 1;
+}
+
+public int linuxPidForTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    int leader = g_tasks[tid].processLeaderTid;
+    if (leader < 0 || leader >= MAX_TASKS) leader = tid;
+    return leader + 1;
+}
+
+public int taskIdFromLinuxPid(int pid) {
+    int tid = pid - 1;
+    if (tid >= 0 && tid < MAX_TASKS) return tid;
     return -1;
 }
 
@@ -322,7 +366,9 @@ public void objReconcileTasks() {
     for (int t = 0; t < MAX_TASKS; ++t) {
         if (!g_tasks[t].active || g_tasks[t].exited) continue;
         objEnsureTask(t);
+        objEnsureProcess(t);
         objMark(g_tasks[t].objId);
+        objMark(g_tasks[t].processObjId);
     }
     objSweepType(ObjType.Process);
     objSweepType(ObjType.Thread);

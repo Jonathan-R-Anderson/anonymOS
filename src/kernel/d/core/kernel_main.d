@@ -307,6 +307,7 @@ private int forkTask(int parentTid) {
 
     auto parent = &g_tasks[parentTid];
     auto child  = &g_tasks[childTid];
+    objEnsureProcess(parentTid);
 
     // Copy register state; child returns 0 from fork
     for (uint i = 0; i < NUM_REGS; i++)
@@ -353,6 +354,7 @@ private int forkTask(int parentTid) {
     child.fdTabId = childTid;
     fdtabForkCopy(parent.fdTabId, childTid);
     objEnsureTask(childTid);
+    objSetProcess(childTid, childTid, parent.processObjId);
 
     klog("[fork] parent="); klog_hex(parentTid);
     klog(" child="); klog_hex(childTid); klog("\n");
@@ -413,6 +415,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
 
     auto parent = &g_tasks[parentTid];
     auto child  = &g_tasks[childTid];
+    objEnsureProcess(parentTid);
 
     // Child resumes right after the `syscall` instruction with rax=0, on the
     // caller-provided stack.  The userspace __clone trampoline pops the thread
@@ -454,10 +457,11 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
 
     // tid notifications — written through the shared (currently active) address
     // space, so direct user-pointer writes are valid here.
+    int childLinuxTid = linuxTidForTask(childTid);
     if ((flags & CLONE_PARENT_SETTID) && ptidPtr != 0)
-        *cast(int*)ptidPtr = childTid;
+        *cast(int*)ptidPtr = childLinuxTid;
     if ((flags & CLONE_CHILD_SETTID) && ctidPtr != 0)
-        *cast(int*)ctidPtr = childTid;
+        *cast(int*)ctidPtr = childLinuxTid;
     if ((flags & CLONE_CHILD_CLEARTID) && ctidPtr != 0)
         g_threadCleartidVirt[childTid] = ctidPtr;
     else
@@ -465,6 +469,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
 
     child.active = true;
     objEnsureTask(childTid);
+    objSetProcess(childTid, parent.processLeaderTid, parent.processObjId);
 
     klog("[clone] parent="); klog_hex(parentTid);
     klog(" thread="); klog_hex(childTid);
@@ -584,6 +589,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // Clear FS base
     d_store_task_fsbase(cast(ulong)tid, 0);
     objEnsureTask(tid);
+    if (task.processLeaderTid != tid)
+        objSetProcess(tid, tid, task.parentObjId);
+    else
+        objEnsureProcess(tid);
 
     // vfork semantics: a successful execve releases the suspended parent (the
     // child now has its own fresh address space, no longer sharing the parent's).
@@ -598,28 +607,35 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
 private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     auto task = &g_tasks[tid];
+    int targetTid = waitPid;
+    if (waitPid > 0) {
+        targetTid = taskIdFromLinuxPid(waitPid);
+        if (targetTid < 0 || targetTid >= MAX_TASKS) return -10; // ECHILD
+    }
 
     // Look for an already-exited child
-    if (waitPid == -1) {
+    if (targetTid == -1) {
         for (int c = 1; c < MAX_TASKS; c++) {
             if (task.childExited[c]) {
                 int code = task.childExitCode[c];
                 task.childExited[c] = false;
                 if (statusPtr != 0)
                     *cast(int*)statusPtr = (code & 0xff) << 8;
+                int childPid = linuxPidForTask(c);
                 releaseTask(c);
-                return cast(long)c;
+                return cast(long)childPid;
             }
         }
     } else {
-        uint c = cast(uint)waitPid;
+        uint c = cast(uint)targetTid;
         if (c < MAX_TASKS && task.childExited[c]) {
             int code = task.childExitCode[c];
             task.childExited[c] = false;
             if (statusPtr != 0)
                 *cast(int*)statusPtr = (code & 0xff) << 8;
+            int childPid = linuxPidForTask(cast(int)c);
             releaseTask(c);
-            return cast(long)c;
+            return cast(long)childPid;
         }
     }
 
@@ -629,7 +645,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
 
     // Block waiting for child
     task.waiting       = true;
-    task.waitingForPid = waitPid;
+    task.waitingForPid = targetTid;
     scheduleNext();
     return -4; // EINTR (will be retried by kernel loop when unblocked)
 }
@@ -1020,7 +1036,7 @@ private void dispatchSyscall(int tid) {
             if (rdi & CLONE_VM) {
                 ret = cast(long)cloneThread(tid, rdi, rsi, rdx, r10, r8);
                 if (ret > 0)
-                    task.regs[REG_RAX] = cast(ulong)ret; // parent gets child tid
+                    task.regs[REG_RAX] = cast(ulong)linuxTidForTask(cast(int)ret);
                 else {
                     task.regs[REG_RAX] = cast(ulong)ret; // negative errno
                     return;
@@ -1031,7 +1047,8 @@ private void dispatchSyscall(int tid) {
                 // (which would inherit locked mutexes from other threads and
                 // deadlock the child before it can exec).
                 if (rdi & CLONE_VFORK) {
-                    g_vforkParentPlus1[cast(int)ret] = tid + 1;
+                    int childTid = cast(int)ret;
+                    g_vforkParentPlus1[childTid] = tid + 1;
                     task.waiting = true;   // resumed by resumeVforkParent() on exec/exit
                     scheduleNext();         // run the child now
                 }
@@ -1047,7 +1064,7 @@ private void dispatchSyscall(int tid) {
             ret = cast(long)forkTask(tid);
             if (ret > 0) {
                 // Parent gets child pid; child already has RAX=0 in its Task.regs
-                task.regs[REG_RAX] = cast(ulong)ret;
+                task.regs[REG_RAX] = cast(ulong)linuxPidForTask(cast(int)ret);
             }
             return; // already set return value
 
@@ -1570,6 +1587,8 @@ void d_kernel_main() {
     // Initialise task 0 (init process) slot
     g_tasks[0] = Task.init;
     g_tasks[0].active   = true;
+    g_tasks[0].parentId = -1;
+    g_tasks[0].processLeaderTid = 0;
     g_tasks[0].mmapNext = 0x740000000000UL;
     g_current_task_id   = 0;
 
@@ -1666,6 +1685,7 @@ void d_kernel_main() {
     }
     g_tasks[0].pml4Phys = pml4Phys;
     objEnsureTask(0);
+    objSetProcess(0, 0, 0);
 
     // Copy kernel high-half mappings into the new page table
     archMapKernel(pml4Phys);

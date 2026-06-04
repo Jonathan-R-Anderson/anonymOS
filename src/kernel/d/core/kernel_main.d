@@ -41,6 +41,7 @@ import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 1
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
                        linuxStats; // Phase 12: Linux-compat object subtree
+import core.census : kernelCensusReport, kernelCensusStats; // Phase 13: six-pillar census
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks;
 import core.random;
@@ -942,6 +943,7 @@ private void dispatchSyscall(int tid) {
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
+        kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated
         if ((g_objReconcileCtr & 0x3FFF) == 0) {
             objStats();
             capStats();
@@ -952,6 +954,7 @@ private void dispatchSyscall(int tid) {
             serviceStats();
             windowStats();
             linuxStats();
+            kernelCensusStats();
         }
     }
 

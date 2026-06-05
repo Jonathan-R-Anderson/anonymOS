@@ -51,6 +51,7 @@ import core.libsecipc : libsecipcSelfTest; // SECURE_IPC P0 crypto+transport fou
 import core.secsession : secsessionSelfTest, secsessionStats,
                         seclifeSelfTest; // SECURE_IPC P2 sessions / P3 lifecycle
 import core.secobj : secobjSelfTest, secobjStats; // SECURE_IPC P4 object-tree + Linux shim
+import core.sechard : sechardSelfTest, sechardStats; // SECURE_IPC P5 hardening + parser fuzz
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
@@ -1024,6 +1025,7 @@ private void dispatchSyscall(int tid) {
         secsessionSelfTest(); // SECURE_IPC P2: signed-DH handshake + HKDF keys + AEAD record layer
         seclifeSelfTest(); // SECURE_IPC P3: rekey + revocation + failure handling (fail-closed)
         secobjSelfTest(); // SECURE_IPC P4: channel/session/cert/descriptor objects + Linux AEAD shim
+        sechardSelfTest(); // SECURE_IPC P5: const-time + nonce-reuse + zeroize + parser fuzz + state machine
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).
@@ -1055,6 +1057,7 @@ private void dispatchSyscall(int tid) {
             secipcStats();
             secsessionStats();
             secobjStats();
+            sechardStats();
         }
     }
 

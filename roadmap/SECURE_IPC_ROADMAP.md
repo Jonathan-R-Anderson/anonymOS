@@ -227,11 +227,25 @@ only after cryptographic proof, never because a message arrived.
   remaining endpoint integration; the broker is the Phase-1 service object, reachable
   by name.)*
 
-### Phase 5 — Production hardening
+### Phase 5 — Production hardening  ✅ DONE
+> **Status:** implemented in `core/sechard.d` (module `core.sechard`), wired into the
+> boot self-test loop. A hardening + adversarial-input pass over the Phase 0–4 code.
+> `[sechard] selftest PASS` with `delivered=0` over 4096 malformed inputs per parser.
 - **5.1** Constant-time everything; nonce-reuse impossibility proofs; memory zeroization;
-  side-channel review. **High.**
+  side-channel review. **High.** ✅ `ctEqual`/`ctEqual32` scan the whole buffer (proven
+  to detect a first/middle/last-byte difference — no secret-dependent early-out, used on
+  every tag/cert/descriptor compare); nonce-reuse impossibility asserted via its
+  mechanisms — strictly-monotonic per-direction counter, no wrap (`sessionSend` refuses
+  at max ⇒ forces rekey), distinct per-direction keys, and rekey bumping `keyGen`;
+  `zeroize` proven to clear, and `sessionClose` proven to wipe send/recv/ephemeral keys.
 - **5.2** Fuzz the record/handshake parsers; formal-ish review of the state machine.
-  **High.**
+  **High.** ✅ a deterministic xorshift fuzzer drives **4096 random/malformed inputs per
+  parser** through `frameDecode`, `secRecordUnpack`, `sessionProcessHandshake`, and the
+  full shim receive path (`secShimRecv` = frame→unpack→AEAD-open) — all bounds-safe
+  (a fault would crash the kernel before the PASS line) and **fail-closed**
+  (`delivered=0`: no junk ever decrypts to a delivered message, no random handshake ever
+  opens a session). The state-machine review asserts send/recv/rekey are refused outside
+  their legal states and that CLOSED is terminal.
 
 ---
 

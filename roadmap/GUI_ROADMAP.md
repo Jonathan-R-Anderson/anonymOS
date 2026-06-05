@@ -132,14 +132,94 @@ to focus it, then types `echo g4pass`):* serial showed
 `G4OUT: $ echo g4pass` (the shell echoed the typed line) and finally
 `G4OUT: g4pass` (**the typed command ran**).
 
-**G5 — Identity-colored borders in the live present path. P: Medium · deps: G2.**
-Carry the trusted identity border (already done for the in-house compositor, and
-`IDENTITY_DOMAIN_ROADMAP.md` §6) into the Hyprland/aquamarine present path so every
-client window is bordered by its owner's identity color.
+**G5 — Identity-colored borders in the live present path. DONE.** The **kernel** (the
+trusted layer that owns the final blit to `g_fb`) paints each client window's border;
+apps and even Hyprland cannot spoof it.
+- **Kernel** (`posix.d`): a new DRM ioctl `DRM_NR_HOS_WINDOWS` (0xf1) receives a
+  `{count, [{x,y,w,h,pid}]}` array; `drmPresentToFramebuffer` (and the report handler,
+  for cadence — see below) overlays a 4-px border per window in a colour derived from
+  the owning process (`hosIdentityColor(pid)` → an 8-entry identity palette; pid is a
+  stand-in until per-client `IdentityRec` colours are wired). Solid-fill, so it renders
+  fine despite the softpipe texture bug.
+- **Hyprland** (`hyprland-g5-identity-borders.patch`): at present time
+  (`CHyprGLRenderer::endRender`) it reports every mapped window's monitor-relative rect
+  + `getPID()` via the ioctl. *Gotcha:* Hyprland's frame/present cadence is sparse after
+  a window maps (often a render/report with no following present blit), so the kernel
+  draws borders in **both** the present (`0xf0`) and the report (`0xf1`) paths.
 
-**Parked / not on this path:** the softpipe textured-wallpaper bug (see Known issues —
-low leverage, slow), dmabuf EGLImage import (efficiency), full desktop shell with icons
-(needs a panel/launcher — large), and ratty (GPU/Bevy — needs Vulkan).
+*Proof (`scripts/qemu-g5-verify.sh`):* serial showed `[g5] set windows count=1` then
+`[g5] drew identity borders for 1 window(s); first rect x=15 y=15 w=256 h=166
+color=0xffe0b341 -- G5 BORDER` — the trusted kernel border around the terminal window
+(hex: rect (21,21,598,358), matching the mapped [20,20]/[600,360]). *Visual* confirmation
+is blocked by the same non-visual present path as G2–G4 (now tracked as **G6**).
+
+---
+
+## Full desktop experience (macOS-style) — planning (2026-06-05)
+
+> **Direction:** beyond "a window + a terminal", evolve toward a **macOS-like desktop**:
+> system font, icon pack, dock, menu bar, launcher, theming, cursor, wallpaper, and a
+> file manager. **Licensing:** Apple's SF font / macOS icons / wallpapers are proprietary
+> and must NOT be bundled. Use libre look-alikes (noted per item) — the *experience*, not
+> Apple's assets.
+>
+> **Gating prerequisite — G6.** Almost everything below is only *visible* once window
+> **content** composites (the softpipe texture bug — see Known issues). Borders/solid UI
+> (G5) work today; fonts/icons/themes are textured glyphs+images and will stay black-
+> interior until G6 lands. So G6 is the real unlock for the visual desktop.
+
+**G6 — Visible window content (unblock the softpipe texture bug). P: Critical · deps: G2.**
+Make client `wl_shm` content actually appear on screen. Options: (a) patch Mesa softpipe
+varying packing; (b) **CPU-composite client buffers directly into the output buffer** in
+the present path, bypassing the broken GL texture sample (likely fastest win); (c) real
+GPU/Vulkan. *Done when:* the terminal's text (and a test image) are visible in
+`screendump`, not just in the serial round-trip.
+
+**G7 — Window decorations / theming (macOS-like). P: High · deps: G6.** Title bars with
+**traffic-light** close/min/max buttons, rounded corners, drop shadow, active/inactive
+states. Hyprland can do rounded corners + shadows via config; the lua-config delivery gap
+(Known issues) must be solved first, or hard-code defaults in a patch.
+
+**G8 — System font (SF-alike). P: High · deps: G6.** Bundle a libre, metric-compatible
+sans (e.g. **Inter**, or a San-Francisco-alike) into the sysroot, register it with
+**fontconfig** (`/etc/fonts`, cache), and set it as the default UI font so GTK/Pango/
+cairo clients pick it up. The kernel already packs `assets.blob`; add a `fonts.blob`.
+
+**G9 — Icon theme (macOS-like). P: Medium · deps: G6, G10.** Ship a libre macOS-style
+icon set (e.g. **WhiteSur-icon-theme** or **McMojave-circle**), install under
+`/usr/share/icons`, point the icon-theme lookup at it (`index.theme`, GTK setting). Hooks
+into the dock (G10) and file manager (G13).
+
+**G10 — Dock + menu bar. P: High · deps: G6, G7.** A bottom **dock** (app launchers +
+running indicators, magnify-on-hover optional) and a top **menu bar** (clock, status,
+app menu). Build as `wl_shm` clients (`wl-term`-style) or a layer-shell panel; needs
+`wlr-layer-shell` support in the present path.
+
+**G11 — Launcher / Spotlight. P: Medium · deps: G8, G10.** A keyboard-driven app/command
+launcher (⌘-Space-style) and/or dock-click launch. Spawns clients via the same
+boot-module/exec path the kernel autostart uses; longer-term wants an on-disk app list.
+
+**G12 — Cursor theme + wallpaper. P: Low · deps: G6.** A macOS-alike **cursor** theme
+(the XCursor search currently falls back to the built-in arrow — see G3) and a default
+**wallpaper** (libre image; the wallpaper path exists but is softpipe-blocked → unblocks
+with G6).
+
+**G13 — File manager (Finder-like). P: Low · deps: G6, G8, G9, G10.** A minimal file
+browser over the kernel VFS (`getdents64` works). Largest item; later.
+
+**Cross-cutting enablers (needed by several of the above):**
+- **lua/config delivery** — serve `/etc/hypr/hyprland.lua` (and theme/font/icon configs)
+  into the guest VFS (currently unresolved — see Known issues). Blocks G7/G8/G9 tuning.
+- **layer-shell** (`zwlr_layer_shell_v1`) in the present path — needed for panels/dock
+  (G10) and wallpaper as a background layer (G12).
+- **asset packing** — extend the `assets.blob`/`pack-assets.py` mechanism to fonts, icon
+  themes, cursors, and wallpapers (`fonts.blob`, `icons.blob`).
+- **multiple windows + an app to launch** — most theming only *shows* with >1 window;
+  pairs with G11.
+
+**Parked / not on this path:** dmabuf EGLImage import (efficiency) and ratty (GPU/Bevy —
+needs Vulkan). *(The softpipe texture bug is no longer "parked" — it is now G6, the
+critical unlock for visible window content.)*
 
 **Iteration reality:** every Hyprland boot is ~200–300 s headless and the wallpaper/
 client timing is a lottery; favor changes that are checkable from the serial log
@@ -169,13 +249,26 @@ client timing is a lottery; favor changes that are checkable from the serial log
   the Wayland client path by serial (`wl_shm` commit + Hyprland map request), but
   `screendump` still captures the fallback/firmware-looking framebuffer (black
   interior with border gradient) instead of the DRM dumb-buffer content.
-- **Softpipe textured-render bug (wallpaper, parked).** A decoded image renders only as
-  a ~16–20 px border with a black interior; narrowed to softpipe dropping
-  `v_texcoord.y` (the texcoord's 2nd component / vs→fs varying packing) — a solid-color
-  quad fills cleanly, only the *textured* quad's interior is black. A de-interleave
-  workaround failed. This is a deep Mesa softpipe source fix
-  (`deps/mutter/build/mesa-23.3.5-epin`) with very slow iteration; **parked** unless the
-  softpipe source is worth patching.
+- **Softpipe textured-render bug — NOW CRITICAL (was "parked, wallpaper-only").**
+  This is the single biggest blocker for a *visible* desktop. Hyprland composites every
+  client window by uploading its `wl_shm` buffer as a **GL texture** and sampling it; the
+  final composite is CPU-read-back and blitted to `g_fb` (`drmPresentToFramebuffer`).
+  Softpipe drops `v_texcoord.y` (the texcoord's 2nd component / vs→fs varying packing),
+  so **any textured quad renders as a ~16–20 px border with a black interior** — a
+  solid-color quad fills cleanly. Consequences:
+  - **The G4 terminal receives and echoes typed keys (proven by serial: `G4OUT: $ echo
+    g4pass` round-trips through the pty), but the glyphs are not *visible* on screen** —
+    the window interior composites black. *This is why typing in the guest shows nothing;
+    it is not an input/echo bug.* Same root cause as the black-interior wallpaper and the
+    black-interior `screendump`s from G2/G3.
+  - **Solid-color geometry is unaffected**, so window **borders** (G5) and any
+    CPU-drawn-into-`g_fb` overlay *do* show. Favor solid-fill UI until this is fixed.
+  - Fix paths (in rough order of leverage): (a) patch Mesa softpipe varying packing
+    (`deps/mutter/build/mesa-23.3.5-epin`) — deep, slow iteration; (b) bypass GL for
+    client content by CPU-compositing `wl_shm` buffers straight into the output buffer in
+    the present path; (c) land a real GPU/Vulkan path. **De-interleave workaround already
+    failed.** Until one lands, the desktop is functional but not visually showing window
+    contents.
 - **Compositor re-inits 2–3×** (one cause was the builtin seatd `fork`). Harmless now
   (no OOM) but a correctness wart; it also makes the wallpaper load very late, which is
   the meta-blocker for any softpipe iteration.

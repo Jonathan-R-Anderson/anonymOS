@@ -151,6 +151,9 @@ patch-hyprland-source:
 	@if ! grep -q 'no shm_open()/POSIX shm' $(HYPRLAND_SRC)/src/helpers/MiscFunctions.cpp; then \
 		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-shm-memfd.patch; \
 	fi
+	@if ! grep -q 'GUI roadmap G5: report mapped window' $(HYPRLAND_SRC)/src/render/GLRenderer.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g5-identity-borders.patch; \
+	fi
 
 check: prepare raw-check
 

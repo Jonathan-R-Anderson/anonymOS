@@ -1,5 +1,8 @@
 #include "GLRenderer.hpp"
 #include <cstdlib>
+#include <fcntl.h>      // EpinAnonymOS G5: report window rects to the kernel
+#include <unistd.h>
+#include <sys/ioctl.h>
 #include "decorations/CHyprInnerGlowDecoration.hpp"
 #include <aquamarine/output/Output.hpp>
 #include "../config/ConfigValue.hpp"
@@ -18,6 +21,8 @@
 #include "../protocols/types/ContentType.hpp"
 #include "OpenGL.hpp"
 #include "Renderer.hpp"
+#include "../Compositor.hpp"              // EpinAnonymOS G5: g_pCompositor->m_windows
+#include "../desktop/view/Window.hpp"
 #include "./gl/GLElementRenderer.hpp"
 #include "./gl/GLFramebuffer.hpp"
 #include "./gl/GLTexture.hpp"
@@ -101,6 +106,49 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
     // allocator never frees, so the heavier scene render exhausts RAM before a
     // frame completes.  Opt in with HOS_SCENE_RENDER=1 once that memory issue is
     // fixed (free list / single-compositor).
+    // EpinAnonymOS GUI roadmap G5: report mapped window rectangles (+ owning pid)
+    // to the kernel so the trusted present blit can draw identity-coloured borders.
+    // The compositor only reports geometry; the kernel paints the border, so apps
+    // cannot spoof it.
+    if (PMONITOR) {
+        struct SHosWinRect {
+            int32_t  x, y, w, h;
+            uint32_t pid;
+        };
+        struct SHosWindows {
+            uint32_t   count;
+            uint32_t   pad;
+            SHosWinRect rects[16];
+        };
+        static constexpr unsigned long HOS_IOCTL_WINDOWS = _IOW('d', 0xF1, SHosWindows);
+        static int                     hosFD             = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+        if (hosFD >= 0) {
+            SHosWindows wins{};
+            const auto  MPOS = PMONITOR->m_position;
+            for (auto const& w : g_pCompositor->m_windows) {
+                if (wins.count >= 16)
+                    break;
+                if (!w || !w->m_isMapped)
+                    continue;
+                auto P = w->m_realPosition->value();
+                auto S = w->m_realSize->value();
+                if (S.x <= 0 || S.y <= 0) { // animation not settled yet → fall back
+                    P = w->m_position;
+                    S = w->m_size;
+                }
+                if (S.x <= 0 || S.y <= 0)
+                    continue;
+                auto& r = wins.rects[wins.count++];
+                r.x     = static_cast<int32_t>(P.x - MPOS.x);
+                r.y     = static_cast<int32_t>(P.y - MPOS.y);
+                r.w     = static_cast<int32_t>(S.x);
+                r.h     = static_cast<int32_t>(S.y);
+                r.pid   = static_cast<uint32_t>(w->getPID());
+            }
+            ioctl(hosFD, HOS_IOCTL_WINDOWS, &wins);
+        }
+    }
+
     static const bool HOS_SCENE_RENDER = std::getenv("HOS_SCENE_RENDER") != nullptr;
     if (!HOS_SCENE_RENDER && m_renderMode == RENDER_MODE_NORMAL && m_currentRenderbuffer && m_currentRenderbuffer->needsCPUCopy()) {
         static bool logged = false;

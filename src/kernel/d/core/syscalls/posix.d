@@ -6266,6 +6266,7 @@ private enum uint DRM_NR_MODE_MAP_DUMB      = 0xb3;
 private enum uint DRM_NR_MODE_DESTROY_DUMB  = 0xb4;
 private enum uint DRM_NR_MODE_ATOMIC        = 0xbc;
 private enum uint DRM_NR_HOS_PRESENT        = 0xf0;
+private enum uint DRM_NR_HOS_WINDOWS        = 0xf1; // GUI roadmap G5: window rects for identity borders
 
 // DRM capability IDs
 private enum ulong DRM_CAP_DUMB_BUFFER          = 0x1;
@@ -6641,6 +6642,109 @@ private void userCopyString(ulong dst, const(char)* src, size_t n) @nogc nothrow
     foreach (i; 0 .. n) d[i] = src[i];
 }
 
+// ── GUI roadmap G5: trusted identity-colored window borders ──────────────────
+// Hyprland's CPU-readback present path clears the frame instead of compositing
+// the scene, so the kernel — the trusted layer that owns the final blit to g_fb
+// — draws each client window's border itself, in a colour derived from the
+// owning process (its pid; a stand-in identity until per-client IdentityRec
+// colours are wired).  Apps cannot influence this: the border is painted after
+// the present blit, over whatever Hyprland produced.
+private struct HosWinRect { int x, y, w, h; uint pid; }
+private enum size_t HOS_WIN_MAX = 16;
+private enum int    HOS_BORDER_PX = 4;
+__gshared HosWinRect[HOS_WIN_MAX] g_hosWins;
+__gshared uint g_hosWinCount = 0;
+__gshared bool g_hosBorderLogged = false;
+
+// A small palette of distinct, unmistakable identity colours (ARGB).  Indexed by
+// the owning process so each client gets a stable border colour.
+private immutable uint[8] HOS_ID_PALETTE = [
+    0xFF4CC2A8, // teal
+    0xFFE0B341, // amber
+    0xFF6FA8DC, // blue
+    0xFFCC6699, // magenta
+    0xFF8FBF5F, // green
+    0xFFE08A4C, // orange
+    0xFFB18FE0, // violet
+    0xFFD05757, // red
+];
+
+private uint hosIdentityColor(uint pid) @nogc nothrow {
+    return HOS_ID_PALETTE[pid % HOS_ID_PALETTE.length];
+}
+
+private void fbFillRow(int x, int y, int w, uint color) @nogc nothrow {
+    if (y < 0 || y >= cast(int)g_fb.height) return;
+    int x0 = x < 0 ? 0 : x;
+    int x1 = x + w; if (x1 > cast(int)g_fb.width) x1 = cast(int)g_fb.width;
+    auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)y * g_fb.pitch);
+    foreach (px; x0 .. x1) row[px] = color;
+}
+
+private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow {
+    if (w <= 0 || h <= 0) return;
+    foreach (i; 0 .. HOS_BORDER_PX) {
+        fbFillRow(x, y + i, w, color);             // top
+        fbFillRow(x, y + h - 1 - i, w, color);     // bottom
+    }
+    // left / right verticals
+    foreach (yy; y .. y + h) {
+        if (yy < 0 || yy >= cast(int)g_fb.height) continue;
+        auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)yy * g_fb.pitch);
+        foreach (i; 0 .. HOS_BORDER_PX) {
+            int lx = x + i, rx = x + w - 1 - i;
+            if (lx >= 0 && lx < cast(int)g_fb.width) row[lx] = color;
+            if (rx >= 0 && rx < cast(int)g_fb.width) row[rx] = color;
+        }
+    }
+}
+
+private void hosDrawIdentityBorders() @nogc nothrow {
+    if (g_hosWinCount == 0) return;
+    smapBegin();
+    foreach (i; 0 .. g_hosWinCount) {
+        auto wn = g_hosWins[i];
+        fbDrawBorder(wn.x, wn.y, wn.w, wn.h, hosIdentityColor(wn.pid));
+    }
+    smapEnd();
+    if (!g_hosBorderLogged) {
+        klog("[g5] drew identity borders for "); klog_hex(g_hosWinCount);
+        klog(" window(s); first rect x="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].x);
+        klog(" y="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].y);
+        klog(" w="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].w);
+        klog(" h="); klog_hex(cast(ulong)cast(uint)g_hosWins[0].h);
+        klog(" color="); klog_hex(hosIdentityColor(g_hosWins[0].pid));
+        klog(" -- G5 BORDER\n");
+        g_hosBorderLogged = true;
+    }
+}
+
+private long drmSetHosWindows(ulong arg) @nogc nothrow {
+    // arg layout: u32 count, u32 pad, then count × { i32 x,y,w,h; u32 pid }.
+    uint count = userRead!uint(arg + 0);
+    if (count > HOS_WIN_MAX) count = HOS_WIN_MAX;
+    ulong p = arg + 8;
+    foreach (i; 0 .. count) {
+        g_hosWins[i].x   = userRead!int(p + 0);
+        g_hosWins[i].y   = userRead!int(p + 4);
+        g_hosWins[i].w   = userRead!int(p + 8);
+        g_hosWins[i].h   = userRead!int(p + 12);
+        g_hosWins[i].pid = userRead!uint(p + 16);
+        p += 20;
+    }
+    g_hosWinCount = count;
+    static uint g_hosWinLogN = 0;
+    if (count > 0 || g_hosWinLogN < 3) {
+        klog("[g5] set windows count="); klog_hex(count); klog("\n");
+        g_hosWinLogN++;
+    }
+    // Paint the borders now as well as on present: Hyprland's frame/present cadence
+    // is sparse after a window maps, but it still reports windows each render, so
+    // drawing here guarantees the border appears even without a fresh present blit.
+    hosDrawIdentityBorders();
+    return 0;
+}
+
 private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
     if (!g_fb || g_fb.address == null || g_fb.pitch == 0 || g_fb.bpp != 32)
         return negErrno(ENODEV);
@@ -6678,6 +6782,9 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
                rowBytes);
     }
     smapEnd();
+
+    // GUI roadmap G5: overlay trusted identity borders for each client window.
+    hosDrawIdentityBorders();
 
     g_fbConsoleEnabled = false;
     return 0;
@@ -6938,6 +7045,9 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
 
     case DRM_NR_HOS_PRESENT:
         return drmPresentToFramebuffer(arg);
+
+    case DRM_NR_HOS_WINDOWS:
+        return drmSetHosWindows(arg);
 
     case DRM_NR_MODE_CREATE_DUMB: {
         uint h   = userRead!uint(arg + 0);

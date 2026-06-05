@@ -854,6 +854,16 @@ private bool unixPathEquals(ref const(LocalSocket) sock, const(sockaddr_un)* add
     return true;
 }
 
+private bool unixAddrEqualsLiteral(const(sockaddr_un)* addr, size_t len, string literal)
+{
+    if (addr is null || len != literal.length) return false;
+    foreach (i; 0 .. literal.length)
+    {
+        if (addr.sun_path[i] != literal[i]) return false;
+    }
+    return true;
+}
+
 private bool unixPathInUse(const(sockaddr_un)* addr, size_t len)
 {
     foreach (ref sock; g_localSockets)
@@ -873,7 +883,7 @@ private bool unixPathInUse(const(sockaddr_un)* addr, size_t len)
     return false;
 }
 
-private LocalSocket* findUnixListener(const(sockaddr_un)* addr, size_t len)
+private LocalSocket* findUnixListenerExact(const(sockaddr_un)* addr, size_t len)
 {
     foreach (ref sock; g_localSockets)
     {
@@ -887,6 +897,58 @@ private LocalSocket* findUnixListener(const(sockaddr_un)* addr, size_t len)
         }
     }
     return null;
+}
+
+private LocalSocket* findUnixListenerCString(const(char)* path)
+{
+    if (path is null) return null;
+
+    size_t len = 0;
+    while (path[len] != 0) ++len;
+    if (len == 0) return null;
+
+    foreach (ref sock; g_localSockets)
+    {
+        if (!sock.inUse || sock.state != LocalSocketState.listener ||
+            sock.domain != AF_UNIX || sock.pathLength != len)
+        {
+            continue;
+        }
+
+        bool match = true;
+        foreach (i; 0 .. len)
+        {
+            if (sock.path[i] != path[i])
+            {
+                match = false;
+                break;
+            }
+        }
+        if (match) return &sock;
+    }
+    return null;
+}
+
+private LocalSocket* findUnixListener(const(sockaddr_un)* addr, size_t len)
+{
+    auto exact = findUnixListenerExact(addr, len);
+    if (exact !is null) return exact;
+
+    // Hyprland intentionally starts its display search at wayland-1. Keep the
+    // boot environment stable for first clients by aliasing wayland-0 to that
+    // live listener when it is the compositor's chosen socket.
+    if (unixAddrEqualsLiteral(addr, len, "/run/user/1000/wayland-0"))
+        return findUnixListenerCString("/run/user/1000/wayland-1\0".ptr);
+
+    return null;
+}
+
+public bool unixSocketListenerReady(const(char)* path)
+{
+    if (findUnixListenerCString(path) !is null) return true;
+    if (cstrEq(path, "/run/user/1000/wayland-0"))
+        return findUnixListenerCString("/run/user/1000/wayland-1\0".ptr) !is null;
+    return false;
 }
 
 private bool pendingQueueEmpty(ref LocalSocket sock)
@@ -1102,6 +1164,28 @@ private long copySockoptUcred(ulong val, ulong len)
     cred.gid = userCurrentGid();
     *optLen = cast(uint)LinuxUcred.sizeof;
     return 0;
+}
+
+// Install console stdin/stdout/stderr (fds 0/1/2) into a specific process fd table.
+// Used for kernel-spawned processes (for example, the GUI G1 wl-probe) so their
+// write(1)/(2) reach the serial console without going through initFdTable().
+public void fdtabSetupConsoleStdio(int tableId) {
+    if (tableId < 0 || tableId >= g_fdTabs.length) return;
+
+    g_fdTabs[tableId][0] = File.init;
+    g_fdTabs[tableId][0].type = FileType.FD_CONSOLE;
+    g_fdTabs[tableId][0].flags = O_RDONLY;
+    publishFdInTable(tableId, 0, &g_fdTabs[tableId][0], -1, -1);
+
+    g_fdTabs[tableId][1] = File.init;
+    g_fdTabs[tableId][1].type = FileType.FD_CONSOLE;
+    g_fdTabs[tableId][1].flags = O_WRONLY;
+    publishFdInTable(tableId, 1, &g_fdTabs[tableId][1], -1, -1);
+
+    g_fdTabs[tableId][2] = File.init;
+    g_fdTabs[tableId][2].type = FileType.FD_CONSOLE;
+    g_fdTabs[tableId][2].flags = O_WRONLY;
+    publishFdInTable(tableId, 2, &g_fdTabs[tableId][2], -1, -1);
 }
 
 void initFdTable() {
@@ -3362,8 +3446,10 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
 }
 
 private bool isSyntheticSocketPath(const(char)* path) {
-    return cstrEq(path, "/run/user/1000/wayland-0") ||
-           cstrEq(path, "/run/user/1000/pipewire-0") ||
+    if (cstrEq(path, "/run/user/1000/wayland-0"))
+        return unixSocketListenerReady(path);
+
+    return cstrEq(path, "/run/user/1000/pipewire-0") ||
            cstrEq(path, "/run/user/1000/pulse/native") ||
            cstrEq(path, "/run/user/1000/bus") ||
            cstrEq(path, "/run/dbus/system_bus_socket");

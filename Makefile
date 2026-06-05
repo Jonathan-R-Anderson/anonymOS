@@ -56,6 +56,7 @@ BUSYBOX_BIN   := deps/busybox/busybox
 TEST_DRM_BIN  := build/test-drm
 COMPOSITOR_BIN := build/compositor
 HELLO_GUI_BIN := build/hello-gui
+WLPROBE_BIN   := build/wl-probe
 HYPRLAND_BIN := deps/hyprland/Hyprland
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
@@ -77,7 +78,11 @@ $(HELLO_GUI_BIN): src/util/hello-gui.c
 	@echo "==== Building hello-gui ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(wildcard $(HYPRLAND_BIN))
+$(WLPROBE_BIN): src/util/wl-probe.c
+	@echo "==== Building wl-probe (GUI G1 client probe) ===="
+	gcc $(FREESTANDING_CFLAGS) -o $@ $<
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(wildcard $(HYPRLAND_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -108,6 +113,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(HELLO_GUI_BIN) cd/hello-gui
 	@echo "Included hello-gui"
+
+	cp $(WLPROBE_BIN) cd/wl-probe
+	@echo "Included wl-probe (GUI G1)"
 
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \

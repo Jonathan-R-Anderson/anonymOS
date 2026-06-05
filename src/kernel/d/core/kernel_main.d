@@ -37,7 +37,7 @@ import core.untyped : untypedRootInit, untypedCreateProcess, untypedSelfTest,
                       untypedStats, UNTYPED_CAP_HANDLE;
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
-import core.namespace : nsSelfTest, nsStats; // Phase 9: per-process namespaces
+import core.namespace : nsSelfTest, nsStats, nsClone; // Phase 9: per-process namespaces
 import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
                   userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
@@ -143,6 +143,8 @@ __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
 __gshared ulong g_futexLogCount = 0;
 __gshared ulong g_futexWakeLogCount = 0;
+__gshared bool g_guiG1AutostartEnabled = false;
+__gshared bool g_guiG1ProbeStarted = false;
 
 private bool futexWaitMatches(int tid, ulong uaddr, uint wakeBits) {
     if (tid < 0 || tid >= MAX_TASKS) return false;
@@ -676,6 +678,50 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     resumeVforkParent(tid);
 
     return 0;
+}
+
+// GUI roadmap G1: launch a second userspace process (the wl-probe Wayland client)
+// once Hyprland has bound /run/user/1000/wayland-0. The probe is a freestanding
+// static boot module, reusing the existing task/exec machinery. Best-effort and
+// isolated: any failure just logs and leaves the desktop boot untouched.
+private void spawnWaylandProbe() {
+    int t = allocTask();
+    if (t <= 0) { klog("[g1] no free task slot for wl-probe\n"); return; }
+    g_tasks[t].parentId         = 0;
+    g_tasks[t].processLeaderTid = t;
+    g_tasks[t].userObjId        = g_tasks[0].userObjId;
+    g_tasks[t].untypedObjId     = untypedCreateProcess(0);
+    if (g_tasks[t].untypedObjId == 0) {
+        klog("[g1] no untyped budget for wl-probe\n");
+        releaseTask(t);
+        return;
+    }
+    g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
+    capTableClear(g_tasks[t].capTabId);
+    installTaskUntypedCap(t);
+    fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
+
+    ulong savedCr3 = x64ReadCR3();
+    uint savedUntyped = physActiveUntyped();
+    physSetActiveUntyped(g_tasks[t].untypedObjId);
+    long r = execveTask(t, cast(ulong)"wl-probe\0".ptr, 0, 0);
+    physSetActiveUntyped(savedUntyped);
+    x64WriteCR3(savedCr3);
+    if (r != 0) {
+        klog("[g1] wl-probe spawn failed\n");
+        releaseTask(t);
+        return;
+    }
+    klog("[g1] wl-probe launched as task "); klog_hex(cast(ulong)t); klog("\n");
+}
+
+private void maybeSpawnWaylandProbe() {
+    if (!g_guiG1AutostartEnabled || g_guiG1ProbeStarted) return;
+    if (!unixSocketListenerReady("/run/user/1000/wayland-0\0".ptr)) return;
+
+    g_guiG1ProbeStarted = true;
+    klog("[g1] wayland-0 listener ready; launching wl-probe\n");
+    spawnWaylandProbe();
 }
 
 // ------------------------------------------------------------------
@@ -1584,6 +1630,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 
 private void kernelLoop() {
     while (true) {
+        maybeSpawnWaylandProbe();
+
         int tid = cast(int)g_current_task_id;
         auto task = &g_tasks[tid];
 
@@ -1763,6 +1811,7 @@ void d_kernel_main() {
     ulong initPhys = 0;
     ulong initSize = 0;
     const(char)* initExecName = "sh\0".ptr;
+    bool initIsHyprland = false;
     random_init();
     // Phase 8: stand up Driver/Device objects for the synthetic /dev tree (and
     // wrap the block/NIC driver globals) before the init process opens /dev nodes.
@@ -1818,6 +1867,7 @@ void d_kernel_main() {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
                 initExecName = cstrBasenameK(name);
+                initIsHyprland = true;
                 klog("[dkernel] init = Hyprland module\n");
             }
         }
@@ -1980,6 +2030,10 @@ void d_kernel_main() {
     g_tasks[0].regs[REG_RIP]    = entryRip;
     g_tasks[0].regs[REG_RSP]    = rsp;
     g_tasks[0].regs[REG_RFLAGS] = 0x202; // IF=1
+
+    g_guiG1AutostartEnabled = initIsHyprland;
+    if (g_guiG1AutostartEnabled)
+        klog("[g1] wl-probe autostart armed\n");
 
     // Set up IDT and SYSCALL MSRs
     x64_ready_for_userspace();

@@ -28,12 +28,18 @@
   `FD_INPUT_EVENT`); `/dev/input/event0/1` registered (`device.d`).
 - Userland C clients build from `src/util/*.c`; the sysroot has `libwayland-client.a`
   + `wayland-client.h` + `xdg-shell.xml` (`deps/gtk-stack/sysroot`, `deps/.../wayland-protocols`).
+- **G1 is implemented:** `wl-probe` is staged as a boot module, the kernel arms a
+  Hyprland-only autostart hook, and a second task is spawned once the compositor's
+  Wayland listener is ready. Verified in QEMU serial log:
+  `WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
 
-**G1 — A client-launch mechanism. P: Critical.** Nothing currently starts a second
-userspace process after Hyprland. *Need:* either honor Hyprland's `exec-once`/autostart
-to spawn a client, or have the kernel launch a second boot-module process once the
-compositor's `wayland-0` socket exists. *Done when:* a second process starts and
-`connect()`s to `/run/user/1000/wayland-0`.
+**G1 — A client-launch mechanism. DONE.** Implemented via kernel boot-module
+autostart: `wl-probe` is built from `src/util/wl-probe.c`, included in the ISO, and
+spawned as a second userspace task after Hyprland exposes its Wayland listener.
+Hyprland currently binds `wayland-1`, so the kernel aliases client connects to
+`/run/user/1000/wayland-0` onto that live listener to preserve the boot environment.
+*Proof:* QEMU serial showed `[g1] wl-probe launched as task ...` followed by
+`WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
 
 **G2 — First Wayland client window (the gating milestone). P: Critical.** Build a
 minimal `wl_shm` client (weston-simple-shm–style C, linked against the sysroot
@@ -74,9 +80,9 @@ client timing is a lottery; favor changes that are checkable from the serial log
 
 ## Known issues / notes
 
-- **Wayland client path is unproven** — Hyprland (the server) reaches its event loop
-  and renders an empty workspace, but no client has ever connected + mapped a surface.
-  This is the gating unknown for G1/G2.
+- **Wayland mapped-window path is still unproven** — G1 proves a second userspace
+  process can start and connect to the compositor socket, but no client has yet
+  created + committed a mapped surface. This is now the gating unknown for G2.
 - **Softpipe textured-render bug (wallpaper, parked).** A decoded image renders only as
   a ~16–20 px border with a black interior; narrowed to softpipe dropping
   `v_texcoord.y` (the texcoord's 2nd component / vs→fs varying packing) — a solid-color

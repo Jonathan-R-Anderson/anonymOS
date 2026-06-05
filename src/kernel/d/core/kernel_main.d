@@ -55,6 +55,7 @@ import core.sechard : sechardSelfTest, sechardStats; // SECURE_IPC P5 hardening 
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
+import display.compositor.compositor : compositorIdentitySelfTest; // GUI: trusted identity borders
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
                        linuxStats; // Phase 12: Linux-compat object subtree
@@ -998,6 +999,7 @@ private void dispatchSyscall(int tid) {
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         servicePhase5SelfTest(); // IR-P5: dependency-ordered start, FS-first migration, versioning
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
+        compositorIdentitySelfTest(); // GUI: one-shot proof of trusted, unspoofable identity borders
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         linuxPersSelfTest(); // IR-P7: ephemeral-root sandbox + ns/cap op translation + gated /dev
         kernelCensusReport(); // Phase 13: Milestone 3 proof once the graph is populated

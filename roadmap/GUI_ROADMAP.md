@@ -263,6 +263,30 @@ Remaining rendering limitation:
   failures are now nonfatal; next work is to re-enable real scene rendering on top
   of the proven present path.
 
+## In-house compositor — trusted identity borders DONE (window decoration)
+
+The in-house compositor (`display/compositor/compositor.d`) now draws each window's
+border in the color of its **owning security identity**, the trusted-compositor
+window-decoration feature (and the first slice of `IDENTITY_DOMAIN_ROADMAP.md` §6):
+
+- `Window` (`display/window_manager/manager.d`) gained a trusted `identityId` +
+  `identityColor`, written **only** by the WM (`createWindow` inits them to neutral;
+  `assignWindowIdentity` binds a window to its owner's identity) — **never** by a
+  client message, so an app cannot choose or change its own border color.
+- The compositor's `drawWindow` draws the window edge via `borderColorFor(window)` (a
+  2px ring in the identity color when one is assigned, neutral default otherwise). The
+  helper reads **only** the trusted `identityColor` — never any app-controlled field —
+  so the border is **unspoofable**.
+- `[gui] selftest PASS` (one-shot, `compositorIdentitySelfTest`, wired into the boot
+  reconcile loop): proves a Work window borders green, distinct identities get distinct
+  borders, an un-assigned window falls back to the neutral default, and mutating every
+  app-controlled field (title/focus/geometry/z-order) leaves the border color unchanged.
+
+*Remaining for the full §6 feature:* plumb the owner's real identity into
+`assignWindowIdentity` at client-connect (needs the Identity Manager, `IDENTITY_DOMAIN_
+ROADMAP.md` §2), the `"[Work] Terminal"` title-bar label text, and the same border in
+the Hyprland/aquamarine present path.
+
 ## Later
 
 - **Phase 6 — first real GUI app:** port SDL2 (large, but unlocks many apps).

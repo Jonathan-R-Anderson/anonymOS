@@ -8,6 +8,7 @@ import display.window_manager.manager;
 import display.wallpaper : drawWallpaperToBuffer;
 import display.gpu_accel : acceleratedPresentBuffer;
 import core.window : surfaceRegister, winReleaseLocal, WinKind; // Phase 11: Surface objects
+import core.io : klog;        // boot self-test output
 import core.stdc.string : memcpy;
 import std.conv : to;
 
@@ -636,6 +637,15 @@ private void drawWindows(scope const(WindowEntry)[] windows, uint taskbarHeight)
     }
 }
 
+// The trusted border color for a window: the owning identity's color when one is
+// assigned, otherwise the neutral default.  This reads ONLY the trusted
+// `identityColor` field — never any app-controlled field (title/focus/geometry) — so
+// the border is unspoofable.
+uint borderColorFor(ref const Window window) @nogc nothrow
+{
+    return (window.identityColor != 0) ? window.identityColor : borderColor;
+}
+
 private void drawWindow(ref const Window window, uint taskbarHeight)
 {
     const uint availableHeight = (g_compositor.height > taskbarHeight) ? g_compositor.height - taskbarHeight : g_compositor.height;
@@ -648,7 +658,15 @@ private void drawWindow(ref const Window window, uint taskbarHeight)
 
     const uint titleHeight = 24;
     g_compositor.fillRect(window.x, window.y, window.width, window.height, windowColor);
-    g_compositor.drawRect(window.x, window.y, window.width, window.height, borderColor);
+    // Trusted identity border: the compositor — not the app — draws the window edge in
+    // the owning identity's color (a 2px ring when an identity is assigned, so it is
+    // unmistakable).  Apps cannot set `identityColor`, so they cannot recolor or hide it.
+    const uint idBorder = borderColorFor(window);
+    g_compositor.drawRect(window.x, window.y, window.width, window.height, idBorder);
+    if (window.identityColor != 0 && window.width > 4 && window.height > 4)
+    {
+        g_compositor.drawRect(window.x + 1, window.y + 1, window.width - 2, window.height - 2, idBorder);
+    }
 
     const uint barColor = window.focused ? titleFocused : titleBarColor;
     g_compositor.fillRect(window.x, window.y, window.width, titleHeight, barColor);
@@ -765,4 +783,46 @@ private size_t formatUnsigned(size_t value, scope char[] buffer)
     }
     buffer[len] = '\0';
     return len;
+}
+
+// === Identity-border self-test (GUI roadmap: trusted, unspoofable window borders) ===
+// Proves the trusted compositor draws each window's border from its identity color and
+// that an app cannot spoof it: distinct identities yield distinct borders, a window
+// with no identity falls back to the neutral default, and mutating every app-controlled
+// field (title/focus/geometry/z-order) never changes the border color.
+private __gshared bool g_compIdSelfTested = false;
+
+public void compositorIdentitySelfTest()
+{
+    if (g_compIdSelfTested) return;
+    g_compIdSelfTested = true;
+
+    enum uint WORK_GREEN  = 0xFF2E7D32;
+    enum uint BANK_YELLOW = 0xFFFFD600;
+
+    Window w;            // a "Work" window
+    w.identityColor = WORK_GREEN;
+    immutable uint c0 = borderColorFor(w);
+
+    // Simulate everything a client controls; the trusted border must not move.
+    w.title    = "I am Banking";   // spoof attempt via the title
+    w.focused  = true;
+    w.x = 1; w.y = 2; w.width = 9; w.height = 9;
+    w.zOrder   = 99;
+    immutable uint c1 = borderColorFor(w);
+
+    Window bank; bank.identityColor = BANK_YELLOW;
+    Window none;                    // no identity assigned
+
+    immutable bool work     = (c0 == WORK_GREEN);
+    immutable bool unspoof  = (c1 == WORK_GREEN);                 // app fields ignored
+    immutable bool distinct = (borderColorFor(bank) == BANK_YELLOW &&
+                               borderColorFor(bank) != borderColorFor(w));
+    immutable bool neutral  = (none.identityColor == 0 &&
+                               borderColorFor(none) == borderColor);
+
+    if (work && unspoof && distinct && neutral)
+        klog("[gui] selftest PASS\n");
+    else
+        klog("[gui] selftest FAIL\n");
 }

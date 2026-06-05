@@ -87,7 +87,13 @@ public struct Window
     size_t zOrder;
     size_t surfaceId;
     Canvas surfaceCanvas;
-    
+    // Trusted identity / security-domain label, written ONLY by the window manager
+    // (createWindow / assignWindowIdentity), never by a client message.  The trusted
+    // compositor draws the window border in `identityColor`, so the owning identity is
+    // always visible and an app can never recolor, hide, or spoof it.
+    uint identityId;
+    uint identityColor;   // packed 0xAARRGGBB; 0 = neutral (no identity assigned)
+
     Rect rect() const @nogc nothrow { return Rect(cast(int)x, cast(int)y, width, height); }
 }
 
@@ -171,6 +177,8 @@ public:
         w.desktop = targetDesktop;
         w.zOrder = _nextZOrder++;
         w.surfaceId = INVALID_INDEX;
+        w.identityId = 0;        // neutral until the WM assigns the owner's identity
+        w.identityColor = 0;
 
         _inputQueues[_windowCount - 1].head = 0;
         _inputQueues[_windowCount - 1].tail = 0;
@@ -485,6 +493,31 @@ public:
             }
         }
         return INVALID_INDEX;
+    }
+
+    // Trusted setter: bind a window to the security identity of its owning client.
+    // Called by the window manager when it learns a client's identity — NEVER from a
+    // client request — so an app cannot choose or change its own border color.
+    bool assignWindowIdentity(size_t windowId, uint identityId, uint identityColor)
+    {
+        foreach (ref window; _windows[0 .. _windowCount])
+        {
+            if (window.id == windowId)
+            {
+                window.identityId = identityId;
+                window.identityColor = identityColor;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Read-only views the trusted compositor uses to draw the identity border.
+    uint windowIdentityColor(size_t windowId) const
+    {
+        foreach (ref const window; _windows[0 .. _windowCount])
+            if (window.id == windowId) return window.identityColor;
+        return 0;
     }
 
 private:

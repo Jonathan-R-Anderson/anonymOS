@@ -498,8 +498,8 @@ public void secsessionSelfTest() {
 // === §3 lifecycle proof: rekey, revocation, failure handling =================
 // Build an OPEN A↔B session pair through the full Phase-1+2 flow (handles 60/61 in
 // the scratch table).  Outputs the descriptor + the three allocated objects.
-private bool buildOpenPair(int st, Session* sa, Session* sb, SessionDescriptor* desc,
-                           uint* oa, uint* ob, uint* lo) {
+public bool secsessionOpenPair(int st, Session* sa, Session* sb, SessionDescriptor* desc,
+                               uint* oa, uint* ob, uint* lo) {
     *oa = objAlloc(ObjType.Process, null);
     *ob = objAlloc(ObjType.Process, null);
     *lo = objAlloc(ObjType.Process, null);
@@ -536,8 +536,8 @@ public void seclifeSelfTest() {
     Session sA, sB, sC, sD;
     SessionDescriptor d1, d2;
     uint o1a,o1b,l1, o2a,o2b,l2;
-    bool ok = buildOpenPair(st, &sA, &sB, &d1, &o1a, &o1b, &l1) &&
-              buildOpenPair(st, &sC, &sD, &d2, &o2a, &o2b, &l2);
+    bool ok = secsessionOpenPair(st, &sA, &sB, &d1, &o1a, &o1b, &l1) &&
+              secsessionOpenPair(st, &sC, &sD, &d2, &o2a, &o2b, &l2);
 
     bool rekey=false, stale=false, torn=false, peerdeath=false, revoke=false, timeout=false;
     ubyte[SEC_MSG_MAX] buf; uint bl;

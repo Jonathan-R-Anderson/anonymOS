@@ -205,13 +205,27 @@ only after cryptographic proof, never because a message arrived.
   `sessionSend` (forces rekey), and `sessionPeerDied` — all close + zeroize
   (fail-closed; never downgrade to plaintext).
 
-### Phase 4 — Object-tree + Linux-compat integration
+### Phase 4 — Object-tree + Linux-compat integration  ✅ DONE
+> **Status:** implemented in `core/secobj.d` (module `core.secobj`), wired into the
+> boot self-test loop. Adds four object types (`ObjType.SecChannel/SecSession/SecCert/
+> SecDescriptor`) and a transparent AEAD shim over a wire. `[secobj] selftest PASS`
+> proves both sub-tasks.
 - **4.1** Model channel, session, identity cert, descriptor as **objects** in the tree;
   IPC-pair authority is a **capability** delegated downward (parent ⊇ child).
-  *Deps:* `OBJECT_OS_ROADMAP.md`. **High.**
+  *Deps:* `OBJECT_OS_ROADMAP.md`. **High.** ✅ `secChannelObject`/`secSessionObject`/
+  `secCertObject`/`secDescriptorObject` allocate correctly-typed tree objects (a
+  `SecSession` holds **no keys**); the authority to use a channel is a capability to its
+  `SecChannel` object, and `ipcPairDerive` (`capDeriveObjectToIn`) narrows it
+  parent→child — a child holds ⊆ the parent's IPC reach and **widening is refused**.
 - **4.2** **Linux-compat shim:** `libsecipc` wraps a normal unix-socket fd; a Linux app
   uses `send`/`recv` and the library does the AEAD transparently; broker reachable via a
-  well-known socket. No new Linux syscalls. **Medium.**
+  well-known socket. No new Linux syscalls. **Medium.** ✅ `secShimSend`/`secShimRecv`
+  seal/frame and deframe/open a record over a `SecWire` (the socketpair/memfd ring
+  stand-in); the self-test confirms the **wire carries ciphertext, not the plaintext**,
+  and a Linux-style `send`/`recv` round-trips both directions with the AEAD applied
+  transparently. *(Wiring `SecWire` onto the live posix socketpair/memfd fd is the
+  remaining endpoint integration; the broker is the Phase-1 service object, reachable
+  by name.)*
 
 ### Phase 5 — Production hardening
 - **5.1** Constant-time everything; nonce-reuse impossibility proofs; memory zeroization;

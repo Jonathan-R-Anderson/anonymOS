@@ -45,6 +45,10 @@ enum ObjType : uint {
     Admin,              // IMMUTABLE_ROOTLESS §3.2: typed admin authority object
     StoreObject,        // IMMUTABLE_ROOTLESS §4.1: content-addressed store blob
     Generation,         // IMMUTABLE_ROOTLESS §4.4: immutable system-tree snapshot
+    SecChannel,         // SECURE_IPC §4.1: a secure IPC channel object
+    SecSession,         // SECURE_IPC §4.1: session metadata object (no keys)
+    SecCert,            // SECURE_IPC §4.1: identity cert object
+    SecDescriptor,      // SECURE_IPC §4.1: broker session-descriptor object
     Count
 }
 

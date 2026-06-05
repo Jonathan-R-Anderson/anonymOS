@@ -982,6 +982,11 @@ private void handleKbdIRQ() @nogc nothrow {
 // 3-byte PS/2 mouse packet accumulator
 private __gshared ubyte[3] g_mouse_buf;
 private __gshared int      g_mouse_idx = 0;
+// Last reported button bitmask (bit0 left, bit1 right, bit2 middle).  evdev only
+// reports EV_KEY transitions, not level — libinput/Hyprland treat a repeated
+// press without an intervening release as a protocol error, so we diff state and
+// emit a button event only when it actually changes (GUI roadmap G3).
+private __gshared ubyte g_mouse_prevButtons = 0;
 
 private void handleMouseIRQ() @nogc nothrow {
     while (inb(0x64) & 0x21) {      // output-buffer-full AND aux-data bit
@@ -1002,14 +1007,21 @@ private void handleMouseIRQ() @nogc nothrow {
         // PS/2 Y axis is inverted relative to screen
         dy = -dy;
 
-        if (dx != 0) input_enqueue(false, EV_REL, REL_X, dx);
-        if (dy != 0) input_enqueue(false, EV_REL, REL_Y, dy);
+        bool any = false;
+        if (dx != 0) { input_enqueue(false, EV_REL, REL_X, dx); any = true; }
+        if (dy != 0) { input_enqueue(false, EV_REL, REL_Y, dy); any = true; }
 
-        // Button state
-        input_enqueue(false, EV_KEY, BTN_LEFT,   (status & 0x01) ? 1 : 0);
-        input_enqueue(false, EV_KEY, BTN_RIGHT,  (status & 0x02) ? 1 : 0);
-        input_enqueue(false, EV_KEY, BTN_MIDDLE, (status & 0x04) ? 1 : 0);
-        input_enqueue(false, EV_SYN, SYN_REPORT, 0);
+        // Button state — emit only the bits that changed since the last packet.
+        ubyte cur     = cast(ubyte)(status & 0x07);
+        ubyte changed = cast(ubyte)(cur ^ g_mouse_prevButtons);
+        if (changed & 0x01) { input_enqueue(false, EV_KEY, BTN_LEFT,   (cur & 0x01) ? 1 : 0); any = true; }
+        if (changed & 0x02) { input_enqueue(false, EV_KEY, BTN_RIGHT,  (cur & 0x02) ? 1 : 0); any = true; }
+        if (changed & 0x04) { input_enqueue(false, EV_KEY, BTN_MIDDLE, (cur & 0x04) ? 1 : 0); any = true; }
+        g_mouse_prevButtons = cur;
+
+        // One SYN_REPORT terminates each evdev frame, but only when the frame
+        // carried at least one motion/button event.
+        if (any) input_enqueue(false, EV_SYN, SYN_REPORT, 0);
     }
 }
 

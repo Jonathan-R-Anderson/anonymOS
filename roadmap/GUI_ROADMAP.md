@@ -36,6 +36,11 @@
   after Hyprland's listener settles. It binds `wl_compositor`/`wl_shm`/`xdg_wm_base`,
   creates an `xdg_toplevel`, passes a memfd-backed shm buffer, commits it, and
   Hyprland logs the mapped window (`EpinAnonymOS G2 wl_shm`) on `FALLBACK`.
+- **G3 is implemented:** the sessionless headless backend (which has no
+  libinput/libseat/udev) bridges the kernel's evdev mouse `/dev/input/event1`
+  straight into an aquamarine pointer (patch `0004-headless-input.patch`). The
+  cursor tracks the mouse and a left click is routed to the focused client
+  surface. Verified in QEMU via `scripts/qemu-g3-verify.sh`.
 
 **G1 — A client-launch mechanism. DONE.** Implemented via kernel boot-module
 autostart: `wl-probe` is built from `src/util/wl-probe.c`, included in the ISO, and
@@ -58,12 +63,36 @@ QEMU HMP `screendump` currently captures the fallback/firmware framebuffer rathe
 than the DRM dumb-buffer content, so the serial map/commit trace is the reliable
 verification artifact for this milestone.
 
-**G3 — Cursor movement + click. P: High · deps: G2.** Verify QEMU mouse → PS/2 →
-`/dev/input/event1` → libinput → Hyprland pointer → **rendered cursor that moves**, and
-that a button press reaches the focused surface. *Done when:* the cursor tracks the
-mouse on screen and a click is delivered to the client window. (Likely work: confirm
-`input_event` framing/`EV_SYN` batching, libinput device enumeration via the seat, and
-a cursor sprite — ship/point at a minimal cursor so the theme search terminates.)
+**G3 — Cursor movement + click. DONE.** The path is QEMU mouse → PS/2 IRQ12 →
+`/dev/input/event1` (kernel evdev ring) → **aquamarine headless input bridge** →
+Hyprland pointer → cursor + `wl_pointer` to the focused surface.
+
+*Architecture note (deviates from the original "via libinput/seat" sketch):*
+Hyprland runs on the **sessionless Headless backend**, which never initializes
+libseat/libinput/udev (the serial log shows `libseat: failed to open a seat` →
+`Sessionless backend active`). There is therefore **no libinput device the seat
+could enumerate**. Instead, mirroring how the headless **present** path bypasses
+DRM/GBM with a custom kernel ioctl, the headless backend now opens
+`/dev/input/event1` directly, exposes a `CHeadlessPointer : IPointer`, and
+translates `input_event` frames (`EV_REL`→move, `EV_KEY`→button, `EV_SYN`→frame)
+into aquamarine pointer events. Hyprland consumes it exactly like a libinput
+pointer (`getLibinputHandle()` returns null, which Hyprland already guards). The
+default fallback cursor (`XCursor … using default cursor instead`) renders through
+the existing present blit, so the theme search already terminates. Kernel side:
+`handleMouseIRQ` now emits `EV_KEY` only on button **transitions** (evdev
+semantics) and `SYN_REPORT` only on non-empty frames, instead of re-emitting level
+state every packet.
+
+*Proof (`scripts/qemu-g3-verify.sh`, which boots headless with a QMP socket and
+injects motion+click):* QEMU serial showed, in order:
+`headless: bridging kernel evdev pointer /dev/input/event1 -> aquamarine pointer`,
+`New mouse created, pointer AQ:` (Hyprland enumerated the pointer),
+`G3PTR: wl_seat has pointer; subscribed` (client got the seat pointer capability),
+`G3PTR: pointer enter … -- G3 ENTER` and `G3PTR: motion 89,56 / 249,168` (cursor
+tracked the mouse into the window), and
+`G3PTR: button 0x110 state 1 -- G3 CLICK` (left-button press delivered to the
+focused client surface). The `wl-shm-demo` client was extended to bind
+`wl_seat`/`wl_pointer` and log these for a serial-checkable artifact.
 
 **G4 — Software terminal client. P: High · deps: G2, G3.** A lightweight,
 **software-rendered** terminal (own minimal `wl_shm` client, or port a small one like
@@ -89,6 +118,19 @@ client timing is a lottery; favor changes that are checkable from the serial log
 
 ## Known issues / notes
 
+- **Input arrives via a direct evdev bridge, not libinput (G3).** Because the
+  backend is sessionless, libinput/libseat/udev never come up, so the headless
+  backend reads `/dev/input/event1` itself (`patches/0004-headless-input.patch`).
+  Only the **pointer** is bridged today; a **keyboard** bridge for `/dev/input/event0`
+  (needed by G4) would mirror the same pattern (`CHeadlessKeyboard : IKeyboard`,
+  feed `EV_KEY` → `IKeyboard::SKeyEvent`). The kbd ring already exists in the kernel.
+- **G3 verification is scripted, not screendump-based.** `scripts/qemu-g3-verify.sh`
+  + `scripts/qemu-mouse-inject.py` boot headless with a QMP socket, wait for the
+  window map, then inject PS/2 motion+click via `input-send-event`. The cursor is
+  clamped to the monitor, so the injector pins it to the top-left corner first, then
+  walks into the window interior — relative-motion injection is otherwise
+  start-position dependent. Markers to grep: `New mouse created, pointer AQ`,
+  `G3PTR: … G3 ENTER`, `G3PTR: … G3 CLICK`.
 - **QEMU HMP screendump does not show the mapped Hyprland window yet.** G2 now proves
   the Wayland client path by serial (`wl_shm` commit + Hyprland map request), but
   `screendump` still captures the fallback/firmware-looking framebuffer (black

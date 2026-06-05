@@ -28,6 +28,8 @@ struct app {
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct xdg_wm_base *wm_base;
+    struct wl_seat *seat;
+    struct wl_pointer *pointer;
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
@@ -110,6 +112,129 @@ static int create_shm_buffer(struct app *app, int width, int height)
     }
     return 0;
 }
+
+/* GUI roadmap G3: prove pointer enter/motion/click are routed to this surface. */
+static void pointer_enter(void *data, struct wl_pointer *pointer, uint32_t serial,
+                          struct wl_surface *surface, wl_fixed_t sx, wl_fixed_t sy)
+{
+    (void)data;
+    (void)pointer;
+    (void)serial;
+    (void)surface;
+    printf("G3PTR: pointer enter at %d,%d -- G3 ENTER\n",
+           wl_fixed_to_int(sx), wl_fixed_to_int(sy));
+    fflush(stdout);
+}
+
+static void pointer_leave(void *data, struct wl_pointer *pointer, uint32_t serial,
+                          struct wl_surface *surface)
+{
+    (void)data;
+    (void)pointer;
+    (void)serial;
+    (void)surface;
+    log_line("G3PTR: pointer leave");
+}
+
+static void pointer_motion(void *data, struct wl_pointer *pointer, uint32_t time,
+                           wl_fixed_t sx, wl_fixed_t sy)
+{
+    (void)data;
+    (void)pointer;
+    (void)time;
+    static int n;
+    /* Throttle: one line every 16 motion events so the log stays readable. */
+    if ((n++ & 0xf) == 0) {
+        printf("G3PTR: motion %d,%d\n", wl_fixed_to_int(sx), wl_fixed_to_int(sy));
+        fflush(stdout);
+    }
+}
+
+static void pointer_button(void *data, struct wl_pointer *pointer, uint32_t serial,
+                           uint32_t time, uint32_t button, uint32_t state)
+{
+    (void)data;
+    (void)pointer;
+    (void)serial;
+    (void)time;
+    printf("G3PTR: button 0x%x state %u -- G3 CLICK\n", button, state);
+    fflush(stdout);
+}
+
+static void pointer_axis(void *data, struct wl_pointer *pointer, uint32_t time,
+                         uint32_t axis, wl_fixed_t value)
+{
+    (void)data;
+    (void)pointer;
+    (void)time;
+    (void)axis;
+    (void)value;
+}
+
+static void pointer_frame(void *data, struct wl_pointer *pointer)
+{
+    (void)data;
+    (void)pointer;
+}
+
+static void pointer_axis_source(void *data, struct wl_pointer *pointer, uint32_t source)
+{
+    (void)data;
+    (void)pointer;
+    (void)source;
+}
+
+static void pointer_axis_stop(void *data, struct wl_pointer *pointer, uint32_t time,
+                              uint32_t axis)
+{
+    (void)data;
+    (void)pointer;
+    (void)time;
+    (void)axis;
+}
+
+static void pointer_axis_discrete(void *data, struct wl_pointer *pointer, uint32_t axis,
+                                  int32_t discrete)
+{
+    (void)data;
+    (void)pointer;
+    (void)axis;
+    (void)discrete;
+}
+
+static const struct wl_pointer_listener pointer_listener = {
+    .enter = pointer_enter,
+    .leave = pointer_leave,
+    .motion = pointer_motion,
+    .button = pointer_button,
+    .axis = pointer_axis,
+    .frame = pointer_frame,
+    .axis_source = pointer_axis_source,
+    .axis_stop = pointer_axis_stop,
+    .axis_discrete = pointer_axis_discrete,
+};
+
+static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)
+{
+    struct app *app = data;
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !app->pointer) {
+        app->pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(app->pointer, &pointer_listener, app);
+        log_line("G3PTR: wl_seat has pointer; subscribed");
+    }
+}
+
+static void seat_name(void *data, struct wl_seat *seat, const char *name)
+{
+    (void)data;
+    (void)seat;
+    (void)name;
+}
+
+static const struct wl_seat_listener seat_listener = {
+    .capabilities = seat_capabilities,
+    .name = seat_name,
+};
 
 static void wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial)
 {
@@ -213,6 +338,11 @@ static void registry_global(void *data, struct wl_registry *registry, uint32_t n
         app->wm_base = wl_registry_bind(registry, name, &xdg_wm_base_interface, v);
         xdg_wm_base_add_listener(app->wm_base, &wm_base_listener, app);
         log_line("G2SHM: bound xdg_wm_base");
+    } else if (strcmp(interface, wl_seat_interface.name) == 0) {
+        uint32_t v = version < 5 ? version : 5;
+        app->seat = wl_registry_bind(registry, name, &wl_seat_interface, v);
+        wl_seat_add_listener(app->seat, &seat_listener, app);
+        log_line("G3PTR: bound wl_seat");
     }
 }
 

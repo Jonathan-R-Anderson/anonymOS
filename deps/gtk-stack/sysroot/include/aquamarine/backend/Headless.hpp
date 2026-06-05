@@ -3,6 +3,7 @@
 #include "./Backend.hpp"
 #include "../allocator/Swapchain.hpp"
 #include "../output/Output.hpp"
+#include "../input/Input.hpp"
 #include <hyprutils/memory/WeakPtr.hpp>
 #include <hyprutils/os/FileDescriptor.hpp>
 
@@ -10,6 +11,23 @@ namespace Aquamarine {
     class CBackend;
     class CHeadlessBackend;
     class IAllocator;
+
+    // EpinAnonymOS GUI roadmap G3: the headless/sessionless backend has no
+    // libinput/libseat path (no udev, no DRM session), so it bridges the kernel's
+    // evdev-compatible PS/2 mouse device (/dev/input/event1) straight into an
+    // aquamarine pointer.  Hyprland's input manager consumes it exactly like a
+    // libinput pointer.
+    class CHeadlessPointer : public IPointer {
+      public:
+        CHeadlessPointer(const std::string& name_) : name(name_) {}
+        virtual ~CHeadlessPointer() {}
+        virtual const std::string& getName() {
+            return name;
+        }
+
+      private:
+        std::string name;
+    };
 
     class CHeadlessOutput : public IOutput {
       public:
@@ -80,6 +98,13 @@ namespace Aquamarine {
         void dispatchTimers();
         void updateTimerFD();
         void addTimer(std::chrono::steady_clock::time_point when, std::function<void(void)> what);
+
+        // EpinAnonymOS G3: kernel evdev mouse → aquamarine pointer bridge.
+        Hyprutils::OS::CFileDescriptor                    mouseFD;
+        Hyprutils::Memory::CSharedPointer<CHeadlessPointer> pointer;
+        int32_t                                           accumDX = 0, accumDY = 0;
+        void                                              initInput();
+        void                                              dispatchInput();
 
         friend class CBackend;
         friend class CHeadlessOutput;

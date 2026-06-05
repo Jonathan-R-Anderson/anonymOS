@@ -1,0 +1,173 @@
+--- a/include/aquamarine/backend/Headless.hpp
++++ b/include/aquamarine/backend/Headless.hpp
+@@ -3,6 +3,7 @@
+ #include "./Backend.hpp"
+ #include "../allocator/Swapchain.hpp"
+ #include "../output/Output.hpp"
++#include "../input/Input.hpp"
+ #include <hyprutils/memory/WeakPtr.hpp>
+ #include <hyprutils/os/FileDescriptor.hpp>
+ 
+@@ -11,6 +12,23 @@
+     class CHeadlessBackend;
+     class IAllocator;
+ 
++    // EpinAnonymOS GUI roadmap G3: the headless/sessionless backend has no
++    // libinput/libseat path (no udev, no DRM session), so it bridges the kernel's
++    // evdev-compatible PS/2 mouse device (/dev/input/event1) straight into an
++    // aquamarine pointer.  Hyprland's input manager consumes it exactly like a
++    // libinput pointer.
++    class CHeadlessPointer : public IPointer {
++      public:
++        CHeadlessPointer(const std::string& name_) : name(name_) {}
++        virtual ~CHeadlessPointer() {}
++        virtual const std::string& getName() {
++            return name;
++        }
++
++      private:
++        std::string name;
++    };
++
+     class CHeadlessOutput : public IOutput {
+       public:
+         virtual ~CHeadlessOutput();
+@@ -81,6 +99,13 @@
+         void updateTimerFD();
+         void addTimer(std::chrono::steady_clock::time_point when, std::function<void(void)> what);
+ 
++        // EpinAnonymOS G3: kernel evdev mouse → aquamarine pointer bridge.
++        Hyprutils::OS::CFileDescriptor                    mouseFD;
++        Hyprutils::Memory::CSharedPointer<CHeadlessPointer> pointer;
++        int32_t                                           accumDX = 0, accumDY = 0;
++        void                                              initInput();
++        void                                              dispatchInput();
++
+         friend class CBackend;
+         friend class CHeadlessOutput;
+     };
+--- a/src/backend/Headless.cpp
++++ b/src/backend/Headless.cpp
+@@ -35,6 +35,36 @@
+             fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+         return fd;
+     }
++
++    // EpinAnonymOS GUI roadmap G3 — evdev bridge.
++    // The kernel exposes the QEMU/PS2 mouse as a Linux input_event stream on
++    // /dev/input/event1.  We read it directly (no libinput/libseat/udev, none of
++    // which are available in the sessionless headless backend) and translate it
++    // into aquamarine IPointer events.
++    constexpr const char* HOS_MOUSE_DEVICE = "/dev/input/event1";
++
++    // struct input_event (64-bit Linux ABI): timeval(16) + type(2) + code(2) + value(4).
++    struct SHosInputEvent {
++        uint64_t tvSec;
++        uint64_t tvUsec;
++        uint16_t type;
++        uint16_t code;
++        int32_t  value;
++    };
++    static_assert(sizeof(SHosInputEvent) == 24, "input_event ABI mismatch");
++
++    constexpr uint16_t HOS_EV_SYN     = 0x00;
++    constexpr uint16_t HOS_EV_KEY     = 0x01;
++    constexpr uint16_t HOS_EV_REL     = 0x02;
++    constexpr uint16_t HOS_SYN_REPORT = 0x00;
++    constexpr uint16_t HOS_REL_X      = 0x00;
++    constexpr uint16_t HOS_REL_Y      = 0x01;
++
++    uint32_t hosNowMs() {
++        timespec now;
++        clock_gettime(CLOCK_MONOTONIC, &now);
++        return (uint32_t)(now.tv_sec * 1000 + now.tv_nsec / 1000000);
++    }
+ }
+ 
+ Aquamarine::CHeadlessOutput::CHeadlessOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CHeadlessBackend> backend_) : backend(backend_) {
+@@ -177,11 +207,84 @@
+ }
+ 
+ bool Aquamarine::CHeadlessBackend::start() {
++    initInput();
+     return true;
+ }
+ 
++void Aquamarine::CHeadlessBackend::initInput() {
++    int fd = open(HOS_MOUSE_DEVICE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++    if (fd < 0) {
++        backend->log(AQ_LOG_ERROR, std::format("headless: no evdev pointer at {} ({}), pointer input disabled", HOS_MOUSE_DEVICE, strerror(errno)));
++        return;
++    }
++
++    mouseFD = Hyprutils::OS::CFileDescriptor{fd};
++    pointer = makeShared<CHeadlessPointer>("hos-mouse");
++
++    backend->log(AQ_LOG_DEBUG, std::format("headless: bridging kernel evdev pointer {} -> aquamarine pointer", HOS_MOUSE_DEVICE));
++
++    // Announce the pointer once the event loop is running, mirroring how the
++    // wayland backend defers newPointer through an idle callback so Hyprland's
++    // input manager is already listening.
++    auto announce = makeShared<std::function<void(void)>>([this]() {
++        if (pointer)
++            backend->events.newPointer.emit(SP<IPointer>(pointer));
++    });
++    backend->addIdleEvent(announce);
++}
++
+ std::vector<SP<SPollFD>> Aquamarine::CHeadlessBackend::pollFDs() {
+-    return {makeShared<SPollFD>(timers.timerfd.get(), [this]() { dispatchTimers(); })};
++    std::vector<SP<SPollFD>> fds;
++    fds.emplace_back(makeShared<SPollFD>(timers.timerfd.get(), [this]() { dispatchTimers(); }));
++    if (mouseFD.isValid())
++        fds.emplace_back(makeShared<SPollFD>(mouseFD.get(), [this]() { dispatchInput(); }));
++    return fds;
++}
++
++void Aquamarine::CHeadlessBackend::dispatchInput() {
++    if (!mouseFD.isValid() || !pointer)
++        return;
++
++    SHosInputEvent ev;
++    ssize_t        ret = 0;
++    while ((ret = read(mouseFD.get(), &ev, sizeof(ev))) == sizeof(ev)) {
++        switch (ev.type) {
++            case HOS_EV_REL:
++                if (ev.code == HOS_REL_X)
++                    accumDX += ev.value;
++                else if (ev.code == HOS_REL_Y)
++                    accumDY += ev.value;
++                break;
++
++            case HOS_EV_KEY:
++                // evdev sends one EV_KEY per transition; forward the libinput
++                // button code (BTN_LEFT/RIGHT/MIDDLE) straight through.
++                pointer->events.button.emit(IPointer::SButtonEvent{
++                    .timeMs  = hosNowMs(),
++                    .button  = ev.code,
++                    .pressed = ev.value != 0,
++                });
++                break;
++
++            case HOS_EV_SYN:
++                if (ev.code != HOS_SYN_REPORT)
++                    break;
++                if (accumDX != 0 || accumDY != 0) {
++                    const Vector2D delta = {(double)accumDX, (double)accumDY};
++                    pointer->events.move.emit(IPointer::SMoveEvent{
++                        .timeMs  = hosNowMs(),
++                        .delta   = delta,
++                        .unaccel = delta,
++                    });
++                    accumDX = 0;
++                    accumDY = 0;
++                }
++                pointer->events.frame.emit();
++                break;
++
++            default: break;
++        }
++    }
+ }
+ 
+ int Aquamarine::CHeadlessBackend::drmFD() {

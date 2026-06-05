@@ -180,14 +180,30 @@ only after cryptographic proof, never because a message arrived.
   the offered `suiteList` is inside the signed handshake; the self-test proves a
   stripped-suite handshake fails the identity signature.
 
-### Phase 3 — Lifecycle: rotation, revocation, recovery
+### Phase 3 — Lifecycle: rotation, revocation, recovery  ✅ DONE
+> **Status:** implemented in `core/secsession.d` (extending Phase 2), wired into the
+> boot self-test loop. Sessions gained a `keyGen` generation + `authFailCount`, and
+> records carry `keyGen` so stale-generation records are dropped. `[seclife] selftest
+> PASS` proves all three sub-tasks via two live A↔B pairs.
 - **3.1** **Key rotation / rekey:** new ephemeral DH within a live session before the
-  counter nears exhaustion or on a timer; old keys zeroized. **High.**
+  counter nears exhaustion or on a timer; old keys zeroized. **High.** ✅
+  `sessionNeedsRekey` (fires at `REKEY_THRESHOLD`), `sessionRekeyBuild`/
+  `sessionRekeyProcess` run a fresh signed X25519 within the live session, derive
+  next-generation keys (bound to the new `keyGen` in the transcript+HKDF), reset
+  counters, and overwrite/zeroize the old keys; the stream continues, and a record
+  stamped with the previous `keyGen` is rejected.
 - **3.2** **Revocation:** broker bumps a **revocation epoch** / publishes a revoked
   sessionId; endpoints re-check epoch periodically and on each descriptor use; broker
-  asks the **kernel to revoke the channel cap** (transport dies). **Critical.**
+  asks the **kernel to revoke the channel cap** (transport dies). **Critical.** ✅
+  `sessionRevocationTick` re-runs `brokerVerifyDescriptor` (Phase-1 revoked-set +
+  expiry); on revoke it closes the session and zeroizes keys, refusing further I/O.
+  The kernel-cap teardown is the Phase-1 `secipcChannelRevoke`.
 - **3.3** Failure handling: handshake timeout, MAC failure, counter exhaustion, peer
-  death (eventfd/EPOLLHUP) → fail-closed, zeroize, optionally re-establish. **High.**
+  death (eventfd/EPOLLHUP) → fail-closed, zeroize, optionally re-establish. **High.** ✅
+  `sessionHandshakeTimeout` (stuck in HANDSHAKE past a deadline), an AEAD-auth-flood
+  tear after `AUTH_FAIL_MAX` consecutive MAC failures, counter-exhaustion refusal in
+  `sessionSend` (forces rekey), and `sessionPeerDied` — all close + zeroize
+  (fail-closed; never downgrade to plaintext).
 
 ### Phase 4 — Object-tree + Linux-compat integration
 - **4.1** Model channel, session, identity cert, descriptor as **objects** in the tree;

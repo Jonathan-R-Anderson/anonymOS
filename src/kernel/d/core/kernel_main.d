@@ -48,7 +48,8 @@ import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + 
 import core.distos : distosSelfTest, distosStats; // IR-P9 distributed refs + macaroons + dist store
 import core.secipc : secipcSelfTest, secipcStats; // SECURE_IPC P1 identity + descriptors + routing gate
 import core.libsecipc : libsecipcSelfTest; // SECURE_IPC P0 crypto+transport foundation (X25519/AEAD/HKDF)
-import core.secsession : secsessionSelfTest, secsessionStats; // SECURE_IPC P2 signed-DH + AEAD sessions
+import core.secsession : secsessionSelfTest, secsessionStats,
+                        seclifeSelfTest; // SECURE_IPC P2 sessions / P3 lifecycle
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
@@ -1020,6 +1021,7 @@ private void dispatchSyscall(int tid) {
         libsecipcSelfTest(); // SECURE_IPC P0: X25519/HKDF/ChaCha20-Poly1305/framing (RFC vectors)
         secipcSelfTest(); // SECURE_IPC P1: identity certs + broker-signed descriptors + cap-gated routing
         secsessionSelfTest(); // SECURE_IPC P2: signed-DH handshake + HKDF keys + AEAD record layer
+        seclifeSelfTest(); // SECURE_IPC P3: rekey + revocation + failure handling (fail-closed)
         // ORG P8: drive the runtime validator daemon one bounded step per reconcile
         // tick — it cycles reachability → SCC → invariant → GC → audit across ticks,
         // epoch-driven, never stalling the scheduler (replaces the old inline pass).

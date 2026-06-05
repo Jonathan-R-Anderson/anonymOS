@@ -94,12 +94,43 @@ tracked the mouse into the window), and
 focused client surface). The `wl-shm-demo` client was extended to bind
 `wl_seat`/`wl_pointer` and log these for a serial-checkable artifact.
 
-**G4 — Software terminal client. P: High · deps: G2, G3.** A lightweight,
-**software-rendered** terminal (own minimal `wl_shm` client, or port a small one like
-`st`/`foot` cut down to shm): a character grid blitted to an shm buffer, a **PTY**
-(`openpty`/`forkpty` — check `/dev/ptmx` + `TIOCGPTN` support) running `-sh`/busybox,
-keyboard input from `wl_keyboard`. *Done when:* a terminal window shows a prompt and
-runs typed commands. (`Jonathan-R-Anderson/-sh` is the intended shell.)
+**G4 — Software terminal client. DONE.** `src/util/wl-term.c` is a software-rendered
+`wl_shm` terminal: an 80×24 character grid (shared `gui_font.h` 8×8 font) blitted to an
+shm buffer, `wl_keyboard` input, and an interactive **busybox `sh`** running on a real
+kernel **PTY**. Autostarted in place of `wl-shm-demo`.
+
+*Work done (the original sketch needed several gaps filled — `/dev/ptmx`/`TIOCGPTN`
+were stubbed and there was no keyboard path):*
+- **Kernel PTY subsystem** (`posix.d`): `/dev/ptmx` allocates a pty and returns the
+  master; `TIOCGPTN`/`TIOCSPTLCK` work; `/dev/pts/N` opens the slave; master⇄slave
+  ring buffers with a **termios line discipline** (`ICANON`/`ECHO`/`ICRNL`/`ONLCR`,
+  VERASE/VKILL, per-pty stored termios so the shell's raw-mode `tcsetattr` is honored).
+  Blocking slave reads use the same RIP-rewind cooperative-block path as the console
+  (`ptyBlockingReadFd`). *Gotcha:* musl's `ioctl(int request)` sign-extends high-bit
+  requests, so `TIOCGPTN` (0x80045430) arrives as `0xFFFFFFFF80045430` — `ptyIoctl`
+  masks `cmd` to 32 bits.
+- **Keyboard bridge** (aquamarine `0005-headless-keyboard.patch`): `/dev/input/event0`
+  → `CHeadlessKeyboard : IKeyboard`, emitting key events; Hyprland derives modifiers
+  via its own xkb state.
+- **`shm_open` → memfd** (`hyprland-shm-memfd.patch`): the kernel has no POSIX
+  `shm_open`, so Hyprland's keymap/shm helpers (`allocateSHMFile*`) now use
+  `memfd_create`.  Without this, sending the `wl_keyboard` keymap fd failed
+  (`fcntl(F_DUPFD_CLOEXEC)` → EBADF → *"error in client communication"* → the window was
+  destroyed the instant a keyboard bound).
+- **Terminal spawns the shell with `fork()` (not `posix_spawn`) before connecting to
+  Wayland.** The kernel forces `argv[0]` to the boot-module basename, so the shell is
+  staged as a boot module literally named **`-sh`** (a busybox copy) → `argv[0]="-sh"`
+  → ash login-interactive prompt.  `fork()` routes through `forkTask`, which copies the
+  fd table (so the child's `dup2` of the slave onto 0/1/2 doesn't clobber the parent);
+  `vfork`/`posix_spawn` share the fd table and corrupted it.
+
+*Proof (`scripts/qemu-g4-verify.sh`, which boots headless with QMP, clicks the window
+to focus it, then types `echo g4pass`):* serial showed
+`New keyboard created`, `G4TERM: … G4 COMMIT` (window mapped),
+`G4OUT: BusyBox v1.36.1 … built-in shell (ash)` (shell on the pty),
+`G4KEY: keyboard enter -- G4 FOCUS`, the per-key trace `code=18 -> 0x65 …` (e-c-h-o-…),
+`G4OUT: $ echo g4pass` (the shell echoed the typed line) and finally
+`G4OUT: g4pass` (**the typed command ran**).
 
 **G5 — Identity-colored borders in the live present path. P: Medium · deps: G2.**
 Carry the trusted identity border (already done for the in-house compositor, and
@@ -118,12 +149,15 @@ client timing is a lottery; favor changes that are checkable from the serial log
 
 ## Known issues / notes
 
-- **Input arrives via a direct evdev bridge, not libinput (G3).** Because the
+- **Input arrives via a direct evdev bridge, not libinput (G3/G4).** Because the
   backend is sessionless, libinput/libseat/udev never come up, so the headless
-  backend reads `/dev/input/event1` itself (`patches/0004-headless-input.patch`).
-  Only the **pointer** is bridged today; a **keyboard** bridge for `/dev/input/event0`
-  (needed by G4) would mirror the same pattern (`CHeadlessKeyboard : IKeyboard`,
-  feed `EV_KEY` → `IKeyboard::SKeyEvent`). The kbd ring already exists in the kernel.
+  backend reads the kernel evdev devices itself: the **pointer** from
+  `/dev/input/event1` (`patches/0004-headless-input.patch`) and the **keyboard**
+  from `/dev/input/event0` (`patches/0005-headless-keyboard.patch`,
+  `CHeadlessKeyboard : IKeyboard` feeding `EV_KEY` → `IKeyboard::SKeyEvent`).
+- **Keyboard focus is click-to-focus.** A freshly mapped window does not get
+  keyboard focus until the pointer clicks it; the G4 verifier clicks the terminal
+  before typing. (`G4KEY: keyboard enter -- G4 FOCUS` confirms focus.)
 - **G3 verification is scripted, not screendump-based.** `scripts/qemu-g3-verify.sh`
   + `scripts/qemu-mouse-inject.py` boot headless with a QMP socket, wait for the
   window map, then inject PS/2 motion+click via `input-send-event`. The cursor is
@@ -146,10 +180,11 @@ client timing is a lottery; favor changes that are checkable from the serial log
   (no OOM) but a correctness wart; it also makes the wallpaper load very late, which is
   the meta-blocker for any softpipe iteration.
 - **Syscall gaps:** `sigprocmask`/`sigaction` *with delivery* is partial (app error
-  handling); `shm_open` / POSIX shm is **not done** — layer it on memfd if a client
-  needs the shm_open path (Wayland prefers `memfd_create`, which works). Implemented:
-  memfd, timerfd, eventfd, sendmsg/recvmsg+SCM_RIGHTS, dup/dup2/dup3, nanosleep,
-  clone/futex, flock, getdents64, PRIME_HANDLE_TO_FD.
+  handling); `shm_open` / POSIX shm is still **not done in the kernel** — for G4 it was
+  worked around by patching Hyprland's shm helpers to use `memfd_create`
+  (`hyprland-shm-memfd.patch`); a real `shm_open` would need a named-shm registry.
+  Implemented: **pty/ptmx (G4)**, memfd, timerfd, eventfd, sendmsg/recvmsg+SCM_RIGHTS,
+  dup/dup2/dup3, nanosleep, clone/futex/**fork**, flock, getdents64, PRIME_HANDLE_TO_FD.
 - DRM ioctl can `#GP` when the kernel writes a user pointer under SMAP. Mitigated via
   `-cpu qemu64,-smap,-smep` in `qemu-run.sh`; real fix = STAC/CLAC around copies.
 - **Hyprland's `RASSERT` does `raise(SIGABRT)`, which the kernel does NOT make fatal**

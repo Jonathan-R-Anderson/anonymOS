@@ -92,6 +92,8 @@ enum FileType {
     FD_RANDOM,
     FD_URANDOM,
     FD_RTFILE,           // writable runtime-overlay (rtfs) regular file
+    FD_PTY_MASTER,       // pseudo-terminal master (/dev/ptmx)
+    FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
 }
 
 struct File {
@@ -273,6 +275,182 @@ public ushort g_sc1_keycode(ubyte sc) @nogc nothrow {
     return 0;
 }
 
+// ── Pseudo-terminal (PTY) subsystem (GUI roadmap G4) ─────────────────────────
+// A minimal /dev/ptmx + /dev/pts/N implementation with a termios line
+// discipline — just enough to host an interactive busybox `sh` behind the
+// software terminal client. The terminal holds the master; the shell's
+// stdin/stdout/stderr are the slave.
+//   master write  → input discipline → echo to master-read + cooked to slave-read
+//   slave write   → output discipline (ONLCR) → master-read
+//   master read   ← echo + program output       slave read ← cooked input
+private enum size_t PTY_MAX = 8;
+private enum size_t PTY_BUF = 8192;
+
+struct PtyRing {
+    ubyte[PTY_BUF] data;
+    uint head;   // write index (mod PTY_BUF)
+    uint tail;   // read index
+}
+
+private bool ptyRingPush(ref PtyRing r, ubyte b) @nogc nothrow {
+    uint next = cast(uint)((r.head + 1) % PTY_BUF);
+    if (next == r.tail) return false; // full — drop
+    r.data[r.head] = b;
+    r.head = next;
+    return true;
+}
+private int ptyRingPop(ref PtyRing r) @nogc nothrow {
+    if (r.head == r.tail) return -1;
+    ubyte b = r.data[r.tail];
+    r.tail = cast(uint)((r.tail + 1) % PTY_BUF);
+    return cast(int)b;
+}
+
+// termios flag bits we honor
+private enum uint TIO_INLCR = 0x40, TIO_IGNCR = 0x80, TIO_ICRNL = 0x100;
+private enum uint TIO_OPOST = 0x1,  TIO_ONLCR = 0x4;
+private enum uint TIO_ICANON = 0x2, TIO_ECHO = 0x8;
+
+struct Pty {
+    bool      inUse;
+    uint      iflag, oflag, cflag, lflag;
+    ubyte[19] cc;
+    ushort    rows, cols, xpix, ypix;
+    ubyte[PTY_BUF] line;   // canonical line accumulator
+    uint      lineLen;
+    PtyRing   toMaster;    // master read queue (echo + slave output)
+    PtyRing   toSlave;     // slave read queue (cooked input)
+}
+__gshared Pty[PTY_MAX] g_ptys;
+
+private void ptyInit(ref Pty p) @nogc nothrow {
+    p = Pty.init;
+    p.inUse = true;
+    p.iflag = 0x0500;  // ICRNL|IXON
+    p.oflag = 0x0005;  // OPOST|ONLCR
+    p.cflag = 0x04bf;  // B38400|CS8|CREAD|HUPCL
+    p.lflag = 0x8a3b;  // ICANON|ECHO|ECHOE|ECHOK|ISIG|IEXTEN
+    p.cc[0]=3; p.cc[1]=28; p.cc[2]=127; p.cc[3]=21; p.cc[4]=4; p.cc[6]=1;
+    p.cc[8]=17; p.cc[9]=19; p.cc[10]=26; p.cc[11]=255; p.cc[12]=18;
+    p.cc[14]=23; p.cc[15]=22; p.cc[16]=255;
+    p.rows=24; p.cols=80; p.xpix=640; p.ypix=384;
+}
+
+private int ptyAlloc() @nogc nothrow {
+    foreach (i; 0 .. PTY_MAX)
+        if (!g_ptys[i].inUse) { ptyInit(g_ptys[i]); return cast(int)i; }
+    return -1;
+}
+
+// one byte of program output (slave → master) through output processing
+private void ptyOut(ref Pty p, ubyte b) @nogc nothrow {
+    if ((p.oflag & TIO_OPOST) && (p.oflag & TIO_ONLCR) && b == '\n') {
+        ptyRingPush(p.toMaster, '\r');
+        ptyRingPush(p.toMaster, '\n');
+    } else {
+        ptyRingPush(p.toMaster, b);
+    }
+}
+
+private void ptyEchoErase(ref Pty p) @nogc nothrow {
+    ptyRingPush(p.toMaster, '\b');
+    ptyRingPush(p.toMaster, ' ');
+    ptyRingPush(p.toMaster, '\b');
+}
+
+// one byte of terminal input (master write) through the input discipline
+private void ptyInputByte(ref Pty p, ubyte b) @nogc nothrow {
+    if (b == '\r') {
+        if (p.iflag & TIO_IGNCR) return;
+        if (p.iflag & TIO_ICRNL) b = '\n';
+    } else if (b == '\n' && (p.iflag & TIO_INLCR)) {
+        b = '\r';
+    }
+    const bool canon = (p.lflag & TIO_ICANON) != 0;
+    const bool echo  = (p.lflag & TIO_ECHO) != 0;
+    if (canon) {
+        if (b == p.cc[2] /*VERASE*/ || b == 8) {
+            if (p.lineLen > 0) { p.lineLen--; if (echo) ptyEchoErase(p); }
+            return;
+        }
+        if (b == p.cc[3] /*VKILL*/) {
+            while (p.lineLen > 0) { p.lineLen--; if (echo) ptyEchoErase(p); }
+            return;
+        }
+        if (p.lineLen < PTY_BUF - 1) p.line[p.lineLen++] = b;
+        if (echo) ptyOut(p, b);
+        if (b == '\n') {
+            foreach (i; 0 .. p.lineLen) ptyRingPush(p.toSlave, p.line[i]);
+            p.lineLen = 0;
+        }
+    } else {
+        ptyRingPush(p.toSlave, b);
+        if (echo) ptyOut(p, b);
+    }
+}
+
+// termios ioctls on either PTY end operate on the shared per-pty state.
+private long ptyIoctl(int idx, ulong cmd, ulong arg) @nogc nothrow {
+    if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return negErrno(EBADF);
+    Pty* p = &g_ptys[idx];
+    // musl's ioctl() takes a signed int request, so high-bit requests like
+    // TIOCGPTN (0x80045430) arrive sign-extended to 64 bits — mask to 32.
+    cmd &= 0xFFFFFFFFUL;
+    switch (cmd) {
+        case 0x80045430: // TIOCGPTN
+            if (arg != 0) *cast(uint*)arg = cast(uint)idx;
+            return 0;
+        case 0x40045431: // TIOCSPTLCK (unlockpt) — always succeed
+            return 0;
+        case 0x5401: case 0x5405: case 0x542a: { // TCGETS / TCGETA / TCGETS2
+            if (arg == 0) return negErrno(14);
+            auto t = cast(uint*)arg;
+            t[0] = p.iflag; t[1] = p.oflag; t[2] = p.cflag; t[3] = p.lflag;
+            auto cc = cast(ubyte*)(arg + 17); // c_cc follows c_line at offset 17
+            foreach (i; 0 .. 19) cc[i] = p.cc[i];
+            return 0;
+        }
+        case 0x5402: case 0x5403: case 0x5404: case 0x542b: { // TCSETS{,W,F} / TCSETS2
+            if (arg == 0) return negErrno(14);
+            auto t = cast(uint*)arg;
+            p.iflag = t[0]; p.oflag = t[1]; p.cflag = t[2]; p.lflag = t[3];
+            auto cc = cast(ubyte*)(arg + 17);
+            foreach (i; 0 .. 19) p.cc[i] = cc[i];
+            return 0;
+        }
+        case 0x5413: // TIOCGWINSZ
+            if (arg != 0) {
+                auto ws = cast(ushort*)arg;
+                ws[0] = p.rows; ws[1] = p.cols; ws[2] = p.xpix; ws[3] = p.ypix;
+            }
+            return 0;
+        case 0x5414: // TIOCSWINSZ
+            if (arg != 0) {
+                auto ws = cast(ushort*)arg;
+                p.rows = ws[0]; p.cols = ws[1]; p.xpix = ws[2]; p.ypix = ws[3];
+            }
+            return 0;
+        case 0x540f: // TIOCGPGRP
+            if (arg != 0) *cast(int*)arg = 1;
+            return 0;
+        case 0x5410: case 0x540e: case 0x5422: // TIOCSPGRP / TIOCSCTTY / TIOCNOTTY
+            return 0;
+        default:
+            return negErrno(25); // ENOTTY
+    }
+}
+
+// True when fd is a PTY end opened in blocking mode with no data ready, so the
+// syscall dispatcher should rewind+yield instead of returning EAGAIN.
+public bool ptyBlockingReadFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_PTY_MASTER && f.type != FileType.FD_PTY_SLAVE) return false;
+    return (f.flags & 0x800 /*O_NONBLOCK*/) == 0;
+}
+
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
 private enum size_t GEM_MAX = 64;
 
@@ -324,6 +502,7 @@ private enum int EPERM  = 1;
 private enum int ENOENT = 2;
 private enum int EINTR  = 4;
 private enum int ENODEV = 19;
+private enum int ENXIO  = 6;
 private enum int EBADF  = 9;
 private enum int ENOMEM = 12;
 private enum int EEXIST = 17;
@@ -403,6 +582,8 @@ private ObjType objTypeForFile(File* f) {
         case FileType.FD_ZERO:
         case FileType.FD_RANDOM:
         case FileType.FD_URANDOM:
+        case FileType.FD_PTY_MASTER:
+        case FileType.FD_PTY_SLAVE:
             return ObjType.Device;
         case FileType.FD_MEMFD:
             return ObjType.Vmo;
@@ -482,6 +663,10 @@ private uint capRightsForFile(File* f) {
             if ((f.flags & 3) == O_WRONLY) rights |= CAP_RIGHT_WRITE;
             else rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE;
             rights |= CAP_RIGHT_IOCTL;
+            break;
+        case FileType.FD_PTY_MASTER:
+        case FileType.FD_PTY_SLAVE:
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_IOCTL;
             break;
         default:
             // Preserve current Linux-shim behaviour: most compatibility
@@ -1514,6 +1699,22 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)(n * evtSz);
     }
 
+    if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
+        int idx = cast(int)cast(size_t)f.backend;
+        if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return negErrno(EBADF);
+        auto ring = (f.type == FileType.FD_PTY_MASTER) ? &g_ptys[idx].toMaster
+                                                       : &g_ptys[idx].toSlave;
+        auto dst = cast(ubyte*)_buf;
+        size_t n = 0;
+        while (n < _count) {
+            int c = ptyRingPop(*ring);
+            if (c < 0) break;
+            dst[n++] = cast(ubyte)c;
+        }
+        if (n == 0) return negErrno(EAGAIN);
+        return cast(ssize_t)n;
+    }
+
     if (f.type == FileType.FD_TIMERFD) {
         int tid = cast(int)cast(size_t)f.backend;
         if (tid < 0 || tid >= TIMERFD_MAX || !g_timerfds[tid].inUse) return negErrno(EBADF);
@@ -1557,7 +1758,18 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         }
         return cast(ssize_t)count;
     }
-    
+
+    if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
+        int idx = cast(int)cast(size_t)f.backend;
+        if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return cast(ssize_t)negErrno(EBADF);
+        auto src = cast(const(ubyte)*)buf;
+        if (f.type == FileType.FD_PTY_MASTER)
+            foreach (i; 0 .. count) ptyInputByte(g_ptys[idx], src[i]); // terminal keystrokes
+        else
+            foreach (i; 0 .. count) ptyOut(g_ptys[idx], src[i]);       // shell output
+        return cast(ssize_t)count;
+    }
+
     if (f.type == FileType.FD_PIPE_WRITE) {
         auto pipe_ = getPipe(cast(size_t)pipeIdFromFd(f));
         if (pipe_ is null || pipe_.readers <= 0) return cast(ssize_t)negErrno(EPIPE);
@@ -1715,6 +1927,35 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].flags   = flags;
         g_fdTable[fd].offset  = 0;
         g_fdTable[fd].backend = null;
+        g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
+    // /dev/ptmx → allocate a new pseudo-terminal, return the master (GUI G4)
+    if (cstrEq(path, "/dev/ptmx")) {
+        int idx = ptyAlloc();
+        if (idx < 0) return negErrno(ENOMEM);
+        g_fdTable[fd].type     = FileType.FD_PTY_MASTER;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = cast(void*)cast(size_t)idx;
+        g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
+
+    // /dev/pts/N → open the slave end of an already-allocated pseudo-terminal
+    if (cstrEqPrefix(path, "/dev/pts/")) {
+        const(char)* p = path + 9; // first digit after "/dev/pts/"
+        if (*p < '0' || *p > '9') return negErrno(ENOENT);
+        int idx = 0;
+        while (*p >= '0' && *p <= '9') { idx = idx * 10 + (*p - '0'); p++; }
+        if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return negErrno(ENXIO);
+        g_fdTable[fd].type     = FileType.FD_PTY_SLAVE;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = cast(void*)cast(size_t)idx;
         g_fdTable[fd].fileSize = 0;
         deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
@@ -3492,6 +3733,10 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     File* f = fileFromObj(oh);
     if (f is null) return negErrno(EBADF);
     ++g_objOpsDispatch;
+
+    if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
+        return ptyIoctl(cast(int)cast(size_t)f.backend, cmd, arg);
+    }
 
     if (f.type == FileType.FD_DRM) {
         console_putchar('D');
@@ -5439,6 +5684,13 @@ private bool fdReadable(int fd) @nogc nothrow {
         auto ring = (devIdx == 1) ? &g_mouse_ring : &g_kbd_ring;
         return ring.head != ring.tail;
     }
+    if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
+        int idx = cast(int)cast(size_t)f.backend;
+        if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return false;
+        auto ring = (f.type == FileType.FD_PTY_MASTER) ? &g_ptys[idx].toMaster
+                                                       : &g_ptys[idx].toSlave;
+        return ring.head != ring.tail;
+    }
     if (f.type == FileType.FD_TIMERFD) {
         int tid = cast(int)cast(size_t)f.backend;
         if (tid < 0 || tid >= TIMERFD_MAX || !g_timerfds[tid].inUse) return false;
@@ -5454,6 +5706,7 @@ private bool fdWritable(int fd) @nogc nothrow {
     if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_WRITE)) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)   return true;
+    if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) return true;
     if (f.type == FileType.FD_SOCKET)    return true;
     if (f.type == FileType.FD_PIPE_WRITE) {
         int pid = pipeIdFromFd(f);

@@ -148,6 +148,9 @@ patch-hyprland-source:
 	@if ! grep -q 'HOS CPU-readback clear frame path' $(HYPRLAND_SRC)/src/render/GLRenderer.cpp; then \
 		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-hos-render-present.patch; \
 	fi
+	@if ! grep -q 'no shm_open()/POSIX shm' $(HYPRLAND_SRC)/src/helpers/MiscFunctions.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-shm-memfd.patch; \
+	fi
 
 check: prepare raw-check
 

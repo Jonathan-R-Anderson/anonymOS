@@ -1,0 +1,389 @@
+// wl-term.c — GUI roadmap G4: a minimal software-rendered Wayland terminal.
+//
+// A wl_shm client that paints an 80x24 character grid with the shared 8x8
+// bitmap font, takes keyboard input via wl_keyboard, and hosts an interactive
+// busybox shell on a kernel pseudo-terminal (/dev/ptmx + /dev/pts/N).  The
+// shell is spawned (posix_spawn) with stdin/stdout/stderr wired to the PTY
+// slave; the terminal holds the master, feeds it keystrokes, and renders its
+// output.  Everything read from the master is also mirrored to stdout as
+// "G4OUT: …" so the prompt and typed-command output are checkable on serial.
+#define _GNU_SOURCE
+
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <wayland-client.h>
+
+#include "xdg-shell-client-protocol.h"
+#include "gui_font.h"
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001U
+#endif
+
+#ifndef TIOCGPTN
+#define TIOCGPTN   0x80045430
+#define TIOCSPTLCK 0x40045431
+#endif
+
+extern char **environ;
+
+enum { COLS = 80, ROWS = 24, CW = 8, CH = 8 };
+enum { WIDTH = COLS * CW, HEIGHT = ROWS * CH };
+
+static const uint32_t COL_BG     = 0xff101418;
+static const uint32_t COL_FG     = 0xffd0d0d0;
+static const uint32_t COL_CURSOR = 0xff30c030;
+
+struct app {
+    struct wl_display    *display;
+    struct wl_registry   *registry;
+    struct wl_compositor *compositor;
+    struct wl_shm        *shm;
+    struct xdg_wm_base   *wm_base;
+    struct wl_seat       *seat;
+    struct wl_keyboard   *keyboard;
+    struct wl_surface    *surface;
+    struct xdg_surface   *xdg_surface;
+    struct xdg_toplevel  *toplevel;
+    struct wl_buffer     *buffer;
+    uint32_t             *pixels;
+    int                   committed;
+    int                   running;
+
+    int                   ptm;     // PTY master fd
+    int                   shift, ctrl;
+
+    char                  grid[ROWS][COLS];
+    int                   cur_r, cur_c;
+    int                   dirty;
+    int                   esc;      // ANSI escape state machine
+
+    char                  mirror[256];
+    int                   mirror_len;
+};
+
+static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
+
+static int create_memfd(const char *name) { return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
+
+// ── terminal grid ────────────────────────────────────────────────────────────
+static void grid_clear(struct app *a) {
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            a->grid[r][c] = ' ';
+    a->cur_r = a->cur_c = 0;
+}
+
+static void grid_scroll(struct app *a) {
+    for (int r = 0; r < ROWS - 1; r++)
+        memcpy(a->grid[r], a->grid[r + 1], COLS);
+    for (int c = 0; c < COLS; c++)
+        a->grid[ROWS - 1][c] = ' ';
+}
+
+static void grid_newline(struct app *a) {
+    a->cur_c = 0;
+    if (++a->cur_r >= ROWS) { a->cur_r = ROWS - 1; grid_scroll(a); }
+}
+
+// Feed one byte of shell output through a tiny VT interpreter.
+static void vt_byte(struct app *a, unsigned char b) {
+    // Swallow ANSI/VT escape sequences so they don't render as garbage.
+    if (a->esc == 1) { a->esc = (b == '[') ? 2 : 0; return; }
+    if (a->esc == 2) { if (b >= 0x40 && b <= 0x7e) a->esc = 0; return; }
+    switch (b) {
+        case 0x1b: a->esc = 1; return;
+        case '\r': a->cur_c = 0; return;
+        case '\n': grid_newline(a); return;
+        case '\b': if (a->cur_c > 0) a->cur_c--; return;
+        case '\t': a->cur_c = (a->cur_c + 8) & ~7; if (a->cur_c >= COLS) a->cur_c = COLS - 1; return;
+        case 0x07: return; // bell
+        default: break;
+    }
+    if (b < 0x20 || b >= 0x7f) return;
+    a->grid[a->cur_r][a->cur_c] = (char)b;
+    if (++a->cur_c >= COLS) grid_newline(a);
+}
+
+static void render(struct app *a) {
+    if (!a->pixels) return;
+    gf_fill(a->pixels, WIDTH, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT, COL_BG);
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++) {
+            char ch = a->grid[r][c];
+            if (ch != ' ')
+                gf_glyph(a->pixels, WIDTH, WIDTH, HEIGHT, c * CW, r * CH, ch, COL_FG, -1);
+        }
+    // cursor block
+    gf_fill(a->pixels, WIDTH, WIDTH, HEIGHT, a->cur_c * CW, a->cur_r * CH, CW, CH, COL_CURSOR);
+    char cc = a->grid[a->cur_r][a->cur_c];
+    if (cc != ' ')
+        gf_glyph(a->pixels, WIDTH, WIDTH, HEIGHT, a->cur_c * CW, a->cur_r * CH, cc, COL_BG, -1);
+}
+
+static void commit(struct app *a) {
+    render(a);
+    wl_surface_attach(a->surface, a->buffer, 0, 0);
+    wl_surface_damage_buffer(a->surface, 0, 0, WIDTH, HEIGHT);
+    wl_surface_commit(a->surface);
+    wl_display_flush(a->display);
+    a->dirty = 0;
+}
+
+// Mirror shell output to serial, one line at a time, prefixed "G4OUT:".
+static void mirror_byte(struct app *a, unsigned char b) {
+    if (b == '\n' || a->mirror_len >= (int)sizeof(a->mirror) - 1) {
+        a->mirror[a->mirror_len] = 0;
+        printf("G4OUT: %s\n", a->mirror);
+        fflush(stdout);
+        a->mirror_len = 0;
+        return;
+    }
+    if (b >= 0x20 && b < 0x7f)
+        a->mirror[a->mirror_len++] = (char)b;
+}
+
+// ── shm buffer ───────────────────────────────────────────────────────────────
+static int create_shm_buffer(struct app *a) {
+    const int stride = WIDTH * 4;
+    const size_t size = (size_t)stride * HEIGHT;
+    int fd = create_memfd("epin-g4-term");
+    if (fd < 0) { perror("G4TERM: memfd_create"); return -1; }
+    if (ftruncate(fd, (off_t)size) < 0) { perror("G4TERM: ftruncate"); close(fd); return -1; }
+    a->pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (a->pixels == MAP_FAILED) { perror("G4TERM: mmap"); close(fd); return -1; }
+    struct wl_shm_pool *pool = wl_shm_create_pool(a->shm, fd, (int)size);
+    a->buffer = wl_shm_pool_create_buffer(pool, 0, WIDTH, HEIGHT, stride, WL_SHM_FORMAT_XRGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    return a->buffer ? 0 : -1;
+}
+
+// ── pseudo-terminal + shell ──────────────────────────────────────────────────
+static int spawn_shell(struct app *a) {
+    int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
+    if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
+    int lock = 0;
+    ioctl(m, TIOCSPTLCK, &lock);   // unlockpt
+    unsigned int n = 0;
+    if (ioctl(m, TIOCGPTN, &n) < 0) { perror("G4TERM: TIOCGPTN"); close(m); return -1; }
+    char pts[32];
+    snprintf(pts, sizeof(pts), "/dev/pts/%u", n);
+    printf("G4TERM: pty master ready, slave = %s\n", pts); fflush(stdout);
+
+    // fork() goes through the kernel's forkTask path, which gives the child a
+    // private copy of the fd table — so the child's dup2 of the slave onto
+    // 0/1/2 does not disturb the terminal's own descriptors.  (posix_spawn here
+    // uses vfork, which shares the fd table and would corrupt the parent.)
+    pid_t pid = fork();
+    if (pid < 0) { perror("G4TERM: fork"); close(m); return -1; }
+    if (pid == 0) {
+        // child: wire the slave to stdin/stdout/stderr, then exec the shell.
+        close(m);
+        int s = open(pts, O_RDWR);
+        if (s < 0) _exit(127);
+        dup2(s, 0); dup2(s, 1); dup2(s, 2);
+        if (s > 2) close(s);
+        // The kernel forces argv[0] to the boot-module basename, so the shell
+        // module is staged as "-sh": argv[0]="-sh" makes busybox ash a login
+        // interactive shell that prints a prompt on the tty.
+        char *argv[] = { "-sh", NULL };
+        execve("/-sh", argv, environ);
+        _exit(127);
+    }
+
+    printf("G4TERM: spawned shell pid=%d on %s -- G4 SHELL\n", (int)pid, pts); fflush(stdout);
+    a->ptm = m;
+    return 0;
+}
+
+static void drain_pty(struct app *a) {
+    unsigned char buf[512];
+    for (;;) {
+        ssize_t n = read(a->ptm, buf, sizeof(buf));
+        if (n <= 0) break;
+        for (ssize_t i = 0; i < n; i++) { vt_byte(a, buf[i]); mirror_byte(a, buf[i]); }
+        a->dirty = 1;
+    }
+}
+
+// ── keyboard ─────────────────────────────────────────────────────────────────
+static const char kmap[59] = {
+/*0*/0,0,'1','2','3','4','5','6','7','8','9','0','-','=',0,0,
+/*16*/'q','w','e','r','t','y','u','i','o','p','[',']',0,0,'a','s',
+/*32*/'d','f','g','h','j','k','l',';','\'','`',0,'\\','z','x','c','v',
+/*48*/'b','n','m',',','.','/',0,0,0,' '
+};
+static const char kmap_shift[59] = {
+/*0*/0,0,'!','@','#','$','%','^','&','*','(',')','_','+',0,0,
+/*16*/'Q','W','E','R','T','Y','U','I','O','P','{','}',0,0,'A','S',
+/*32*/'D','F','G','H','J','K','L',':','"','~',0,'|','Z','X','C','V',
+/*48*/'B','N','M','<','>','?',0,0,0,' '
+};
+
+static void key_to_pty(struct app *a, uint32_t code) {
+    char c = 0;
+    switch (code) {
+        case 1:  c = 0x1b; break;          // ESC
+        case 14: c = 0x7f; break;          // Backspace -> DEL (VERASE)
+        case 15: c = '\t'; break;
+        case 28: c = '\r'; break;          // Enter
+        default:
+            if (code < 59) c = a->shift ? kmap_shift[code] : kmap[code];
+            break;
+    }
+    if (!c) return;
+    if (a->ctrl && ((c | 0x20) >= 'a' && (c | 0x20) <= 'z')) c = (char)((c | 0x20) - 'a' + 1);
+    if (a->ptm >= 0) { unsigned char b = (unsigned char)c; write(a->ptm, &b, 1); }
+    printf("G4KEY: code=%u -> 0x%02x\n", code, (unsigned char)c); fflush(stdout);
+}
+
+static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, uint32_t sz)
+{ (void)d; (void)k; (void)fmt; (void)sz; if (fd >= 0) close(fd); }
+static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *ks)
+{ (void)d; (void)k; (void)s; (void)sf; (void)ks; log_line("G4KEY: keyboard enter -- G4 FOCUS"); }
+static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf)
+{ (void)d; (void)k; (void)s; (void)sf; }
+static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t time,
+                   uint32_t code, uint32_t state)
+{
+    (void)k; (void)serial; (void)time;
+    struct app *a = data;
+    int down = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+    if (code == 42 || code == 54) { a->shift = down; return; } // L/R shift
+    if (code == 29 || code == 97) { a->ctrl = down; return; }  // L/R ctrl
+    if (down) key_to_pty(a, code);
+}
+static void kb_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t lat,
+                    uint32_t lock, uint32_t grp)
+{ (void)d; (void)k; (void)s; (void)dep; (void)lat; (void)lock; (void)grp; }
+static void kb_repeat(void *d, struct wl_keyboard *k, int32_t rate, int32_t delay)
+{ (void)d; (void)k; (void)rate; (void)delay; }
+
+static const struct wl_keyboard_listener keyboard_listener = {
+    .keymap = kb_keymap, .enter = kb_enter, .leave = kb_leave,
+    .key = kb_key, .modifiers = kb_mods, .repeat_info = kb_repeat,
+};
+
+static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
+    struct app *a = data;
+    if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !a->keyboard) {
+        a->keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(a->keyboard, &keyboard_listener, a);
+        log_line("G4TERM: wl_seat has keyboard; subscribed");
+    }
+}
+static void seat_name(void *d, struct wl_seat *s, const char *n) { (void)d; (void)s; (void)n; }
+static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps, .name = seat_name };
+
+// ── xdg-shell / registry ─────────────────────────────────────────────────────
+static void wm_base_ping(void *d, struct xdg_wm_base *wm, uint32_t serial) { (void)d; xdg_wm_base_pong(wm, serial); }
+static const struct xdg_wm_base_listener wm_base_listener = { .ping = wm_base_ping };
+
+static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint32_t serial) {
+    struct app *a = data;
+    xdg_surface_ack_configure(surface, serial);
+    if (a->committed) return;
+    if (create_shm_buffer(a) < 0) { a->running = 0; return; }
+    grid_clear(a);
+    commit(a);
+    a->committed = 1;
+    printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", WIDTH, HEIGHT); fflush(stdout);
+}
+static const struct xdg_surface_listener xdg_surface_listener = { .configure = xdg_surface_configure };
+
+static void toplevel_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *s)
+{ (void)d; (void)t; (void)w; (void)h; (void)s; }
+static void toplevel_close(void *data, struct xdg_toplevel *t) { (void)t; ((struct app *)data)->running = 0; }
+static void toplevel_cfg_bounds(void *d, struct xdg_toplevel *t, int32_t w, int32_t h)
+{ (void)d; (void)t; (void)w; (void)h; }
+static void toplevel_wm_caps(void *d, struct xdg_toplevel *t, struct wl_array *c) { (void)d; (void)t; (void)c; }
+static const struct xdg_toplevel_listener toplevel_listener = {
+    .configure = toplevel_configure, .close = toplevel_close,
+    .configure_bounds = toplevel_cfg_bounds, .wm_capabilities = toplevel_wm_caps,
+};
+
+static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
+                            const char *iface, uint32_t version) {
+    struct app *a = data;
+    if (strcmp(iface, wl_compositor_interface.name) == 0) {
+        a->compositor = wl_registry_bind(reg, name, &wl_compositor_interface, version < 4 ? version : 4);
+    } else if (strcmp(iface, wl_shm_interface.name) == 0) {
+        a->shm = wl_registry_bind(reg, name, &wl_shm_interface, 1);
+    } else if (strcmp(iface, xdg_wm_base_interface.name) == 0) {
+        a->wm_base = wl_registry_bind(reg, name, &xdg_wm_base_interface, version < 6 ? version : 6);
+        xdg_wm_base_add_listener(a->wm_base, &wm_base_listener, a);
+    } else if (strcmp(iface, wl_seat_interface.name) == 0) {
+        a->seat = wl_registry_bind(reg, name, &wl_seat_interface, version < 5 ? version : 5);
+        wl_seat_add_listener(a->seat, &seat_listener, a);
+    }
+}
+static void registry_global_remove(void *d, struct wl_registry *r, uint32_t n) { (void)d; (void)r; (void)n; }
+static const struct wl_registry_listener registry_listener = {
+    .global = registry_global, .global_remove = registry_global_remove,
+};
+
+int main(void) {
+    struct app a;
+    memset(&a, 0, sizeof(a));
+    a.running = 1;
+    a.ptm = -1;
+
+    log_line("G4TERM: starting software terminal");
+
+    // Spawn the shell BEFORE connecting to Wayland: fork() copies the whole
+    // address space, and forking a live Wayland connection corrupts its socket
+    // stream.  Doing it first means the fork is cheap and the child inherits no
+    // Wayland fds.  The shell's early output simply buffers in the pty until the
+    // terminal connects and drains it.
+    if (spawn_shell(&a) < 0) return 1;
+
+    a.display = wl_display_connect(NULL);
+    if (!a.display) { perror("G4TERM: wl_display_connect"); return 1; }
+
+    a.registry = wl_display_get_registry(a.display);
+    wl_registry_add_listener(a.registry, &registry_listener, &a);
+    wl_display_roundtrip(a.display);
+    if (!a.compositor || !a.shm || !a.wm_base) { log_line("G4TERM: missing globals"); return 1; }
+
+    a.surface     = wl_compositor_create_surface(a.compositor);
+    a.xdg_surface = xdg_wm_base_get_xdg_surface(a.wm_base, a.surface);
+    xdg_surface_add_listener(a.xdg_surface, &xdg_surface_listener, &a);
+    a.toplevel    = xdg_surface_get_toplevel(a.xdg_surface);
+    xdg_toplevel_add_listener(a.toplevel, &toplevel_listener, &a);
+    xdg_toplevel_set_title(a.toplevel, "EpinAnonymOS G4 terminal");
+    xdg_toplevel_set_app_id(a.toplevel, "epin-g4-term");
+    wl_surface_commit(a.surface);
+    wl_display_roundtrip(a.display);   // drive the first configure → commit
+
+    int wlfd = wl_display_get_fd(a.display);
+    while (a.running) {
+        // Standard prepare_read pattern so we can also poll the PTY master fd.
+        while (wl_display_prepare_read(a.display) != 0)
+            wl_display_dispatch_pending(a.display);
+        wl_display_flush(a.display);
+
+        struct pollfd pfds[2] = {
+            { .fd = wlfd,   .events = POLLIN },
+            { .fd = a.ptm,  .events = POLLIN },
+        };
+        poll(pfds, 2, 16);
+
+        if (pfds[0].revents & POLLIN) wl_display_read_events(a.display);
+        else                          wl_display_cancel_read(a.display);
+        wl_display_dispatch_pending(a.display);
+
+        if (pfds[1].revents & POLLIN) drain_pty(&a);
+        if (a.dirty && a.committed) commit(&a);
+    }
+    return 0;
+}

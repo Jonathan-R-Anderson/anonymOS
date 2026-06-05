@@ -29,6 +29,22 @@ namespace Aquamarine {
         std::string name;
     };
 
+    // GUI roadmap G4: kernel evdev keyboard (/dev/input/event0) bridged into an
+    // aquamarine keyboard, the same way CHeadlessPointer bridges the mouse.
+    // Only key events are emitted; Hyprland derives modifiers via its own xkb
+    // state, exactly as it does for a libinput keyboard.
+    class CHeadlessKeyboard : public IKeyboard {
+      public:
+        CHeadlessKeyboard(const std::string& name_) : name(name_) {}
+        virtual ~CHeadlessKeyboard() {}
+        virtual const std::string& getName() {
+            return name;
+        }
+
+      private:
+        std::string name;
+    };
+
     class CHeadlessOutput : public IOutput {
       public:
         virtual ~CHeadlessOutput();
@@ -105,6 +121,10 @@ namespace Aquamarine {
         int32_t                                           accumDX = 0, accumDY = 0;
         void                                              initInput();
         void                                              dispatchInput();
+
+        Hyprutils::OS::CFileDescriptor                     kbdFD;
+        Hyprutils::Memory::CSharedPointer<CHeadlessKeyboard> keyboard;
+        void                                               dispatchKeyboard();
 
         friend class CBackend;
         friend class CHeadlessOutput;

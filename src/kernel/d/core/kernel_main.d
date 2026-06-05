@@ -719,15 +719,16 @@ private void spawnWaylandClient() {
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    long r = execveTask(t, cast(ulong)"wl-shm-demo\0".ptr, 0, 0);
+    // GUI roadmap G4: autostart the software terminal (was wl-shm-demo for G2/G3).
+    long r = execveTask(t, cast(ulong)"wl-term\0".ptr, 0, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
-        klog("[g2] wl-shm-demo spawn failed\n");
+        klog("[g4] wl-term spawn failed\n");
         releaseTask(t);
         return;
     }
-    klog("[g2] wl-shm-demo launched as task "); klog_hex(cast(ulong)t); klog("\n");
+    klog("[g4] wl-term launched as task "); klog_hex(cast(ulong)t); klog("\n");
     g_current_task_id = cast(ulong)t;
 }
 
@@ -1470,7 +1471,7 @@ private void dispatchSyscall(int tid) {
     // scheduler), rewind RIP to the `syscall` instruction (2 bytes: 0F 05) and
     // yield.  The task transparently re-runs read() next time it is scheduled,
     // so userspace still sees a normal blocking read once data arrives.
-    if (rax == 0 && ret == -11 /*EAGAIN*/ && isConsoleFd(rdi)) {
+    if (rax == 0 && ret == -11 /*EAGAIN*/ && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi))) {
         task.regs[REG_RIP] -= 2;
         scheduleNext();
         return;

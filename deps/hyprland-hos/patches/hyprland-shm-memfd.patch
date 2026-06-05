@@ -1,0 +1,57 @@
+diff --git a/src/helpers/MiscFunctions.cpp b/src/helpers/MiscFunctions.cpp
+index ba89f2180..27574f372 100644
+--- a/src/helpers/MiscFunctions.cpp
++++ b/src/helpers/MiscFunctions.cpp
+@@ -618,14 +618,12 @@ void throwError(const std::string& err) {
+ }
+ 
+ std::pair<CFileDescriptor, std::string> openExclusiveShm() {
+-    // Only absolute paths can be shared across different shm_open() calls
+-    std::string name = "/" + g_pTokenManager->getRandomUUID();
+-
+-    for (size_t i = 0; i < 69; ++i) {
+-        CFileDescriptor fd{shm_open(name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600)};
+-        if (fd.isValid())
+-            return {std::move(fd), name};
+-    }
++    // EpinAnonymOS: the kernel implements no shm_open()/POSIX shm, but it does
++    // support memfd_create — anonymous, mmap-able, fd-passable shared memory.
++    // Back anonymous shm with a memfd instead (the returned name is unused).
++    CFileDescriptor fd{(int)memfd_create("hypr-shm", MFD_CLOEXEC)};
++    if (fd.isValid())
++        return {std::move(fd), ""};
+ 
+     return {{}, ""};
+ }
+@@ -635,8 +633,6 @@ CFileDescriptor allocateSHMFile(size_t len) {
+     if (!fd.isValid())
+         return {};
+ 
+-    shm_unlink(name.c_str());
+-
+     int ret;
+     do {
+         ret = ftruncate(fd.get(), len);
+@@ -655,18 +651,11 @@ bool allocateSHMFilePair(size_t size, CFileDescriptor& rw_fd_ptr, CFileDescripto
+         return false;
+     }
+ 
+-    // CLOEXEC is guaranteed to be set by shm_open
+-    CFileDescriptor ro_fd{shm_open(name.c_str(), O_RDONLY, 0)};
++    // EpinAnonymOS: no shm_open() to reopen read-only, so the read-only handle
++    // is a CLOEXEC dup of the memfd.  The client only ever mmaps it PROT_READ
++    // (e.g. the xkb keymap), so a plain dup is sufficient.
++    CFileDescriptor ro_fd{fcntl(fd.get(), F_DUPFD_CLOEXEC, 0)};
+     if (!ro_fd.isValid()) {
+-        shm_unlink(name.c_str());
+-        return false;
+-    }
+-
+-    shm_unlink(name.c_str());
+-
+-    // Make sure the file cannot be re-opened in read-write mode (e.g. via
+-    // "/proc/self/fd/" on Linux)
+-    if (fchmod(fd.get(), 0) != 0) {
+         return false;
+     }
+ 

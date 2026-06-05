@@ -1,0 +1,103 @@
+--- a/include/aquamarine/backend/Headless.hpp
++++ b/include/aquamarine/backend/Headless.hpp
+@@ -29,6 +29,22 @@
+         std::string name;
+     };
+ 
++    // GUI roadmap G4: kernel evdev keyboard (/dev/input/event0) bridged into an
++    // aquamarine keyboard, the same way CHeadlessPointer bridges the mouse.
++    // Only key events are emitted; Hyprland derives modifiers via its own xkb
++    // state, exactly as it does for a libinput keyboard.
++    class CHeadlessKeyboard : public IKeyboard {
++      public:
++        CHeadlessKeyboard(const std::string& name_) : name(name_) {}
++        virtual ~CHeadlessKeyboard() {}
++        virtual const std::string& getName() {
++            return name;
++        }
++
++      private:
++        std::string name;
++    };
++
+     class CHeadlessOutput : public IOutput {
+       public:
+         virtual ~CHeadlessOutput();
+@@ -106,6 +122,10 @@
+         void                                              initInput();
+         void                                              dispatchInput();
+ 
++        Hyprutils::OS::CFileDescriptor                     kbdFD;
++        Hyprutils::Memory::CSharedPointer<CHeadlessKeyboard> keyboard;
++        void                                               dispatchKeyboard();
++
+         friend class CBackend;
+         friend class CHeadlessOutput;
+     };
+--- a/src/backend/Headless.cpp
++++ b/src/backend/Headless.cpp
+@@ -42,6 +42,7 @@
+     // which are available in the sessionless headless backend) and translate it
+     // into aquamarine IPointer events.
+     constexpr const char* HOS_MOUSE_DEVICE = "/dev/input/event1";
++    constexpr const char* HOS_KBD_DEVICE   = "/dev/input/event0";
+ 
+     // struct input_event (64-bit Linux ABI): timeval(16) + type(2) + code(2) + value(4).
+     struct SHosInputEvent {
+@@ -223,12 +224,23 @@
+ 
+     backend->log(AQ_LOG_DEBUG, std::format("headless: bridging kernel evdev pointer {} -> aquamarine pointer", HOS_MOUSE_DEVICE));
+ 
+-    // Announce the pointer once the event loop is running, mirroring how the
+-    // wayland backend defers newPointer through an idle callback so Hyprland's
+-    // input manager is already listening.
++    // GUI roadmap G4: bridge the kernel evdev keyboard the same way.
++    int kfd = open(HOS_KBD_DEVICE, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++    if (kfd >= 0) {
++        kbdFD    = Hyprutils::OS::CFileDescriptor{kfd};
++        keyboard = makeShared<CHeadlessKeyboard>("hos-keyboard");
++        backend->log(AQ_LOG_DEBUG, std::format("headless: bridging kernel evdev keyboard {} -> aquamarine keyboard", HOS_KBD_DEVICE));
++    } else
++        backend->log(AQ_LOG_ERROR, std::format("headless: no evdev keyboard at {} ({}), keyboard input disabled", HOS_KBD_DEVICE, strerror(errno)));
++
++    // Announce the devices once the event loop is running, mirroring how the
++    // wayland backend defers newPointer/newKeyboard through an idle callback so
++    // Hyprland's input manager is already listening.
+     auto announce = makeShared<std::function<void(void)>>([this]() {
+         if (pointer)
+             backend->events.newPointer.emit(SP<IPointer>(pointer));
++        if (keyboard)
++            backend->events.newKeyboard.emit(SP<IKeyboard>(keyboard));
+     });
+     backend->addIdleEvent(announce);
+ }
+@@ -238,9 +250,29 @@
+     fds.emplace_back(makeShared<SPollFD>(timers.timerfd.get(), [this]() { dispatchTimers(); }));
+     if (mouseFD.isValid())
+         fds.emplace_back(makeShared<SPollFD>(mouseFD.get(), [this]() { dispatchInput(); }));
++    if (kbdFD.isValid())
++        fds.emplace_back(makeShared<SPollFD>(kbdFD.get(), [this]() { dispatchKeyboard(); }));
+     return fds;
+ }
+ 
++void Aquamarine::CHeadlessBackend::dispatchKeyboard() {
++    if (!kbdFD.isValid() || !keyboard)
++        return;
++
++    SHosInputEvent ev;
++    while (read(kbdFD.get(), &ev, sizeof(ev)) == sizeof(ev)) {
++        if (ev.type != HOS_EV_KEY)
++            continue; // ignore EV_SYN/EV_MSC; Hyprland tracks repeat itself
++        // ev.code is the evdev keycode; Hyprland adds the +8 xkb offset and
++        // derives modifiers from its own keymap.
++        keyboard->events.key.emit(IKeyboard::SKeyEvent{
++            .timeMs  = hosNowMs(),
++            .key     = ev.code,
++            .pressed = ev.value != 0,
++        });
++    }
++}
++
+ void Aquamarine::CHeadlessBackend::dispatchInput() {
+     if (!mouseFD.isValid() || !pointer)
+         return;

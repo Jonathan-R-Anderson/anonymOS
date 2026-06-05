@@ -58,6 +58,7 @@ COMPOSITOR_BIN := build/compositor
 HELLO_GUI_BIN := build/hello-gui
 WLPROBE_BIN   := build/wl-probe
 WLSHM_DEMO_BIN := build/wl-shm-demo
+WLTERM_BIN    := build/wl-term
 HYPRLAND_BIN := deps/hyprland/Hyprland
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
@@ -108,7 +109,16 @@ $(WLSHM_DEMO_BIN): src/util/wl-shm-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		$(WAYLAND_SYSROOT)/lib/libffi.a \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(WLSHM_DEMO_BIN) $(wildcard $(HYPRLAND_BIN))
+$(WLTERM_BIN): src/util/wl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-term (GUI G4 software terminal) ===="
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -Ibuild -Isrc/util \
+		-o $@ src/util/wl-term.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libwayland-client.a \
+		$(WAYLAND_SYSROOT)/lib/libffi.a \
+		-pthread
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(wildcard $(HYPRLAND_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -145,6 +155,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(WLSHM_DEMO_BIN) cd/wl-shm-demo
 	@echo "Included wl-shm-demo (GUI G2)"
+
+	cp $(WLTERM_BIN) cd/wl-term
+	@echo "Included wl-term (GUI G4)"
+
+	cp $(BUSYBOX_BIN) cd/-sh
+	@echo "Included -sh (busybox login shell for GUI G4 terminal)"
 
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \

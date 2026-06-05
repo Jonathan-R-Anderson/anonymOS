@@ -332,7 +332,7 @@ https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b900c-4
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b92a0-a1d8-83ea-b43b-22632cb2c59a (react os compatibility layer)
 
-make sure the kernel can handle multiple cores/multithreading
+make sure the kernel can handle multiple cores/multithreading/dynamic linking
 
 make sure it does hardware abstraction
 

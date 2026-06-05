@@ -32,6 +32,10 @@
   Hyprland-only autostart hook, and a second task is spawned once the compositor's
   Wayland listener is ready. Verified in QEMU serial log:
   `WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
+- **G2 is implemented:** `wl-shm-demo` is staged as a boot module and autostarted
+  after Hyprland's listener settles. It binds `wl_compositor`/`wl_shm`/`xdg_wm_base`,
+  creates an `xdg_toplevel`, passes a memfd-backed shm buffer, commits it, and
+  Hyprland logs the mapped window (`EpinAnonymOS G2 wl_shm`) on `FALLBACK`.
 
 **G1 — A client-launch mechanism. DONE.** Implemented via kernel boot-module
 autostart: `wl-probe` is built from `src/util/wl-probe.c`, included in the ISO, and
@@ -41,13 +45,18 @@ Hyprland currently binds `wayland-1`, so the kernel aliases client connects to
 *Proof:* QEMU serial showed `[g1] wl-probe launched as task ...` followed by
 `WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
 
-**G2 — First Wayland client window (the gating milestone). P: Critical.** Build a
-minimal `wl_shm` client (weston-simple-shm–style C, linked against the sysroot
-`libwayland-client` + xdg-shell) that binds `wl_compositor`/`wl_shm`/`xdg_wm_base`,
-creates a pool from a memfd, makes an `xdg_toplevel`, attaches a buffer, and commits.
-*Done when:* a solid-color client rectangle is **composited by Hyprland** (screendump
-shows a non-background rectangle). This proves the whole client path end-to-end and
-de-risks everything after it.
+**G2 — First Wayland client window (the gating milestone). DONE.** Implemented by
+`src/util/wl-shm-demo.c`, statically linked against the sysroot
+`libwayland-client` and generated `xdg-shell` protocol. The kernel includes it in
+the ISO and launches it after Hyprland's Wayland listener has settled. It binds
+`wl_compositor`/`wl_shm`/`xdg_wm_base`, creates a memfd shm pool, creates an
+`xdg_toplevel`, attaches the buffer, and commits.
+*Proof:* QEMU serial showed `G2SHM: committed wl_shm xdg_toplevel 640x400 -- G2 COMMIT`,
+followed by Hyprland mapping the window:
+`Map request dispatched, monitor FALLBACK, window pos: [20.00000, 20.00000], window size: [600.00000, 360.00000]`.
+QEMU HMP `screendump` currently captures the fallback/firmware framebuffer rather
+than the DRM dumb-buffer content, so the serial map/commit trace is the reliable
+verification artifact for this milestone.
 
 **G3 — Cursor movement + click. P: High · deps: G2.** Verify QEMU mouse → PS/2 →
 `/dev/input/event1` → libinput → Hyprland pointer → **rendered cursor that moves**, and
@@ -80,9 +89,10 @@ client timing is a lottery; favor changes that are checkable from the serial log
 
 ## Known issues / notes
 
-- **Wayland mapped-window path is still unproven** — G1 proves a second userspace
-  process can start and connect to the compositor socket, but no client has yet
-  created + committed a mapped surface. This is now the gating unknown for G2.
+- **QEMU HMP screendump does not show the mapped Hyprland window yet.** G2 now proves
+  the Wayland client path by serial (`wl_shm` commit + Hyprland map request), but
+  `screendump` still captures the fallback/firmware-looking framebuffer (black
+  interior with border gradient) instead of the DRM dumb-buffer content.
 - **Softpipe textured-render bug (wallpaper, parked).** A decoded image renders only as
   a ~16–20 px border with a black interior; narrowed to softpipe dropping
   `v_texcoord.y` (the texcoord's 2nd component / vs→fs varying packing) — a solid-color

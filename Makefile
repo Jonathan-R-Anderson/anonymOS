@@ -57,11 +57,18 @@ TEST_DRM_BIN  := build/test-drm
 COMPOSITOR_BIN := build/compositor
 HELLO_GUI_BIN := build/hello-gui
 WLPROBE_BIN   := build/wl-probe
+WLSHM_DEMO_BIN := build/wl-shm-demo
 HYPRLAND_BIN := deps/hyprland/Hyprland
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ASSET_SRC_DIR := build/assets
 ASSET_BLOB    := build/assets.blob
+WAYLAND_SYSROOT := deps/gtk-stack/sysroot
+WAYLAND_SCANNER ?= wayland-scanner
+MUSL_CC := deps/musl/install/bin/musl-clang
+XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
+XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
+XDG_SHELL_CODE := build/xdg-shell-protocol.c
 
 FREESTANDING_CFLAGS := -static -nostdlib -nostartfiles -fno-stack-protector \
 	-fno-pic -fno-pie -m64 -O2 -e _start
@@ -82,7 +89,26 @@ $(WLPROBE_BIN): src/util/wl-probe.c
 	@echo "==== Building wl-probe (GUI G1 client probe) ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(wildcard $(HYPRLAND_BIN))
+$(XDG_SHELL_HEADER): $(XDG_SHELL_XML)
+	@echo "==== Generating xdg-shell client header ===="
+	mkdir -p $(dir $@)
+	$(WAYLAND_SCANNER) client-header $< $@
+
+$(XDG_SHELL_CODE): $(XDG_SHELL_XML)
+	@echo "==== Generating xdg-shell protocol code ===="
+	mkdir -p $(dir $@)
+	$(WAYLAND_SCANNER) private-code $< $@
+
+$(WLSHM_DEMO_BIN): src/util/wl-shm-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-shm-demo (GUI G2 client window) ===="
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -Ibuild \
+		-o $@ src/util/wl-shm-demo.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libwayland-client.a \
+		$(WAYLAND_SYSROOT)/lib/libffi.a \
+		-pthread
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(WLSHM_DEMO_BIN) $(wildcard $(HYPRLAND_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -116,6 +142,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(WLPROBE_BIN) cd/wl-probe
 	@echo "Included wl-probe (GUI G1)"
+
+	cp $(WLSHM_DEMO_BIN) cd/wl-shm-demo
+	@echo "Included wl-shm-demo (GUI G2)"
 
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \

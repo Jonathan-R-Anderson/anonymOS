@@ -72,7 +72,7 @@ import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
-import core.ticks : increment_ticks;
+import core.ticks : increment_ticks, get_ticks;
 import core.random;
 
 extern (C) @nogc nothrow:
@@ -143,8 +143,11 @@ __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
 __gshared ulong g_futexLogCount = 0;
 __gshared ulong g_futexWakeLogCount = 0;
-__gshared bool g_guiG1AutostartEnabled = false;
-__gshared bool g_guiG1ProbeStarted = false;
+__gshared bool g_guiClientAutostartEnabled = false;
+__gshared bool g_guiClientStarted = false;
+__gshared bool g_guiClientListenerSeen = false;
+__gshared ulong g_guiClientLaunchTick = 0;
+private enum ulong GUI_CLIENT_SETTLE_TICKS = 6000;
 
 private bool futexWaitMatches(int tid, ulong uaddr, uint wakeBits) {
     if (tid < 0 || tid >= MAX_TASKS) return false;
@@ -184,10 +187,20 @@ private bool refreshFutexWaiter(int tid) {
         return false;
     }
 
-    int cur = *cast(int*)g_futexWaitUaddr[tid];
+    ulong uaddr = g_futexWaitUaddr[tid];
+    if (t.pml4Phys == 0 || findRegion(*t, uaddr) is null) {
+        clearFutexWait(tid, -4);
+        return false;
+    }
+
+    ulong savedCr3 = x64ReadCR3();
+    bool switchedCr3 = savedCr3 != t.pml4Phys;
+    if (switchedCr3) x64WriteCR3(t.pml4Phys);
+    int cur = *cast(int*)uaddr;
+    if (switchedCr3) x64WriteCR3(savedCr3);
     if (cur != g_futexWaitVal[tid]) {
         klog("[futex-unblock] t="); klog_hex(cast(ulong)tid);
-        klog(" u="); klog_hex(g_futexWaitUaddr[tid]);
+        klog(" u="); klog_hex(uaddr);
         klog(" want="); klog_hex(cast(ulong)cast(uint)g_futexWaitVal[tid]);
         klog(" now="); klog_hex(cast(ulong)cast(uint)cur);
         klog("\n");
@@ -564,6 +577,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
 
     // Find the ELF binary in the boot modules by filename
     const(char)* path = cast(const(char)*)pathPtr;
+    const(char)* pathBase = cstrBasenameK(path);
+    const(char)* execName = null;
     ulong modPhys = 0;
     ulong modSize = 0;
 
@@ -578,13 +593,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
             const(char)* modBase = modName;
             for (const(char)* p = modName; *p != 0; p++)
                 if (*p == '/') modBase = p + 1;
-            // basename of requested path (e.g. "test-drm" from "/bin/test-drm")
-            const(char)* pathBase = path;
-            for (const(char)* p = path; *p != 0; p++)
-                if (*p == '/') pathBase = p + 1;
             if (cstrEqK(path, modBase) || cstrEqK(path, modName) || cstrEqK(pathBase, modBase)) {
                 modPhys = cast(ulong)rec.mod_start;
                 modSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
+                execName = modBase;
                 break;
             }
         }
@@ -638,23 +650,26 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     if (stackRegion !is null)
         physPagesSetOwner(stackPhys, stackPages, stackRegion.objId, stackRegion.vmoObjId);
 
-    // Seed the initial stack.  pathPtr, argvPtr, and envpPtr are user-space
-    // virtual addresses from the OLD address space (no longer reachable after
-    // x64WriteCR3 above), so we zero them out to prevent _copyStrToStack from
-    // faulting when it walks the old argv/envp strings.  Programs that need
-    // argv will have it provided via a proper copyin path in a later phase.
-    ulong[7] infoWords = [res.entry, stackBase, 56 /*phent*/, 1 /*phnum*/,
-                           0, 0, 0 /*execfn: was pathPtr, now zeroed*/];
-    ulong rsp = linux_seed_initial_stack_with_args(
-        stackPhys, stackSize, stackBase,
-        infoWords.ptr, 4096, 0 /*argvPtr*/, 0 /*envpPtr*/);
+    // Seed a Linux-style process stack using auxv from the loaded ELF.  argv/env
+    // user pointers belong to the old address space after the CR3 switch, so the
+    // seeder uses the matched boot-module name as argv[0] and the kernel's
+    // default GUI environment.
+    ulong[7] infoWords = [
+        res.entry,
+        res.phdrVaddr,
+        cast(ulong)res.phEnt,
+        cast(ulong)res.phNum,
+        0,
+        0,
+        cast(ulong)execName
+    ];
+    ulong rsp = linux_seed_initial_stack(
+        stackPhys, stackSize, stackBase, infoWords.ptr, 4096);
 
-    // GCC compiles _start (with -nostartfiles) as a regular function, assuming
-    // RSP ≡ 8 (mod 16) at entry — i.e., as if _start was entered via `call`.
-    // The Linux ABI provides RSP ≡ 0 (mod 16) at process entry, which causes
-    // misaligned `movaps` in GCC's prologue.  If the seeder returned 0-mod-16,
-    // subtract 8 so the exec'd program sees 8-mod-16 (matching `call` semantics).
-    if ((rsp & 0xF) == 0) rsp -= 8;
+    // The legacy freestanding C probes were compiled with GCC treating _start
+    // like a regular function.  Keep their old call-like stack alignment while
+    // giving libc-linked programs the normal process-entry stack.
+    if (isFreestandingExecName(execName) && (rsp & 0xF) == 0) rsp -= 8;
 
     klog("[exec] entry="); klog_hex(res.entry);
     klog(" rsp="); klog_hex(rsp); klog("\n");
@@ -680,19 +695,19 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     return 0;
 }
 
-// GUI roadmap G1: launch a second userspace process (the wl-probe Wayland client)
-// once Hyprland has bound /run/user/1000/wayland-0. The probe is a freestanding
-// static boot module, reusing the existing task/exec machinery. Best-effort and
-// isolated: any failure just logs and leaves the desktop boot untouched.
-private void spawnWaylandProbe() {
+// GUI roadmap G2: launch the wl_shm xdg-shell demo once Hyprland has a Wayland
+// listener. The client is a static boot module, reusing the existing task/exec
+// machinery. Best-effort and isolated: failure logs and leaves desktop boot
+// untouched.
+private void spawnWaylandClient() {
     int t = allocTask();
-    if (t <= 0) { klog("[g1] no free task slot for wl-probe\n"); return; }
+    if (t <= 0) { klog("[g2] no free task slot for wl-shm-demo\n"); return; }
     g_tasks[t].parentId         = 0;
     g_tasks[t].processLeaderTid = t;
     g_tasks[t].userObjId        = g_tasks[0].userObjId;
     g_tasks[t].untypedObjId     = untypedCreateProcess(0);
     if (g_tasks[t].untypedObjId == 0) {
-        klog("[g1] no untyped budget for wl-probe\n");
+        klog("[g2] no untyped budget for wl-shm-demo\n");
         releaseTask(t);
         return;
     }
@@ -704,24 +719,34 @@ private void spawnWaylandProbe() {
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    long r = execveTask(t, cast(ulong)"wl-probe\0".ptr, 0, 0);
+    long r = execveTask(t, cast(ulong)"wl-shm-demo\0".ptr, 0, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
-        klog("[g1] wl-probe spawn failed\n");
+        klog("[g2] wl-shm-demo spawn failed\n");
         releaseTask(t);
         return;
     }
-    klog("[g1] wl-probe launched as task "); klog_hex(cast(ulong)t); klog("\n");
+    klog("[g2] wl-shm-demo launched as task "); klog_hex(cast(ulong)t); klog("\n");
+    g_current_task_id = cast(ulong)t;
 }
 
-private void maybeSpawnWaylandProbe() {
-    if (!g_guiG1AutostartEnabled || g_guiG1ProbeStarted) return;
+private void maybeSpawnWaylandClient() {
+    if (!g_guiClientAutostartEnabled || g_guiClientStarted) return;
     if (!unixSocketListenerReady("/run/user/1000/wayland-0\0".ptr)) return;
 
-    g_guiG1ProbeStarted = true;
-    klog("[g1] wayland-0 listener ready; launching wl-probe\n");
-    spawnWaylandProbe();
+    ulong now = get_ticks();
+    if (!g_guiClientListenerSeen) {
+        g_guiClientListenerSeen = true;
+        g_guiClientLaunchTick = now + GUI_CLIENT_SETTLE_TICKS;
+        klog("[g2] wayland listener ready; waiting for compositor settle\n");
+        return;
+    }
+    if (now < g_guiClientLaunchTick) return;
+
+    g_guiClientStarted = true;
+    klog("[g2] wayland listener ready; launching wl-shm-demo\n");
+    spawnWaylandClient();
 }
 
 // ------------------------------------------------------------------
@@ -824,6 +849,13 @@ private bool cstrEqK(const(char)* a, const(char)* b) {
         a++; b++;
     }
     return *a == 0 && *b == 0;
+}
+
+private bool isFreestandingExecName(const(char)* name) {
+    return cstrEqK(name, "test-drm\0".ptr) ||
+           cstrEqK(name, "compositor\0".ptr) ||
+           cstrEqK(name, "hello-gui\0".ptr) ||
+           cstrEqK(name, "wl-probe\0".ptr);
 }
 
 // ------------------------------------------------------------------
@@ -988,12 +1020,6 @@ private void handleMouseIRQ() @nogc nothrow {
 // g_task_fsbase / g_task_fsbase_set are in exports.d
 extern __gshared ulong[1024] g_task_fsbase;
 extern __gshared bool[1024]  g_task_fsbase_set;
-
-// linux_seed_initial_stack_with_args is in exports.d
-extern (C) ulong linux_seed_initial_stack_with_args(
-    ulong stackPhys, ulong stackSize, ulong stackVirtBase,
-    const(ulong)* infoWords, ulong pg,
-    ulong argvUserVirt, ulong envpUserVirt) @nogc nothrow;
 
 // Toggle for the very verbose per-syscall trace ([sc] t=/n=).  Off by default.
 __gshared bool g_traceSyscalls = false;
@@ -1448,13 +1474,9 @@ private void dispatchSyscall(int tid) {
     //   ppoll(271):fds=rdi nfds=rsi timeout_ts=rdx (NULL = infinite)
     // Both scan fd readiness (ppoll fixed below); select/pselect are excluded
     // since they don't scan and would yield forever.
-    //   epoll_pwait(281): deliberately NOT yielded here.  Hyprland's wl_event_loop
-    //     passes a finite timeout computed from its own timer sources and relies on
-    //     epoll_pwait *returning 0 at the timeout* to fire those timers and advance
-    //     startup.  Yielding (re-running the syscall until an fd is ready) never
-    //     lets userspace see the 0-return, so the compositor stalls before it ever
-    //     creates a monitor/renderer.  Letting epoll_pwait busy-return 0 wastes CPU
-    //     but keeps the event loop turning, which is what actually makes progress.
+    //   epoll_pwait(281): handled below without RIP rewind. Hyprland's
+    //     wl_event_loop must see timeout returns to fire timers, but other tasks
+    //     still need a turn before Hyprland immediately re-enters epoll.
     if (ret == 0 && (rax == 7 || rax == 271)) {
         bool wouldBlock;
         if (rax == 7) wouldBlock = (cast(long)rdx != 0);  // poll timeout!=0
@@ -1464,6 +1486,23 @@ private void dispatchSyscall(int tid) {
             scheduleNext();
             return;
         }
+    }
+
+    // epoll_wait/epoll_pwait timeout: let userspace observe 0 so Hyprland's
+    // event-loop timers still fire, but hand another runnable task a turn first.
+    if (ret == 0 && (rax == 232 || rax == 281 || rax == 441)) {
+        task.regs[REG_RAX] = 0;
+        scheduleNext();
+        return;
+    }
+
+    // Wayland and other local-socket protocols use sendmsg() as an IPC handoff.
+    // After a successful write, yield once so the peer can accept/read/reply
+    // without relying on debug logging or timer timing for fairness.
+    if (ret > 0 && rax == 46) {
+        task.regs[REG_RAX] = cast(ulong)ret;
+        scheduleNext();
+        return;
     }
 
     task.regs[REG_RAX] = cast(ulong)ret;
@@ -1630,7 +1669,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 
 private void kernelLoop() {
     while (true) {
-        maybeSpawnWaylandProbe();
+        maybeSpawnWaylandClient();
 
         int tid = cast(int)g_current_task_id;
         auto task = &g_tasks[tid];
@@ -1693,6 +1732,7 @@ private void kernelLoop() {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
                 picEOI(false);
+                scheduleNext();
             } else if (irqIdx == 1) {
                 // PS/2 keyboard — read all available scancodes
                 handleKbdIRQ();
@@ -2031,9 +2071,9 @@ void d_kernel_main() {
     g_tasks[0].regs[REG_RSP]    = rsp;
     g_tasks[0].regs[REG_RFLAGS] = 0x202; // IF=1
 
-    g_guiG1AutostartEnabled = initIsHyprland;
-    if (g_guiG1AutostartEnabled)
-        klog("[g1] wl-probe autostart armed\n");
+    g_guiClientAutostartEnabled = initIsHyprland;
+    if (g_guiClientAutostartEnabled)
+        klog("[g2] wl-shm-demo autostart armed\n");
 
     // Set up IDT and SYSCALL MSRs
     x64_ready_for_userspace();

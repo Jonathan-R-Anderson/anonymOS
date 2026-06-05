@@ -337,3 +337,8 @@ make sure the kernel can handle multiple cores/multithreading
 make sure it does hardware abstraction
 
 control panel like with qubes os, different subsystems have colored borders to indicate profiles
+
+https://www.gnunet.org/en/index.html
+https://github.com/orhun/ratty
+https://github.com/Jonathan-R-Anderson/-sh
+https://github.com/Jonathan-R-Anderson/web3-kinetic-loader (as the splash page for booting the os and wallpaper)

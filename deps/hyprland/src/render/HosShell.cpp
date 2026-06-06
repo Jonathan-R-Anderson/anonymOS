@@ -24,7 +24,7 @@ namespace {
     // (tracked alongside G17/G18).
     std::vector<SApp> g_apps = {
         {"Terminal", "wl-term"},
-        {"Files", "wl-cairo-demo"},
+        {"Files", "wl-files"},
         {"Settings", "wl-cairo-demo"},
         {"Editor", "wl-cairo-demo"},
         {"Monitor", "wl-cairo-demo"},

@@ -772,6 +772,8 @@ private void spawnWaylandClients() {
         spawnWaylandProgram("wl-term\0".ptr, "[g4]\0".ptr);
     if (mode == 2 || mode == 3)
         spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
+    if (mode == 4)
+        spawnWaylandProgram("wl-files\0".ptr, "[g17]\0".ptr);
 }
 
 private void maybeSpawnWaylandClient() {

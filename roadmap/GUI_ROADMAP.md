@@ -58,6 +58,7 @@ The current foundation is useful and should be preserved:
 - **G14 DONE:** the present path now renders an **antialiased Cairo desktop shell** — the top panel was migrated to Cairo/FreeType Noto text, and a polished, Ubuntu-class bottom **dock** was added (rounded translucent shelf, soft shadow, five colored launcher tiles, identity-accent running indicator, reserved dock space). `scripts/qemu-g14-verify.sh` passes and `scripts/qemu-g13-verify.sh` still passes.
 - **G15 DONE:** a **pointer cursor** is now composited in the present path (the CPU path previously drew none), a **Spotlight-style launcher** (Super+Space → search → Enter to launch via Hyprland's spawner) was added, the **dock tiles are clickable**, and the kernel now forwards the **Super/Meta key** (it was being dropped). `scripts/qemu-g15-verify.sh` passes.
 - **G16 DONE:** windows now have **modern decorations** — a drop shadow, an antialiased titlebar with the window title, an identity accent dot, and minimize/maximize/close controls, plus **rounded corners**, an active/inactive titlebar state, and a **rounded, kernel-owned identity border**. `scripts/qemu-g16-verify.sh` passes (G13/G14/G15 still pass).
+- **G17 DONE:** a real **file manager** application (`wl-files`) — a Finder-style browser with a Places sidebar, a path toolbar with a back button, and a folder/file listing read from the VFS with vector icons, names, selection, and an identity/security status label. Fixing it surfaced and corrected a **kernel `getdents64` ABI bug** (d_name was written into struct padding, so every directory listing came back nameless). `scripts/qemu-g17-verify.sh` passes (G13–G16 still pass).
 
 These are the correct low-level primitives. The shell is now rendered with Cairo/Pango/FreeType for genuinely antialiased, vector-quality output.
 
@@ -626,7 +627,7 @@ kernel**, and `make hos.iso` does *not* recompile the kernel on its own
 
 ---
 
-## G17 — File manager. P: Medium
+## G17 DONE — File manager. P: Medium
 
 **Goal:** Add a Finder/Dolphin/Nautilus-like file browser.
 
@@ -655,6 +656,52 @@ kernel**, and `make hos.iso` does *not* recompile the kernel on its own
 - User can browse the VFS visually.
 - Folder icons and file icons render.
 - Double-click opens folders.
+
+**Implemented 2026-06-06:**
+
+- New client **`src/util/wl-files.c`** — a Cairo/FreeType Wayland file manager,
+  built on the proven `wl-cairo-demo` boilerplate (registry/xdg-shell/`wl_shm`
+  via memfd, FreeType text, frame-callback redraw). Layout:
+  - **Places sidebar** (Home `/`, System `/usr`, Share `/usr/share`, Fonts,
+    Themes, Backgrounds, Config `/etc`) with folder icons; the active place is
+    highlighted.
+  - **Toolbar** with a back button and the current path.
+  - **File list** reading the current directory via `opendir`/`readdir`, sorted
+    folders-first, with vector folder/file icons, names, row selection, and a
+    leading `..` entry.
+  - **Status bar** showing the item count and an **identity/security label**.
+  - Navigation: click a place or the back button, double-click (or Enter on) a
+    folder to open it; Up/Down select; mouse-wheel scrolls. The window's
+    titlebar/controls/shadow/rounded border come from the G16 compositor
+    decorations.
+- **App wiring:** built and staged into the ISO as a Limine module
+  (`Makefile`, `src/boot/limine.conf` via the Makefile append); a new
+  `gui.autostart=files` mode launches it (`kernel_main.d`,
+  `guiAutostartMode` in `posix.d`); the dock/launcher **Files** entry now
+  spawns `wl-files` instead of the demo placeholder.
+- **Kernel bug fixed:** `linux_sys_getdents64`/`writeDirent64` placed `d_name`
+  at `linux_dirent64.sizeof` (24, the D-padded size) instead of the Linux ABI
+  offset **19**, so musl read names out of the zero padding — every directory
+  enumeration returned correctly-typed but **nameless** entries. Now keyed off an
+  explicit `DIRENT64_NAME_OFF = 19`. (Also fixes name-based directory scans used
+  elsewhere, e.g. fontconfig.)
+- Crash fixed along the way: `struct app` is ~135KB (the entry table), so it must
+  live in BSS (`static`), not on a spawned process's small initial stack.
+
+**Verification 2026-06-06:**
+
+- `scripts/qemu-g17-verify.sh` -> `G17 PASS: file manager renders a Places
+  sidebar, path toolbar, and a folder listing with icons and names`. Serial shows
+  `G17FILES: listed /usr/share (9 entries)` with real names (backgrounds,
+  cursors, fonts, hos, hypr, icons, themes, X11). G13–G16 still pass.
+
+**Known limitation:**
+
+- File **actions** (copy/move/rename/delete/new folder) and the **properties
+  dialog** are not yet implemented — browsing/navigation is. Live click/keyboard
+  navigation uses Hyprland's standard input delivery (works on real hardware);
+  it can't be exercised by the headless sandbox's (absent) synthetic input, so
+  the verifier checks the rendered listing.
 
 ---
 

@@ -60,6 +60,7 @@ WLPROBE_BIN   := build/wl-probe
 WLSHM_DEMO_BIN := build/wl-shm-demo
 WLTERM_BIN    := build/wl-term
 WLCAIRO_DEMO_BIN := build/wl-cairo-demo
+WLFILES_BIN := build/wl-files
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
@@ -194,7 +195,19 @@ $(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CO
 		$$PANGOCAIRO_LIBS \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+$(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-files (GUI G17 file manager) ===="
+	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
+		-o $@ src/util/wl-files.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$$CAIRO_LIBS \
+		-lm \
+		-pthread
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -245,6 +258,10 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	cp $(WLCAIRO_DEMO_BIN) cd/wl-cairo-demo
 	printf '\n    module_path: boot():/wl-cairo-demo\n' >> cd/boot/limine/limine.conf
 	@echo "Included wl-cairo-demo (GUI G11)"
+
+	cp $(WLFILES_BIN) cd/wl-files
+	printf '\n    module_path: boot():/wl-files\n' >> cd/boot/limine/limine.conf
+	@echo "Included wl-files (GUI G17)"
 
 	@if [ -f $(GTK_HELLO_BIN) ]; then \
 		cp $(GTK_HELLO_BIN) cd/gtk-hello; \

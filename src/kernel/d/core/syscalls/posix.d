@@ -2666,6 +2666,7 @@ public int guiAutostartMode() {
     if (displaySliceEq(value, "term") || displaySliceEq(value, "terminal") || displaySliceEq(value, "wl-term")) return 1;
     if (displaySliceEq(value, "cairo") || displaySliceEq(value, "wl-cairo-demo")) return 2;
     if (displaySliceEq(value, "both")) return 3;
+    if (displaySliceEq(value, "files") || displaySliceEq(value, "wl-files")) return 4;
     return 2;
 }
 
@@ -5568,16 +5569,22 @@ private struct linux_dirent64 {
 private enum DT_DIR = 4;
 private enum DT_REG = 8;
 
+// Linux ABI: d_ino(8) + d_off(8) + d_reclen(2) + d_type(1) = 19 bytes, then
+// d_name[] immediately at offset 19. The D struct above pads to 24 (8-byte
+// alignment), so its `.sizeof` must NOT be used for the trailing name offset —
+// doing so wrote d_name into the padding and musl read back empty names.
+private enum size_t DIRENT64_NAME_OFF = 19;
+
 private bool writeDirent64(ubyte* buf, size_t bufSz, size_t* off, ulong ino, long doff,
                             ubyte dtype, const(char)* name, size_t nlen) {
-    size_t reclen = (linux_dirent64.sizeof + nlen + 1 + 7) & ~cast(size_t)7;
+    size_t reclen = (DIRENT64_NAME_OFF + nlen + 1 + 7) & ~cast(size_t)7;
     if (*off + reclen > bufSz) return false;
     auto ent = cast(linux_dirent64*)(buf + *off);
     ent.d_ino    = ino;
     ent.d_off    = doff;
     ent.d_reclen = cast(ushort)reclen;
     ent.d_type   = dtype;
-    auto nb = cast(char*)(buf + *off + linux_dirent64.sizeof);
+    auto nb = cast(char*)(buf + *off + DIRENT64_NAME_OFF);
     for (size_t i = 0; i < nlen; ++i) nb[i] = name[i];
     nb[nlen] = 0;
     *off += reclen;

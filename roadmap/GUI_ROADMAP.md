@@ -1,297 +1,748 @@
-# GUI Desktop Roadmap
+# GUI Desktop Roadmap — High-Quality Desktop Experience
 
-## NEW GOALS (2026-06-04) — interactive Hyprland: first client window, cursor, terminal
+## NEW GOALS (2026-06-05) — real desktop quality, not a low-resolution demo
 
-> **Direction set with the user.** Goal: an interactive Hyprland desktop — move the
-> cursor, see a real window, type into a terminal. Bare Hyprland is a tiling WM with
-> **no desktop icons/launcher** (nothing to click out of the box) and **no Wayland
-> client has ever rendered a window** yet, so the empty workspace is the real blocker.
-> The plan is **foundation-first**: get one Wayland client window to composite, then a
-> cursor, then a software terminal.
+> **Direction set with the user.** The goal is no longer merely “Hyprland boots and a terminal technically exists.” The goal is a **real graphical desktop experience** comparable in polish to Linux desktop environments or macOS: crisp high-resolution output, readable fonts, visible window contents, smooth cursor/input, real window decorations, wallpaper, launcher, dock/panel, app switching, file manager, settings, and a consistent visual design.
 >
-> **ratty is PARKED (not viable here).** `orhun/ratty` is a GPU-rendered 3D terminal
-> on **Bevy + wgpu + Vello/Parley** (Rust). This OS has only **Mesa softpipe** (CPU
-> software GL, no Vulkan) *with the unresolved texture-sampling bug (see Known issues)*,
-> no Rust→musl toolchain, and no working Wayland client path. ratty would be strictly
-> harder than everything attempted so far. **Revisit only if a real GPU/Vulkan path
-> lands.** The terminal we build instead is **software-rendered (wl_shm, no GPU)**.
+> The current system feels low-quality because it is still in the “first compositor/client path” phase. The largest blockers are:
+>
+> 1. **Window contents now visibly composite for the wl_shm terminal path**, but text/font quality and broader toolkit coverage still need work.
+> 2. **Resolution/output handling is still fallback-like**, so screenshots and framebuffer output do not look like a modern desktop.
+> 3. **The UI stack has no real desktop shell yet**: no panel, launcher, wallpaper, app grid, file manager, notification area, or settings.
+> 4. **Text/icon rendering is not production-grade yet**: fonts, antialiasing, HiDPI scaling, icon themes, and asset delivery need to become first-class OS features.
 
-**What already exists (foundation is mostly there — grounded in the tree):**
-- Wayland socket: `WAYLAND_DISPLAY=wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`
-  (`exports.d`); the kernel binds unix sockets at filesystem paths and explicitly knows
-  `/run/user/1000/wayland-0` (`posix.d`).
-- `wl_shm` transport pieces: `memfd_create` + shared (`aliased`) mmap, and
-  **SCM_RIGHTS** fd-passing over `sendmsg` (`posix.d passedFiles[]`) — so a client can
-  hand its shm buffer fd to the compositor and both mmap the same physical pages.
-- Mouse input plumbing exists: PS/2 driver (`drivers/input/usb_hid.d`) → `g_mouse_ring`
-  → `/dev/input/event1` returning Linux `input_event` structs (`posix.d`,
-  `FD_INPUT_EVENT`); `/dev/input/event0/1` registered (`device.d`).
-- Userland C clients build from `src/util/*.c`; the sysroot has `libwayland-client.a`
-  + `wayland-client.h` + `xdg-shell.xml` (`deps/gtk-stack/sysroot`, `deps/.../wayland-protocols`).
-- **G1 is implemented:** `wl-probe` is staged as a boot module, the kernel arms a
-  Hyprland-only autostart hook, and a second task is spawned once the compositor's
-  Wayland listener is ready. Verified in QEMU serial log:
-  `WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
-- **G2 is implemented:** `wl-shm-demo` is staged as a boot module and autostarted
-  after Hyprland's listener settles. It binds `wl_compositor`/`wl_shm`/`xdg_wm_base`,
-  creates an `xdg_toplevel`, passes a memfd-backed shm buffer, commits it, and
-  Hyprland logs the mapped window (`EpinAnonymOS G2 wl_shm`) on `FALLBACK`.
-- **G3 is implemented:** the sessionless headless backend (which has no
-  libinput/libseat/udev) bridges the kernel's evdev mouse `/dev/input/event1`
-  straight into an aquamarine pointer (patch `0004-headless-input.patch`). The
-  cursor tracks the mouse and a left click is routed to the focused client
-  surface. Verified in QEMU via `scripts/qemu-g3-verify.sh`.
-
-**G1 — A client-launch mechanism. DONE.** Implemented via kernel boot-module
-autostart: `wl-probe` is built from `src/util/wl-probe.c`, included in the ISO, and
-spawned as a second userspace task after Hyprland exposes its Wayland listener.
-Hyprland currently binds `wayland-1`, so the kernel aliases client connects to
-`/run/user/1000/wayland-0` onto that live listener to preserve the boot environment.
-*Proof:* QEMU serial showed `[g1] wl-probe launched as task ...` followed by
-`WLPROBE: connected to /run/user/1000/wayland-0 OK -- G1 DONE`.
-
-**G2 — First Wayland client window (the gating milestone). DONE.** Implemented by
-`src/util/wl-shm-demo.c`, statically linked against the sysroot
-`libwayland-client` and generated `xdg-shell` protocol. The kernel includes it in
-the ISO and launches it after Hyprland's Wayland listener has settled. It binds
-`wl_compositor`/`wl_shm`/`xdg_wm_base`, creates a memfd shm pool, creates an
-`xdg_toplevel`, attaches the buffer, and commits.
-*Proof:* QEMU serial showed `G2SHM: committed wl_shm xdg_toplevel 640x400 -- G2 COMMIT`,
-followed by Hyprland mapping the window:
-`Map request dispatched, monitor FALLBACK, window pos: [20.00000, 20.00000], window size: [600.00000, 360.00000]`.
-QEMU HMP `screendump` currently captures the fallback/firmware framebuffer rather
-than the DRM dumb-buffer content, so the serial map/commit trace is the reliable
-verification artifact for this milestone.
-
-**G3 — Cursor movement + click. DONE.** The path is QEMU mouse → PS/2 IRQ12 →
-`/dev/input/event1` (kernel evdev ring) → **aquamarine headless input bridge** →
-Hyprland pointer → cursor + `wl_pointer` to the focused surface.
-
-*Architecture note (deviates from the original "via libinput/seat" sketch):*
-Hyprland runs on the **sessionless Headless backend**, which never initializes
-libseat/libinput/udev (the serial log shows `libseat: failed to open a seat` →
-`Sessionless backend active`). There is therefore **no libinput device the seat
-could enumerate**. Instead, mirroring how the headless **present** path bypasses
-DRM/GBM with a custom kernel ioctl, the headless backend now opens
-`/dev/input/event1` directly, exposes a `CHeadlessPointer : IPointer`, and
-translates `input_event` frames (`EV_REL`→move, `EV_KEY`→button, `EV_SYN`→frame)
-into aquamarine pointer events. Hyprland consumes it exactly like a libinput
-pointer (`getLibinputHandle()` returns null, which Hyprland already guards). The
-default fallback cursor (`XCursor … using default cursor instead`) renders through
-the existing present blit, so the theme search already terminates. Kernel side:
-`handleMouseIRQ` now emits `EV_KEY` only on button **transitions** (evdev
-semantics) and `SYN_REPORT` only on non-empty frames, instead of re-emitting level
-state every packet.
-
-*Proof (`scripts/qemu-g3-verify.sh`, which boots headless with a QMP socket and
-injects motion+click):* QEMU serial showed, in order:
-`headless: bridging kernel evdev pointer /dev/input/event1 -> aquamarine pointer`,
-`New mouse created, pointer AQ:` (Hyprland enumerated the pointer),
-`G3PTR: wl_seat has pointer; subscribed` (client got the seat pointer capability),
-`G3PTR: pointer enter … -- G3 ENTER` and `G3PTR: motion 89,56 / 249,168` (cursor
-tracked the mouse into the window), and
-`G3PTR: button 0x110 state 1 -- G3 CLICK` (left-button press delivered to the
-focused client surface). The `wl-shm-demo` client was extended to bind
-`wl_seat`/`wl_pointer` and log these for a serial-checkable artifact.
-
-**G4 — Software terminal client. DONE.** `src/util/wl-term.c` is a software-rendered
-`wl_shm` terminal: an 80×24 character grid (shared `gui_font.h` 8×8 font) blitted to an
-shm buffer, `wl_keyboard` input, and an interactive **busybox `sh`** running on a real
-kernel **PTY**. Autostarted in place of `wl-shm-demo`.
-
-*Work done (the original sketch needed several gaps filled — `/dev/ptmx`/`TIOCGPTN`
-were stubbed and there was no keyboard path):*
-- **Kernel PTY subsystem** (`posix.d`): `/dev/ptmx` allocates a pty and returns the
-  master; `TIOCGPTN`/`TIOCSPTLCK` work; `/dev/pts/N` opens the slave; master⇄slave
-  ring buffers with a **termios line discipline** (`ICANON`/`ECHO`/`ICRNL`/`ONLCR`,
-  VERASE/VKILL, per-pty stored termios so the shell's raw-mode `tcsetattr` is honored).
-  Blocking slave reads use the same RIP-rewind cooperative-block path as the console
-  (`ptyBlockingReadFd`). *Gotcha:* musl's `ioctl(int request)` sign-extends high-bit
-  requests, so `TIOCGPTN` (0x80045430) arrives as `0xFFFFFFFF80045430` — `ptyIoctl`
-  masks `cmd` to 32 bits.
-- **Keyboard bridge** (aquamarine `0005-headless-keyboard.patch`): `/dev/input/event0`
-  → `CHeadlessKeyboard : IKeyboard`, emitting key events; Hyprland derives modifiers
-  via its own xkb state.
-- **`shm_open` → memfd** (`hyprland-shm-memfd.patch`): the kernel has no POSIX
-  `shm_open`, so Hyprland's keymap/shm helpers (`allocateSHMFile*`) now use
-  `memfd_create`.  Without this, sending the `wl_keyboard` keymap fd failed
-  (`fcntl(F_DUPFD_CLOEXEC)` → EBADF → *"error in client communication"* → the window was
-  destroyed the instant a keyboard bound).
-- **Terminal spawns the shell with `fork()` (not `posix_spawn`) before connecting to
-  Wayland.** The kernel forces `argv[0]` to the boot-module basename, so the shell is
-  staged as a boot module literally named **`-sh`** (a busybox copy) → `argv[0]="-sh"`
-  → ash login-interactive prompt.  `fork()` routes through `forkTask`, which copies the
-  fd table (so the child's `dup2` of the slave onto 0/1/2 doesn't clobber the parent);
-  `vfork`/`posix_spawn` share the fd table and corrupted it.
-
-*Proof (`scripts/qemu-g4-verify.sh`, which boots headless with QMP, clicks the window
-to focus it, then types `echo g4pass`):* serial showed
-`New keyboard created`, `G4TERM: … G4 COMMIT` (window mapped),
-`G4OUT: BusyBox v1.36.1 … built-in shell (ash)` (shell on the pty),
-`G4KEY: keyboard enter -- G4 FOCUS`, the per-key trace `code=18 -> 0x65 …` (e-c-h-o-…),
-`G4OUT: $ echo g4pass` (the shell echoed the typed line) and finally
-`G4OUT: g4pass` (**the typed command ran**).
-
-**G5 — Identity-colored borders in the live present path. DONE.** The **kernel** (the
-trusted layer that owns the final blit to `g_fb`) paints each client window's border;
-apps and even Hyprland cannot spoof it.
-- **Kernel** (`posix.d`): a new DRM ioctl `DRM_NR_HOS_WINDOWS` (0xf1) receives a
-  `{count, [{x,y,w,h,pid}]}` array; `drmPresentToFramebuffer` (and the report handler,
-  for cadence — see below) overlays a 4-px border per window in a colour derived from
-  the owning process (`hosIdentityColor(pid)` → an 8-entry identity palette; pid is a
-  stand-in until per-client `IdentityRec` colours are wired). Solid-fill, so it renders
-  fine despite the softpipe texture bug.
-- **Hyprland** (`hyprland-g5-identity-borders.patch`): at present time
-  (`CHyprGLRenderer::endRender`) it reports every mapped window's monitor-relative rect
-  + `getPID()` via the ioctl. *Gotcha:* Hyprland's frame/present cadence is sparse after
-  a window maps (often a render/report with no following present blit), so the kernel
-  draws borders in **both** the present (`0xf0`) and the report (`0xf1`) paths.
-
-*Proof (`scripts/qemu-g5-verify.sh`):* serial showed `[g5] set windows count=1` then
-`[g5] drew identity borders for 1 window(s); first rect x=15 y=15 w=256 h=166
-color=0xffe0b341 -- G5 BORDER` — the trusted kernel border around the terminal window
-(hex: rect (21,21,598,358), matching the mapped [20,20]/[600,360]). *Visual* confirmation
-is blocked by the same non-visual present path as G2–G4 (now tracked as **G6**).
+This roadmap keeps the existing G1–G5 foundation, but reframes the next milestones around **visual quality** and **desktop completeness**.
 
 ---
 
-## Full desktop experience (macOS-style) — planning (2026-06-05)
+## Quality bar: what “real desktop experience” means
 
-> **Direction:** beyond "a window + a terminal", evolve toward a **macOS-like desktop**:
-> system font, icon pack, dock, menu bar, launcher, theming, cursor, wallpaper, and a
-> file manager. **Licensing:** Apple's SF font / macOS icons / wallpapers are proprietary
-> and must NOT be bundled. Use libre look-alikes (noted per item) — the *experience*, not
-> Apple's assets.
->
-> **Gating prerequisite — G6.** Almost everything below is only *visible* once window
-> **content** composites (the softpipe texture bug — see Known issues). Borders/solid UI
-> (G5) work today; fonts/icons/themes are textured glyphs+images and will stay black-
-> interior until G6 lands. So G6 is the real unlock for the visual desktop.
+The OS should not be considered to have a finished GUI until it can boot into a screen that looks and behaves like a normal desktop:
 
-**G6 — Visible window content (unblock the softpipe texture bug). P: Critical · deps: G2.**
-Make client `wl_shm` content actually appear on screen. Options: (a) patch Mesa softpipe
-varying packing; (b) **CPU-composite client buffers directly into the output buffer** in
-the present path, bypassing the broken GL texture sample (likely fastest win); (c) real
-GPU/Vulkan. *Done when:* the terminal's text (and a test image) are visible in
-`screendump`, not just in the serial round-trip.
-
-**G7 — Window decorations / theming (macOS-like). P: High · deps: G6.** Title bars with
-**traffic-light** close/min/max buttons, rounded corners, drop shadow, active/inactive
-states. Hyprland can do rounded corners + shadows via config; the lua-config delivery gap
-(Known issues) must be solved first, or hard-code defaults in a patch.
-
-**G8 — System font (SF-alike). P: High · deps: G6.** Bundle a libre, metric-compatible
-sans (e.g. **Inter**, or a San-Francisco-alike) into the sysroot, register it with
-**fontconfig** (`/etc/fonts`, cache), and set it as the default UI font so GTK/Pango/
-cairo clients pick it up. The kernel already packs `assets.blob`; add a `fonts.blob`.
-
-**G9 — Icon theme (macOS-like). P: Medium · deps: G6, G10.** Ship a libre macOS-style
-icon set (e.g. **WhiteSur-icon-theme** or **McMojave-circle**), install under
-`/usr/share/icons`, point the icon-theme lookup at it (`index.theme`, GTK setting). Hooks
-into the dock (G10) and file manager (G13).
-
-**G10 — Dock + menu bar. P: High · deps: G6, G7.** A bottom **dock** (app launchers +
-running indicators, magnify-on-hover optional) and a top **menu bar** (clock, status,
-app menu). Build as `wl_shm` clients (`wl-term`-style) or a layer-shell panel; needs
-`wlr-layer-shell` support in the present path.
-
-**G11 — Launcher / Spotlight. P: Medium · deps: G8, G10.** A keyboard-driven app/command
-launcher (⌘-Space-style) and/or dock-click launch. Spawns clients via the same
-boot-module/exec path the kernel autostart uses; longer-term wants an on-disk app list.
-
-**G12 — Cursor theme + wallpaper. P: Low · deps: G6.** A macOS-alike **cursor** theme
-(the XCursor search currently falls back to the built-in arrow — see G3) and a default
-**wallpaper** (libre image; the wallpaper path exists but is softpipe-blocked → unblocks
-with G6).
-
-**G13 — File manager (Finder-like). P: Low · deps: G6, G8, G9, G10.** A minimal file
-browser over the kernel VFS (`getdents64` works). Largest item; later.
-
-**Cross-cutting enablers (needed by several of the above):**
-- **lua/config delivery** — serve `/etc/hypr/hyprland.lua` (and theme/font/icon configs)
-  into the guest VFS (currently unresolved — see Known issues). Blocks G7/G8/G9 tuning.
-- **layer-shell** (`zwlr_layer_shell_v1`) in the present path — needed for panels/dock
-  (G10) and wallpaper as a background layer (G12).
-- **asset packing** — extend the `assets.blob`/`pack-assets.py` mechanism to fonts, icon
-  themes, cursors, and wallpapers (`fonts.blob`, `icons.blob`).
-- **multiple windows + an app to launch** — most theming only *shows* with >1 window;
-  pairs with G11.
-
-**Parked / not on this path:** dmabuf EGLImage import (efficiency) and ratty (GPU/Bevy —
-needs Vulkan). *(The softpipe texture bug is no longer "parked" — it is now G6, the
-critical unlock for visible window content.)*
-
-**Iteration reality:** every Hyprland boot is ~200–300 s headless and the wallpaper/
-client timing is a lottery; favor changes that are checkable from the serial log
-(client `connect`/`bind`/`commit` traces, present ioctls) over screendump-only signals.
+- Native monitor resolution, minimum target **1280×800**, preferred **1920×1080**, with future support for HiDPI scaling.
+- Visible, crisp `wl_shm` and toolkit-rendered app contents.
+- Smooth mouse cursor, click/drag, keyboard focus, key repeat, modifier keys, and app switching.
+- Desktop wallpaper/background layer.
+- Window decorations: rounded corners, shadows, title bars, close/minimize/maximize controls, active/inactive state.
+- Consistent font rendering with antialiasing and fallback fonts.
+- Consistent icon theme and cursor theme.
+- Dock/taskbar/panel with app launchers, running indicators, clock, network/power/status slots.
+- Launcher/search overlay similar to Spotlight, KRunner, GNOME overview, or macOS Launchpad.
+- File manager with icons/list view.
+- Settings app or config panel for display, theme, wallpaper, input, identity colors, and accessibility.
+- Screenshot-based visual regression tests so the desktop does not silently degrade.
 
 ---
 
-## Known issues / notes
+## What already exists
 
-- **Input arrives via a direct evdev bridge, not libinput (G3/G4).** Because the
-  backend is sessionless, libinput/libseat/udev never come up, so the headless
-  backend reads the kernel evdev devices itself: the **pointer** from
-  `/dev/input/event1` (`patches/0004-headless-input.patch`) and the **keyboard**
-  from `/dev/input/event0` (`patches/0005-headless-keyboard.patch`,
-  `CHeadlessKeyboard : IKeyboard` feeding `EV_KEY` → `IKeyboard::SKeyEvent`).
-- **Keyboard focus is click-to-focus.** A freshly mapped window does not get
-  keyboard focus until the pointer clicks it; the G4 verifier clicks the terminal
-  before typing. (`G4KEY: keyboard enter -- G4 FOCUS` confirms focus.)
-- **G3 verification is scripted, not screendump-based.** `scripts/qemu-g3-verify.sh`
-  + `scripts/qemu-mouse-inject.py` boot headless with a QMP socket, wait for the
-  window map, then inject PS/2 motion+click via `input-send-event`. The cursor is
-  clamped to the monitor, so the injector pins it to the top-left corner first, then
-  walks into the window interior — relative-motion injection is otherwise
-  start-position dependent. Markers to grep: `New mouse created, pointer AQ`,
-  `G3PTR: … G3 ENTER`, `G3PTR: … G3 CLICK`.
-- **QEMU HMP screendump does not show the mapped Hyprland window yet.** G2 now proves
-  the Wayland client path by serial (`wl_shm` commit + Hyprland map request), but
-  `screendump` still captures the fallback/firmware-looking framebuffer (black
-  interior with border gradient) instead of the DRM dumb-buffer content.
-- **Softpipe textured-render bug — NOW CRITICAL (was "parked, wallpaper-only").**
-  This is the single biggest blocker for a *visible* desktop. Hyprland composites every
-  client window by uploading its `wl_shm` buffer as a **GL texture** and sampling it; the
-  final composite is CPU-read-back and blitted to `g_fb` (`drmPresentToFramebuffer`).
-  Softpipe drops `v_texcoord.y` (the texcoord's 2nd component / vs→fs varying packing),
-  so **any textured quad renders as a ~16–20 px border with a black interior** — a
-  solid-color quad fills cleanly. Consequences:
-  - **The G4 terminal receives and echoes typed keys (proven by serial: `G4OUT: $ echo
-    g4pass` round-trips through the pty), but the glyphs are not *visible* on screen** —
-    the window interior composites black. *This is why typing in the guest shows nothing;
-    it is not an input/echo bug.* Same root cause as the black-interior wallpaper and the
-    black-interior `screendump`s from G2/G3.
-  - **Solid-color geometry is unaffected**, so window **borders** (G5) and any
-    CPU-drawn-into-`g_fb` overlay *do* show. Favor solid-fill UI until this is fixed.
-  - Fix paths (in rough order of leverage): (a) patch Mesa softpipe varying packing
-    (`deps/mutter/build/mesa-23.3.5-epin`) — deep, slow iteration; (b) bypass GL for
-    client content by CPU-compositing `wl_shm` buffers straight into the output buffer in
-    the present path; (c) land a real GPU/Vulkan path. **De-interleave workaround already
-    failed.** Until one lands, the desktop is functional but not visually showing window
-    contents.
-- **Compositor re-inits 2–3×** (one cause was the builtin seatd `fork`). Harmless now
-  (no OOM) but a correctness wart; it also makes the wallpaper load very late, which is
-  the meta-blocker for any softpipe iteration.
-- **Syscall gaps:** `sigprocmask`/`sigaction` *with delivery* is partial (app error
-  handling); `shm_open` / POSIX shm is still **not done in the kernel** — for G4 it was
-  worked around by patching Hyprland's shm helpers to use `memfd_create`
-  (`hyprland-shm-memfd.patch`); a real `shm_open` would need a named-shm registry.
-  Implemented: **pty/ptmx (G4)**, memfd, timerfd, eventfd, sendmsg/recvmsg+SCM_RIGHTS,
-  dup/dup2/dup3, nanosleep, clone/futex/**fork**, flock, getdents64, PRIME_HANDLE_TO_FD.
-- DRM ioctl can `#GP` when the kernel writes a user pointer under SMAP. Mitigated via
-  `-cpu qemu64,-smap,-smep` in `qemu-run.sh`; real fix = STAC/CLAC around copies.
-- **Hyprland's `RASSERT` does `raise(SIGABRT)`, which the kernel does NOT make fatal**
-  — a failed assertion *continues* and crashes downstream. When reading a crash, find
-  the FIRST `Assertion failed!` + matching `libEGL debug:`/EGL error, not the final
-  `[pf]`. The serial log has binary bytes → use `grep -a`.
-- Hyprland uses a **lua** config (`/etc/hypr/hyprland.lua`); how it's served in the
-  guest is unresolved (not in the `g_vfs` table) — blocks easy config-based tweaks.
-- **Stale-binary trap:** a broken `ninja` leaves the old `Hyprland` in place (`make
-  all` still says "Build complete") — always grep the fresh binary for your probe string.
-- **Debug logging still on, trim once rendering works:** `[xkb]` unpack counts,
-  `[mmap-einval]`, `[mmap-so]`, `[drm] nr=`, `[sc] t=`, `[futex-*]`, PF `rsp/ret0`, the
-  `H`/`I`/`D` `console_putchar` in `linux_sys_ioctl`/`handleDrmIoctl`, `EGL_LOG_LEVEL=debug`.
-- **Run:** `make all && ./qemu-run.sh` boots Hyprland as initial userspace. Rebuild
-  note: top-level `make` no-ops when artifacts exist — after editing kernel source,
-  delete the stale `build/d/.../*.o` + `build/libkernel_d.a` to force a recompile.
-  *(In-house compositor demo instead, in busybox: `/compositor &` then `/hello-gui &`.)*
+The current foundation is useful and should be preserved:
+
+- Wayland socket and runtime path exist: `WAYLAND_DISPLAY=wayland-0`, `XDG_RUNTIME_DIR=/run/user/1000`.
+- `wl_shm` transport exists through `memfd_create`, shared mmap, and `SCM_RIGHTS` fd passing.
+- Mouse and keyboard are bridged from kernel evdev into the sessionless Hyprland/aquamarine backend.
+- Userland C clients build from `src/util/*.c`.
+- **G1 DONE:** client launch mechanism exists.
+- **G2 DONE:** first Wayland `wl_shm` client window maps.
+- **G3 DONE:** cursor movement and click work.
+- **G4 DONE:** software `wl_shm` terminal talks to BusyBox shell through a real PTY.
+- **G5 DONE:** trusted kernel identity-colored borders render in the final present path.
+- **G6 DONE:** `wl_shm` terminal contents are visible in a QEMU screendump; verified by `scripts/qemu-g6-verify.sh` on 2026-06-05.
+- **G7 DONE:** real display-mode config/reporting pipeline exists; 1280×800 and 1920×1080 screendump-size tests pass with `scripts/qemu-g7-verify*.sh`.
+- **G8 DONE:** headless frame pacing/redraw correctness is verified; post-client-commit screendumps visibly update with `scripts/qemu-g8-verify.sh`.
+- **G9 DONE:** bundled Noto fonts and FreeType terminal rendering are verified; `scripts/qemu-g9-verify.sh` passes with antialiased terminal text in a QEMU screendump.
+- **G10 DONE:** fonts/icons/cursors/wallpapers/themes are packed as first-class category blobs with a manifest and license guard; `scripts/qemu-g10-verify.sh` passes.
+- **G11 DONE:** a Cairo/FreeType lightweight toolkit demo renders icon, label, entry, button, and antialiased text from bundled Noto assets; `scripts/qemu-g11-verify.sh` passes.
+- **G12 DONE:** the HOS CPU present path paints a scaled default wallpaper behind windows; `scripts/qemu-g12-verify.sh` passes in a no-client boot.
+- **G13 DONE:** a persistent top panel/menu bar renders above windows with active title, status placeholders, and uptime clock; `scripts/qemu-g13-verify.sh` passes.
+
+These are the correct low-level primitives. The next work should make them visually convincing.
+
+---
+
+# Phase 1 — make pixels correct
+
+## G6 DONE — Visible window content. P: Critical
+
+**Problem:** This is the reason the desktop looks broken. Hyprland receives and maps windows, but textured client contents render as black interiors because the Mesa softpipe texture/varying path is broken.
+
+**Goal:** Every `wl_shm` client must visibly render its contents into the final framebuffer.
+
+**Preferred implementation path:**
+
+1. Add a **CPU compositor fallback** in the present path for `wl_shm` buffers.
+2. Let Hyprland continue doing layout, window position, focus, and damage tracking.
+3. At present/report time, export enough window metadata to the kernel or host-side compositor shim:
+   - surface buffer pointer/fd
+   - x/y/w/h
+   - stride
+   - pixel format
+   - damage region
+   - alpha/opacity
+   - z-order
+4. CPU-blit ARGB/XRGB client buffers directly into the output dumb buffer or final `g_fb`.
+5. Keep the trusted identity border overlay after the client-content blit.
+
+**Avoid making Mesa softpipe the first fix** unless CPU composition proves impossible. Mesa softpipe varying-packing debugging is likely slower than a deterministic CPU blit path.
+
+**Done when:**
+
+- `wl-term` text is visible on screen.
+- A test image client renders correctly.
+- QEMU screendump shows the actual terminal contents.
+- Visual output no longer depends only on serial logs.
+
+**Implemented 2026-06-05:**
+
+- Kept committed desktop `wl_shm` buffers attached long enough for the renderer/present path to consume them.
+- Added a `wl_shm` CPU composition fallback for the HOS CPU-readback path.
+- Added `scripts/qemu-g6-verify.sh`, which boots QEMU, captures a screendump, and checks for visible terminal glyph pixels.
+- Verification result: `G6 PASS: wl_shm terminal contents are visible in QEMU screendump` with a 1280x800 capture and nonzero bright glyph pixels in the terminal band.
+
+---
+
+## G7 DONE — Real display mode and resolution pipeline. P: Critical
+
+**Problem:** The desktop appears low-resolution/fallback-like. A real desktop needs reliable display mode selection, framebuffer pitch handling, and scaling.
+
+**Tasks:**
+
+- Detect and log EDID modes clearly.
+- Select a native/preferred mode by default.
+- Add boot config overrides:
+  - `display.width`
+  - `display.height`
+  - `display.scale`
+  - `display.refresh`
+  - `display.force_mode`
+- Guarantee correct framebuffer pitch, stride, and pixel format conversion.
+- Add a `display-info` debug utility that prints:
+  - current resolution
+  - framebuffer address
+  - pitch
+  - format
+  - scale
+  - refresh
+  - backend name
+- Add screenshot tests at 1280×800 and 1920×1080.
+
+**Done when:**
+
+- The desktop boots into a known target resolution.
+- Screendumps match the chosen resolution.
+- Text and window geometry are not stretched, blurry, clipped, or offset.
+
+**Implemented 2026-06-05:**
+
+- Switched Limine mode selection to the documented `resolution: <width>x<height>x<bpp>` key.
+- Added build-time display overrides through `make DISPLAY_WIDTH=... DISPLAY_HEIGHT=... DISPLAY_SCALE=... DISPLAY_REFRESH=... DISPLAY_FORCE_MODE=... hos.iso`.
+- Generated a `/display.conf` boot module and mirrored display settings through `HOS_DISPLAY_*` env vars.
+- Updated Aquamarine headless output creation to read `/display.conf`, so compositor output mode follows the same config as Limine.
+- Enhanced framebuffer boot logging with resolution, pitch, bpp, RGB masks, EDID size, and the first advertised modes.
+- Added synthetic `/proc/display-info` and a freestanding `display-info` utility.
+- Made `/proc/cmdline` derive from `/display.conf` so reported boot config matches build overrides.
+- Added screenshot-size verifiers:
+  - `scripts/qemu-g7-verify-1280x800.sh`
+  - `scripts/qemu-g7-verify-1920x1080.sh`
+  - shared implementation: `scripts/qemu-g7-verify.sh`
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g7-verify-1280x800.sh` -> `G7 PASS: screendump resolution is 1280x800`.
+- `scripts/qemu-g7-verify-1920x1080.sh` -> `G7 PASS: screendump resolution is 1920x1080`.
+- The 1920×1080 test validates the mode/screendump path. Full client-map responsiveness at 1920×1080 remains a G8 frame-pacing/performance concern.
+
+---
+
+## G8 DONE — Frame pacing and redraw correctness. P: High
+
+**Problem:** A desktop feels cheap if redraws are irregular, flickery, or delayed.
+
+**Tasks:**
+
+- Implement deterministic frame scheduling for the headless/sessionless present path.
+- Ensure damage regions trigger a present.
+- Add a fallback timer-driven repaint at 30/60 FPS while visual work is active.
+- Remove the “mapped window but no present blit” problem.
+- Log frame number, damage count, and present duration in debug builds.
+- Later: add vsync-like pacing when a real GPU/display backend exists.
+
+**Done when:**
+
+- Moving cursor and typing visibly update immediately.
+- No “needs another event before redraw” bugs.
+- Screendump after client commit always shows the new content.
+
+**Implemented 2026-06-05:**
+
+- Added deterministic frame/present logging and bounded repaint recovery to the Aquamarine headless backend.
+- Switched immediate headless frame callbacks from the backend idle queue to the headless timerfd, avoiding stale scheduled-frame reentry.
+- Added input-driven repaint scheduling for bridged keyboard and pointer events.
+- Re-enabled the HOS `wl_shm` CPU composition path by removing the `HOS_SCENE_RENDER=1` guest env override.
+- Added a mapped-surface commit damage/render hook so `wl_shm` client commits can immediately reach the final present path.
+- Added `scripts/qemu-g8-verify.sh`, which focuses the terminal, captures a baseline screendump, injects post-baseline keyboard input, captures another screendump, and checks for visible terminal-band pixel changes.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g4-verify.sh` -> typed `echo g4pass` reaches BusyBox through the terminal PTY.
+- `scripts/qemu-g8-verify.sh` -> `G8 PASS: post-client-commit screendump visibly updated`.
+
+---
+
+# Phase 2 — make text, images, and UI look professional
+
+## G9 DONE — Font system and high-quality text rendering. P: Critical
+
+**Goal:** Replace bitmap/demo-looking text with modern antialiased UI text.
+
+**Tasks:**
+
+- Bundle libre UI fonts:
+  - **Inter** or **Noto Sans** for UI
+  - **JetBrains Mono** or **Iosevka** for terminal
+  - **Noto Color Emoji** later if color emoji rendering becomes available
+  - Add place down drop custom fonts into
+- Add `fonts.blob` or extend asset packing to include fonts.
+- Install fontconfig config and cache into the guest VFS.
+- Set default UI font globally for GTK/Pango/Cairo clients.
+- Make `wl-term` stop depending only on the 8×8 debug font once Cairo/Pixman/Freetype is available.
+- Add font fallback so missing glyphs do not render as boxes.
+- Add DPI-aware font sizing:
+  - normal scale: 10–11 pt UI
+  - terminal: 11–13 pt mono
+  - HiDPI scale: 2× logical scaling
+
+**Done when:**
+
+- Terminal text is antialiased and readable.
+- UI text looks comparable to a normal Linux desktop.
+- Font rendering works in screenshots.
+
+**Implemented 2026-06-05:**
+
+- Added build-time Noto font staging from `/usr/share/fonts/truetype/noto` into `build/assets/fonts/noto` with license staging.
+- Extended the guest asset unpack path so fonts are available at `/usr/share/fonts/noto`.
+- Added fontconfig/Pango/GTK/GSettings defaults for `Noto Sans` and `Noto Sans Mono`.
+- Added rtfs directory enumeration support so fontconfig/toolkit code can scan bundled asset directories.
+- Reworked `wl-term` to render terminal glyphs through FreeType from the bundled Noto Sans Mono font, with a bitmap-font fallback.
+- Added a one-shot post-map frame-callback redraw so the terminal commits antialiased text after Hyprland has mapped the surface.
+- Added `scripts/qemu-g9-verify.sh`, which boots QEMU, waits for the bundled font and post-map redraw, captures a screendump, and checks for bright text plus antialiased edge pixels.
+- Hardened the HOS wl_shm CPU composition path so successful CPU blits skip Mesa swrast readback and avoid the sessionless readback fault.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g9-verify.sh` -> `G9 PASS: bundled FreeType terminal text is antialiased in QEMU screendump`.
+
+---
+
+## G10 DONE — Image, icon, and theme asset pipeline. P: High
+
+**Goal:** Treat visual assets as first-class OS resources, not one-off boot blobs.
+
+**Tasks:**
+
+- Extend `pack-assets.py` into a real asset pipeline:
+  - `fonts.blob`
+  - `icons.blob`
+  - `cursors.blob`
+  - `wallpapers.blob`
+  - `themes.blob`
+- Mount assets into stable guest paths:
+  - `/usr/share/fonts`
+  - `/usr/share/icons`
+  - `/usr/share/cursors`
+  - `/usr/share/backgrounds`
+  - `/usr/share/themes`
+- Add manifest metadata:
+  - name
+  - license
+  - size
+  - version
+  - default selection
+- Add a build-time license check so proprietary macOS assets are not accidentally bundled.
+- Use libre macOS-like themes only.
+
+**Recommended libre assets:**
+
+- UI font: Inter, Noto Sans, or similar.
+- Mono font: JetBrains Mono, Iosevka, or Fira Code.
+- Icons: WhiteSur-style or McMojave-style icon theme, subject to license verification.
+- Cursor: Bibata or a compatible macOS-like cursor theme.
+- Wallpaper: original project wallpaper or permissively licensed abstract image.
+
+**Done when:**
+
+- Apps can resolve fonts, icons, cursors, and wallpaper from standard paths.
+- Theme changes do not require hard-coding binary patches.
+
+**Implemented 2026-06-05:**
+
+- Added `scripts/stage-gui-assets.py`, which stages generated libre GUI assets into `build/assets`:
+  - Epin icon theme under `/usr/share/icons/Epin`
+  - default icon/cursor theme aliases under `/usr/share/icons/default`
+  - Epin cursor metadata under `/usr/share/cursors/Epin`
+  - generated project wallpaper under `/usr/share/backgrounds/epin`
+  - Hyprland-compatible wallpaper PNGs under `/usr/share/hypr`
+  - Epin GTK theme metadata under `/usr/share/themes/Epin`
+- Extended `scripts/pack-assets.py` into a metadata-aware asset pipeline:
+  - generated `/usr/share/hos/assets/manifest.json`
+  - recorded category, path, license, size, SHA-256, version, and default selections
+  - added a build-time guard against accidentally bundling proprietary platform assets
+  - emitted category blobs: `fonts.blob`, `icons.blob`, `cursors.blob`, `wallpapers.blob`, `themes.blob`
+- Updated the ISO build to include the category blobs as Limine modules.
+- Updated the kernel rtfs asset unpacker to mount all category blobs, with legacy `assets.blob` fallback.
+- Set guest defaults for `Epin` GTK/icon/cursor theme selection and exported `HOS_ASSET_MANIFEST`.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g10-verify.sh` -> `G10 PASS: GUI asset category blobs and manifest are mounted in the guest`.
+- `scripts/qemu-g9-verify.sh` still passes after moving fonts into `fonts.blob`.
+
+---
+
+## G11 DONE — Toolkit rendering path. P: High
+
+**Goal:** Move beyond hand-written demo clients and support real GUI apps.
+
+**Tasks:**
+
+- Confirm Cairo/Pixman rendering into `wl_shm` works.
+- Bring up a minimal GTK or lightweight toolkit demo:
+  - window
+  - label
+  - button
+  - text entry
+  - icon
+- Confirm xdg-shell sizing, configure/ack_configure, resize, close, and keyboard focus.
+- Add missing syscalls as toolkit clients demand them:
+  - `poll/ppoll`
+  - signal delivery edge cases
+  - `clock_gettime`
+  - `getrandom`
+  - `statx` or fallback stat calls
+  - `epoll` completeness
+  - locale/env behavior
+- Use toolkit demo as the visual benchmark, not only `wl-term`.
+
+**Done when:**
+
+- A normal GUI demo app renders text, buttons, and icons.
+- It can be clicked and typed into.
+- It survives repeated open/close cycles.
+
+**Implemented 2026-06-05:**
+
+- Added `wl-cairo-demo`, a lightweight xdg-shell `wl_shm` client that paints a toolkit-style window with Cairo:
+  - icon tile
+  - title/body labels
+  - entry-like control
+  - button
+  - secondary info control
+- Loaded bundled `/usr/share/fonts/noto/NotoSans-Regular.ttf` directly with FreeType for antialiased UI text, avoiding dependence on host fonts or proprietary assets.
+- Added basic `wl_seat` pointer and keyboard handling so the demo can focus the entry, accept simple typed input, and redraw button/entry state.
+- Published completed Cairo/FreeType frames into fresh memfd-backed `wl_shm` buffers for each commit, working around the current guest shared-mmap overwrite coherency gap and keeping final controls/text visible to the compositor.
+- Added `gui.autostart=` to `/display.conf` and the Limine cmdline:
+  - default `GUI_AUTOSTART=cairo` boots the G11 toolkit demo
+  - `GUI_AUTOSTART=term` preserves the G4/G9 terminal verification path
+  - `GUI_AUTOSTART=both` remains available for later multi-window work
+- Increased the kernel epoll watch table to support larger compositor watch sets.
+- Fixed `newfstatat()` so exact rtfs asset paths win over broad synthetic directory prefixes; font files under `/usr/share/fonts/...` now stat as files, not directories.
+- Updated Hyprland's xdg-shell map condition for the HOS wl_shm CPU path so a committed shm buffer can map even if the GL texture path is unavailable.
+- Added `scripts/qemu-g11-verify.sh`, which boots QEMU, waits for the toolkit font/map/redraw markers, captures a screendump, and checks for visible control colors plus antialiased text pixels.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g11-verify.sh` -> `G11 PASS: Cairo/FreeType toolkit demo renders controls and antialiased text`.
+- The verifier captured a 1280x800 screendump with visible icon, labels, entry, button, theme colors, and antialiased Noto text.
+
+**Known follow-up:**
+
+- `GUI_AUTOSTART=both` can expose memory/scheduling pressure with the terminal and toolkit demo together in the 512 MB QEMU profile. Reliable multi-window behavior is tracked by G20.
+
+---
+
+# Phase 3 — build the desktop shell
+
+## G12 DONE — Wallpaper/background layer. P: High
+
+**Goal:** The desktop should boot into a real wallpaper instead of a blank/black workspace.
+
+**Implementation options:**
+
+- Implement `zwlr_layer_shell_v1` support and run wallpaper as a background layer.
+- Or temporarily hard-code a wallpaper blit into the compositor/present path.
+- Decode PNG/JPEG at boot or pre-convert wallpapers to XRGB buffers for simplicity.
+
+**Done when:**
+
+- A default wallpaper is visible immediately after boot.
+- Wallpaper scales/crops correctly to the selected resolution.
+- No black interior/fallback background remains.
+
+**Implemented 2026-06-05:**
+
+- Added a default wallpaper draw in Hyprland's HOS CPU-readback present path before `wl_shm` windows are composited.
+- Used a scaled procedural version of the generated Epin wallpaper palette so the desktop background appears even before layer-shell and PNG/JPEG decode support exist.
+- Changed the HOS CPU composition path to present the wallpaper frame even when zero client windows are mapped.
+- Kept `wl_shm` window composition over the wallpaper path; G11 still renders over the background.
+- Added `scripts/qemu-g12-verify.sh`, which boots with `GUI_AUTOSTART=none`, captures a screendump, and verifies that the old flat dark clear color is gone and the wallpaper has varied teal/purple/warm gradient pixels.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g12-verify.sh` -> `G12 PASS: default wallpaper fills the boot desktop`.
+- `scripts/qemu-g11-verify.sh` still passes with the toolkit window composited over the wallpaper.
+
+---
+
+## G13 DONE — Panel/menu bar. P: High
+
+**Goal:** Add a top system bar like macOS/GNOME/KDE.
+
+**Features:**
+
+- Clock/date.
+- App title or active window title.
+- Identity indicator.
+- Network placeholder.
+- Audio placeholder.
+- Battery/power placeholder.
+- Settings button.
+- Shutdown/reboot menu.
+
+**Implementation:**
+
+- Prefer `wl_shm` + layer-shell.
+- If layer-shell is not ready, use a reserved top region and hard-code placement temporarily.
+- Use vector/text rendering, not bitmap debug glyphs.
+
+**Done when:**
+
+- A top bar is always visible.
+- It does not overlap normal windows.
+- Clock and active window title update.
+
+**Implemented 2026-06-05:**
+
+- Added a hard-coded top panel in Hyprland's HOS CPU present path, drawn after wallpaper and windows so it remains visible.
+- Reserved a top content region for CPU-composited `wl_shm` windows and shifted the trusted kernel border geometry to match the visual window position.
+- Rendered an active window title, network/power placeholders, identity-colored accents, and an uptime clock using lightweight shape glyphs in the present path.
+- Added `scripts/qemu-g13-verify.sh`, which boots the G11 toolkit demo, captures a screendump, and checks for the panel band, title/status/clock glyphs, panel accents, divider, and a window below the reserved panel region.
+
+**Verification 2026-06-05:**
+
+- `scripts/qemu-g13-verify.sh` -> `G13 PASS: top panel renders above the desktop window`.
+- `scripts/qemu-g11-verify.sh` still passes with the toolkit window below the panel.
+
+---
+
+## G14 — Dock/taskbar. P: High
+
+**Goal:** Add a bottom dock or taskbar so the system feels like a desktop, not an empty WM.
+
+**Features:**
+
+- App launchers.
+- Running app indicators.
+- Focus app on click.
+- Minimize/restore placeholder.
+- Identity-color accent under each running app.
+- Optional magnification later.
+
+**Initial apps:**
+
+- Terminal.
+- File manager.
+- Settings.
+- Demo text editor.
+- System monitor/debug viewer.
+
+**Done when:**
+
+- User can launch terminal from the dock.
+- Running windows appear in the dock.
+- Clicking an app icon focuses or launches it.
+
+---
+
+## G15 — Launcher/search overlay. P: Medium
+
+**Goal:** Add a keyboard-driven launcher similar to Spotlight, KRunner, or GNOME overview.
+
+**Features:**
+
+- Open with Super/Command/Meta + Space.
+- Search installed apps.
+- Run shell commands.
+- Show recent apps.
+- Support fuzzy matching later.
+
+**Done when:**
+
+- User can press a shortcut, type “terminal,” press Enter, and launch a terminal.
+- Launcher is visually centered, antialiased, and keyboard-navigable.
+
+---
+
+## G16 — Window decorations and interaction polish. P: High
+
+**Goal:** Windows should look like real desktop windows.
+
+**Features:**
+
+- Rounded corners.
+- Drop shadows.
+- Active/inactive title bar states.
+- Close/minimize/maximize controls.
+- Resize handles.
+- Smooth move/resize.
+- Snap zones or tiling hints.
+- Identity-colored border integrated cleanly with theme.
+
+**Important:** The identity border must remain trusted and kernel-owned. Hyprland/apps may provide decoration visuals, but the final identity indicator must still be overlaid by the kernel/present path.
+
+**Done when:**
+
+- Windows look modern in screenshots.
+- Active window is obvious.
+- Identity colors are visible but not ugly or overpowering.
+
+---
+
+## G17 — File manager. P: Medium
+
+**Goal:** Add a Finder/Dolphin/Nautilus-like file browser.
+
+**Features:**
+
+- Sidebar:
+  - Home
+  - Desktop
+  - Documents
+  - Downloads
+  - System
+  - Mounted volumes
+- Icon and list views.
+- Open folders.
+- Basic file actions:
+  - copy
+  - move
+  - rename
+  - delete
+  - new folder
+- Properties dialog.
+- Identity/security label display.
+
+**Done when:**
+
+- User can browse the VFS visually.
+- Folder icons and file icons render.
+- Double-click opens folders.
+
+---
+
+## G18 — Settings app. P: Medium
+
+**Goal:** Desktop customization should be discoverable from the GUI, while still mapping to the OS’s declarative config.
+
+**Panels:**
+
+- Appearance:
+  - theme
+  - accent color
+  - font
+  - cursor
+  - wallpaper
+- Display:
+  - resolution
+  - scale
+  - refresh
+- Input:
+  - mouse speed
+  - keyboard layout
+  - key repeat
+- Identity:
+  - identity colors
+  - border thickness
+  - namespace/window association
+- System:
+  - about
+  - reboot/shutdown
+  - debug logs
+
+**Done when:**
+
+- Changing a setting updates the declarative config file.
+- A reboot reproduces the same visual settings.
+
+---
+
+# Phase 4 — make it feel smooth and complete
+
+## G19 — Animation and visual effects. P: Low/Medium
+
+**Goal:** Add polish only after correctness.
+
+**Features:**
+
+- Fade in/out for launcher and menus.
+- Window open/close animation.
+- Dock hover effect.
+- Smooth workspace switching.
+- Shadow/blur only if performance permits.
+
+**Rule:** Do not add blur/transparency until the basic compositor is reliable and fast. A crisp simple desktop is better than a slow broken one.
+
+---
+
+## G20 — Multi-window and workspace experience. P: High
+
+**Tasks:**
+
+- Reliable multiple windows.
+- Alt-Tab/Super-Tab switcher.
+- Workspace overview.
+- Drag window between workspaces.
+- Per-identity workspace grouping.
+- Remember window positions where useful.
+
+**Done when:**
+
+- User can open several apps and switch between them naturally.
+- The desktop no longer feels like a single demo window.
+
+---
+
+## G21 — Visual QA and screenshot regression tests. P: Critical
+
+**Goal:** Prevent “it technically works but looks terrible” regressions.
+
+**Add automated visual tests:**
+
+- Boot screenshot at default resolution.
+- Terminal visible with text.
+- Wallpaper visible.
+- One decorated window.
+- Two overlapping windows.
+- Dock visible.
+- Panel visible.
+- Launcher open.
+- File manager open.
+- Identity border visible.
+- Text antialiasing check.
+- Cursor visible.
+
+**Test outputs:**
+
+- Save screendumps to `artifacts/gui/`.
+- Compare against golden images with a tolerance.
+- Fail CI if:
+  - resolution is wrong
+  - window interior is black
+  - text is missing
+  - dock/panel missing
+  - identity border missing
+  - screenshot is mostly black
+
+**Done when:**
+
+- The GUI has objective visual quality gates.
+- A developer can tell from CI whether the desktop looks real.
+
+---
+
+# Revised milestone order
+
+The old G6–G13 list was too theme-focused before pixel correctness. The new order is:
+
+1. **G6:** visible window content.
+2. **G7:** real resolution/display mode.
+3. **G8:** redraw/frame correctness.
+4. **G9:** font/text rendering.
+5. **G10:** asset pipeline.
+6. **G11:** toolkit demo.
+7. **G12:** wallpaper.
+8. **G13:** top panel/menu bar.
+9. **G14:** dock/taskbar.
+10. **G15:** launcher/search.
+11. **G16:** window decorations.
+12. **G17:** file manager.
+13. **G18:** settings app.
+14. **G19:** animations/effects.
+15. **G20:** multi-window/workspaces.
+16. **G21:** visual QA.
+
+---
+
+# Concrete first implementation sprint
+
+## Sprint A — stop the black-window problem
+
+- Add CPU-composite fallback for `wl_shm` buffers.
+- Make `wl-term` text visible in screendump.
+- Add a simple image client that displays colored rectangles, gradients, and text.
+- Confirm identity border still draws after content.
+- Add `scripts/qemu-g6-visual-verify.sh`.
+
+## Sprint B — fix resolution and scaling
+
+- Add explicit display mode selection.
+- Boot at 1280×800 and 1920×1080.
+- Fix framebuffer pitch/format bugs.
+- Add `display-info`.
+- Add screenshot size checks.
+
+## Sprint C — make it look like a desktop
+
+- Add wallpaper.
+- Add top panel.
+- Add dock.
+- Add real font.
+- Replace debug bitmap terminal font with antialiased text if possible.
+- Create one polished default theme.
+
+## Sprint D — make it usable
+
+- Add launcher.
+- Add file manager.
+- Add settings app.
+- Add app registry:
+  - app id
+  - icon
+  - executable
+  - display name
+  - identity policy
+- Add multi-window switching.
+
+---
+
+# Design direction
+
+The desktop should be **macOS/Linux-polished, not macOS-copied**.
+
+Use:
+
+- Clean rounded windows.
+- Subtle shadows.
+- Bright but restrained identity colors.
+- High-contrast readable text.
+- A dock/taskbar.
+- A top panel/menu bar.
+- Smooth cursor and keyboard behavior.
+- Clear app icons.
+- A real wallpaper.
+- Consistent spacing.
+
+Do not bundle proprietary Apple assets. Use permissively licensed fonts, icons, cursors, and wallpapers.
+
+---
+
+# Known issues / notes
+
+- **Softpipe textured-render bug remains the top GUI blocker.** Until G6 is fixed, the OS can technically run GUI clients but cannot look like a real desktop.
+- **Resolution must be treated as a product feature**, not a side effect of VBE/QEMU defaults.
+- **Serial proof is no longer enough.** From this point forward, GUI milestones need screenshot proof.
+- **Solid kernel-drawn identity borders work today**, but they should be visually integrated with the future theme.
+- **Layer-shell is important** for wallpaper, dock, and panel. If blocked, use temporary reserved regions/hard-coded shell surfaces.
+- **Config delivery must be fixed** so themes, fonts, icons, wallpaper, and Hyprland behavior can be controlled declaratively.
+- **Debug logging should remain while fixing G6–G8**, then be reduced once visual tests are stable.
+- **Every desktop feature should map back to the declarative OS config** so the GUI and single JSON configuration model do not diverge.

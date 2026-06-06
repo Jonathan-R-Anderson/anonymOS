@@ -34,6 +34,7 @@ import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
 import core.admin : adminRequire; // IR-P3 typed admin caps
 import core.org : edgeEnsure, orgPruneDeadOut, edgeAdd, edgeRemove, EdgeKind,
                   orgDotContent, orgStatsContent; // ORG P3/P9/P10: edges + graph export
+import arch.x86_64.limine : limine_framebuffer;
 extern(C) @nogc nothrow:
 
 // Minimal stubs if any underlying C code still references these.
@@ -45,6 +46,8 @@ extern(C) @nogc nothrow:
 
 alias pid_t = int;
 alias ssize_t = long;
+
+extern __gshared limine_framebuffer* g_fb;
 
 enum O_RDONLY = 0;
 enum O_WRONLY = 1;
@@ -92,6 +95,7 @@ enum FileType {
     FD_RANDOM,
     FD_URANDOM,
     FD_RTFILE,           // writable runtime-overlay (rtfs) regular file
+    FD_RTDIR,            // runtime-overlay directory, enumerable with getdents64
     FD_PTY_MASTER,       // pseudo-terminal master (/dev/ptmx)
     FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
 }
@@ -179,7 +183,7 @@ __gshared PipeBuf[PIPE_MAX] g_pipes;
 
 // --- Epoll infrastructure ---
 private enum int EPOLL_MAX_INSTANCES = 16;
-private enum int EPOLL_MAX_WATCHES   = 64;
+private enum int EPOLL_MAX_WATCHES   = 256;
 private enum uint EPOLLIN_F    = 0x001;
 private enum uint EPOLLOUT_F   = 0x004;
 private enum uint EPOLLERR_F   = 0x008;
@@ -1116,23 +1120,27 @@ private LocalSocket* findUnixListenerCString(const(char)* path)
 
 private LocalSocket* findUnixListener(const(sockaddr_un)* addr, size_t len)
 {
-    auto exact = findUnixListenerExact(addr, len);
-    if (exact !is null) return exact;
-
     // Hyprland intentionally starts its display search at wayland-1. Keep the
     // boot environment stable for first clients by aliasing wayland-0 to that
-    // live listener when it is the compositor's chosen socket.
-    if (unixAddrEqualsLiteral(addr, len, "/run/user/1000/wayland-0"))
-        return findUnixListenerCString("/run/user/1000/wayland-1\0".ptr);
+    // live listener when it is the compositor's chosen socket. Prefer this
+    // alias over the kernel bring-up bridge's wayland-0 listener; GUI clients
+    // need Hyprland's registry, not the legacy bridge.
+    if (unixAddrEqualsLiteral(addr, len, "/run/user/1000/wayland-0")) {
+        auto hyprland = findUnixListenerCString("/run/user/1000/wayland-1\0".ptr);
+        if (hyprland !is null) return hyprland;
+    }
+
+    auto exact = findUnixListenerExact(addr, len);
+    if (exact !is null) return exact;
 
     return null;
 }
 
 public bool unixSocketListenerReady(const(char)* path)
 {
-    if (findUnixListenerCString(path) !is null) return true;
     if (cstrEq(path, "/run/user/1000/wayland-0"))
         return findUnixListenerCString("/run/user/1000/wayland-1\0".ptr) !is null;
+    if (findUnixListenerCString(path) !is null) return true;
     return false;
 }
 
@@ -1975,8 +1983,8 @@ public int sys_open(const(char)* path, int flags) {
         return publishActiveFdReturn(fd);
     }
 
-    // An existing rtfs *regular file* takes priority over the synthetic-directory
-    // and virtual-file shims below: the unpacked xkb tree lives under
+    // Existing rtfs assets take priority over the synthetic-directory and
+    // virtual-file shims below: the unpacked xkb/fonts asset trees live under
     // /usr/share/X11/xkb, whose ancestor paths are also listed as synthetic dirs,
     // so without this a file open like .../rules/evdev would resolve to a 0-byte
     // synthetic directory (fstat size 0 → mmap(0) → EINVAL in libxkbcommon).
@@ -1991,6 +1999,14 @@ public int sys_open(const(char)* path, int flags) {
             g_fdTable[fd].offset   = (flags & O_APPEND) ? g_rt[ri].size : 0;
             g_fdTable[fd].backend  = cast(void*)cast(size_t)ri;
             g_fdTable[fd].fileSize = g_rt[ri].size;
+            return publishActiveFdReturn(fd);
+        } else if (ri >= 0 && g_rt[ri].kind == RT_DIR) {
+            if ((flags & 3) != O_RDONLY) return negErrno(EISDIR);
+            g_fdTable[fd].type     = FileType.FD_RTDIR;
+            g_fdTable[fd].flags    = flags;
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)cast(size_t)ri;
+            g_fdTable[fd].fileSize = 0;
             return publishActiveFdReturn(fd);
         }
     }
@@ -2032,10 +2048,34 @@ public int sys_open(const(char)* path, int flags) {
 
     // ORG P9.3 / IR-P3: object-reference-graph exports require the typed
     // ADMIN_INSPECT cap; uid 0 is not consulted.
+    if (cstrEq(path, "/proc/cmdline")) {
+        const(char)[] content = displayCmdlineContent();
+        g_fdTable[fd].type     = FileType.FD_FILE;
+        g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = (content.length > 0)
+            ? cast(void*)content.ptr
+            : cast(void*)cast(size_t)(fileBackendDirectory + 1);
+        g_fdTable[fd].fileSize = content.length;
+        return publishActiveFdReturn(fd);
+    }
+
     if (cstrEq(path, "/proc/org/graph") || cstrEq(path, "/proc/org/stats")) {
         if (!adminRequire(CAP_RIGHT_ADMIN_INSPECT)) return negErrno(EACCES);
         const(char)[] content = cstrEq(path, "/proc/org/graph")
             ? orgDotContent() : orgStatsContent();
+        g_fdTable[fd].type     = FileType.FD_FILE;
+        g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = (content.length > 0)
+            ? cast(void*)content.ptr
+            : cast(void*)cast(size_t)(fileBackendDirectory + 1);
+        g_fdTable[fd].fileSize = content.length;
+        return publishActiveFdReturn(fd);
+    }
+
+    if (cstrEq(path, "/proc/display-info")) {
+        const(char)[] content = displayInfoContent();
         g_fdTable[fd].type     = FileType.FD_FILE;
         g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
         g_fdTable[fd].offset   = 0;
@@ -2069,7 +2109,11 @@ public int sys_open(const(char)* path, int flags) {
         if (ridx >= 0) {
             if (g_rt[ridx].kind == RT_DIR) {
                 if ((flags & 3) != O_RDONLY) return negErrno(EISDIR);
-                initSyntheticFileFd(fd, flags, fileBackendDirectory);
+                g_fdTable[fd].type     = FileType.FD_RTDIR;
+                g_fdTable[fd].flags    = flags;
+                g_fdTable[fd].offset   = 0;
+                g_fdTable[fd].backend  = cast(void*)cast(size_t)ridx;
+                g_fdTable[fd].fileSize = 0;
                 return publishActiveFdReturn(fd);
             }
             // existing regular overlay file
@@ -2213,6 +2257,11 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             *cast(ulong*)(_statBuf + 8) = cast(ulong)f.backend + 1; // st_ino
         } else if (fileIsSyntheticDirectory(f)) {
             writeLinuxStat(_statBuf, 0x4000 | 0x01ED, 0); // S_IFDIR | 0755
+        } else if (f.type == FileType.FD_RTDIR) {
+            const int idx = cast(int)cast(size_t)f.backend;
+            const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
+            const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
+            writeLinuxStatOwned(_statBuf, 0x4000 | 0x01ED, 0, uid, gid); // S_IFDIR | 0755
         } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
@@ -2476,6 +2525,340 @@ private void writeLinuxStat(ulong statBuf, uint mode, ulong size) {
     writeLinuxStatOwned(statBuf, mode, size, userCurrentUid(), userCurrentGid());
 }
 
+// GUI G7 display diagnostics.  Keep this allocation-free because procfs reads
+// can happen while userland is bringing the desktop stack up.
+__gshared char[2048] g_displayInfoBuf;
+__gshared char[512]  g_displayConfigBuf;
+__gshared char[256]  g_displayCmdlineBuf;
+
+private void displayAppendChar(ref uint p, uint max, char c) {
+    if (p + 1 < max)
+        g_displayInfoBuf[p++] = c;
+}
+
+private void displayAppendStr(ref uint p, uint max, const(char)[] s) {
+    foreach (c; s)
+        displayAppendChar(p, max, c);
+}
+
+private void displayAppendUint(ref uint p, uint max, ulong v) {
+    char[32] tmp;
+    uint n = 0;
+    do {
+        tmp[n++] = cast(char)('0' + (v % 10));
+        v /= 10;
+    } while (v != 0 && n < tmp.length);
+    while (n > 0)
+        displayAppendChar(p, max, tmp[--n]);
+}
+
+private void displayAppendHex(ref uint p, uint max, ulong v) {
+    displayAppendStr(p, max, "0x");
+    char[16] tmp;
+    uint n = 0;
+    do {
+        const ubyte d = cast(ubyte)(v & 0xF);
+        tmp[n++] = cast(char)(d < 10 ? ('0' + d) : ('a' + d - 10));
+        v >>= 4;
+    } while (v != 0 && n < tmp.length);
+    while (n > 0)
+        displayAppendChar(p, max, tmp[--n]);
+}
+
+private const(char)[] displayConfigContent() {
+    ulong phys = 0;
+    ulong size = 0;
+    if (!findBootModule("/display.conf\0".ptr, phys, size))
+        return null;
+
+    ulong n = size;
+    if (n >= g_displayConfigBuf.length)
+        n = g_displayConfigBuf.length - 1;
+    if (n > 0)
+        bootModuleRead(phys, size, 0, g_displayConfigBuf.ptr, n);
+    g_displayConfigBuf[cast(size_t)n] = '\0';
+    return g_displayConfigBuf[0 .. cast(size_t)n];
+}
+
+private ulong displayConfigUint(const(char)[] cfg, string key, ulong fallback) {
+    if (cfg.length == 0)
+        return fallback;
+
+    size_t lineStart = 0;
+    while (lineStart < cfg.length) {
+        size_t lineEnd = lineStart;
+        while (lineEnd < cfg.length && cfg[lineEnd] != '\n' && cfg[lineEnd] != '\r')
+            ++lineEnd;
+
+        if (lineEnd > lineStart + key.length && cfg[lineStart + key.length] == '=') {
+            bool match = true;
+            foreach (i, c; key) {
+                if (cfg[lineStart + i] != c) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                ulong value = 0;
+                bool any = false;
+                for (size_t i = lineStart + key.length + 1; i < lineEnd; ++i) {
+                    const char c = cfg[i];
+                    if (c < '0' || c > '9')
+                        break;
+                    value = value * 10 + cast(ulong)(c - '0');
+                    any = true;
+                }
+                if (any)
+                    return value;
+            }
+        }
+
+        lineStart = lineEnd;
+        while (lineStart < cfg.length && (cfg[lineStart] == '\n' || cfg[lineStart] == '\r'))
+            ++lineStart;
+    }
+
+    return fallback;
+}
+
+private const(char)[] displayConfigValue(const(char)[] cfg, string key, const(char)[] fallback) {
+    if (cfg.length == 0)
+        return fallback;
+
+    size_t lineStart = 0;
+    while (lineStart < cfg.length) {
+        size_t lineEnd = lineStart;
+        while (lineEnd < cfg.length && cfg[lineEnd] != '\n' && cfg[lineEnd] != '\r')
+            ++lineEnd;
+
+        if (lineEnd > lineStart + key.length && cfg[lineStart + key.length] == '=') {
+            bool match = true;
+            foreach (i, c; key) {
+                if (cfg[lineStart + i] != c) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+                return cfg[lineStart + key.length + 1 .. lineEnd];
+        }
+
+        lineStart = lineEnd;
+        while (lineStart < cfg.length && (cfg[lineStart] == '\n' || cfg[lineStart] == '\r'))
+            ++lineStart;
+    }
+
+    return fallback;
+}
+
+private bool displaySliceEq(const(char)[] value, string expected) {
+    if (value.length != expected.length)
+        return false;
+    foreach (i, c; expected)
+        if (value[i] != c)
+            return false;
+    return true;
+}
+
+public int guiAutostartMode() {
+    const(char)[] value = displayConfigValue(displayConfigContent(), "gui.autostart", "cairo");
+    if (displaySliceEq(value, "none")) return 0;
+    if (displaySliceEq(value, "term") || displaySliceEq(value, "terminal") || displaySliceEq(value, "wl-term")) return 1;
+    if (displaySliceEq(value, "cairo") || displaySliceEq(value, "wl-cairo-demo")) return 2;
+    if (displaySliceEq(value, "both")) return 3;
+    return 2;
+}
+
+private void displayAppendFormat(ref uint p, uint max) {
+    if (g_fb is null) {
+        displayAppendStr(p, max, "unavailable");
+    } else if (g_fb.bpp == 32 &&
+               g_fb.red_mask_size == 8 && g_fb.red_mask_shift == 16 &&
+               g_fb.green_mask_size == 8 && g_fb.green_mask_shift == 8 &&
+               g_fb.blue_mask_size == 8 && g_fb.blue_mask_shift == 0) {
+        displayAppendStr(p, max, "XRGB8888");
+    } else if (g_fb.bpp == 32 &&
+               g_fb.red_mask_size == 8 && g_fb.red_mask_shift == 0 &&
+               g_fb.green_mask_size == 8 && g_fb.green_mask_shift == 8 &&
+               g_fb.blue_mask_size == 8 && g_fb.blue_mask_shift == 16) {
+        displayAppendStr(p, max, "XBGR8888");
+    } else if (g_fb.bpp == 24) {
+        displayAppendStr(p, max, "RGB888");
+    } else if (g_fb.bpp == 16) {
+        displayAppendStr(p, max, "RGB565");
+    } else {
+        displayAppendStr(p, max, "bpp");
+        displayAppendUint(p, max, g_fb.bpp);
+    }
+}
+
+private void displayAppendKeyUint(ref uint p, uint max, string key, ulong value) {
+    displayAppendStr(p, max, key);
+    displayAppendChar(p, max, '=');
+    displayAppendUint(p, max, value);
+    displayAppendChar(p, max, '\n');
+}
+
+private void cmdlineAppendChar(ref uint p, uint max, char c) {
+    if (p + 1 < max)
+        g_displayCmdlineBuf[p++] = c;
+}
+
+private void cmdlineAppendStr(ref uint p, uint max, const(char)[] s) {
+    foreach (c; s)
+        cmdlineAppendChar(p, max, c);
+}
+
+private void cmdlineAppendUint(ref uint p, uint max, ulong value) {
+    char[32] tmp;
+    uint n = 0;
+    do {
+        tmp[n++] = cast(char)('0' + (value % 10));
+        value /= 10;
+    } while (value != 0 && n < tmp.length);
+    while (n > 0)
+        cmdlineAppendChar(p, max, tmp[--n]);
+}
+
+private void cmdlineAppendKeyUint(ref uint p, uint max, string key, ulong value) {
+    if (p > 0)
+        cmdlineAppendChar(p, max, ' ');
+    cmdlineAppendStr(p, max, key);
+    cmdlineAppendChar(p, max, '=');
+    cmdlineAppendUint(p, max, value);
+}
+
+private void cmdlineAppendKeyStr(ref uint p, uint max, string key, const(char)[] value) {
+    if (p > 0)
+        cmdlineAppendChar(p, max, ' ');
+    cmdlineAppendStr(p, max, key);
+    cmdlineAppendChar(p, max, '=');
+    cmdlineAppendStr(p, max, value);
+}
+
+private const(char)[] displayCmdlineContent() {
+    uint p = 0;
+    const uint max = cast(uint)g_displayCmdlineBuf.length;
+    const(char)[] cfg = displayConfigContent();
+    const ulong fbW = (g_fb !is null) ? g_fb.width : 0;
+    const ulong fbH = (g_fb !is null) ? g_fb.height : 0;
+    cmdlineAppendKeyUint(p, max, "display.width", displayConfigUint(cfg, "display.width", fbW != 0 ? fbW : 1280));
+    cmdlineAppendKeyUint(p, max, "display.height", displayConfigUint(cfg, "display.height", fbH != 0 ? fbH : 800));
+    cmdlineAppendKeyUint(p, max, "display.scale", displayConfigUint(cfg, "display.scale", 1));
+    cmdlineAppendKeyUint(p, max, "display.refresh", displayConfigUint(cfg, "display.refresh", 60));
+    cmdlineAppendKeyUint(p, max, "display.force_mode", displayConfigUint(cfg, "display.force_mode", 0));
+    cmdlineAppendKeyStr(p, max, "gui.autostart", displayConfigValue(cfg, "gui.autostart", "cairo"));
+    cmdlineAppendChar(p, max, '\n');
+    g_displayCmdlineBuf[p] = '\0';
+    return g_displayCmdlineBuf[0 .. p];
+}
+
+private const(char)[] displayInfoContent() {
+    uint p = 0;
+    const uint max = cast(uint)g_displayInfoBuf.length;
+    const(char)[] cfg = displayConfigContent();
+
+    const ulong fbW = (g_fb !is null) ? g_fb.width : 0;
+    const ulong fbH = (g_fb !is null) ? g_fb.height : 0;
+    const ulong targetW = displayConfigUint(cfg, "display.width",  fbW != 0 ? fbW : 1280);
+    const ulong targetH = displayConfigUint(cfg, "display.height", fbH != 0 ? fbH : 800);
+    const ulong scale   = displayConfigUint(cfg, "display.scale", 1);
+    const ulong refresh = displayConfigUint(cfg, "display.refresh", 60);
+    const ulong force   = displayConfigUint(cfg, "display.force_mode", 0);
+
+    displayAppendStr(p, max, "backend=limine-framebuffer+hyprland-headless\n");
+    displayAppendStr(p, max, "config_source=");
+    displayAppendStr(p, max, cfg.length ? "/display.conf" : "built-in-defaults");
+    displayAppendChar(p, max, '\n');
+
+    displayAppendStr(p, max, "target_resolution=");
+    displayAppendUint(p, max, targetW);
+    displayAppendChar(p, max, 'x');
+    displayAppendUint(p, max, targetH);
+    displayAppendChar(p, max, '\n');
+    displayAppendKeyUint(p, max, "scale", scale);
+    displayAppendKeyUint(p, max, "refresh", refresh);
+    displayAppendKeyUint(p, max, "force_mode", force);
+
+    if (g_fb is null) {
+        displayAppendStr(p, max, "current_resolution=unavailable\n");
+        displayAppendStr(p, max, "framebuffer_address=0x0\n");
+        displayAppendStr(p, max, "pitch=0\nformat=unavailable\n");
+    } else {
+        displayAppendStr(p, max, "current_resolution=");
+        displayAppendUint(p, max, g_fb.width);
+        displayAppendChar(p, max, 'x');
+        displayAppendUint(p, max, g_fb.height);
+        displayAppendChar(p, max, '\n');
+
+        displayAppendStr(p, max, "framebuffer_address=");
+        displayAppendHex(p, max, cast(ulong)g_fb.address);
+        displayAppendChar(p, max, '\n');
+        displayAppendKeyUint(p, max, "pitch", g_fb.pitch);
+
+        displayAppendStr(p, max, "format=");
+        displayAppendFormat(p, max);
+        displayAppendChar(p, max, '\n');
+        displayAppendKeyUint(p, max, "bpp", g_fb.bpp);
+        displayAppendKeyUint(p, max, "memory_model", g_fb.memory_model);
+
+        displayAppendStr(p, max, "red_mask=");
+        displayAppendUint(p, max, g_fb.red_mask_size);
+        displayAppendChar(p, max, '@');
+        displayAppendUint(p, max, g_fb.red_mask_shift);
+        displayAppendChar(p, max, '\n');
+        displayAppendStr(p, max, "green_mask=");
+        displayAppendUint(p, max, g_fb.green_mask_size);
+        displayAppendChar(p, max, '@');
+        displayAppendUint(p, max, g_fb.green_mask_shift);
+        displayAppendChar(p, max, '\n');
+        displayAppendStr(p, max, "blue_mask=");
+        displayAppendUint(p, max, g_fb.blue_mask_size);
+        displayAppendChar(p, max, '@');
+        displayAppendUint(p, max, g_fb.blue_mask_shift);
+        displayAppendChar(p, max, '\n');
+
+        displayAppendKeyUint(p, max, "edid_size", g_fb.edid_size);
+        displayAppendKeyUint(p, max, "mode_count", g_fb.mode_count);
+
+        if (g_fb.modes !is null && g_fb.mode_count > 0 && g_fb.modes[0] !is null) {
+            auto preferred = g_fb.modes[0];
+            displayAppendStr(p, max, "preferred_mode=");
+            displayAppendUint(p, max, preferred.width);
+            displayAppendChar(p, max, 'x');
+            displayAppendUint(p, max, preferred.height);
+            displayAppendChar(p, max, '@');
+            displayAppendUint(p, max, refresh);
+            displayAppendChar(p, max, '\n');
+
+            ulong count = g_fb.mode_count;
+            if (count > 8)
+                count = 8;
+            foreach (i; 0 .. cast(size_t)count) {
+                auto mode = g_fb.modes[i];
+                if (mode is null)
+                    continue;
+                displayAppendStr(p, max, "mode.");
+                displayAppendUint(p, max, i);
+                displayAppendChar(p, max, '=');
+                displayAppendUint(p, max, mode.width);
+                displayAppendChar(p, max, 'x');
+                displayAppendUint(p, max, mode.height);
+                displayAppendStr(p, max, " pitch=");
+                displayAppendUint(p, max, mode.pitch);
+                displayAppendStr(p, max, " bpp=");
+                displayAppendUint(p, max, mode.bpp);
+                displayAppendChar(p, max, '\n');
+            }
+        } else {
+            displayAppendStr(p, max, "preferred_mode=unavailable\n");
+        }
+    }
+
+    g_displayInfoBuf[p] = '\0';
+    return g_displayInfoBuf[0 .. p];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Writable runtime overlay ("rtfs") — a minimal in-memory tmpfs layered on top
 // of the read-only synthetic namespace.  It exists so programs that must create
@@ -2657,6 +3040,8 @@ private void rtInit() {
     rtMkdirPath("/home\0".ptr,          M0755, 0, 0);
     rtMkdirPath("/home/user\0".ptr,     M0700, 1000, 1000);
     rtMkdirPath("/var\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/var/cache\0".ptr,     M0755, 0, 0);
+    rtMkdirPath("/var/cache/fontconfig\0".ptr, M0755, 0, 0);
     rtMkdirPath("/var/tmp\0".ptr,       M1777, 0, 0);
     rtMkdirPath("/var/run\0".ptr,       M0755, 0, 0);
 
@@ -2667,9 +3052,9 @@ private void rtInit() {
     // XKB_CONFIG_ROOT=/usr/share/X11/xkb (exports.d).
     rtUnpackXkb();
 
-    // Unpack bundled guest data assets (Hyprland wallpapers at
-    // /usr/share/hypr/wallN.png, etc.) so resolveAssetPath finds them and the
-    // compositor renders a real wallpaper instead of the flat fallback color.
+    // Unpack bundled guest data assets. G10 splits the old aggregate assets.blob
+    // into category blobs so fonts/icons/cursors/wallpapers/themes can evolve as
+    // first-class OS resources while keeping the flat rtfs archive ABI.
     rtUnpackAssets();
 }
 
@@ -2739,16 +3124,18 @@ __gshared uint g_xkbAllocFails = 0;
 __gshared uint g_assetFiles = 0;
 __gshared uint g_assetBytes = 0;
 
-// Parse the bundled `assets.blob` boot module — same flat archive format as
-// xkb.blob ([u32 pathLen][path][u32 dataLen][data], paths relative to overlay
-// root, e.g. "usr/share/hypr/wall0.png") — into the rtfs overlay.  Optional:
-// boots fine without it (Hyprland just falls back to its flat clear color).
-private void rtUnpackAssets() {
+// Parse one bundled GUI asset boot module — same flat archive format as xkb.blob
+// ([u32 pathLen][path][u32 dataLen][data], paths relative to overlay root, e.g.
+// "usr/share/hypr/wall0.png") — into the rtfs overlay. Optional: boots fine
+// without it, though toolkit clients will fall back to synthetic defaults.
+private uint rtUnpackAssetBlob(const(char)* modulePath) {
     ulong phys, size;
-    if (!findBootModule("/assets.blob\0".ptr, phys, size)) return;
-    if (phys == 0 || size < 8) return;
+    if (!findBootModule(modulePath, phys, size)) return 0;
+    if (phys == 0 || size < 8) return 0;
     const(ubyte)* base = cast(const(ubyte)*)phys_to_virt(phys);
     ulong off = 0;
+    uint files = 0;
+    uint bytes = 0;
     while (off + 8 <= size) {
         uint pathLen = *cast(const(uint)*)(base + off); off += 4;
         if (pathLen == 0 || pathLen > 1024 || off + cast(ulong)pathLen + 4 > size) break;
@@ -2757,11 +3144,31 @@ private void rtUnpackAssets() {
         if (off + cast(ulong)dataLen > size) break;
         const(ubyte)* d = base + off; off += dataLen;
         rtAddFile(p, pathLen, d, dataLen);
+        ++files;
+        bytes += dataLen;
         ++g_assetFiles;
         g_assetBytes += dataLen;
     }
-    klog("[assets] unpacked files="); klog_hex(g_assetFiles);
-    klog(" bytes="); klog_hex(g_assetBytes); klog("\n");
+    klog("[assets] "); klog(modulePath);
+    klog(" unpacked files="); klog_hex(files);
+    klog(" bytes="); klog_hex(bytes);
+    klog(" total_files="); klog_hex(g_assetFiles);
+    klog(" total_bytes="); klog_hex(g_assetBytes); klog("\n");
+    return files;
+}
+
+private void rtUnpackAssets() {
+    const uint before = g_assetFiles;
+    rtUnpackAssetBlob("/fonts.blob\0".ptr);
+    rtUnpackAssetBlob("/icons.blob\0".ptr);
+    rtUnpackAssetBlob("/cursors.blob\0".ptr);
+    rtUnpackAssetBlob("/wallpapers.blob\0".ptr);
+    rtUnpackAssetBlob("/themes.blob\0".ptr);
+
+    // Legacy fallback for older ISO layouts.
+    if (g_assetFiles == before) {
+        rtUnpackAssetBlob("/assets.blob\0".ptr);
+    }
 }
 
 private enum size_t fileBackendPlain = 0;
@@ -2781,6 +3188,10 @@ private bool fileIsSyntheticDirectory(File* f) {
     return f !is null && f.type == FileType.FD_FILE && fileBackendKind(f) == fileBackendDirectory;
 }
 
+private bool fileIsRtDirectory(File* f) {
+    return f !is null && f.type == FileType.FD_RTDIR;
+}
+
 private bool fileIsVirtualContent(File* f) {
     return f !is null && f.type == FileType.FD_FILE && cast(size_t)f.backend > fileBackendDirectory;
 }
@@ -2793,7 +3204,7 @@ private immutable VFEntry[] g_vfs = [
     // /proc
     { "/proc/version",           "Linux version 6.0.0 (HanonymOS) #1 SMP x86_64 GNU/Linux\n"         },
     { "/proc/uptime",            "0.00 0.00\n"                                                         },
-    { "/proc/cmdline",           "root=/dev/ram0 quiet\n"                                              },
+    { "/proc/cmdline",           "display.width=1280 display.height=800 display.scale=1 display.refresh=60 display.force_mode=0\n" },
     { "/proc/filesystems",       "nodev\tproc\nnodev\tsysfs\nnodev\ttmpfs\nnodev\tdevtmpfs\n"          },
     { "/proc/mounts",            "proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0\n"               },
     { "/proc/swaps",             "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"                  },
@@ -3160,21 +3571,27 @@ private immutable VFEntry[] g_vfs = [
       "  <dir>/usr/share/fonts</dir>\n" ~
       "  <dir>/usr/local/share/fonts</dir>\n" ~
       "  <cachedir>/var/cache/fontconfig</cachedir>\n" ~
-      "  <config><blank/></config>\n" ~
-      "  <match target=\"font\"><edit name=\"antialias\" mode=\"assign\"><bool>false</bool></edit></match>\n" ~
-      "  <match target=\"font\"><edit name=\"hinting\"   mode=\"assign\"><bool>false</bool></edit></match>\n" ~
+      "  <alias><family>sans-serif</family><prefer><family>Noto Sans</family><family>DejaVu Sans</family></prefer></alias>\n" ~
+      "  <alias><family>monospace</family><prefer><family>Noto Sans Mono</family><family>DejaVu Sans Mono</family></prefer></alias>\n" ~
+      "  <alias><family>serif</family><prefer><family>Noto Serif</family><family>DejaVu Serif</family></prefer></alias>\n" ~
+      "  <match target=\"font\"><edit name=\"antialias\" mode=\"assign\"><bool>true</bool></edit></match>\n" ~
+      "  <match target=\"font\"><edit name=\"hinting\" mode=\"assign\"><bool>true</bool></edit></match>\n" ~
+      "  <match target=\"font\"><edit name=\"hintstyle\" mode=\"assign\"><const>hintslight</const></edit></match>\n" ~
+      "  <match target=\"font\"><edit name=\"rgba\" mode=\"assign\"><const>none</const></edit></match>\n" ~
       "</fontconfig>\n"
     },
 
     // ── GTK3 ───────────────────────────────────────────────────────────────
     { "/etc/gtk-3.0/settings.ini",
       "[Settings]\n" ~
-      "gtk-font-name=Sans 10\n" ~
-      "gtk-icon-theme-name=hicolor\n" ~
-      "gtk-theme-name=Default\n" ~
-      "gtk-cursor-theme-name=default\n" ~
-      "gtk-xft-antialias=0\n" ~
-      "gtk-xft-hinting=0\n" ~
+      "gtk-font-name=Noto Sans 10\n" ~
+      "gtk-icon-theme-name=Epin\n" ~
+      "gtk-theme-name=Epin\n" ~
+      "gtk-cursor-theme-name=Epin\n" ~
+      "gtk-xft-antialias=1\n" ~
+      "gtk-xft-hinting=1\n" ~
+      "gtk-xft-hintstyle=hintslight\n" ~
+      "gtk-xft-rgba=none\n" ~
       "gtk-modules=\n"
     },
 
@@ -3186,8 +3603,11 @@ private immutable VFEntry[] g_vfs = [
     { "/usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml",
       "<schemalist>\n" ~
       "  <schema id=\"org.gnome.desktop.interface\" path=\"/org/gnome/desktop/interface/\">\n" ~
-      "    <key name=\"gtk-theme\" type=\"s\"><default>'Default'</default></key>\n" ~
-      "    <key name=\"icon-theme\" type=\"s\"><default>'hicolor'</default></key>\n" ~
+      "    <key name=\"gtk-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
+      "    <key name=\"icon-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
+      "    <key name=\"cursor-theme\" type=\"s\"><default>'Epin'</default></key>\n" ~
+      "    <key name=\"font-name\" type=\"s\"><default>'Noto Sans 10'</default></key>\n" ~
+      "    <key name=\"monospace-font-name\" type=\"s\"><default>'Noto Sans Mono 11'</default></key>\n" ~
       "    <key name=\"clock-format\" type=\"s\"><default>'24h'</default></key>\n" ~
       "    <key name=\"color-scheme\" type=\"s\"><default>'prefer-light'</default></key>\n" ~
       "  </schema>\n" ~
@@ -3353,6 +3773,11 @@ private immutable VFEntry[] g_vfs = [
       "HOME=/home/user\x00" ~
       "PATH=/usr/bin:/bin:/usr/local/bin:/sbin:/usr/sbin\x00" ~
       "WAYLAND_DISPLAY=wayland-0\x00" ~
+      "HOS_DISPLAY_WIDTH=1280\x00" ~
+      "HOS_DISPLAY_HEIGHT=800\x00" ~
+      "HOS_DISPLAY_SCALE=1\x00" ~
+      "HOS_DISPLAY_REFRESH=60\x00" ~
+      "HOS_DISPLAY_FORCE_MODE=0\x00" ~
       "XDG_RUNTIME_DIR=/run/user/1000\x00" ~
       "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\x00" ~
       "DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket\x00" ~
@@ -3427,6 +3852,12 @@ private immutable VFEntry[] g_vfs = [
 // Returns the content slice, or null if not found.
 private const(char)[] findVirtualFile(const(char)* path) {
     if (path is null) return null;
+    if (cstrEq(path, "/proc/cmdline")) {
+        return displayCmdlineContent();
+    }
+    if (cstrEq(path, "/proc/display-info")) {
+        return displayInfoContent();
+    }
     // Phase 10: /etc/passwd and /etc/group are derived from the User registry
     // (falling back to the static entry below only if the registry is empty).
     if (cstrEq(path, "/etc/passwd")) {
@@ -3487,7 +3918,10 @@ private bool isVirtualDirectoryPath(const(char)* path) {
         cstrEqPrefix(path, "/usr/share/polkit-1/") ||
         cstrEqPrefix(path, "/usr/share/mime/") ||
         cstrEqPrefix(path, "/usr/share/icons/") ||
+        cstrEqPrefix(path, "/usr/share/cursors/") ||
+        cstrEqPrefix(path, "/usr/share/backgrounds/") ||
         cstrEqPrefix(path, "/usr/share/themes/") ||
+        cstrEqPrefix(path, "/usr/share/hos/") ||
         cstrEqPrefix(path, "/usr/share/X11/") ||
         cstrEqPrefix(path, "/usr/lib/pango/") ||
         cstrEqPrefix(path, "/usr/lib/gdk-pixbuf-2.0/") ||
@@ -3643,7 +4077,12 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/usr/local/share/fonts") ||
            cstrEq(path, "/usr/share/icons") ||
            cstrEq(path, "/usr/share/icons/hicolor") ||
+           cstrEq(path, "/usr/share/icons/default") ||
+           cstrEq(path, "/usr/share/cursors") ||
+           cstrEq(path, "/usr/share/backgrounds") ||
            cstrEq(path, "/usr/share/themes") ||
+           cstrEq(path, "/usr/share/hos") ||
+           cstrEq(path, "/usr/share/hos/assets") ||
            // MIME
            cstrEq(path, "/usr/share/mime") ||
            // locale
@@ -4012,6 +4451,22 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
             const long targetStatRes = linux_sys_fstat(cast(ulong)targetFd, statbuf);
             sys_close(cast(int)targetFd);
             return targetStatRes;
+        }
+    }
+
+    // Exact rtfs assets must win over broad synthetic-prefix directories such as
+    // /usr/share/fonts/*, otherwise fontconfig sees real TTF files as dirs.
+    {
+        int rparent; const(char)* rleaf; size_t rleafLen;
+        const int ridx = rtResolve(pathPtr, rparent, rleaf, rleafLen);
+        if (ridx >= 0) {
+            const long rtFd = sys_open(pathPtr, O_RDONLY);
+            if (rtFd >= 0) {
+                const long rtStatRes = linux_sys_fstat(cast(ulong)rtFd, statbuf);
+                sys_close(cast(int)rtFd);
+                return rtStatRes;
+            }
+            return rtFd;
         }
     }
 
@@ -5111,6 +5566,7 @@ private struct linux_dirent64 {
     // char d_name[] follows immediately
 }
 private enum DT_DIR = 4;
+private enum DT_REG = 8;
 
 private bool writeDirent64(ubyte* buf, size_t bufSz, size_t* off, ulong ino, long doff,
                             ubyte dtype, const(char)* name, size_t nlen) {
@@ -5133,15 +5589,36 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     int ifd = cast(int)fd;
     if (ifd < 0 || ifd >= 1024 || g_fdTable[ifd].type == FileType.FD_NONE) return negErrno(EBADF);
     File* f = &g_fdTable[ifd];
-    if (!fileIsSyntheticDirectory(f)) return negErrno(ENOTDIR);
+    if (!fileIsSyntheticDirectory(f) && !fileIsRtDirectory(f)) return negErrno(ENOTDIR);
     if (count == 0) return negErrno(EINVAL);
 
     auto buf = cast(ubyte*)dirp;
     size_t written = 0;
-    long pos = cast(long)f.offset;
+    if (f.offset == 0) {
+        if (!writeDirent64(buf, count, &written, 1, 1, DT_DIR, ".".ptr, 1)) return cast(long)written;
+        f.offset = 1;
+    }
+    if (f.offset == 1) {
+        if (!writeDirent64(buf, count, &written, 1, 2, DT_DIR, "..".ptr, 2)) return cast(long)written;
+        f.offset = 2;
+    }
 
-    if (pos == 0 && writeDirent64(buf, count, &written, 1, 1, DT_DIR, ".".ptr,  1)) ++f.offset;
-    if (f.offset >= 1 && pos <= 1 && writeDirent64(buf, count, &written, 1, 2, DT_DIR, "..".ptr, 2)) ++f.offset;
+    if (fileIsRtDirectory(f)) {
+        const int dirIdx = cast(int)cast(size_t)f.backend;
+        ulong logical = 2;
+        for (int i = 1; i < RT_MAX_NODES; ++i) {
+            if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dirIdx) continue;
+            if (f.offset <= logical) {
+                const ubyte dtype = (g_rt[i].kind == RT_DIR) ? DT_DIR : DT_REG;
+                if (!writeDirent64(buf, count, &written, cast(ulong)i + 1,
+                                   cast(long)logical + 1, dtype,
+                                   g_rt[i].name.ptr, g_rt[i].nameLen))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+    }
 
     return cast(long)written;
 }
@@ -6237,8 +6714,6 @@ public long linux_sys_open_by_handle_at(ulong mfd, ulong handle, ulong fl) {
 // DRM / KMS ioctl handler
 // ============================================================================
 
-import arch.x86_64.limine : limine_framebuffer;
-extern __gshared limine_framebuffer* g_fb;
 import memory.mm : alloc_phys_pages, physPagesSetOwner;
 
 // DRM ioctl command number byte (request & 0xFF)

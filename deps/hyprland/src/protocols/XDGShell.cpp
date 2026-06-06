@@ -445,7 +445,8 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
             return;
         }
 
-        if (m_surface->m_current.texture && !m_mapped) {
+        const bool hasRenderableBuffer = m_surface->m_current.texture || m_surface->m_current.buffer;
+        if (hasRenderableBuffer && !m_mapped) {
             // this forces apps to not draw CSD.
             if (m_toplevel)
                 m_toplevel->setMaximized(true);
@@ -456,7 +457,7 @@ CXDGSurfaceResource::CXDGSurfaceResource(SP<CXdgSurface> resource_, SP<CXDGWMBas
             return;
         }
 
-        if (!m_surface->m_current.texture && m_mapped) {
+        if (!hasRenderableBuffer && m_mapped) {
             m_mapped = false;
             m_events.unmap.emit();
             m_surface->unmap();

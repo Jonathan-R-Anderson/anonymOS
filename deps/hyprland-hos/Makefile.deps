@@ -529,6 +529,9 @@ $(STAMP_DIR)/aquamarine-extract: $(DL_DIR)/aquamarine-$(AQUAMARINE_REV).tar.gz
 	# GUI roadmap G4: bridge the kernel evdev keyboard (/dev/input/event0) too.
 	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
 		< $(CURDIR)/patches/0005-headless-keyboard.patch || true
+	# GUI roadmap G8: deterministic headless frame pacing and bounded repaint watchdog.
+	patch -p1 --forward -d $(BUILD_DIR)/aquamarine \
+		< $(CURDIR)/patches/0006-headless-frame-pacing.patch || true
 	touch $@
 
 $(STAMP_DIR)/aquamarine-build: $(STAMP_DIR)/aquamarine-extract

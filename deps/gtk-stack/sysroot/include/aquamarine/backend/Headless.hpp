@@ -65,7 +65,17 @@ namespace Aquamarine {
 
         Hyprutils::Memory::CSharedPointer<std::function<void()>> framecb;
         bool                                                     frameScheduled = false;
+        bool                                                     watchdogScheduled = false;
+        uint32_t                                                 activeRepaintTicks = 0;
+        uint64_t                                                 frameSequence = 0;
+        uint64_t                                                 presentSequence = 0;
         std::chrono::steady_clock::time_point                    lastFrame;
+        std::chrono::steady_clock::time_point                    lastFrameRequest;
+        std::chrono::steady_clock::time_point                    lastPresent;
+
+        std::chrono::nanoseconds frameInterval();
+        void                     emitFrame(const char* source);
+        void                     armRepaintWatchdog();
 
         friend class CHeadlessBackend;
     };
@@ -114,6 +124,7 @@ namespace Aquamarine {
         void dispatchTimers();
         void updateTimerFD();
         void addTimer(std::chrono::steady_clock::time_point when, std::function<void(void)> what);
+        void scheduleOutputs(IOutput::scheduleFrameReason reason);
 
         // EpinAnonymOS G3: kernel evdev mouse → aquamarine pointer bridge.
         Hyprutils::OS::CFileDescriptor                    mouseFD;

@@ -859,7 +859,7 @@ ulong linux_seed_initial_stack(
     ulong strCursor = platformPhysOff;
     ulong execFnVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, execName);
 
-    enum bootEnvCount = 28;
+    enum bootEnvCount = 48;
     ulong[bootEnvCount] envVirts;
     ulong envc = 0;
 
@@ -883,6 +883,32 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_DATA_DIRS=/usr/share\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "FONTCONFIG_PATH=/etc/fonts\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "FONTCONFIG_FILE=/etc/fonts/fonts.conf\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "PANGOCAIRO_BACKEND=fc\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_UI_FONT=Noto Sans 10\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_TERMINAL_FONT=/usr/share/fonts/noto/NotoSansMono-Regular.ttf\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GTK_THEME=Epin\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_THEME=Epin\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_SIZE=24\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_ICON_THEME=Epin\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_CURSOR_THEME=Epin\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_GTK_THEME=Epin\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_WALLPAPER=/usr/share/backgrounds/epin/wall0.png\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_ASSET_MANIFEST=/usr/share/hos/assets/manifest.json\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_SESSION_TYPE=wayland\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XDG_CURRENT_DESKTOP=Hyprland\0".ptr);
@@ -892,6 +918,16 @@ ulong linux_seed_initial_stack(
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "DESKTOP_SESSION=hyprland\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "WAYLAND_DISPLAY=wayland-0\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_WIDTH=1280\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_HEIGHT=800\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_SCALE=1\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_REFRESH=60\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_DISPLAY_FORCE_MODE=0\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     // Seat: no seatd daemon here, so tell libseat to use its in-process builtin
     // backend instead of failing to reach /run/seatd.sock.
@@ -930,21 +966,10 @@ ulong linux_seed_initial_stack(
     // keymap compilation finds rules/keycodes/symbols/...
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XKB_CONFIG_ROOT=/usr/share/X11/xkb\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // libXcursor's baked default XCURSOR_PATH has FOUR entries (host HanonymOS
-    // sysroot share/{icons,pixmaps}, ~/.local/share/icons, ~/.icons). We ship no
-    // cursor theme, so XcursorShapeLoadImages fails for every one of ~80 standard
-    // shapes (× a size-24 retry), opening index.theme in ALL four paths each time
-    // — ~640 synthetic-fs opens per loadTheme, ~60s on TCG. Collapse to a single
-    // (still absent) path so the failing search is 4× cheaper; the cursor falls
-    // back to the built-in hypr cursor either way.
+    // libXcursor's baked default XCURSOR_PATH has several host/sysroot entries.
+    // Collapse it to the guest asset theme root mounted from cursors/icons blobs.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_PATH=/usr/share/icons\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // Now that the kernel reclaims physical pages (free list), the heavier real
-    // scene render no longer OOMs — drive Hyprland's full m_renderPass.render()
-    // (wallpaper + windows) instead of the deterministic clear-only frame.
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "HOS_SCENE_RENDER=1\0".ptr);
-    if (envVirt != 0) envVirts[envc++] = envVirt;
-
     bool isHyprland =
     execName !is null &&
     (cstrContainsExports(execName, "Hyprland") ||

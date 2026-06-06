@@ -7,6 +7,12 @@
 typedef unsigned int   gf_u32;
 typedef unsigned char  gf_u8;
 
+#if defined(__GNUC__) || defined(__clang__)
+#define GF_UNUSED __attribute__((unused))
+#else
+#define GF_UNUSED
+#endif
+
 static const gf_u8 g_font8x8[96][8] = {
 {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ' '
 {0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00}, // !
@@ -136,9 +142,11 @@ static void gf_glyph(gf_u32 *buf, int pitch_px, int bw, int bh,
 }
 
 // String, left to right, 8px advance.
-static void gf_text(gf_u32 *buf, int pitch_px, int bw, int bh,
-                    int x, int y, const char *s, gf_u32 fg, long bg) {
+static void GF_UNUSED gf_text(gf_u32 *buf, int pitch_px, int bw, int bh,
+                              int x, int y, const char *s, gf_u32 fg, long bg) {
     while (*s) { gf_glyph(buf, pitch_px, bw, bh, x, y, *s++, fg, bg); x += 8; }
 }
+
+#undef GF_UNUSED
 
 #endif // GUI_FONT_H

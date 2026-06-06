@@ -38,13 +38,13 @@ namespace Desktop {
       private:
         void     calculate();
 
-        Vector2D m_topLeft, m_bottomRight;
-        Vector2D m_initialTopLeft, m_initialBottomRight;
+        Vector2D m_topLeft = {0, 0}, m_bottomRight = {0, 0};
+        Vector2D m_initialTopLeft = {0, 0}, m_initialBottomRight = {0, 0};
 
         bool     m_ok = true;
 
         struct SDynamicData {
-            Vector2D topLeft, bottomRight;
+            Vector2D topLeft = {0, 0}, bottomRight = {0, 0};
         };
 
         std::array<SDynamicData, RESERVED_DYNAMIC_TYPE_END> m_dynamicReserved;

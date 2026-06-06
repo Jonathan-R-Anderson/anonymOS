@@ -13,6 +13,11 @@ set -u
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
+if [ "${G4_REBUILD:-1}" = "1" ]; then
+    make -j1 GUI_AUTOSTART=term hos.iso
+fi
+
 SERIAL="$ROOT/serial.log"
 QMP="/tmp/g4-qmp.sock"
 rm -f "$SERIAL" "$QMP"

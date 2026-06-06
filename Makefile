@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean progs-haskell deps-core deps-desktop deps-hyprland
+.PHONY: all clean progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets
 .NOTPARALLEL:
 
 # =========================================================
@@ -59,17 +59,38 @@ HELLO_GUI_BIN := build/hello-gui
 WLPROBE_BIN   := build/wl-probe
 WLSHM_DEMO_BIN := build/wl-shm-demo
 WLTERM_BIN    := build/wl-term
+WLCAIRO_DEMO_BIN := build/wl-cairo-demo
+DISPLAYINFO_BIN := build/display-info
+GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ASSET_SRC_DIR := build/assets
 ASSET_BLOB    := build/assets.blob
+ASSET_BLOBS_DIR := build/asset-blobs
+FONT_BLOB     := $(ASSET_BLOBS_DIR)/fonts.blob
+ICON_BLOB     := $(ASSET_BLOBS_DIR)/icons.blob
+CURSOR_BLOB   := $(ASSET_BLOBS_DIR)/cursors.blob
+WALLPAPER_BLOB := $(ASSET_BLOBS_DIR)/wallpapers.blob
+THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
+DISPLAY_CONF := build/display.conf
 WAYLAND_SYSROOT := deps/gtk-stack/sysroot
 WAYLAND_SCANNER ?= wayland-scanner
 MUSL_CC := deps/musl/install/bin/musl-clang
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
+FONT_SRC_DIR ?= /usr/share/fonts/truetype/noto
+FONT_LICENSE_FILE ?= /usr/share/doc/fonts-noto-core/copyright
+DMZ_CURSOR_SRC_DIR ?= /usr/share/icons/DMZ-White
+DMZ_CURSOR_LICENSE_FILE ?= /usr/share/doc/dmz-cursor-theme/copyright
+
+DISPLAY_WIDTH ?= 1280
+DISPLAY_HEIGHT ?= 800
+DISPLAY_SCALE ?= 1
+DISPLAY_REFRESH ?= 60
+DISPLAY_FORCE_MODE ?= 0
+GUI_AUTOSTART ?= cairo
 
 FREESTANDING_CFLAGS := -static -nostdlib -nostartfiles -fno-stack-protector \
 	-fno-pic -fno-pie -m64 -O2 -e _start
@@ -89,6 +110,44 @@ $(HELLO_GUI_BIN): src/util/hello-gui.c
 $(WLPROBE_BIN): src/util/wl-probe.c
 	@echo "==== Building wl-probe (GUI G1 client probe) ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
+
+$(DISPLAYINFO_BIN): src/util/display-info.c
+	@echo "==== Building display-info (GUI G7 display diagnostics) ===="
+	gcc $(FREESTANDING_CFLAGS) -o $@ $<
+
+build-display-conf:
+	@echo "==== Generating display.conf (GUI G7 mode config) ===="
+	mkdir -p $(dir $(DISPLAY_CONF))
+	printf 'display.width=%s\n' "$(DISPLAY_WIDTH)" > $(DISPLAY_CONF)
+	printf 'display.height=%s\n' "$(DISPLAY_HEIGHT)" >> $(DISPLAY_CONF)
+	printf 'display.scale=%s\n' "$(DISPLAY_SCALE)" >> $(DISPLAY_CONF)
+	printf 'display.refresh=%s\n' "$(DISPLAY_REFRESH)" >> $(DISPLAY_CONF)
+	printf 'display.force_mode=%s\n' "$(DISPLAY_FORCE_MODE)" >> $(DISPLAY_CONF)
+	printf 'gui.autostart=%s\n' "$(GUI_AUTOSTART)" >> $(DISPLAY_CONF)
+
+build-font-assets:
+	@echo "==== Staging Noto fonts (GUI G9 text rendering) ===="
+	@test -f "$(FONT_SRC_DIR)/NotoSans-Regular.ttf" || { echo "Missing $(FONT_SRC_DIR)/NotoSans-Regular.ttf"; exit 1; }
+	@test -f "$(FONT_SRC_DIR)/NotoSans-Bold.ttf" || { echo "Missing $(FONT_SRC_DIR)/NotoSans-Bold.ttf"; exit 1; }
+	@test -f "$(FONT_SRC_DIR)/NotoSansMono-Regular.ttf" || { echo "Missing $(FONT_SRC_DIR)/NotoSansMono-Regular.ttf"; exit 1; }
+	@test -f "$(FONT_SRC_DIR)/NotoSansMono-Bold.ttf" || { echo "Missing $(FONT_SRC_DIR)/NotoSansMono-Bold.ttf"; exit 1; }
+	rm -rf $(ASSET_SRC_DIR)/fonts/noto
+	mkdir -p $(ASSET_SRC_DIR)/fonts/noto
+	cp "$(FONT_SRC_DIR)/NotoSans-Regular.ttf" $(ASSET_SRC_DIR)/fonts/noto/
+	cp "$(FONT_SRC_DIR)/NotoSans-Bold.ttf" $(ASSET_SRC_DIR)/fonts/noto/
+	cp "$(FONT_SRC_DIR)/NotoSansMono-Regular.ttf" $(ASSET_SRC_DIR)/fonts/noto/
+	cp "$(FONT_SRC_DIR)/NotoSansMono-Bold.ttf" $(ASSET_SRC_DIR)/fonts/noto/
+	@if [ -f "$(FONT_LICENSE_FILE)" ]; then \
+		cp "$(FONT_LICENSE_FILE)" $(ASSET_SRC_DIR)/fonts/noto/LICENSE.OFL-1.1.txt; \
+	else \
+		printf 'Noto fonts are distributed under the SIL Open Font License 1.1.\n' > $(ASSET_SRC_DIR)/fonts/noto/LICENSE.OFL-1.1.txt; \
+	fi
+
+build-gui-assets: build-font-assets
+	@echo "==== Staging GUI image/icon/cursor/theme assets (GUI G10 pipeline) ===="
+	python3 scripts/stage-gui-assets.py $(ASSET_SRC_DIR) \
+		--cursor-src "$(DMZ_CURSOR_SRC_DIR)" \
+		--cursor-license "$(DMZ_CURSOR_LICENSE_FILE)"
 
 $(XDG_SHELL_HEADER): $(XDG_SHELL_XML)
 	@echo "==== Generating xdg-shell client header ===="
@@ -110,15 +169,30 @@ $(WLSHM_DEMO_BIN): src/util/wl-shm-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-pthread
 
 $(WLTERM_BIN): src/util/wl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
-	@echo "==== Building wl-term (GUI G4 software terminal) ===="
+	@echo "==== Building wl-term (GUI G4/G9 antialiased terminal) ===="
 	$(MUSL_CC) -static -O2 -Wall -Wextra \
-		-I$(WAYLAND_SYSROOT)/include -Ibuild -Isrc/util \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild -Isrc/util \
 		-o $@ src/util/wl-term.c $(XDG_SHELL_CODE) \
 		$(WAYLAND_SYSROOT)/lib/libwayland-client.a \
 		$(WAYLAND_SYSROOT)/lib/libffi.a \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$(WAYLAND_SYSROOT)/lib/libbz2.a \
+		$(WAYLAND_SYSROOT)/lib/libpng16.a \
+		$(WAYLAND_SYSROOT)/lib/libz.a \
+		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(wildcard $(HYPRLAND_BIN))
+$(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-cairo-demo (GUI G11 Cairo/FreeType toolkit demo) ===="
+	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
+	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs pangocairo wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
+		-o $@ src/util/wl-cairo-demo.c $(XDG_SHELL_CODE) \
+		$$PANGOCAIRO_LIBS \
+		-pthread
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -127,6 +201,10 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	cp kernel.elf cd/boot/kernel.elf
 
 	cp src/boot/limine.conf \
+		cd/boot/limine/limine.conf
+	sed -i \
+		-e 's/^    resolution: .*/    resolution: $(DISPLAY_WIDTH)x$(DISPLAY_HEIGHT)x32/' \
+		-e 's/^    cmdline: .*/    cmdline: display.width=$(DISPLAY_WIDTH) display.height=$(DISPLAY_HEIGHT) display.scale=$(DISPLAY_SCALE) display.refresh=$(DISPLAY_REFRESH) display.force_mode=$(DISPLAY_FORCE_MODE) gui.autostart=$(GUI_AUTOSTART)/' \
 		cd/boot/limine/limine.conf
 
 	cp src/boot/limine-bios.sys \
@@ -153,14 +231,32 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	cp $(WLPROBE_BIN) cd/wl-probe
 	@echo "Included wl-probe (GUI G1)"
 
+	cp $(DISPLAYINFO_BIN) cd/display-info
+	@echo "Included display-info (GUI G7)"
+
 	cp $(WLSHM_DEMO_BIN) cd/wl-shm-demo
 	@echo "Included wl-shm-demo (GUI G2)"
 
 	cp $(WLTERM_BIN) cd/wl-term
 	@echo "Included wl-term (GUI G4)"
 
+	cp $(WLCAIRO_DEMO_BIN) cd/wl-cairo-demo
+	printf '\n    module_path: boot():/wl-cairo-demo\n' >> cd/boot/limine/limine.conf
+	@echo "Included wl-cairo-demo (GUI G11)"
+
+	@if [ -f $(GTK_HELLO_BIN) ]; then \
+		cp $(GTK_HELLO_BIN) cd/gtk-hello; \
+		printf '\n    module_path: boot():/gtk-hello\n' >> cd/boot/limine/limine.conf; \
+		echo "Included gtk-hello (GUI G11 toolkit demo)"; \
+	else \
+		echo "gtk-hello missing — run: make deps-desktop"; \
+	fi
+
 	cp $(BUSYBOX_BIN) cd/-sh
 	@echo "Included -sh (busybox login shell for GUI G4 terminal)"
+
+	cp $(DISPLAY_CONF) cd/display.conf
+	@echo "Included display.conf + display-info (GUI G7)"
 
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \
@@ -186,10 +282,20 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 			echo "Included xkb.blob (xkeyboard-config data)"; \
 		fi; \
 		if [ -d $(ASSET_SRC_DIR) ]; then \
-			python3 scripts/pack-assets.py $(ASSET_SRC_DIR) $(ASSET_BLOB) usr/share; \
-			cp $(ASSET_BLOB) cd/assets.blob; \
-			printf '\n    module_path: boot():/assets.blob\n' >> cd/boot/limine/limine.conf; \
-			echo "Included assets.blob (Hyprland wallpapers /usr/share/hypr)"; \
+			rm -rf $(ASSET_BLOBS_DIR); \
+			mkdir -p $(ASSET_BLOBS_DIR); \
+			python3 scripts/pack-assets.py $(ASSET_SRC_DIR) $(ASSET_BLOB) usr/share --category-dir $(ASSET_BLOBS_DIR); \
+			cp $(FONT_BLOB) cd/fonts.blob; \
+			cp $(ICON_BLOB) cd/icons.blob; \
+			cp $(CURSOR_BLOB) cd/cursors.blob; \
+			cp $(WALLPAPER_BLOB) cd/wallpapers.blob; \
+			cp $(THEME_BLOB) cd/themes.blob; \
+			printf '\n    module_path: boot():/fonts.blob\n' >> cd/boot/limine/limine.conf; \
+			printf '    module_path: boot():/icons.blob\n' >> cd/boot/limine/limine.conf; \
+			printf '    module_path: boot():/cursors.blob\n' >> cd/boot/limine/limine.conf; \
+			printf '    module_path: boot():/wallpapers.blob\n' >> cd/boot/limine/limine.conf; \
+			printf '    module_path: boot():/themes.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included GUI asset category blobs (fonts/icons/cursors/wallpapers/themes)"; \
 		fi; \
 	else \
 		echo "Hyprland not built — run: make deps-hyprland"; \

@@ -1,12 +1,11 @@
-// wl-term.c — GUI roadmap G4: a minimal software-rendered Wayland terminal.
+// wl-term.c — GUI roadmap G4/G9: a minimal software-rendered Wayland terminal.
 //
-// A wl_shm client that paints an 80x24 character grid with the shared 8x8
-// bitmap font, takes keyboard input via wl_keyboard, and hosts an interactive
-// busybox shell on a kernel pseudo-terminal (/dev/ptmx + /dev/pts/N).  The
-// shell is spawned (posix_spawn) with stdin/stdout/stderr wired to the PTY
-// slave; the terminal holds the master, feeds it keystrokes, and renders its
-// output.  Everything read from the master is also mirrored to stdout as
-// "G4OUT: …" so the prompt and typed-command output are checkable on serial.
+// A wl_shm client that paints an 80x24 character grid with antialiased FreeType
+// text when the bundled Noto Sans Mono asset is available, takes keyboard input
+// via wl_keyboard, and hosts an interactive busybox shell on a kernel
+// pseudo-terminal (/dev/ptmx + /dev/pts/N).  Everything read from the master is
+// also mirrored to stdout as "G4OUT: ..." so the prompt and typed-command output
+// are checkable on serial.
 #define _GNU_SOURCE
 
 #include <errno.h>
@@ -21,6 +20,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <wayland-client.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #include "xdg-shell-client-protocol.h"
 #include "gui_font.h"
@@ -36,11 +37,11 @@
 
 extern char **environ;
 
-enum { COLS = 80, ROWS = 24, CW = 8, CH = 8 };
-enum { WIDTH = COLS * CW, HEIGHT = ROWS * CH };
+enum { COLS = 80, ROWS = 24 };
+enum { BASE_FONT_PX = 17, BASE_CELL_W = 10, BASE_CELL_H = 20 };
 
 static const uint32_t COL_BG     = 0xff101418;
-static const uint32_t COL_FG     = 0xffd0d0d0;
+static const uint32_t COL_FG     = 0xfff2f2f2;
 static const uint32_t COL_CURSOR = 0xff30c030;
 
 struct app {
@@ -55,8 +56,15 @@ struct app {
     struct xdg_surface   *xdg_surface;
     struct xdg_toplevel  *toplevel;
     struct wl_buffer     *buffer;
+    struct wl_callback   *frame_cb;
     uint32_t             *pixels;
+    int                   width, height;
+    int                   cell_w, cell_h;
+    int                   font_px, baseline;
+    int                   scale;
     int                   committed;
+    int                   post_map_frame_armed;
+    int                   post_map_frame_done;
     int                   running;
 
     int                   ptm;     // PTY master fd
@@ -69,11 +77,179 @@ struct app {
 
     char                  mirror[256];
     int                   mirror_len;
+
+    FT_Library            ft;
+    FT_Face               face;
+    unsigned char        *font_data;
+    size_t                font_size;
+    int                   font_ready;
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
 
 static int create_memfd(const char *name) { return (int)syscall(SYS_memfd_create, name, MFD_CLOEXEC); }
+
+static int env_int(const char *name, int def, int min, int max) {
+    const char *s = getenv(name);
+    if (!s || !*s) return def;
+    char *end = NULL;
+    long v = strtol(s, &end, 10);
+    if (end == s) return def;
+    if (v < min) v = min;
+    if (v > max) v = max;
+    return (int)v;
+}
+
+static void init_layout(struct app *a) {
+    a->scale = env_int("HOS_DISPLAY_SCALE", 1, 1, 2);
+    a->font_px = BASE_FONT_PX * a->scale;
+    a->cell_w = BASE_CELL_W * a->scale;
+    a->cell_h = BASE_CELL_H * a->scale;
+    a->width = COLS * a->cell_w;
+    a->height = ROWS * a->cell_h;
+    a->baseline = (BASE_FONT_PX - 3) * a->scale;
+}
+
+static int load_file(const char *path, unsigned char **out, size_t *out_size) {
+    *out = NULL;
+    *out_size = 0;
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) return -1;
+
+    size_t cap = 65536;
+    size_t len = 0;
+    unsigned char *buf = malloc(cap);
+    if (!buf) { close(fd); return -1; }
+
+    for (;;) {
+        if (len == cap) {
+            size_t next = cap * 2;
+            unsigned char *nb = realloc(buf, next);
+            if (!nb) { free(buf); close(fd); return -1; }
+            buf = nb;
+            cap = next;
+        }
+        ssize_t n = read(fd, buf + len, cap - len);
+        if (n > 0) {
+            len += (size_t)n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) { free(buf); close(fd); return -1; }
+        break;
+    }
+    close(fd);
+    if (len == 0) { free(buf); return -1; }
+    *out = buf;
+    *out_size = len;
+    return 0;
+}
+
+static int init_freetype(struct app *a) {
+    const char *env_font = getenv("HOS_TERMINAL_FONT");
+    const char *fallbacks[] = {
+        "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
+        "/usr/share/fonts/NotoSansMono-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+        NULL,
+    };
+
+    for (int i = -1; ; i++) {
+        const char *path = (i < 0) ? env_font : fallbacks[i];
+        if (!path && i < 0) continue;
+        if (!path) break;
+        if (!*path) continue;
+        unsigned char *data = NULL;
+        size_t size = 0;
+        if (load_file(path, &data, &size) < 0)
+            continue;
+
+        if (FT_Init_FreeType(&a->ft) == 0 &&
+            FT_New_Memory_Face(a->ft, data, (FT_Long)size, 0, &a->face) == 0 &&
+            FT_Set_Pixel_Sizes(a->face, 0, (FT_UInt)a->font_px) == 0) {
+            a->font_data = data;
+            a->font_size = size;
+            a->font_ready = 1;
+            if (a->face->size && a->face->size->metrics.ascender > 0)
+                a->baseline = (int)(a->face->size->metrics.ascender >> 6) + a->scale;
+            printf("G9FONT: loaded %s (%zu bytes), font_px=%d cell=%dx%d window=%dx%d -- G9 FONT\n",
+                   path, size, a->font_px, a->cell_w, a->cell_h, a->width, a->height);
+            fflush(stdout);
+            return 0;
+        }
+
+        if (a->face) { FT_Done_Face(a->face); a->face = NULL; }
+        if (a->ft) { FT_Done_FreeType(a->ft); a->ft = NULL; }
+        free(data);
+    }
+
+    printf("G9FONT: failed to load Noto Sans Mono; using 8x8 bitmap fallback, cell=%dx%d window=%dx%d\n",
+           a->cell_w, a->cell_h, a->width, a->height);
+    fflush(stdout);
+    return -1;
+}
+
+static uint32_t blend_over(uint32_t dst, uint32_t src, unsigned int alpha) {
+    if (alpha >= 255) return src;
+    if (alpha == 0) return dst;
+    unsigned int inv = 255 - alpha;
+    unsigned int sr = (src >> 16) & 0xff, sg = (src >> 8) & 0xff, sb = src & 0xff;
+    unsigned int dr = (dst >> 16) & 0xff, dg = (dst >> 8) & 0xff, db = dst & 0xff;
+    unsigned int r = (sr * alpha + dr * inv + 127) / 255;
+    unsigned int g = (sg * alpha + dg * inv + 127) / 255;
+    unsigned int b = (sb * alpha + db * inv + 127) / 255;
+    return 0xff000000u | (r << 16) | (g << 8) | b;
+}
+
+static void render_ft_glyph(struct app *a, int x, int y, unsigned char ch, uint32_t fg) {
+    if (!a->font_ready || ch < 0x20 || ch >= 0x7f) return;
+    if (FT_Load_Char(a->face, (FT_ULong)ch, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL) != 0)
+        return;
+    FT_GlyphSlot g = a->face->glyph;
+    FT_Bitmap *bm = &g->bitmap;
+    int gx = x + g->bitmap_left;
+    int gy = y + a->baseline - g->bitmap_top;
+    int pitch = bm->pitch;
+    const unsigned char *base = bm->buffer;
+    if (pitch < 0) {
+        pitch = -pitch;
+        base = bm->buffer - (int)(bm->rows - 1) * pitch;
+    }
+    for (int row = 0; row < (int)bm->rows; row++) {
+        int py = gy + row;
+        if (py < 0 || py >= a->height) continue;
+        const unsigned char *src_row = base + row * pitch;
+        for (int col = 0; col < (int)bm->width; col++) {
+            int px = gx + col;
+            if (px < 0 || px >= a->width) continue;
+            unsigned int alpha = 0;
+            if (bm->pixel_mode == FT_PIXEL_MODE_GRAY) {
+                alpha = src_row[col];
+            } else if (bm->pixel_mode == FT_PIXEL_MODE_MONO) {
+                alpha = (src_row[col >> 3] & (0x80 >> (col & 7))) ? 255 : 0;
+            }
+            uint32_t *dst = &a->pixels[py * a->width + px];
+            *dst = blend_over(*dst, fg, alpha);
+        }
+    }
+}
+
+static void frame_done(void *data, struct wl_callback *cb, uint32_t time)
+{
+    (void)time;
+    struct app *a = data;
+    wl_callback_destroy(cb);
+    if (a && a->frame_cb == cb)
+        a->frame_cb = NULL;
+    if (!a)
+        return;
+    a->post_map_frame_armed = 0;
+    a->post_map_frame_done = 1;
+    a->dirty = 1;
+    log_line("G9FRAME: post-map frame callback; scheduling terminal redraw -- G9 FRAME");
+}
+
+static const struct wl_callback_listener frame_listener = { .done = frame_done };
 
 // ── terminal grid ────────────────────────────────────────────────────────────
 static void grid_clear(struct app *a) {
@@ -116,27 +292,52 @@ static void vt_byte(struct app *a, unsigned char b) {
 
 static void render(struct app *a) {
     if (!a->pixels) return;
-    gf_fill(a->pixels, WIDTH, WIDTH, HEIGHT, 0, 0, WIDTH, HEIGHT, COL_BG);
+    gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->height, COL_BG);
     for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++) {
             char ch = a->grid[r][c];
-            if (ch != ' ')
-                gf_glyph(a->pixels, WIDTH, WIDTH, HEIGHT, c * CW, r * CH, ch, COL_FG, -1);
+            if (ch != ' ') {
+                int x = c * a->cell_w;
+                int y = r * a->cell_h;
+                if (a->font_ready)
+                    render_ft_glyph(a, x, y, (unsigned char)ch, COL_FG);
+                else
+                    gf_glyph(a->pixels, a->width, a->width, a->height,
+                             x, y + (a->cell_h - 8) / 2, ch, COL_FG, -1);
+            }
         }
     // cursor block
-    gf_fill(a->pixels, WIDTH, WIDTH, HEIGHT, a->cur_c * CW, a->cur_r * CH, CW, CH, COL_CURSOR);
+    gf_fill(a->pixels, a->width, a->width, a->height,
+            a->cur_c * a->cell_w, a->cur_r * a->cell_h,
+            a->cell_w, a->cell_h, COL_CURSOR);
     char cc = a->grid[a->cur_r][a->cur_c];
-    if (cc != ' ')
-        gf_glyph(a->pixels, WIDTH, WIDTH, HEIGHT, a->cur_c * CW, a->cur_r * CH, cc, COL_BG, -1);
+    if (cc != ' ') {
+        int x = a->cur_c * a->cell_w;
+        int y = a->cur_r * a->cell_h;
+        if (a->font_ready)
+            render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
+        else
+            gf_glyph(a->pixels, a->width, a->width, a->height,
+                     x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
+    }
 }
 
 static void commit(struct app *a) {
     render(a);
+    if (a->post_map_frame_armed && !a->frame_cb) {
+        a->frame_cb = wl_surface_frame(a->surface);
+        wl_callback_add_listener(a->frame_cb, &frame_listener, a);
+    }
     wl_surface_attach(a->surface, a->buffer, 0, 0);
-    wl_surface_damage_buffer(a->surface, 0, 0, WIDTH, HEIGHT);
+    wl_surface_damage_buffer(a->surface, 0, 0, a->width, a->height);
     wl_surface_commit(a->surface);
     wl_display_flush(a->display);
     a->dirty = 0;
+    if (a->post_map_frame_done) {
+        a->post_map_frame_done = 0;
+        printf("G9FRAME: committed post-map terminal redraw %dx%d -- G9 REDRAW\n", a->width, a->height);
+        fflush(stdout);
+    }
 }
 
 // Mirror shell output to serial, one line at a time, prefixed "G4OUT:".
@@ -154,15 +355,15 @@ static void mirror_byte(struct app *a, unsigned char b) {
 
 // ── shm buffer ───────────────────────────────────────────────────────────────
 static int create_shm_buffer(struct app *a) {
-    const int stride = WIDTH * 4;
-    const size_t size = (size_t)stride * HEIGHT;
+    const int stride = a->width * 4;
+    const size_t size = (size_t)stride * (size_t)a->height;
     int fd = create_memfd("epin-g4-term");
     if (fd < 0) { perror("G4TERM: memfd_create"); return -1; }
     if (ftruncate(fd, (off_t)size) < 0) { perror("G4TERM: ftruncate"); close(fd); return -1; }
     a->pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (a->pixels == MAP_FAILED) { perror("G4TERM: mmap"); close(fd); return -1; }
     struct wl_shm_pool *pool = wl_shm_create_pool(a->shm, fd, (int)size);
-    a->buffer = wl_shm_pool_create_buffer(pool, 0, WIDTH, HEIGHT, stride, WL_SHM_FORMAT_XRGB8888);
+    a->buffer = wl_shm_pool_create_buffer(pool, 0, a->width, a->height, stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
     return a->buffer ? 0 : -1;
@@ -250,7 +451,12 @@ static void key_to_pty(struct app *a, uint32_t code) {
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, uint32_t sz)
 { (void)d; (void)k; (void)fmt; (void)sz; if (fd >= 0) close(fd); }
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *ks)
-{ (void)d; (void)k; (void)s; (void)sf; (void)ks; log_line("G4KEY: keyboard enter -- G4 FOCUS"); }
+{
+    (void)k; (void)s; (void)sf; (void)ks;
+    struct app *a = d;
+    if (a) a->dirty = 1;
+    log_line("G4KEY: keyboard enter -- G4 FOCUS");
+}
 static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf)
 { (void)d; (void)k; (void)s; (void)sf; }
 static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t time,
@@ -295,9 +501,10 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint3
     if (a->committed) return;
     if (create_shm_buffer(a) < 0) { a->running = 0; return; }
     grid_clear(a);
+    a->post_map_frame_armed = 1;
     commit(a);
     a->committed = 1;
-    printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", WIDTH, HEIGHT); fflush(stdout);
+    printf("G4TERM: committed terminal window %dx%d -- G4 COMMIT\n", a->width, a->height); fflush(stdout);
 }
 static const struct xdg_surface_listener xdg_surface_listener = { .configure = xdg_surface_configure };
 
@@ -346,6 +553,8 @@ int main(void) {
     // Wayland fds.  The shell's early output simply buffers in the pty until the
     // terminal connects and drains it.
     if (spawn_shell(&a) < 0) return 1;
+    init_layout(&a);
+    init_freetype(&a);
 
     a.display = wl_display_connect(NULL);
     if (!a.display) { perror("G4TERM: wl_display_connect"); return 1; }

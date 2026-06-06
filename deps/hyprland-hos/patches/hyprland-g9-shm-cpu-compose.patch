@@ -1,0 +1,248 @@
+--- a/src/render/GLRenderer.cpp
++++ b/src/render/GLRenderer.cpp
+@@ -1,8 +1,10 @@
+ #include "GLRenderer.hpp"
++#include <algorithm>
+ #include <cstdlib>
+ #include <fcntl.h>      // EpinAnonymOS G5: report window rects to the kernel
+ #include <unistd.h>
+ #include <sys/ioctl.h>
++#include <drm_fourcc.h>
+ #include "decorations/CHyprInnerGlowDecoration.hpp"
+ #include <aquamarine/output/Output.hpp>
+ #include "../config/ConfigValue.hpp"
+@@ -42,6 +44,214 @@
+ #include <xf86drm.h>
+ }
+ 
++namespace {
++    struct SHosCPUCanvas {
++        uint8_t* data   = nullptr;
++        uint32_t width  = 0;
++        uint32_t height = 0;
++        uint32_t stride = 0;
++        uint32_t format = DRM_FORMAT_INVALID;
++        size_t   size   = 0;
++    };
++
++    bool hosFormatIs32(uint32_t format) {
++        return format == DRM_FORMAT_XRGB8888 || format == DRM_FORMAT_ARGB8888 || format == DRM_FORMAT_XBGR8888 || format == DRM_FORMAT_ABGR8888;
++    }
++
++    uint32_t hosReadXRGB(uint32_t px, uint32_t format) {
++        switch (format) {
++            case DRM_FORMAT_XBGR8888:
++            case DRM_FORMAT_ABGR8888: {
++                const uint32_t r = px & 0x000000FFu;
++                const uint32_t g = px & 0x0000FF00u;
++                const uint32_t b = (px & 0x00FF0000u) >> 16;
++                return 0xFF000000u | (r << 16) | g | b;
++            }
++            default: return 0xFF000000u | (px & 0x00FFFFFFu);
++        }
++    }
++
++    uint32_t hosWriteFormat(uint32_t xrgb, uint32_t format) {
++        switch (format) {
++            case DRM_FORMAT_XBGR8888:
++            case DRM_FORMAT_ABGR8888: {
++                const uint32_t r = (xrgb >> 16) & 0xFFu;
++                const uint32_t g = xrgb & 0x0000FF00u;
++                const uint32_t b = xrgb & 0x000000FFu;
++                return 0xFF000000u | (b << 16) | g | r;
++            }
++            default: return 0xFF000000u | (xrgb & 0x00FFFFFFu);
++        }
++    }
++
++    uint8_t hosAlpha(uint32_t px, uint32_t format) {
++        if (format == DRM_FORMAT_ARGB8888 || format == DRM_FORMAT_ABGR8888)
++            return static_cast<uint8_t>(px >> 24);
++        return 0xFF;
++    }
++
++    uint32_t hosBlendOver(uint32_t src, uint32_t dst, uint8_t alpha) {
++        if (alpha == 0xFF)
++            return src;
++        if (alpha == 0)
++            return dst;
++
++        const uint32_t inv = 255u - alpha;
++        const uint32_t sr  = (src >> 16) & 0xFFu;
++        const uint32_t sg  = (src >> 8) & 0xFFu;
++        const uint32_t sb  = src & 0xFFu;
++        const uint32_t dr  = (dst >> 16) & 0xFFu;
++        const uint32_t dg  = (dst >> 8) & 0xFFu;
++        const uint32_t db  = dst & 0xFFu;
++        return 0xFF000000u | (((sr * alpha + dr * inv) / 255u) << 16) | (((sg * alpha + dg * inv) / 255u) << 8) | ((sb * alpha + db * inv) / 255u);
++    }
++
++    bool hosBeginCanvas(SP<Aquamarine::IBuffer> buffer, SHosCPUCanvas& canvas) {
++        if (!buffer || !(buffer->caps() & Aquamarine::BUFFER_CAPABILITY_DATAPTR))
++            return false;
++
++        auto attrs                    = buffer->dmabuf();
++        auto [pixelData, fmt, bufLen] = buffer->beginDataPtr(0);
++        if (!pixelData || !bufLen)
++            return false;
++
++        canvas.data   = pixelData;
++        canvas.width  = static_cast<uint32_t>(buffer->size.x);
++        canvas.height = static_cast<uint32_t>(buffer->size.y);
++        canvas.stride = attrs.success && attrs.strides.at(0) ? attrs.strides.at(0) : canvas.width * 4;
++        canvas.format = fmt ? fmt : (attrs.success ? attrs.format : DRM_FORMAT_XRGB8888);
++        canvas.size   = bufLen;
++
++        if (!canvas.width || !canvas.height || !canvas.stride || !hosFormatIs32(canvas.format) || canvas.stride < canvas.width * 4 ||
++            canvas.size < static_cast<size_t>(canvas.stride) * canvas.height) {
++            buffer->endDataPtr();
++            canvas = {};
++            return false;
++        }
++
++        return true;
++    }
++
++    void hosClearCanvas(const SHosCPUCanvas& canvas, uint32_t xrgb) {
++        const uint32_t px = hosWriteFormat(xrgb, canvas.format);
++        for (uint32_t y = 0; y < canvas.height; ++y) {
++            auto row = reinterpret_cast<uint32_t*>(canvas.data + static_cast<size_t>(y) * canvas.stride);
++            for (uint32_t x = 0; x < canvas.width; ++x)
++                row[x] = px;
++        }
++    }
++
++    bool hosBlitSurface(SP<CWLSurfaceResource> surface, const Vector2D& surfaceOffset, const CBox& windowBox, const Vector2D& monitorPos, const SHosCPUCanvas& dst) {
++        if (!surface || !surface->m_current.buffer)
++            return false;
++
++        auto srcBuffer = surface->m_current.buffer.m_buffer;
++        if (!srcBuffer)
++            return false;
++
++        auto shm = srcBuffer->shm();
++        if (!shm.success || !hosFormatIs32(shm.format) || shm.stride < static_cast<uint32_t>(shm.size.x) * 4)
++            return false;
++
++        auto [srcData, ignoredFmt, srcLen] = srcBuffer->beginDataPtr(0);
++        if (!srcData)
++            return false;
++
++        const int srcW = static_cast<int>(shm.size.x);
++        const int srcH = static_cast<int>(shm.size.y);
++        if (srcW <= 0 || srcH <= 0 || srcLen < static_cast<size_t>(shm.stride) * static_cast<size_t>(srcH)) {
++            srcBuffer->endDataPtr();
++            return false;
++        }
++
++        const double scaleX = surface->m_current.size.x > 0.0 ? windowBox.width / surface->m_current.size.x : 1.0;
++        const double scaleY = surface->m_current.size.y > 0.0 ? windowBox.height / surface->m_current.size.y : 1.0;
++        const int    dstX   = static_cast<int>(windowBox.x - monitorPos.x + surfaceOffset.x * scaleX);
++        const int    dstY   = static_cast<int>(windowBox.y - monitorPos.y + surfaceOffset.y * scaleY);
++        const int    dstW   = std::max(1, static_cast<int>(surface->m_current.size.x * scaleX));
++        const int    dstH   = std::max(1, static_cast<int>(surface->m_current.size.y * scaleY));
++
++        const int x0 = std::max(0, dstX);
++        const int y0 = std::max(0, dstY);
++        const int x1 = std::min(static_cast<int>(dst.width), dstX + dstW);
++        const int y1 = std::min(static_cast<int>(dst.height), dstY + dstH);
++        if (x0 >= x1 || y0 >= y1) {
++            srcBuffer->endDataPtr();
++            return false;
++        }
++
++        for (int y = y0; y < y1; ++y) {
++            const int sy     = std::clamp(((y - dstY) * srcH) / dstH, 0, srcH - 1);
++            auto      srcRow = reinterpret_cast<const uint32_t*>(srcData + static_cast<size_t>(sy) * shm.stride);
++            auto      dstRow = reinterpret_cast<uint32_t*>(dst.data + static_cast<size_t>(y) * dst.stride);
++
++            for (int x = x0; x < x1; ++x) {
++                const int      sx       = std::clamp(((x - dstX) * srcW) / dstW, 0, srcW - 1);
++                const uint32_t rawSrc   = srcRow[sx];
++                const uint32_t srcXRGB  = hosReadXRGB(rawSrc, shm.format);
++                const uint32_t dstXRGB  = hosReadXRGB(dstRow[x], dst.format);
++                const uint32_t outXRGB  = hosBlendOver(srcXRGB, dstXRGB, hosAlpha(rawSrc, shm.format));
++                dstRow[x]               = hosWriteFormat(outXRGB, dst.format);
++            }
++        }
++
++        srcBuffer->endDataPtr();
++        return true;
++    }
++
++    bool hosComposeShmWindows(SP<Aquamarine::IBuffer> output, PHLMONITORREF monitor) {
++        if (!output || !monitor)
++            return false;
++
++        SHosCPUCanvas dst;
++        if (!hosBeginCanvas(output, dst))
++            return false;
++
++        hosClearCanvas(dst, 0xFF0F1720u);
++
++        uint32_t blits = 0;
++        for (auto const& w : g_pCompositor->m_windows) {
++            if (!w || !w->m_isMapped || !w->wlSurface() || !w->wlSurface()->resource())
++                continue;
++
++            CBox box = {w->m_realPosition->value(), w->m_realSize->value()};
++            if (box.width <= 0 || box.height <= 0)
++                box = {w->m_position, w->m_size};
++            if (box.width <= 0 || box.height <= 0)
++                continue;
++
++            const auto monitorPos = monitor->m_position;
++            struct SBlitCtx {
++                const CBox*          box;
++                const Vector2D*      monitorPos;
++                const SHosCPUCanvas* dst;
++                uint32_t*            blits;
++            } ctx{&box, &monitorPos, &dst, &blits};
++
++            w->wlSurface()->resource()->breadthfirst(
++                [](SP<CWLSurfaceResource> surface, const Vector2D& offset, void* data) {
++                    auto* ctx = static_cast<SBlitCtx*>(data);
++                    if (hosBlitSurface(surface, offset, *ctx->box, *ctx->monitorPos, *ctx->dst))
++                        ++*ctx->blits;
++                },
++                &ctx);
++        }
++
++        output->endDataPtr();
++
++        static bool logged = false;
++        static bool loggedPositive = false;
++        if (!logged || (blits > 0 && !loggedPositive)) {
++            Log::logger->log(Log::WARN, "renderer: HOS G6 wl_shm software compositor blitted {} surface(s)", blits);
++            logged = true;
++            if (blits > 0)
++                loggedPositive = true;
++        }
++
++        return blits > 0;
++    }
++}
++
+ CHyprGLRenderer::CHyprGLRenderer() : IHyprRenderer(), m_elementRenderer(makeUnique<CGLElementRenderer>()) {}
+ 
+ IHyprRenderer::eType CHyprGLRenderer::type() {
+@@ -159,6 +369,19 @@
+         }
+ 
+         m_renderPass.clear();
++        if (hosComposeShmWindows(m_currentBuffer, PMONITOR)) {
++            PMONITOR->m_output->state->setBuffer(m_currentBuffer);
++            // The wl_shm CPU compositor writes directly into m_currentBuffer.
++            // A GL framebuffer readback here re-enters Mesa's swrast path with
++            // no useful source pixels and can fault in the sessionless backend.
++            m_currentRenderbuffer = nullptr;
++            g_pHyprRenderer->m_renderData.damage = CRegion{0, 0, sc<int>(PMONITOR->m_pixelSize.x), sc<int>(PMONITOR->m_pixelSize.y)};
++            m_usedAsyncBuffers.clear();
++            if (renderingDoneCallback)
++                renderingDoneCallback();
++            return;
++        }
++
+         g_pHyprRenderer->bindFB(m_currentRenderbuffer->getFB());
+         g_pHyprOpenGL->scissor(nullptr);
+         glClearColor(0.06F, 0.09F, 0.12F, 1.F);

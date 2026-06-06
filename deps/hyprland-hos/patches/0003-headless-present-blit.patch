@@ -11,7 +11,7 @@
  #include <sys/timerfd.h>
  #include <cstring>
  #include <unistd.h>
-@@ -14,6 +17,26 @@ using namespace Hyprutils::Math;
+@@ -14,6 +17,104 @@ using namespace Hyprutils::Math;
  
  #define TIMESPEC_NSEC_PER_SEC 1000000000LL
  
@@ -33,12 +33,90 @@
 +            fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
 +        return fd;
 +    }
++
++    struct SHosDisplayMode {
++        uint32_t width       = 1280;
++        uint32_t height      = 800;
++        uint32_t scale       = 1;
++        uint32_t refreshHz   = 60;
++        uint32_t forceMode   = 0;
++    };
++
++    bool hosKeyMatches(const char* buf, size_t start, size_t end, const char* key) {
++        size_t i = 0;
++        while (key[i]) {
++            if (start + i >= end || buf[start + i] != key[i])
++                return false;
++            ++i;
++        }
++        return start + i < end && buf[start + i] == '=';
++    }
++
++    uint32_t hosParseUint(const char* s, size_t len, uint32_t fallback, uint32_t minValue, uint32_t maxValue) {
++        uint64_t value = 0;
++        bool     any   = false;
++        for (size_t i = 0; i < len; ++i) {
++            if (s[i] < '0' || s[i] > '9')
++                break;
++            value = value * 10 + static_cast<uint32_t>(s[i] - '0');
++            any   = true;
++            if (value > maxValue)
++                return fallback;
++        }
++        if (!any || value < minValue)
++            return fallback;
++        return static_cast<uint32_t>(value);
++    }
++
++    uint32_t hosConfigUint(const char* buf, size_t len, const char* key, uint32_t fallback, uint32_t minValue, uint32_t maxValue) {
++        size_t lineStart = 0;
++        while (lineStart < len) {
++            size_t lineEnd = lineStart;
++            while (lineEnd < len && buf[lineEnd] != '\n' && buf[lineEnd] != '\r')
++                ++lineEnd;
++
++            if (hosKeyMatches(buf, lineStart, lineEnd, key)) {
++                size_t keyLen = 0;
++                while (key[keyLen])
++                    ++keyLen;
++                return hosParseUint(buf + lineStart + keyLen + 1, lineEnd - lineStart - keyLen - 1, fallback, minValue, maxValue);
++            }
++
++            lineStart = lineEnd;
++            while (lineStart < len && (buf[lineStart] == '\n' || buf[lineStart] == '\r'))
++                ++lineStart;
++        }
++        return fallback;
++    }
++
++    SHosDisplayMode hosReadDisplayMode() {
++        SHosDisplayMode mode;
++
++        char buf[512];
++        int  fd = open("/display.conf", O_RDONLY | O_CLOEXEC);
++        if (fd < 0)
++            return mode;
++
++        ssize_t n = read(fd, buf, sizeof(buf) - 1);
++        close(fd);
++        if (n <= 0)
++            return mode;
++
++        const size_t len = static_cast<size_t>(n);
++        buf[len]         = '\0';
++        mode.width       = hosConfigUint(buf, len, "display.width", mode.width, 320, 8192);
++        mode.height      = hosConfigUint(buf, len, "display.height", mode.height, 200, 8192);
++        mode.scale       = hosConfigUint(buf, len, "display.scale", mode.scale, 1, 8);
++        mode.refreshHz   = hosConfigUint(buf, len, "display.refresh", mode.refreshHz, 24, 240);
++        mode.forceMode   = hosConfigUint(buf, len, "display.force_mode", mode.forceMode, 0, 1);
++        return mode;
++    }
 +}
 +
  Aquamarine::CHeadlessOutput::CHeadlessOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CHeadlessBackend> backend_) : backend(backend_) {
      name = name_;
  
-@@ -32,6 +55,47 @@ Aquamarine::CHeadlessOutput::~CHeadlessOutput() {
+@@ -32,6 +133,47 @@ Aquamarine::CHeadlessOutput::~CHeadlessOutput() {
  }
  
  bool Aquamarine::CHeadlessOutput::commit() {
@@ -86,15 +164,18 @@
      events.commit.emit();
      state->onCommit();
      needsFrame = false;
-@@ -189,7 +253,10 @@ bool Aquamarine::CHeadlessBackend::createOutput(const std::string& name) {
+@@ -189,7 +331,13 @@ bool Aquamarine::CHeadlessBackend::createOutput(const std::string& name) {
  
      auto output = SP<CHeadlessOutput>(new CHeadlessOutput(outputName, self.lock()));
      outputs.emplace_back(output);
 -    output->modes.emplace_back(SP<SOutputMode>(new SOutputMode(Vector2D{1920, 1080}, 60000, true)));
-+    // EpinAnonymOS: match the Limine framebuffer (g_fb, 1280x800 under QEMU).
-+    // Dumb buffers stay off-screen; commit() presents the selected buffer through
-+    // a small kernel blit into g_fb.
-+    output->modes.emplace_back(SP<SOutputMode>(new SOutputMode(Vector2D{1280, 800}, 60000, true)));
++    // EpinAnonymOS GUI roadmap G7: drive the headless output from the same
++    // display.conf boot module that requests the Limine framebuffer mode.
++    const auto mode = hosReadDisplayMode();
++    backend->log(AQ_LOG_DEBUG, std::format("headless: display mode {}x{}@{}Hz scale={} force={}",
++                                           mode.width, mode.height, mode.refreshHz, mode.scale, mode.forceMode));
++    output->modes.emplace_back(SP<SOutputMode>(new SOutputMode(Vector2D{static_cast<double>(mode.width), static_cast<double>(mode.height)},
++                                                               static_cast<int64_t>(mode.refreshHz) * 1000, true)));
      output->swapchain = CSwapchain::create(backend->primaryAllocator, self.lock());
      output->self      = output;
      backend->events.newOutput.emit(SP<IOutput>(output));

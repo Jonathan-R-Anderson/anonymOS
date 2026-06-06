@@ -1,0 +1,17 @@
+--- a/src/protocols/core/Compositor.cpp	2026-06-05 18:09:33.987109702 -0500
++++ b/src/protocols/core/Compositor.cpp	2026-06-05 18:09:33.963910292 -0500
+@@ -598,9 +598,11 @@
+     }
+ 
+ 
+-    // release the buffer if it's synchronous (SHM) as updateSynchronousTexture() has copied the buffer data to a GPU tex
+-    // if it doesn't have a role, we can't release it yet, in case it gets turned into a cursor.
+-    if (m_current.buffer && m_current.buffer->isSynchronous() && m_role->role() != SURFACE_ROLE_UNASSIGNED)
++    // EpinAnonymOS GUI roadmap G6: the CPU-readback renderer cannot sample the GL
++    // texture path reliably, so keep committed wl_shm buffers attached to desktop
++    // surfaces for the software present fallback. Cursor buffers still release
++    // immediately because they are copied separately in updateCursorShm().
++    if (m_current.buffer && m_current.buffer->isSynchronous() && m_role->role() != SURFACE_ROLE_UNASSIGNED && m_role->role() == SURFACE_ROLE_CURSOR)
+         dropCurrentBuffer();
+ }
+ 

@@ -6,6 +6,7 @@ input-send-event (PS/2 keyboard) and checks the terminal's serial mirror for the
 command output.  Used by scripts/qemu-g4-verify.sh.
 """
 import json
+import os
 import socket
 import sys
 import time
@@ -85,14 +86,24 @@ class QMP:
                                    "key": {"type": "qcode", "data": qcode}}}])
 
     def type_str(self, s):
+        key_method = os.getenv("G4_KEY_METHOD", "input-send-event")
+        key_down_delay = float(os.getenv("G4_KEY_DOWN_DELAY", "0.05"))
+        key_up_delay = float(os.getenv("G4_KEY_UP_DELAY", "0.08"))
+        pre_enter_delay = float(os.getenv("G4_PRE_ENTER_DELAY", "0"))
         for ch in s:
             qc = QCODE.get(ch)
             if not qc:
                 continue
-            self.key(qc, True)
-            time.sleep(0.03)
-            self.key(qc, False)
-            time.sleep(0.05)
+            if ch == '\n' and pre_enter_delay > 0:
+                time.sleep(pre_enter_delay)
+            if key_method == "input-send-event":
+                self.key(qc, True)
+                time.sleep(key_down_delay)
+                self.key(qc, False)
+                time.sleep(key_up_delay)
+            else:
+                self.cmd("human-monitor-command", **{"command-line": f"sendkey {qc}"})
+                time.sleep(key_down_delay + key_up_delay)
 
 
 def wait_for(serial_path, marker, timeout):
@@ -111,6 +122,9 @@ def wait_for(serial_path, marker, timeout):
 def main():
     qmp_path, serial_path = sys.argv[1], sys.argv[2]
     qmp = QMP(qmp_path)
+    focus_only = os.getenv("G4_FOCUS_ONLY") == "1"
+    skip_focus = os.getenv("G4_SKIP_FOCUS") == "1"
+    command = os.getenv("G4_COMMAND", "echo g4pass\n")
     print("[g4] QMP connected, waiting for shell spawn...", flush=True)
 
     if not wait_for(serial_path, "G4 SHELL", timeout=420):
@@ -123,13 +137,20 @@ def main():
     # let the shell's banner/prompt drain into the terminal
     time.sleep(5)
 
-    print("[g4] clicking terminal to focus it", flush=True)
-    qmp.focus_window()
-    if wait_for(serial_path, "G4 FOCUS", timeout=10):
-        print("[g4] terminal has keyboard focus", flush=True)
+    if not skip_focus:
+        print("[g4] clicking terminal to focus it", flush=True)
+        qmp.focus_window()
+        if wait_for(serial_path, "G4 FOCUS", timeout=10):
+            print("[g4] terminal has keyboard focus", flush=True)
+        if wait_for(serial_path, "G9 REDRAW", timeout=15):
+            print("[g4] terminal completed post-map redraw", flush=True)
+        time.sleep(float(os.getenv("G4_POST_FOCUS_DELAY", "1.0")))
 
-    print("[g4] typing: echo g4pass", flush=True)
-    qmp.type_str("echo g4pass\n")
+    if focus_only:
+        return 0
+
+    print(f"[g4] typing: {command.strip()}", flush=True)
+    qmp.type_str(command)
 
     ok = wait_for(serial_path, "G4OUT: g4pass", timeout=40)
     print(f"[g4] typed command output observed: {ok}", flush=True)

@@ -87,8 +87,16 @@ CMonitorRule CMonitorRuleManager::get(const PHLMONITOR PMONITOR) {
     Log::logger->log(Log::WARN, "No rule found for {}, trying to use the first.", PMONITOR->m_name);
 
     for (auto const& r : m_rules) {
-        if (r.m_name.empty())
-            return applyWlrOutputConfig(r);
+        if (r.m_name.empty()) {
+            auto rule = r;
+            if (PMONITOR->m_name == "FALLBACK" && rule.m_scale < 0.1F) {
+                rule.m_scale = 1.F;
+                if (rule.m_offset == Vector2D{-INT32_MAX, -INT32_MAX})
+                    rule.m_offset = Vector2D{0, 0};
+                Log::logger->log(Log::DEBUG, "EpinAnonymOS: clamping fallback monitor {} to scale 1", PMONITOR->m_name);
+            }
+            return applyWlrOutputConfig(rule);
+        }
     }
 
     Log::logger->log(Log::WARN, "No rules configured. Using the default hardcoded one.");
@@ -99,6 +107,11 @@ CMonitorRule CMonitorRuleManager::get(const PHLMONITOR PMONITOR) {
     fallbackRule.m_resolution = Vector2D{};
     fallbackRule.m_offset     = Vector2D{-INT32_MAX, -INT32_MAX};
     fallbackRule.m_scale      = -1;
+    if (PMONITOR->m_name == "FALLBACK") {
+        fallbackRule.m_offset = Vector2D{0, 0};
+        fallbackRule.m_scale  = 1.F;
+        Log::logger->log(Log::DEBUG, "EpinAnonymOS: using fixed fallback monitor scale 1 for {}", PMONITOR->m_name);
+    }
     return applyWlrOutputConfig(fallbackRule);
 }
 

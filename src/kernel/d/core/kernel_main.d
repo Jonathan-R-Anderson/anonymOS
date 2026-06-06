@@ -148,6 +148,8 @@ __gshared bool g_guiClientStarted = false;
 __gshared bool g_guiClientListenerSeen = false;
 __gshared ulong g_guiClientLaunchTick = 0;
 private enum ulong GUI_CLIENT_SETTLE_TICKS = 6000;
+private enum ulong USER_MAIN_PIE_BASE = 0x550000000000UL;
+private enum ulong USER_INTERP_BASE   = 0x5A0000000000UL;
 
 private bool futexWaitMatches(int tid, ulong uaddr, uint wakeBits) {
     if (tid < 0 || tid >= MAX_TASKS) return false;
@@ -622,8 +624,12 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     task.mmapNext    = 0x740000000000UL;
 
     ulong elfVirt = phys_to_virt(modPhys);
+    ushort elfType = *cast(ushort*)(elfVirt + 16);
+    ulong mainBias = (elfType == ET_DYN) ? USER_MAIN_PIE_BASE : 0;
+    char[256] interpPath;
     linuxNoteElfLoad(); // Phase 12: LinuxELFLoaderObject sees the execve load
-    auto res = loadElf(*task, elfVirt, modPhys);
+    auto res = loadElf(*task, elfVirt, modPhys, mainBias,
+                       interpPath.ptr, interpPath.length);
     if (!res.ok) {
         klog("[exec] loadElf failed\n");
         return -8; // ENOEXEC
@@ -632,6 +638,27 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // Set brk base to top of ELF image
     task.brkStart   = res.topVirt;
     task.brkCurrent = res.topVirt;
+
+    ulong entryRip = res.entry;
+    ulong atBase = 0;
+    if (res.hasInterp) {
+        klog("[exec] PT_INTERP="); klog(interpPath.ptr); klog("\n");
+        ulong ipPhys = 0, ipSize = 0;
+        if (!findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
+            klog("[exec] interp module NOT FOUND\n");
+            return -2;
+        }
+        ulong ipVirt = phys_to_virt(ipPhys);
+        auto ires = loadElf(*task, ipVirt, ipPhys, USER_INTERP_BASE, null, 0);
+        if (!ires.ok) {
+            klog("[exec] interp load FAILED\n");
+            return -8;
+        }
+        entryRip = ires.entry;
+        atBase = USER_INTERP_BASE;
+        klog("[exec] interp loaded base="); klog_hex(USER_INTERP_BASE);
+        klog(" entry="); klog_hex(entryRip); klog("\n");
+    }
 
     // Allocate user stack (32 pages = 128 KB)
     enum stackPages = 32;
@@ -659,8 +686,8 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         res.phdrVaddr,
         cast(ulong)res.phEnt,
         cast(ulong)res.phNum,
-        0,
-        0,
+        atBase,
+        mainBias,
         cast(ulong)execName
     ];
     ulong rsp = linux_seed_initial_stack(
@@ -671,12 +698,12 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     // giving libc-linked programs the normal process-entry stack.
     if (isFreestandingExecName(execName) && (rsp & 0xF) == 0) rsp -= 8;
 
-    klog("[exec] entry="); klog_hex(res.entry);
+    klog("[exec] entry="); klog_hex(entryRip);
     klog(" rsp="); klog_hex(rsp); klog("\n");
 
     // Reset registers
     for (uint r = 0; r < NUM_REGS; r++) task.regs[r] = 0;
-    task.regs[REG_RIP]    = res.entry;
+    task.regs[REG_RIP]    = entryRip;
     task.regs[REG_RSP]    = rsp;
     task.regs[REG_RFLAGS] = 0x202;
 
@@ -695,21 +722,23 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     return 0;
 }
 
-// GUI roadmap G2: launch the wl_shm xdg-shell demo once Hyprland has a Wayland
-// listener. The client is a static boot module, reusing the existing task/exec
-// machinery. Best-effort and isolated: failure logs and leaves desktop boot
-// untouched.
-private void spawnWaylandClient() {
+// GUI roadmap clients: launch Wayland clients once Hyprland has a listener. Each
+// client is a boot module, reusing the existing task/exec machinery. Best-effort
+// and isolated: failure logs and leaves desktop boot untouched.
+private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     int t = allocTask();
-    if (t <= 0) { klog("[g2] no free task slot for wl-shm-demo\n"); return; }
+    if (t <= 0) {
+        klog(tag); klog(" no free task slot for "); klog(prog); klog("\n");
+        return false;
+    }
     g_tasks[t].parentId         = 0;
     g_tasks[t].processLeaderTid = t;
     g_tasks[t].userObjId        = g_tasks[0].userObjId;
     g_tasks[t].untypedObjId     = untypedCreateProcess(0);
     if (g_tasks[t].untypedObjId == 0) {
-        klog("[g2] no untyped budget for wl-shm-demo\n");
+        klog(tag); klog(" no untyped budget for "); klog(prog); klog("\n");
         releaseTask(t);
-        return;
+        return false;
     }
     g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
     capTableClear(g_tasks[t].capTabId);
@@ -719,17 +748,30 @@ private void spawnWaylandClient() {
     ulong savedCr3 = x64ReadCR3();
     uint savedUntyped = physActiveUntyped();
     physSetActiveUntyped(g_tasks[t].untypedObjId);
-    // GUI roadmap G4: autostart the software terminal (was wl-shm-demo for G2/G3).
-    long r = execveTask(t, cast(ulong)"wl-term\0".ptr, 0, 0);
+    long r = execveTask(t, cast(ulong)prog, 0, 0);
     physSetActiveUntyped(savedUntyped);
     x64WriteCR3(savedCr3);
     if (r != 0) {
-        klog("[g4] wl-term spawn failed\n");
+        klog(tag); klog(" "); klog(prog); klog(" spawn failed\n");
         releaseTask(t);
+        return false;
+    }
+    klog(tag); klog(" "); klog(prog); klog(" launched as task ");
+    klog_hex(cast(ulong)t); klog("\n");
+    g_current_task_id = cast(ulong)t;
+    return true;
+}
+
+private void spawnWaylandClients() {
+    const int mode = guiAutostartMode();
+    if (mode == 0) {
+        klog("[gui] autostart disabled by display.conf\n");
         return;
     }
-    klog("[g4] wl-term launched as task "); klog_hex(cast(ulong)t); klog("\n");
-    g_current_task_id = cast(ulong)t;
+    if (mode == 1 || mode == 3)
+        spawnWaylandProgram("wl-term\0".ptr, "[g4]\0".ptr);
+    if (mode == 2 || mode == 3)
+        spawnWaylandProgram("wl-cairo-demo\0".ptr, "[g11]\0".ptr);
 }
 
 private void maybeSpawnWaylandClient() {
@@ -746,8 +788,8 @@ private void maybeSpawnWaylandClient() {
     if (now < g_guiClientLaunchTick) return;
 
     g_guiClientStarted = true;
-    klog("[g2] wayland listener ready; launching wl-shm-demo\n");
-    spawnWaylandClient();
+    klog("[g11] wayland listener ready; launching GUI clients\n");
+    spawnWaylandClients();
 }
 
 // ------------------------------------------------------------------
@@ -1994,10 +2036,8 @@ void d_kernel_main() {
     // Load the ELF binary.  A fixed-address ET_EXEC loads at its own vaddrs
     // (bias 0); an ET_DYN (PIE) main exe is relocated to a high base.
     ulong elfVirt = phys_to_virt(initPhys);
-    enum ulong MAIN_PIE_BASE = 0x550000000000UL;
-    enum ulong INTERP_BASE   = 0x5A0000000000UL;
     ushort initType = *cast(ushort*)(elfVirt + 16);
-    ulong mainBias = (initType == 3 /*ET_DYN*/) ? MAIN_PIE_BASE : 0;
+    ulong mainBias = (initType == 3 /*ET_DYN*/) ? USER_MAIN_PIE_BASE : 0;
 
     char[256] interpPath;
     linuxNoteElfLoad(); // Phase 12: LinuxELFLoaderObject sees the init load
@@ -2025,11 +2065,11 @@ void d_kernel_main() {
         ulong ipPhys = 0, ipSize = 0;
         if (findInterpModule(interpPath.ptr, ipPhys, ipSize)) {
             ulong ipVirt = phys_to_virt(ipPhys);
-            auto ires = loadElf(g_tasks[0], ipVirt, ipPhys, INTERP_BASE, null, 0);
+            auto ires = loadElf(g_tasks[0], ipVirt, ipPhys, USER_INTERP_BASE, null, 0);
             if (ires.ok) {
                 entryRip = ires.entry;
-                atBase   = INTERP_BASE;
-                klog("[dkernel] interp loaded base="); klog_hex(INTERP_BASE);
+                atBase   = USER_INTERP_BASE;
+                klog("[dkernel] interp loaded base="); klog_hex(USER_INTERP_BASE);
                 klog(" entry="); klog_hex(entryRip); klog("\n");
             } else {
                 klog("[dkernel] interp load FAILED\n");
@@ -2086,7 +2126,7 @@ void d_kernel_main() {
 
     g_guiClientAutostartEnabled = initIsHyprland;
     if (g_guiClientAutostartEnabled)
-        klog("[g2] wl-shm-demo autostart armed\n");
+        klog("[g11] GUI client autostart armed\n");
 
     // Set up IDT and SYSCALL MSRs
     x64_ready_for_userspace();

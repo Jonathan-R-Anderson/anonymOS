@@ -151,8 +151,23 @@ patch-hyprland-source:
 	@if ! grep -q 'no shm_open()/POSIX shm' $(HYPRLAND_SRC)/src/helpers/MiscFunctions.cpp; then \
 		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-shm-memfd.patch; \
 	fi
+	@if ! grep -q 'GUI roadmap G6: the CPU-readback renderer' $(HYPRLAND_SRC)/src/protocols/core/Compositor.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g6-shm-buffer-retain.patch; \
+	fi
+	@if ! grep -q 'fixed fallback monitor scale 1' $(HYPRLAND_SRC)/src/config/shared/monitor/MonitorRuleManager.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g7-fallback-scale.patch; \
+	fi
+	@if ! grep -q 'GUI roadmap G8: wl_shm clients' $(HYPRLAND_SRC)/src/protocols/core/Compositor.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g8-surface-commit-damage.patch; \
+	fi
 	@if ! grep -q 'GUI roadmap G5: report mapped window' $(HYPRLAND_SRC)/src/render/GLRenderer.cpp; then \
 		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g5-identity-borders.patch; \
+	fi
+	@if ! grep -q 'hosComposeShmWindows' $(HYPRLAND_SRC)/src/render/GLRenderer.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g9-shm-cpu-compose.patch; \
+	fi
+	@if ! grep -q 'hasRenderableBuffer' $(HYPRLAND_SRC)/src/protocols/XDGShell.cpp; then \
+		patch -d $(HYPRLAND_SRC) -p1 < $(SELF)/patches/hyprland-g11-xdg-shm-buffer-map.patch; \
 	fi
 
 check: prepare raw-check

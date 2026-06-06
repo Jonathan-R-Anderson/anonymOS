@@ -63,7 +63,8 @@ index 2a23a555a..d49e56c0c 100644
 +                r.h     = static_cast<int32_t>(S.y);
 +                r.pid   = static_cast<uint32_t>(w->getPID());
 +            }
-+            ioctl(hosFD, HOS_IOCTL_WINDOWS, &wins);
++            if (wins.count > 0)
++                ioctl(hosFD, HOS_IOCTL_WINDOWS, &wins);
 +        }
 +    }
 +

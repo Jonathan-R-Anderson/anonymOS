@@ -1,0 +1,60 @@
+diff --git a/src/config/shared/monitor/MonitorRuleManager.cpp b/src/config/shared/monitor/MonitorRuleManager.cpp
+index c4ce4a230..54bdd3a73 100644
+--- a/src/config/shared/monitor/MonitorRuleManager.cpp
++++ b/src/config/shared/monitor/MonitorRuleManager.cpp
+@@ -87,8 +87,16 @@ CMonitorRule CMonitorRuleManager::get(const PHLMONITOR PMONITOR) {
+     Log::logger->log(Log::WARN, "No rule found for {}, trying to use the first.", PMONITOR->m_name);
+ 
+     for (auto const& r : m_rules) {
+-        if (r.m_name.empty())
+-            return applyWlrOutputConfig(r);
++        if (r.m_name.empty()) {
++            auto rule = r;
++            if (PMONITOR->m_name == "FALLBACK" && rule.m_scale < 0.1F) {
++                rule.m_scale = 1.F;
++                if (rule.m_offset == Vector2D{-INT32_MAX, -INT32_MAX})
++                    rule.m_offset = Vector2D{0, 0};
++                Log::logger->log(Log::DEBUG, "EpinAnonymOS: clamping fallback monitor {} to scale 1", PMONITOR->m_name);
++            }
++            return applyWlrOutputConfig(rule);
++        }
+     }
+ 
+     Log::logger->log(Log::WARN, "No rules configured. Using the default hardcoded one.");
+@@ -99,6 +107,11 @@ CMonitorRule CMonitorRuleManager::get(const PHLMONITOR PMONITOR) {
+     fallbackRule.m_resolution = Vector2D{};
+     fallbackRule.m_offset     = Vector2D{-INT32_MAX, -INT32_MAX};
+     fallbackRule.m_scale      = -1;
++    if (PMONITOR->m_name == "FALLBACK") {
++        fallbackRule.m_offset = Vector2D{0, 0};
++        fallbackRule.m_scale  = 1.F;
++        Log::logger->log(Log::DEBUG, "EpinAnonymOS: using fixed fallback monitor scale 1 for {}", PMONITOR->m_name);
++    }
+     return applyWlrOutputConfig(fallbackRule);
+ }
+ 
+diff --git a/src/desktop/reserved/ReservedArea.hpp b/src/desktop/reserved/ReservedArea.hpp
+index ca5978a7c..d0be94e8c 100644
+--- a/src/desktop/reserved/ReservedArea.hpp
++++ b/src/desktop/reserved/ReservedArea.hpp
+@@ -38,15 +38,15 @@ namespace Desktop {
+       private:
+         void     calculate();
+ 
+-        Vector2D m_topLeft, m_bottomRight;
+-        Vector2D m_initialTopLeft, m_initialBottomRight;
++        Vector2D m_topLeft = {0, 0}, m_bottomRight = {0, 0};
++        Vector2D m_initialTopLeft = {0, 0}, m_initialBottomRight = {0, 0};
+ 
+         bool     m_ok = true;
+ 
+         struct SDynamicData {
+-            Vector2D topLeft, bottomRight;
++            Vector2D topLeft = {0, 0}, bottomRight = {0, 0};
+         };
+ 
+         std::array<SDynamicData, RESERVED_DYNAMIC_TYPE_END> m_dynamicReserved;
+     };
+-};
+\ No newline at end of file
++};

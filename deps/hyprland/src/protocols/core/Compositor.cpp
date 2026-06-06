@@ -561,7 +561,9 @@ void CWLSurfaceResource::commitState(SSurfaceState& state) {
     if (!state.updated.all && m_mapped && state.fifoScheduled)
         return;
 
-    auto lastTexture = m_current.texture;
+    const bool wasMapped       = m_mapped;
+    const bool hosVisualCommit = state.updated.bits.buffer || state.updated.bits.damage || state.updated.bits.offset || state.updated.bits.scale || state.updated.bits.transform;
+    auto       lastTexture     = m_current.texture;
     m_current.updateFrom(state);
 
     if (m_current.buffer) {
@@ -597,9 +599,56 @@ void CWLSurfaceResource::commitState(SSurfaceState& state) {
             nullptr);
     }
 
-    // release the buffer if it's synchronous (SHM) as updateSynchronousTexture() has copied the buffer data to a GPU tex
-    // if it doesn't have a role, we can't release it yet, in case it gets turned into a cursor.
-    if (m_current.buffer && m_current.buffer->isSynchronous() && m_role->role() != SURFACE_ROLE_UNASSIGNED)
+    // EpinAnonymOS GUI roadmap G8: wl_shm clients can commit new pixels without
+    // another input/event edge. Damage the mapped surface box immediately so the
+    // sessionless headless backend schedules a fresh present for the commit.
+    if (wasMapped && hosVisualCommit && m_role->role() != SURFACE_ROLE_CURSOR && g_pHyprRenderer && g_pCompositor) {
+        std::optional<CBox> damageBox;
+        bool                damagedWindow = false;
+
+        if (auto hlSurface = m_hlSurface.lock()) {
+            if (const auto BOX = hlSurface->getSurfaceBoxGlobal(); BOX && !BOX->empty()) {
+                damageBox = *BOX;
+                g_pHyprRenderer->damageBox(*damageBox);
+            }
+        }
+
+        if (!damageBox) {
+            if (const auto WINDOW = g_pCompositor->getWindowFromSurface(m_self.lock())) {
+                g_pHyprRenderer->damageWindow(WINDOW, true);
+                damagedWindow = true;
+            }
+        }
+
+        if (damageBox || damagedWindow) {
+            size_t rendered = 0;
+            for (auto const& monitor : g_pCompositor->m_monitors) {
+                if (!monitor || !monitor->m_output)
+                    continue;
+                if (damageBox && !damageBox->overlaps(monitor->logicalBox()))
+                    continue;
+
+                g_pCompositor->scheduleFrameForMonitor(monitor, Aquamarine::IOutput::AQ_SCHEDULE_DAMAGE);
+                if (!monitor->m_renderingActive) {
+                    g_pHyprRenderer->renderMonitor(monitor);
+                    ++rendered;
+                }
+            }
+
+            if (damageBox)
+                Log::logger->log(Log::DEBUG, "G8 surface commit damaged box xy: {}, {} wh: {}, {} rendered_monitors={}", damageBox->x, damageBox->y, damageBox->w, damageBox->h,
+                                 rendered);
+            else
+                Log::logger->log(Log::DEBUG, "G8 surface commit damaged owning window rendered_monitors={}", rendered);
+        } else
+            Log::logger->log(Log::TRACE, "G8 surface commit had no desktop box/window to damage");
+    }
+
+    // EpinAnonymOS GUI roadmap G6: the CPU-readback renderer cannot sample the GL
+    // texture path reliably, so keep committed wl_shm buffers attached to desktop
+    // surfaces for the software present fallback. Cursor buffers still release
+    // immediately because they are copied separately in updateCursorShm().
+    if (m_current.buffer && m_current.buffer->isSynchronous() && m_role->role() != SURFACE_ROLE_UNASSIGNED && m_role->role() == SURFACE_ROLE_CURSOR)
         dropCurrentBuffer();
 }
 

@@ -341,7 +341,51 @@ void bootstrap_kernel(limine_memmap_response* mmap, limine_kernel_address_respon
         klog_hex(g_fb.width);
         klog("x");
         klog_hex(g_fb.height);
+        klog(" pitch=");
+        klog_hex(g_fb.pitch);
+        klog(" bpp=");
+        klog_hex(g_fb.bpp);
+        klog(" model=");
+        klog_hex(g_fb.memory_model);
+        klog(" rgb=");
+        klog_hex(g_fb.red_mask_size);
+        klog("@");
+        klog_hex(g_fb.red_mask_shift);
+        klog(",");
+        klog_hex(g_fb.green_mask_size);
+        klog("@");
+        klog_hex(g_fb.green_mask_shift);
+        klog(",");
+        klog_hex(g_fb.blue_mask_size);
+        klog("@");
+        klog_hex(g_fb.blue_mask_shift);
+        klog(" edid=");
+        klog_hex(g_fb.edid_size);
+        klog(" modes=");
+        klog_hex(g_fb.mode_count);
         klog("\n");
+
+        if (g_fb.modes !is null && g_fb.mode_count > 0) {
+            ulong maxModes = g_fb.mode_count;
+            if (maxModes > 8) maxModes = 8;
+            foreach (i; 0 .. cast(size_t)maxModes) {
+                auto mode = g_fb.modes[i];
+                if (mode is null) continue;
+                klog("[display] mode ");
+                klog_hex(i);
+                klog(": ");
+                klog_hex(mode.width);
+                klog("x");
+                klog_hex(mode.height);
+                klog(" pitch=");
+                klog_hex(mode.pitch);
+                klog(" bpp=");
+                klog_hex(mode.bpp);
+                klog(" model=");
+                klog_hex(mode.memory_model);
+                klog("\n");
+            }
+        }
 
         klog("Clearing framebuffer...\n");
         fb_clear();

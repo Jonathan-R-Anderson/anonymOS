@@ -48,9 +48,9 @@
      };
 --- a/src/backend/Headless.cpp
 +++ b/src/backend/Headless.cpp
-@@ -35,6 +35,36 @@
-             fd = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
-         return fd;
+@@ -113,6 +113,36 @@
+         mode.forceMode   = hosConfigUint(buf, len, "display.force_mode", mode.forceMode, 0, 1);
+         return mode;
      }
 +
 +    // EpinAnonymOS GUI roadmap G3 — evdev bridge.

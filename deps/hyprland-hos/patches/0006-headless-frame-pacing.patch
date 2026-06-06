@@ -1,0 +1,312 @@
+--- a/include/aquamarine/backend/Headless.hpp	2026-06-05 19:39:25.500582804 -0500
++++ b/include/aquamarine/backend/Headless.hpp	2026-06-05 19:39:25.483927455 -0500
+@@ -65,7 +65,17 @@
+ 
+         Hyprutils::Memory::CSharedPointer<std::function<void()>> framecb;
+         bool                                                     frameScheduled = false;
++        bool                                                     watchdogScheduled = false;
++        uint32_t                                                 activeRepaintTicks = 0;
++        uint64_t                                                 frameSequence = 0;
++        uint64_t                                                 presentSequence = 0;
+         std::chrono::steady_clock::time_point                    lastFrame;
++        std::chrono::steady_clock::time_point                    lastFrameRequest;
++        std::chrono::steady_clock::time_point                    lastPresent;
++
++        std::chrono::nanoseconds frameInterval();
++        void                     emitFrame(const char* source);
++        void                     armRepaintWatchdog();
+ 
+         friend class CHeadlessBackend;
+     };
+@@ -114,6 +124,8 @@
+         void dispatchTimers();
+         void updateTimerFD();
+         void addTimer(std::chrono::steady_clock::time_point when, std::function<void(void)> what);
++        void scheduleOutputs(IOutput::scheduleFrameReason reason);
++
+         // EpinAnonymOS G3: kernel evdev mouse → aquamarine pointer bridge.
+         Hyprutils::OS::CFileDescriptor                    mouseFD;
+         Hyprutils::Memory::CSharedPointer<CHeadlessPointer> pointer;
+--- a/src/backend/Headless.cpp	2026-06-05 19:39:25.500855917 -0500
++++ b/src/backend/Headless.cpp	2026-06-05 19:39:25.484806825 -0500
+@@ -114,6 +114,8 @@
+         return mode;
+     }
+ 
++    std::vector<CHeadlessOutput*> g_hosHeadlessOutputs;
++
+     // EpinAnonymOS GUI roadmap G3 — evdev bridge.
+     // The kernel exposes the QEMU/PS2 mouse as a Linux input_event stream on
+     // /dev/input/event1.  We read it directly (no libinput/libseat/udev, none of
+@@ -149,14 +151,11 @@
+ Aquamarine::CHeadlessOutput::CHeadlessOutput(const std::string& name_, Hyprutils::Memory::CWeakPointer<CHeadlessBackend> backend_) : backend(backend_) {
+     name = name_;
+ 
+-    framecb = makeShared<std::function<void()>>([this]() {
+-        frameScheduled = false;
+-        // not sure about removing this since framecb might be called outside of scheduleFrames no?!
+-        lastFrame      = std::chrono::steady_clock::now();
+-        events.frame.emit();
+-    });
++    framecb = makeShared<std::function<void()>>([this]() { emitFrame("callback"); });
+ 
+     lastFrame = std::chrono::steady_clock::now();
++    lastFrameRequest = lastFrame;
++    lastPresent = lastFrame;
+ }
+ 
+ Aquamarine::CHeadlessOutput::~CHeadlessOutput() {
+@@ -164,7 +163,9 @@
+ }
+ 
+ bool Aquamarine::CHeadlessOutput::commit() {
++    const auto commitStart = std::chrono::steady_clock::now();
+     auto buffer = state->internalState.buffer;
++    const auto damageCount = state->internalState.damage.getRects().size();
+ 
+     if (buffer) {
+         if (!(buffer->caps() & BUFFER_CAPABILITY_DATAPTR)) {
+@@ -208,7 +209,21 @@
+     events.commit.emit();
+     state->onCommit();
+     needsFrame = false;
+-    events.present.emit(IOutput::SPresentEvent{.presented = true});
++    ++presentSequence;
++    const auto presentEnd = std::chrono::steady_clock::now();
++    const auto presentUs = std::chrono::duration_cast<std::chrono::microseconds>(presentEnd - commitStart).count();
++    lastPresent = presentEnd;
++    backend->backend->log(AQ_LOG_DEBUG,
++                          std::format("G8 frame {} present {} damage_rects={} duration_us={}", frameSequence, presentSequence, damageCount, presentUs));
++    events.present.emit(IOutput::SPresentEvent{
++        .presented = true,
++        .when      = nullptr,
++        .seq       = static_cast<unsigned int>(presentSequence),
++        .refresh   = static_cast<int>(frameInterval().count()),
++        .flags     = 0,
++    });
++    if (activeRepaintTicks > 0)
++        armRepaintWatchdog();
+     return true;
+ }
+ 
+@@ -228,27 +243,91 @@
+     return backend.lock();
+ }
+ 
++std::chrono::nanoseconds Aquamarine::CHeadlessOutput::frameInterval() {
++    int64_t refreshRatemHz = 60000;
++    auto&   currentState   = state->state();
++
++    if (currentState.mode)
++        refreshRatemHz = currentState.mode->refreshRate;
++    else if (currentState.customMode)
++        refreshRatemHz = currentState.customMode->refreshRate;
++
++    if (refreshRatemHz < 24000)
++        refreshRatemHz = 60000;
++    else if (refreshRatemHz > 240000)
++        refreshRatemHz = 240000;
++
++    return std::chrono::nanoseconds(1000LL * TIMESPEC_NSEC_PER_SEC / refreshRatemHz);
++}
++
++void Aquamarine::CHeadlessOutput::emitFrame(const char* source) {
++    frameScheduled = false;
++    ++frameSequence;
++    lastFrame = std::chrono::steady_clock::now();
++    backend->backend->log(AQ_LOG_DEBUG, std::format("G8 frame {} begin source={} needsFrame={}", frameSequence, source, needsFrame));
++    events.frame.emit();
++
++    if (needsFrame || activeRepaintTicks > 0)
++        armRepaintWatchdog();
++}
++
++void Aquamarine::CHeadlessOutput::armRepaintWatchdog() {
++    if (watchdogScheduled)
++        return;
++
++    watchdogScheduled = true;
++
++    auto       watchdogInterval = frameInterval();
++    const auto minWatchdogInterval = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::milliseconds(33));
++    if (watchdogInterval < minWatchdogInterval)
++        watchdogInterval = minWatchdogInterval;
++
++    backend->addTimer(std::chrono::steady_clock::now() + watchdogInterval, [this, weak = self]() {
++        if (!weak)
++            return;
++
++        watchdogScheduled = false;
++
++        if (activeRepaintTicks > 0)
++            --activeRepaintTicks;
++
++        if (!needsFrame && !frameScheduled && activeRepaintTicks == 0)
++            return;
++
++        if (!frameScheduled) {
++            backend->backend->log(AQ_LOG_DEBUG,
++                                  std::format("G8 watchdog scheduling repaint needsFrame={} active_ticks={}", needsFrame, activeRepaintTicks));
++            scheduleFrame(IOutput::AQ_SCHEDULE_NEEDS_FRAME);
++            return;
++        }
++
++        if (needsFrame || activeRepaintTicks > 0)
++            armRepaintWatchdog();
++    });
++}
++
+ void Aquamarine::CHeadlessOutput::scheduleFrame(const scheduleFrameReason reason) {
+     TRACE(backend->backend->log(AQ_LOG_TRACE,
+                                 std::format("CHeadlessOutput::scheduleFrame: reason {}, needsFrame {}, frameScheduled {}", (uint32_t)reason, needsFrame, frameScheduled)));
+ 
+     needsFrame = true;
++    const auto now = std::chrono::steady_clock::now();
++    lastFrameRequest = now;
+ 
+-    if (frameScheduled)
++    if (frameScheduled) {
++        armRepaintWatchdog();
+         return;
++    }
++
++    // Input dispatch owns the fallback repaint budget.  Damage generated while
++    // rendering a forced frame must not refill it, or stale scheduled frames can
++    // spin forever without letting the compositor return to normal work.
++    armRepaintWatchdog();
+ 
+     frameScheduled = true;
+ 
+     // schedule next frame when it should occur with a timer
+-    int64_t refreshRatemHz = 60000;
+-    auto&   currentState   = state->state();
+-
+-    if (currentState.mode)
+-        refreshRatemHz = currentState.mode->refreshRate;
+-    else if (currentState.customMode)
+-        refreshRatemHz = currentState.customMode->refreshRate;
+-
+-    const auto FRAME_INTERVAL  = std::chrono::nanoseconds(1000LL * TIMESPEC_NSEC_PER_SEC / refreshRatemHz);
++    const auto FRAME_INTERVAL  = frameInterval();
+     const auto NEXT_FRAME_TIME = lastFrame + FRAME_INTERVAL;
+ 
+     if (std::chrono::steady_clock::now() >= NEXT_FRAME_TIME) {
+@@ -255 +334,6 @@
+-        backend->backend->addIdleEvent(framecb);
++        backend->addTimer(now + std::chrono::milliseconds(1), [this, weak = self]() {
++            if (!weak)
++                return;
++
++            emitFrame("immediate-timer");
++        });
+@@ -256,19 +340,17 @@
+         return;
+     }
+ 
+-    backend->addTimer(NEXT_FRAME_TIME, [this, weak = self, NEXT_FRAME_TIME]() {
++    backend->addTimer(NEXT_FRAME_TIME, [this, weak = self]() {
+         if (!weak)
+             return;
+ 
+-        if (framecb && *framecb)
+-            (*framecb)();
+-        
+-        lastFrame = NEXT_FRAME_TIME;
++        emitFrame("timer");
+     });
+ }
+ 
+ bool Aquamarine::CHeadlessOutput::destroy() {
+     events.destroy.emit();
++    std::erase(g_hosHeadlessOutputs, this);
+     std::erase(backend->outputs, self.lock());
+     return true;
+ }
+@@ -338,9 +420,11 @@
+         return;
+ 
+     SHosInputEvent ev;
++    bool           hadKey = false;
+     while (read(kbdFD.get(), &ev, sizeof(ev)) == sizeof(ev)) {
+         if (ev.type != HOS_EV_KEY)
+             continue; // ignore EV_SYN/EV_MSC; Hyprland tracks repeat itself
++        hadKey = true;
+         // ev.code is the evdev keycode; Hyprland adds the +8 xkb offset and
+         // derives modifiers from its own keymap.
+         keyboard->events.key.emit(IKeyboard::SKeyEvent{
+@@ -349,6 +433,9 @@
+             .pressed = ev.value != 0,
+         });
+     }
++
++    if (hadKey)
++        scheduleOutputs(IOutput::AQ_SCHEDULE_CLIENT_UNKNOWN);
+ }
+ 
+ void Aquamarine::CHeadlessBackend::dispatchInput() {
+@@ -357,6 +444,7 @@
+ 
+     SHosInputEvent ev;
+     ssize_t        ret = 0;
++    bool           hadInput = false;
+     while ((ret = read(mouseFD.get(), &ev, sizeof(ev))) == sizeof(ev)) {
+         switch (ev.type) {
+             case HOS_EV_REL:
+@@ -364,11 +452,13 @@
+                     accumDX += ev.value;
+                 else if (ev.code == HOS_REL_Y)
+                     accumDY += ev.value;
++                hadInput = true;
+                 break;
+ 
+             case HOS_EV_KEY:
+                 // evdev sends one EV_KEY per transition; forward the libinput
+                 // button code (BTN_LEFT/RIGHT/MIDDLE) straight through.
++                hadInput = true;
+                 pointer->events.button.emit(IPointer::SButtonEvent{
+                     .timeMs  = hosNowMs(),
+                     .button  = ev.code,
+@@ -395,6 +485,9 @@
+             default: break;
+         }
+     }
++
++    if (hadInput)
++        scheduleOutputs(IOutput::AQ_SCHEDULE_CURSOR_MOVE);
+ }
+ 
+ int Aquamarine::CHeadlessBackend::drmFD() {
+@@ -466,6 +559,7 @@
+ 
+     auto output = SP<CHeadlessOutput>(new CHeadlessOutput(outputName, self.lock()));
+     outputs.emplace_back(output);
++    g_hosHeadlessOutputs.emplace_back(output.get());
+     // EpinAnonymOS GUI roadmap G7: drive the headless output from the same
+     // display.conf boot module that requests the Limine framebuffer mode.
+     const auto mode = hosReadDisplayMode();
+@@ -525,6 +619,25 @@
+     updateTimerFD();
+ }
+ 
++void Aquamarine::CHeadlessBackend::scheduleOutputs(IOutput::scheduleFrameReason reason) {
++    size_t scheduled = 0;
++    for (auto* const output : g_hosHeadlessOutputs) {
++        if (!output)
++            continue;
++
++        output->needsFrame = true;
++        output->activeRepaintTicks = std::max(output->activeRepaintTicks, 18U);
++        output->armRepaintWatchdog();
++        output->frameScheduled = false;
++        output->scheduleFrame(reason);
++
++        ++scheduled;
++    }
++
++    if (scheduled > 0)
++        backend->log(AQ_LOG_DEBUG, std::format("G8 input scheduled {} output repaint(s)", scheduled));
++}
++
+ SP<IAllocator> Aquamarine::CHeadlessBackend::preferredAllocator() {
+     return backend->primaryAllocator;
+ }

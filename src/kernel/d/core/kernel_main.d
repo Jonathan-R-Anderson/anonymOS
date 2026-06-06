@@ -1009,6 +1009,9 @@ private void handleKbdIRQ() @nogc nothrow {
                 case 0x53: code = 111; break; // KEY_DELETE
                 case 0x38: code = 100; break; // KEY_RIGHTALT
                 case 0x1D: code = 97;  break; // KEY_RIGHTCTRL
+                case 0x5B: code = 125; break; // KEY_LEFTMETA  (Super) — GUI G15 launcher
+                case 0x5C: code = 126; break; // KEY_RIGHTMETA (Super)
+                case 0x5D: code = 127; break; // KEY_COMPOSE   (Menu)
                 default:   code = 0;   break;
             }
         } else {

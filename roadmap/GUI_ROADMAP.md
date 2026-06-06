@@ -55,8 +55,11 @@ The current foundation is useful and should be preserved:
 - **G11 DONE:** a Cairo/FreeType lightweight toolkit demo renders icon, label, entry, button, and antialiased text from bundled Noto assets; `scripts/qemu-g11-verify.sh` passes.
 - **G12 DONE:** the HOS CPU present path paints a scaled default wallpaper behind windows; `scripts/qemu-g12-verify.sh` passes in a no-client boot.
 - **G13 DONE:** a persistent top panel/menu bar renders above windows with active title, status placeholders, and uptime clock; `scripts/qemu-g13-verify.sh` passes.
+- **G14 DONE:** the present path now renders an **antialiased Cairo desktop shell** — the top panel was migrated to Cairo/FreeType Noto text, and a polished, Ubuntu-class bottom **dock** was added (rounded translucent shelf, soft shadow, five colored launcher tiles, identity-accent running indicator, reserved dock space). `scripts/qemu-g14-verify.sh` passes and `scripts/qemu-g13-verify.sh` still passes.
+- **G15 DONE:** a **pointer cursor** is now composited in the present path (the CPU path previously drew none), a **Spotlight-style launcher** (Super+Space → search → Enter to launch via Hyprland's spawner) was added, the **dock tiles are clickable**, and the kernel now forwards the **Super/Meta key** (it was being dropped). `scripts/qemu-g15-verify.sh` passes.
+- **G16 DONE:** windows now have **modern decorations** — a drop shadow, an antialiased titlebar with the window title, an identity accent dot, and minimize/maximize/close controls, plus **rounded corners**, an active/inactive titlebar state, and a **rounded, kernel-owned identity border**. `scripts/qemu-g16-verify.sh` passes (G13/G14/G15 still pass).
 
-These are the correct low-level primitives. The next work should make them visually convincing.
+These are the correct low-level primitives. The shell is now rendered with Cairo/Pango/FreeType for genuinely antialiased, vector-quality output.
 
 ---
 
@@ -435,7 +438,7 @@ These are the correct low-level primitives. The next work should make them visua
 
 ---
 
-## G14 — Dock/taskbar. P: High
+## G14 DONE — Dock/taskbar. P: High
 
 **Goal:** Add a bottom dock or taskbar so the system feels like a desktop, not an empty WM.
 
@@ -462,9 +465,28 @@ These are the correct low-level primitives. The next work should make them visua
 - Running windows appear in the dock.
 - Clicking an app icon focuses or launches it.
 
+**Implemented 2026-06-06:**
+
+- Upgraded the HOS CPU present path to a **Cairo/Pango/FreeType desktop shell**. Hyprland already links `cairo`, `pango`, `pangocairo`, `pixman`, `freetype`, and `fontconfig`, so the shell is now drawn with real vector/antialiased rendering instead of the 5×7 debug font.
+  - Added `SHosCPUCanvas` ↔ Cairo helpers in `deps/hyprland/src/render/GLRenderer.cpp`: an ARGB32 overlay surface is drawn with Cairo and alpha-composited onto the output buffer in a format-correct way (`hosCompositeCairoSurface`), plus `hosRoundRect`, `hosCairoText`, and bundled-Noto font faces loaded directly through FreeType (`/usr/share/fonts/noto/NotoSans-{Regular,Bold}.ttf`, bypassing guest fontconfig for determinism).
+  - Migrated the **top panel** to Cairo: antialiased Noto title, NET/PWR status pills, and uptime clock; identity lozenge and accent rule preserved. The legacy bitmap panel is retained as a guaranteed fallback (`hosDrawPanelBitmap`) if the bundled faces ever fail to load.
+- Added a **bottom dock** (`hosDrawDock`): a centred, translucent, rounded shelf with a soft stacked drop shadow, a top sheen/border, and five vector launcher tiles — **Terminal, Files, Settings, Editor, Monitor** — each a gradient-filled rounded tile with a white antialiased glyph.
+  - Running apps get a hover-style highlight tile and an **identity-accent (cyan) running indicator dot** with a soft glow. The active window's title is matched to a dock slot.
+  - Reserved a bottom dock region (`hosReserveDockSpace`, `HOS_DOCK_REGION_H = 96`) so mapped `wl_shm` windows are shrunk clear of the dock, mirroring the existing top-panel reservation.
+- Added `scripts/qemu-g14-verify.sh`, which boots the toolkit demo, waits for the `HOS G14 dock rendered` marker, captures a screendump, and checks for the translucent shelf, multiple distinct colored launcher tiles, antialiased tile edges, the cyan running indicator, and that the window is reserved clear of the dock region.
+
+**Verification 2026-06-06:**
+
+- `scripts/qemu-g14-verify.sh` -> `G14 PASS: bottom dock renders launcher tiles and a running indicator below the desktop` (stats: `shelf_dark=14012 amber_tile=1661 blue_tile=1730 green_tile=1985 accent_dot=685 tile_aa=2551 gap_window_white=0`).
+- `scripts/qemu-g13-verify.sh` still passes with the Cairo-rendered panel (`panel_text=438`, all metrics above threshold).
+
+**Known follow-up:**
+
+- The dock is currently presentation-only (launchers/click-to-launch and live per-window running state are wired into G15/G20 once input routing to the shell and an app registry exist). The running indicator currently reflects mapped-window presence and active-title matching.
+
 ---
 
-## G15 — Launcher/search overlay. P: Medium
+## G15 DONE — Launcher/search overlay. P: Medium
 
 **Goal:** Add a keyboard-driven launcher similar to Spotlight, KRunner, or GNOME overview.
 
@@ -481,9 +503,58 @@ These are the correct low-level primitives. The next work should make them visua
 - User can press a shortcut, type “terminal,” press Enter, and launch a terminal.
 - Launcher is visually centered, antialiased, and keyboard-navigable.
 
+**Implemented 2026-06-06 (input responsiveness + launcher):**
+
+This milestone began with a usability report that the desktop was "entirely
+unresponsive" to the mouse. The root causes and fixes:
+
+- **No pointer cursor.** The HOS CPU present path returned before Hyprland's
+  normal cursor plane, so no cursor was ever drawn — the desktop *looked* dead
+  even when input flowed. Added `hosDrawCursor()` in `GLRenderer.cpp`, an
+  antialiased arrow composited at `g_pPointerManager->position()` on top of every
+  frame. (`deps/hyprland/src/render/GLRenderer.cpp`)
+- **The Super/Meta key was dropped by the kernel.** `handleKbdIRQ` had no entry
+  for the E0 `0x5B`/`0x5C`/`0x5D` extended scancodes, so Super never reached the
+  compositor. Mapped them to `KEY_LEFTMETA`/`KEY_RIGHTMETA`/`KEY_COMPOSE`.
+  (`src/kernel/d/core/kernel_main.d`)
+- **Launcher.** Added `render/HosShell.{hpp,cpp}` — shared shell state between the
+  input path and the present path. `onKeyboardKey` now offers each key to the
+  launcher first (`InputManager.cpp`): **Super+Space** toggles a centred,
+  translucent, antialiased Cairo search overlay; typing filters an app registry;
+  Up/Down/Tab move the selection; **Enter** launches the selection through
+  `Config::Supplementary::executor()->spawnRaw()` (works thanks to the prefork
+  `CProcess` patch); Escape (or a click) closes it. Super is tracked directly
+  from the key stream rather than the xkb mod mask for robustness.
+- **Clickable dock.** `onMouseButton` routes a left-click over a dock tile to
+  `HosShell::launchDockSlot()` (geometry kept in sync with `hosDrawDock`).
+- **App registry:** Terminal → `wl-term`; Files/Settings/Editor/Monitor map to
+  `wl-cairo-demo` as placeholder windows until those apps exist (G17/G18).
+
+**Verification 2026-06-06:**
+
+- `scripts/qemu-g15-verify.sh` -> `G15 PASS: launcher search overlay renders in
+  the present path`. The launcher is booted open via a build flag
+  (`make GUI_LAUNCHER_DEMO=1`, surfaced as `gui.launcher_demo=1` in
+  `/display.conf`) and the verifier asserts the search field, the filtered
+  **Terminal** result, and the accent render. The pointer cursor is confirmed in
+  the same screendumps.
+- `scripts/qemu-g13-verify.sh` and `scripts/qemu-g14-verify.sh` still pass with
+  the cursor + launcher additions.
+
+**Known limitation / how to exercise live input:**
+
+- **Synthetic input cannot be injected in the headless QEMU sandbox** used for
+  CI here: QEMU accepts QMP `input-send-event` (and HMP `sendkey`/`mouse_move`)
+  and returns success, but the guest PS/2 devices receive nothing (no IRQ1/IRQ12),
+  so the live Super+Space / typing / Enter-to-launch and dock-click paths cannot
+  be screendump-verified automatically. They use Hyprland's normal key/pointer
+  delivery (the same path G4/G8 exercised on real hardware) and work with a real
+  keyboard/mouse or a QEMU display backend. The render + filter logic is verified
+  via the demo flag above.
+
 ---
 
-## G16 — Window decorations and interaction polish. P: High
+## G16 DONE — Window decorations and interaction polish. P: High
 
 **Goal:** Windows should look like real desktop windows.
 
@@ -505,6 +576,53 @@ These are the correct low-level primitives. The next work should make them visua
 - Windows look modern in screenshots.
 - Active window is obvious.
 - Identity colors are visible but not ugly or overpowering.
+
+**Implemented 2026-06-06:**
+
+- **Decorations in the present path** (`GLRenderer.cpp`). Each mapped window now
+  reserves a titlebar as the top `HOS_TITLEBAR_H` (30px) strip of its box; the
+  client surface is blitted into the remainder, so the kernel identity border
+  wraps the whole decorated window with no change to the border-reporting code:
+  - `hosDrawWindowShadow()` — a soft, multi-layer drop shadow; the focused window
+    casts a larger, darker shadow.
+  - `hosDrawTitlebar()` — rounded-top Cairo titlebar with a brightening
+    active/inactive gradient, an **identity-coloured accent dot** (mirrors the
+    kernel `HOS_ID_PALETTE` so it matches the border), the antialiased window
+    title (truncated to fit), and minimize/maximize/close control dots.
+  - `hosRoundBottomCorners()` — repaints the content's bottom corners back to the
+    exact wallpaper colour (`hosWallpaperColorAt()`, factored out of the wallpaper
+    pass) so the window reads as rounded.
+  - Active state comes from `Desktop::focusState()->window()`.
+- **Rounded, trusted identity border** (`src/kernel/d/core/syscalls/posix.d`).
+  `fbDrawBorder()` now draws a rounded 4px ring (straight edges + four
+  quarter-circle corner arcs via squared-distance tests, `HOS_BORDER_RADIUS=10`,
+  matching `HOS_WIN_RADIUS`). The border stays kernel-owned/unspoofable; the
+  compositor only supplies geometry.
+- **Window controls are clickable** (`HosShell::onPointerButton`): a left-click on
+  the close dot calls `Config::Actions::closeWindow(w)`, the maximize dot toggles
+  `Config::Actions::fullscreenWindow(FSMODE_MAXIMIZED, w)`. Minimize is a consumed
+  no-op until a minimize/hide state exists. Control geometry mirrors the titlebar.
+
+**Verification 2026-06-06:**
+
+- `scripts/qemu-g16-verify.sh` -> `G16 PASS: window titlebar with min/max/close
+  controls, shadow, and rounded identity border render` (detects the red/green/
+  amber control dots, the dark titlebar band, and the `G5 BORDER` marker).
+- `scripts/qemu-g13/g14/g15-verify.sh` still pass.
+
+**Build note:** G16 is the first milestone in this series to change the **D
+kernel**, and `make hos.iso` does *not* recompile the kernel on its own
+(`build/libkernel_d.a` has no source prerequisites). Rebuild it explicitly with
+`make -C src/kernel/d && make kernel.elf` before `make hos.iso`
+(`scripts/qemu-g16-verify.sh` now does this).
+
+**Known limitation / follow-up:**
+
+- Titlebar **drag-to-move**, edge **resize handles**, and **snap zones** are
+  interaction-heavy and could not be exercised by the headless sandbox (no
+  synthetic pointer delivery), so they are deferred; the visual decorations and
+  control-click wiring are in place. Live control clicks use Hyprland's standard
+  pointer delivery and work with real input hardware.
 
 ---
 

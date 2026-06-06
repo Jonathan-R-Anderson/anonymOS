@@ -1,5 +1,6 @@
 #include "InputManager.hpp"
 #include "../../Compositor.hpp"
+#include "../../render/HosShell.hpp" // EpinAnonymOS G15: launcher/dock interception
 #include <aquamarine/output/Output.hpp>
 #include <cstdint>
 #include <hyprutils/math/Vector2D.hpp>
@@ -717,6 +718,14 @@ void CInputManager::onMouseButton(IPointer::SButtonEvent e, SP<IPointer> mouse) 
     Event::bus()->m_events.input.mouse.button.emit(e, info);
     if (info.cancelled)
         return;
+
+    // EpinAnonymOS G15: left-clicks on the dock tiles / open launcher are handled
+    // by the compositor-drawn shell before they reach a client surface.
+    if (e.button == 0x110 /* BTN_LEFT */ && e.state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        const auto pos = getMouseCoordsInternal();
+        if (HosShell::onPointerButton(pos.x, pos.y))
+            return;
+    }
 
     if (e.mouse)
         recheckMouseWarpOnMouseInput();
@@ -1557,6 +1566,10 @@ void CInputManager::updateKeyboardsLeds(SP<IKeyboard> pKeyboard) {
 
 void CInputManager::onKeyboardKey(const IKeyboard::SKeyEvent& event, SP<IKeyboard> pKeyboard) {
     if (!pKeyboard->m_enabled || !pKeyboard->m_allowed)
+        return;
+
+    // EpinAnonymOS G15: let the desktop launcher grab the keyboard first.
+    if (HosShell::handleKey(event.keycode, event.state == WL_KEYBOARD_KEY_STATE_PRESSED, pKeyboard->m_xkbState))
         return;
 
     const bool           DISALLOWACTION = pKeyboard->isVirtual() && shouldIgnoreVirtualKeyboard(pKeyboard);

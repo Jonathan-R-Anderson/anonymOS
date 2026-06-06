@@ -91,6 +91,7 @@ DISPLAY_SCALE ?= 1
 DISPLAY_REFRESH ?= 60
 DISPLAY_FORCE_MODE ?= 0
 GUI_AUTOSTART ?= cairo
+GUI_LAUNCHER_DEMO ?= 0
 
 FREESTANDING_CFLAGS := -static -nostdlib -nostartfiles -fno-stack-protector \
 	-fno-pic -fno-pie -m64 -O2 -e _start
@@ -124,6 +125,7 @@ build-display-conf:
 	printf 'display.refresh=%s\n' "$(DISPLAY_REFRESH)" >> $(DISPLAY_CONF)
 	printf 'display.force_mode=%s\n' "$(DISPLAY_FORCE_MODE)" >> $(DISPLAY_CONF)
 	printf 'gui.autostart=%s\n' "$(GUI_AUTOSTART)" >> $(DISPLAY_CONF)
+	printf 'gui.launcher_demo=%s\n' "$(GUI_LAUNCHER_DEMO)" >> $(DISPLAY_CONF)
 
 build-font-assets:
 	@echo "==== Staging Noto fonts (GUI G9 text rendering) ===="

@@ -7156,13 +7156,19 @@ private void fbFillRow(int x, int y, int w, uint color) @nogc nothrow {
     foreach (px; x0 .. x1) row[px] = color;
 }
 
-private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow {
-    if (w <= 0 || h <= 0) return;
+private enum int HOS_BORDER_RADIUS = 10; // GUI roadmap G16: rounded identity border
+
+private void fbPutPixel(int x, int y, uint color) @nogc nothrow {
+    if (x < 0 || y < 0 || x >= cast(int)g_fb.width || y >= cast(int)g_fb.height) return;
+    auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)y * g_fb.pitch);
+    row[x] = color;
+}
+
+private void fbDrawBorderSquare(int x, int y, int w, int h, uint color) @nogc nothrow {
     foreach (i; 0 .. HOS_BORDER_PX) {
         fbFillRow(x, y + i, w, color);             // top
         fbFillRow(x, y + h - 1 - i, w, color);     // bottom
     }
-    // left / right verticals
     foreach (yy; y .. y + h) {
         if (yy < 0 || yy >= cast(int)g_fb.height) continue;
         auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)yy * g_fb.pitch);
@@ -7170,6 +7176,49 @@ private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow 
             int lx = x + i, rx = x + w - 1 - i;
             if (lx >= 0 && lx < cast(int)g_fb.width) row[lx] = color;
             if (rx >= 0 && rx < cast(int)g_fb.width) row[rx] = color;
+        }
+    }
+}
+
+// GUI roadmap G16: a rounded 4px identity ring, matching the compositor's
+// rounded window decorations. Still kernel-owned and unspoofable.
+private void fbDrawBorder(int x, int y, int w, int h, uint color) @nogc nothrow {
+    if (w <= 0 || h <= 0) return;
+    immutable int r = HOS_BORDER_RADIUS;
+    if (w < 2 * r + 2 || h < 2 * r + 2) {
+        fbDrawBorderSquare(x, y, w, h, color);
+        return;
+    }
+    // straight edges between the corner arcs
+    foreach (i; 0 .. HOS_BORDER_PX) {
+        fbFillRow(x + r, y + i, w - 2 * r, color);
+        fbFillRow(x + r, y + h - 1 - i, w - 2 * r, color);
+    }
+    foreach (yy; (y + r) .. (y + h - r)) {
+        if (yy < 0 || yy >= cast(int)g_fb.height) continue;
+        auto row = cast(uint*)(cast(ubyte*)g_fb.address + cast(size_t)yy * g_fb.pitch);
+        foreach (i; 0 .. HOS_BORDER_PX) {
+            int lx = x + i, rx = x + w - 1 - i;
+            if (lx >= 0 && lx < cast(int)g_fb.width) row[lx] = color;
+            if (rx >= 0 && rx < cast(int)g_fb.width) row[rx] = color;
+        }
+    }
+    // four quarter-circle corner arcs, thickness HOS_BORDER_PX
+    immutable int rOut2 = r * r;
+    immutable int rIn   = r - HOS_BORDER_PX;
+    immutable int rIn2  = rIn * rIn;
+    immutable int tlx = x + r,         tly = y + r;
+    immutable int trx = x + w - 1 - r, tryy = y + r;
+    immutable int blx = x + r,         bly = y + h - 1 - r;
+    immutable int brx = x + w - 1 - r, bryy = y + h - 1 - r;
+    foreach (dy; 0 .. r + 1) {
+        foreach (dx; 0 .. r + 1) {
+            immutable int d2 = dx * dx + dy * dy;
+            if (d2 > rOut2 || d2 < rIn2) continue;
+            fbPutPixel(tlx - dx, tly - dy, color);
+            fbPutPixel(trx + dx, tryy - dy, color);
+            fbPutPixel(blx - dx, bly + dy, color);
+            fbPutPixel(brx + dx, bryy + dy, color);
         }
     }
 }

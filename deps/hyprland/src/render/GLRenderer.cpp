@@ -5,6 +5,13 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <drm_fourcc.h>
+#include <cctype>               // EpinAnonymOS G14: title -> dock slot match
+#include <cmath>                // EpinAnonymOS G14: Cairo dock geometry
+#include <cairo/cairo.h>        // EpinAnonymOS G14: antialiased desktop shell
+#include <cairo/cairo-ft.h>     // EpinAnonymOS G14: bundled Noto via FreeType
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include "HosShell.hpp"        // EpinAnonymOS G15: launcher overlay state
 #include "decorations/CHyprInnerGlowDecoration.hpp"
 #include <aquamarine/output/Output.hpp>
 #include "../config/ConfigValue.hpp"
@@ -25,6 +32,7 @@
 #include "Renderer.hpp"
 #include "../Compositor.hpp"              // EpinAnonymOS G5: g_pCompositor->m_windows
 #include "../desktop/view/Window.hpp"
+#include "../desktop/state/FocusState.hpp" // EpinAnonymOS G16: active-window decoration state
 #include "./gl/GLElementRenderer.hpp"
 #include "./gl/GLFramebuffer.hpp"
 #include "./gl/GLTexture.hpp"
@@ -48,8 +56,22 @@ extern "C" {
 }
 
 namespace {
-    constexpr int HOS_PANEL_HEIGHT = 36;
-    constexpr int HOS_PANEL_GAP    = 8;
+    constexpr int    HOS_PANEL_HEIGHT   = 36;
+    constexpr int    HOS_PANEL_GAP      = 8;
+    constexpr int    HOS_PANEL_STRIP_H  = 40;   // EpinAnonymOS G14: cairo overlay strip
+    constexpr int    HOS_DOCK_REGION_H  = 96;   // EpinAnonymOS G14: reserved bottom dock band
+    constexpr int    HOS_TITLEBAR_H     = 30;   // EpinAnonymOS G16: window titlebar height
+    constexpr int    HOS_WIN_RADIUS     = 10;   // EpinAnonymOS G16: window corner radius
+    constexpr double HOS_PI             = 3.14159265358979323846;
+
+    // EpinAnonymOS G16: mirrors the kernel HOS_ID_PALETTE (posix.d) so the
+    // titlebar accent matches the trusted, kernel-drawn identity border colour.
+    uint32_t hosIdentityColorForPid(uint32_t pid) {
+        static const uint32_t PALETTE[8] = {
+            0xFF4CC2A8u, 0xFFE0B341u, 0xFF6FA8DCu, 0xFFCC6699u, 0xFF8FBF5Fu, 0xFFE08A4Cu, 0xFFB18FE0u, 0xFFD05757u,
+        };
+        return PALETTE[pid % 8u];
+    }
 
     struct SHosCPUCanvas {
         uint8_t* data   = nullptr;
@@ -281,49 +303,52 @@ namespace {
         return true;
     }
 
-    void hosDrawWallpaper(const SHosCPUCanvas& canvas) {
-        if (!canvas.width || !canvas.height)
-            return;
-
+    // Procedural wallpaper colour at a pixel. Exposed so window-corner rounding
+    // (G16) can repaint corner pixels back to the exact background.
+    uint32_t hosWallpaperColorAt(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
         const uint32_t topLeft     = 0xFF102033u;
         const uint32_t centerTeal  = 0xFF0F766Eu;
         const uint32_t lowerPurple = 0xFF7C3AEDu;
         const uint32_t warmLight   = 0xFFE0B341u;
         const uint32_t mist        = 0xFFE2E8F0u;
         const uint32_t ink         = 0xFF0F172Au;
-        const uint32_t denomX      = canvas.width > 1 ? canvas.width - 1 : 1;
-        const uint32_t denomY      = canvas.height > 1 ? canvas.height - 1 : 1;
+        const uint32_t denomX      = width > 1 ? width - 1 : 1;
+        const uint32_t denomY      = height > 1 ? height - 1 : 1;
 
+        const uint32_t fx = (x * 1000u) / denomX;
+        const uint32_t fy = (y * 1000u) / denomY;
+        uint32_t       color = hosMixXRGB(topLeft, centerTeal, (fx + fy) / 2u, 1000u);
+        color                = hosMixXRGB(color, lowerPurple, (fx * fy) / 1000u, 1000u);
+
+        const int32_t  dx   = static_cast<int32_t>(fx) - 760;
+        const int32_t  dy   = static_cast<int32_t>(fy) - 210;
+        const uint32_t dist = static_cast<uint32_t>((dx * dx + dy * dy) > 0 ? (dx * dx + dy * dy) : 0);
+        if (dist < 260000u)
+            color = hosBlendOver(warmLight, color, static_cast<uint8_t>((260000u - dist) / 1800u));
+
+        const int32_t centeredX = static_cast<int32_t>(fx) - 500;
+        const int32_t wave1 = static_cast<int32_t>(height * 72u / 100u) - (centeredX * centeredX * static_cast<int32_t>(height)) / 4200000;
+        const int32_t wave2 = static_cast<int32_t>(height * 83u / 100u) - ((centeredX + 180) * (centeredX + 180) * static_cast<int32_t>(height)) / 5200000;
+        if (static_cast<int32_t>(y) > wave1)
+            color = hosBlendOver(mist, color, 42);
+        if (static_cast<int32_t>(y) > wave2)
+            color = hosBlendOver(ink, color, 58);
+        return color;
+    }
+
+    void hosDrawWallpaper(const SHosCPUCanvas& canvas) {
+        if (!canvas.width || !canvas.height)
+            return;
         for (uint32_t y = 0; y < canvas.height; ++y) {
             auto row = reinterpret_cast<uint32_t*>(canvas.data + static_cast<size_t>(y) * canvas.stride);
-            for (uint32_t x = 0; x < canvas.width; ++x) {
-                const uint32_t fx = (x * 1000u) / denomX;
-                const uint32_t fy = (y * 1000u) / denomY;
-                uint32_t color = hosMixXRGB(topLeft, centerTeal, (fx + fy) / 2u, 1000u);
-                color = hosMixXRGB(color, lowerPurple, (fx * fy) / 1000u, 1000u);
-
-                const int32_t dx = static_cast<int32_t>(fx) - 760;
-                const int32_t dy = static_cast<int32_t>(fy) - 210;
-                const uint32_t dist = static_cast<uint32_t>((dx * dx + dy * dy) > 0 ? (dx * dx + dy * dy) : 0);
-                if (dist < 260000u)
-                    color = hosBlendOver(warmLight, color, static_cast<uint8_t>((260000u - dist) / 1800u));
-
-                const int32_t centeredX = static_cast<int32_t>(fx) - 500;
-                const int32_t wave1 = static_cast<int32_t>(canvas.height * 72u / 100u) -
-                                      (centeredX * centeredX * static_cast<int32_t>(canvas.height)) / 4200000;
-                const int32_t wave2 = static_cast<int32_t>(canvas.height * 83u / 100u) -
-                                      ((centeredX + 180) * (centeredX + 180) * static_cast<int32_t>(canvas.height)) / 5200000;
-                if (static_cast<int32_t>(y) > wave1)
-                    color = hosBlendOver(mist, color, 42);
-                if (static_cast<int32_t>(y) > wave2)
-                    color = hosBlendOver(ink, color, 58);
-
-                row[x] = hosWriteFormat(color, canvas.format);
-            }
+            for (uint32_t x = 0; x < canvas.width; ++x)
+                row[x] = hosWriteFormat(hosWallpaperColorAt(x, y, canvas.width, canvas.height), canvas.format);
         }
     }
 
-    void hosDrawPanel(const SHosCPUCanvas& canvas, const std::string& activeTitle) {
+    // Legacy bitmap panel. Retained as a guaranteed fallback for the rare case
+    // where the bundled Noto faces fail to load and Cairo text is unavailable.
+    void hosDrawPanelBitmap(const SHosCPUCanvas& canvas, const std::string& activeTitle) {
         const int panelH = std::min(HOS_PANEL_HEIGHT, static_cast<int>(canvas.height));
         if (panelH <= 0)
             return;
@@ -350,6 +375,608 @@ namespace {
         hosDrawTinyText(canvas, right - 86, 11, clockText, 0xFFFFFFFFu, 2, 5);
     }
 
+    // --- EpinAnonymOS G14: antialiased Cairo desktop shell -------------------
+
+    // Bundled Noto faces loaded through FreeType (bypasses guest fontconfig for
+    // determinism), wrapped as Cairo font faces. Loaded once, cached.
+    struct SHosFonts {
+        FT_Library         lib   = nullptr;
+        FT_Face            reg   = nullptr;
+        FT_Face            bold  = nullptr;
+        cairo_font_face_t* creg  = nullptr;
+        cairo_font_face_t* cbold = nullptr;
+        bool               tried = false;
+    };
+
+    SHosFonts& hosFonts() {
+        static SHosFonts f;
+        if (!f.tried) {
+            f.tried = true;
+            if (FT_Init_FreeType(&f.lib) == 0) {
+                if (FT_New_Face(f.lib, "/usr/share/fonts/noto/NotoSans-Regular.ttf", 0, &f.reg) == 0)
+                    f.creg = cairo_ft_font_face_create_for_ft_face(f.reg, 0);
+                if (FT_New_Face(f.lib, "/usr/share/fonts/noto/NotoSans-Bold.ttf", 0, &f.bold) == 0)
+                    f.cbold = cairo_ft_font_face_create_for_ft_face(f.bold, 0);
+            }
+            if (f.creg)
+                Log::logger->log(Log::WARN, "renderer: HOS G14 loaded bundled Noto faces for desktop shell");
+        }
+        return f;
+    }
+
+    cairo_font_face_t* hosCairoFace(bool bold) {
+        auto& f = hosFonts();
+        return bold ? (f.cbold ? f.cbold : f.creg) : f.creg;
+    }
+
+    void hosCairoText(cairo_t* cr, double x, double baseline, const std::string& s, double size, uint32_t rgb, double a = 1.0,
+                      bool bold = false) {
+        cairo_font_face_t* face = hosCairoFace(bold);
+        if (face)
+            cairo_set_font_face(cr, face);
+        else
+            cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, bold ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
+        cairo_set_font_size(cr, size);
+        cairo_set_source_rgba(cr, ((rgb >> 16) & 0xFF) / 255.0, ((rgb >> 8) & 0xFF) / 255.0, (rgb & 0xFF) / 255.0, a);
+        cairo_move_to(cr, x, baseline);
+        cairo_show_text(cr, s.c_str());
+    }
+
+    void hosRoundRect(cairo_t* cr, double x, double y, double w, double h, double r) {
+        r = std::min(r, std::min(w, h) / 2.0);
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, x + w - r, y + r, r, -90 * HOS_PI / 180.0, 0);
+        cairo_arc(cr, x + w - r, y + h - r, r, 0, 90 * HOS_PI / 180.0);
+        cairo_arc(cr, x + r, y + h - r, r, 90 * HOS_PI / 180.0, 180 * HOS_PI / 180.0);
+        cairo_arc(cr, x + r, y + r, r, 180 * HOS_PI / 180.0, 270 * HOS_PI / 180.0);
+        cairo_close_path(cr);
+    }
+
+    // Composite a premultiplied-ARGB32 Cairo surface onto the output canvas at
+    // (ox, oy), honouring the canvas pixel format and source alpha.
+    void hosCompositeCairoSurface(const SHosCPUCanvas& canvas, cairo_surface_t* surf, int ox, int oy) {
+        cairo_surface_flush(surf);
+        const int            sw     = cairo_image_surface_get_width(surf);
+        const int            sh     = cairo_image_surface_get_height(surf);
+        const int            sstr   = cairo_image_surface_get_stride(surf);
+        const unsigned char* sdata  = cairo_image_surface_get_data(surf);
+        if (!sdata)
+            return;
+
+        for (int y = 0; y < sh; ++y) {
+            const int cy = oy + y;
+            if (cy < 0 || cy >= static_cast<int>(canvas.height))
+                continue;
+            auto srow = reinterpret_cast<const uint32_t*>(sdata + static_cast<size_t>(y) * sstr);
+            auto drow = reinterpret_cast<uint32_t*>(canvas.data + static_cast<size_t>(cy) * canvas.stride);
+            for (int x = 0; x < sw; ++x) {
+                const int cx = ox + x;
+                if (cx < 0 || cx >= static_cast<int>(canvas.width))
+                    continue;
+                const uint32_t sp = srow[x];
+                const uint32_t a  = sp >> 24;
+                if (a == 0)
+                    continue;
+                const uint32_t sr = (sp >> 16) & 0xFFu; // already premultiplied
+                const uint32_t sg = (sp >> 8) & 0xFFu;
+                const uint32_t sb = sp & 0xFFu;
+                if (a == 0xFFu) {
+                    drow[cx] = hosWriteFormat(0xFF000000u | (sr << 16) | (sg << 8) | sb, canvas.format);
+                    continue;
+                }
+                const uint32_t dst = hosReadXRGB(drow[cx], canvas.format);
+                const uint32_t dr  = (dst >> 16) & 0xFFu;
+                const uint32_t dg  = (dst >> 8) & 0xFFu;
+                const uint32_t db  = dst & 0xFFu;
+                const uint32_t inv = 255u - a;
+                const uint32_t orr = std::min(255u, sr + dr * inv / 255u);
+                const uint32_t og  = std::min(255u, sg + dg * inv / 255u);
+                const uint32_t ob  = std::min(255u, sb + db * inv / 255u);
+                drow[cx] = hosWriteFormat(0xFF000000u | (orr << 16) | (og << 8) | ob, canvas.format);
+            }
+        }
+    }
+
+    // Top menu bar, rendered with Cairo so the title/status/clock are
+    // antialiased Noto text. Geometry/colours match the prior bitmap panel so
+    // the desktop reads consistently.
+    void hosDrawPanel(const SHosCPUCanvas& canvas, const std::string& activeTitle) {
+        const int panelH = std::min(HOS_PANEL_HEIGHT, static_cast<int>(canvas.height));
+        if (panelH <= 0)
+            return;
+        if (!hosCairoFace(false)) {
+            hosDrawPanelBitmap(canvas, activeTitle);
+            return;
+        }
+
+        const int W = static_cast<int>(canvas.width);
+        const int H = std::min(HOS_PANEL_STRIP_H, static_cast<int>(canvas.height));
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            hosDrawPanelBitmap(canvas, activeTitle);
+            return;
+        }
+        cairo_t* cr = cairo_create(s);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        // Bar background: deep slate with a faint vertical sheen + accent rule.
+        cairo_pattern_t* bg = cairo_pattern_create_linear(0, 0, 0, panelH);
+        cairo_pattern_add_color_stop_rgba(bg, 0.0, 0.105, 0.118, 0.165, 0.95);
+        cairo_pattern_add_color_stop_rgba(bg, 1.0, 0.066, 0.078, 0.118, 0.95);
+        cairo_set_source(cr, bg);
+        cairo_rectangle(cr, 0, 0, W, panelH);
+        cairo_fill(cr);
+        cairo_pattern_destroy(bg);
+        cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 0.55);
+        cairo_rectangle(cr, 0, panelH - 1, W, 1);
+        cairo_fill(cr);
+
+        // Identity logo lozenge (teal + warm gold), matching panel palette.
+        hosRoundRect(cr, 14, 9, 18, 18, 4);
+        cairo_set_source_rgba(cr, 0.059, 0.463, 0.431, 1.0);
+        cairo_fill(cr);
+        hosRoundRect(cr, 20, 13, 18, 18, 4);
+        cairo_set_source_rgba(cr, 0.878, 0.702, 0.255, 1.0);
+        cairo_fill(cr);
+
+        hosCairoText(cr, 50, 24, activeTitle.empty() ? "EPIN DESKTOP" : activeTitle, 15.5, 0xF8FAFCu, 1.0, true);
+
+        // Right-aligned status cluster: NET / PWR pills + clock.
+        cairo_set_source_rgba(cr, 0.133, 0.773, 0.369, 1.0);
+        cairo_arc(cr, W - 274.5, 18, 4, 0, 2 * HOS_PI);
+        cairo_fill(cr);
+        hosCairoText(cr, W - 264, 23, "NET", 12.0, 0xCBD5E1u, 1.0, true);
+        cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 1.0);
+        cairo_arc(cr, W - 212.5, 18, 4, 0, 2 * HOS_PI);
+        cairo_fill(cr);
+        hosCairoText(cr, W - 202, 23, "PWR", 12.0, 0xCBD5E1u, 1.0, true);
+
+        char clockText[6] = "00:00";
+        struct timespec ts {};
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+            const int minutes = static_cast<int>((ts.tv_sec / 60) % 100);
+            const int seconds = static_cast<int>(ts.tv_sec % 60);
+            snprintf(clockText, sizeof(clockText), "%02d:%02d", minutes, seconds);
+        }
+        hosCairoText(cr, W - 86, 23, clockText, 14.0, 0xFFFFFFu, 1.0, true);
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, 0, 0);
+        cairo_surface_destroy(s);
+    }
+
+    // A single dock app: a vector glyph painted white on a coloured tile.
+    enum EHosGlyph { HOS_GLYPH_TERM, HOS_GLYPH_FILES, HOS_GLYPH_SETTINGS, HOS_GLYPH_EDITOR, HOS_GLYPH_MONITOR };
+    struct SHosDockApp {
+        const char* label;
+        double      r0, g0, b0; // gradient top
+        double      r1, g1, b1; // gradient bottom
+        EHosGlyph   glyph;
+    };
+
+    void hosDockGlyph(cairo_t* cr, double x, double y, double s, EHosGlyph glyph) {
+        cairo_save(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.96);
+        cairo_set_line_width(cr, std::max(1.6, s * 0.075));
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        switch (glyph) {
+            case HOS_GLYPH_TERM: {
+                cairo_move_to(cr, x + s * 0.30, y + s * 0.34);
+                cairo_line_to(cr, x + s * 0.48, y + s * 0.50);
+                cairo_line_to(cr, x + s * 0.30, y + s * 0.66);
+                cairo_stroke(cr);
+                cairo_move_to(cr, x + s * 0.54, y + s * 0.66);
+                cairo_line_to(cr, x + s * 0.72, y + s * 0.66);
+                cairo_stroke(cr);
+                break;
+            }
+            case HOS_GLYPH_FILES: {
+                hosRoundRect(cr, x + s * 0.24, y + s * 0.30, s * 0.52, s * 0.40, s * 0.06);
+                cairo_move_to(cr, x + s * 0.24, y + s * 0.36);
+                cairo_line_to(cr, x + s * 0.40, y + s * 0.36);
+                cairo_line_to(cr, x + s * 0.46, y + s * 0.30);
+                cairo_fill(cr);
+                break;
+            }
+            case HOS_GLYPH_SETTINGS: {
+                const double cx = x + s * 0.5, cy = y + s * 0.5, rr = s * 0.20;
+                cairo_arc(cr, cx, cy, rr, 0, 2 * HOS_PI);
+                cairo_stroke(cr);
+                for (int i = 0; i < 8; ++i) {
+                    const double a = i * HOS_PI / 4.0;
+                    cairo_move_to(cr, cx + std::cos(a) * rr, cy + std::sin(a) * rr);
+                    cairo_line_to(cr, cx + std::cos(a) * (rr + s * 0.12), cy + std::sin(a) * (rr + s * 0.12));
+                }
+                cairo_stroke(cr);
+                cairo_arc(cr, cx, cy, s * 0.07, 0, 2 * HOS_PI);
+                cairo_fill(cr);
+                break;
+            }
+            case HOS_GLYPH_EDITOR: {
+                hosRoundRect(cr, x + s * 0.30, y + s * 0.26, s * 0.40, s * 0.48, s * 0.05);
+                cairo_stroke(cr);
+                for (int i = 0; i < 3; ++i) {
+                    const double ly = y + s * (0.38 + i * 0.12);
+                    cairo_move_to(cr, x + s * 0.38, ly);
+                    cairo_line_to(cr, x + s * 0.62, ly);
+                }
+                cairo_stroke(cr);
+                break;
+            }
+            case HOS_GLYPH_MONITOR: {
+                const double base = y + s * 0.70;
+                const double heights[3] = {0.18, 0.30, 0.24};
+                for (int i = 0; i < 3; ++i) {
+                    const double bx = x + s * (0.30 + i * 0.16);
+                    cairo_rectangle(cr, bx, base - s * heights[i], s * 0.10, s * heights[i]);
+                }
+                cairo_fill(cr);
+                break;
+            }
+        }
+        cairo_restore(cr);
+    }
+
+    // Bottom dock: a centred, translucent, rounded shelf of launcher tiles with
+    // a soft shadow, hover/running highlight, and identity-accent run dots.
+    void hosDrawDock(const SHosCPUCanvas& canvas, bool running, int runningSlot, const std::string& /*activeTitle*/) {
+        static const SHosDockApp APPS[] = {
+            {"Terminal", 0.18, 0.21, 0.27, 0.10, 0.12, 0.16, HOS_GLYPH_TERM},
+            {"Files",    0.96, 0.73, 0.27, 0.88, 0.55, 0.18, HOS_GLYPH_FILES},
+            {"Settings", 0.62, 0.67, 0.74, 0.36, 0.40, 0.46, HOS_GLYPH_SETTINGS},
+            {"Editor",   0.36, 0.62, 1.00, 0.18, 0.42, 0.88, HOS_GLYPH_EDITOR},
+            {"Monitor",  0.20, 0.83, 0.60, 0.05, 0.64, 0.44, HOS_GLYPH_MONITOR},
+        };
+        const int N = static_cast<int>(sizeof(APPS) / sizeof(APPS[0]));
+
+        const int W = static_cast<int>(canvas.width);
+        const int H = std::min(HOS_DOCK_REGION_H, static_cast<int>(canvas.height));
+        if (W <= 0 || H <= 24)
+            return;
+
+        // The dock is vector-only; it does not depend on the bundled font faces.
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            return;
+        }
+        cairo_t* cr = cairo_create(s);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        const double tile   = 48;
+        const double gap    = 16;
+        const double pad    = 14;
+        const double pillW  = N * tile + (N - 1) * gap + 2 * pad;
+        const double pillH  = tile + 2 * pad;
+        const double pillX  = (W - pillW) / 2.0;
+        const double pillB  = H - 12;          // 12px above the screen bottom
+        const double pillY  = pillB - pillH;
+        const double radius = 22;
+
+        // Soft drop shadow (stacked translucent rounded rects).
+        for (int i = 8; i >= 1; --i) {
+            hosRoundRect(cr, pillX - i, pillY - i * 0.4 + 5, pillW + 2 * i, pillH + 2 * i, radius + i);
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.045);
+            cairo_fill(cr);
+        }
+
+        // Dock shelf.
+        cairo_pattern_t* shelf = cairo_pattern_create_linear(0, pillY, 0, pillY + pillH);
+        cairo_pattern_add_color_stop_rgba(shelf, 0.0, 0.13, 0.12, 0.17, 0.74);
+        cairo_pattern_add_color_stop_rgba(shelf, 1.0, 0.08, 0.07, 0.11, 0.74);
+        hosRoundRect(cr, pillX, pillY, pillW, pillH, radius);
+        cairo_set_source(cr, shelf);
+        cairo_fill_preserve(cr);
+        cairo_pattern_destroy(shelf);
+        cairo_set_line_width(cr, 1.0);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.10);
+        cairo_stroke(cr);
+
+        for (int i = 0; i < N; ++i) {
+            const double tx        = pillX + pad + i * (tile + gap);
+            const double ty        = pillY + pad;
+            const bool   isRunning = running && i == runningSlot;
+
+            if (isRunning) {
+                hosRoundRect(cr, tx - 4, ty - 4, tile + 8, tile + 8, 14);
+                cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.16);
+                cairo_fill(cr);
+            }
+
+            // Tile with vertical gradient + subtle top sheen.
+            cairo_pattern_t* g = cairo_pattern_create_linear(0, ty, 0, ty + tile);
+            cairo_pattern_add_color_stop_rgba(g, 0.0, APPS[i].r0, APPS[i].g0, APPS[i].b0, 1.0);
+            cairo_pattern_add_color_stop_rgba(g, 1.0, APPS[i].r1, APPS[i].g1, APPS[i].b1, 1.0);
+            hosRoundRect(cr, tx, ty, tile, tile, 12);
+            cairo_set_source(cr, g);
+            cairo_fill(cr);
+            cairo_pattern_destroy(g);
+            hosRoundRect(cr, tx + 1, ty + 1, tile - 2, tile * 0.45, 11);
+            cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.10);
+            cairo_fill(cr);
+
+            hosDockGlyph(cr, tx, ty, tile, APPS[i].glyph);
+
+            // Identity-accent running indicator.
+            if (isRunning) {
+                const double dx = tx + tile / 2.0;
+                const double dy = pillY + pillH - 5;
+                cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 0.35);
+                cairo_arc(cr, dx, dy, 6, 0, 2 * HOS_PI);
+                cairo_fill(cr);
+                cairo_set_source_rgba(cr, 0.36, 0.84, 1.0, 1.0);
+                cairo_arc(cr, dx, dy, 3.0, 0, 2 * HOS_PI);
+                cairo_fill(cr);
+            }
+        }
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, 0, static_cast<int>(canvas.height) - H);
+        cairo_surface_destroy(s);
+    }
+
+    // G15 launcher: a centred Spotlight-style search overlay with a query field
+    // and the filtered app list, drawn above the desktop when open.
+    void hosDrawLauncher(const SHosCPUCanvas& canvas) {
+        if (!HosShell::launcherOpen())
+            return;
+
+        const auto labels = HosShell::visibleLabels();
+        const int  rows   = std::max(1, static_cast<int>(labels.size()));
+        const int  W      = 540;
+        const int  fieldH = 56;
+        const int  rowH   = 40;
+        const int  padV   = 16;
+        const int  H      = padV + fieldH + 10 + rows * rowH + padV;
+        const int  ox     = (static_cast<int>(canvas.width) - W) / 2;
+        const int  oy     = std::max(40, static_cast<int>(canvas.height) / 6);
+        if (W <= 0 || H <= 0)
+            return;
+
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            return;
+        }
+        cairo_t* cr = cairo_create(s);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        // Drop shadow + panel.
+        for (int i = 10; i >= 1; --i) {
+            hosRoundRect(cr, i, i + 4, W - 2 * i, H - 2 * i, 18 + i);
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.04);
+            cairo_fill(cr);
+        }
+        hosRoundRect(cr, 0, 0, W, H, 18);
+        cairo_set_source_rgba(cr, 0.12, 0.12, 0.16, 0.96);
+        cairo_fill_preserve(cr);
+        cairo_set_line_width(cr, 1.0);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.10);
+        cairo_stroke(cr);
+
+        // Search field.
+        hosRoundRect(cr, padV, padV, W - 2 * padV, fieldH, 12);
+        cairo_set_source_rgba(cr, 0.06, 0.06, 0.09, 1.0);
+        cairo_fill(cr);
+        cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 1.0);
+        cairo_arc(cr, padV + 26, padV + fieldH / 2.0, 8, 0, 2 * HOS_PI);
+        cairo_set_line_width(cr, 3.0);
+        cairo_stroke(cr);
+        cairo_move_to(cr, padV + 33, padV + fieldH / 2.0 + 7);
+        cairo_line_to(cr, padV + 40, padV + fieldH / 2.0 + 14);
+        cairo_stroke(cr);
+
+        const std::string q = HosShell::query();
+        if (q.empty())
+            hosCairoText(cr, padV + 56, padV + fieldH / 2.0 + 7, "Search apps…", 19.0, 0x8893A7u, 1.0, false);
+        else
+            hosCairoText(cr, padV + 56, padV + fieldH / 2.0 + 7, q + "|", 19.0, 0xF8FAFCu, 1.0, false);
+
+        // Result rows.
+        const int sel    = HosShell::selection();
+        const int rowTop = padV + fieldH + 10;
+        for (int i = 0; i < static_cast<int>(labels.size()); ++i) {
+            const int ry = rowTop + i * rowH;
+            if (i == sel) {
+                hosRoundRect(cr, padV, ry, W - 2 * padV, rowH - 4, 10);
+                cairo_set_source_rgba(cr, 0.22, 0.74, 0.97, 0.22);
+                cairo_fill(cr);
+            }
+            hosRoundRect(cr, padV + 8, ry + 8, 18, 18, 5);
+            cairo_set_source_rgba(cr, 0.30, 0.78, 0.70, 1.0);
+            cairo_fill(cr);
+            hosCairoText(cr, padV + 38, ry + rowH / 2.0 + 4, labels[i], 17.0, i == sel ? 0xFFFFFFu : 0xD3D9E3u, 1.0, i == sel);
+        }
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, ox, oy);
+        cairo_surface_destroy(s);
+    }
+
+    // A standard left-pointer arrow cursor, drawn at the global pointer position
+    // (the HOS CPU present path bypasses Hyprland's normal cursor plane).
+    void hosDrawCursor(const SHosCPUCanvas& canvas, int x, int y) {
+        const int sz = 22;
+        if (x < -sz || y < -sz || x > static_cast<int>(canvas.width) || y > static_cast<int>(canvas.height))
+            return;
+
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz, sz);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            return;
+        }
+        cairo_t* cr = cairo_create(s);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        auto arrow = [&](cairo_t* c) {
+            cairo_move_to(c, 1, 1);
+            cairo_line_to(c, 1, 16);
+            cairo_line_to(c, 4.6, 12.6);
+            cairo_line_to(c, 7.2, 18.5);
+            cairo_line_to(c, 9.4, 17.5);
+            cairo_line_to(c, 6.8, 11.8);
+            cairo_line_to(c, 11.5, 11.5);
+            cairo_close_path(c);
+        };
+        arrow(cr);
+        cairo_set_source_rgba(cr, 0.05, 0.06, 0.09, 0.95); // dark outline
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+        cairo_set_line_width(cr, 2.4);
+        cairo_stroke_preserve(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);     // white fill
+        cairo_fill(cr);
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, x, y);
+        cairo_surface_destroy(s);
+    }
+
+    // --- EpinAnonymOS G16: modern window decorations -------------------------
+
+    // Soft drop shadow around a window box. Drawn before the client content so
+    // only the halo remains visible. The focused window casts a stronger shadow.
+    void hosDrawWindowShadow(const SHosCPUCanvas& canvas, int bx, int by, int bw, int bh, bool active) {
+        const int M = 28;
+        const int W = bw + 2 * M;
+        const int H = bh + 2 * M;
+        if (W <= 0 || H <= 0)
+            return;
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            return;
+        }
+        cairo_t* cr = cairo_create(s);
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        const int    layers = active ? 22 : 13;
+        const double yoff   = active ? 7.0 : 4.0;
+        const double a0     = active ? 0.040 : 0.028;
+        for (int i = layers; i >= 1; --i) {
+            hosRoundRect(cr, M - i, M - i + yoff, bw + 2 * i, bh + 2 * i, HOS_WIN_RADIUS + i);
+            cairo_set_source_rgba(cr, 0, 0, 0, a0);
+            cairo_fill(cr);
+        }
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, bx - M, by - M);
+        cairo_surface_destroy(s);
+    }
+
+    // Titlebar occupying the top strip of the window box: rounded top corners, a
+    // gradient that brightens for the focused window, an identity-coloured accent
+    // dot, the antialiased window title, and minimize/maximize/close controls.
+    void hosDrawTitlebar(const SHosCPUCanvas& canvas, int bx, int by, int bw, int titleH, const std::string& title, bool active, uint32_t pid) {
+        if (bw <= 0 || titleH <= 0)
+            return;
+        cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, bw, titleH);
+        if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(s);
+            return;
+        }
+        cairo_t*     cr = cairo_create(s);
+        const double r  = HOS_WIN_RADIUS;
+        cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+        cairo_paint(cr);
+        cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+        // Rounded-top, square-bottom path (bottom meets the client content).
+        auto barPath = [&]() {
+            cairo_new_sub_path(cr);
+            cairo_arc(cr, bw - r, r, r, -90 * HOS_PI / 180.0, 0);
+            cairo_line_to(cr, bw, titleH);
+            cairo_line_to(cr, 0, titleH);
+            cairo_line_to(cr, 0, r);
+            cairo_arc(cr, r, r, r, 180 * HOS_PI / 180.0, 270 * HOS_PI / 180.0);
+            cairo_close_path(cr);
+        };
+        cairo_pattern_t* g = cairo_pattern_create_linear(0, 0, 0, titleH);
+        if (active) {
+            cairo_pattern_add_color_stop_rgba(g, 0.0, 0.176, 0.192, 0.227, 1.0);
+            cairo_pattern_add_color_stop_rgba(g, 1.0, 0.114, 0.129, 0.157, 1.0);
+        } else {
+            cairo_pattern_add_color_stop_rgba(g, 0.0, 0.118, 0.129, 0.149, 1.0);
+            cairo_pattern_add_color_stop_rgba(g, 1.0, 0.090, 0.098, 0.118, 1.0);
+        }
+        barPath();
+        cairo_set_source(cr, g);
+        cairo_fill(cr);
+        cairo_pattern_destroy(g);
+        // Top sheen.
+        barPath();
+        cairo_clip(cr);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.06 : 0.03);
+        cairo_rectangle(cr, 0, 0, bw, titleH * 0.5);
+        cairo_fill(cr);
+        cairo_reset_clip(cr);
+
+        // Identity accent dot (matches the kernel-drawn border colour).
+        const uint32_t idc = hosIdentityColorForPid(pid);
+        cairo_set_source_rgba(cr, ((idc >> 16) & 0xFF) / 255.0, ((idc >> 8) & 0xFF) / 255.0, (idc & 0xFF) / 255.0, active ? 1.0 : 0.65);
+        cairo_arc(cr, 16, titleH / 2.0, 5, 0, 2 * HOS_PI);
+        cairo_fill(cr);
+
+        // Title (truncate to fit before the controls).
+        std::string t = title.empty() ? "Window" : title;
+        const int    maxChars = std::max(0, (bw - 130) / 9);
+        if (static_cast<int>(t.size()) > maxChars && maxChars > 1)
+            t = t.substr(0, maxChars - 1) + "…";
+        hosCairoText(cr, 30, titleH / 2.0 + 5, t, 14.0, active ? 0xF1F3F5u : 0x8A909Au, 1.0, active);
+
+        // Controls (right-aligned): minimize, maximize, close.
+        const double cy   = titleH / 2.0;
+        const double cr_   = 6.5;
+        const uint32_t cols[3] = {0xF4BF4Fu, 0x61C554u, 0xED6A5Eu}; // min, max, close
+        for (int i = 0; i < 3; ++i) {
+            const double cx = bw - 26 - (2 - i) * 26;
+            const uint32_t c = cols[i];
+            cairo_set_source_rgba(cr, ((c >> 16) & 0xFF) / 255.0, ((c >> 8) & 0xFF) / 255.0, (c & 0xFF) / 255.0, active ? 1.0 : 0.55);
+            cairo_arc(cr, cx, cy, cr_, 0, 2 * HOS_PI);
+            cairo_fill(cr);
+        }
+
+        cairo_destroy(cr);
+        hosCompositeCairoSurface(canvas, s, bx, by);
+        cairo_surface_destroy(s);
+    }
+
+    // Repaint the window's bottom corners back to the wallpaper so the client
+    // content reads as rounded (the kernel draws a matching rounded border).
+    void hosRoundBottomCorners(const SHosCPUCanvas& canvas, int bx, int by, int bw, int bh, int r) {
+        const int cw = static_cast<int>(canvas.width);
+        const int ch = static_cast<int>(canvas.height);
+        const int r2 = r * r;
+        // bottom-left arc centre, bottom-right arc centre
+        const int cx[2] = {bx + r, bx + bw - 1 - r};
+        const int cy    = by + bh - 1 - r;
+        for (int side = 0; side < 2; ++side) {
+            for (int dy = 0; dy <= r; ++dy) {
+                for (int dx = 0; dx <= r; ++dx) {
+                    if (dx * dx + dy * dy <= r2)
+                        continue; // inside the rounded window
+                    const int px = side == 0 ? cx[0] - dx : cx[1] + dx;
+                    const int py = cy + dy;
+                    if (px < 0 || py < 0 || px >= cw || py >= ch)
+                        continue;
+                    auto row = reinterpret_cast<uint32_t*>(canvas.data + static_cast<size_t>(py) * canvas.stride);
+                    row[px]  = hosWriteFormat(hosWallpaperColorAt(static_cast<uint32_t>(px), static_cast<uint32_t>(py), canvas.width, canvas.height), canvas.format);
+                }
+            }
+        }
+    }
+
     void hosReservePanelSpace(CBox& box, const Vector2D& monitorPos) {
         const double minY = monitorPos.y + HOS_PANEL_HEIGHT + HOS_PANEL_GAP;
         if (box.y >= minY)
@@ -358,6 +985,13 @@ namespace {
         box.y += delta;
         if (box.height > delta + 1.0)
             box.height -= delta;
+    }
+
+    void hosReserveDockSpace(CBox& box, const Vector2D& monitorPos, double monitorH) {
+        const double maxBottom = monitorPos.y + monitorH - (HOS_DOCK_REGION_H + HOS_PANEL_GAP);
+        if (box.y + box.height <= maxBottom)
+            return;
+        box.height = std::max(1.0, maxBottom - box.y);
     }
 
     bool hosBlitSurface(SP<CWLSurfaceResource> surface, const Vector2D& surfaceOffset, const CBox& windowBox, const Vector2D& monitorPos, const SHosCPUCanvas& dst) {
@@ -429,10 +1063,14 @@ namespace {
         hosDrawWallpaper(dst);
 
         uint32_t blits = 0;
+        uint32_t mapped = 0;
         std::string activeTitle = "EPIN DESKTOP";
+
+        const auto FOCUSED = Desktop::focusState() ? Desktop::focusState()->window() : nullptr;
         for (auto const& w : g_pCompositor->m_windows) {
             if (!w || !w->m_isMapped || !w->wlSurface() || !w->wlSurface()->resource())
                 continue;
+            ++mapped;
             if (!w->m_title.empty())
                 activeTitle = w->m_title;
 
@@ -444,12 +1082,30 @@ namespace {
 
             const auto monitorPos = monitor->m_position;
             hosReservePanelSpace(box, monitorPos);
+            hosReserveDockSpace(box, monitorPos, dst.height);
+
+            // G16: reserve a titlebar at the top of the window box; the client
+            // content fills the remainder, and the kernel identity border wraps
+            // the whole decorated box.
+            const bool active  = FOCUSED ? (w == FOCUSED) : true;
+            const int  titleH  = std::min(HOS_TITLEBAR_H, static_cast<int>(box.height * 0.5));
+            const int  bx      = static_cast<int>(box.x - monitorPos.x);
+            const int  by      = static_cast<int>(box.y - monitorPos.y);
+            const int  bw      = static_cast<int>(box.width);
+            const int  bh      = static_cast<int>(box.height);
+
+            CBox contentBox = box;
+            contentBox.y += titleH;
+            contentBox.height = std::max(1.0, box.height - titleH);
+
+            hosDrawWindowShadow(dst, bx, by, bw, bh, active);
+
             struct SBlitCtx {
                 const CBox*          box;
                 const Vector2D*      monitorPos;
                 const SHosCPUCanvas* dst;
                 uint32_t*            blits;
-            } ctx{&box, &monitorPos, &dst, &blits};
+            } ctx{&contentBox, &monitorPos, &dst, &blits};
 
             w->wlSurface()->resource()->breadthfirst(
                 [](SP<CWLSurfaceResource> surface, const Vector2D& offset, void* data) {
@@ -458,8 +1114,36 @@ namespace {
                         ++*ctx->blits;
                 },
                 &ctx);
+
+            hosDrawTitlebar(dst, bx, by, bw, titleH, w->m_title, active, static_cast<uint32_t>(w->getPID()));
+            hosRoundBottomCorners(dst, bx, by, bw, bh, HOS_WIN_RADIUS);
         }
         hosDrawPanel(dst, activeTitle);
+
+        // Map the active window to a dock slot for the running indicator.
+        const bool running     = mapped > 0;
+        int        runningSlot = 0; // Terminal by default
+        std::string lower;
+        lower.reserve(activeTitle.size());
+        for (char c : activeTitle)
+            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        if (lower.find("file") != std::string::npos)
+            runningSlot = 1;
+        else if (lower.find("set") != std::string::npos)
+            runningSlot = 2;
+        else if (lower.find("edit") != std::string::npos || lower.find("cairo") != std::string::npos || lower.find("demo") != std::string::npos)
+            runningSlot = 3;
+        else if (lower.find("mon") != std::string::npos)
+            runningSlot = 4;
+        hosDrawDock(dst, running, runningSlot, activeTitle);
+
+        // G15 launcher overlay above the desktop, then the pointer cursor on top.
+        hosDrawLauncher(dst);
+
+        if (g_pPointerManager) {
+            const auto cursorPos = g_pPointerManager->position();
+            hosDrawCursor(dst, static_cast<int>(cursorPos.x - monitor->m_position.x), static_cast<int>(cursorPos.y - monitor->m_position.y));
+        }
 
         output->endDataPtr();
 
@@ -470,6 +1154,12 @@ namespace {
             logged = true;
             if (blits > 0)
                 loggedPositive = true;
+        }
+
+        static bool dockLogged = false;
+        if (!dockLogged) {
+            Log::logger->log(Log::WARN, "renderer: HOS G14 dock rendered 5 app(s), running={} slot={}", running ? 1 : 0, runningSlot);
+            dockLogged = true;
         }
 
         return true;

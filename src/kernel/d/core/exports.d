@@ -952,14 +952,10 @@ ulong linux_seed_initial_stack(
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
-    // Verbose aquamarine logging to surface the first EGL/DRM backend failures.
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "AQ_TRACE=1\0".ptr);
-    if (envVirt != 0) envVirts[envc++] = envVirt;
-    // Make Mesa's EGL core log its initialize path to stderr so we can see WHY
-    // eglInitialize fails (driver/screen/config) instead of only the downstream
-    // strlen(NULL) crash. Trim once EGL comes up.
-    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "EGL_LOG_LEVEL=debug\0".ptr);
-    if (envVirt != 0) envVirts[envc++] = envVirt;
+    // NB: AQ_TRACE=1 and EGL_LOG_LEVEL=debug were bring-up debug aids. They make
+    // aquamarine log a per-frame scheduleFrame trace and Mesa log every EGL call
+    // to stdout → the slow serial UART, which under KVM throttles the compositor
+    // into a laggy crawl. Left OFF in normal operation (re-add to debug EGL/DRM).
     // libxkbcommon's baked DFLT_XKB_CONFIG_ROOT is a host build path that doesn't
     // exist in the guest; point it at the overlay tree the kernel unpacks from
     // xkb.blob (rtUnpackXkb) so xkb_context_new() can add an include path and
@@ -970,12 +966,35 @@ ulong linux_seed_initial_stack(
     // Collapse it to the guest asset theme root mounted from cursors/icons blobs.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "XCURSOR_PATH=/usr/share/icons\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // GW3: Weston dlopens its backend/shell by name from compiled-in absolute BUILD
+    // dirs that don't exist in the guest. WESTON_MODULE_MAP (name=/path;…), honored
+    // by weston_load_module/wet_get_binary_path, redirects each to its boot module.
+    // (The .so backends would also resolve by basename via findBootModuleLib, but the
+    // non-.so helper clients would not — so map them explicitly.)
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
+        "WESTON_MODULE_MAP=drm-backend.so=/drm-backend.so;desktop-shell.so=/desktop-shell.so;weston-desktop-shell=/weston-desktop-shell;weston-keyboard=/weston-keyboard;weston-terminal=/weston-terminal\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     bool isHyprland =
     execName !is null &&
     (cstrContainsExports(execName, "Hyprland") ||
      cstrContainsExports(execName, "hyprland"));
+    // GW3: Weston is launched with a second argv word, --drm-device=card0, so its
+    // DRM backend takes the open_specific_drm_device() path (udev-zero builds the
+    // device from /sys/class/drm/card0/uevent) instead of scanning for a primary
+    // GPU. Match the EXACT basename "weston" — execveTask reuses this seeder for
+    // weston's own children (weston-desktop-shell, weston-terminal, …) and they
+    // must NOT receive --drm-device.
+    bool isWeston = false;
+    if (execName !is null) {
+        const(char)* wb = execName;
+        for (const(char)* q = execName; *q != 0; ++q)
+            if (*q == '/') wb = q + 1;
+        isWeston = wb[0] == 'w' && wb[1] == 'e' && wb[2] == 's' && wb[3] == 't' &&
+                   wb[4] == 'o' && wb[5] == 'n' && wb[6] == 0;
+    }
     ulong frameWords;
     ulong stupidFlagVirt = 0;
+    ulong drmDeviceVirt  = 0;
 
     if (isHyprland) {
         stupidFlagVirt =
@@ -984,6 +1003,15 @@ ulong linux_seed_initial_stack(
                 stackVirtBase,
                 strCursor,
                 "--i-am-really-stupid\0".ptr);
+
+        frameWords = 1 + 2 + 1 + envc + 1 + 40;
+    } else if (isWeston) {
+        drmDeviceVirt =
+            _copyKernelStrToStack(
+                stackPhysVirt,
+                stackVirtBase,
+                strCursor,
+                "--drm-device=card0\0".ptr);
 
         frameWords = 1 + 2 + 1 + envc + 1 + 40;
     } else {
@@ -999,6 +1027,11 @@ ulong linux_seed_initial_stack(
         p[idx++] = 2;
         p[idx++] = execFnVirt;
         p[idx++] = stupidFlagVirt;
+        p[idx++] = 0;
+    } else if (isWeston) {
+        p[idx++] = 2;
+        p[idx++] = execFnVirt;
+        p[idx++] = drmDeviceVirt;
         p[idx++] = 0;
     } else {
         p[idx++] = 1;

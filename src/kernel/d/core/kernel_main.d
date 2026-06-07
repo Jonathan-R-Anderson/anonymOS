@@ -97,6 +97,20 @@ private void loadTaskState(ref Task task) {
     for (uint i = 0; i < NUM_REGS; i++)
         dst[i] = task.regs[i];
 
+    // A freshly created task starts with a zero-filled FXSAVE image, whose MXCSR
+    // (offset 24) is 0 — meaning every SSE floating-point exception is UNMASKED.
+    // On a real FPU (KVM) the first invalid/overflow op (e.g. Hyprgraphics' OkLab
+    // colour math) then raises #XM and kills the task; QEMU's TCG software FPU
+    // happened to tolerate it.  Seed an uninitialised image with the standard
+    // masked default (MXCSR 0x1F80, FCW 0x037F) so no FP op ever traps.
+    {
+        auto mxcsr = cast(uint*)(task.sseState.ptr + 24);
+        if (*mxcsr == 0) {
+            *mxcsr = 0x1F80;
+            *cast(ushort*)(task.sseState.ptr + 0) = 0x037F; // x87 control word
+        }
+    }
+
     // SSE state at curUserSpaceState[8 + 0x90]
     auto sseDst = cast(ubyte*)(&curUserSpaceState[0] + 8 + 0x90);
     auto sseSrc = task.sseState.ptr;
@@ -424,10 +438,14 @@ private int forkTask(int parentTid) {
     child.pml4Phys = childPml4;
     archMapKernel(childPml4);
 
-    // Deep-copy all user-space pages from parent's page table
-    // (must be done while parent's CR3 is active so HHDM accesses work)
+    // Copy-on-write the parent's user pages into the child (shares frames
+    // read-only instead of duplicating them — see walkAndCopyUserPages). Must
+    // run while parent's CR3 is active so HHDM accesses resolve.
     walkAndCopyUserPages(parent.pml4Phys, childPml4, child);
     physSetActiveUntyped(savedUntyped);
+    // The walk demoted the parent's now-shared pages to read-only; flush its TLB
+    // so stale writable entries can't bypass the CoW fault on the next write.
+    x64WriteCR3(parent.pml4Phys);
 
     // Copy FS base
     d_store_task_fsbase(cast(ulong)childTid,
@@ -609,6 +627,23 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog(path);
         klog("\n");
         return -2; // ENOENT
+    }
+
+    // Release the outgoing address space's private pages before installing a
+    // fresh one (old CR3 is still active, so unmap_page_hhdm operates on it).
+    // A freshly forked child reaches execve sharing all of its parent's pages
+    // copy-on-write; dropping those references here returns the parent's frames
+    // to exclusive ownership (no needless CoW copies later) and reclaims any
+    // truly private pages instead of leaking them.  Shared (device/memfd) maps
+    // are left intact.  Page-table pages and the old PML4 are left mapped (a
+    // small, pre-existing leak) since CR3 still points at them until the switch.
+    for (int ri = 0; ri < task.regionCount; ri++) {
+        auto r = &task.regions[ri];
+        if (!r.owned) continue;
+        for (ulong va = r.start; va < r.end; va += 4096) {
+            ulong phys = unmap_page_hhdm(va);
+            if (phys != 0) free_phys_page(phys);
+        }
     }
 
     // Switch to a fresh page table
@@ -1113,11 +1148,14 @@ private void dispatchSyscall(int tid) {
     userSetActiveSubject(task.userObjId);
 
     // Phase 2 (roadmap/OBJECT_OS_ROADMAP.md): keep the core.objmgr object table
-    // mirrored onto the now-active fd table.  Amortized (every 256 syscalls) and
-    // off the I/O path, so the proof-of-tracking carries no per-syscall cost;
-    // every ~16k syscalls dump live/peak counts as runtime evidence the table
-    // tracks every fd.
-    if (((++g_objReconcileCtr) & 0xFF) == 0) {
+    // mirrored onto the now-active fd table, and periodically run the object-graph
+    // reconciliation + research self-test proofs.  This block costs ~hundreds of
+    // millions of cycles per run (graph walks + crypto self-tests), so running it
+    // every 256 syscalls dominated runtime — Hyprland issues ~hundreds of syscalls
+    // per frame, so it fired roughly once per frame and pinned the desktop at ~5
+    // fps.  These are non-functional proofs/audits; amortize them over 64k syscalls
+    // so they remain runtime evidence without throttling interactive work.
+    if (((++g_objReconcileCtr) & 0xFFFFF) == 0) {
         objReconcileTasks();
         objReconcileFds();
         objReconcileRegions();
@@ -1956,6 +1994,23 @@ void d_kernel_main() {
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
                 initExecName = cstrBasenameK(name);
                 klog("[dkernel] init = dyntest (dynamic-linker test)\n");
+            }
+        }
+
+        // GW3: Weston (Wayland reference compositor + Pixman software renderer)
+        // takes priority over Hyprland as the desktop target when its module is
+        // staged. Match the binary by EXACT basename "weston" so the weston-*
+        // helper-client modules (weston-desktop-shell, weston-terminal, …) aren't
+        // mistaken for the compositor. Staging weston is what toggles this on;
+        // remove it from the ISO to fall back to Hyprland for comparison.
+        for (int i = 0; i < g_module_count && initPhys == 0; i++) {
+            auto rec  = cast(multiboot_module_t*)(recs + i * 128);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            if (cstrEqK(cstrBasenameK(name), "weston\0".ptr)) {
+                initPhys = cast(ulong)rec.mod_start;
+                initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
+                initExecName = cstrBasenameK(name);
+                klog("[dkernel] init = Weston module (GW3)\n");
             }
         }
 

@@ -603,6 +603,10 @@ void CWLSurfaceResource::commitState(SSurfaceState& state) {
     // another input/event edge. Damage the mapped surface box immediately so the
     // sessionless headless backend schedules a fresh present for the commit.
     if (wasMapped && hosVisualCommit && m_role->role() != SURFACE_ROLE_CURSOR && g_pHyprRenderer && g_pCompositor) {
+        // A client repainted: the HOS CPU compositor must recompose its cached
+        // desktop background (not just blit the cursor) on the resulting frame.
+        g_pHyprRenderer->hosMarkBgDirty();
+
         std::optional<CBox> damageBox;
         bool                damagedWindow = false;
 

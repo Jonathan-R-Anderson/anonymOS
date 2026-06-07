@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "../Compositor.hpp"
+#include "Renderer.hpp"
 #include "../config/supplementary/executor/Executor.hpp"
 #include "../config/shared/actions/ConfigActions.hpp" // G16: window controls
 #include "../debug/log/Logger.hpp"
@@ -65,6 +66,10 @@ namespace {
     void requestRedraw() {
         if (!g_pCompositor)
             return;
+        // The launcher/dock overlay changed: force the HOS CPU compositor to
+        // recompose its cached background, not just blit the cursor.
+        if (g_pHyprRenderer)
+            g_pHyprRenderer->hosMarkBgDirty();
         for (auto& m : g_pCompositor->m_monitors)
             g_pCompositor->scheduleFrameForMonitor(m);
     }

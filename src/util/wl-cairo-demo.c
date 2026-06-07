@@ -706,12 +706,26 @@ static void pointer_axis(void *data, struct wl_pointer *pointer,
     (void)value;
 }
 
+/* wl_pointer v5+ sends a frame event (opcode 5) after each pointer event group,
+ * plus axis_source/axis_stop/axis_discrete for scrolling. libwayland calls these
+ * listener slots unconditionally; leaving them NULL crashes the client the moment
+ * the compositor delivers one (e.g. on the first mouse motion). Provide no-op
+ * handlers. */
+static void pointer_frame(void *data, struct wl_pointer *p) { (void)data; (void)p; }
+static void pointer_axis_source(void *data, struct wl_pointer *p, uint32_t s) { (void)data; (void)p; (void)s; }
+static void pointer_axis_stop(void *data, struct wl_pointer *p, uint32_t t, uint32_t a) { (void)data; (void)p; (void)t; (void)a; }
+static void pointer_axis_discrete(void *data, struct wl_pointer *p, uint32_t a, int32_t d) { (void)data; (void)p; (void)a; (void)d; }
+
 static const struct wl_pointer_listener pointer_listener = {
     .enter = pointer_enter,
     .leave = pointer_leave,
     .motion = pointer_motion,
     .button = pointer_button,
     .axis = pointer_axis,
+    .frame = pointer_frame,
+    .axis_source = pointer_axis_source,
+    .axis_stop = pointer_axis_stop,
+    .axis_discrete = pointer_axis_discrete,
 };
 
 static void seat_capabilities(void *data, struct wl_seat *seat, uint32_t caps)

@@ -1,6 +1,8 @@
 #include "GLRenderer.hpp"
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>              // EpinAnonymOS: memcpy for the cached wallpaper blit
+#include <vector>
 #include <fcntl.h>      // EpinAnonymOS G5: report window rects to the kernel
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -81,6 +83,42 @@ namespace {
         uint32_t format = DRM_FORMAT_INVALID;
         size_t   size   = 0;
     };
+
+    // Persistent compose caches.  These are deliberately at namespace scope, NOT
+    // function-local statics: in this freestanding environment a function-local
+    // `static std::vector` re-runs its guarded constructor on entry, so the cache
+    // was reset to empty every frame — defeating the wallpaper/dock caches and
+    // pinning the desktop at ~5 fps.  Namespace statics are constructed once.
+    std::vector<uint32_t>      g_wpCache;       // formatted procedural wallpaper
+    uint32_t                   g_wpCw = 0, g_wpCh = 0, g_wpCfmt = 0;
+    std::vector<unsigned char> g_dockCache;     // rendered dock ARGB pixels
+    int                        g_dockR = -1, g_dockS = -1, g_dockW = -1, g_dockH = -1;
+
+    // Damage-tracked present state. g_hosBg holds the composed desktop WITHOUT the
+    // cursor (recomposed only when m_hosBgDirty); g_scratch holds g_hosBg + cursor
+    // (the frame actually shown). A cursor-only frame just restores the area under
+    // the old cursor from g_hosBg and redraws the cursor, then copies only the
+    // damaged rect to the (swap-chained) output, accounting for buffer age.
+    std::vector<uint8_t>       g_hosBg;         // background, no cursor
+    std::vector<uint8_t>       g_scratch;       // background + cursor (presented)
+    int                        g_curLastX = -1000000, g_curLastY = -1000000;
+    int                        g_frameSeq = 0;
+    int                        g_forceFullCtr = 0;
+
+    struct HRect { int x0 = 0, y0 = 0, x1 = 0, y1 = 0; bool empty() const { return x1 <= x0 || y1 <= y0; } };
+    HRect                      g_dmgRing[4];
+    struct HBufStamp { const uint8_t* ptr = nullptr; int seq = -1000; };
+    HBufStamp                  g_bufStamps[8];
+    int                        g_bufStampN = 0;
+
+    HRect hosRectUnion(HRect a, HRect b) {
+        if (a.empty()) return b;
+        if (b.empty()) return a;
+        return {std::min(a.x0, b.x0), std::min(a.y0, b.y0), std::max(a.x1, b.x1), std::max(a.y1, b.y1)};
+    }
+    HRect hosRectClamp(HRect r, int W, int H) {
+        return {std::max(0, r.x0), std::max(0, r.y0), std::min(W, r.x1), std::min(H, r.y1)};
+    }
 
     bool hosFormatIs32(uint32_t format) {
         return format == DRM_FORMAT_XRGB8888 || format == DRM_FORMAT_ARGB8888 || format == DRM_FORMAT_XBGR8888 || format == DRM_FORMAT_ABGR8888;
@@ -339,10 +377,23 @@ namespace {
     void hosDrawWallpaper(const SHosCPUCanvas& canvas) {
         if (!canvas.width || !canvas.height)
             return;
+        // The procedural wallpaper is static, but hosWallpaperColorAt() is ~50
+        // arithmetic ops per pixel — recomputing it for all ~1M pixels every frame
+        // was the dominant CPU-compose cost (~200 ms/frame, i.e. ~5 fps, which made
+        // the cursor and the whole desktop feel sluggish). Compute it once into a
+        // cache keyed on size+format, then blit with memcpy (~1-2 ms) thereafter.
+        const size_t n = static_cast<size_t>(canvas.width) * canvas.height;
+        if (g_wpCw != canvas.width || g_wpCh != canvas.height || g_wpCfmt != canvas.format || g_wpCache.size() != n) {
+            g_wpCache.resize(n);
+            for (uint32_t y = 0; y < canvas.height; ++y)
+                for (uint32_t x = 0; x < canvas.width; ++x)
+                    g_wpCache[static_cast<size_t>(y) * canvas.width + x] =
+                        hosWriteFormat(hosWallpaperColorAt(x, y, canvas.width, canvas.height), canvas.format);
+            g_wpCw = canvas.width; g_wpCh = canvas.height; g_wpCfmt = canvas.format;
+        }
         for (uint32_t y = 0; y < canvas.height; ++y) {
             auto row = reinterpret_cast<uint32_t*>(canvas.data + static_cast<size_t>(y) * canvas.stride);
-            for (uint32_t x = 0; x < canvas.width; ++x)
-                row[x] = hosWriteFormat(hosWallpaperColorAt(x, y, canvas.width, canvas.height), canvas.format);
+            std::memcpy(row, &g_wpCache[static_cast<size_t>(y) * canvas.width], static_cast<size_t>(canvas.width) * 4);
         }
     }
 
@@ -639,6 +690,13 @@ namespace {
             return;
 
         // The dock is vector-only; it does not depend on the bundled font faces.
+        // Re-rendering its shadows/gradients/glyphs with Cairo every frame cost
+        // ~100 ms (the bulk of the CPU compose). Cache the rendered pixels and
+        // only redraw when the dock state (running app / size) changes, then
+        // re-composite the cache each frame.
+        const int    dockStride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, W);
+        const size_t dockBytes  = static_cast<size_t>(dockStride) * H;
+        if (g_dockR != (running ? 1 : 0) || g_dockS != runningSlot || g_dockW != W || g_dockH != H || g_dockCache.size() != dockBytes) {
         cairo_surface_t* s = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, W, H);
         if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
             cairo_surface_destroy(s);
@@ -717,8 +775,18 @@ namespace {
         }
 
         cairo_destroy(cr);
-        hosCompositeCairoSurface(canvas, s, 0, static_cast<int>(canvas.height) - H);
+        cairo_surface_flush(s);
+        if (const unsigned char* px = cairo_image_surface_get_data(s))
+            g_dockCache.assign(px, px + dockBytes);
         cairo_surface_destroy(s);
+        g_dockR = running ? 1 : 0; g_dockS = runningSlot; g_dockW = W; g_dockH = H;
+        }
+
+        if (g_dockCache.size() != dockBytes)
+            return;
+        cairo_surface_t* cs = cairo_image_surface_create_for_data(g_dockCache.data(), CAIRO_FORMAT_ARGB32, W, H, dockStride);
+        hosCompositeCairoSurface(canvas, cs, 0, static_cast<int>(canvas.height) - H);
+        cairo_surface_destroy(cs);
     }
 
     // G15 launcher: a centred Spotlight-style search overlay with a query field
@@ -1052,98 +1120,170 @@ namespace {
         return true;
     }
 
+    static inline uint64_t hosRdtsc() {
+        uint32_t a, d;
+        __asm__ __volatile__("rdtsc" : "=a"(a), "=d"(d));
+        return (static_cast<uint64_t>(d) << 32) | a;
+    }
+
     bool hosComposeShmWindows(SP<Aquamarine::IBuffer> output, PHLMONITORREF monitor) {
         if (!output || !monitor)
             return false;
+
+        const uint64_t hosTscIn = hosRdtsc();
 
         SHosCPUCanvas dst;
         if (!hosBeginCanvas(output, dst))
             return false;
 
-        hosDrawWallpaper(dst);
+        uint8_t* const outData   = dst.data;
+        const uint32_t outStride = dst.stride;
+        const int      W         = static_cast<int>(dst.width);
+        const int      H         = static_cast<int>(dst.height);
+        const size_t   stride    = static_cast<size_t>(W) * 4;
+        g_hosBg.resize(stride * H);
+        g_scratch.resize(stride * H);
 
-        uint32_t blits = 0;
-        uint32_t mapped = 0;
-        std::string activeTitle = "EPIN DESKTOP";
-
-        const auto FOCUSED = Desktop::focusState() ? Desktop::focusState()->window() : nullptr;
-        for (auto const& w : g_pCompositor->m_windows) {
-            if (!w || !w->m_isMapped || !w->wlSurface() || !w->wlSurface()->resource())
-                continue;
-            ++mapped;
-            if (!w->m_title.empty())
-                activeTitle = w->m_title;
-
-            CBox box = {w->m_realPosition->value(), w->m_realSize->value()};
-            if (box.width <= 0 || box.height <= 0)
-                box = {w->m_position, w->m_size};
-            if (box.width <= 0 || box.height <= 0)
-                continue;
-
-            const auto monitorPos = monitor->m_position;
-            hosReservePanelSpace(box, monitorPos);
-            hosReserveDockSpace(box, monitorPos, dst.height);
-
-            // G16: reserve a titlebar at the top of the window box; the client
-            // content fills the remainder, and the kernel identity border wraps
-            // the whole decorated box.
-            const bool active  = FOCUSED ? (w == FOCUSED) : true;
-            const int  titleH  = std::min(HOS_TITLEBAR_H, static_cast<int>(box.height * 0.5));
-            const int  bx      = static_cast<int>(box.x - monitorPos.x);
-            const int  by      = static_cast<int>(box.y - monitorPos.y);
-            const int  bw      = static_cast<int>(box.width);
-            const int  bh      = static_cast<int>(box.height);
-
-            CBox contentBox = box;
-            contentBox.y += titleH;
-            contentBox.height = std::max(1.0, box.height - titleH);
-
-            hosDrawWindowShadow(dst, bx, by, bw, bh, active);
-
-            struct SBlitCtx {
-                const CBox*          box;
-                const Vector2D*      monitorPos;
-                const SHosCPUCanvas* dst;
-                uint32_t*            blits;
-            } ctx{&contentBox, &monitorPos, &dst, &blits};
-
-            w->wlSurface()->resource()->breadthfirst(
-                [](SP<CWLSurfaceResource> surface, const Vector2D& offset, void* data) {
-                    auto* ctx = static_cast<SBlitCtx*>(data);
-                    if (hosBlitSurface(surface, offset, *ctx->box, *ctx->monitorPos, *ctx->dst))
-                        ++*ctx->blits;
-                },
-                &ctx);
-
-            hosDrawTitlebar(dst, bx, by, bw, titleH, w->m_title, active, static_cast<uint32_t>(w->getPID()));
-            hosRoundBottomCorners(dst, bx, by, bw, bh, HOS_WIN_RADIUS);
-        }
-        hosDrawPanel(dst, activeTitle);
-
-        // Map the active window to a dock slot for the running indicator.
-        const bool running     = mapped > 0;
-        int        runningSlot = 0; // Terminal by default
-        std::string lower;
-        lower.reserve(activeTitle.size());
-        for (char c : activeTitle)
-            lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-        if (lower.find("file") != std::string::npos)
-            runningSlot = 1;
-        else if (lower.find("set") != std::string::npos)
-            runningSlot = 2;
-        else if (lower.find("edit") != std::string::npos || lower.find("cairo") != std::string::npos || lower.find("demo") != std::string::npos)
-            runningSlot = 3;
-        else if (lower.find("mon") != std::string::npos)
-            runningSlot = 4;
-        hosDrawDock(dst, running, runningSlot, activeTitle);
-
-        // G15 launcher overlay above the desktop, then the pointer cursor on top.
-        hosDrawLauncher(dst);
-
+        // Pointer position, monitor-local.
+        int curX = -1000000, curY = -1000000;
         if (g_pPointerManager) {
-            const auto cursorPos = g_pPointerManager->position();
-            hosDrawCursor(dst, static_cast<int>(cursorPos.x - monitor->m_position.x), static_cast<int>(cursorPos.y - monitor->m_position.y));
+            const auto p = g_pPointerManager->position();
+            curX = static_cast<int>(p.x - monitor->m_position.x);
+            curY = static_cast<int>(p.y - monitor->m_position.y);
         }
+        const int CS = 26; // cursor damage box (the cursor art is 22px)
+
+        // Recompose the cached background only when content actually changed
+        // (m_hosBgDirty is raised by surface commits, window map/unmap and launcher
+        // toggles), or once every ~240 frames so the panel clock keeps advancing.
+        bool bgDirty = g_pHyprRenderer->hosBgDirty() || g_hosBg.size() != stride * static_cast<size_t>(H);
+        if (++g_forceFullCtr >= 240) { bgDirty = true; g_forceFullCtr = 0; }
+
+        SHosCPUCanvas bg = dst; bg.data = g_hosBg.data();   bg.stride = static_cast<uint32_t>(stride);
+        SHosCPUCanvas sc = dst; sc.data = g_scratch.data(); sc.stride = static_cast<uint32_t>(stride);
+
+        uint32_t blits = 0, mapped = 0;
+        bool     running = false;
+        int      runningSlot = 0;
+        HRect    frameDmg{};
+
+        if (bgDirty) {
+            g_pHyprRenderer->hosClearBgDirty();
+
+            hosDrawWallpaper(bg);
+
+            std::string activeTitle = "EPIN DESKTOP";
+            const auto  FOCUSED     = Desktop::focusState() ? Desktop::focusState()->window() : nullptr;
+            for (auto const& w : g_pCompositor->m_windows) {
+                if (!w || !w->m_isMapped || !w->wlSurface() || !w->wlSurface()->resource())
+                    continue;
+                ++mapped;
+                if (!w->m_title.empty())
+                    activeTitle = w->m_title;
+
+                CBox box = {w->m_realPosition->value(), w->m_realSize->value()};
+                if (box.width <= 0 || box.height <= 0)
+                    box = {w->m_position, w->m_size};
+                if (box.width <= 0 || box.height <= 0)
+                    continue;
+
+                const auto monitorPos = monitor->m_position;
+                hosReservePanelSpace(box, monitorPos);
+                hosReserveDockSpace(box, monitorPos, bg.height);
+
+                const bool active  = FOCUSED ? (w == FOCUSED) : true;
+                const int  titleH  = std::min(HOS_TITLEBAR_H, static_cast<int>(box.height * 0.5));
+                const int  bx      = static_cast<int>(box.x - monitorPos.x);
+                const int  by      = static_cast<int>(box.y - monitorPos.y);
+                const int  bw      = static_cast<int>(box.width);
+                const int  bh      = static_cast<int>(box.height);
+
+                CBox contentBox = box;
+                contentBox.y += titleH;
+                contentBox.height = std::max(1.0, box.height - titleH);
+
+                hosDrawWindowShadow(bg, bx, by, bw, bh, active);
+
+                struct SBlitCtx {
+                    const CBox*          box;
+                    const Vector2D*      monitorPos;
+                    const SHosCPUCanvas* dst;
+                    uint32_t*            blits;
+                } ctx{&contentBox, &monitorPos, &bg, &blits};
+
+                w->wlSurface()->resource()->breadthfirst(
+                    [](SP<CWLSurfaceResource> surface, const Vector2D& offset, void* data) {
+                        auto* ctx = static_cast<SBlitCtx*>(data);
+                        if (hosBlitSurface(surface, offset, *ctx->box, *ctx->monitorPos, *ctx->dst))
+                            ++*ctx->blits;
+                    },
+                    &ctx);
+
+                hosDrawTitlebar(bg, bx, by, bw, titleH, w->m_title, active, static_cast<uint32_t>(w->getPID()));
+                hosRoundBottomCorners(bg, bx, by, bw, bh, HOS_WIN_RADIUS);
+            }
+            hosDrawPanel(bg, activeTitle);
+
+            running = mapped > 0;
+            std::string lower;
+            lower.reserve(activeTitle.size());
+            for (char c : activeTitle)
+                lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+            if (lower.find("file") != std::string::npos)
+                runningSlot = 1;
+            else if (lower.find("set") != std::string::npos)
+                runningSlot = 2;
+            else if (lower.find("edit") != std::string::npos || lower.find("cairo") != std::string::npos || lower.find("demo") != std::string::npos)
+                runningSlot = 3;
+            else if (lower.find("mon") != std::string::npos)
+                runningSlot = 4;
+            hosDrawDock(bg, running, runningSlot, activeTitle);
+            hosDrawLauncher(bg);
+
+            // scratch = background, then the cursor on top.
+            std::memcpy(g_scratch.data(), g_hosBg.data(), stride * static_cast<size_t>(H));
+            hosDrawCursor(sc, curX, curY);
+            frameDmg = {0, 0, W, H};
+        } else {
+            // Background unchanged: restore the area under the previous cursor from
+            // the cached background, then redraw the cursor at its new position.
+            HRect oldR = hosRectClamp({g_curLastX - 2, g_curLastY - 2, g_curLastX + CS, g_curLastY + CS}, W, H);
+            for (int y = oldR.y0; y < oldR.y1; ++y)
+                std::memcpy(g_scratch.data() + static_cast<size_t>(y) * stride + static_cast<size_t>(oldR.x0) * 4,
+                            g_hosBg.data()   + static_cast<size_t>(y) * stride + static_cast<size_t>(oldR.x0) * 4,
+                            static_cast<size_t>(oldR.x1 - oldR.x0) * 4);
+            hosDrawCursor(sc, curX, curY);
+            HRect newR = hosRectClamp({curX - 2, curY - 2, curX + CS, curY + CS}, W, H);
+            frameDmg = hosRectUnion(oldR, newR);
+        }
+        g_curLastX = curX; g_curLastY = curY;
+
+        // Record this frame's damage; copy to the output only the union of damage
+        // since this swap-chain buffer was last presented (buffer age).
+        g_dmgRing[g_frameSeq & 3] = frameDmg;
+        int slot = -1, lastSeq = -1000;
+        for (int i = 0; i < g_bufStampN; ++i)
+            if (g_bufStamps[i].ptr == outData) { slot = i; lastSeq = g_bufStamps[i].seq; break; }
+        const int age = g_frameSeq - lastSeq;
+        HRect     copyR{};
+        if (slot < 0 || age >= 4 || age < 0)
+            copyR = {0, 0, W, H};
+        else
+            for (int k = 0; k < age; ++k)
+                copyR = hosRectUnion(copyR, g_dmgRing[(g_frameSeq - k) & 3]);
+        copyR = hosRectClamp(copyR, W, H);
+
+        for (int y = copyR.y0; y < copyR.y1; ++y)
+            std::memcpy(outData          + static_cast<size_t>(y) * outStride + static_cast<size_t>(copyR.x0) * 4,
+                        g_scratch.data() + static_cast<size_t>(y) * stride    + static_cast<size_t>(copyR.x0) * 4,
+                        static_cast<size_t>(copyR.x1 - copyR.x0) * 4);
+
+        if (slot < 0) {
+            slot = (g_bufStampN < 8) ? g_bufStampN++ : (g_frameSeq & 7);
+            g_bufStamps[slot].ptr = outData;
+        }
+        g_bufStamps[slot].seq = g_frameSeq;
+        ++g_frameSeq;
 
         output->endDataPtr();
 
@@ -1157,9 +1297,32 @@ namespace {
         }
 
         static bool dockLogged = false;
-        if (!dockLogged) {
+        if (!dockLogged && bgDirty) {
             Log::logger->log(Log::WARN, "renderer: HOS G14 dock rendered 5 app(s), running={} slot={}", running ? 1 : 0, runningSlot);
             dockLogged = true;
+        }
+
+        // Perf counter: one WARN line per 120 composes (no per-frame spam). Lets us
+        // measure, under KVM, the frame cadence (wallTsc/120 = time per frame) vs
+        // the compose CPU cost (composeTsc) and how many frames are full background
+        // recomposes (full) vs cheap cursor-only updates.
+        {
+            static uint64_t s_wallStart  = 0;
+            static uint64_t s_composeSum = 0;
+            static int      s_n = 0, s_full = 0;
+            s_composeSum += hosRdtsc() - hosTscIn;
+            ++s_n;
+            if (bgDirty)
+                ++s_full;
+            if (s_n >= 120) {
+                const uint64_t now = hosRdtsc();
+                Log::logger->log(Log::WARN, "HOSFPS 120frames wallTsc={} composeTsc={} full={}",
+                                 (s_wallStart ? now - s_wallStart : 0), s_composeSum, s_full);
+                s_wallStart = now;
+                s_composeSum = 0;
+                s_n = 0;
+                s_full = 0;
+            }
         }
 
         return true;
@@ -1202,6 +1365,19 @@ bool CHyprGLRenderer::beginFullFakeRenderInternal(PHLMONITOR pMonitor, CRegion& 
 
 bool CHyprGLRenderer::beginRenderInternal(PHLMONITOR pMonitor, CRegion& damage, bool simple) {
 
+    // EpinAnonymOS: on the HOS CPU-readback path the whole frame is composited on
+    // the CPU in endRender() (the GL render pass is cleared, never executed), so
+    // every GL/EGL call here is pure overhead — and worse, Mesa's surfaceless
+    // swrast path FAULTS in this sessionless/software environment (its TLS GL
+    // dispatch table is bogus, so ANY gl* call reads unmapped memory).  It killed
+    // the compositor's main thread the moment a client frame was rendered, taking
+    // the event loop — and thus all keyboard/mouse input — down with it.  Skip the
+    // renderbuffer bind + GL begin entirely; nothing else touches GL on this path.
+    static const bool HOS_SCENE_RENDER = std::getenv("HOS_SCENE_RENDER") != nullptr;
+    m_hosCPUFrame                      = !HOS_SCENE_RENDER && m_currentRenderbuffer && m_currentRenderbuffer->needsCPUCopy();
+    if (m_hosCPUFrame)
+        return true;
+
     m_currentRenderbuffer->bind();
     if (simple)
         g_pHyprOpenGL->beginSimple(pMonitor, damage, m_currentRenderbuffer);
@@ -1216,7 +1392,9 @@ void CHyprGLRenderer::endRender(const std::function<void()>& renderingDoneCallba
     static auto PNVIDIAANTIFLICKER = CConfigValue<Config::INTEGER>("opengl:nvidia_anti_flicker");
 
     auto cleanup = CScopeGuard([this]() {
-        if (m_currentRenderbuffer)
+        // EpinAnonymOS: unbind() does GL (glBindFramebuffer); skip it on the HOS
+        // CPU path where no GL context was made current (see beginRenderInternal).
+        if (m_currentRenderbuffer && !m_hosCPUFrame)
             m_currentRenderbuffer->unbind();
         m_currentRenderbuffer = nullptr;
         m_currentBuffer       = nullptr;

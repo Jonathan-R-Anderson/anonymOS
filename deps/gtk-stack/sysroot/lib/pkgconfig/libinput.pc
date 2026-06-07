@@ -5,6 +5,7 @@ libdir=${prefix}/lib
 Name: Libinput
 Description: Input device library
 Version: 1.29.2
-Requires.private: libudev
+Requires.private: libudev libevdev
 Libs: -L${libdir} -linput
+Libs.private: -lmtdev
 Cflags: -I${includedir}

@@ -64,6 +64,79 @@ These are the correct low-level primitives. The shell is now rendered with Cairo
 
 ---
 
+# ARCHITECTURE PIVOT (2026-06-07) — Weston + Pixman instead of Hyprland
+
+**Why.** G6–G18 above were built on **Hyprland**, which is an **OpenGL-only** compositor. This machine has no GPU, and Mesa's software GL (`swrast`) crashes in this freestanding/musl environment. To get anything on screen we had to bypass Hyprland's renderer entirely with a **hand-written CPU compositor** (`hosComposeShmWindows`) plus custom damage tracking and a custom cursor path. That custom layer is fragile and is the source of a recurring chain of bugs: the GL crash that killed input, an OOM when forking to launch apps, a serial-log flood that froze the desktop under KVM, a full-frame blit per present, and finally a cursor that updates at ~1–2 fps because Hyprland assumes a hardware cursor plane that does not exist here.
+
+**Decision.** Replace Hyprland with **Weston** (the reference Wayland compositor) using its **Pixman software renderer**. Weston is designed for software rendering: **no OpenGL/Mesa at all**, and software cursors, software compositing, and damage tracking are first-class, tested code — not hand-rolled. This deletes `hosComposeShmWindows` and the entire custom-compositor surface.
+
+**The Hyprland-era milestones (G6–G21) are retained for history**, but the shell work (panel/dock/launcher/file-manager/settings) will be re-expressed on top of Weston via standard mechanisms (`weston.ini`, `layer-shell`, a desktop or kiosk shell) once the compositor is up. The hard, recurring "make pixels appear without a GPU" problem is solved structurally rather than patched.
+
+## GW1 DONE — Build Weston + Pixman against the existing sysroot. P: Critical
+
+**Goal:** Compile Weston 14.0 as pure software (no GL/Mesa) against the musl sysroot already built for the Hyprland attempt.
+
+**Done when:**
+
+- `weston`, `libweston-14` (Pixman renderer built in), `drm-backend.so`, `headless-backend.so`, `desktop-shell.so`, `kiosk-shell.so`, and demo clients all link. ✅ (`deps/weston-14.0.0/build-epin`, `ninja rc=0`).
+- The `weston` binary's only `NEEDED` libs are `libexec_weston.so` + musl `libc.so` — **no libGL/libEGL/mesa**. ✅
+- Recipe + the two prep fixes (objcopy symbol renames for static-link collisions in `libinput.a`/`libwayland-cursor.a`; `libinput.pc` private deps; `-Dprefer_static=true`) are recorded.
+
+## GW2 DONE (2026-06-07) — Kernel KMS present + page-flip events for Weston's DRM backend. P: Critical
+
+**Goal:** Make Weston's stock `drm-backend` actually display. All handlers below implemented in `posix.d` and **validated against the Weston 14.0.0 source** (not guessed). Kernel compiles (`-betterC`, ldc2), relinks, and the full ISO builds clean.
+
+**CRITICAL fix:** the kernel's DRM ioctl NR constants were wrong vs. real libdrm — it had `ADDFB2=0xb0`, `PAGE_FLIP=0xb1`, but libdrm uses `PAGE_FLIP=0xB0`, `DIRTYFB=0xB1`, `ADDFB2=0xB8`. Harmless before only because Hyprland used the custom `HOS_PRESENT (0xf0)` path; Weston goes through libdrm so the numbers must match exactly. Corrected, and added `GETPLANERESOURCES=0xB5`, `GETPLANE=0xB6`, `SETPLANE=0xB7`, `OBJ_GETPROPERTIES=0xB9`, `GETPROPERTY=0xAA`, `CURSOR=0xA3`, `CURSOR2=0xBB`.
+
+**Done:**
+
+- **`ADDFB`/`ADDFB2`**: allocate a unique `fb_id`, bind it to the GEM dumb buffer (new `DrmFb[16] g_drmFbs` table, `drmAddFb`).
+- **`SETCRTC`** (`fb_id` @ off 16) and **`PAGE_FLIP`** (`fb_id` @ off 4): present via `drmPresentFb()` — blits the fb's pixels (reached through the HHDM at `physAddr + hhdm_offset`) to `g_fb`.
+- **`PAGE_FLIP`** also queues a `DRM_EVENT_FLIP_COMPLETE` (`DrmEvent` ring) when `flags & DRM_MODE_PAGE_FLIP_EVENT`, echoing `user_data`.
+- **DRM fd `read()`** delivers `struct drm_event_vblank` (32 B); **`fdReadable(FD_DRM)`** → `drmEventPending` so poll/epoll wakes Weston's loop.
+- **`SET_CLIENT_CAP`** rejects `DRM_CLIENT_CAP_ATOMIC` → Weston uses the **legacy** path (atomic also needs `DRM_CAP_CRTC_IN_VBLANK_EVENT`, not advertised).
+- **Universal planes + primary plane** (both mandatory in Weston, else fatal): expose one primary plane whose `type` property reports `"Primary"` via `GETPLANERESOURCES`/`GETPLANE`/`OBJ_GETPROPERTIES`/`GETPROPERTY`. Cursor = software (no cursor plane → Weston Pixman-composites it). `DIRTYFB`/`SETPLANE`/`CURSOR*` are no-op success.
+- Removed a per-ioctl `console_putchar('D')` serial flood.
+
+**Remaining caveat:** flip events complete *immediately* (no vblank pacing). Fine for an idle terminal; an animating client would busy-loop at max fps — add timer-deferred completion in GW3 if it spins.
+
+**Done when (verification deferred to GW3):** booting Weston shows its output on `g_fb`. Can't boot-test here (no KVM; TCG too slow) — verify on the KVM host during GW3.
+
+## GW3 — Run Weston as init + a terminal. P: Critical — IN PROGRESS (2026-06-07)
+
+**Goal:** Boot into Weston with a usable graphical terminal and shell.
+
+**Progress (2026-06-07):** Staging + launch DONE and working — all 8 Weston modules stage as flat boot modules (`WESTON=1` Makefile block), `weston-terminal` built (`-Dtools=terminal`), `init=weston` selected by exact basename, musl `ld` resolves every `NEEDED`/`.so` by basename, `/etc/weston.ini` + `WESTON_MODULE_MAP` + `--drm-device=card0` wired. Headless TCG smoke boots took Weston **from cold boot all the way to: start → load `drm-backend.so` → libseat opens `seat0` ("session control granted") → read `/sys/class/drm/card0/uevent`**. Fixed **4 real kernel bugs** Weston exposed (Hyprland's headless path never hit them): (1) `signalfd4` ENOSYS stub → eventfd-backed (else libwayland aborts Weston at startup, silently); (2) `fcntl F_SETFL` wrongly required `CAP_RIGHT_WRITE` → EBADF on a pipe read-end → libseat's seatd `poller_init` failed; (3)+(4) udev DRM discovery — `/sys/class/drm/card0` synthetic dir + a `card0/uevent` file so libudev-zero builds the device. **Current blocker:** `weston_launcher_open(/dev/dri/card0)` returns −1 → *"DRM device 'card0' is not a KMS device"*. The libseat client↔server **device-open round-trip** (recvmsg + `SCM_RIGHTS` to pass the DRM fd) fails over the forked socketpair (`seatd zero-length read` / `Could not poll connection: I/O error`) — even though the plain read/write seat-open round-trip succeeded. **Next:** fix the kernel's local-socket `recvmsg`/`poll` path for a forked socketpair under the cooperative scheduler (premature EOF/POLLHUP or SCM_RIGHTS-fd delivery + blocking between the two tasks). After that, Weston hits the real DRM modeset (validating GW2) and `weston-desktop-shell` should draw the first frame. Best iterated on the KVM host (TCG here is ~8× slowed by 7 orphaned qemu processes pegging cores — worth cleaning up).
+
+**Tasks:**
+
+- **Module loading (key):** Weston's compiled-in module dirs are absolute *build* paths (`build-epin/config.h`: `LIBWESTON_MODULEDIR`, `MODULEDIR`) that won't exist in the OS. Use env **`WESTON_MODULE_MAP`** (format `name=/path;name2=/path2;…`, parsed by `weston_module_path_from_env` in `libweston/compositor.c`; `weston_load_module` also dlopens any `name` starting with `/` directly). Stage `drm-backend.so` + `desktop-shell.so` (or `kiosk-shell.so`) as flat ISO modules and map them. The **Pixman renderer is built into `libweston-14.so.0`** (no separate module).
+- Stage the runtime: `weston` binary + `libexec_weston.so.0` + `libweston-14.so.0` + the backend/shell `.so` + `ld-musl`/`libc.so` (mirror the Hyprland staging block at ~`Makefile:288`).
+- Get a Wayland terminal building (`weston-terminal` didn't build — try `foot`, or fix it) and bundle it.
+- `weston.ini`: `[core] backend=drm-backend.so`, `renderer=pixman`, a shell launching the terminal; bundle xkb/fonts already in the ISO. Env: `XDG_RUNTIME_DIR`, seat/launcher (mirror Hyprland's `exports.d`).
+- Swap Weston in for the Hyprland module in the kernel init selection (`kernel_main.d`, the pass at ~line 2000, **before** the Hyprland pass) and the ISO staging (`Makefile`), behind a toggle so Hyprland can still be selected for comparison.
+- Input: Weston via `libinput` over `/dev/input/event0` (kbd) + `event1` (mouse) — the existing bridge.
+
+**Done when:**
+
+- Boots to a Weston desktop/kiosk; the cursor tracks the mouse fluidly under KVM; typing into the terminal runs shell commands. Screenshot proof.
+
+## GW4 — Re-express the desktop shell on Weston. P: High
+
+**Goal:** Reinstate the wallpaper, panel, dock, launcher, file manager, and settings (the value of G12–G18) using Weston-native mechanisms.
+
+**Tasks:**
+
+- Wallpaper/panel/dock as `layer-shell` clients (or `weston-desktop-shell`), themed to the existing design direction.
+- Reuse the `wl-*` clients (`wl-files`, etc.) and identity-border concept as standard Wayland surfaces.
+- Map appearance/input/display settings back to the declarative OS config.
+
+**Done when:**
+
+- The desktop matches the quality bar (panel + dock + wallpaper + launcher) on the Weston foundation, with screenshot regression tests.
+
+---
+
 # Phase 1 — make pixels correct
 
 ## G6 DONE — Visible window content. P: Critical

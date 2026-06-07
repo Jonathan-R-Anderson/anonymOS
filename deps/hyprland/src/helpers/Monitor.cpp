@@ -52,6 +52,7 @@
 #include <ranges>
 #include <vector>
 #include <algorithm>
+#include <cstdlib>
 
 using namespace Hyprutils::String;
 using namespace Hyprutils::Utils;
@@ -2158,6 +2159,17 @@ bool CMonitor::isMultiGPU() {
 }
 
 bool CMonitor::shouldUseSoftwareCursors() {
+    // EpinAnonymOS: the HOS CPU compositor has no hardware cursor plane — it draws
+    // the pointer in software inside hosComposeShmWindows. With a "hardware" cursor
+    // Hyprland just calls m_output->moveCursor() on pointer motion and does NOT
+    // damage the monitor, so the desktop never re-renders and the cursor only moves
+    // at the damage-driven fallback rate (~1-2 fps — it looks frozen). Forcing
+    // software cursors routes motion through CPointerManager::damageIfSoftware(),
+    // which damages the monitor and triggers a real frame for every move.
+    static const bool HOS_CPU = std::getenv("HOS_SCENE_RENDER") == nullptr;
+    if (HOS_CPU)
+        return true;
+
     static auto PNOHW      = CConfigValue<Config::INTEGER>("cursor:no_hardware_cursors");
     static auto PINVISIBLE = CConfigValue<Config::INTEGER>("cursor:invisible");
 

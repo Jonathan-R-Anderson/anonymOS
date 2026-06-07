@@ -763,12 +763,24 @@ static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32
         app->scroll = 0;
     redraw_commit(app, NULL);
 }
+/* wl_pointer v5+ delivers frame/axis_source/axis_stop/axis_discrete; libwayland
+ * calls these slots unconditionally, so leaving them NULL crashes the client on
+ * the first mouse motion. Provide no-op handlers. */
+static void pointer_frame(void *data, struct wl_pointer *p) { (void)data; (void)p; }
+static void pointer_axis_source(void *data, struct wl_pointer *p, uint32_t s) { (void)data; (void)p; (void)s; }
+static void pointer_axis_stop(void *data, struct wl_pointer *p, uint32_t t, uint32_t a) { (void)data; (void)p; (void)t; (void)a; }
+static void pointer_axis_discrete(void *data, struct wl_pointer *p, uint32_t a, int32_t d) { (void)data; (void)p; (void)a; (void)d; }
+
 static const struct wl_pointer_listener pointer_listener = {
     .enter = pointer_enter,
     .leave = pointer_leave,
     .motion = pointer_motion,
     .button = pointer_button,
     .axis = pointer_axis,
+    .frame = pointer_frame,
+    .axis_source = pointer_axis_source,
+    .axis_stop = pointer_axis_stop,
+    .axis_discrete = pointer_axis_discrete,
 };
 
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t f, int32_t fd, uint32_t sz)

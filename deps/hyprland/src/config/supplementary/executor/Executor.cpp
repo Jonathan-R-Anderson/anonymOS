@@ -11,6 +11,9 @@
 
 #include <hyprutils/string/String.hpp>
 #include <chrono>
+#include <vector>
+#include <string>
+#include <unistd.h>
 
 using namespace Config::Supplementary;
 using namespace Hyprutils::String;
@@ -201,9 +204,37 @@ std::optional<uint64_t> CExecutor::spawnRawProc(const std::string& args, PHLWORK
             close(devnull);
         }
 
-        execl("/bin/sh", "/bin/sh", "-c", args.c_str(), nullptr);
+        // EpinAnonymOS: the guest has no /bin/sh, and the kernel's execve resolves
+        // a program by the basename of its path against the boot modules (it does
+        // not thread the rest of argv through an exec). So launch the requested
+        // program directly instead of via a shell: split the command on
+        // whitespace and execvp the first token. This covers the launcher/dock
+        // commands (wl-term, wl-files, ...) which take no arguments.
+        std::vector<std::string> toks;
+        {
+            std::string cur;
+            for (const char ch : args) {
+                if (ch == ' ' || ch == '\t' || ch == '\n') {
+                    if (!cur.empty()) {
+                        toks.push_back(cur);
+                        cur.clear();
+                    }
+                } else
+                    cur.push_back(ch);
+            }
+            if (!cur.empty())
+                toks.push_back(cur);
+        }
+        if (!toks.empty()) {
+            std::vector<char*> cargv;
+            cargv.reserve(toks.size() + 1);
+            for (auto& t : toks)
+                cargv.push_back(const_cast<char*>(t.c_str()));
+            cargv.push_back(nullptr);
+            execvp(cargv[0], cargv.data());
+        }
 
-        // exit child
+        // exec failed
         _exit(0);
     }
     // run in parent

@@ -10,6 +10,8 @@ extern (C) @nogc nothrow:
 
 extern (C) ulong x64ReadCR2() @nogc nothrow;
 extern (C) ulong x64ReadCR3() @nogc nothrow;
+extern (C) void  x64WriteCR3(ulong) @nogc nothrow;
+extern (C) void  x64Invlpg(ulong) @nogc nothrow;
 extern __gshared ulong x64TrapErrorCode;
 
 extern (C) void copy_phys_page(ulong srcPhys, ulong dstPhys) @nogc nothrow;
@@ -23,6 +25,27 @@ private enum ulong PTE_ADDR_MASK = 0x000F_FFFF_FFFF_F000UL;
 // Page-Size bit: set on a PDPT/PD entry that maps a 1 GiB / 2 MiB page rather
 // than pointing at the next table level.
 private enum ulong PTE_PS = 1UL << 7;
+// Software/AVL PTE bit (CPU ignores bits 9..11): marks a 4K page that fork()
+// shared copy-on-write.  A write fault on such a page makes a private copy (or,
+// if it is the last reference, just restores write permission in place).
+private enum ulong PTE_COW = 1UL << 9;
+
+// Walk the 4-level table rooted at pml4Phys (through the HHDM) and return a
+// pointer to the leaf PTE backing `va`, or null if `va` is not mapped by a 4K
+// page (absent at any level, or a 2 MiB/1 GiB large page).
+private ulong* leafPTEPtr(ulong pml4Phys, ulong va) {
+    auto p4 = cast(ulong*)(pml4Phys + hhdm_offset);
+    ulong e4 = p4[(va >> 39) & 0x1FF];
+    if (!(e4 & PTE_PRESENT)) return null;
+    auto p3 = cast(ulong*)((e4 & PTE_ADDR_MASK) + hhdm_offset);
+    ulong e3 = p3[(va >> 30) & 0x1FF];
+    if (!(e3 & PTE_PRESENT) || (e3 & PTE_PS)) return null;
+    auto p2 = cast(ulong*)((e3 & PTE_ADDR_MASK) + hhdm_offset);
+    ulong e2 = p2[(va >> 21) & 0x1FF];
+    if (!(e2 & PTE_PRESENT) || (e2 & PTE_PS)) return null;
+    auto p1 = cast(ulong*)((e2 & PTE_ADDR_MASK) + hhdm_offset);
+    return &p1[(va >> 12) & 0x1FF];
+}
 
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page
 // from srcPml4Phys into dstPml4Phys.  Called during fork.
@@ -80,21 +103,36 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
                     // Preserve every non-frame bit (perms + NX + PAT/etc.).
                     ulong flags   = spt[d] & ~PTE_ADDR_MASK;
 
-                    ulong newPage = alloc_phys_page();
-                    if (newPage == 0) return;
-                    copy_phys_page(srcPage, newPage);
-                    dpt[d] = newPage | flags;
-                    if (dstTask !is null) {
-                        ulong va = (cast(ulong)a << 39) |
-                                   (cast(ulong)b << 30) |
-                                   (cast(ulong)c << 21) |
-                                   (cast(ulong)d << 12);
-                        auto region = findRegion(*dstTask, va);
-                        if (region !is null) {
-                            objEnsureRegion(region);
-                            physPageSetOwner(newPage, region.objId, region.vmoObjId);
-                        }
+                    ulong va = (cast(ulong)a << 39) |
+                               (cast(ulong)b << 30) |
+                               (cast(ulong)c << 21) |
+                               (cast(ulong)d << 12);
+                    AddrRegion* region = (dstTask !is null) ? findRegion(*dstTask, va) : null;
+
+                    // Only exclusively-owned private RAM (anonymous / private
+                    // file maps, allocated from the bump pool) may be shared
+                    // copy-on-write.  Device pages (g_fb / DRM) and shared memfd
+                    // maps must remain genuinely shared after fork, so the child
+                    // points at the same frame with identical flags — no CoW,
+                    // no refcount (free_phys_page already refuses such pages).
+                    bool poolPage    = (srcPage >= 0x100000 && srcPage < g_next_phys_alloc);
+                    bool privatePage = poolPage && (region !is null) && region.owned;
+
+                    if (!privatePage) {
+                        dpt[d] = spt[d];
+                        continue;
                     }
+
+                    // Copy-on-write: demote BOTH parent and child to read-only +
+                    // CoW over the same physical frame.  The first write by
+                    // either side faults into handlePageFault, which makes a
+                    // private copy (or reclaims write permission in place if it
+                    // is by then the last reference).  This is what lets a large
+                    // process fork without duplicating its whole address space.
+                    ulong cowFlags = (flags & ~PTE_RW) | PTE_COW;
+                    spt[d] = srcPage | cowFlags; // parent now CoW (TLB flushed in forkTask)
+                    dpt[d] = srcPage | cowFlags; // child shares the frame
+                    physPageRefInc(srcPage);
                 }
             }
         }
@@ -107,6 +145,32 @@ void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {
 bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
     auto task   = &g_tasks[taskId];
     auto region = findRegion(*task, virtAddr);
+    ulong page  = virtAddr & ~0xFFFUL;
+
+    // Copy-on-write (fork): a write to a frame that fork() shared read-only is
+    // resolved here, before any region-type handling — the PTE's CoW bit is
+    // authoritative even if region bookkeeping has since changed.  If we are the
+    // last reference we just restore write permission in place (no copy/alloc).
+    if (isWrite) {
+        ulong* pte = leafPTEPtr(task.pml4Phys, page);
+        if (pte !is null && (*pte & PTE_PRESENT) && (*pte & PTE_COW)) {
+            ulong oldPhys = *pte & PTE_ADDR_MASK;
+            ulong keep    = (*pte & ~PTE_ADDR_MASK & ~PTE_COW) | PTE_RW;
+            if (physPageRefGet(oldPhys) > 1) {
+                ulong nw = alloc_phys_page();
+                if (nw == 0) return false;
+                copy_phys_page(oldPhys, nw);
+                physPageRefDec(oldPhys);
+                *pte = nw | keep;
+                physPageSetOwner(nw, region ? region.objId : 0, region ? region.vmoObjId : 0);
+            } else {
+                physPageRefDec(oldPhys); // normalize the count to 0 (exclusive)
+                *pte = oldPhys | keep;
+            }
+            x64Invlpg(page); // drop just this page's stale read-only TLB entry
+            return true;
+        }
+    }
 
     if (region is null) {
         klog("[pf] no region tid="); klog_hex(taskId);
@@ -114,7 +178,6 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite) {
         return false;
     }
 
-    ulong page = virtAddr & ~0xFFFUL;
     objEnsureRegion(region);
 
     final switch (region.type) {

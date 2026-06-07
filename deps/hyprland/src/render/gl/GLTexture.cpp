@@ -4,6 +4,7 @@
 #include "../../helpers/Format.hpp"
 #include "../Texture.hpp"
 #include <cstring>
+#include <cstdlib>
 #include <hyprgraphics/egl/Egl.hpp>
 
 using namespace Hyprgraphics::Egl;
@@ -32,8 +33,6 @@ CGLTexture::~CGLTexture() {
 CGLTexture::CGLTexture(uint32_t drmFormat, uint8_t* pixels, uint32_t stride, const Vector2D& size_, bool keepDataCopy, bool opaque) :
     ITexture(drmFormat, pixels, stride, size_, keepDataCopy, opaque) {
 
-    g_pHyprOpenGL->makeEGLCurrent();
-
     const auto format = getPixelFormatFromDRM(drmFormat);
     ASSERT(format);
 
@@ -41,6 +40,19 @@ CGLTexture::CGLTexture(uint32_t drmFormat, uint8_t* pixels, uint32_t stride, con
     m_size          = size_;
     m_isSynchronous = true;
     m_target        = GL_TEXTURE_2D;
+
+    // EpinAnonymOS HOS CPU path: the compositor composites each wl_shm buffer on
+    // the CPU and never samples this GL texture, while Mesa swrast's GL dispatch
+    // faults on the compositor's main thread once worker threads exist. Keep the
+    // metadata above (size/type — inspected by mapping & geometry code) but skip
+    // every gl* call below; otherwise the first commit of a client that maps
+    // after startup (e.g. one launched from the dock/launcher) crashes the event
+    // loop. HOS_SCENE_RENDER opts back into the real GL texture upload.
+    static const bool HOS_CPU_PATH = std::getenv("HOS_SCENE_RENDER") == nullptr;
+    if (HOS_CPU_PATH)
+        return;
+
+    g_pHyprOpenGL->makeEGLCurrent();
     allocate(size_);
     bind();
     setTexParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

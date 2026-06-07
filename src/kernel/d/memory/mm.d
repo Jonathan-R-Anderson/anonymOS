@@ -36,6 +36,40 @@ enum size_t PAGE_AUDIT_CAP = FREE_LIST_CAP;
 __gshared uint[PAGE_AUDIT_CAP] g_physPageMemObj;
 __gshared uint[PAGE_AUDIT_CAP] g_physPageVmoObj;
 __gshared uint[PAGE_AUDIT_CAP] g_physPageUntypedObj;
+
+// Per-physical-page reference count for copy-on-write fork.  0 or 1 means the
+// page is exclusively owned (fresh allocations are left at 0); fork() bumps it
+// to 2+ when a private page is shared CoW between parent and child.
+// free_phys_page() only truly reclaims a page once the last reference drops, so
+// forking a large process (Hyprland + Mesa) no longer duplicates — and exhausts
+// — physical memory.  Same direct PFN indexing as the audit tables above.
+__gshared ushort[PAGE_AUDIT_CAP] g_physPageRef;
+
+// Add a reference (CoW share).  A previously-untracked page (count 0) is taken
+// to already have one implicit owner, so the first share lands at 2.
+void physPageRefInc(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return;
+    if (g_physPageRef[idx] < 1) g_physPageRef[idx] = 1;
+    if (g_physPageRef[idx] < ushort.max) ++g_physPageRef[idx];
+}
+
+// Current reference count (0/1 = exclusively owned).
+ushort physPageRefGet(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return 0;
+    return g_physPageRef[idx];
+}
+
+// Drop one CoW reference without reclaiming the page.  Returns true if the page
+// is now exclusively owned (count fell to 0), false if other references remain.
+bool physPageRefDec(ulong phys) {
+    size_t idx = pageAuditIndex(phys);
+    if (idx >= PAGE_AUDIT_CAP) return true;
+    if (g_physPageRef[idx] > 1) { --g_physPageRef[idx]; return false; }
+    g_physPageRef[idx] = 0;
+    return true;
+}
 __gshared ulong g_pageOwnerSetCalls = 0;
 __gshared ulong g_pageOwnerClearCalls = 0;
 __gshared ulong g_untypedChargeCalls = 0;
@@ -116,6 +150,17 @@ void free_phys_page(ulong addr) {
     addr &= ~0xFFFUL;
     if (addr < 0x100000) return;             // low memory / null
     if (addr >= g_next_phys_alloc) return;   // never came from the pool
+    // Copy-on-write share still alive elsewhere: drop our reference only, leave
+    // the page mapped for the remaining holder(s).  When the last reference goes
+    // (count <= 1) we fall through and actually reclaim it.
+    {
+        size_t idx = pageAuditIndex(addr);
+        if (idx < PAGE_AUDIT_CAP && g_physPageRef[idx] > 1) {
+            --g_physPageRef[idx];
+            return;
+        }
+        if (idx < PAGE_AUDIT_CAP) g_physPageRef[idx] = 0;
+    }
     if (g_free_count >= FREE_LIST_CAP) return; // list full — drop (leak)
     physPageReleaseUntyped(addr);
     physPageClearOwner(addr);
@@ -230,6 +275,7 @@ ulong alloc_phys_page() {
     if (g_free_count > 0) {
         ulong ret = g_free_pages[--g_free_count];
         ++g_reuse_hits;
+        { size_t ri = pageAuditIndex(ret); if (ri < PAGE_AUDIT_CAP) g_physPageRef[ri] = 0; }
         physPageClearOwner(ret);
         physPageSetUntypedOwner(ret, chargedObj);
         if (hhdm_offset != 0) {

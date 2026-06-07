@@ -39,6 +39,12 @@ x64WriteCR3:
     mov %rdi, %cr3
     ret
 
+# Invalidate a single page's TLB entry (much cheaper than a full CR3 reload).
+.global x64Invlpg
+x64Invlpg:
+    invlpg (%rdi)
+    ret
+
 .global x64ReadCR0
 x64ReadCR0:
     mov %cr0, %rax

@@ -2124,6 +2124,14 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
 
     bool renderCursor = true;
 
+    // EpinAnonymOS: on the HOS CPU compositor path the whole frame (wallpaper,
+    // windows, panel, dock, cursor) is composited from g_pCompositor->m_windows
+    // in endRender(); building Hyprland's GL render pass here is not just wasted
+    // work but fatal — importing/rendering a client wl_shm buffer as a GL texture
+    // faults inside Mesa's surfaceless swrast and kills the compositor main thread
+    // (taking the event loop, and thus all input, down). Skip the GL scene build
+    // and fall through to the normal endRender()/present below.
+    if (!m_hosCPUFrame) {
     if (pMonitor->m_solitaryClient && (!finalDamage.empty() || *PSOLDAMAGE))
         renderWindow(pMonitor->m_solitaryClient.lock(), pMonitor, NOW, false, RENDER_PASS_MAIN /* solitary = no popups */);
     else if (!finalDamage.empty()) {
@@ -2183,6 +2191,7 @@ void IHyprRenderer::renderMonitor(PHLMONITOR pMonitor, bool commit) {
         data.color = Colors::BLACK.modifyA(pMonitor->m_dpmsBlackOpacity->value());
         m_renderPass.add(makeUnique<CRectPassElement>(data));
     }
+    } // EpinAnonymOS: end of !m_hosCPUFrame GL scene build
 
     Event::bus()->m_events.render.stage.emit(RENDER_LAST_MOMENT);
 

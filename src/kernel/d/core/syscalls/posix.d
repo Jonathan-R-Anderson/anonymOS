@@ -1707,6 +1707,36 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)(n * evtSz);
     }
 
+    // GW2: deliver queued DRM page-flip completion events. Weston's event loop
+    // reads the card fd and parses struct drm_event_vblank records (type +
+    // length header, then user_data, timestamp, sequence, crtc_id) = 32 bytes.
+    if (f.type == FileType.FD_DRM) {
+        int myfd = fdIndexForFile(f);
+        enum size_t evSz = 32;
+        if (_count < evSz)
+            return drmEventPending(myfd) ? negErrno(EINVAL) : negErrno(EAGAIN);
+        ulong ticks = getTickCount();
+        uint tvSec  = cast(uint)(ticks / 1000);
+        uint tvUsec = cast(uint)((ticks % 1000) * 1000);
+        auto dst = cast(ubyte*)_buf;
+        size_t n = 0;
+        while (g_drmEvTail != g_drmEvHead && n + evSz <= _count) {
+            DrmEvent* ev = &g_drmEvents[g_drmEvTail];
+            if (ev.fd != myfd) break;   // FIFO; foreign events wait for their reader
+            *cast(uint*)(dst + n + 0)  = DRM_EVENT_FLIP_COMPLETE;
+            *cast(uint*)(dst + n + 4)  = cast(uint)evSz;
+            *cast(ulong*)(dst + n + 8) = ev.userData;
+            *cast(uint*)(dst + n + 16) = tvSec;
+            *cast(uint*)(dst + n + 20) = tvUsec;
+            *cast(uint*)(dst + n + 24) = ev.seq;
+            *cast(uint*)(dst + n + 28) = ev.crtcId;
+            g_drmEvTail = (g_drmEvTail + 1) % DRM_EVENT_QUEUE_MAX;
+            n += evSz;
+        }
+        if (n == 0) return negErrno(EAGAIN);
+        return cast(ssize_t)n;
+    }
+
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
         int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return negErrno(EBADF);
@@ -3582,6 +3612,36 @@ private immutable VFEntry[] g_vfs = [
       "</fontconfig>\n"
     },
 
+    // ── Weston (GW3) ───────────────────────────────────────────────────────
+    // Loaded from XDG_CONFIG_HOME=/etc → /etc/weston.ini. backend/renderer/shell
+    // are set explicitly so Weston doesn't auto-detect (the WAYLAND_DISPLAY in the
+    // launch env would otherwise mislead it into the nested backend). The shell's
+    // helper client + the terminal launcher use absolute boot-module paths; the
+    // module .so names are remapped to boot modules via WESTON_MODULE_MAP (exports.d).
+    { "/etc/weston.ini",
+      "[core]\n" ~
+      "backend=drm-backend.so\n" ~
+      "renderer=pixman\n" ~
+      "shell=desktop-shell.so\n" ~
+      "require-input=false\n" ~
+      "idle-time=0\n" ~
+      "\n" ~
+      "[shell]\n" ~
+      "client=/weston-desktop-shell\n" ~
+      "background-color=0xff1e1e2e\n" ~
+      "panel-position=top\n" ~
+      "locking=false\n" ~
+      "animation=none\n" ~
+      "startup-animation=none\n" ~
+      "\n" ~
+      "[launcher]\n" ~
+      "icon=/usr/share/icons/Epin/apps/64/utilities-terminal.png\n" ~
+      "path=/weston-terminal\n" ~
+      "\n" ~
+      "[keyboard]\n" ~
+      "keymap_layout=us\n"
+    },
+
     // ── GTK3 ───────────────────────────────────────────────────────────────
     { "/etc/gtk-3.0/settings.ini",
       "[Settings]\n" ~
@@ -3820,6 +3880,17 @@ private immutable VFEntry[] g_vfs = [
     { "/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache", "" },
 
     // ── DRM / KMS virtual sysfs (libdrm / udev / libinput probing) ────────
+    // GW3: libudev-zero builds the card0 udev_device from this uevent —
+    // udev_device_new_from_syspath() reads it and DEVNAME yields the devnode
+    // /dev/dri/card0 that Weston then opens via libseat. (Weston is launched
+    // with --drm-device=card0 → open_specific_drm_device, see exports.d.)
+    { "/sys/class/drm/card0/uevent",
+      "DRIVER=virtio_gpu\n" ~
+      "MAJOR=226\n" ~
+      "MINOR=0\n" ~
+      "DEVNAME=dri/card0\n" ~
+      "DEVTYPE=drm_minor\n"
+    },
     { "/sys/class/drm/card0/status",           "connected\n"  },
     { "/sys/class/drm/card0/enabled",          "enabled\n"    },
     { "/sys/class/drm/card0/dpms",             "On\n"         },
@@ -4113,6 +4184,7 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/dev/dri") ||
            cstrEq(path, "/dev/input") ||
            cstrEq(path, "/sys/class/drm") ||
+           cstrEq(path, "/sys/class/drm/card0") ||   // GW3: Weston/libudev-zero DRM discovery
            cstrEq(path, "/sys/class/input") ||
            // libdrm drmNodeIsDRM() stat()s this tree to confirm fd 226:0 is a
            // DRM node (needed by Aquamarine's dumb-buffer allocator path).
@@ -4179,7 +4251,9 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     }
 
     if (f.type == FileType.FD_DRM) {
-        console_putchar('D');
+        // NB: no per-ioctl logging — PAGE_FLIP/HOS_PRESENT fire every frame and a
+        // serial write per call throttles the compositor under KVM (one VM-exit
+        // per byte). See the note in handleDrmIoctl.
         return handleDrmIoctl(fdIndexForFile(f), cmd, arg);
     }
 
@@ -5490,7 +5564,13 @@ public long linux_sys_fcntl(ulong fd, ulong cmd, ulong arg) {
         case F_SETFD: return 0;
         case F_GETFL: return g_fdTable[ifd].flags;
         case F_SETFL:
-            if (!fdRequireCap(fd, CAP_RIGHT_WRITE)) return negErrno(EBADF);
+            // F_SETFL changes fd *status* flags (O_NONBLOCK, O_APPEND, …); it is
+            // not a data write, so it must succeed on read-only fds too. Requiring
+            // CAP_RIGHT_WRITE wrongly returned EBADF for e.g. a pipe's READ end —
+            // which broke libseat's embedded seatd poller_init (it calls
+            // set_nonblock() on signal_fds[0], the read end), so Weston's DRM
+            // backend could not open a seat. The FD_NONE check above already
+            // confirms the fd is valid and owned by this task.
             g_fdTable[ifd].flags = cast(int)arg;
             return 0;
         case F_DUPFD: case F_DUPFD_CLOEXEC:
@@ -6168,6 +6248,10 @@ private bool fdReadable(int fd) @nogc nothrow {
         auto ring = (devIdx == 1) ? &g_mouse_ring : &g_kbd_ring;
         return ring.head != ring.tail;
     }
+    if (f.type == FileType.FD_DRM) {
+        // Readable when a page-flip completion event is queued for this fd.
+        return drmEventPending(fd);
+    }
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
         int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return false;
@@ -6414,7 +6498,20 @@ public long linux_sys_timerfd_gettime(ulong fd, ulong curVal) {
     o[3] = cast(long)((remainMs % 1000) * 1_000_000);
     return 0;
 }
-public long linux_sys_signalfd4(ulong fd, ulong m, ulong sz, ulong f) { return negErrno(ENOSYS); }
+// signalfd / signalfd4(fd, sigset, sizemask, flags). We don't deliver async
+// signals to userspace, so a signalfd never reports a pending signal — but it
+// must EXIST and be pollable: libwayland's wl_event_loop_add_signal() calls
+// signalfd() and returns NULL on failure, which makes Weston abort at startup
+// (it registers SIGTERM/SIGUSR2/SIGCHLD handlers and exits if any is NULL).
+// Back it with an always-empty eventfd: a valid, poll-able fd that stays
+// not-readable (so the event loop never spuriously wakes or misreads it).
+// SFD_NONBLOCK (0x800) / SFD_CLOEXEC (0x80000) share their bit values with the
+// EFD_* flags, so `flags` passes straight through. fd >= 0 means "update an
+// existing signalfd's mask" — a no-op for us, return it unchanged.
+public long linux_sys_signalfd4(ulong fd, ulong m, ulong sz, ulong f) {
+    if (cast(long)fd >= 0) return cast(long)fd;
+    return linux_sys_eventfd2(0, f);
+}
 public long linux_sys_inotify_init1(ulong f) { return negErrno(ENOSYS); }
 
 // --- prctl / scheduling ---
@@ -6734,21 +6831,50 @@ private enum uint DRM_NR_GET_CAP            = 0x0c;
 private enum uint DRM_NR_SET_CLIENT_CAP     = 0x0d;
 private enum uint DRM_NR_PRIME_HANDLE_TO_FD = 0x2d;
 private enum uint DRM_NR_PRIME_FD_TO_HANDLE = 0x2e;
-private enum uint DRM_NR_MODE_GETRESOURCES  = 0xa0;
-private enum uint DRM_NR_MODE_GETCRTC       = 0xa1;
-private enum uint DRM_NR_MODE_SETCRTC       = 0xa2;
-private enum uint DRM_NR_MODE_GETENCODER    = 0xa6;
-private enum uint DRM_NR_MODE_GETCONNECTOR  = 0xa7;
-private enum uint DRM_NR_MODE_ADDFB         = 0xae;
-private enum uint DRM_NR_MODE_RMFB          = 0xaf;
-private enum uint DRM_NR_MODE_ADDFB2        = 0xb0;
-private enum uint DRM_NR_MODE_PAGE_FLIP     = 0xb1;
-private enum uint DRM_NR_MODE_CREATE_DUMB   = 0xb2;
-private enum uint DRM_NR_MODE_MAP_DUMB      = 0xb3;
-private enum uint DRM_NR_MODE_DESTROY_DUMB  = 0xb4;
-private enum uint DRM_NR_MODE_ATOMIC        = 0xbc;
-private enum uint DRM_NR_HOS_PRESENT        = 0xf0;
-private enum uint DRM_NR_HOS_WINDOWS        = 0xf1; // GUI roadmap G5: window rects for identity borders
+// NB: these NR bytes are the real Linux DRM UAPI numbers (from libdrm's drm.h),
+// because Weston issues ioctls through libdrm. Earlier values for ADDFB2/PAGE_FLIP
+// were wrong (0xb0/0xb1) and only happened to be harmless because Hyprland used
+// the custom HOS_PRESENT path instead of real KMS — corrected here for Weston.
+private enum uint DRM_NR_MODE_GETRESOURCES       = 0xa0;
+private enum uint DRM_NR_MODE_GETCRTC            = 0xa1;
+private enum uint DRM_NR_MODE_SETCRTC            = 0xa2;
+private enum uint DRM_NR_MODE_CURSOR             = 0xa3;
+private enum uint DRM_NR_MODE_GETENCODER         = 0xa6;
+private enum uint DRM_NR_MODE_GETCONNECTOR       = 0xa7;
+private enum uint DRM_NR_MODE_GETPROPERTY        = 0xaa;
+private enum uint DRM_NR_MODE_GETPROPBLOB        = 0xac;
+private enum uint DRM_NR_MODE_ADDFB              = 0xae;
+private enum uint DRM_NR_MODE_RMFB               = 0xaf;
+private enum uint DRM_NR_MODE_PAGE_FLIP          = 0xb0;
+private enum uint DRM_NR_MODE_DIRTYFB            = 0xb1;
+private enum uint DRM_NR_MODE_CREATE_DUMB        = 0xb2;
+private enum uint DRM_NR_MODE_MAP_DUMB           = 0xb3;
+private enum uint DRM_NR_MODE_DESTROY_DUMB       = 0xb4;
+private enum uint DRM_NR_MODE_GETPLANERESOURCES  = 0xb5;
+private enum uint DRM_NR_MODE_GETPLANE           = 0xb6;
+private enum uint DRM_NR_MODE_SETPLANE           = 0xb7;
+private enum uint DRM_NR_MODE_ADDFB2             = 0xb8;
+private enum uint DRM_NR_MODE_OBJ_GETPROPERTIES  = 0xb9;
+private enum uint DRM_NR_MODE_CURSOR2            = 0xbb;
+private enum uint DRM_NR_MODE_ATOMIC            = 0xbc;
+private enum uint DRM_NR_HOS_PRESENT            = 0xf0;
+private enum uint DRM_NR_HOS_WINDOWS            = 0xf1; // GUI roadmap G5: window rects for identity borders
+
+// DRM object types (struct drm_mode_obj_get_properties.obj_type).
+private enum uint DRM_MODE_OBJECT_CRTC      = 0xcccccccc;
+private enum uint DRM_MODE_OBJECT_CONNECTOR = 0xc0c0c0c0;
+private enum uint DRM_MODE_OBJECT_ENCODER   = 0xe0e0e0e0;
+private enum uint DRM_MODE_OBJECT_PLANE     = 0xeeeeeeee;
+
+// Property flag + the synthetic plane "type" property we expose to Weston.
+private enum uint DRM_MODE_PROP_ENUM     = (1 << 3);
+private enum uint DRM_PLANE_PROP_ID_TYPE = 100;   // synthetic prop id
+private enum uint DRM_PLANE_TYPE_PRIMARY = 1;     // raw enum value for "Primary"
+private enum uint DRM_PLANE_ID           = 1;     // our single primary plane
+
+// FourCC pixel formats advertised by the primary plane / dumb buffers.
+private enum uint DRM_FORMAT_XRGB8888 = 0x34325258; // 'XR24'
+private enum uint DRM_FORMAT_ARGB8888 = 0x34325241; // 'AR24'
 
 // DRM capability IDs
 private enum ulong DRM_CAP_DUMB_BUFFER          = 0x1;
@@ -6756,6 +6882,126 @@ private enum ulong DRM_CAP_DUMB_PREFERRED_DEPTH = 0x3;
 private enum ulong DRM_CAP_TIMESTAMP_MONOTONIC  = 0x6;
 private enum ulong DRM_CAP_CURSOR_WIDTH         = 0x8;
 private enum ulong DRM_CAP_CURSOR_HEIGHT        = 0x9;
+
+// DRM client capabilities (DRM_IOCTL_SET_CLIENT_CAP).
+private enum ulong DRM_CLIENT_CAP_STEREO_3D        = 1;
+private enum ulong DRM_CLIENT_CAP_UNIVERSAL_PLANES = 2;
+private enum ulong DRM_CLIENT_CAP_ATOMIC           = 3;
+
+// Page-flip ioctl flags (struct drm_mode_crtc_page_flip.flags).
+private enum uint DRM_MODE_PAGE_FLIP_EVENT = 0x01;
+private enum uint DRM_MODE_PAGE_FLIP_ASYNC = 0x02;
+
+// DRM event types delivered by read() on the card fd (struct drm_event.type).
+private enum uint DRM_EVENT_VBLANK        = 0x01;
+private enum uint DRM_EVENT_FLIP_COMPLETE = 0x02;
+
+// GW2: framebuffer-object (fb_id) tracking for Weston's stock DRM backend.
+// ADDFB/ADDFB2 bind a GEM dumb buffer to a unique fb_id; SETCRTC/PAGE_FLIP then
+// present that fb_id by blitting its pixels (reached through the HHDM at
+// physAddr + hhdm_offset) to the hardware framebuffer g_fb.
+private struct DrmFb {
+    bool   inUse;
+    uint   fbId;
+    uint   width;
+    uint   height;
+    uint   pitch;
+    uint   format;     // bpp (legacy ADDFB) or fourcc (ADDFB2) — informational
+    ulong  physAddr;   // physical base of the backing GEM buffer
+    ulong  size;
+}
+private enum DRMFB_MAX = 16;
+__gshared DrmFb[DRMFB_MAX] g_drmFbs;
+__gshared uint g_nextFbId = 1;
+
+private DrmFb* findDrmFb(uint fbId) @nogc nothrow {
+    if (fbId == 0) return null;
+    foreach (ref fb; g_drmFbs)
+        if (fb.inUse && fb.fbId == fbId) return &fb;
+    return null;
+}
+
+// Bind a GEM buffer (by handle) to a fresh fb_id. Returns the new id, or 0.
+private uint drmAddFb(uint handle, uint width, uint height, uint pitch, uint format) @nogc nothrow {
+    GemBuf* gem = findGem(handle);
+    if (gem is null) return 0;
+    int slot = -1;
+    foreach (i, ref fb; g_drmFbs) { if (!fb.inUse) { slot = cast(int)i; break; } }
+    if (slot < 0) return 0;
+    uint id = g_nextFbId++;
+    g_drmFbs[slot].inUse    = true;
+    g_drmFbs[slot].fbId     = id;
+    g_drmFbs[slot].width    = width  ? width  : gem.width;
+    g_drmFbs[slot].height   = height ? height : gem.height;
+    g_drmFbs[slot].pitch    = pitch  ? pitch  : gem.pitch;
+    g_drmFbs[slot].format   = format;
+    g_drmFbs[slot].physAddr = gem.physAddr;
+    g_drmFbs[slot].size     = gem.size;
+    return id;
+}
+
+// Present a bound framebuffer: blit its pixels to the hardware framebuffer.
+// Source and destination are both kernel HHDM mappings, so no SMAP gate is
+// needed (unlike drmPresentToFramebuffer, which reads a userspace pointer).
+private long drmPresentFb(uint fbId) @nogc nothrow {
+    if (!g_fb || g_fb.address is null || g_fb.pitch == 0 || g_fb.bpp != 32)
+        return negErrno(ENODEV);
+    DrmFb* fb = findDrmFb(fbId);
+    if (fb is null || fb.physAddr == 0 || fb.pitch == 0) return negErrno(EINVAL);
+
+    const uint copyW = fb.width  < g_fb.width  ? fb.width  : cast(uint)g_fb.width;
+    const uint copyH = fb.height < g_fb.height ? fb.height : cast(uint)g_fb.height;
+    const size_t rowBytes = cast(size_t)copyW * 4;
+    if (rowBytes > g_fb.pitch || rowBytes > fb.pitch) return negErrno(EINVAL);
+
+    auto src = cast(const(ubyte)*)(fb.physAddr + hhdm_offset);
+    auto dst = cast(ubyte*)g_fb.address;
+    foreach (row; 0 .. copyH) {
+        memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
+               src + cast(size_t)row * cast(size_t)fb.pitch,
+               rowBytes);
+    }
+
+    // GUI roadmap G5: overlay trusted identity borders for each client window.
+    hosDrawIdentityBorders();
+    g_fbConsoleEnabled = false;
+    return 0;
+}
+
+// GW2: DRM page-flip completion events. After a PAGE_FLIP we present immediately
+// and queue a DRM_EVENT_FLIP_COMPLETE that Weston's event loop reads back from
+// the card fd (it blocks on this to pace rendering). Events are tagged with the
+// owning fd so the right reader drains them.
+private struct DrmEvent {
+    int   fd;
+    ulong userData;
+    uint  seq;
+    uint  crtcId;
+}
+private enum DRM_EVENT_QUEUE_MAX = 64;
+__gshared DrmEvent[DRM_EVENT_QUEUE_MAX] g_drmEvents;
+__gshared uint g_drmEvHead;     // write index
+__gshared uint g_drmEvTail;     // read index
+__gshared uint g_drmFlipSeq;
+
+private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
+    uint next = (g_drmEvHead + 1) % DRM_EVENT_QUEUE_MAX;
+    if (next == g_drmEvTail) return;   // queue full → drop (compositor will recover)
+    g_drmEvents[g_drmEvHead].fd       = fd;
+    g_drmEvents[g_drmEvHead].userData = userData;
+    g_drmEvents[g_drmEvHead].seq      = ++g_drmFlipSeq;
+    g_drmEvents[g_drmEvHead].crtcId   = 1;
+    g_drmEvHead = next;
+}
+
+private bool drmEventPending(int fd) @nogc nothrow {
+    uint t = g_drmEvTail;
+    while (t != g_drmEvHead) {
+        if (g_drmEvents[t].fd == fd) return true;
+        t = (t + 1) % DRM_EVENT_QUEUE_MAX;
+    }
+    return false;
+}
 
 // Find a GEM buffer by handle
 private GemBuf* findGem(uint handle) {
@@ -7264,8 +7510,10 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
         p += 20;
     }
     g_hosWinCount = count;
+    // Logged only a few times at startup — drmSetHosWindows runs every frame, so a
+    // per-call klog would flood the serial UART and stall the compositor under KVM.
     static uint g_hosWinLogN = 0;
-    if (count > 0 || g_hosWinLogN < 3) {
+    if (g_hosWinLogN < 3) {
         klog("[g5] set windows count="); klog_hex(count); klog("\n");
         g_hosWinLogN++;
     }
@@ -7299,17 +7547,37 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 
     const uint copyW = srcW < g_fb.width ? srcW : cast(uint)g_fb.width;
     const uint copyH = srcH < g_fb.height ? srcH : cast(uint)g_fb.height;
-    const size_t rowBytes = cast(size_t)copyW * bytesPerPixel;
+
+    // EpinAnonymOS: blit only the damaged sub-rectangle (the persistent framebuffer
+    // retains the rest), so a cursor move copies ~1 KB instead of 4 MB. The
+    // compositor passes the damage bounding box at offsets 32..44; (0,0,0,0) — or a
+    // box that lands outside the frame — falls back to a full-frame blit.
+    uint dmgX = userRead!uint(arg + 32);
+    uint dmgY = userRead!uint(arg + 36);
+    uint dmgW = userRead!uint(arg + 40);
+    uint dmgH = userRead!uint(arg + 44);
+
+    uint x0, y0, blitW, blitH;
+    if (dmgW == 0 || dmgH == 0 || dmgX >= copyW || dmgY >= copyH) {
+        x0 = 0; y0 = 0; blitW = copyW; blitH = copyH;
+    } else {
+        x0 = dmgX; y0 = dmgY;
+        blitW = (dmgX + dmgW <= copyW) ? dmgW : (copyW - dmgX);
+        blitH = (dmgY + dmgH <= copyH) ? dmgH : (copyH - dmgY);
+    }
+
+    const size_t rowBytes = cast(size_t)blitW * bytesPerPixel;
     if (rowBytes > g_fb.pitch || rowBytes > srcPitch)
         return negErrno(EINVAL);
+    const size_t xByteOff = cast(size_t)x0 * bytesPerPixel;
 
     auto src = cast(const(ubyte)*)srcPtr;
     auto dst = cast(ubyte*)g_fb.address;
 
     smapBegin();
-    foreach (row; 0 .. copyH) {
-        memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch,
-               src + cast(size_t)row * cast(size_t)srcPitch,
+    foreach (row; y0 .. y0 + blitH) {
+        memcpy(dst + cast(size_t)row * cast(size_t)g_fb.pitch + xByteOff,
+               src + cast(size_t)row * cast(size_t)srcPitch + xByteOff,
                rowBytes);
     }
     smapEnd();
@@ -7322,9 +7590,10 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 }
 
 private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
-    console_putchar('H');
+    // NB: do NOT log per ioctl here — DRM_NR_HOS_PRESENT (0xf0) fires on every
+    // frame, so a klog/console write per call floods the slow serial UART and,
+    // under KVM, throttles the whole compositor (one VM-exit per byte).
     uint nr = request & 0xFF;
-    klog("[drm] nr="); klog_hex(nr); klog(" arg="); klog_hex(arg); klog("\n");
     if (arg == 0) return negErrno(EFAULT);
 
     switch (nr) {
@@ -7384,8 +7653,15 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         return 0;
     }
 
-    case DRM_NR_SET_CLIENT_CAP:
+    // struct drm_set_client_cap { u64 capability; u64 value; }
+    // We implement legacy KMS only (SETCRTC + PAGE_FLIP), not atomic commit, so
+    // refuse DRM_CLIENT_CAP_ATOMIC — that makes Weston's DRM backend fall back to
+    // the legacy modeset path (MODE_ATOMIC would otherwise be attempted and fail).
+    case DRM_NR_SET_CLIENT_CAP: {
+        ulong capId = userRead!ulong(arg + 0);
+        if (capId == DRM_CLIENT_CAP_ATOMIC) return negErrno(EOPNOTSUPP);
         return 0;
+    }
 
     case DRM_NR_GEM_CLOSE: {
         uint handle = userRead!uint(arg + 0);
@@ -7512,8 +7788,16 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         return 0;
     }
 
-    case DRM_NR_MODE_SETCRTC:
-        return 0;
+    // struct drm_mode_crtc { u64 set_connectors_ptr; u32 count_connectors;
+    //   u32 crtc_id; u32 fb_id; u32 x; u32 y; u32 gamma_size; u32 mode_valid;
+    //   struct drm_mode_modeinfo mode; }
+    // The initial (legacy) modeset binds a framebuffer to the CRTC and scans it
+    // out; present it immediately. fb_id == 0 means "disable the CRTC" (blank).
+    case DRM_NR_MODE_SETCRTC: {
+        uint fbId = userRead!uint(arg + 16);
+        if (fbId == 0) return 0;
+        return drmPresentFb(fbId);
+    }
 
     case DRM_NR_MODE_GETENCODER: {
         userWrite!uint(arg + 0, 1);
@@ -7560,15 +7844,163 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         return 0;
     }
 
-    case DRM_NR_MODE_ADDFB:
-    case DRM_NR_MODE_ADDFB2:
-        userWrite!uint(arg + 0, 1);
+    // struct drm_mode_fb_cmd { u32 fb_id(out); u32 width; u32 height;
+    //                          u32 pitch; u32 bpp; u32 depth; u32 handle; }
+    case DRM_NR_MODE_ADDFB: {
+        uint width  = userRead!uint(arg + 4);
+        uint height = userRead!uint(arg + 8);
+        uint pitch  = userRead!uint(arg + 12);
+        uint bpp    = userRead!uint(arg + 16);
+        uint handle = userRead!uint(arg + 24);
+        uint id = drmAddFb(handle, width, height, pitch, bpp);
+        if (id == 0) return negErrno(EINVAL);
+        userWrite!uint(arg + 0, id);
+        return 0;
+    }
+
+    // struct drm_mode_fb_cmd2 { u32 fb_id(out); u32 width; u32 height;
+    //   u32 pixel_format; u32 flags; u32 handles[4]; u32 pitches[4];
+    //   u32 offsets[4]; u64 modifier[4]; }
+    case DRM_NR_MODE_ADDFB2: {
+        uint width   = userRead!uint(arg + 4);
+        uint height  = userRead!uint(arg + 8);
+        uint fourcc  = userRead!uint(arg + 12);
+        uint handle  = userRead!uint(arg + 20);   // handles[0]
+        uint pitch   = userRead!uint(arg + 36);   // pitches[0]
+        uint id = drmAddFb(handle, width, height, pitch, fourcc);
+        if (id == 0) return negErrno(EINVAL);
+        userWrite!uint(arg + 0, id);
+        return 0;
+    }
+
+    case DRM_NR_MODE_RMFB: {
+        uint id = userRead!uint(arg + 0);          // arg points at the fb_id
+        DrmFb* fb = findDrmFb(id);
+        if (fb) fb.inUse = false;
+        return 0;
+    }
+
+    // struct drm_mode_crtc_page_flip { u32 crtc_id; u32 fb_id; u32 flags;
+    //                                  u32 reserved; u64 user_data; }
+    // Present the target framebuffer now and, if the caller asked for a flip
+    // event, queue a completion the compositor reads back from the card fd.
+    case DRM_NR_MODE_PAGE_FLIP: {
+        uint fbId     = userRead!uint(arg + 4);
+        uint flags    = userRead!uint(arg + 8);
+        ulong userData = userRead!ulong(arg + 16);
+        long pr = drmPresentFb(fbId);
+        if (pr < 0) return pr;
+        if (flags & DRM_MODE_PAGE_FLIP_EVENT)
+            drmQueueFlipEvent(ifd, userData);
+        return 0;
+    }
+
+    // FB damage hint — we always present the whole framebuffer, so this is a
+    // no-op success. (Weston's Pixman+DRM path may call drmModeDirtyFB.)
+    case DRM_NR_MODE_DIRTYFB:
         return 0;
 
-    case DRM_NR_MODE_RMFB:
+    // ── Universal-planes enumeration (Weston requires a PRIMARY plane) ───────
+    // Weston's DRM backend mandates DRM_CLIENT_CAP_UNIVERSAL_PLANES, then refuses
+    // to start unless it finds a primary plane bound to the CRTC. We expose a
+    // single primary plane (id DRM_PLANE_ID) whose "type" property reports
+    // "Primary", which lets the legacy modeset path scan out our framebuffer.
+
+    // struct drm_mode_get_plane_res { u64 plane_id_ptr; u32 count_planes; }
+    case DRM_NR_MODE_GETPLANERESOURCES: {
+        ulong planePtr = userRead!ulong(arg + 0);
+        uint  inCount  = userRead!uint(arg + 8);
+        if (inCount >= 1 && planePtr != 0)
+            userWrite!uint(planePtr, DRM_PLANE_ID);
+        userWrite!uint(arg + 8, 1);
+        return 0;
+    }
+
+    // struct drm_mode_get_plane { u32 plane_id; u32 crtc_id; u32 fb_id;
+    //   u32 possible_crtcs; u32 gamma_size; u32 count_format_types;
+    //   u64 format_type_ptr; }
+    case DRM_NR_MODE_GETPLANE: {
+        userWrite!uint(arg + 4, 0);   // crtc_id (unbound)
+        userWrite!uint(arg + 8, 0);   // fb_id
+        userWrite!uint(arg + 12, 1);  // possible_crtcs = bit 0 (our only CRTC, pipe 0)
+        userWrite!uint(arg + 16, 0);  // gamma_size
+
+        uint  inCount = userRead!uint(arg + 20);
+        ulong fmtPtr  = userRead!ulong(arg + 24);
+        if (fmtPtr != 0 && inCount >= 1) {
+            userWrite!uint(fmtPtr + 0, DRM_FORMAT_XRGB8888);
+            if (inCount >= 2) userWrite!uint(fmtPtr + 4, DRM_FORMAT_ARGB8888);
+        }
+        userWrite!uint(arg + 20, 2);  // count_format_types
+        return 0;
+    }
+
+    case DRM_NR_MODE_SETPLANE:
         return 0;
 
-    case DRM_NR_MODE_PAGE_FLIP:
+    // struct drm_mode_obj_get_properties { u64 props_ptr; u64 prop_values_ptr;
+    //   u32 count_props; u32 obj_id; u32 obj_type; }
+    // Only the primary plane carries a property ("type"); all other objects
+    // report zero properties (fine for the legacy, non-atomic path).
+    case DRM_NR_MODE_OBJ_GETPROPERTIES: {
+        uint objType = userRead!uint(arg + 24);
+        if (objType == DRM_MODE_OBJECT_PLANE) {
+            ulong propsPtr  = userRead!ulong(arg + 0);
+            ulong valuesPtr = userRead!ulong(arg + 8);
+            uint  inCount   = userRead!uint(arg + 16);
+            if (inCount >= 1 && propsPtr != 0 && valuesPtr != 0) {
+                userWrite!uint(propsPtr,  DRM_PLANE_PROP_ID_TYPE);
+                userWrite!ulong(valuesPtr, DRM_PLANE_TYPE_PRIMARY);
+            }
+            userWrite!uint(arg + 16, 1);
+        } else {
+            userWrite!uint(arg + 16, 0);
+        }
+        return 0;
+    }
+
+    // struct drm_mode_get_property { u64 values_ptr; u64 enum_blob_ptr;
+    //   u32 prop_id; u32 flags; char name[32]; u32 count_values;
+    //   u32 count_enum_blobs; }   (name at +24, counts at +56/+60)
+    // We expose exactly one property: the plane "type" enum, with a single
+    // entry { value=1, name="Primary" } which Weston matches by name.
+    case DRM_NR_MODE_GETPROPERTY: {
+        uint propId = userRead!uint(arg + 16);
+        if (propId != DRM_PLANE_PROP_ID_TYPE) return negErrno(EINVAL);
+
+        userWrite!uint(arg + 20, DRM_MODE_PROP_ENUM);   // flags
+        // name[32] = "type"
+        immutable char[5] nm = "type\0";
+        smapBegin();
+        auto np = cast(ubyte*)(arg + 24);
+        foreach (i; 0 .. 32) np[i] = (i < 5) ? cast(ubyte)nm[i] : 0;
+        smapEnd();
+
+        ulong valuesPtr = userRead!ulong(arg + 0);
+        ulong enumPtr   = userRead!ulong(arg + 8);
+        uint  inValues  = userRead!uint(arg + 56);
+        uint  inEnums   = userRead!uint(arg + 60);
+
+        if (valuesPtr != 0 && inValues >= 1)
+            userWrite!ulong(valuesPtr, DRM_PLANE_TYPE_PRIMARY);
+        if (enumPtr != 0 && inEnums >= 1) {
+            // struct drm_mode_property_enum { u64 value; char name[32]; }
+            userWrite!ulong(enumPtr + 0, DRM_PLANE_TYPE_PRIMARY);
+            immutable char[8] pn = "Primary\0";
+            smapBegin();
+            auto ep = cast(ubyte*)(enumPtr + 8);
+            foreach (i; 0 .. 32) ep[i] = (i < 8) ? cast(ubyte)pn[i] : 0;
+            smapEnd();
+        }
+        userWrite!uint(arg + 56, 1);   // count_values
+        userWrite!uint(arg + 60, 1);   // count_enum_blobs
+        return 0;
+    }
+
+    // Hardware cursor — we have no cursor plane (Weston falls back to a software
+    // cursor composited by Pixman), so accept these as no-ops.
+    case DRM_NR_MODE_CURSOR:
+    case DRM_NR_MODE_CURSOR2:
         return 0;
 
     case DRM_NR_MODE_ATOMIC:

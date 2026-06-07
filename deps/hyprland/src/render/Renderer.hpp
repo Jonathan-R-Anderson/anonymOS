@@ -203,6 +203,13 @@ namespace Render {
         void                            clearCMSettingsCache();
         virtual bool                    reloadShaders(const std::string& path = "") = 0;
 
+        // EpinAnonymOS: external code (surface commits, launcher) signals that the
+        // HOS CPU compositor's cached desktop background must be fully recomposed
+        // on the next frame (otherwise a frame only repaints the moved cursor).
+        void                            hosMarkBgDirty() { m_hosBgDirty = true; }
+        bool                            hosBgDirty() const { return m_hosBgDirty; }
+        void                            hosClearBgDirty() { m_hosBgDirty = false; }
+
       protected:
         virtual void              renderOffToMain(SP<IFramebuffer> off)                                         = 0;
         virtual SP<IRenderbuffer> getOrCreateRenderbufferInternal(SP<Aquamarine::IBuffer> buffer, uint32_t fmt) = 0;
@@ -276,6 +283,17 @@ namespace Render {
         bool                              m_cursorHasSurface        = false;
         SP<Aquamarine::IBuffer>           m_currentBuffer           = nullptr;
         eRenderMode                       m_renderMode              = RENDER_MODE_NORMAL;
+        // EpinAnonymOS: set per-frame in beginRenderInternal when the HOS CPU
+        // compositor path is active, so renderMonitor can skip the GL scene build
+        // entirely (Mesa swrast faults rendering client textures in this
+        // sessionless/software environment, killing the compositor main thread).
+        bool                              m_hosCPUFrame             = false;
+        // EpinAnonymOS: the HOS CPU compositor caches the composed desktop
+        // background and only fully recomposes it when content actually changes;
+        // this flag is raised by surface commits, window map/unmap and launcher
+        // toggles. A cursor-only frame leaves it false, so the compositor redraws
+        // just the cursor region instead of the whole screen.
+        bool                              m_hosBgDirty              = true;
         bool                              m_nvidia                  = false;
         bool                              m_intel                   = false;
         bool                              m_software                = false;

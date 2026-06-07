@@ -64,6 +64,13 @@ WLFILES_BIN := build/wl-files
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
+# GW3: Weston (reference Wayland compositor + Pixman software renderer). When
+# WESTON=1 and the binary is built, it is staged as a boot module named "weston"
+# and the kernel selects it as init ahead of Hyprland. Set WESTON=0 to fall back
+# to Hyprland for comparison.
+WESTON       ?= 1
+WESTON_BUILD := deps/weston-14.0.0/build-epin
+WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ASSET_SRC_DIR := build/assets
@@ -318,6 +325,34 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		fi; \
 	else \
 		echo "Hyprland not built — run: make deps-hyprland"; \
+	fi
+
+	@if [ "$(WESTON)" = "1" ] && [ -f $(WESTON_BIN) ]; then \
+		cp $(WESTON_BIN) cd/weston; \
+		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \
+		cp $(WESTON_BUILD)/frontend/libexec_weston.so.0.0.0  cd/libexec_weston.so.0; \
+		cp $(WESTON_BUILD)/libweston/libweston-14.so.0.0.0    cd/libweston-14.so.0; \
+		cp $(WESTON_BUILD)/libweston/backend-drm/drm-backend.so cd/drm-backend.so; \
+		cp $(WESTON_BUILD)/desktop-shell/desktop-shell.so       cd/desktop-shell.so; \
+		cp $(WESTON_BUILD)/clients/weston-desktop-shell         cd/weston-desktop-shell; \
+		cp $(WESTON_BUILD)/clients/weston-keyboard              cd/weston-keyboard; \
+		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n' >> cd/boot/limine/limine.conf; \
+		if [ -f $(WESTON_BUILD)/clients/weston-terminal ]; then \
+			cp $(WESTON_BUILD)/clients/weston-terminal cd/weston-terminal; \
+			printf '    module_path: boot():/weston-terminal\n' >> cd/boot/limine/limine.conf; \
+			echo "Included Weston (GW3) + desktop-shell + terminal — overrides Hyprland as init"; \
+		else \
+			echo "Included Weston (GW3) + desktop-shell (no weston-terminal — build with -Dtools=terminal) — overrides Hyprland as init"; \
+		fi; \
+		if [ ! -f $(XKB_BLOB) ] && [ -d $(XKB_SRC_DIR) ]; then \
+			python3 scripts/pack-xkb.py $(XKB_SRC_DIR) $(XKB_BLOB); \
+		fi; \
+		if [ -f $(XKB_BLOB) ] && ! grep -q 'boot():/xkb.blob' cd/boot/limine/limine.conf; then \
+			cp $(XKB_BLOB) cd/xkb.blob; \
+			printf '    module_path: boot():/xkb.blob\n' >> cd/boot/limine/limine.conf; \
+		fi; \
+	elif [ "$(WESTON)" = "1" ]; then \
+		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
 	fi
 
 	$(XORRISO) -as mkisofs \

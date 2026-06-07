@@ -1,5 +1,6 @@
 #include "Logger.hpp"
 #include "RollingLogFollow.hpp"
+#include <cstdlib>
 
 #include "../../event/EventBus.hpp"
 
@@ -19,7 +20,14 @@ void CLogger::log(Hyprutils::CLI::eLogLevel level, const std::string_view& str) 
     if (!m_logsEnabled)
         return;
 
-    if (level == Hyprutils::CLI::LOG_TRACE && !TRACE)
+    // EpinAnonymOS: stdout logging is routed to the emulated serial UART, where
+    // every line is a slow VM-exit to QEMU. Aquamarine emits per-frame TRACE/DEBUG
+    // (scheduleFrame, G8 present, …) — thousands of lines/sec — which under KVM
+    // made the compositor I/O-bound on serial writes and froze the whole desktop.
+    // Past bring-up, drop TRACE and DEBUG and keep WARN and above (real problems
+    // still surface; HOS_VERBOSE_LOG=1 restores everything for debugging).
+    static const bool VERBOSE = TRACE || std::getenv("HOS_VERBOSE_LOG") != nullptr;
+    if (!VERBOSE && (level == Hyprutils::CLI::LOG_TRACE || level == Hyprutils::CLI::LOG_DEBUG))
         return;
 
     if (SRollingLogFollow::get().isRunning())

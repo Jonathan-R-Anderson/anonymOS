@@ -59,6 +59,7 @@ import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 1
 import core.identity : identityInitDefaults, identityInitLaunchRules, identityByName,
                        identitySelfTest, idprocSelfTest, identityStats, identityNamePrint; // IDENTITY_DOMAIN P2/P3
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
+import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import display.compositor.compositor : compositorIdentitySelfTest; // GUI: trusted identity borders
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
@@ -1247,6 +1248,7 @@ private void dispatchSyscall(int tid) {
         identitySelfTest(); // IDENTITY_DOMAIN P2: one-shot proof identity create/lookup/validate/freeze
         idprocSelfTest();   // IDENTITY_DOMAIN P3: one-shot proof inherit / transition-gate / cap⊆ceiling
         idnsSelfTest();     // IDENTITY_DOMAIN P4: one-shot proof per-identity disjoint roots + shares
+        idipcSelfTest();    // IDENTITY_DOMAIN P5: one-shot proof same-domain OK / cross denied / brokered allowed
         identityDumpProcesses(); // IDENTITY_DOMAIN P3: one-shot idps process-identity table
         compositorIdentitySelfTest(); // GUI: one-shot proof of trusted, unspoofable identity borders
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
@@ -1293,6 +1295,7 @@ private void dispatchSyscall(int tid) {
             windowStats();
             identityStats(); // IDENTITY_DOMAIN P2: identity count / created / frozen
             idnsStats();     // IDENTITY_DOMAIN P4: ns clones / shares / roots
+            idipcStats();    // IDENTITY_DOMAIN P5: gate checks / allow / deny
             linuxStats();
             linuxPersStats();
             kernelCensusStats();
@@ -2110,6 +2113,7 @@ void d_kernel_main() {
     identityInitDefaults();
     identityInitLaunchRules();   // §3 compiled-in transition rules (after the identities exist)
     idnsInitRoots();             // §4 private object-root Directory per identity
+    idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     g_tasks[0].identityObjId = identityByName("System\0".ptr);
     // Phase 12: build the Linux-compat object subtree and enable the personality
     // before the init process issues its first syscall (the dispatcher routes all

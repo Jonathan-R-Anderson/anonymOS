@@ -279,7 +279,7 @@ boot self-test.
   desktop unchanged. (Wiring `idnsForIdentity` into a live cross-identity `launchInto` waits
   for a launcher that requests one — same gate as §3; the per-identity ns machinery is done.)
 
-### Phase 5 — IPC policy enforcement (`core/idipc.d`)  · P: Critical · D: 6 · deps: 2,5(secipc)
+### Phase 5 — IPC policy enforcement (`core/idipc.d`)  · P: Critical · D: 6 · deps: 2,5(secipc) · ✅ DONE
 - `idipcMayConnect(fromId, toId)`: **deny by default**; allow only if same identity or an
   `IpcPairRule` exists (optionally via `brokerSvcObjId`).
 - Hook `secipc.brokerRequestSession`: refuse to mint a descriptor across identities without
@@ -289,6 +289,24 @@ boot self-test.
   also verifies peer identity matches the descriptor). Audit `IdIpcDeny`.
 - *Outcome:* `[idipc] selftest PASS` — same-identity IPC OK; cross-identity denied; a
   brokered pair (Dev→Disposable via sanitizer) allowed; descriptor carries both identities.
+- **Done:** new `core/idipc.d`. `idipcMayConnect` is the deny-by-default predicate (same
+  domain — incl. two unlabelled/0 procs — or a directed `IpcPairRule`); `idipcPairRuleAdd`/
+  `idipcRemovePairRule`/`idipcBrokerSvc` manage the allow-list. The enforcement point is a
+  function-pointer gate installed into `secipc` (`secipcSetIdGate`, so secipc keeps no
+  dependency on idipc and stays identity-agnostic when unset): `brokerRequestSession` now
+  resolves each process object → its security domain (via the owning Task's `identityObjId`,
+  pluggable for tests), applies `idipcMayConnect`, **stamps both domains into the descriptor**,
+  and refuses to mint across domains without a rule. The two domains were added to
+  `SessionDescriptor` and folded into the broker-signed body (42→50 B) so they are
+  tamper-proof. `idipcInit` (boot) installs the gate + the default Dev→Disposable brokered
+  pair (sanitizer `Service` object). `IdIpcDeny` is audited on refusal. Boot-verified `[idipc]
+  selftest PASS` (self-contained throwaway resolver + real broker path): same-domain session
+  minted with both domains stamped, cross-domain denied with no rule, brokered pair allowed
+  once a rule exists (both domains stamped, broker svc recorded), directed (reverse denied);
+  `checks=9 allow=8 deny=1`, no fault, all 30 self-tests pass (incl. `secobj`/`sechard`, which
+  required a clean rebuild — the descriptor-size change must propagate to every module that
+  stack-allocates a `SessionDescriptor`), desktop unchanged (303 colors). (Wiring the gate to
+  the live userspace `secipc` socket path is the same M2/§7 integration noted in secipc.)
 
 ### Phase 6 — GUI / window-manager borders  · P: Critical · D: 6 · deps: 2,3
 - `winRegister` stamps `WinRec.identityObjId = ownerProcess.identityObjId`,
@@ -539,11 +557,12 @@ clipboard = Deny
   gate + launch rules; `idps` prints the process-identity table. Boot shows every process
   labelled `[System]` (inherited from PID1). `[identity] selftest PASS` + `[idproc] selftest
   PASS`. Next: M1 (Phase 4 per-identity namespaces + Phase 5 cross-identity IPC).
-- **M1 — Isolation.** Phases 4–5: per-identity namespaces (disjoint object roots) +
-  deny-by-default cross-identity IPC with brokered exceptions. **Progress:** Phase 4 ✅
-  (`core/idns.d`: disjoint per-identity object-roots + cap-wrapped, rule-gated shares,
-  `[idns] selftest PASS`). Remaining: Phase 5 (`core/idipc.d` — deny cross-identity IPC by
-  default, brokered exceptions, identity-pair authz on `secipc`).
+- **M1 — Isolation.** ✅ Phases 4–5: per-identity namespaces (disjoint object roots) +
+  deny-by-default cross-identity IPC with brokered exceptions. Phase 4 ✅ (`core/idns.d`:
+  disjoint per-identity object-roots + cap-wrapped, rule-gated shares, `[idns] selftest
+  PASS`); Phase 5 ✅ (`core/idipc.d`: deny-by-default cross-identity IPC, brokered-pair
+  exceptions, identity-pair authz enforced at `secipc` descriptor issuance with both domains
+  signed into the descriptor, `[idipc] selftest PASS`).
 - **M2 — Trusted borders.** Phase 6: compositor draws unspoofable colored borders + title
   labels; first honestly "Qubes-like" visual.
 - **M3 — Brokers + disposables.** Phases 7–8: clipboard/device/network brokers; disposable

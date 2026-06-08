@@ -75,6 +75,7 @@ struct SessionDescriptor {
     uint      policy;
     ulong     epoch;            // revocation epoch at mint
     ulong     notAfter;
+    uint      aIdentity, bIdentity; // IDENTITY_DOMAIN §5: security domains of A and B
     ubyte[32] brokerSig;        // broker signature over all prior fields
 }
 
@@ -97,6 +98,16 @@ __gshared ulong g_routeOk        = 0;
 __gshared ulong g_routeDeny      = 0;
 __gshared ulong g_descReject     = 0;
 __gshared bool  g_secipcSelfTested = false;
+
+// IDENTITY_DOMAIN §5: optional cross-identity gate installed by core.idipc at boot.
+// Given the two process objects, it returns true to allow the session and fills the
+// security-domain identity ids to stamp into the descriptor; false denies.  The
+// deny-by-default policy lives in idipc, so secipc stays identity-agnostic when the
+// gate is unset (e.g. before the Identity Manager is up, or in lower-level tests).
+alias SecipcIdGate = extern(C) bool function(uint aProc, uint bProc,
+                                             uint* aIdOut, uint* bIdOut) @nogc nothrow;
+__gshared SecipcIdGate g_secipcIdGate = null;
+public void secipcSetIdGate(SecipcIdGate fn) { g_secipcIdGate = fn; }
 
 // --- little-endian field serializers ------------------------------------------
 private uint put32(ubyte* b, uint off, uint v) {
@@ -186,9 +197,9 @@ public bool identityVerifySig(uint objId, const(ubyte)* msg, ulong len,
 // SHA-256 of the descriptor's bound fields — the transcript anchor both endpoints
 // fold into the signed-DH handshake (§2.2 channel binding).
 public void secipcDescriptorHash(ref const(SessionDescriptor) d, ubyte* out32) {
-    ubyte[42] body_;
+    ubyte[50] body_;
     descBody(d, body_.ptr);
-    sha256(body_.ptr, 42, out32);
+    sha256(body_.ptr, 50, out32);
 }
 
 // === §1.2 Broker / Key Service ================================================
@@ -215,21 +226,23 @@ private ushort pickSuite(ushort prefs) {
     return 0;
 }
 
-private void descBody(ref const(SessionDescriptor) d, ubyte* out42) {
-    uint o = put64(out42, 0, d.sessionId);
-    o = put32(out42, o, d.aId);
-    o = put32(out42, o, d.bId);
-    o = put32(out42, o, d.channelCap);
-    o = put16(out42, o, d.suite);
-    o = put32(out42, o, d.policy);
-    o = put64(out42, o, d.epoch);
-    put64(out42, o, d.notAfter);
+private void descBody(ref const(SessionDescriptor) d, ubyte* out50) {
+    uint o = put64(out50, 0, d.sessionId);
+    o = put32(out50, o, d.aId);
+    o = put32(out50, o, d.bId);
+    o = put32(out50, o, d.channelCap);
+    o = put16(out50, o, d.suite);
+    o = put32(out50, o, d.policy);
+    o = put64(out50, o, d.epoch);
+    o = put64(out50, o, d.notAfter);
+    o = put32(out50, o, d.aIdentity);   // §5: identities are signed into the descriptor
+    put32(out50, o, d.bIdentity);
 }
 
 private void brokerSign(ref SessionDescriptor d) {
-    ubyte[42] body_;
+    ubyte[50] body_;
     descBody(d, body_.ptr);
-    hmacSha256(g_brokerKey.ptr, 32, body_.ptr, 42, d.brokerSig.ptr);
+    hmacSha256(g_brokerKey.ptr, 32, body_.ptr, 50, d.brokerSig.ptr);
 }
 
 // RequestSession(A→B): both identities must be registered with valid, unexpired
@@ -250,6 +263,14 @@ public bool brokerRequestSession(int tableId, uint aId, uint bId, ushort suitePr
     ushort suite = pickSuite(suitePrefs);
     if (suite == 0) { ++g_sessionDenied; return false; }
 
+    // IDENTITY_DOMAIN §5: cross-identity policy gate (deny-by-default lives in idipc).
+    // Resolves & stamps both security domains; refuses to mint across identities
+    // without a rule.  No-op when no gate is installed (identity-agnostic build).
+    uint aIdent = 0, bIdent = 0;
+    if (g_secipcIdGate !is null && !g_secipcIdGate(aId, bId, &aIdent, &bIdent)) {
+        ++g_sessionDenied; return false;
+    }
+
     uint chObj = ipcEndpointAlloc();
     if (chObj == 0) { ++g_sessionDenied; return false; }
     if (capInstallIn(tableId, channelCapHandle, chObj, CAP_RIGHT_CALL, CAP_INVALID)
@@ -260,6 +281,7 @@ public bool brokerRequestSession(int tableId, uint aId, uint bId, ushort suitePr
     SessionDescriptor d;
     d.sessionId = ++g_sessionCtr;
     d.aId = aId; d.bId = bId;
+    d.aIdentity = aIdent; d.bIdentity = bIdent;   // §5: descriptor carries both domains
     d.channelCap = chObj;
     d.suite = suite;
     d.policy = 0;
@@ -279,10 +301,10 @@ private bool sessionRevoked(ulong sessionId) {
 // Verify a descriptor (endpoint-side, K3): broker signature checks, not expired, and
 // not revoked.  Endpoints call this before trusting a descriptor.
 public bool brokerVerifyDescriptor(ref const(SessionDescriptor) d, ulong now) {
-    ubyte[42] body_;
+    ubyte[50] body_;
     descBody(d, body_.ptr);
     ubyte[32] expect;
-    hmacSha256(g_brokerKey.ptr, 32, body_.ptr, 42, expect.ptr);
+    hmacSha256(g_brokerKey.ptr, 32, body_.ptr, 50, expect.ptr);
     if (!ctEqual32(expect.ptr, d.brokerSig.ptr)) { ++g_descReject; return false; }
     if (d.notAfter <= now) { ++g_descReject; return false; }
     if (sessionRevoked(d.sessionId)) { ++g_descReject; return false; }

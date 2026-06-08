@@ -3,7 +3,7 @@ module core.syscalls.posix;
 import core.io : inb;
 import core.console : console_putchar, console_backspace, g_fbConsoleEnabled;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
-                              AF_UNIX, AF_INET, SOCK_STREAM, SOCK_DGRAM,
+                              AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM,
                               SOL_SOCKET, SCM_RIGHTS;
 import core.exports : g_module_count, g_mboot_modules, phys_to_virt,
                       g_current_task_id, d_store_task_fsbase;
@@ -1899,6 +1899,13 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     return 0;
 }
 
+// True if `path` exactly names an entry in the virtual-file table (g_vfs).
+private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
+    foreach (ref vfe; g_vfs)
+        if (cstrEq(path, vfe.path)) return true;
+    return false;
+}
+
 public int sys_open(const(char)* path, int flags) {
     initFdTable();
     if (path is null) {
@@ -2041,7 +2048,12 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
-    if (isSyntheticDirectoryPath(path)) {
+    // An explicit virtual FILE (g_vfs) must win over the synthetic-DIRECTORY shim
+    // below: isSyntheticDirectoryPath() also returns true for paths under certain
+    // prefixes (isVirtualDirectoryPath), which would otherwise serve a real file
+    // like /sys/class/drm/card0/uevent as an empty 0-byte directory — udev-zero
+    // then reads no DEVNAME and Weston rejects "card0 is not a KMS device".
+    if (isSyntheticDirectoryPath(path) && !pathIsExactVfsFile(path)) {
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
         }
@@ -4709,6 +4721,20 @@ public int sys_socket(int domain, int type, int protocol) {
     initFdTable();
 
     const int baseType = type & 0x0F;
+
+    // AF_NETLINK: libudev-zero's udev_monitor opens a NETLINK_KOBJECT_UEVENT
+    // socket for device hotplug. We never emit uevents, so hand back a valid
+    // socket that simply stays in the 'created' state — never readable, recvmsg
+    // never fires. Without this, udev_monitor_new_from_netlink() returns NULL and
+    // Weston's libinput setup aborts ("failed to create the udev monitor").
+    if (domain == AF_NETLINK) {
+        const int nid = allocLocalSocket(AF_NETLINK, baseType);
+        if (nid < 0) return negErrno(EMFILE);
+        const int nfd = allocSocketFd(nid, O_RDWR);
+        if (nfd < 0) { releaseLocalSocket(nid); return negErrno(EMFILE); }
+        return publishActiveFdReturn(nfd);
+    }
+
     if (domain != AF_UNIX) return negErrno(EAFNOSUPPORT);
     if (baseType != SOCK_STREAM) return negErrno(EPROTONOSUPPORT);
     if (protocol != 0) return negErrno(EPROTONOSUPPORT);
@@ -4732,6 +4758,9 @@ public int sys_bind(int sockfd, sockaddr* addr, uint addrlen) {
     File* f = &g_fdTable[sockfd];
     auto sock = fileSocket(f);
     if (sock is null) return negErrno(ENOTSOCK);
+    // A netlink monitor socket binds to a sockaddr_nl; accept it as a no-op (we
+    // deliver no uevents, so the bound socket just never becomes readable).
+    if (sock.domain == AF_NETLINK) return 0;
     if (addr.sa_family != AF_UNIX) return negErrno(EAFNOSUPPORT);
     if (sock.state != LocalSocketState.created && sock.state != LocalSocketState.bound) return negErrno(EINVAL);
 
@@ -5999,6 +6028,27 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     physPagesSetOwner(phys, pages, 0, vmoObjId);
     f.fileSize             = length;
     return 0;
+}
+
+// fallocate(fd, mode, offset, len). Weston's wl_shm allocator (toytoolkit /
+// os_create_anonymous_file) does memfd_create → F_SEAL_SHRINK → posix_fallocate,
+// which issues fallocate(fd, 0, 0, size). Without this the clients can't size
+// their shared buffers ("creating a buffer file … failed: Function not
+// implemented") and nothing draws. For our memfd-backed buffers, "allocate
+// space up to offset+len" is exactly ftruncate-grow (which allocates the
+// physical pages). Hole-punch / other FALLOC_FL_* modes are accepted as no-ops.
+public long linux_sys_fallocate(ulong fd, ulong mode, ulong offset, ulong len) {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return negErrno(EBADF);
+    if (mode != 0) return 0;                       // FALLOC_FL_* → no-op success
+    File* f = &g_fdTable[ifd];
+    const ulong end = offset + len;
+    if (f.type == FileType.FD_MEMFD) {
+        if (end > f.fileSize) return linux_sys_ftruncate(fd, end);  // grow only
+        return 0;
+    }
+    return 0;   // other fd types (rtfs temp files, …): accept as a no-op
 }
 
 // Resolve a FD_MEMFD fd to its physical base (size via out-pointer).  Returns 0

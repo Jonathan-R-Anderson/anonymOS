@@ -933,6 +933,14 @@ ulong linux_seed_initial_stack(
     // backend instead of failing to reach /run/seatd.sock.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "LIBSEAT_BACKEND=builtin\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // GW3: make the embedded seatd create a NON-VT-bound seat. We have no Linux
+    // VTs (/dev/tty0), so a VT-bound seat never becomes "active" (seat_activate
+    // needs cur_vt) and seatd then rejects every device open with EPERM ("client
+    // is not active") — which made Weston's DRM probe fail with "card0 is not a
+    // KMS device". With SEATD_VTBOUND=0 seatd activates the sole client at once,
+    // so it can open /dev/dri/card0 and pass the fd back via SCM_RIGHTS.
+    envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "SEATD_VTBOUND=0\0".ptr);
+    if (envVirt != 0) envVirts[envc++] = envVirt;
     // Software rendering: no GPU, force Mesa's software gallium driver. Our
     // kms_swrast_dri.so was built -Dllvm=disabled, so the ONLY gallium sw driver
     // it contains is softpipe (NOT llvmpipe) — selecting llvmpipe makes screen

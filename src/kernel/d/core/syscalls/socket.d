@@ -4,6 +4,7 @@ alias ssize_t = long;
 
 enum AF_UNIX = 1;
 enum AF_INET = 2;
+enum AF_NETLINK = 16;
 enum SOCK_STREAM = 1;
 enum SOCK_DGRAM = 2;
 

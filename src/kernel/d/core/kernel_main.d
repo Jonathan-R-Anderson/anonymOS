@@ -1660,6 +1660,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 72:  return linux_sys_fcntl(a, b, c);
         case 73:  return linux_sys_flock(a, b);
         case 77:  return linux_sys_ftruncate(a, b);
+        case 285: return linux_sys_fallocate(a, b, c, d);  // posix_fallocate (wl_shm buffers)
         case 79:  return linux_sys_getcwd(a, b);
         case 80:  return linux_sys_chdir(a);
         case 81:  return linux_sys_fchdir(a);

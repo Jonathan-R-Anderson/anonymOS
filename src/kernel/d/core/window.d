@@ -59,6 +59,14 @@ __gshared uint  g_winLive      = 0;
 __gshared bool  g_winInited    = false;
 __gshared bool  g_winSelfTested = false;
 
+// IDENTITY_DOMAIN §6: optional identity-stamp hook installed by core.idwin.  After a
+// Window is (re)registered, winRegister calls this so the KERNEL stamps the owner
+// process's security domain + border color into the WinRec — apps never supply
+// either.  No-op when unset (e.g. before the Identity Manager is up).
+alias WinIdentityStampFn = extern (C) void function(uint winObjId) @nogc nothrow;
+__gshared WinIdentityStampFn g_winIdentityStamp = null;
+public void winSetIdentityStamp(WinIdentityStampFn fn) { g_winIdentityStamp = fn; }
+
 private WinRec* winFind(WinKind kind, ulong localId) {
     foreach (ref w; g_wins)
         if (w.inUse && w.kind == kind && w.localId == localId) return &w;
@@ -77,6 +85,10 @@ public uint winRegister(WinKind kind, ulong localId, uint ownerObjId,
         existing.width = width;
         existing.height = height;
         existing.impl = impl;
+        // §6: re-derive the identity from the (kernel-set) owner so a re-registering
+        // app can never change its own domain/border by re-registering.
+        if (kind == WinKind.Window && g_winIdentityStamp !is null)
+            g_winIdentityStamp(existing.objId);
         return existing.objId;
     }
     foreach (ref w; g_wins) {
@@ -95,6 +107,9 @@ public uint winRegister(WinKind kind, ulong localId, uint ownerObjId,
         w.impl = impl;
         ++g_winRegTotal;
         ++g_winLive;
+        // §6: kernel-stamp the owner's security domain + border color (unspoofable).
+        if (kind == WinKind.Window && g_winIdentityStamp !is null)
+            g_winIdentityStamp(id);
         return id;
     }
     return 0;

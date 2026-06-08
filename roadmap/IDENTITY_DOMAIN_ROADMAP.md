@@ -308,7 +308,7 @@ boot self-test.
   stack-allocates a `SessionDescriptor`), desktop unchanged (303 colors). (Wiring the gate to
   the live userspace `secipc` socket path is the same M2/§7 integration noted in secipc.)
 
-### Phase 6 — GUI / window-manager borders  · P: Critical · D: 6 · deps: 2,3
+### Phase 6 — GUI / window-manager borders  · P: Critical · D: 6 · deps: 2,3 · ✅ DONE
 - `winRegister` stamps `WinRec.identityObjId = ownerProcess.identityObjId`,
   `identityColor = IdentityRec.color` — app cannot supply either.
 - Compositor: for each window draw a persistent N-px border in `identityColor` **after**
@@ -319,6 +319,25 @@ boot self-test.
 - *Outcome:* `[idwin] selftest` — a window's stamped identity == its owner's; an app's
   attempt to re-register with a different identity id is ignored (owner-derived);
   border-color lookup returns the identity color.
+- **Done:** new `core/idwin.d` + a stamp hook in `core/window.d`. `winRegister` now invokes a
+  kernel-installed hook (`winSetIdentityStamp`, so window.d keeps no dependency on idwin) on
+  every Window (re)registration → `idwinStamp` resolves the **owner** object to its security
+  domain (owning `Task.identityObjId`, pluggable resolver), and writes `identityObjId`,
+  `identityColor = IdentityRec.color`, and `guiContextId` into the `WinRec`. The app supplies
+  none of these (the function takes no identity arg) and **cannot change them by
+  re-registering** — the re-register path re-derives from the owner, overwriting any forgery.
+  `winIdentity(objId)` / `idwinBorderColor(objId)` are the lookups; `idwinDrawBorder(fb,…)` is
+  the unspoofable border primitive the trusted compositor calls AFTER blitting the surface
+  (overwrites only the outermost N-px ring, never the interior); `idwinDump` is the `idwin`
+  debug table; `IdWindowCreate` audited per stamp. Boot-verified `[idwin] selftest PASS`: two
+  windows owned by Work vs Banking get distinct stamped identities + distinct border colors; a
+  hostile app scribbling its own WinRec to claim Banking is overwritten back to Work by the
+  re-register stamp; border-color lookup returns the identity color; the 2-px border ring is
+  filled with the identity color while the interior app fill survives. `stamps=4 hook=1`, no
+  fault, all 31 self-tests pass, desktop unchanged (303 colors). (The live Weston compositor
+  drawing these borders per top-level is the userspace-seam integration — same M2/§7 wiring
+  note as §4/§5; the kernel-side stamping + unspoofable border primitive are done. The
+  `"[<name>] <title>"` title label is drawn by that compositor seam.)
 
 ### Phase 7 — Clipboard / device / network brokers (`core/idbroker.d`)  · P: High · D: 6 · deps: 4,5
 - Devices and clipboard are **brokered objects**, never directly bound. `idbrokerDevice(id,
@@ -563,8 +582,12 @@ clipboard = Deny
   PASS`); Phase 5 ✅ (`core/idipc.d`: deny-by-default cross-identity IPC, brokered-pair
   exceptions, identity-pair authz enforced at `secipc` descriptor issuance with both domains
   signed into the descriptor, `[idipc] selftest PASS`).
-- **M2 — Trusted borders.** Phase 6: compositor draws unspoofable colored borders + title
-  labels; first honestly "Qubes-like" visual.
+- **M2 — Trusted borders.** ✅ (kernel side) Phase 6: kernel stamps every window with its
+  owner's identity + border color (unspoofable, app can't supply or re-register around it) and
+  provides the border-ring draw primitive; `[idwin] selftest PASS`. Remaining for the full
+  milestone: the live Weston compositor calling the per-window border draw + `"[<name>]
+  <title>"` label (userspace seam, same M2/§7 integration as §4/§5). First honestly
+  "Qubes-like" visual.
 - **M3 — Brokers + disposables.** Phases 7–8: clipboard/device/network brokers; disposable
   identities with ephemeral state destroyed on exit.
 - **M4 — Signed policy + full audit.** Phases 9–10: declarative policy loaded at boot,

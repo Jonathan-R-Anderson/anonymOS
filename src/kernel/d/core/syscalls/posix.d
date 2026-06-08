@@ -1722,7 +1722,6 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         size_t n = 0;
         while (g_drmEvTail != g_drmEvHead && n + evSz <= _count) {
             DrmEvent* ev = &g_drmEvents[g_drmEvTail];
-            if (ev.fd != myfd) break;   // FIFO; foreign events wait for their reader
             *cast(uint*)(dst + n + 0)  = DRM_EVENT_FLIP_COMPLETE;
             *cast(uint*)(dst + n + 4)  = cast(uint)evSz;
             *cast(ulong*)(dst + n + 8) = ev.userData;
@@ -7019,11 +7018,13 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
 }
 
 // GW2: DRM page-flip completion events. After a PAGE_FLIP we present immediately
-// and queue a DRM_EVENT_FLIP_COMPLETE that Weston's event loop reads back from
-// the card fd (it blocks on this to pace rendering). Events are tagged with the
-// owning fd so the right reader drains them.
+// and queue a DRM_EVENT_FLIP_COMPLETE that the compositor reads back from the card
+// fd (it blocks on this to pace rendering). The queue is GLOBAL, not keyed by fd:
+// there is a single card0, and a client commonly does its ioctls on one fd while
+// it poll()s/read()s a DUP of that fd in its event loop (Weston does exactly this
+// — PAGE_FLIP on fd 12 but epoll on fd 17). Keying events to the flipping fd meant
+// the watching fd never saw them, so the compositor stalled after the first flip.
 private struct DrmEvent {
-    int   fd;
     ulong userData;
     uint  seq;
     uint  crtcId;
@@ -7037,20 +7038,15 @@ __gshared uint g_drmFlipSeq;
 private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
     uint next = (g_drmEvHead + 1) % DRM_EVENT_QUEUE_MAX;
     if (next == g_drmEvTail) return;   // queue full → drop (compositor will recover)
-    g_drmEvents[g_drmEvHead].fd       = fd;
     g_drmEvents[g_drmEvHead].userData = userData;
     g_drmEvents[g_drmEvHead].seq      = ++g_drmFlipSeq;
     g_drmEvents[g_drmEvHead].crtcId   = 1;
     g_drmEvHead = next;
 }
 
+// fd is accepted for call-site symmetry but ignored — any card0 fd drains events.
 private bool drmEventPending(int fd) @nogc nothrow {
-    uint t = g_drmEvTail;
-    while (t != g_drmEvHead) {
-        if (g_drmEvents[t].fd == fd) return true;
-        t = (t + 1) % DRM_EVENT_QUEUE_MAX;
-    }
-    return false;
+    return g_drmEvTail != g_drmEvHead;
 }
 
 // Find a GEM buffer by handle

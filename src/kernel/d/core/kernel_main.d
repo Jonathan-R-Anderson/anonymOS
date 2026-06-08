@@ -20,6 +20,7 @@ import core.exports :
     d_store_task_fsbase, d_apply_task_fsbase,
     d_do_cleartid,
     linux_seed_initial_stack,
+    linux_seed_initial_stack_with_args,
     x64_ready_for_userspace,
     x64_setup_full_idt,
     setupSysCalls,
@@ -592,6 +593,15 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
 // execve: replace current task's address space with a new ELF
 // ------------------------------------------------------------------
 
+// execve environment snapshot — see the capture in execveTask. Kernel-resident
+// (always mapped, survives the CR3 switch) so the new image's stack seeder can
+// read the real env after the outgoing address space is gone.
+private enum size_t EXEC_ENV_MAX     = 256;
+private enum size_t EXEC_ENV_STR_CAP = 16384;
+__gshared char[EXEC_ENV_STR_CAP]  g_execEnvStrings;
+__gshared ulong[EXEC_ENV_MAX + 1] g_execEnvPtrs;
+__gshared size_t g_execEnvCount;
+
 private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     auto task = &g_tasks[tid];
 
@@ -627,6 +637,33 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog(path);
         klog("\n");
         return -2; // ENOENT
+    }
+
+    // Snapshot the caller's envp into kernel buffers WHILE the outgoing address
+    // space is still active (its user pages are unmapped just below, and the CR3
+    // switch a few lines later makes the user pointers unreadable). The stack
+    // seeder then propagates the REAL environment to the new image instead of the
+    // kernel's fixed default — this is what carries Weston's WAYLAND_SOCKET=<fd>
+    // to its spawned clients, so the privileged desktop-shell rebinds the trusted
+    // wl_client connection instead of being denied. (envp==0 → keep fixed env.)
+    g_execEnvCount = 0;
+    {
+        size_t strOff = 0;
+        if (envpPtr != 0) {
+            auto envArr = cast(const(ulong)*)envpPtr;
+            for (size_t i = 0; i < EXEC_ENV_MAX && envArr[i] != 0; ++i) {
+                auto s = cast(const(char)*)envArr[i];
+                if (s is null) continue;
+                size_t len = 0;
+                while (s[len] != 0 && len < 4095) ++len;
+                if (strOff + len + 1 >= EXEC_ENV_STR_CAP) break;
+                foreach (j; 0 .. len) g_execEnvStrings[strOff + j] = s[j];
+                g_execEnvStrings[strOff + len] = 0;
+                g_execEnvPtrs[g_execEnvCount++] = cast(ulong)&g_execEnvStrings[strOff];
+                strOff += len + 1;
+            }
+        }
+        g_execEnvPtrs[g_execEnvCount] = 0;   // NULL terminator
     }
 
     // Release the outgoing address space's private pages before installing a
@@ -712,10 +749,11 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     if (stackRegion !is null)
         physPagesSetOwner(stackPhys, stackPages, stackRegion.objId, stackRegion.vmoObjId);
 
-    // Seed a Linux-style process stack using auxv from the loaded ELF.  argv/env
-    // user pointers belong to the old address space after the CR3 switch, so the
-    // seeder uses the matched boot-module name as argv[0] and the kernel's
-    // default GUI environment.
+    // Seed a Linux-style process stack using auxv from the loaded ELF. argv[0] is
+    // the matched boot-module basename (execfn). The environment is the caller's
+    // real env, snapshotted above into g_execEnvPtrs/Strings (kernel memory, valid
+    // after the CR3 switch); fall back to the kernel's fixed GUI env only when the
+    // caller passed no envp (e.g. kernel-internal exec).
     ulong[7] infoWords = [
         res.entry,
         res.phdrVaddr,
@@ -725,8 +763,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         mainBias,
         cast(ulong)execName
     ];
-    ulong rsp = linux_seed_initial_stack(
-        stackPhys, stackSize, stackBase, infoWords.ptr, 4096);
+    ulong rsp;
+    if (g_execEnvCount > 0) {
+        rsp = linux_seed_initial_stack_with_args(
+            stackPhys, stackSize, stackBase, infoWords.ptr, 4096,
+            0 /* argv: use execfn as argv[0] */, cast(ulong)&g_execEnvPtrs[0]);
+    } else {
+        rsp = linux_seed_initial_stack(
+            stackPhys, stackSize, stackBase, infoWords.ptr, 4096);
+    }
 
     // The legacy freestanding C probes were compiled with GCC treating _start
     // like a regular function.  Keep their old call-like stack alignment while

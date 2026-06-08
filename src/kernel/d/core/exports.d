@@ -8,6 +8,10 @@ extern (C) @nogc nothrow:
 ulong x64GetUserRDX();
 ulong x64ReadCR2();
 
+// Defined in core.addrspace (extern(C)).  Used by report_kernel_fault to
+// resolve recoverable in-kernel page faults (CoW / demand-zero user pages).
+bool handlePageFault(int taskId, ulong virtAddr, bool isWrite);
+
 
 import core.globals;
 import core.utils;
@@ -91,8 +95,24 @@ void report_kernel_panic(const char* msg) {
     while(1) { asm @nogc nothrow { hlt; } }
 }
 
-extern(C) void report_kernel_fault(ulong trap, ulong err, ulong rip, ulong rflags) {
+extern(C) ulong report_kernel_fault(ulong trap, ulong err, ulong rip, ulong rflags) {
     ulong cr2 = x64ReadCR2();
+
+    // Recoverable in-kernel page fault.  When the kernel is the first writer to
+    // a user page that fork() left copy-on-write, or to a demand-zero / lazily
+    // mapped anonymous page the client never touched first (e.g. recvmsg copying
+    // socket data into a freshly-mmap'd receive buffer), the #PF fires at CPL 0
+    // and lands here instead of the userspace fault path.  Resolve it exactly as
+    // a userspace fault would be, then return 1 so the trap stub iretq's back to
+    // the faulting instruction.  Only real user addresses are eligible; a kernel
+    // address — or an unmapped user address with no backing region — falls
+    // through to the panic below.
+    if ((trap & 0xff) == 14 && cr2 < 0x0000_8000_0000_0000UL) {
+        bool isWrite = (err & 2) != 0;
+        if (handlePageFault(cast(int)g_current_task_id, cr2, isWrite))
+            return 1;
+    }
+
     klog("KERNEL FAULT trap=");
     klog_hex(trap);
     klog(" err=");

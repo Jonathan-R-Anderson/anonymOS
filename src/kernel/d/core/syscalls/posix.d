@@ -644,8 +644,13 @@ private uint capRightsForFile(File* f) {
     if (f is null || f.type == FileType.FD_NONE) return 0;
     uint rights = CAP_RIGHT_CLOSE | CAP_RIGHT_STAT | CAP_RIGHT_DUP | CAP_RIGHT_PASS;
     switch (f.type) {
-        case FileType.FD_PIPE_READ:
         case FileType.FD_INPUT_EVENT:
+            // evdev: read events + EVIOC* ioctls (libinput/libevdev query the
+            // device's capabilities via ioctl — without CAP_RIGHT_IOCTL every
+            // EVIOC fails EBADF and libinput rejects the keyboard/mouse).
+            rights |= CAP_RIGHT_READ | CAP_RIGHT_IOCTL;
+            break;
+        case FileType.FD_PIPE_READ:
         case FileType.FD_ZERO:
         case FileType.FD_RANDOM:
         case FileType.FD_URANDOM:
@@ -4514,7 +4519,6 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
 }
 
 public long linux_sys_ioctl(ulong fd, ulong cmd, ulong arg) {
-    console_putchar('I');
     ObjHeader* oh = fdObjectByIndexWithRights(cast(int)fd, CAP_RIGHT_IOCTL);
     if (oh is null) return negErrno(EBADF);
     auto iop = g_objOps[oh.type].ioctl;

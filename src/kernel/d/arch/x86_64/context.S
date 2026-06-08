@@ -246,7 +246,34 @@ continueWithPanic:
 	subq $8, %rsp
 	callq report_kernel_fault
 	addq $8, %rsp
-	# report_kernel_fault should not return; if it does, stop here.
+	# report_kernel_fault returns 1 when it resolved a recoverable in-kernel
+	# page fault (a CoW or demand-zero user page the kernel was the first to
+	# write).  In that case restore the general-purpose registers the faulting
+	# code held — saved at (kernelState + 8) by continueInKernelFault above —
+	# and iretq back to the faulting instruction.  Every trap uses IST1, so a
+	# stack switch always occurred and %rsp now points at the full 5-word fault
+	# frame [RIP][CS][RFLAGS][RSP][SS] that iretq consumes in long mode.  A 0
+	# return (unrecoverable) falls through to the halt below.
+	test %rax, %rax
+	jz .Lkf_halt
+	movabsq $(kernelState + 8), %rdi
+	movq (RAX_I * 8)(%rdi), %rax
+	movq (RBX_I * 8)(%rdi), %rbx
+	movq (RCX_I * 8)(%rdi), %rcx
+	movq (RDX_I * 8)(%rdi), %rdx
+	movq (RSI_I * 8)(%rdi), %rsi
+	movq (R8_I  * 8)(%rdi), %r8
+	movq (R9_I  * 8)(%rdi), %r9
+	movq (R10_I * 8)(%rdi), %r10
+	movq (R11_I * 8)(%rdi), %r11
+	movq (R12_I * 8)(%rdi), %r12
+	movq (R13_I * 8)(%rdi), %r13
+	movq (R14_I * 8)(%rdi), %r14
+	movq (R15_I * 8)(%rdi), %r15
+	movq (RBP_I * 8)(%rdi), %rbp
+	movq (RDI_I * 8)(%rdi), %rdi
+	iretq
+	# report_kernel_fault did not recover; stop here.
 .Lkf_halt:
 	cli
 	hlt

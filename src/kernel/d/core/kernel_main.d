@@ -56,6 +56,7 @@ import core.sechard : sechardSelfTest, sechardStats; // SECURE_IPC P5 hardening 
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
+import core.identity : identityInitDefaults, identityByName, identitySelfTest, identityStats; // IDENTITY_DOMAIN P2
 import display.compositor.compositor : compositorIdentitySelfTest; // GUI: trusted identity borders
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
@@ -1221,6 +1222,7 @@ private void dispatchSyscall(int tid) {
         serviceSelfTest(); // Phase 10: one-shot proof services are rights-narrowed
         servicePhase5SelfTest(); // IR-P5: dependency-ordered start, FS-first migration, versioning
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
+        identitySelfTest(); // IDENTITY_DOMAIN P2: one-shot proof identity create/lookup/validate/freeze
         compositorIdentitySelfTest(); // GUI: one-shot proof of trusted, unspoofable identity borders
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         linuxPersSelfTest(); // IR-P7: ephemeral-root sandbox + ns/cap op translation + gated /dev
@@ -1264,6 +1266,7 @@ private void dispatchSyscall(int tid) {
             adminStats();
             serviceStats();
             windowStats();
+            identityStats(); // IDENTITY_DOMAIN P2: identity count / created / frozen
             linuxStats();
             linuxPersStats();
             kernelCensusStats();
@@ -2074,6 +2077,12 @@ void d_kernel_main() {
     // (the in-kernel compositor's Window/Surface objects register as it runs).
     windowRegistryInit(g_fb !is null ? cast(uint)g_fb.width : 0,
                        g_fb !is null ? cast(uint)g_fb.height : 0);
+    // IDENTITY_DOMAIN §2/§3: build the compiled-in security-domain identities and
+    // label PID1 (task 0) with the System identity before its first syscall.
+    // fork/clone inherit this label; transitions into other identities (§3) require
+    // CAP_RIGHT_ADMIN_IDENTITY + a launch rule.
+    identityInitDefaults();
+    g_tasks[0].identityObjId = identityByName("System\0".ptr);
     // Phase 12: build the Linux-compat object subtree and enable the personality
     // before the init process issues its first syscall (the dispatcher routes all
     // Linux syscalls through the LinuxSyscallObject gate from here on).

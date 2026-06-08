@@ -201,12 +201,19 @@ Edits to existing files:
 Legend — **P**: Critical/High/Med · **D**: difficulty 1–10 · each phase ends with a green
 boot self-test.
 
-### Phase 1 — Data model  · P: Critical · D: 3
+### Phase 1 — Data model  · P: Critical · D: 3 · ✅ DONE (commit 69c914e27)
 - `ObjType.Identity`; `IdentityRec`, `IpcPairRule`, `ShareRule`, the enums (§B).
 - `Task.identityObjId`; `WinRec` identity fields; `CAP_RIGHT_ADMIN_IDENTITY`/`CAP_RIGHT_ID_SHARE`.
 - *Outcome:* types compile; task 0 carries a System identity id. No behavior yet.
+- **Done:** new `core/identity.d` holds the types + fixed tables (`g_identities`/
+  `g_idIpcRules`/`g_idShareRules`, identity-prefixed because the `-betterC extern(C)`
+  blanket exports module globals as flat C symbols — `g_ids` clashed with `secipc`).
+  `ObjType.Identity` appended; `CAP_RIGHT_ADMIN_IDENTITY`/`CAP_RIGHT_ID_SHARE` folded
+  into `ADMIN_ALL`/`UNIVERSE`; `Task.identityObjId` + `WinRec.{identityObjId,
+  identityColor,guiContextId}` reserved (zero until §2/§3/§6). Builds, links, boots
+  with the desktop unchanged. (Task-0 = System is actually stamped in Phase 2/§3.)
 
-### Phase 2 — Identity Manager (`core/identity.d`)  · P: Critical · D: 5 · deps: 1
+### Phase 2 — Identity Manager (`core/identity.d`)  · P: Critical · D: 5 · deps: 1 · ✅ DONE
 - `identityCreate(name,color,trust,ceiling,nsTemplate,net,clip,gui)` → builds an
   `ObjType.Identity` object; `identityActivate(id)` makes it immutable.
 - `identityById(id)`, `identityByName(name)`, `identityValidate(id)` (ceiling ⊆ universe,
@@ -216,6 +223,15 @@ boot self-test.
   `identityFreeze()`.
 - *Outcome:* `[identity] selftest PASS` — create/lookup/validate; mutation after freeze
   refused; duplicate name refused.
+- **Done:** registry accessors + create/activate/validate/freeze implemented;
+  `identityInitDefaults()` builds the 7 compiled-in identities (colors/trust/net/clip/gui
+  per §F; each gets an `nsAlloc()` template so `identityValidate` passes; System is the
+  only one whose ceiling includes admin). Wired into boot (`kernel_main.d` after
+  `windowRegistryInit`), and **task 0 is stamped with the System identity** there.
+  `identitySelfTest()`/`identityStats()` run in the reconcile loop. Boot-verified:
+  `[identity] selftest PASS`, `count=7 created=8 frozen=0 idobj=7`, no fault, all 27
+  existing self-tests still pass. (Private helpers `idCstrLen`/`idNameEq`/`idCopyName`
+  are id-prefixed for the same flat-C-symbol reason.)
 
 ### Phase 3 — Process Manager integration  · P: Critical · D: 6 · deps: 2
 - `fork`/`clone` copy `identityObjId` (inheritance by default).
@@ -494,6 +510,9 @@ clipboard = Deny
   compiled-in System/Personal/Work/Banking/Dev/Untrusted/Disposable, `Task.identityObjId`
   inherited on fork, `idps` prints `pid → [identity] name`. **No GUI, no policy file.**
   Boots and shows process identity labels. *(This is the smallest useful slice — start here.)*
+  **Progress:** Phases 1 & 2 ✅ (types + Identity Manager + 7 boot identities + task-0=System,
+  `[identity] selftest PASS`). Remaining for M0: Phase 3 (fork/clone inherit `identityObjId`,
+  transition gate, `idps` debug command).
 - **M1 — Isolation.** Phases 4–5: per-identity namespaces (disjoint object roots) +
   deny-by-default cross-identity IPC with brokered exceptions.
 - **M2 — Trusted borders.** Phase 6: compositor draws unspoofable colored borders + title

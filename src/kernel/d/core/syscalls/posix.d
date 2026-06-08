@@ -6472,12 +6472,36 @@ public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
     return 0;
 }
 
+// Bounds recursion when an epoll fd watches another epoll fd (libinput nests an
+// epoll inside the one Weston polls); a self/cyclic watch can't loop forever.
+private __gshared int g_fdReadableDepth = 0;
+
 // --- Helper: test if FD has data available for reading ---
 private bool fdReadable(int fd) @nogc nothrow {
     if (fd < 0 || fd >= 1024) return false;
     if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_READ)) return false;
     auto f = &g_fdTable[fd];
     if (f.type == FileType.FD_CONSOLE)  return true;
+    if (f.type == FileType.FD_EPOLL) {
+        // An epoll fd is readable when any fd it watches is ready.  This makes a
+        // *nested* epoll work: libinput hands Weston an epoll fd that itself
+        // watches the evdev devices, so without this Weston's outer epoll never
+        // wakes for pointer/keyboard input and the cursor never moves.
+        if (g_fdReadableDepth >= 8) return false;
+        int eid = cast(int)cast(size_t)f.backend;
+        if (eid < 0 || eid >= EPOLL_MAX_INSTANCES) return false;
+        auto inst = &g_epollTable[eid];
+        ++g_fdReadableDepth;
+        bool any = false;
+        for (int i = 0; i < EPOLL_MAX_WATCHES; i++) {
+            if (!inst.watches[i].active) continue;
+            int wfd = inst.watches[i].watchFd;
+            if ((inst.watches[i].events & EPOLLIN_F)  && fdReadable(wfd)) { any = true; break; }
+            if ((inst.watches[i].events & EPOLLOUT_F) && fdWritable(wfd)) { any = true; break; }
+        }
+        --g_fdReadableDepth;
+        return any;
+    }
     if (f.type == FileType.FD_SOCKET) {
         // Readable only when data is actually queued or the peer has hung up.
         // Returning true unconditionally made poll() always report ready, so a

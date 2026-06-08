@@ -257,7 +257,7 @@ boot self-test.
   actually requests a cross-identity spawn (needs Phase 4 namespaces) — the gate it calls is
   done and tested.**
 
-### Phase 4 — Namespace Manager (`core/idns.d`)  · P: Critical · D: 6 · deps: 2,3
+### Phase 4 — Namespace Manager (`core/idns.d`)  · P: Critical · D: 6 · deps: 2,3 · ✅ DONE
 - `idnsForIdentity(id)`: `nsClone(identity.nsTemplate)`; bind `/identities/<name>` →
   `objRootObjId` (RW), bind shared system roots read-only per policy. Process gets its own
   clone (rebinds don't leak across processes — already true in `namespace.d`).
@@ -266,6 +266,18 @@ boot self-test.
   capability-wrapped binding into the grantee's ns; audited `IdShare`. Rights ⊆ owner's.
 - *Outcome:* `[idns] selftest PASS` — two identities get disjoint roots; a path in identity
   A's root is invisible to B; a shared object is reachable by B only with the cap.
+- **Done:** new `core/idns.d`. `idnsInitRoots()` (boot, after the identities exist) gives each
+  identity a private `objRootObjId` Directory. `idnsForIdentity` clones the template and binds
+  `/identities/<name>` → that root RW per-process. `idnsVisible` = "resolves to a specific
+  bound object, not the global rtfs-root fallback" (via `nsResolve` ≠ `nsRootDir`). `idnsShare`
+  checks a `ShareRule` (rights ⊆ rule), binds a cap-wrapped `/shared/<objId>` into the grantee
+  identity's template, audits `IdShare`/`IdNsDeny`; `idnsShareRuleAdd` installs rules. Boot-
+  verified `[idns] selftest PASS` (self-contained throwaway identities, all released):
+  disjoint roots, A's `/identities/idnsA` resolves to A's root but is invisible to B, a share
+  is denied without a rule / when over-requesting rights, granted with a rule, then reachable
+  by a fresh B namespace (READ) yet never by A. `clones=3 shares=1 rootsInit=1`, no fault,
+  desktop unchanged. (Wiring `idnsForIdentity` into a live cross-identity `launchInto` waits
+  for a launcher that requests one — same gate as §3; the per-identity ns machinery is done.)
 
 ### Phase 5 — IPC policy enforcement (`core/idipc.d`)  · P: Critical · D: 6 · deps: 2,5(secipc)
 - `idipcMayConnect(fromId, toId)`: **deny by default**; allow only if same identity or an
@@ -528,7 +540,10 @@ clipboard = Deny
   labelled `[System]` (inherited from PID1). `[identity] selftest PASS` + `[idproc] selftest
   PASS`. Next: M1 (Phase 4 per-identity namespaces + Phase 5 cross-identity IPC).
 - **M1 — Isolation.** Phases 4–5: per-identity namespaces (disjoint object roots) +
-  deny-by-default cross-identity IPC with brokered exceptions.
+  deny-by-default cross-identity IPC with brokered exceptions. **Progress:** Phase 4 ✅
+  (`core/idns.d`: disjoint per-identity object-roots + cap-wrapped, rule-gated shares,
+  `[idns] selftest PASS`). Remaining: Phase 5 (`core/idipc.d` — deny cross-identity IPC by
+  default, brokered exceptions, identity-pair authz on `secipc`).
 - **M2 — Trusted borders.** Phase 6: compositor draws unspoofable colored borders + title
   labels; first honestly "Qubes-like" visual.
 - **M3 — Brokers + disposables.** Phases 7–8: clipboard/device/network brokers; disposable

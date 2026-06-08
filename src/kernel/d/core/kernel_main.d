@@ -1378,6 +1378,55 @@ private void dispatchSyscall(int tid) {
             break;
         }
 
+        // mremap(old_addr, old_size, new_size, flags, new_addr)
+        // Only the wl_shm pool-growth pattern is supported: a shared, memfd/VMO-
+        // backed mapping is re-pointed at the memfd's current (ftruncate-grown)
+        // physical backing.  The compositor's wayland-shm uses this to enlarge a
+        // pool; everything else gets ENOSYS so glibc/GIO fall back to malloc/copy.
+        case 25: {
+            enum MREMAP_MAYMOVE = 1;
+            ulong mrOld   = rdi;
+            ulong mrOldSz = rsi;
+            ulong mrNewSz = rdx;
+            ulong mrFlags = r10;
+            if (mrNewSz == 0) { ret = -22; break; }              // EINVAL
+            ulong mrOldAligned = (mrOldSz + 0xFFF) & ~0xFFFUL;
+            ulong mrNewAligned = (mrNewSz + 0xFFF) & ~0xFFFUL;
+            auto mrR = findRegion(*task, mrOld);
+            if (mrR is null || mrR.vmoObjId == 0 ||
+                mrR.type != RegionType.Mapped) { ret = -38; break; }  // ENOSYS
+            // Capture region fields before any addRegion/removeRegion churns the
+            // table (swap-remove would invalidate the pointer).
+            ulong mrStart = mrR.start;
+            ulong mrEnd   = mrR.end;
+            uint  mrVmo   = mrR.vmoObjId;
+            ulong mfSize  = 0;
+            ulong mfPhys  = memfdPhysByVmo(mrVmo, &mfSize);
+            if (mfPhys == 0) { ret = -38; break; }                // not a live memfd
+            // Same-or-smaller: keep the existing mapping (it already covers it).
+            if (mrNewAligned <= (mrEnd - mrStart)) { ret = cast(long)mrOld; break; }
+            if ((mrFlags & MREMAP_MAYMOVE) == 0) { ret = -12; break; }  // ENOMEM
+            if (mrNewAligned > mfSize) { ret = -22; break; }      // backing too small
+            x64WriteCR3(task.pml4Phys);
+            ulong mrVa = task.mmapNext;
+            task.mmapNext += mrNewAligned;
+            auto mrNew = addRegion(*task, mrVa, mrVa + mrNewAligned,
+                                   RegionType.Mapped, RegionPerms.ReadWrite,
+                                   mfPhys, false, mrVmo);
+            if (mrNew is null) { task.mmapNext -= mrNewAligned; ret = -12; break; }
+            ulong mrPgs = mrNewAligned >> 12;
+            for (ulong pg = 0; pg < mrPgs; pg++) {
+                map_page_hhdm(mfPhys + pg * 4096, mrVa + pg * 4096,
+                              PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+                physPageSetOwner(mfPhys + pg * 4096, mrNew.objId, mrNew.vmoObjId);
+            }
+            // Drop the old mapping (shared memfd pages must NOT be freed).
+            sys_munmap(mrStart, mrEnd - mrStart, false);
+            removeRegion(*task, mrStart, mrEnd);
+            ret = cast(long)mrVa;
+            break;
+        }
+
         // brk
         case 12:
             ret = brkTask(tid, rdi);

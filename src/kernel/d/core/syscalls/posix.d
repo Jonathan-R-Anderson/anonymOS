@@ -6186,9 +6186,32 @@ public long linux_sys_ftruncate(ulong fd, ulong length) {
     if (aligned < g_memfds[mid].size && (g_memfds[mid].seals & F_SEAL_SHRINK))
         return negErrno(EPERM);
     if (g_memfds[mid].physBase != 0) {
-        // Already backed: allow resize only within the existing allocation.
+        // A resize within the current contiguous allocation is free — the wl_shm
+        // / toytoolkit cursor allocator grows its pool in steps and re-ftruncates.
         if (aligned <= g_memfds[mid].size) { f.fileSize = length; return 0; }
-        return negErrno(EINVAL);
+        // Grow.  A borrowed (PRIME/GEM-aliased) backing must not be moved.
+        if (g_memfds[mid].aliased) return negErrno(EINVAL);
+        // Allocate a larger contiguous region with geometric headroom (so a pool
+        // that resizes repeatedly doesn't reallocate every step), copy the live
+        // bytes, and repoint.  Callers growing a live wl_shm pool re-map both ends
+        // afterward — the client via munmap+mmap, the compositor via mremap — so
+        // moving the backing is safe; the old pages are leaked by the bump pool.
+        ulong newSize = aligned;
+        ulong dbl = g_memfds[mid].size * 2;
+        if (dbl > newSize) newSize = dbl;
+        size_t newPages = cast(size_t)(newSize >> 12);
+        ulong newPhys = alloc_phys_pages(newPages);
+        if (newPhys == 0) return negErrno(ENOMEM);
+        auto gsrc = cast(ubyte*)phys_to_virt(g_memfds[mid].physBase);
+        auto gdst = cast(ubyte*)phys_to_virt(newPhys);
+        foreach (i; 0 .. cast(size_t)g_memfds[mid].size) gdst[i] = gsrc[i];
+        foreach (i; cast(size_t)g_memfds[mid].size .. cast(size_t)newSize) gdst[i] = 0;
+        uint growVmo = ensureMemfdVmo(mid);
+        g_memfds[mid].physBase = newPhys;
+        g_memfds[mid].size     = newSize;
+        physPagesSetOwner(newPhys, newPages, 0, growVmo);
+        f.fileSize             = length;
+        return 0;
     }
     if (aligned == 0) { f.fileSize = 0; return 0; }
     size_t pages = cast(size_t)(aligned >> 12);
@@ -6221,6 +6244,22 @@ public long linux_sys_fallocate(ulong fd, ulong mode, ulong offset, ulong len) {
         return 0;
     }
     return 0;   // other fd types (rtfs temp files, …): accept as a no-op
+}
+
+// Resolve a memfd's CURRENT physical backing from the VMO object id recorded on
+// an address-space region.  Used by mremap (kernel_main.d) to re-point a live
+// wl_shm pool mapping after the memfd's ftruncate-grow moved its pages.  Returns
+// 0 when no live memfd owns this VMO.
+public ulong memfdPhysByVmo(uint vmoObjId, ulong* sizeOut) {
+    initFdTable();
+    if (vmoObjId == 0) return 0;
+    for (int i = 0; i < MEMFD_MAX; ++i) {
+        if (g_memfds[i].inUse && g_memfds[i].vmoObjId == vmoObjId) {
+            if (sizeOut !is null) *sizeOut = g_memfds[i].size;
+            return g_memfds[i].physBase;
+        }
+    }
+    return 0;
 }
 
 // Resolve a FD_MEMFD fd to its physical base (size via out-pointer).  Returns 0
@@ -8224,11 +8263,14 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         return 0;
     }
 
-    // Hardware cursor — we have no cursor plane (Weston falls back to a software
-    // cursor composited by Pixman), so accept these as no-ops.
+    // Hardware cursor — our KMS present path only scans out the primary plane,
+    // so a legacy hardware cursor (drmModeSetCursor) would never appear.  Fail
+    // these so Weston marks the cursor "broken" and composites it through the
+    // Pixman renderer into the primary framebuffer instead (which we do present),
+    // making the pointer actually visible.
     case DRM_NR_MODE_CURSOR:
     case DRM_NR_MODE_CURSOR2:
-        return 0;
+        return negErrno(EINVAL);
 
     case DRM_NR_MODE_ATOMIC:
         return negErrno(EINVAL);

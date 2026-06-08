@@ -350,7 +350,8 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		cp $(WESTON_BUILD)/clients/weston-desktop-shell         cd/weston-desktop-shell; \
 		cp $(WESTON_BUILD)/clients/weston-keyboard              cd/weston-keyboard; \
 		cp $(WLDOMAINMGR_BIN)                                   cd/wl-domain-manager; \
-		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n' >> cd/boot/limine/limine.conf; \
+		cp src/desktop.conf                                     cd/desktop.conf; \
+		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
 		if [ -f $(WESTON_BUILD)/clients/weston-terminal ]; then \
 			cp $(WESTON_BUILD)/clients/weston-terminal cd/weston-terminal; \
 			printf '    module_path: boot():/weston-terminal\n' >> cd/boot/limine/limine.conf; \

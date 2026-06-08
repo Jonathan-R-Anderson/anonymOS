@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <linux/input.h>
 #include <assert.h>
 #include <signal.h>
@@ -4178,6 +4179,12 @@ desktop_shell_client_destroy(struct wl_listener *listener, void *data)
 	shell_fade_startup(shell);
 }
 
+/* EpinAnonymOS centralized config: apps to autostart, parsed from /desktop.conf
+ * by epin_load_config() (in shell_add_bindings) and launched below. */
+#define EPIN_MAX_AUTOSTART 16
+static char *epin_autostart[EPIN_MAX_AUTOSTART];
+static int   epin_autostart_n = 0;
+
 static void
 launch_desktop_shell_process(void *data)
 {
@@ -4196,14 +4203,21 @@ launch_desktop_shell_process(void *data)
 	wl_client_add_destroy_listener(shell->child.client,
 				       &shell->child.client_destroy_listener);
 
-	/* IDENTITY_DOMAIN GUI: launch the Qubes-style Domain Manager at boot, so
-	 * the user sees the security domains the moment the desktop comes up.  It
-	 * is an ordinary xdg-shell client (boot module at /wl-domain-manager); not
-	 * tracked in shell->child, since its lifetime is independent of the shell. */
-	if (wet_client_start(shell->compositor, "/wl-domain-manager"))
-		weston_log("launched Domain Manager (/wl-domain-manager)\n");
-	else
-		weston_log("not able to start /wl-domain-manager\n");
+	/* EpinAnonymOS: launch the apps listed in /desktop.conf (autostart = ...).
+	 * Defaults to the Qubes-style Domain Manager when the config names none, so
+	 * the user always sees the security domains the moment the desktop comes up.
+	 * These clients' lifetimes are independent of the shell (not in shell->child). */
+	if (epin_autostart_n == 0) {
+		if (wet_client_start(shell->compositor, "/wl-domain-manager"))
+			weston_log("epin: autostart default /wl-domain-manager\n");
+	} else {
+		for (int i = 0; i < epin_autostart_n; i++) {
+			if (wet_client_start(shell->compositor, epin_autostart[i]))
+				weston_log("epin: autostart %s\n", epin_autostart[i]);
+			else
+				weston_log("epin: autostart FAILED %s\n", epin_autostart[i]);
+		}
+	}
 }
 
 static void
@@ -4807,10 +4821,136 @@ shell_destroy(struct wl_listener *listener, void *data)
 	free(shell);
 }
 
+/* ── EpinAnonymOS centralized desktop config (/desktop.conf) ───────────────
+ * One hyprland.conf-style file drives the desktop: which apps autostart, the
+ * keybindings, and the background color.  Parsed once at shell init; edit
+ * src/desktop.conf and rebuild the ISO to customize the GUI from a single file.
+ */
+
+/* Key binding that launches a command (the "exec" action). data = strdup'd cmd. */
+static void
+epin_exec_binding(struct weston_keyboard *keyboard, const struct timespec *time,
+		  uint32_t key, void *data)
+{
+	const char *cmd = data;
+	(void)time; (void)key;
+	if (cmd && keyboard && keyboard->seat && keyboard->seat->compositor) {
+		weston_log("epin: keybinding exec '%s'\n", cmd);
+		wet_client_start(keyboard->seat->compositor, cmd);
+	}
+}
+
+static char *epin_trim(char *s)
+{
+	while (*s == ' ' || *s == '\t') s++;
+	char *e = s + strlen(s);
+	while (e > s && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'))
+		*--e = 0;
+	return s;
+}
+
+/* Map a key name from the config to a Linux KEY_* code (subset that covers a
+ * useful set of launcher binds). */
+static uint32_t
+epin_keycode(const char *name)
+{
+	if (!strcasecmp(name, "Return") || !strcasecmp(name, "Enter")) return KEY_ENTER;
+	if (!strcasecmp(name, "Space")) return KEY_SPACE;
+	if (!strcasecmp(name, "Tab"))   return KEY_TAB;
+	if (strlen(name) == 1) {
+		char c = name[0];
+		if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+		switch (c) {
+		case 'A': return KEY_A; case 'B': return KEY_B; case 'C': return KEY_C;
+		case 'D': return KEY_D; case 'E': return KEY_E; case 'F': return KEY_F;
+		case 'G': return KEY_G; case 'H': return KEY_H; case 'I': return KEY_I;
+		case 'J': return KEY_J; case 'K': return KEY_K; case 'L': return KEY_L;
+		case 'M': return KEY_M; case 'N': return KEY_N; case 'O': return KEY_O;
+		case 'P': return KEY_P; case 'Q': return KEY_Q; case 'R': return KEY_R;
+		case 'S': return KEY_S; case 'T': return KEY_T; case 'U': return KEY_U;
+		case 'V': return KEY_V; case 'W': return KEY_W; case 'X': return KEY_X;
+		case 'Y': return KEY_Y; case 'Z': return KEY_Z;
+		case '1': return KEY_1; case '2': return KEY_2; case '3': return KEY_3;
+		case '4': return KEY_4; case '5': return KEY_5; case '6': return KEY_6;
+		case '7': return KEY_7; case '8': return KEY_8; case '9': return KEY_9;
+		case '0': return KEY_0;
+		default: break;
+		}
+	}
+	return 0;
+}
+
+static uint32_t
+epin_modifiers(const char *mods)
+{
+	uint32_t m = 0;
+	if (strcasestr(mods, "SUPER") || strcasestr(mods, "WIN") || strcasestr(mods, "LOGO"))
+		m |= MODIFIER_SUPER;
+	if (strcasestr(mods, "CTRL") || strcasestr(mods, "CONTROL")) m |= MODIFIER_CTRL;
+	if (strcasestr(mods, "ALT")) m |= MODIFIER_ALT;
+	if (strcasestr(mods, "SHIFT")) m |= MODIFIER_SHIFT;
+	return m;
+}
+
+/* bind = MODIFIERS, KEY, exec, COMMAND */
+static void
+epin_parse_bind(struct weston_compositor *ec, char *val)
+{
+	char *mods = strtok(val, ",");
+	char *keyn = strtok(NULL, ",");
+	char *act  = strtok(NULL, ",");
+	char *cmd  = strtok(NULL, "");           /* rest of line = command */
+	if (!mods || !keyn || !act || !cmd) return;
+	mods = epin_trim(mods); keyn = epin_trim(keyn); act = epin_trim(act); cmd = epin_trim(cmd);
+	if (strcasecmp(act, "exec") != 0) return;
+	uint32_t code = epin_keycode(keyn);
+	uint32_t mod  = epin_modifiers(mods);
+	if (code == 0 || mod == 0) return;
+	weston_compositor_add_key_binding(ec, code, mod, epin_exec_binding, strdup(cmd));
+	weston_log("epin: bind %s+%s -> exec %s\n", mods, keyn, cmd);
+}
+
+static void
+epin_load_config(struct weston_compositor *ec)
+{
+	int fd = open("/desktop.conf", O_RDONLY);
+	if (fd < 0) {
+		weston_log("epin: no /desktop.conf; using defaults\n");
+		return;
+	}
+	static char buf[8192];
+	int n = (int)read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0) return;
+	buf[n] = 0;
+
+	char *save = NULL;
+	for (char *line = strtok_r(buf, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+		char *l = epin_trim(line);
+		if (l[0] == 0 || l[0] == '#') continue;
+		char *eq = strchr(l, '=');
+		if (!eq) continue;
+		*eq = 0;
+		char *key = epin_trim(l);
+		char *val = epin_trim(eq + 1);
+		if (!strcasecmp(key, "autostart")) {
+			if (epin_autostart_n < EPIN_MAX_AUTOSTART && val[0])
+				epin_autostart[epin_autostart_n++] = strdup(val);
+		} else if (!strcasecmp(key, "bind")) {
+			epin_parse_bind(ec, val);
+		}
+		/* (background is applied by the shell's own config path) */
+	}
+	weston_log("epin: loaded /desktop.conf (%d autostart, bindings registered)\n",
+		   epin_autostart_n);
+}
+
 static void
 shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 {
 	uint32_t mod;
+
+	epin_load_config(ec);
 
 	if (shell->allow_zap)
 		weston_compositor_add_key_binding(ec, KEY_BACKSPACE,

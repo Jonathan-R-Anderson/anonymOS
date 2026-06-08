@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include <wayland-client.h>
@@ -43,6 +44,14 @@ enum { BASE_FONT_PX = 17, BASE_CELL_W = 10, BASE_CELL_H = 20 };
 static const uint32_t COL_BG     = 0xff101418;
 static const uint32_t COL_FG     = 0xfff2f2f2;
 static const uint32_t COL_CURSOR = 0xff30c030;
+
+// IDENTITY_DOMAIN: the security domain this terminal was launched into (set by the
+// Domain Manager via EPIN_DOMAIN / EPIN_DOMAIN_COLOR).  Drawn as an unspoofable
+// colored border + window title so the user always sees which domain a terminal
+// belongs to (the same identity color the kernel stamps on windows, §6).
+static int      g_has_domain = 0;
+static char     g_domain[64] = {0};
+static uint32_t g_domain_color = 0xff3b82f6u;
 
 struct app {
     struct wl_display    *display;
@@ -320,6 +329,15 @@ static void render(struct app *a) {
             gf_glyph(a->pixels, a->width, a->width, a->height,
                      x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
     }
+    // IDENTITY_DOMAIN §6: unspoofable colored border in the domain color, drawn LAST
+    // so app/terminal pixels can never reach the border ring.
+    if (g_has_domain) {
+        int t = 4 * a->scale;
+        gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, t, g_domain_color);
+        gf_fill(a->pixels, a->width, a->width, a->height, 0, a->height - t, a->width, t, g_domain_color);
+        gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, t, a->height, g_domain_color);
+        gf_fill(a->pixels, a->width, a->width, a->height, a->width - t, 0, t, a->height, g_domain_color);
+    }
 }
 
 static void commit(struct app *a) {
@@ -370,7 +388,43 @@ static int create_shm_buffer(struct app *a) {
 }
 
 // ── pseudo-terminal + shell ──────────────────────────────────────────────────
+// Fill the grid with a centered multi-line notice (used for shell flavors that are
+// not yet implemented — no pty/shell is spawned in that case).
+static void term_notice(struct app *a, const char *l1, const char *l2, const char *l3) {
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            a->grid[r][c] = ' ';
+    const char *lines[3] = { l1, l2, l3 };
+    for (int i = 0; i < 3; i++) {
+        if (!lines[i]) continue;
+        int r = 4 + i * 2;
+        for (int c = 0; lines[i][c] && c < COLS - 4; c++)
+            a->grid[r][3 + c] = lines[i][c];
+    }
+    a->cur_r = ROWS - 1;
+    a->cur_c = 0;
+    a->dirty = 1;
+}
+
 static int spawn_shell(struct app *a) {
+    // IDENTITY_DOMAIN: honor the requested shell flavor.  Only the Linux personality
+    // (busybox) is implemented; Windows and the native object-shell show a notice.
+    const char *flavor = getenv("EPIN_SHELL");
+    if (flavor && *flavor && strcmp(flavor, "linux") != 0) {
+        char l1[80];
+        snprintf(l1, sizeof(l1), "Domain: %s", g_has_domain ? g_domain : "(none)");
+        if (strcmp(flavor, "windows") == 0)
+            term_notice(a, l1, "Windows subsystem is not implemented yet.",
+                        "Pick the 'Linux' shell in the Domain Manager to get a prompt.");
+        else
+            term_notice(a, l1, "EpinAnonymOS native object-shell is not yet available.",
+                        "Pick the 'Linux' shell in the Domain Manager to get a prompt.");
+        a->ptm = -1;
+        printf("G4TERM: shell flavor '%s' not implemented; showing notice\n", flavor);
+        fflush(stdout);
+        return 0;
+    }
+
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
     int lock = 0;
@@ -390,6 +444,17 @@ static int spawn_shell(struct app *a) {
     if (pid == 0) {
         // child: wire the slave to stdin/stdout/stderr, then exec the shell.
         close(m);
+        // IDENTITY_DOMAIN: apply the domain's memory cap to the shell (0 = no cap).
+        const char *mc = getenv("EPIN_MEM_CAP");
+        if (mc && *mc) {
+            long bytes = strtol(mc, NULL, 10);
+            if (bytes > 0) {
+                struct rlimit rl;
+                rl.rlim_cur = (rlim_t)bytes;
+                rl.rlim_max = (rlim_t)bytes;
+                setrlimit(RLIMIT_AS, &rl);
+            }
+        }
         int s = open(pts, O_RDWR);
         if (s < 0) _exit(127);
         dup2(s, 0); dup2(s, 1); dup2(s, 2);
@@ -545,6 +610,18 @@ int main(void) {
     a.running = 1;
     a.ptm = -1;
 
+    // IDENTITY_DOMAIN: which security domain were we launched into?
+    const char *dom = getenv("EPIN_DOMAIN");
+    if (dom && *dom) {
+        g_has_domain = 1;
+        snprintf(g_domain, sizeof(g_domain), "%s", dom);
+        const char *dc = getenv("EPIN_DOMAIN_COLOR");
+        if (dc && *dc)
+            g_domain_color = (uint32_t)strtoul(dc, NULL, 0);
+        printf("G4TERM: domain=%s color=0x%08x\n", g_domain, g_domain_color);
+        fflush(stdout);
+    }
+
     log_line("G4TERM: starting software terminal");
 
     // Spawn the shell BEFORE connecting to Wayland: fork() copies the whole
@@ -569,7 +646,12 @@ int main(void) {
     xdg_surface_add_listener(a.xdg_surface, &xdg_surface_listener, &a);
     a.toplevel    = xdg_surface_get_toplevel(a.xdg_surface);
     xdg_toplevel_add_listener(a.toplevel, &toplevel_listener, &a);
-    xdg_toplevel_set_title(a.toplevel, "EpinAnonymOS G4 terminal");
+    char title[96];
+    if (g_has_domain)
+        snprintf(title, sizeof(title), "[%s] EpinAnonymOS Terminal", g_domain);
+    else
+        snprintf(title, sizeof(title), "EpinAnonymOS Terminal");
+    xdg_toplevel_set_title(a.toplevel, title);
     xdg_toplevel_set_app_id(a.toplevel, "epin-g4-term");
     wl_surface_commit(a.surface);
     wl_display_roundtrip(a.display);   // drive the first configure → commit

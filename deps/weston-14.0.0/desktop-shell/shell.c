@@ -4195,6 +4195,15 @@ launch_desktop_shell_process(void *data)
 		desktop_shell_client_destroy;
 	wl_client_add_destroy_listener(shell->child.client,
 				       &shell->child.client_destroy_listener);
+
+	/* IDENTITY_DOMAIN GUI: launch the Qubes-style Domain Manager at boot, so
+	 * the user sees the security domains the moment the desktop comes up.  It
+	 * is an ordinary xdg-shell client (boot module at /wl-domain-manager); not
+	 * tracked in shell->child, since its lifetime is independent of the shell. */
+	if (wet_client_start(shell->compositor, "/wl-domain-manager"))
+		weston_log("launched Domain Manager (/wl-domain-manager)\n");
+	else
+		weston_log("not able to start /wl-domain-manager\n");
 }
 
 static void

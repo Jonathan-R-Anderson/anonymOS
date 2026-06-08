@@ -61,6 +61,7 @@ WLSHM_DEMO_BIN := build/wl-shm-demo
 WLTERM_BIN    := build/wl-term
 WLCAIRO_DEMO_BIN := build/wl-cairo-demo
 WLFILES_BIN := build/wl-files
+WLDOMAINMGR_BIN := build/wl-domain-manager
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
@@ -214,7 +215,19 @@ $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+$(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-domain-manager (IDENTITY_DOMAIN Qubes-style manager) ===="
+	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
+	CAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs cairo wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -I$(WAYLAND_SYSROOT)/include/freetype2 -Ibuild $$CAIRO_CFLAGS \
+		-o $@ src/util/wl-domain-manager.c $(XDG_SHELL_CODE) \
+		$(WAYLAND_SYSROOT)/lib/libfreetype.a \
+		$$CAIRO_LIBS \
+		-lm \
+		-pthread
+
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -336,7 +349,8 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		cp $(WESTON_BUILD)/desktop-shell/desktop-shell.so       cd/desktop-shell.so; \
 		cp $(WESTON_BUILD)/clients/weston-desktop-shell         cd/weston-desktop-shell; \
 		cp $(WESTON_BUILD)/clients/weston-keyboard              cd/weston-keyboard; \
-		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n' >> cd/boot/limine/limine.conf; \
+		cp $(WLDOMAINMGR_BIN)                                   cd/wl-domain-manager; \
+		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n' >> cd/boot/limine/limine.conf; \
 		if [ -f $(WESTON_BUILD)/clients/weston-terminal ]; then \
 			cp $(WESTON_BUILD)/clients/weston-terminal cd/weston-terminal; \
 			printf '    module_path: boot():/weston-terminal\n' >> cd/boot/limine/limine.conf; \

@@ -1136,8 +1136,15 @@ private void handleMouseIRQ() @nogc nothrow {
         dy = -dy;
 
         bool any = false;
-        if (dx != 0) { input_enqueue(false, EV_REL, REL_X, dx); any = true; }
-        if (dy != 0) { input_enqueue(false, EV_REL, REL_Y, dy); any = true; }
+        if (dx != 0 || dy != 0) {
+            // Accumulate raw deltas into an absolute on-screen position, stamp the
+            // kernel cursor there immediately (snappy, IRQ-rate), and report the
+            // SAME absolute position to Weston so its pointer stays exactly aligned.
+            cursorSetPos(cursorGetX() + dx, cursorGetY() + dy);
+            input_enqueue(false, EV_ABS, ABS_X, cursorGetX());
+            input_enqueue(false, EV_ABS, ABS_Y, cursorGetY());
+            any = true;
+        }
 
         // Button state — emit only the bits that changed since the last packet.
         ubyte cur     = cast(ubyte)(status & 0x07);

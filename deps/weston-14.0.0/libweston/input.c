@@ -3553,6 +3553,12 @@ pointer_set_cursor(struct wl_client *client, struct wl_resource *resource,
 	if (pointer->focus_serial - serial > UINT32_MAX / 2)
 		return;
 
+	/* HOS: the kernel composites the pointer directly onto the scanout (a fast,
+	 * always-on-top overlay cursor), so suppress Weston's own software cursor
+	 * sprite — otherwise both would draw and the overlay's save/restore would
+	 * leave a ghost of Weston's sprite at every previous position. */
+	surface = NULL;
+
 	if (!surface) {
 		if (pointer->sprite)
 			pointer_unmap_sprite(pointer);

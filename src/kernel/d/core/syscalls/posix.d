@@ -250,9 +250,12 @@ __gshared InputRing g_mouse_ring;  // /dev/input/event1
 enum ushort EV_SYN = 0;
 enum ushort EV_KEY = 1;
 enum ushort EV_REL = 2;
+enum ushort EV_ABS = 3;
 enum ushort SYN_REPORT = 0;
 enum ushort REL_X = 0;
 enum ushort REL_Y = 1;
+enum ushort ABS_X = 0;
+enum ushort ABS_Y = 1;
 enum ushort BTN_LEFT   = 0x110;
 enum ushort BTN_RIGHT  = 0x111;
 enum ushort BTN_MIDDLE = 0x112;
@@ -3960,10 +3963,14 @@ private immutable VFEntry[] g_vfs = [
       "MAJOR=13\nMINOR=64\nDEVNAME=input/event0\n" ~
       "ID_INPUT=1\nID_INPUT_KEYBOARD=1\nID_SEAT=seat0\n" ~
       "EV=3\nKEY=ffffffffffffffff fffffffffffffffe\n" },
+    // Absolute pointer (the QEMU usb-tablet model): EV_SYN|EV_KEY|EV_ABS (EV=b)
+    // + ABS_X|ABS_Y (ABS=3) + BTN_LEFT (0x110 → word4 bit16 = 0x10000).  Feeding
+    // Weston an absolute position makes its pointer track the kernel-drawn cursor
+    // exactly (no acceleration drift), so clicks land where the cursor is shown.
     { "/sys/class/input/event1/uevent",
       "MAJOR=13\nMINOR=65\nDEVNAME=input/event1\n" ~
       "ID_INPUT=1\nID_INPUT_MOUSE=1\nID_SEAT=seat0\n" ~
-      "EV=7\nREL=103\nKEY=10000 0 0 0 0\n" },
+      "EV=b\nKEY=10000 0 0 0 0\nABS=3\n" },
 
     // ── libseat / seatd (session/seat management) ─────────────────────────
     { "/run/seatd.sock", "" },
@@ -4366,8 +4373,10 @@ private long handleInputEvioc(int devIdx, ulong cmd, ulong arg) {
     if (nr == 0x07) return writeStr(isMouse ? "isa0060/serio1/input0\0".ptr : "isa0060/serio0/input0\0".ptr);
     if (nr == 0x08) { zeroOut(sz); return 0; }
 
-    // EVIOCGPROP (nr 0x09): no INPUT_PROP_* for plain kbd/mouse.
-    if (nr == 0x09) { zeroOut(sz); return 0; }
+    // EVIOCGPROP (nr 0x09): mark the absolute mouse INPUT_PROP_POINTER (bit 0) so
+    // libinput treats it as an indirect pointer (cursor follows) rather than a
+    // direct-touch device; keyboard reports none.
+    if (nr == 0x09) { zeroOut(sz); if (isMouse) setBit(0 /*INPUT_PROP_POINTER*/); return 0; }
 
     // EVIOCGKEY (0x18) / EVIOCGLED (0x19) / EVIOCGSW (0x1b): current state = all 0.
     if (nr == 0x18 || nr == 0x19 || nr == 0x1b) { zeroOut(sz); return 0; }
@@ -4377,22 +4386,41 @@ private long handleInputEvioc(int devIdx, ulong cmd, ulong arg) {
         zeroOut(sz);
         const uint ev = nr - 0x20;
         if (ev == 0) {
-            // Supported event types.
+            // Supported event types.  The mouse is ABSOLUTE (EV_ABS), not EV_REL,
+            // so Weston's pointer follows the kernel-fed position exactly.
             setBit(EV_SYN); setBit(EV_KEY);
-            if (isMouse) setBit(EV_REL);
+            if (isMouse) setBit(EV_ABS);
             else { setBit(0x11 /*EV_LED*/); setBit(0x14 /*EV_REP*/); setBit(0x04 /*EV_MSC*/); }
         } else if (ev == EV_KEY) {
             if (isMouse) { setBit(BTN_LEFT); setBit(BTN_RIGHT); setBit(BTN_MIDDLE); }
             else { foreach (k; 1 .. 128) setBit(k); }   // KEY_ESC..KEY_COMPOSE → keyboard
-        } else if (ev == EV_REL && isMouse) {
-            setBit(REL_X); setBit(REL_Y); setBit(8 /*REL_WHEEL*/);
+        } else if (ev == EV_ABS && isMouse) {
+            setBit(ABS_X); setBit(ABS_Y);
         }
-        // EV_ABS / EV_MSC / EV_LED / EV_REP / EV_SW → left all-zero.
+        // EV_REL / EV_MSC / EV_LED / EV_REP / EV_SW → left all-zero.
         return 0;
     }
 
-    // EVIOCGABS(abs) (nr 0x40 + abs): no absolute axes.
-    if (nr >= 0x40 && nr <= 0x7f) { zeroOut(sz); return 0; }
+    // EVIOCGABS(abs) (nr 0x40 + abs): report the X/Y axis ranges (0 .. fb dim-1)
+    // so libinput maps absolute coordinates straight to screen pixels.
+    if (nr >= 0x40 && nr <= 0x7f) {
+        zeroOut(sz);
+        if (isMouse && arg != 0 && sz >= 24) {
+            const uint abs = nr - 0x40;
+            int maxv;
+            if (abs == ABS_X)      maxv = (g_fb !is null) ? cast(int)g_fb.width  - 1 : 1279;
+            else if (abs == ABS_Y) maxv = (g_fb !is null) ? cast(int)g_fb.height - 1 : 799;
+            else return 0;
+            // struct input_absinfo { s32 value, minimum, maximum, fuzz, flat, resolution }
+            userWrite!int(arg + 0,  0);
+            userWrite!int(arg + 4,  0);
+            userWrite!int(arg + 8,  maxv);
+            userWrite!int(arg + 12, 0);
+            userWrite!int(arg + 16, 0);
+            userWrite!int(arg + 20, 0);
+        }
+        return 0;
+    }
 
     // EVIOCGRAB (0x90) / EVIOCREVOKE (0x91) / EVIOCSCLOCKID (0xa0) / EVIOCSREP /
     // EVIOCGMTSLOTS / masks / repeat: accept as no-ops.
@@ -7233,6 +7261,108 @@ private uint drmAddFb(uint handle, uint width, uint height, uint pitch, uint for
     return id;
 }
 
+// ── Kernel overlay cursor ────────────────────────────────────────────────────
+// An 11×17 left_ptr arrow (hotspot = tip at the top-left) stamped directly onto
+// g_fb at the kernel-tracked mouse position.  It is drawn on every mouse IRQ and
+// re-stamped after every Weston present, so the pointer tracks at interrupt rate
+// no matter how slowly Weston re-composites the scene in software.  handleMouseIRQ
+// also feeds Weston the matching ABSOLUTE position, keeping Weston's own pointer
+// exactly aligned with this sprite (so clicks land where the cursor is shown).
+private enum int CUR_W = 11;
+private enum int CUR_H = 17;
+private static immutable string g_curArrow =
+    "X.........." ~ "XX........." ~ "X#X........" ~ "X##X......." ~
+    "X###X......" ~ "X####X....." ~ "X#####X...." ~ "X######X..." ~
+    "X#######X.." ~ "X########X." ~ "X#####XXXXX" ~ "X##X##X...." ~
+    "X#X.X##X..." ~ "XX..X##X..." ~ "X....X##X.." ~ ".....X##X.." ~
+    "......XXX..";
+__gshared int  g_curX = -1, g_curY = -1;   // -1 → not positioned yet
+__gshared bool g_curSaveValid = false;
+__gshared int  g_curSaveX = 0, g_curSaveY = 0;
+__gshared uint[CUR_W * CUR_H] g_curSaveUnder;
+
+// Restore the framebuffer pixels the cursor last covered (erase the sprite).
+private void cursorErase() @nogc nothrow {
+    if (!g_curSaveValid || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
+    auto px = cast(uint*)g_fb.address;
+    const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
+    const int stride = cast(int)(g_fb.pitch / 4);
+    foreach (ry; 0 .. CUR_H) {
+        const int sy = g_curSaveY + ry;
+        if (sy < 0 || sy >= fbh) continue;
+        foreach (rx; 0 .. CUR_W) {
+            const int sx = g_curSaveX + rx;
+            if (sx < 0 || sx >= fbw) continue;
+            px[sy * stride + sx] = g_curSaveUnder[ry * CUR_W + rx];
+        }
+    }
+    g_curSaveValid = false;
+}
+
+// Save the framebuffer under the cursor, then stamp the arrow over it.
+private void cursorPaint() @nogc nothrow {
+    if (g_curX < 0 || g_fb is null || g_fb.address is null || g_fb.bpp != 32) return;
+    auto px = cast(uint*)g_fb.address;
+    const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
+    const int stride = cast(int)(g_fb.pitch / 4);
+    g_curSaveX = g_curX; g_curSaveY = g_curY;
+    foreach (ry; 0 .. CUR_H) {
+        const int sy = g_curY + ry;
+        foreach (rx; 0 .. CUR_W) {
+            const int sx = g_curX + rx;
+            uint bg = 0;
+            if (sx >= 0 && sx < fbw && sy >= 0 && sy < fbh)
+                bg = px[sy * stride + sx];
+            g_curSaveUnder[ry * CUR_W + rx] = bg;
+        }
+    }
+    g_curSaveValid = true;
+    foreach (ry; 0 .. CUR_H) {
+        const int sy = g_curY + ry;
+        if (sy < 0 || sy >= fbh) continue;
+        foreach (rx; 0 .. CUR_W) {
+            const int sx = g_curX + rx;
+            if (sx < 0 || sx >= fbw) continue;
+            const char c = g_curArrow[ry * CUR_W + rx];
+            if (c == 'X')      px[sy * stride + sx] = 0xff000000;
+            else if (c == '#') px[sy * stride + sx] = 0xffffffff;
+        }
+    }
+}
+
+// Effective cursor position (defaults to screen centre before the first move).
+public int cursorGetX() @nogc nothrow {
+    if (g_curX >= 0) return g_curX;
+    return (g_fb !is null) ? cast(int)g_fb.width / 2 : 0;
+}
+public int cursorGetY() @nogc nothrow {
+    if (g_curY >= 0) return g_curY;
+    return (g_fb !is null) ? cast(int)g_fb.height / 2 : 0;
+}
+
+// Move the cursor to (x,y), clamped on-screen.  Called from the mouse IRQ, where
+// interrupts are already disabled, so erase+repaint is atomic vs. other code.
+public void cursorSetPos(int x, int y) @nogc nothrow {
+    if (g_fb is null) return;
+    const int fbw = cast(int)g_fb.width, fbh = cast(int)g_fb.height;
+    if (x < 0) x = 0; if (x >= fbw) x = fbw - 1;
+    if (y < 0) y = 0; if (y >= fbh) y = fbh - 1;
+    cursorErase();
+    g_curX = x; g_curY = y;
+    cursorPaint();
+}
+
+// Re-stamp the cursor after Weston overwrote the framebuffer with a fresh frame.
+// Runs in syscall context, where interrupts are already masked, so it can't race
+// the mouse IRQ's cursorSetPos — no cli/sti needed (and a stray sti here would
+// wrongly unmask interrupts mid-syscall and deadlock the compositor's present).
+private void cursorRepaintAfterPresent() @nogc nothrow {
+    if (g_fb is null) return;
+    if (g_curX < 0) { g_curX = cast(int)g_fb.width / 2; g_curY = cast(int)g_fb.height / 2; }
+    g_curSaveValid = false;            // Weston redrew the bg; the old save is stale
+    cursorPaint();
+}
+
 // Present a bound framebuffer: blit its pixels to the hardware framebuffer.
 // Source and destination are both kernel HHDM mappings, so no SMAP gate is
 // needed (unlike drmPresentToFramebuffer, which reads a userspace pointer).
@@ -7258,6 +7388,8 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // GUI roadmap G5: overlay trusted identity borders for each client window.
     hosDrawIdentityBorders();
     g_fbConsoleEnabled = false;
+    // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
+    cursorRepaintAfterPresent();
     return 0;
 }
 

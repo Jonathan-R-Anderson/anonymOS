@@ -27,6 +27,16 @@ enum AuditKind : uint {
     ControlDenied,    // validator control call refused (no cap)
     CapAllow,         // §8.4: a requireCap decision admitted (held the rights)
     CapDeny,          // §8.4: a requireCap decision refused (missing rights)
+    // IDENTITY_DOMAIN §H — security-domain decisions (subjectObj, detail):
+    IdLaunch,         // a process was launched/labelled into an identity
+    IdTransitionDeny, // a cross-identity transition refused (no cap / no rule / Untrusted)
+    IdIpcDeny,        // a cross-identity IPC connect refused (§5)
+    IdNsDeny,         // a cross-identity namespace/share resolve refused (§4)
+    IdShare,          // an explicit cross-identity object share installed (§4)
+    IdDeviceReq,      // a brokered device request (§7)
+    IdNetReq,         // a brokered network request (§7)
+    IdClipboard,      // a brokered clipboard transfer (§7)
+    IdWindowCreate,   // a window stamped with its owner's identity (§6)
     Count
 }
 

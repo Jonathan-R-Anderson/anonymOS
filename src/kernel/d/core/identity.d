@@ -18,7 +18,11 @@
 module core.identity;
 
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
-import core.cap : CAP_RIGHT_UNIVERSE, CAP_RIGHT_ADMIN_ALL, CAP_RIGHT_ALL;
+import core.cap : CAP_RIGHT_UNIVERSE, CAP_RIGHT_ADMIN_ALL, CAP_RIGHT_ALL,
+                  CAP_RIGHT_ADMIN_IDENTITY, CAPTAB_COUNT,
+                  capLiveCount, capTableClear, capTableCloneNarrowing;
+import core.admin : adminInstallCapIn, adminRequireIn; // §3 identity-transition cap
+import core.audit : auditLog, AuditKind;               // §H identity decisions
 import core.namespace : nsAlloc, nsRelease;
 import core.io : klog, klog_hex;
 
@@ -262,4 +266,121 @@ public void identityStats() {
     klog(" frozen=");           klog_hex(g_idFrozen ? 1 : 0);
     klog(" idobj=");            klog_hex(cast(ulong)objCountType(ObjType.Identity));
     klog("\n");
+}
+
+// klog an identity's name (or "?") — used by the idps process-identity dump.
+public void identityNamePrint(IdentityId id) {
+    auto r = identityById(id);
+    if (r is null) { klog("?"); return; }
+    foreach (i; 0 .. r.nameLen) {
+        char[2] c; c[0] = r.name[i]; c[1] = 0;
+        klog(c.ptr);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3 — Process-Manager integration (roadmap §3): identity inheritance is
+// done by fork/clone in kernel_main.d; here is the privileged transition gate and
+// its compiled-in launch rules (the declarative policy file is §9).  Deny-by-
+// default; every denial is audited.
+// ─────────────────────────────────────────────────────────────────────────────
+
+struct LaunchRule { bool inUse; IdentityId from, to; }
+enum int ID_LAUNCH_RULES_MAX = 32;
+public __gshared LaunchRule[ID_LAUNCH_RULES_MAX] g_idLaunchRules;
+__gshared bool g_idLaunchInited = false;
+
+private void addLaunchRule(const(char)* fromName, const(char)* toName) {
+    const IdentityId f = identityByName(fromName);
+    const IdentityId t = identityByName(toName);
+    if (f == 0 || t == 0) return;
+    foreach (ref r; g_idLaunchRules)
+        if (!r.inUse) { r.inUse = true; r.from = f; r.to = t; return; }
+}
+
+// Compiled-in launch rules (roadmap §F): System may launch into every other
+// identity; Development may launch a Disposable.  Must run after the identities
+// exist (called from kernel_main.d right after identityInitDefaults()).
+public void identityInitLaunchRules() {
+    if (g_idLaunchInited) return;
+    g_idLaunchInited = true;
+    addLaunchRule("System\0".ptr, "Personal\0".ptr);
+    addLaunchRule("System\0".ptr, "Work\0".ptr);
+    addLaunchRule("System\0".ptr, "Banking\0".ptr);
+    addLaunchRule("System\0".ptr, "Development\0".ptr);
+    addLaunchRule("System\0".ptr, "Untrusted\0".ptr);
+    addLaunchRule("System\0".ptr, "Disposable\0".ptr);
+    addLaunchRule("Development\0".ptr, "Disposable\0".ptr);
+}
+
+public bool policyLaunchAllowed(IdentityId from, IdentityId to) {
+    foreach (ref r; g_idLaunchRules)
+        if (r.inUse && r.from == from && r.to == to) return true;
+    return false;
+}
+
+// The transition gate: a child may move into a DIFFERENT identity only if the
+// launcher's cap table holds CAP_RIGHT_ADMIN_IDENTITY *and* a launch rule permits
+// parent→target.  Same identity = inherit (always allowed).  Untrusted may never
+// transition.  Default-deny; denials are audited (subject=target, detail=parent).
+public bool identityCanTransition(IdentityId parentId, IdentityId targetId, int capTabId) {
+    if (!identityValidate(targetId)) {
+        auditLog(AuditKind.IdTransitionDeny, targetId, parentId); return false;
+    }
+    if (targetId == parentId) return true;                 // inherit — no transition
+    auto p = identityById(parentId);
+    if (p !is null && p.trust == TRUST_UNTRUSTED) {        // Untrusted → anything denied
+        auditLog(AuditKind.IdTransitionDeny, targetId, parentId); return false;
+    }
+    if (!adminRequireIn(capTabId, CAP_RIGHT_ADMIN_IDENTITY)) {
+        auditLog(AuditKind.IdTransitionDeny, targetId, parentId); return false;
+    }
+    if (!policyLaunchAllowed(parentId, targetId)) {
+        auditLog(AuditKind.IdTransitionDeny, targetId, parentId); return false;
+    }
+    return true;
+}
+
+__gshared bool g_idProcSelfTested = false;
+
+// One-shot proof (roadmap §3 outcome): same-identity inherit allowed; a cross-
+// identity transition is refused without the admin cap, refused without a launch
+// rule, refused from Untrusted; and a cap table narrowed to a no-admin ceiling
+// loses the identity admin cap (cap set ⊆ ceiling).
+public void idprocSelfTest() {
+    if (g_idProcSelfTested) return;
+    g_idProcSelfTested = true;
+
+    const IdentityId sys  = identityByName("System\0".ptr);
+    const IdentityId work = identityByName("Work\0".ptr);
+    const IdentityId bank = identityByName("Banking\0".ptr);
+    const IdentityId untr = identityByName("Untrusted\0".ptr);
+    if (sys == 0 || work == 0 || bank == 0 || untr == 0) {
+        klog("[idproc] selftest FAIL: ids\n"); return;
+    }
+
+    const int st = CAPTAB_COUNT - 3;   // spare (admin uses -2, cap/ipc use -1)
+    const int dt = CAPTAB_COUNT - 4;
+    if (capLiveCount(st) != 0 || capLiveCount(dt) != 0) {
+        klog("[idproc] selftest SKIP\n"); return;
+    }
+
+    bool ok = true;
+    ok = ok && identityCanTransition(work, work, st);          // inherit (no cap needed)
+    ok = ok && !identityCanTransition(sys, work, st);          // no admin cap → denied
+    ok = ok && adminInstallCapIn(st, CAP_RIGHT_ADMIN_IDENTITY);
+    ok = ok && identityCanTransition(sys, work, st);           // cap + launch rule → allowed
+    ok = ok && !identityCanTransition(work, bank, st);         // no launch rule → denied
+    ok = ok && !identityCanTransition(untr, work, st);         // Untrusted → denied
+
+    // cap set ⊆ ceiling: narrowing the admin-holding table to a no-admin ceiling
+    // must strip the identity admin cap.
+    capTableCloneNarrowing(st, dt, CAP_RIGHT_UNIVERSE & ~CAP_RIGHT_ADMIN_ALL);
+    ok = ok && !adminRequireIn(dt, CAP_RIGHT_ADMIN_IDENTITY);
+
+    capTableClear(dt);
+    capTableClear(st);
+
+    if (ok) klog("[idproc] selftest PASS\n");
+    else    klog("[idproc] selftest FAIL\n");
 }

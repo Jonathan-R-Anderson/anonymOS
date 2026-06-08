@@ -12,6 +12,7 @@ import core.cap : CAPTAB_COUNT, CAP_INVALID,
                   CAP_RIGHT_ADMIN_MOUNT, CAP_RIGHT_ADMIN_REBOOT,
                   CAP_RIGHT_ADMIN_UPDATE, CAP_RIGHT_ADMIN_USER,
                   CAP_RIGHT_ADMIN_DEVICE, CAP_RIGHT_ADMIN_INSPECT,
+                  CAP_RIGHT_ADMIN_IDENTITY,
                   capGetIn, capInstallIn, capLiveCount, capTableClear, capUsable,
                   g_activeCapTabId;
 
@@ -23,8 +24,9 @@ enum uint ADMIN_CAP_UPDATE_HANDLE = 1034;
 enum uint ADMIN_CAP_USER_HANDLE   = 1035;
 enum uint ADMIN_CAP_DEVICE_HANDLE = 1036;
 enum uint ADMIN_CAP_INSPECT_HANDLE = 1037;
+enum uint ADMIN_CAP_IDENTITY_HANDLE = 1038; // IDENTITY_DOMAIN §3: identity transitions / policy
 
-enum int ADMIN_MAX = 6;
+enum int ADMIN_MAX = 7;
 
 struct AdminRec {
     bool inUse;
@@ -47,6 +49,7 @@ private uint handleForRight(uint right) {
         case CAP_RIGHT_ADMIN_USER:    return ADMIN_CAP_USER_HANDLE;
         case CAP_RIGHT_ADMIN_DEVICE:  return ADMIN_CAP_DEVICE_HANDLE;
         case CAP_RIGHT_ADMIN_INSPECT: return ADMIN_CAP_INSPECT_HANDLE;
+        case CAP_RIGHT_ADMIN_IDENTITY: return ADMIN_CAP_IDENTITY_HANDLE;
         default: return CAP_INVALID;
     }
 }
@@ -89,6 +92,7 @@ public void adminInit() {
     addAdmin(CAP_RIGHT_ADMIN_USER);
     addAdmin(CAP_RIGHT_ADMIN_DEVICE);
     addAdmin(CAP_RIGHT_ADMIN_INSPECT);
+    addAdmin(CAP_RIGHT_ADMIN_IDENTITY);
 }
 
 public bool adminInstallCapIn(int tableId, uint right) {
@@ -108,6 +112,8 @@ public bool adminInstallInitCaps(int tableId) {
     ok = adminInstallCapIn(tableId, CAP_RIGHT_ADMIN_MOUNT) && ok;
     ok = adminInstallCapIn(tableId, CAP_RIGHT_ADMIN_REBOOT) && ok;
     ok = adminInstallCapIn(tableId, CAP_RIGHT_ADMIN_INSPECT) && ok;
+    // IDENTITY_DOMAIN §3: PID1 (and only PID1) holds the identity-transition cap.
+    ok = adminInstallCapIn(tableId, CAP_RIGHT_ADMIN_IDENTITY) && ok;
     return ok;
 }
 

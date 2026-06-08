@@ -233,7 +233,7 @@ boot self-test.
   existing self-tests still pass. (Private helpers `idCstrLen`/`idNameEq`/`idCopyName`
   are id-prefixed for the same flat-C-symbol reason.)
 
-### Phase 3 — Process Manager integration  · P: Critical · D: 6 · deps: 2
+### Phase 3 — Process Manager integration  · P: Critical · D: 6 · deps: 2 · ✅ DONE
 - `fork`/`clone` copy `identityObjId` (inheritance by default).
 - `identityCanTransition(parentId, targetId, capTabId)`: allowed **iff** the launcher holds
   `CAP_RIGHT_ADMIN_IDENTITY` *and* a policy launch rule permits `parent→target`; otherwise
@@ -244,6 +244,18 @@ boot self-test.
 - Debug command `idps` prints the process-identity table (§10).
 - *Outcome:* `[idproc] selftest` (in `identity.d`): child inherits; impersonation/transition
   without the admin cap denied; cap set is ⊆ ceiling.
+- **Done:** `forkTask`/`cloneThread` copy `identityObjId` (inheritance). `admin.d` registers
+  `CAP_RIGHT_ADMIN_IDENTITY` (handle 1038) and PID1 holds it via `adminInstallInitCaps`.
+  `identityCanTransition` + compiled-in launch rules (`identityInitLaunchRules`, per §F) +
+  `policyLaunchAllowed` implement the gate (same-identity inherit; else needs the admin cap
+  AND a launch rule; Untrusted denied); `IdLaunch`/`IdTransitionDeny` + the rest of §H added
+  to `core/audit.d`. `idps` (`identityDumpProcesses` in `kernel_main.d`) prints the table;
+  the interactive command waits for §10. Boot-verified: `[idproc] selftest PASS`; `idps`
+  shows PID1 + its forked children all `[System]` (inheritance proven); cap-narrow strips
+  the admin cap (⊆ ceiling); no fault, desktop unchanged. **The cap-table-narrowing launch
+  of a child into a *different* identity (the full `launchInto`) is left until a launcher
+  actually requests a cross-identity spawn (needs Phase 4 namespaces) — the gate it calls is
+  done and tested.**
 
 ### Phase 4 — Namespace Manager (`core/idns.d`)  · P: Critical · D: 6 · deps: 2,3
 - `idnsForIdentity(id)`: `nsClone(identity.nsTemplate)`; bind `/identities/<name>` →
@@ -510,9 +522,11 @@ clipboard = Deny
   compiled-in System/Personal/Work/Banking/Dev/Untrusted/Disposable, `Task.identityObjId`
   inherited on fork, `idps` prints `pid → [identity] name`. **No GUI, no policy file.**
   Boots and shows process identity labels. *(This is the smallest useful slice — start here.)*
-  **Progress:** Phases 1 & 2 ✅ (types + Identity Manager + 7 boot identities + task-0=System,
-  `[identity] selftest PASS`). Remaining for M0: Phase 3 (fork/clone inherit `identityObjId`,
-  transition gate, `idps` debug command).
+  **✅ M0 COMPLETE (2026-06-08).** Phases 1–3 done: types + Identity Manager + 7 boot
+  identities + task-0=System; fork/clone inherit `identityObjId`; the privileged transition
+  gate + launch rules; `idps` prints the process-identity table. Boot shows every process
+  labelled `[System]` (inherited from PID1). `[identity] selftest PASS` + `[idproc] selftest
+  PASS`. Next: M1 (Phase 4 per-identity namespaces + Phase 5 cross-identity IPC).
 - **M1 — Isolation.** Phases 4–5: per-identity namespaces (disjoint object roots) +
   deny-by-default cross-identity IPC with brokered exceptions.
 - **M2 — Trusted borders.** Phase 6: compositor draws unspoofable colored borders + title

@@ -56,7 +56,8 @@ import core.sechard : sechardSelfTest, sechardStats; // SECURE_IPC P5 hardening 
 import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
-import core.identity : identityInitDefaults, identityByName, identitySelfTest, identityStats; // IDENTITY_DOMAIN P2
+import core.identity : identityInitDefaults, identityInitLaunchRules, identityByName,
+                       identitySelfTest, idprocSelfTest, identityStats, identityNamePrint; // IDENTITY_DOMAIN P2/P3
 import display.compositor.compositor : compositorIdentitySelfTest; // GUI: trusted identity borders
 import core.linuxobj : linuxObjectInit, linuxEnabled, linuxNoteTranslate,
                        linuxNoteBlocked, linuxNoteElfLoad, linuxSelfTest,
@@ -422,6 +423,7 @@ private int forkTask(int parentTid) {
     child.mmapNext   = parent.mmapNext;
     child.parentId   = parentTid;
     child.userObjId  = parent.userObjId;
+    child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: inherit by default
     child.untypedObjId = untypedCreateProcess(parent.untypedObjId);
     if (child.untypedObjId == 0) {
         releaseTask(childTid);
@@ -556,6 +558,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.capTabId   = parent.capTabId;
     child.untypedObjId = parent.untypedObjId;
     child.userObjId  = parent.userObjId;
+    child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: threads share the label
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -1161,6 +1164,24 @@ private void handleMouseIRQ() @nogc nothrow {
     }
 }
 
+// IDENTITY_DOMAIN §3/§10: the `idps` process-identity table — pid, parent, and
+// the security-domain each live task is labelled with.  One-shot for now (the
+// interactive debug command is wired in §10); proves fork/clone inheritance —
+// every process descends from PID1 (System) and carries that label.
+__gshared bool g_idpsDumped = false;
+private void identityDumpProcesses() @nogc nothrow {
+    if (g_idpsDumped) return;
+    g_idpsDumped = true;
+    klog("[idps] pid parent identity\n");
+    for (int i = 0; i < MAX_TASKS; ++i) {
+        if (!g_tasks[i].active || g_tasks[i].exited) continue;
+        klog("[idps]  "); klog_hex(cast(ulong)i);
+        klog(" <- "); klog_hex(cast(ulong)g_tasks[i].parentId);
+        klog(" id="); klog_hex(cast(ulong)g_tasks[i].identityObjId);
+        klog(" ["); identityNamePrint(g_tasks[i].identityObjId); klog("]\n");
+    }
+}
+
 // ------------------------------------------------------------------
 // Syscall dispatch
 // ------------------------------------------------------------------
@@ -1223,6 +1244,8 @@ private void dispatchSyscall(int tid) {
         servicePhase5SelfTest(); // IR-P5: dependency-ordered start, FS-first migration, versioning
         windowSelfTest(); // Phase 11: one-shot proof Output/Window/Surface objects
         identitySelfTest(); // IDENTITY_DOMAIN P2: one-shot proof identity create/lookup/validate/freeze
+        idprocSelfTest();   // IDENTITY_DOMAIN P3: one-shot proof inherit / transition-gate / cap⊆ceiling
+        identityDumpProcesses(); // IDENTITY_DOMAIN P3: one-shot idps process-identity table
         compositorIdentitySelfTest(); // GUI: one-shot proof of trusted, unspoofable identity borders
         linuxSelfTest(); // Phase 12: one-shot proof the Linux-compat subtree & gate
         linuxPersSelfTest(); // IR-P7: ephemeral-root sandbox + ns/cap op translation + gated /dev
@@ -2082,6 +2105,7 @@ void d_kernel_main() {
     // fork/clone inherit this label; transitions into other identities (§3) require
     // CAP_RIGHT_ADMIN_IDENTITY + a launch rule.
     identityInitDefaults();
+    identityInitLaunchRules();   // §3 compiled-in transition rules (after the identities exist)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);
     // Phase 12: build the Linux-compat object subtree and enable the personality
     // before the init process issues its first syscall (the dispatcher routes all

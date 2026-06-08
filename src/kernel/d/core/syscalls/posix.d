@@ -2057,6 +2057,9 @@ public int sys_open(const(char)* path, int flags) {
             return negErrno(EISDIR);
         }
         initSyntheticFileFd(fd, flags, fileBackendDirectory);
+        // Tag /sys/dev/char so getdents64 can enumerate the char-device entries
+        // libudev-zero scans there to discover input (and DRM) devices.
+        if (cstrEq(path, "/sys/dev/char")) g_fdTable[fd].fileSize = SYNTHDIR_DEVCHAR;
         return publishActiveFdReturn(fd);
     }
 
@@ -2318,6 +2321,17 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             *cast(uint*)(_statBuf + 28) = userCurrentUid();
             *cast(uint*)(_statBuf + 32) = userCurrentGid();
             *cast(ulong*)(_statBuf + 40) = 0xE200;             // st_rdev = makedev(226, 0)
+        } else if (f.type == FileType.FD_INPUT_EVENT) {
+            // Char device, input major 13, minor 64 (event0) / 65 (event1).
+            // libinput's evdev_device_have_same_syspath fstat()s the fd and maps
+            // st_rdev back through /sys/dev/char/<maj:min>; without the right rdev
+            // it can't match the udev device and rejects "failed to create".
+            const int devIdx = cast(int)cast(size_t)f.backend;
+            clearLinuxStat(_statBuf);
+            *cast(uint*)(_statBuf + 24) = 0x2000 | 0x01B6;     // S_IFCHR | 0666
+            *cast(uint*)(_statBuf + 28) = userCurrentUid();
+            *cast(uint*)(_statBuf + 32) = userCurrentGid();
+            *cast(ulong*)(_statBuf + 40) = 0x0D40 + cast(ulong)(devIdx == 1 ? 1 : 0); // makedev(13, 64|65)
         } else if (f.type == FileType.FD_SOCKET) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0xC000 | 0x01B6; // S_IFSOCK | 0666
@@ -3926,6 +3940,25 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/class/input/event1/device/name",  "Virtual Mouse\n"    },
     { "/sys/class/input/event0/device/phys",  "isa0060/serio0\n"   },
     { "/sys/class/input/event1/device/phys",  "isa0060/serio1\n"   },
+    // libudev-zero builds these from /sys/dev/char/<maj:min>/uevent (it scans
+    // /sys/dev/char). DEVNAME gives the /dev node libinput opens; ID_INPUT* are
+    // the classification hints udev rules would normally add. The matching
+    // `subsystem` symlink (→ .../class/input) is synthesised in readlink.
+    // The EV/KEY/REL lines are the capability bitmasks libudev-zero parses (like
+    // udev's input_id builtin) to derive ID_INPUT_KEYBOARD/MOUSE — and libinput
+    // (evdev_device_get_udev_tags) classifies the device from those tags. Format:
+    // space-separated 64-bit hex words, low word rightmost. Keyboard: EV_SYN|EV_KEY
+    // (EV=3) + KEY bits 1..127 (incl. KEY_ENTER=28). Mouse: EV_SYN|EV_KEY|EV_REL
+    // (EV=7) + REL_X|REL_Y|REL_WHEEL (REL=103) + BTN_MOUSE/BTN_LEFT (bit 0x110 →
+    // word 4 bit 16 = 0x10000).
+    { "/sys/class/input/event0/uevent",
+      "MAJOR=13\nMINOR=64\nDEVNAME=input/event0\n" ~
+      "ID_INPUT=1\nID_INPUT_KEYBOARD=1\nID_SEAT=seat0\n" ~
+      "EV=3\nKEY=ffffffffffffffff fffffffffffffffe\n" },
+    { "/sys/class/input/event1/uevent",
+      "MAJOR=13\nMINOR=65\nDEVNAME=input/event1\n" ~
+      "ID_INPUT=1\nID_INPUT_MOUSE=1\nID_SEAT=seat0\n" ~
+      "EV=7\nREL=103\nKEY=10000 0 0 0 0\n" },
 
     // ── libseat / seatd (session/seat management) ─────────────────────────
     { "/run/seatd.sock", "" },
@@ -4201,7 +4234,17 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            // DRM node (needed by Aquamarine's dumb-buffer allocator path).
            cstrEq(path, "/sys/dev") ||
            cstrEq(path, "/sys/dev/char") ||
+           // libudev-zero's udev_enumerate_scan_devices scans /sys/dev/block
+           // BEFORE /sys/dev/char and aborts the whole scan if the first dir is
+           // missing — so /sys/dev/block must exist (empty) or no input/DRM
+           // devices are ever enumerated.
+           cstrEq(path, "/sys/dev/block") ||
            cstrEq(path, "/sys/dev/char/226:0") ||
+           // The real device dirs the /sys/dev/char/<maj:min> symlinks resolve to;
+           // realpath must land here so udev's sysname is "eventN" (libinput skips
+           // any input device whose sysname doesn't start with "event").
+           cstrEq(path, "/sys/class/input/event0") ||  // keyboard
+           cstrEq(path, "/sys/class/input/event1") ||  // mouse
            cstrEq(path, "/sys/dev/char/226:0/device") ||
            cstrEq(path, "/sys/dev/char/226:0/device/drm") ||
            // libseat / seatd
@@ -4224,6 +4267,15 @@ private bool getSyntheticReadlinkTarget(const(char)* path, out string target) {
         // Until the kernel tracks each task's executable path, return a stable
         // boot image target instead of failing every procfs probe.
         target = "/init.elf";
+        return true;
+    }
+    // /sys/dev/char/<maj:min> are symlinks to the real device dir (so the udev
+    // sysname becomes "eventN"); the .../subsystem symlinks give SUBSYSTEM=input.
+    if (cstrEq(path, "/sys/dev/char/13:64")) { target = "/sys/class/input/event0"; return true; }
+    if (cstrEq(path, "/sys/dev/char/13:65")) { target = "/sys/class/input/event1"; return true; }
+    if (cstrEq(path, "/sys/class/input/event0/subsystem") ||
+        cstrEq(path, "/sys/class/input/event1/subsystem")) {
+        target = "/sys/class/input";
         return true;
     }
 
@@ -4252,6 +4304,96 @@ private long statSyntheticPath(const(char)* path, ulong statBuf) {
     return cast(long)negErrno(ENOENT);
 }
 
+// Minimal evdev (EVIOC*) emulation for the two synthetic input devices so that
+// libinput recognises event0 as a keyboard and event1 as a relative pointer (and
+// therefore draws/uses a cursor). devIdx: 0 = keyboard, 1 = mouse. The ioctl cmd
+// encodes _IOC(dir, type='E'(0x45), nr, size); we dispatch on nr = cmd & 0xFF and
+// honour the caller's buffer length size = (cmd >> 16) & 0x3FFF.
+private long handleInputEvioc(int devIdx, ulong cmd, ulong arg) {
+    const uint nr   = cast(uint)(cmd & 0xFF);
+    const size_t sz = cast(size_t)((cmd >> 16) & 0x3FFF);
+    const bool isMouse = (devIdx == 1);
+
+    // Zero `n` bytes of the user buffer (SMAP-guarded).
+    void zeroOut(size_t n) {
+        if (arg == 0) return;
+        smapBegin();
+        auto b = cast(ubyte*)arg;
+        foreach (i; 0 .. n) b[i] = 0;
+        smapEnd();
+    }
+    // Set bit `bit` in the user bitmask buffer (already zeroed), if in range.
+    void setBit(uint bit) {
+        const size_t byteIdx = bit >> 3;
+        if (arg == 0 || byteIdx >= sz) return;
+        smapBegin();
+        auto b = cast(ubyte*)arg;
+        b[byteIdx] |= cast(ubyte)(1u << (bit & 7));
+        smapEnd();
+    }
+    long writeStr(const(char)* s) {
+        if (arg == 0 || sz == 0) return 0;
+        smapBegin();
+        auto b = cast(char*)arg;
+        size_t i = 0;
+        while (i + 1 < sz && s[i] != 0) { b[i] = s[i]; ++i; }
+        b[i] = 0;
+        smapEnd();
+        return cast(long)(i + 1);
+    }
+
+    // EVIOCGVERSION (nr 0x01): driver version = EV_VERSION (0x010001).
+    if (nr == 0x01) { if (arg) userWrite!int(arg, 0x010001); return 0; }
+
+    // EVIOCGID (nr 0x02): struct input_id { u16 bustype, vendor, product, version }.
+    if (nr == 0x02) {
+        if (arg) {
+            userWrite!ushort(arg + 0, 0x0011);                 // BUS_I8042
+            userWrite!ushort(arg + 2, 0x0001);                 // vendor
+            userWrite!ushort(arg + 4, isMouse ? 0x0002 : 0x0001); // product
+            userWrite!ushort(arg + 6, 0x0001);                 // version
+        }
+        return 0;
+    }
+
+    // EVIOCGNAME (nr 0x06) / EVIOCGPHYS (0x07) / EVIOCGUNIQ (0x08).
+    if (nr == 0x06) return writeStr(isMouse ? "Virtual Mouse\0".ptr : "Virtual Keyboard\0".ptr);
+    if (nr == 0x07) return writeStr(isMouse ? "isa0060/serio1/input0\0".ptr : "isa0060/serio0/input0\0".ptr);
+    if (nr == 0x08) { zeroOut(sz); return 0; }
+
+    // EVIOCGPROP (nr 0x09): no INPUT_PROP_* for plain kbd/mouse.
+    if (nr == 0x09) { zeroOut(sz); return 0; }
+
+    // EVIOCGKEY (0x18) / EVIOCGLED (0x19) / EVIOCGSW (0x1b): current state = all 0.
+    if (nr == 0x18 || nr == 0x19 || nr == 0x1b) { zeroOut(sz); return 0; }
+
+    // EVIOCGBIT(ev) (nr 0x20 + ev): supported-codes bitmask for event type `ev`.
+    if (nr >= 0x20 && nr <= 0x3f) {
+        zeroOut(sz);
+        const uint ev = nr - 0x20;
+        if (ev == 0) {
+            // Supported event types.
+            setBit(EV_SYN); setBit(EV_KEY);
+            if (isMouse) setBit(EV_REL);
+            else { setBit(0x11 /*EV_LED*/); setBit(0x14 /*EV_REP*/); setBit(0x04 /*EV_MSC*/); }
+        } else if (ev == EV_KEY) {
+            if (isMouse) { setBit(BTN_LEFT); setBit(BTN_RIGHT); setBit(BTN_MIDDLE); }
+            else { foreach (k; 1 .. 128) setBit(k); }   // KEY_ESC..KEY_COMPOSE → keyboard
+        } else if (ev == EV_REL && isMouse) {
+            setBit(REL_X); setBit(REL_Y); setBit(8 /*REL_WHEEL*/);
+        }
+        // EV_ABS / EV_MSC / EV_LED / EV_REP / EV_SW → left all-zero.
+        return 0;
+    }
+
+    // EVIOCGABS(abs) (nr 0x40 + abs): no absolute axes.
+    if (nr >= 0x40 && nr <= 0x7f) { zeroOut(sz); return 0; }
+
+    // EVIOCGRAB (0x90) / EVIOCREVOKE (0x91) / EVIOCSCLOCKID (0xa0) / EVIOCSREP /
+    // EVIOCGMTSLOTS / masks / repeat: accept as no-ops.
+    return 0;
+}
+
 private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
     File* f = fileFromObj(oh);
     if (f is null) return negErrno(EBADF);
@@ -4275,9 +4417,13 @@ private long fileObjIoctl(ObjHeader* oh, ulong cmd, ulong arg) {
         return 0; // other ioctls on DRM fd → success
     }
 
-    // Input event ioctls (EVIOCGVERSION, EVIOCGNAME, EVIOCGBIT, ...)
+    // Input event ioctls (EVIOCGVERSION, EVIOCGNAME, EVIOCGBIT, ...). libinput
+    // classifies a device from its evdev capabilities, so these MUST report real
+    // bits — event0 as a keyboard (EV_KEY with keyboard keys) and event1 as a
+    // pointer (EV_REL X/Y + mouse buttons). Returning 0 for everything made
+    // libinput see capability-less devices and ignore them ("no input devices").
     if (f.type == FileType.FD_INPUT_EVENT) {
-        return 0; // accept all input device ioctls silently
+        return handleInputEvioc(cast(int)cast(size_t)f.backend, cmd, arg);
     }
 
     if (f.type != FileType.FD_CONSOLE) {
@@ -5699,6 +5845,14 @@ private bool writeDirent64(ubyte* buf, size_t bufSz, size_t* off, ulong ino, lon
     return true;
 }
 
+// Marker stashed in a synthetic-dir fd's (otherwise unused) fileSize so getdents64
+// knows it is /sys/dev/char and should list the char-device nodes (maj:min) that
+// libudev-zero scans to discover devices.
+private enum ulong SYNTHDIR_DEVCHAR = 0x0DE7C400;
+
+// The char-device entries we expose under /sys/dev/char (name + d_ino).
+private static immutable string[3] g_devCharEntries = ["226:0", "13:64", "13:65"];
+
 public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     initFdTable();
     int ifd = cast(int)fd;
@@ -5716,6 +5870,21 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     if (f.offset == 1) {
         if (!writeDirent64(buf, count, &written, 1, 2, DT_DIR, "..".ptr, 2)) return cast(long)written;
         f.offset = 2;
+    }
+
+    // /sys/dev/char enumeration (input + DRM device discovery for libudev-zero).
+    if (f.fileSize == SYNTHDIR_DEVCHAR) {
+        ulong logical = 2;
+        foreach (e; g_devCharEntries) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 3, cast(long)logical + 1,
+                                   DT_DIR, e.ptr, e.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
     }
 
     if (fileIsRtDirectory(f)) {
@@ -6681,6 +6850,14 @@ public long linux_sys_statx(ulong dfd, ulong path, ulong fl, ulong mask, ulong b
     *cast(ulong*) (b + 32) = stIno;                    // stx_ino
     *cast(ulong*) (b + 40) = stSize;                   // stx_size
     *cast(ulong*) (b + 48) = (stSize + 511) / 512;     // stx_blocks
+    // stx_rdev_major/minor — without these a device fd's rdev is lost through the
+    // statx path that musl's fstat() uses, and libinput's evdev_device_have_
+    // same_syspath (fstat → new_from_devnum) can't match the input node, so it
+    // rejects the keyboard/mouse and there is no cursor.
+    ulong stRdev = *cast(ulong*)(st.ptr + 40);
+    *cast(uint*)(b + 128) = cast(uint)((stRdev >> 8) & 0xfff);  // stx_rdev_major
+    *cast(uint*)(b + 132) = cast(uint)(stRdev & 0xff) |
+                            cast(uint)((stRdev >> 12) & 0xffff_ff00); // stx_rdev_minor
     return 0;
 }
 

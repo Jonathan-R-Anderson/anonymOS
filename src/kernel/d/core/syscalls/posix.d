@@ -4828,7 +4828,7 @@ struct timespec {
 }
 
 // Imports for clock_gettime
-import core.ticks : getTickCount, get_ticks;
+import core.ticks : getTickCount, get_ticks, pitMs;
 import core.bundle;
 import core.globals : hhdm_offset;
 
@@ -7363,10 +7363,49 @@ private void cursorRepaintAfterPresent() @nogc nothrow {
     cursorPaint();
 }
 
+// ── Present-path profiling (low-overhead frame instrumentation) ───────────────
+// Cycle-accurate timing of the present path to find where a frame's time goes.
+// Interval counters are reset each stats dump; totals persist.  Two rdtsc reads
+// per present (~tens of cycles) — negligible vs the present itself.
+__gshared ulong g_presTotal;        // cumulative presents
+__gshared ulong g_presN;            // presents this interval
+__gshared ulong g_presCostCyc;      // sum of full present cycles (blit+borders+cursor)
+__gshared ulong g_presCostMax;      // max full present cycles this interval
+__gshared ulong g_presGapCyc;       // sum of inter-present gaps (cycles) this interval
+__gshared ulong g_presGapMax;       // max inter-present gap this interval
+__gshared ulong g_presLastTsc;      // tsc at end of last present
+__gshared ulong g_presCalibTsc0;    // calibration anchors (cycles<->ms)
+__gshared ulong g_presCalibPit0;
+__gshared ulong g_presBlitPx;       // sum of blitted pixels this interval (damage size)
+__gshared ulong g_presFullN;        // # presents that fell back to a full-frame blit
+
+// Shared accounting for both present paths (drmPresentFb = KMS PAGE_FLIP,
+// drmPresentToFramebuffer = HOS_PRESENT).  t0/t1 bracket the present; blitPx is the
+// pixels copied; full marks a full-frame blit.
+private void presentAccount(ulong t0, ulong t1, ulong blitPx, bool full) @nogc nothrow {
+    if (g_presLastTsc != 0) {
+        const ulong gap = t0 - g_presLastTsc;
+        g_presGapCyc += gap;
+        if (gap > g_presGapMax) g_presGapMax = gap;
+    } else {
+        g_presCalibTsc0 = t1;
+        g_presCalibPit0 = pitMs();
+    }
+    const ulong cost = t1 - t0;
+    g_presCostCyc += cost;
+    if (cost > g_presCostMax) g_presCostMax = cost;
+    g_presBlitPx += blitPx;
+    if (full) ++g_presFullN;
+    ++g_presN;
+    ++g_presTotal;
+    g_presLastTsc = t1;
+}
+
 // Present a bound framebuffer: blit its pixels to the hardware framebuffer.
 // Source and destination are both kernel HHDM mappings, so no SMAP gate is
 // needed (unlike drmPresentToFramebuffer, which reads a userspace pointer).
 private long drmPresentFb(uint fbId) @nogc nothrow {
+    const ulong _t0 = rdtsc();
     if (!g_fb || g_fb.address is null || g_fb.pitch == 0 || g_fb.bpp != 32)
         return negErrno(ENODEV);
     DrmFb* fb = findDrmFb(fbId);
@@ -7390,7 +7429,46 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     g_fbConsoleEnabled = false;
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
+    presentAccount(_t0, rdtsc(), cast(ulong)copyW * copyH, true);
     return 0;
+}
+
+// Dump present-path profile (called from the stats block).  Reports the frame
+// rate and how much of each frame is the KERNEL present (blit+borders+cursor) vs
+// everything else (Weston compositing + cooperative scheduling = the inter-present
+// gap).  Resets interval counters; keeps the cumulative total.
+public void presentProfStats() @nogc nothrow {
+    klog("[present] total="); klog_dec(g_presTotal);
+    if (g_presN == 0) { klog(" (idle: no frames this interval)\n"); return; }
+
+    // cycles<->ms calibration over the whole run (clean PIT ms).
+    const ulong dPit = pitMs() - g_presCalibPit0;
+    const ulong dTsc = rdtsc() - g_presCalibTsc0;
+    const ulong cpms = (dPit > 0) ? (dTsc / dPit) : 0;     // cycles per ms
+
+    const ulong avgCost = g_presCostCyc / g_presN;
+    const ulong avgGap  = (g_presN > 1) ? g_presGapCyc / (g_presN - 1) : 0; // gaps = frames-1
+    const ulong avgPx   = g_presBlitPx / g_presN;
+
+    klog(" frames="); klog_dec(g_presN);
+    if (cpms > 0 && avgGap > 0) {
+        const ulong frameUs = (avgGap * 1000) / cpms;
+        const ulong fps     = (frameUs > 0) ? (1000000UL / frameUs) : 0;
+        klog(" fps="); klog_dec(fps);
+        klog(" frame_us="); klog_dec(frameUs);
+        klog(" present_share_permil="); klog_dec((avgCost * 1000) / avgGap);
+    }
+    if (cpms > 0) {
+        klog(" present_us="); klog_dec((avgCost * 1000) / cpms);
+        klog(" maxpresent_us="); klog_dec((g_presCostMax * 1000) / cpms);
+    }
+    klog(" avg_blit_px="); klog_dec(avgPx);
+    klog(" fullframe="); klog_dec(g_presFullN);
+    klog(" cpms="); klog_dec(cpms);
+    klog("\n");
+
+    g_presN = 0; g_presCostCyc = 0; g_presCostMax = 0;
+    g_presGapCyc = 0; g_presGapMax = 0; g_presBlitPx = 0; g_presFullN = 0;
 }
 
 // GW2: DRM page-flip completion events. After a PAGE_FLIP we present immediately
@@ -7947,6 +8025,7 @@ private long drmSetHosWindows(ulong arg) @nogc nothrow {
 }
 
 private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
+    const ulong _t0 = rdtsc();
     if (!g_fb || g_fb.address == null || g_fb.pitch == 0 || g_fb.bpp != 32)
         return negErrno(ENODEV);
 
@@ -8008,6 +8087,9 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
     hosDrawIdentityBorders();
 
     g_fbConsoleEnabled = false;
+
+    presentAccount(_t0, rdtsc(), cast(ulong)blitW * blitH,
+                   (blitW >= copyW && blitH >= copyH));
     return 0;
 }
 

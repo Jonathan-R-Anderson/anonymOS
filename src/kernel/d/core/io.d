@@ -38,6 +38,16 @@ void klog_hex(ulong val) {
     klog(buf.ptr);
 }
 
+// Decimal printer for human-readable stats (frame rates, milliseconds, etc.).
+void klog_dec(ulong val) {
+    char[21] buf;
+    int i = 20;
+    buf[i--] = 0;
+    if (val == 0) { buf[i--] = '0'; }
+    else while (val > 0 && i >= 0) { buf[i--] = cast(char)('0' + (val % 10)); val /= 10; }
+    klog(buf.ptr + i + 1);
+}
+
 // VGA text mode
 __gshared ushort* vga_buffer;
 __gshared uint vga_row = 0;

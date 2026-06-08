@@ -159,6 +159,12 @@ private enum uint FUTEX_BITSET_MATCH_ANY = 0xffffffffU;
 
 __gshared bool[MAX_TASKS]  g_futexWaitActive;
 __gshared ulong[MAX_TASKS] g_futexWaitUaddr;
+
+// PERF profiling: per-task userspace CPU cycles (one quantum = one trip through
+// x64SwitchToUserspace) — reveals a CPU hog starving the compositor.  Interval
+// counters reset each stats dump.
+__gshared ulong[MAX_TASKS] g_schedCyc;
+__gshared ulong[MAX_TASKS] g_schedN;
 __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
 __gshared ulong g_futexLogCount = 0;
@@ -1199,6 +1205,25 @@ __gshared bool g_traceSyscalls = false;
 // Phase 2: amortization counter for objReconcileFds()/objStats() (see dispatchSyscall).
 __gshared uint g_objReconcileCtr = 0;
 
+// PERF: dump per-task CPU share (permil = tenths of a percent) over the interval,
+// so a busy-looping task that starves the compositor stands out.  Resets counters.
+private void schedProfStats() {
+    ulong total = 0;
+    foreach (i; 0 .. MAX_TASKS) total += g_schedCyc[i];
+    if (total == 0) return;
+    klog("[sched] cpu_permil:");
+    foreach (i; 0 .. MAX_TASKS) {
+        if (g_schedCyc[i] == 0) continue;
+        const ulong permil = g_schedCyc[i] * 1000 / total;
+        if (permil < 5) continue;                 // hide <0.5%
+        klog(" t"); klog_dec(cast(ulong)i);
+        klog("="); klog_dec(permil);
+        klog("/proc"); klog_hex(g_tasks[i].processObjId);
+    }
+    klog("\n");
+    foreach (i; 0 .. MAX_TASKS) { g_schedCyc[i] = 0; g_schedN[i] = 0; }
+}
+
 private void dispatchSyscall(int tid) {
     ulong rax = x64LastSyscallRax;
     ulong rdi = x64LastSyscallRdi;
@@ -1299,6 +1324,8 @@ private void dispatchSyscall(int tid) {
             idnsStats();     // IDENTITY_DOMAIN P4: ns clones / shares / roots
             idipcStats();    // IDENTITY_DOMAIN P5: gate checks / allow / deny
             idwinStats();    // IDENTITY_DOMAIN P6: windows stamped / hook installed
+            presentProfStats(); // PERF: frame rate + kernel-present share of each frame
+            schedProfStats();   // PERF: per-task CPU share (find a hog starving the compositor)
             linuxStats();
             linuxPersStats();
             kernelCensusStats();
@@ -1945,9 +1972,14 @@ private void kernelLoop() {
         x64WriteCR3(task.pml4Phys);
 
         // Hand off to userspace; returns when an interrupt/syscall fires
+        const ulong _sw0 = rdtsc();
         ulong reason = x64SwitchToUserspace(
             cast(void*)&curUserSpaceState[0],
             cast(void*)&kernelState[0]);
+        if (tid >= 0 && tid < MAX_TASKS) {
+            g_schedCyc[tid] += rdtsc() - _sw0;   // userspace cycles this quantum
+            ++g_schedN[tid];
+        }
 
         // Kernel is back; switch page table back to the kernel's own CR3
         // (not strictly needed since kernel is in high half, but safer)

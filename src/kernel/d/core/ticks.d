@@ -7,6 +7,11 @@ enum ubyte PIC2_DEFAULT_MASK = 0xFF;
 
 private __gshared ulong g_tickCount;
 
+// Clean wall-clock millisecond counter advanced ONLY by the PIT IRQ (1000 Hz), so
+// it is not polluted by getTickCount()'s read-time increments — used for profiling.
+private __gshared ulong g_pitMs;
+ulong pitMs() { return g_pitMs; }
+
 // Legacy reader that advances the counter on each call.  Kept for existing
 // callers (e.g. clock_gettime) that relied on this behaviour before a real
 // PIT tick existed.
@@ -20,6 +25,7 @@ ulong getTickCount()
 void increment_ticks()
 {
     ++g_tickCount;
+    ++g_pitMs;
 }
 
 // Read the current monotonic tick count without advancing it.  Used by timerfd

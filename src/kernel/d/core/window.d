@@ -24,6 +24,7 @@ module core.window;
 
 import core.io; // klog / klog_hex
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
+import core.identity : IdentityId, IdentityColor, GuiContextId; // IDENTITY_DOMAIN §1/§6
 
 extern (C) @nogc nothrow:
 
@@ -41,6 +42,13 @@ struct WinRec {
     uint    width;
     uint    height;
     void*   impl;        // backing struct, when available
+    // IDENTITY_DOMAIN §1/§6: the owning process's security-domain, STAMPED BY THE
+    // KERNEL at winRegister (never app-supplied), so the trusted compositor can
+    // draw an unspoofable colored border.  All 0 until the GUI phase (§6) stamps
+    // them — Phase 1 only reserves the fields.
+    IdentityId    identityObjId; // = owner process's Task.identityObjId
+    IdentityColor identityColor; // snapshot of IdentityRec.color (0xAARRGGBB)
+    GuiContextId  guiContextId;  // groups this identity's windows/surfaces
 }
 
 __gshared WinRec[WIN_MAX] g_wins;

@@ -33,14 +33,19 @@ enum uint CAP_RIGHT_ADMIN_USER   = 1u << 13;
 enum uint CAP_RIGHT_ADMIN_DEVICE = 1u << 14;
 enum uint CAP_RIGHT_ADMIN_INSPECT = 1u << 15;
 enum uint CAP_RIGHT_EXEC  = 1u << 16; // mmap(PROT_EXEC) / make-executable gate (§8.3)
+enum uint CAP_RIGHT_ADMIN_IDENTITY = 1u << 17; // IDENTITY_DOMAIN §1: privileged
+                                               // identity transition / signed policy load
+enum uint CAP_RIGHT_ID_SHARE       = 1u << 18; // IDENTITY_DOMAIN §1: hold a
+                                               // cross-identity object share
 enum uint CAP_RIGHT_ALL   = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_CLOSE |
                             CAP_RIGHT_STAT | CAP_RIGHT_IOCTL | CAP_RIGHT_MMAP |
                             CAP_RIGHT_DUP | CAP_RIGHT_PASS;
 enum uint CAP_RIGHT_ADMIN_ALL = CAP_RIGHT_ADMIN_MOUNT | CAP_RIGHT_ADMIN_REBOOT |
                                 CAP_RIGHT_ADMIN_UPDATE | CAP_RIGHT_ADMIN_USER |
-                                CAP_RIGHT_ADMIN_DEVICE | CAP_RIGHT_ADMIN_INSPECT;
+                                CAP_RIGHT_ADMIN_DEVICE | CAP_RIGHT_ADMIN_INSPECT |
+                                CAP_RIGHT_ADMIN_IDENTITY;
 enum uint CAP_RIGHT_UNIVERSE = CAP_RIGHT_ALL | CAP_RIGHT_RETYPE | CAP_RIGHT_CALL |
-                               CAP_RIGHT_ADMIN_ALL | CAP_RIGHT_EXEC;
+                               CAP_RIGHT_ADMIN_ALL | CAP_RIGHT_EXEC | CAP_RIGHT_ID_SHARE;
 
 struct Capability {
     uint objId;

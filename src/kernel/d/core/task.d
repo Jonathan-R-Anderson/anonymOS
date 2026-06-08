@@ -145,6 +145,12 @@ struct Task {
     // forked processes inherit it; setuid-style calls can replace it only with
     // ADMIN_USER authority.
     uint userObjId;
+    // IDENTITY_DOMAIN §1: the security-domain / Identity object this task is
+    // labelled with (ObjType.Identity).  Immutable once set at launch; fork/clone
+    // copy it (inheritance by default).  0 until the Identity Manager (§2) assigns
+    // the System identity to task 0.  Authority is still the capability — this is
+    // only a label, never an ambient "current identity" privilege check.
+    uint identityObjId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;

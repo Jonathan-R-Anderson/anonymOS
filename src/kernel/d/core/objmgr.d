@@ -49,6 +49,7 @@ enum ObjType : uint {
     SecSession,         // SECURE_IPC §4.1: session metadata object (no keys)
     SecCert,            // SECURE_IPC §4.1: identity cert object
     SecDescriptor,      // SECURE_IPC §4.1: broker session-descriptor object
+    Identity,           // IDENTITY_DOMAIN §1: a security-domain / identity object
     Count
 }
 

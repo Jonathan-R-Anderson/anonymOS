@@ -111,7 +111,7 @@ Today `ls /` is nearly empty. Give the shell a real FHS tree.
 - *Verify:* `ls -la /bin`, `which ls`, `cd /home/user && pwd`, `echo $PATH`, ash
   tab-completion resolve real entries.
 
-## A4 — Fill the termios / signal / syscall gaps · 🟧 CORE DONE (interactive shell works) · deps: A3
+## A4 — Fill the termios / signal / syscall gaps · ✅ DONE (raw mode + ^C) · deps: A3
 
 **The shell is now fully interactive** (commit Track A A4). Three kernel fixes:
 - **wait4 process-group semantics** (`wait4Task`): treat `waitPid <= 0` (0 / -pgid) as
@@ -128,16 +128,27 @@ Today `ls /` is nearly empty. Give the shell a real FHS tree.
 **Verified:** multi-command prompts return; `cat`/`grep`/`head`/`date`/`wc` run with
 arguments; **pipes work** (`echo hello | grep ell` → `hello`); no desktop regression.
 
-Remaining for full A4 (interactive editors / signals — not yet needed for the core
-command set):
-- **termios:** real canonical vs raw mode + echo (today `TCSETS` stores nothing) for
-  `vi`, `less`, `top` line editing. The PTY *does* default to a canonical line
-  discipline with echo, which is why the shell works; raw-mode apps need real tcsetattr.
-- **Signals:** generate `SIGINT`/`SIGTSTP`/`SIGQUIT` from the PTY (`^C`/`^Z`/`^\`),
-  `SIGWINCH` on resize.
-- **Missing fs/proc syscalls:** `utimensat`-as-real, `fstatfs`(138), real `/proc/<pid>`
-  listings for `ps`/`top`.
-- *Verify:* `vi` edits + saves; `^C` interrupts a `sleep`; `top` refreshes.
+**Raw mode + signals (commit Track A A4 finish):**
+- **termios raw mode already worked** — the PTY ioctl (`ptyIoctl`) stores the full
+  termios into the per-pty state, and the line discipline honours `ICANON`/`ECHO`. So
+  `vi` enters raw mode and renders (confirmed). The earlier "TCSETS stores nothing" note
+  was about the *generic non-PTY* tty handler.
+- **^C / ^\ signals** (`ptyInputByte` ISIG → `deliverSignalToGroup`): per-task pgid +
+  signal-disposition side arrays; ^C/^\ terminate the foreground command (default
+  disposition) while sparing the shell / apps that catch SIGINT; the run loop applies
+  the pending signal from the victim's own context. Foreground group = the tcsetpgrp
+  group, else the last task to read the slave (ash doesn't drive tcsetpgrp here).
+  Verified: `cat` interrupted by ^C → code 130 + fresh prompt; shell survives.
+  *Gotcha:* `getpgid`/`getpgrp` must stay at the constant `1` — real pgids break ash's
+  `getpgrp()==tcgetpgrp()` check and the shell never prompts.
+
+Remaining (lower-value, not interactive-blocking):
+- **`/proc/<pid>` listings** for `ps`/`top` (top runs but reports "no process info in
+  /proc"); `fstatfs`(138) still ENOSYS.
+- **SIGWINCH / ^Z** need real user-handler invocation (sigreturn frames) — SIGWINCH's
+  default action is *ignore* and SIGTSTP's is *stop*, so they can't use the
+  terminate-only delivery path.
+- *Verify done:* `vi` enters raw mode; `^C` interrupts `cat`. *(top/ps pending /proc.)*
 
 ## A5 — Persistent disk-backed storage (optional) · P: Med · E: 4 · R: high · deps: A2
 
@@ -277,10 +288,11 @@ Any emulator hosts a shell on a PTY; make ours robust.
 
 ## Milestones
 
-- **M-A — Linux complete.** ✅ *Largely reached* (A1–A3 done, A4 core done): the full
-  381-applet busybox command set on a real, hardened FHS filesystem; the terminal is a
-  fully interactive shell — multi-command, arguments, and pipelines (`echo … | grep …`)
-  all work. Remaining: raw-mode terminal apps (`vi`/`top`) + PTY signals (`^C`).
+- **M-A — Linux complete.** ✅ *Reached* (A1–A4 done): the full 381-applet busybox
+  command set on a real, hardened FHS filesystem; a fully interactive shell —
+  multi-command, arguments, pipelines (`echo … | grep …`), raw-mode apps (`vi`), and
+  `^C`/`^\` job interrupt all work. Remaining polish: `/proc/<pid>` for `top`/`ps`,
+  SIGWINCH/^Z, and optional disk persistence (A5).
 - **M-B — Native shell.** B0–B4: `-sh` drives objects/caps/namespaces/identity/services,
   domain-scoped from the Domain Manager.
 - **M-C1 — Terminal substrate.** C1 (+A4): a robust PTY hosts any shell or emulator.

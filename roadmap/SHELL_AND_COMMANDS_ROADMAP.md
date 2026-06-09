@@ -253,7 +253,15 @@ Bevy/wgpu-supported GPU, Wayland, fontconfig, a Rust toolchain, and a PTY-hosted
 Heavy — lay groundwork in order; the GPU step is the real gate and overlaps
 [[DESKTOP_RESPONSIVENESS_ROADMAP]] R8.
 
-## C1 — Solid PTY + terminal semantics · P: High · E: 3 · R: med · deps: — (shared with A4)
+## C1 — Solid PTY + terminal semantics · ✅ DONE · deps: — (shared with A4)
+
+**Done.** The pty now has real raw mode + `^C`/`^\` signal generation (landed in A4)
+and wl-term sets the window size explicitly via `TIOCSWINSZ` (this commit). A
+full-screen app (vi) runs on it; any emulator that hosts a shell on the slave and
+drives the master will get correct semantics. Remaining nicety: `SIGWINCH` on live
+resize (wl-term is fixed-size today) — needs real signal-handler delivery.
+
+
 
 Any emulator hosts a shell on a PTY; make ours robust.
 
@@ -262,7 +270,18 @@ Any emulator hosts a shell on a PTY; make ours robust.
 - *Verify:* a headless VT loop (read master / echo) hosts busybox **and** `-sh` correctly;
   `TIOCSWINSZ` propagates `SIGWINCH`.
 
-## C2 — Rust toolchain targeting EpinAnonymOS · P: High · E: 3 · R: high · deps: A3
+> **STATUS (C2-C5 = the remaining ratty lift, not started):** C1 (the terminal
+> substrate) is done. The rest is a large multi-day effort and is **gated on two big
+> prerequisites**: (1) **no Rust toolchain is installed** — rustc/cargo must be added
+> and a static musl target + sysroot configured (mirroring deps/busybox/deps/musl);
+> (2) **ratty is GPU-rendered** (wgpu + Bevy + Ratatui + Parley/Vello) and the OS has
+> only the software Pixman path, so it needs a wgpu-capable GPU backend = the
+> [[DESKTOP_RESPONSIVENESS_ROADMAP]] **R8** work (software Vulkan/lavapipe or
+> virtio-gpu). Until both exist, ratty itself can't run. A useful intermediate
+> milestone before the GPU work is a **Rust hello-world Wayland client** (C2) and a
+> **CPU-only Ratatui demo** (C3) to prove the Rust+Wayland path.
+
+## C2 — Rust toolchain targeting EpinAnonymOS · ⬜ not started (no rustc on host) · deps: A3
 
 - Bring up `rustc` + `cargo` cross-compiling to the musl/Linux-compat target (x86_64,
   static), reusing the musl sysroot the C utils use; a `deps/rust` build mirroring
@@ -307,9 +326,11 @@ Any emulator hosts a shell on a PTY; make ours robust.
   SIGWINCH/^Z, and optional disk persistence (A5).
 - **M-B — Native shell.** B0–B4: `-sh` drives objects/caps/namespaces/identity/services,
   domain-scoped from the Domain Manager.
-- **M-C1 — Terminal substrate.** C1 (+A4): a robust PTY hosts any shell or emulator.
-- **M-C — Rust + GPU.** C2–C4: Rust toolchain and a wgpu/Bevy frame run on the OS.
-- **M-ratty — Desktop terminal.** C5: ratty is a working terminal on EpinAnonymOS.
+- **M-C1 — Terminal substrate.** ✅ C1 (+A4): a robust PTY (raw mode, ^C, winsize)
+  hosts any shell or emulator; vi runs.
+- **M-C — Rust + GPU.** ⬜ C2–C4: Rust toolchain and a wgpu/Bevy frame run on the OS.
+  Blocked on installing Rust + the GPU stack (R8).
+- **M-ratty — Desktop terminal.** ⬜ C5: ratty is a working terminal on EpinAnonymOS.
 
 ## Suggested order
 

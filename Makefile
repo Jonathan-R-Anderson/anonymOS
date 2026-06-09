@@ -64,6 +64,7 @@ WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
 IDLE_BIN := build/idle
 HOS_SH_BIN := build/hos-sh
+STORE_APP_BIN := build/store-app
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
@@ -121,6 +122,10 @@ $(HELLO_GUI_BIN): src/util/hello-gui.c
 
 $(WLPROBE_BIN): src/util/wl-probe.c
 	@echo "==== Building wl-probe (GUI G1 client probe) ===="
+	gcc $(FREESTANDING_CFLAGS) -o $@ $<
+
+$(STORE_APP_BIN): src/util/store-app.c
+	@echo "==== Building store-app (F4.2 persisted-object-store app image) ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
 
 $(DISPLAYINFO_BIN): src/util/display-info.c
@@ -241,7 +246,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -279,6 +284,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(WLPROBE_BIN) cd/wl-probe
 	@echo "Included wl-probe (GUI G1)"
+
+	cp $(STORE_APP_BIN) cd/store-app
+	@echo "Included store-app (F4.2 object-store app image)"
 
 	cp $(DISPLAYINFO_BIN) cd/display-info
 	@echo "Included display-info (GUI G7)"

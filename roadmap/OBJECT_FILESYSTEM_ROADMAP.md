@@ -150,11 +150,18 @@ Back `/objects` with real storage so objects + their data survive reboot.
   reformat**, `boots=2`, `storage/data`→`boots=2`, `manifest.json` intact — the app object
   + its manifest/capabilities/identity + storage all survived reboot (the on-disk boot
   counter climbing across separate QEMU processes proves real persistence).
-- **F4.2 remaining:** actually *launch* the persisted app gated on its declared
-  capabilities/identity (store a real executable blob + exec it); make `storage/` user-
-  writable via the shell (a writable synthetic FD → `objstoreStorageWrite` on close);
-  content-address object bodies via StoreObject (dedup) + free-space reclamation/uninstall;
-  an `ipc/` endpoint dir.
+- **F4.2 DONE — cap-gated launch (2026-06-09):** `/objects/apps/<app>/executable` is a real
+  ELF stored on disk (the `store-app` image, seeded at format). `execve` of that path is
+  intercepted in `execveTask` (kernel_main.d) and **cap-gated**: the app's declared rights
+  must be ⊆ the launching task's identity ceiling. Grant → `objstoreLoadExec` reads the
+  blob into a DMA buffer and it runs like a boot module; exceed the ceiling → EPERM + audit.
+  *Verified:* `hello` (rights 0x3 ⊆ System 0x7ffff) → "store-app: launched … with my
+  declared capabilities"; `rogue` (rights 0x100000 ⊄ 0x7ffff) → "Operation not permitted"
+  (`[objstore] launch DENIED … declared=0x100000 ceiling=0x7ffff`); and the launch still
+  works after reboot (the executable blob persists).
+- **F4.3 remaining:** make `storage/` user-writable via the shell (a writable synthetic FD
+  → `objstoreStorageWrite` on close); content-address object bodies via StoreObject (dedup)
+  + free-space reclamation/uninstall; an `ipc/` endpoint dir.
 
 ## F5 — Capabilities + relationships as first-class FS · P: Med · E: 3 · R: med · deps: F1
 

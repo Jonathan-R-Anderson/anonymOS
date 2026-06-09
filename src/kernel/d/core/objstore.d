@@ -18,6 +18,7 @@
 module core.objstore;
 
 import drivers.block.disk : diskReady, diskReadSectors, diskWriteSectors;
+import memory.dma : dma_alloc;
 import core.io : klog, klog_hex;
 import core.stdc.string : memset, memcpy;
 
@@ -115,10 +116,10 @@ private void setStr(char* dst, ref uint dstLen, const(char)[] s, uint cap) {
     dstLen = n;
 }
 
-// Install an app object (manifest + permissions + identity + initial storage).
+// Install an app object (manifest + permissions + identity + executable + storage).
 public bool objstoreInstallApp(const(char)[] name, const(char)[] identity, uint rights,
                                const(char)[] manifest, const(char)[] perms,
-                               const(char)[] storage0) {
+                               const(void)[] exec, const(char)[] storage0) {
     if (!g_mounted || g_super.appCount >= MAX_APPS) return false;
     int slot = -1;
     foreach (i; 0 .. MAX_APPS) if (!g_apps[i].inUse) { slot = cast(int)i; break; }
@@ -135,12 +136,15 @@ public bool objstoreInstallApp(const(char)[] name, const(char)[] identity, uint 
     e.manifestLba = allocBlob(e.manifestLen);
     e.permsLen = cast(uint)perms.length;
     e.permsLba = allocBlob(e.permsLen);
+    e.execLen = cast(uint)exec.length;
+    e.execLba = e.execLen ? allocBlob(e.execLen) : 0;
     e.storageLen = cast(uint)storage0.length;
     e.storageCap = 8;                          // reserve 8 sectors (4 KiB) for storage
     e.storageLba = allocBlob(e.storageLen, 8);
 
     if (!writeBlob(e.manifestLba, manifest.ptr, e.manifestLen)) return false;
     if (!writeBlob(e.permsLba, perms.ptr, e.permsLen)) return false;
+    if (e.execLen && !writeBlob(e.execLba, exec.ptr, e.execLen)) return false;
     if (!writeBlob(e.storageLba, storage0.ptr, e.storageLen)) return false;
 
     g_apps[slot] = e;
@@ -186,10 +190,49 @@ public ObjAppEntry* objstoreApp(int idx) {
     if (!g_mounted || idx < 0 || idx >= MAX_APPS || !g_apps[idx].inUse) return null;
     return &g_apps[idx];
 }
+public uint objstoreAppRights(int idx) {
+    auto e = objstoreApp(idx); return e is null ? 0 : e.rights;
+}
+
+// F4.2: parse "/objects/apps/<app>/executable" -> the app index (-1 otherwise).
+public int objstoreResolveExecPath(const(char)* path) {
+    if (!g_mounted || path is null) return -1;
+    static immutable string pre = "/objects/apps/";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return -1;
+    const(char)* p = path + pre.length;
+    uint nlen = 0; while (p[nlen] != 0 && p[nlen] != '/') ++nlen;
+    if (p[nlen] != '/') return -1;
+    const(char)* rest = p + nlen + 1;
+    static immutable string ex = "executable";
+    foreach (i; 0 .. ex.length) if (rest[i] != ex[i]) return -1;
+    if (rest[ex.length] != 0) return -1;
+    return objstoreAppByName(p, nlen);
+}
+
+// F4.2: load an app's executable blob into a DMA buffer for execve; returns its
+// physical address + length (so the ELF loader can map it like a boot module).
+__gshared void*  g_execVirt = null;
+__gshared size_t g_execPhys = 0;
+enum uint EXEC_BUF_BYTES = 262144;            // 256 KiB cap for an app image
+public bool objstoreLoadExec(int idx, ulong* physOut, ulong* sizeOut) {
+    auto e = objstoreApp(idx);
+    if (e is null || e.execLen == 0 || e.execLen > EXEC_BUF_BYTES) return false;
+    if (g_execVirt is null) {
+        g_execVirt = dma_alloc(EXEC_BUF_BYTES, 4096, &g_execPhys);
+        if (g_execVirt is null) return false;
+    }
+    const uint sec = sectorsFor(e.execLen);
+    if (!diskReadSectors(e.execLba, sec, g_execVirt)) return false;
+    *physOut = cast(ulong)g_execPhys;
+    *sizeOut = cast(ulong)e.execLen;
+    return true;
+}
 
 // Mount the on-disk store (format on first use), bump + persist the boot counter,
-// and seed a sample app so /objects/apps has something to show on first boot.
-public void objstoreMount() {
+// and seed sample apps so /objects/apps has something to show on first boot.
+// `sampleExec`/`sampleExecLen` = the app image (store-app boot module) the kernel
+// installs into the seeded apps' executable blobs.
+public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0) {
     if (!diskReady()) { klog("[objstore] no disk — /objects/apps stays empty\n"); return; }
 
     if (!diskReadSectors(0, 1, &g_super)) { klog("[objstore] superblock read failed\n"); return; }
@@ -205,7 +248,7 @@ public void objstoreMount() {
         g_super.nextFreeLba = BLOB_LBA_BASE;
         memset(g_apps.ptr, 0, MAX_APPS * ObjAppEntry.sizeof);
         flushMeta();
-        seedSampleApp();
+        seedSampleApp(sampleExec, sampleExecLen);
     } else {
         // load the directory
         diskReadSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
@@ -231,13 +274,28 @@ public void objstoreMount() {
     klog(" boots=0x"); klog_hex(g_super.bootCount); klog("\n");
 }
 
-private void seedSampleApp() {
-    static immutable string manifest =
+private void seedSampleApp(const(void)* exec, uint execLen) {
+    const(void)[] image = exec is null ? null : exec[0 .. execLen];
+
+    // "hello": declares rights 0x3 (ipc|storage) — a subset of any domain ceiling, so
+    // it launches.  Its executable is the store-app image (prints a line + exits).
+    static immutable string helloManifest =
         "{\n  \"name\": \"hello\",\n  \"version\": \"1.0\",\n  \"identity\": \"Personal\",\n"
         ~ "  \"exec\": \"/objects/apps/hello/executable\",\n"
         ~ "  \"capabilities\": [\"ipc\", \"storage\"]\n}\n";
-    static immutable string perms =
+    static immutable string helloPerms =
         "{\n  \"net\": false,\n  \"storage\": true,\n  \"ipc\": true,\n  \"rights\": \"0x3\"\n}\n";
-    static immutable string storage0 = "installed on first boot\n";
-    objstoreInstallApp("hello", "Personal", 0x3, manifest, perms, storage0);
+    objstoreInstallApp("hello", "Personal", 0x3, helloManifest, helloPerms, image,
+                       "installed on first boot\n");
+
+    // "rogue": declares rights 0x100000 — a bit OUTSIDE the System ceiling (0x7ffff),
+    // so launching it is denied by the cap-gate (declared ⊄ caller's identity ceiling).
+    static immutable string rogueManifest =
+        "{\n  \"name\": \"rogue\",\n  \"version\": \"1.0\",\n  \"identity\": \"Untrusted\",\n"
+        ~ "  \"exec\": \"/objects/apps/rogue/executable\",\n"
+        ~ "  \"capabilities\": [\"admin-everything\"]\n}\n";
+    static immutable string roguePerms =
+        "{\n  \"net\": true,\n  \"storage\": true,\n  \"ipc\": true,\n  \"rights\": \"0x100000\"\n}\n";
+    objstoreInstallApp("rogue", "Untrusted", 0x100000, rogueManifest, roguePerms, image,
+                       "over-privileged demo app\n");
 }

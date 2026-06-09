@@ -46,7 +46,8 @@ import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 ty
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
-import core.objstore : objstoreMount; // F4 persisted object store (/objects/apps)
+import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
+                       objstoreLoadExec; // F4/F4.2 persisted object store (/objects/apps) + launch
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
 import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + cap audit
 import core.distos : distosSelfTest, distosStats; // IR-P9 distributed refs + macaroons + dist store
@@ -60,7 +61,8 @@ import core.servicemgr : serviceManagerInit, serviceSelfTest, serviceStats,
                         servicePhase5SelfTest; // Phase 10 / IR-P5 service management
 import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 11
 import core.identity : identityInitDefaults, identityInitLaunchRules, identityByName,
-                       identitySelfTest, idprocSelfTest, identityStats, identityNamePrint; // IDENTITY_DOMAIN P2/P3
+                       identitySelfTest, idprocSelfTest, identityStats, identityNamePrint,
+                       identityById; // IDENTITY_DOMAIN P2/P3 (+ F4.2 launch cap-gate)
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -742,6 +744,38 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
                 modSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
                 execName = modBase;
                 break;
+            }
+        }
+    }
+
+    // F4.2: a persisted app object — /objects/apps/<app>/executable — launched from
+    // the on-disk store, CAP-GATED on the app's declared rights ⊆ the launching
+    // task's identity ceiling.  Grant → load the executable blob like a boot module;
+    // exceed the ceiling → deny (EPERM) + audit.  (The original path is used here,
+    // before posixCanonExecPath, since /objects/apps/... is not an RT symlink.)
+    if (modPhys == 0) {
+        const(char)* origPath = cast(const(char)*)pathPtr;
+        int appIdx = objstoreResolveExecPath(origPath);
+        if (appIdx >= 0) {
+            uint declared = objstoreAppRights(appIdx);
+            uint ceiling = 0;
+            if (tid >= 0 && tid < MAX_TASKS) {
+                auto idr = identityById(g_tasks[tid].identityObjId);
+                if (idr !is null) ceiling = idr.rightsCeiling;
+            }
+            if ((declared & ~ceiling) != 0) {
+                klog("[objstore] launch DENIED: "); klog(origPath);
+                klog(" declared=0x"); klog_hex(declared);
+                klog(" ceiling=0x"); klog_hex(ceiling); klog("\n");
+                return -1; // EPERM — declared capabilities exceed the identity ceiling
+            }
+            ulong ep, es;
+            if (objstoreLoadExec(appIdx, &ep, &es) && es > 0) {
+                modPhys  = ep;
+                modSize  = es;
+                execName = "store-app".ptr;
+                klog("[objstore] launch GRANTED: "); klog(origPath);
+                klog(" rights=0x"); klog_hex(declared); klog("\n");
             }
         }
     }
@@ -2389,7 +2423,24 @@ void d_kernel_main() {
     diskSelfTest();
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
-    objstoreMount();
+    // F4.2: locate the store-app image boot module so seeded apps get a real,
+    // launchable executable blob (phys -> HHDM virt for the CPU read).
+    const(void)* appImg = null; uint appImgLen = 0;
+    if (g_mboot_modules !is null && g_module_count > 0) {
+        auto recs = cast(ubyte*)g_mboot_modules;
+        for (int i = 0; i < g_module_count; i++) {
+            auto rec = cast(multiboot_module_t*)(recs + i * 128);
+            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 8);
+            const(char)* modBase = modName;
+            for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
+            if (cstrEqK(modBase, "store-app")) {
+                appImgLen = cast(uint)(cast(ulong)rec.mod_end - cast(ulong)rec.mod_start);
+                appImg = cast(const(void)*)(cast(ulong)rec.mod_start + hhdm_offset);
+                break;
+            }
+        }
+    }
+    objstoreMount(appImg, appImgLen);
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

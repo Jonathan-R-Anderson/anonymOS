@@ -3196,6 +3196,33 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     return idx;
 }
 
+// OBJECT_FILESYSTEM_ROADMAP F0: resolve an intermediate directory symlink to the dir
+// it points at, so paths traverse dir symlinks (e.g. /compat/linux/bin -> /bin). The
+// link target may be absolute or relative to the link's parent; bounded recursion.
+__gshared int g_rtLinkDepth = 0;
+private int rtLinkTargetDir(int linkIdx) {
+    int result = -1;
+    if (g_rtLinkDepth <= 16 && linkIdx >= 0 && linkIdx < RT_MAX_NODES
+        && g_rt[linkIdx].kind == RT_LNK && g_rt[linkIdx].size > 0) {
+        ++g_rtLinkDepth;
+        char[512] tb = void;
+        size_t pos = 0;
+        if (g_rt[linkIdx].data[0] == '/') {                 // absolute target
+            foreach (i; 0 .. g_rt[linkIdx].size) if (pos + 1 < tb.length) tb[pos++] = cast(char)g_rt[linkIdx].data[i];
+        } else {                                            // relative to the link's parent
+            pos = rtBuildPath(g_rt[linkIdx].parent, tb.ptr, tb.length);
+            if (pos + 1 < tb.length) tb[pos++] = '/';
+            foreach (i; 0 .. g_rt[linkIdx].size) if (pos + 1 < tb.length) tb[pos++] = cast(char)g_rt[linkIdx].data[i];
+        }
+        tb[pos < tb.length ? pos : tb.length - 1] = 0;
+        int p2; const(char)* l2; size_t ll2;
+        const int target = rtResolve(tb.ptr, p2, l2, ll2);
+        if (target >= 0 && g_rt[target].kind == RT_DIR) result = target;
+        --g_rtLinkDepth;
+    }
+    return result;
+}
+
 // Resolve `path` within the overlay.  `outParent` receives the parent-dir index
 // of the final component when that parent exists in the overlay (-1 if an
 // intermediate component is missing or is not a directory); `leaf`/`leafLen`
@@ -3240,7 +3267,9 @@ private int rtResolve(const(char)* path, out int outParent,
             return rtFindChild(cur, comp, clen);   // -1 if absent
         }
 
-        const int child = rtFindChild(cur, comp, clen);
+        int child = rtFindChild(cur, comp, clen);
+        // F0: follow an intermediate directory symlink (e.g. /compat/linux/bin -> /bin).
+        if (child >= 0 && g_rt[child].kind == RT_LNK) child = rtLinkTargetDir(child);
         if (child < 0 || g_rt[child].kind != RT_DIR) { outParent = -1; return -1; }
         cur = child;
     }
@@ -3456,6 +3485,28 @@ private void rtInit() {
     rtMkdirPath("/root\0".ptr,          M0700, 0, 0);
     rtMkdirPath("/var/log\0".ptr,       M0755, 0, 0);
     rtSeedBinSymlinks();                 // /bin/<applet> -> /busybox for all applets
+
+    // OBJECT_FILESYSTEM_ROADMAP F0: the native object-OS root, additive over the Linux
+    // FHS (which stays put and keeps working). `ls /` now shows the object tree; the
+    // Linux tree is also reachable under /compat/linux via dir symlinks, and the
+    // writable runtime under /state.
+    rtMkdirPath("/objects\0".ptr,       M0755, 0, 0);   // native object model (F1: live views)
+    rtMkdirPath("/system\0".ptr,        M0755, 0, 0);   // immutable base (F3)
+    rtMkdirPath("/state\0".ptr,         M0755, 0, 0);   // mutable runtime/state
+    rtMkdirPath("/config\0".ptr,        M0755, 0, 0);   // declarative config (F2)
+    rtMkdirPath("/volumes\0".ptr,       M0755, 0, 0);   // mounted disks / containers
+    rtMkdirPath("/compat\0".ptr,        M0755, 0, 0);   // compatibility overlays
+    rtMkdirPath("/compat/linux\0".ptr,  M0755, 0, 0);
+    // Linux tree reachable under /compat/linux (canonical /bin etc. stay in place).
+    rtSymlinkCreate("/bin\0".ptr,   "/compat/linux/bin\0".ptr);
+    rtSymlinkCreate("/sbin\0".ptr,  "/compat/linux/sbin\0".ptr);
+    rtSymlinkCreate("/usr\0".ptr,   "/compat/linux/usr\0".ptr);
+    rtSymlinkCreate("/lib\0".ptr,   "/compat/linux/lib\0".ptr);
+    rtSymlinkCreate("/lib64\0".ptr, "/compat/linux/lib64\0".ptr);
+    // /state/<x> views onto the writable runtime areas.
+    rtSymlinkCreate("/var/log\0".ptr,   "/state/logs\0".ptr);
+    rtSymlinkCreate("/var/cache\0".ptr, "/state/cache\0".ptr);
+    rtSymlinkCreate("/run\0".ptr,       "/state/sessions\0".ptr);
 
     // Unpack the bundled xkeyboard-config tree (rules/keycodes/symbols/...) into
     // the overlay so libxkbcommon can compile a real keymap.  Without this,

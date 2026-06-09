@@ -1,1 +1,1 @@
-#undef CONFIG_FATATTR
+#define CONFIG_FATATTR 1

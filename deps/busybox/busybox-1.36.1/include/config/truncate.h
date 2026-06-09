@@ -1,1 +1,1 @@
-#undef CONFIG_TRUNCATE
+#define CONFIG_TRUNCATE 1

@@ -1,1 +1,1 @@
-#undef CONFIG_DESKTOP
+#define CONFIG_DESKTOP 1

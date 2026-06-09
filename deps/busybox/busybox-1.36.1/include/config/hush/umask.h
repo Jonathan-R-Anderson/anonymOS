@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_UMASK
+#define CONFIG_HUSH_UMASK 1

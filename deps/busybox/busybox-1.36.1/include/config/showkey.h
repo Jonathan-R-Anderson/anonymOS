@@ -1,1 +1,1 @@
-#undef CONFIG_SHOWKEY
+#define CONFIG_SHOWKEY 1

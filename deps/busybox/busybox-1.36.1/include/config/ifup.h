@@ -1,1 +1,1 @@
-#undef CONFIG_IFUP
+#define CONFIG_IFUP 1

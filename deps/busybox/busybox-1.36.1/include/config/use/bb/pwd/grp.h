@@ -1,1 +1,1 @@
-#undef CONFIG_USE_BB_PWD_GRP
+#define CONFIG_USE_BB_PWD_GRP 1

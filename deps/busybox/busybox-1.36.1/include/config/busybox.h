@@ -1,1 +1,1 @@
-#undef CONFIG_BUSYBOX
+#define CONFIG_BUSYBOX 1

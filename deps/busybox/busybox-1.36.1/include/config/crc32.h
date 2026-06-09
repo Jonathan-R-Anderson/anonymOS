@@ -1,1 +1,1 @@
-#undef CONFIG_CRC32
+#define CONFIG_CRC32 1

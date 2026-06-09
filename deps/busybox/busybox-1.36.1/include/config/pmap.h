@@ -1,1 +1,1 @@
-#undef CONFIG_PMAP
+#define CONFIG_PMAP 1

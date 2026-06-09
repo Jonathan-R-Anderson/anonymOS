@@ -1,1 +1,1 @@
-#undef CONFIG_RTCWAKE
+#define CONFIG_RTCWAKE 1

@@ -1,1 +1,1 @@
-#undef CONFIG_SMEMCAP
+#define CONFIG_SMEMCAP 1

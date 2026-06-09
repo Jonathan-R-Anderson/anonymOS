@@ -1,1 +1,1 @@
-#undef CONFIG_FACTOR
+#define CONFIG_FACTOR 1

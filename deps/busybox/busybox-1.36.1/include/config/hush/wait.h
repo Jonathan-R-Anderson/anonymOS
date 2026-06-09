@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_WAIT
+#define CONFIG_HUSH_WAIT 1

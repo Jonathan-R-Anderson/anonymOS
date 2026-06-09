@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_READ
+#define CONFIG_HUSH_READ 1

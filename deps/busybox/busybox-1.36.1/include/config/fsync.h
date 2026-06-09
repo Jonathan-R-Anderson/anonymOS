@@ -1,1 +1,1 @@
-#undef CONFIG_FSYNC
+#define CONFIG_FSYNC 1

@@ -1,1 +1,1 @@
-#undef CONFIG_MKPASSWD
+#define CONFIG_MKPASSWD 1

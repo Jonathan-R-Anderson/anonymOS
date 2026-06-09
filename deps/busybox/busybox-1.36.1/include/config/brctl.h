@@ -1,1 +1,1 @@
-#undef CONFIG_BRCTL
+#define CONFIG_BRCTL 1

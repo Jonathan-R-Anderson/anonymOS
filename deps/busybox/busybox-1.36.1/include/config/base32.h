@@ -1,1 +1,1 @@
-#undef CONFIG_BASE32
+#define CONFIG_BASE32 1

@@ -1,1 +1,1 @@
-#undef CONFIG_LSSCSI
+#define CONFIG_LSSCSI 1

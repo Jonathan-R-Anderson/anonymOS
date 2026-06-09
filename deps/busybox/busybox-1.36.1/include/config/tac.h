@@ -1,1 +1,1 @@
-#undef CONFIG_TAC
+#define CONFIG_TAC 1

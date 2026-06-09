@@ -1,1 +1,1 @@
-#undef CONFIG_REV
+#define CONFIG_REV 1

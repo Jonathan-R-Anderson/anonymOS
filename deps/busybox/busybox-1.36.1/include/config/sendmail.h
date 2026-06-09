@@ -1,1 +1,1 @@
-#undef CONFIG_SENDMAIL
+#define CONFIG_SENDMAIL 1

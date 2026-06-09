@@ -1,1 +1,1 @@
-#undef CONFIG_IPNEIGH
+#define CONFIG_IPNEIGH 1

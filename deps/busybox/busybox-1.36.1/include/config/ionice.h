@@ -1,1 +1,1 @@
-#undef CONFIG_IONICE
+#define CONFIG_IONICE 1

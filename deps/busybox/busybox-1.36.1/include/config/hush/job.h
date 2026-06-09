@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_JOB
+#define CONFIG_HUSH_JOB 1

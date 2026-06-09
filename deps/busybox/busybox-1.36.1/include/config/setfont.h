@@ -1,1 +1,1 @@
-#undef CONFIG_SETFONT
+#define CONFIG_SETFONT 1

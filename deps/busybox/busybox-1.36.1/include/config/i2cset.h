@@ -1,1 +1,1 @@
-#undef CONFIG_I2CSET
+#define CONFIG_I2CSET 1

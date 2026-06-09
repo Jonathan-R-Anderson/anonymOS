@@ -1,1 +1,1 @@
-#undef CONFIG_UNSHARE
+#define CONFIG_UNSHARE 1

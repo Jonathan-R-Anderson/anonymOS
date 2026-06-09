@@ -1,1 +1,1 @@
-#undef CONFIG_SHRED
+#define CONFIG_SHRED 1

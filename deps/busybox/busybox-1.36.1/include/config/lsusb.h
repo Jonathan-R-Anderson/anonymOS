@@ -1,1 +1,1 @@
-#undef CONFIG_LSUSB
+#define CONFIG_LSUSB 1

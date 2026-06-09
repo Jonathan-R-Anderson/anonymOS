@@ -1,1 +1,1 @@
-#undef CONFIG_I2CDUMP
+#define CONFIG_I2CDUMP 1

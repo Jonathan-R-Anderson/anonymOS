@@ -1,1 +1,1 @@
-#undef CONFIG_CTTYHACK
+#define CONFIG_CTTYHACK 1

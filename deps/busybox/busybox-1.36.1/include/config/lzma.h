@@ -1,1 +1,1 @@
-#undef CONFIG_LZMA
+#define CONFIG_LZMA 1

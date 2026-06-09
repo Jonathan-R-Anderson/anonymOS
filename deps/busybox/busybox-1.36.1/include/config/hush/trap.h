@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_TRAP
+#define CONFIG_HUSH_TRAP 1

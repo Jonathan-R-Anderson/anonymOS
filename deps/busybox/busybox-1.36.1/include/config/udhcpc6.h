@@ -1,1 +1,1 @@
-#undef CONFIG_UDHCPC6
+#define CONFIG_UDHCPC6 1

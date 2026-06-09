@@ -1,1 +1,1 @@
-#undef CONFIG_TREE
+#define CONFIG_TREE 1

@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_ECHO
+#define CONFIG_HUSH_ECHO 1

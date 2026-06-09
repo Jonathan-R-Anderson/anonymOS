@@ -1,1 +1,1 @@
-#undef CONFIG_REBOOT
+#define CONFIG_REBOOT 1

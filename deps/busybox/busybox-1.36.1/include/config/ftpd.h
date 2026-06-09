@@ -1,1 +1,1 @@
-#undef CONFIG_FTPD
+#define CONFIG_FTPD 1

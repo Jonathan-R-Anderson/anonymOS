@@ -1,1 +1,1 @@
-#undef CONFIG_SVOK
+#define CONFIG_SVOK 1

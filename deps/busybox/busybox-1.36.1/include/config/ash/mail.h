@@ -1,1 +1,1 @@
-#undef CONFIG_ASH_MAIL
+#define CONFIG_ASH_MAIL 1

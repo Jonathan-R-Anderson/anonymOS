@@ -1,1 +1,1 @@
-#undef CONFIG_SWAPOFF
+#define CONFIG_SWAPOFF 1

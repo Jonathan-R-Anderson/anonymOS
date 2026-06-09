@@ -1,1 +1,1 @@
-#undef CONFIG_MKE2FS
+#define CONFIG_MKE2FS 1

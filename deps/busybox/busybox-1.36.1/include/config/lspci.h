@@ -1,1 +1,1 @@
-#undef CONFIG_LSPCI
+#define CONFIG_LSPCI 1

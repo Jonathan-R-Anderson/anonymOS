@@ -1,1 +1,1 @@
-#undef CONFIG_PKILL
+#define CONFIG_PKILL 1

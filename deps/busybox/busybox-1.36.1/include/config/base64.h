@@ -1,1 +1,1 @@
-#undef CONFIG_BASE64
+#define CONFIG_BASE64 1

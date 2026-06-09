@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_TIMES
+#define CONFIG_HUSH_TIMES 1

@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_IF
+#define CONFIG_HUSH_IF 1

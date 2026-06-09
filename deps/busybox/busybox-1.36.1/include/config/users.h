@@ -1,1 +1,1 @@
-#undef CONFIG_USERS
+#define CONFIG_USERS 1

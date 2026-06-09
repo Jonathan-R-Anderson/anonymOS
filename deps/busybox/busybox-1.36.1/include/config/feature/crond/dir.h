@@ -1,1 +1,1 @@
-#define CONFIG_FEATURE_CROND_DIR ""
+#define CONFIG_FEATURE_CROND_DIR "/var/spool/cron"

@@ -1,1 +1,1 @@
-#undef CONFIG_LPR
+#define CONFIG_LPR 1

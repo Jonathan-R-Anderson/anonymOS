@@ -1,1 +1,1 @@
-#undef CONFIG_TIMEOUT
+#define CONFIG_TIMEOUT 1

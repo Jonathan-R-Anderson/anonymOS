@@ -1,1 +1,1 @@
-#define CONFIG_BZIP2_SMALL 0
+#define CONFIG_BZIP2_SMALL 8

@@ -1,1 +1,1 @@
-#undef CONFIG_LINUX64
+#define CONFIG_LINUX64 1

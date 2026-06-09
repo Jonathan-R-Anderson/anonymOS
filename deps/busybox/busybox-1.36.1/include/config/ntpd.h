@@ -1,1 +1,1 @@
-#undef CONFIG_NTPD
+#define CONFIG_NTPD 1

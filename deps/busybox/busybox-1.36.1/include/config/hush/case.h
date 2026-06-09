@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_CASE
+#define CONFIG_HUSH_CASE 1

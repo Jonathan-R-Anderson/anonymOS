@@ -1,1 +1,1 @@
-#undef CONFIG_BEEP
+#define CONFIG_BEEP 1

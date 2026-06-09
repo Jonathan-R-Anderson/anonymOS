@@ -1,1 +1,1 @@
-#undef CONFIG_DPKG
+#define CONFIG_DPKG 1

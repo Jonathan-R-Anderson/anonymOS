@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_KILL
+#define CONFIG_HUSH_KILL 1

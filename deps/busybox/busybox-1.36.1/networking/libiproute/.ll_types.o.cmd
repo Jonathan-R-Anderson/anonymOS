@@ -1,0 +1,226 @@
+cmd_networking/libiproute/ll_types.o := /home/bruns/Documents/EpinAnonymOS/deps/musl/install/bin/musl-clang -Wp,-MD,networking/libiproute/.ll_types.o.d  -std=gnu99 -Iinclude -Ilibbb  -include include/autoconf.h -D_GNU_SOURCE -DNDEBUG -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -DBB_VER='"1.36.1"' -Wall -Wshadow -Wwrite-strings -Wundef -Wstrict-prototypes -Wunused -Wunused-parameter -Wunused-function -Wunused-value -Wmissing-prototypes -Wmissing-declarations -Wno-format-security -Wdeclaration-after-statement -Wold-style-definition -finline-limit=0 -fno-builtin-strlen -fomit-frame-pointer -ffunction-sections -fdata-sections -funsigned-char -static-libgcc -falign-functions=1 -falign-jumps=1 -falign-labels=1 -falign-loops=1 -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-builtin-printf -Oz -O2 -pipe    -DKBUILD_BASENAME='"ll_types"'  -DKBUILD_MODNAME='"ll_types"' -c -o networking/libiproute/ll_types.o networking/libiproute/ll_types.c
+
+deps_networking/libiproute/ll_types.o := \
+  networking/libiproute/ll_types.c \
+    $(wildcard include/config/feature/ip/rare/protocols.h) \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/socket.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/features.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/alltypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/socket.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/arpa/inet.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netinet/in.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/inttypes.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stdint.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/if_arp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/netdevice.h \
+    $(wildcard include/config/port/unknown.h) \
+    $(wildcard include/config/port/10base2.h) \
+    $(wildcard include/config/port/10baset.h) \
+    $(wildcard include/config/port/aui.h) \
+    $(wildcard include/config/port/100baset.h) \
+    $(wildcard include/config/port/100basetx.h) \
+    $(wildcard include/config/port/100basefx.h) \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/if.h \
+    $(wildcard include/config/get/iface.h) \
+    $(wildcard include/config/get/proto.h) \
+    $(wildcard include/config/iface/v35.h) \
+    $(wildcard include/config/iface/v24.h) \
+    $(wildcard include/config/iface/x21.h) \
+    $(wildcard include/config/iface/t1.h) \
+    $(wildcard include/config/iface/e1.h) \
+    $(wildcard include/config/iface/sync/serial.h) \
+    $(wildcard include/config/iface/x21d.h) \
+    $(wildcard include/config/proto/hdlc.h) \
+    $(wildcard include/config/proto/ppp.h) \
+    $(wildcard include/config/proto/cisco.h) \
+    $(wildcard include/config/proto/fr.h) \
+    $(wildcard include/config/proto/fr/add/pvc.h) \
+    $(wildcard include/config/proto/fr/del/pvc.h) \
+    $(wildcard include/config/proto/x25.h) \
+    $(wildcard include/config/proto/hdlc/eth.h) \
+    $(wildcard include/config/proto/fr/add/eth/pvc.h) \
+    $(wildcard include/config/proto/fr/del/eth/pvc.h) \
+    $(wildcard include/config/proto/fr/pvc.h) \
+    $(wildcard include/config/proto/fr/eth/pvc.h) \
+    $(wildcard include/config/proto/raw.h) \
+    $(wildcard include/config/oper/unknown.h) \
+    $(wildcard include/config/oper/notpresent.h) \
+    $(wildcard include/config/oper/down.h) \
+    $(wildcard include/config/oper/lowerlayerdown.h) \
+    $(wildcard include/config/oper/testing.h) \
+    $(wildcard include/config/oper/dormant.h) \
+    $(wildcard include/config/oper/up.h) \
+    $(wildcard include/config/link/mode/default.h) \
+    $(wildcard include/config/link/mode/dormant.h) \
+    $(wildcard include/config/link/mode/testing.h) \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/libc-compat.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm-generic/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm-generic/int-ll64.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/bitsperlong.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm-generic/bitsperlong.h \
+    $(wildcard include/config/64bit.h) \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/posix_types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/posix_types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/posix_types_64.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm-generic/posix_types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/socket.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/hdlc/ioctl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/if_ether.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/if_packet.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/byteorder.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/byteorder/little_endian.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/swab.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/asm/swab.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/if_link.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/netlink.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/linux/const.h \
+  include/libbb.h \
+    $(wildcard include/config/feature/shadowpasswds.h) \
+    $(wildcard include/config/use/bb/shadow.h) \
+    $(wildcard include/config/selinux.h) \
+    $(wildcard include/config/feature/utmp.h) \
+    $(wildcard include/config/locale/support.h) \
+    $(wildcard include/config/use/bb/pwd/grp.h) \
+    $(wildcard include/config/lfs.h) \
+    $(wildcard include/config/feature/buffers/go/on/stack.h) \
+    $(wildcard include/config/feature/buffers/go/in/bss.h) \
+    $(wildcard include/config/extra/cflags.h) \
+    $(wildcard include/config/variable/arch/pagesize.h) \
+    $(wildcard include/config/feature/verbose.h) \
+    $(wildcard include/config/feature/etc/services.h) \
+    $(wildcard include/config/feature/ipv6.h) \
+    $(wildcard include/config/feature/seamless/xz.h) \
+    $(wildcard include/config/feature/seamless/lzma.h) \
+    $(wildcard include/config/feature/seamless/bz2.h) \
+    $(wildcard include/config/feature/seamless/gz.h) \
+    $(wildcard include/config/feature/seamless/z.h) \
+    $(wildcard include/config/float/duration.h) \
+    $(wildcard include/config/feature/check/names.h) \
+    $(wildcard include/config/feature/prefer/applets.h) \
+    $(wildcard include/config/long/opts.h) \
+    $(wildcard include/config/feature/pidfile.h) \
+    $(wildcard include/config/feature/syslog.h) \
+    $(wildcard include/config/feature/syslog/info.h) \
+    $(wildcard include/config/warn/simple/msg.h) \
+    $(wildcard include/config/feature/individual.h) \
+    $(wildcard include/config/shell/ash.h) \
+    $(wildcard include/config/shell/hush.h) \
+    $(wildcard include/config/echo.h) \
+    $(wildcard include/config/sleep.h) \
+    $(wildcard include/config/printf.h) \
+    $(wildcard include/config/test.h) \
+    $(wildcard include/config/test1.h) \
+    $(wildcard include/config/test2.h) \
+    $(wildcard include/config/kill.h) \
+    $(wildcard include/config/killall.h) \
+    $(wildcard include/config/killall5.h) \
+    $(wildcard include/config/chown.h) \
+    $(wildcard include/config/ls.h) \
+    $(wildcard include/config/xxx.h) \
+    $(wildcard include/config/route.h) \
+    $(wildcard include/config/feature/hwib.h) \
+    $(wildcard include/config/desktop.h) \
+    $(wildcard include/config/feature/crond/d.h) \
+    $(wildcard include/config/feature/setpriv/capabilities.h) \
+    $(wildcard include/config/run/init.h) \
+    $(wildcard include/config/feature/securetty.h) \
+    $(wildcard include/config/pam.h) \
+    $(wildcard include/config/use/bb/crypt.h) \
+    $(wildcard include/config/feature/adduser/to/group.h) \
+    $(wildcard include/config/feature/del/user/from/group.h) \
+    $(wildcard include/config/ioctl/hex2str/error.h) \
+    $(wildcard include/config/feature/editing.h) \
+    $(wildcard include/config/feature/editing/history.h) \
+    $(wildcard include/config/feature/tab/completion.h) \
+    $(wildcard include/config/feature/username/completion.h) \
+    $(wildcard include/config/feature/editing/fancy/prompt.h) \
+    $(wildcard include/config/feature/editing/savehistory.h) \
+    $(wildcard include/config/feature/editing/vi.h) \
+    $(wildcard include/config/feature/editing/save/on/exit.h) \
+    $(wildcard include/config/pmap.h) \
+    $(wildcard include/config/feature/show/threads.h) \
+    $(wildcard include/config/feature/ps/additional/columns.h) \
+    $(wildcard include/config/feature/topmem.h) \
+    $(wildcard include/config/feature/top/smp/process.h) \
+    $(wildcard include/config/pgrep.h) \
+    $(wildcard include/config/pkill.h) \
+    $(wildcard include/config/pidof.h) \
+    $(wildcard include/config/sestatus.h) \
+    $(wildcard include/config/unicode/support.h) \
+    $(wildcard include/config/feature/mtab/support.h) \
+    $(wildcard include/config/feature/clean/up.h) \
+    $(wildcard include/config/feature/devfs.h) \
+  include/platform.h \
+    $(wildcard include/config/werror.h) \
+    $(wildcard include/config/big/endian.h) \
+    $(wildcard include/config/little/endian.h) \
+    $(wildcard include/config/nommu.h) \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/limits.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/limits.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/byteswap.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/endian.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdbool.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/unistd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/posix.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/ctype.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/dirent.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/dirent.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/errno.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/fcntl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/fcntl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/netdb.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/setjmp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/setjmp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/signal.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/signal.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/paths.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdio.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdlib.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/alloca.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stdarg.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/stddef.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/string.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/strings.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/libgen.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/poll.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/ioctl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/ioctl.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/ioctl_fix.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/mman.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/mman.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/resource.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/select.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/resource.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/stat.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/stat.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/types.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/sysmacros.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/wait.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/termios.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/termios.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/time.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/param.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/pwd.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/grp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/mntent.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/statfs.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/sys/statvfs.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/bits/statfs.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/utmp.h \
+  /home/bruns/Documents/EpinAnonymOS/deps/musl/install/include/utmpx.h \
+  include/pwd_.h \
+  include/grp_.h \
+  include/shadow_.h \
+  include/xatonum.h \
+  networking/libiproute/rt_names.h \
+
+networking/libiproute/ll_types.o: $(deps_networking/libiproute/ll_types.o)
+
+$(deps_networking/libiproute/ll_types.o):

@@ -1,1 +1,1 @@
-#undef CONFIG_XXD
+#define CONFIG_XXD 1

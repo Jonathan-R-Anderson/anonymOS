@@ -1,1 +1,1 @@
-#undef CONFIG_ASCII
+#define CONFIG_ASCII 1

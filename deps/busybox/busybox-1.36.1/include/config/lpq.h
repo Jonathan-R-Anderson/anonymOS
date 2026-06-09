@@ -1,1 +1,1 @@
-#undef CONFIG_LPQ
+#define CONFIG_LPQ 1

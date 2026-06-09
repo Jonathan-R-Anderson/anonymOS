@@ -1,1 +1,1 @@
-#undef CONFIG_TUNCTL
+#define CONFIG_TUNCTL 1

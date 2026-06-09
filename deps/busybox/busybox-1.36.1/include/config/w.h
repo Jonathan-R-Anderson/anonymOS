@@ -1,1 +1,1 @@
-#undef CONFIG_W
+#define CONFIG_W 1

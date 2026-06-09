@@ -1,1 +1,1 @@
-#undef CONFIG_PSTREE
+#define CONFIG_PSTREE 1

@@ -1,1 +1,1 @@
-#undef CONFIG_SETFATTR
+#define CONFIG_SETFATTR 1

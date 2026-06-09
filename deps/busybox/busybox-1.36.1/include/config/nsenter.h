@@ -1,1 +1,1 @@
-#undef CONFIG_NSENTER
+#define CONFIG_NSENTER 1

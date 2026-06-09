@@ -1,1 +1,1 @@
-#undef CONFIG_IFPLUGD
+#define CONFIG_IFPLUGD 1

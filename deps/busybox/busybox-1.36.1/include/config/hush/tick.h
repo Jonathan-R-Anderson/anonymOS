@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_TICK
+#define CONFIG_HUSH_TICK 1

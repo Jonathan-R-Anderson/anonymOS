@@ -1,1 +1,1 @@
-#undef CONFIG_LPD
+#define CONFIG_LPD 1

@@ -1,1 +1,1 @@
-#undef CONFIG_SHELL_HUSH
+#define CONFIG_SHELL_HUSH 1

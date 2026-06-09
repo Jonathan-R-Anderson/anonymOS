@@ -1,1 +1,1 @@
-#undef CONFIG_HUSH_LOCAL
+#define CONFIG_HUSH_LOCAL 1

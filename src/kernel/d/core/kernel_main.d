@@ -1370,6 +1370,7 @@ private void dispatchSyscall(int tid) {
             presentProfStats(); // PERF: frame rate + kernel-present share of each frame
             schedProfStats();   // PERF: per-task CPU share (find a hog starving the compositor)
             fdReadableStats();  // PERF: which fd type keeps reporting ready (busy-spin source)
+            inputStats();       // R1: input events enqueued / dropped / read
             linuxStats();
             linuxPersStats();
             kernelCensusStats();
@@ -2069,6 +2070,7 @@ private void kernelLoop() {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
                 wakePollers();   // re-check parked poll/epoll sleepers (≤1 ms latency)
+                if ((pitMs() % 3000) == 0) { inputStats(); presentProfStats(); schedProfStats(); } // PERF (temp)
                 picEOI(false);
                 scheduleNext();
             } else if (irqIdx == 1) {

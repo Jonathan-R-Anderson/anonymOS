@@ -29,8 +29,10 @@ void increment_ticks()
 }
 
 // Read the current monotonic tick count without advancing it.  Used by timerfd
-// to compute expiries.
+// to compute expiries.  R2: return the clean PIT-only ms (same real clock as
+// clock_gettime), NOT g_tickCount which getTickCount() inflates on every read —
+// so timerfd timers and clock_gettime agree (Weston's frame pacing depends on it).
 ulong get_ticks()
 {
-    return g_tickCount;
+    return g_pitMs;
 }

@@ -246,6 +246,19 @@ struct InputRing {
 __gshared InputRing g_kbd_ring;    // /dev/input/event0
 __gshared InputRing g_mouse_ring;  // /dev/input/event1
 
+// R1 input-drop profiling: events enqueued / dropped (ring full) / read by clients.
+__gshared ulong g_inKbdEnq, g_inKbdDrop, g_inKbdRead;
+__gshared ulong g_inMouseEnq, g_inMouseDrop, g_inMouseRead;
+public void inputStats() @nogc nothrow {
+    klog("[input] kbd enq="); klog_dec(g_inKbdEnq);
+    klog(" drop="); klog_dec(g_inKbdDrop);
+    klog(" read="); klog_dec(g_inKbdRead);
+    klog(" | mouse enq="); klog_dec(g_inMouseEnq);
+    klog(" drop="); klog_dec(g_inMouseDrop);
+    klog(" read="); klog_dec(g_inMouseRead);
+    klog("\n");
+}
+
 // Event types (from linux/input-event-codes.h)
 enum ushort EV_SYN = 0;
 enum ushort EV_KEY = 1;
@@ -263,13 +276,17 @@ enum ushort BTN_MIDDLE = 0x112;
 public void input_enqueue(bool isKeyboard, ushort type, ushort code, int value) @nogc nothrow {
     auto ring = isKeyboard ? &g_kbd_ring : &g_mouse_ring;
     uint next = (ring.head + 1) % INPUT_RING_SIZE;
-    if (next == ring.tail) return; // full — drop event
+    if (next == ring.tail) {                      // full — drop event
+        if (isKeyboard) ++g_inKbdDrop; else ++g_inMouseDrop;
+        return;
+    }
     ring.events[ring.head].tv_sec  = 0;
     ring.events[ring.head].tv_usec = 0;
     ring.events[ring.head].type    = type;
     ring.events[ring.head].code    = code;
     ring.events[ring.head].value   = value;
     ring.head = next;
+    if (isKeyboard) ++g_inKbdEnq; else ++g_inMouseEnq;
 }
 
 // ── PS/2 scan-code-set-1 → Linux keycode ─────────────────────────────────────
@@ -1712,6 +1729,7 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
             dst[n++] = ring.events[ring.tail];
             ring.tail = (ring.tail + 1) % INPUT_RING_SIZE;
         }
+        if (devIdx == 1) g_inMouseRead += n; else g_inKbdRead += n;
         return cast(ssize_t)(n * evtSz);
     }
 
@@ -1723,7 +1741,10 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         enum size_t evSz = 32;
         if (_count < evSz)
             return drmEventPending(myfd) ? negErrno(EINVAL) : negErrno(EAGAIN);
-        ulong ticks = getTickCount();
+        // R2: real monotonic ms (PIT-only), NOT getTickCount (which increments per
+        // call → a fake clock).  Weston paces its next repaint off this flip
+        // timestamp vs clock_gettime, so both MUST be the same real clock.
+        ulong ticks = pitMs();
         uint tvSec  = cast(uint)(ticks / 1000);
         uint tvUsec = cast(uint)((ticks % 1000) * 1000);
         auto dst = cast(ubyte*)_buf;
@@ -1739,6 +1760,7 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
             *cast(uint*)(dst + n + 28) = ev.crtcId;
             g_drmEvTail = (g_drmEvTail + 1) % DRM_EVENT_QUEUE_MAX;
             n += evSz;
+            ++g_flipRead;
         }
         if (n == 0) return negErrno(EAGAIN);
         return cast(ssize_t)n;
@@ -4863,12 +4885,13 @@ public long sys_getrandom(void* buf, size_t buflen, uint flags) {
 public int sys_clock_gettime(int clk_id, timespec* tp) {
     if (tp == null) return negErrno(14); // EFAULT
     
-    // Ignore clk_id for now, always return monotonic/realtime (same in our kernel)
-    ulong ticks = getTickCount();
-    // Assuming 1000 Hz (1ms per tick)
+    // R2: real monotonic ms from the PIT (1000 Hz), NOT getTickCount which
+    // increments on every read (a fake clock that runs at the call rate, breaking
+    // Weston's frame pacing).  Must match the page-flip-complete timestamp clock.
+    ulong ticks = pitMs();
     tp.tv_sec = cast(long)(ticks / 1000);
     tp.tv_nsec = cast(long)((ticks % 1000) * 1000000);
-    
+
     return 0;
 }
 
@@ -7484,6 +7507,8 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
 // gap).  Resets interval counters; keeps the cumulative total.
 public void presentProfStats() @nogc nothrow {
     klog("[present] total="); klog_dec(g_presTotal);
+    klog(" flipQ="); klog_dec(g_flipQueued);
+    klog(" flipRd="); klog_dec(g_flipRead);
     if (g_presN == 0) { klog(" (idle: no frames this interval)\n"); return; }
 
     // cycles<->ms calibration over the whole run (clean PIT ms).
@@ -7534,6 +7559,8 @@ __gshared uint g_drmEvHead;     // write index
 __gshared uint g_drmEvTail;     // read index
 __gshared uint g_drmFlipSeq;
 
+__gshared ulong g_flipQueued, g_flipRead;   // R2: flip-complete events queued vs read
+
 private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
     uint next = (g_drmEvHead + 1) % DRM_EVENT_QUEUE_MAX;
     if (next == g_drmEvTail) return;   // queue full → drop (compositor will recover)
@@ -7541,6 +7568,7 @@ private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
     g_drmEvents[g_drmEvHead].seq      = ++g_drmFlipSeq;
     g_drmEvents[g_drmEvHead].crtcId   = 1;
     g_drmEvHead = next;
+    ++g_flipQueued;
 }
 
 // fd is accepted for call-site symmetry but ignored — any card0 fd drains events.

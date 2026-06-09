@@ -124,6 +124,102 @@ public int objfsEnum(int kind, int logical, char* nameBuf, size_t cap) {
     }
 }
 
+// ── F5: capabilities + relationships as first-class FS fields ─────────────────
+// Each object is a directory of fields: `meta` (F1 metadata), `capabilities` (the
+// rights it holds, decoded), `relationships` (its graph edges — namespace/owner/…).
+enum int OBJF_META = 1, OBJF_CAPS = 2, OBJF_RELS = 3;
+
+private immutable string[19] g_capBitNames = [
+    "read", "write", "close", "stat", "ioctl", "mmap", "dup", "pass", "retype", "call",
+    "admin-mount", "admin-reboot", "admin-update", "admin-user", "admin-device",
+    "admin-inspect", "exec", "admin-identity", "id-share",
+];
+
+// "meta"/"capabilities"/"relationships" -> field id (0 = not a field).
+public int objfsFieldId(const(char)* name, size_t len) {
+    if (nameEq(name, len, "meta"))          return OBJF_META;
+    if (nameEq(name, len, "capabilities"))  return OBJF_CAPS;
+    if (nameEq(name, len, "relationships")) return OBJF_RELS;
+    return 0;
+}
+
+// Decode a rights bitmask into named rights, one per line.
+private void capDecode(ref UB b, uint rights) {
+    lit(b, "rights="); hex(b, rights); put(b, '\n');
+    bool any = false;
+    foreach (i, nm; g_capBitNames)
+        if (rights & (1u << i)) { lit(b, "+ "); lit(b, nm); put(b, '\n'); any = true; }
+    if (!any) lit(b, "(none)\n");
+}
+
+// Render an object's `capabilities` or `relationships` field. Returns len or -2.
+public long objfsField(int kind, const(char)* objName, size_t objLen, int field,
+                       char* buf, size_t buflen) {
+    if (field == OBJF_META) return objfsRead(kind, objName, objLen, buf, buflen);
+    UB b; b.p = buf; b.cap = buflen; b.len = 0;
+    switch (kind) {
+        case OBJFS_IDENTITIES:
+            foreach (ref e; g_identities) if (e.inUse && nameEq(objName, objLen, e.name[0 .. e.nameLen])) {
+                if (field == OBJF_CAPS) {
+                    lit(b, "# capability ceiling of identity "); foreach (i; 0 .. e.nameLen) put(b, e.name[i]); put(b, '\n');
+                    capDecode(b, e.rightsCeiling);
+                } else { // relationships
+                    lit(b, "identity=");   foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                    lit(b, "\nnamespace="); num(b, e.nsTemplate);
+                    lit(b, "\nobjRoot=");   num(b, e.objRootObjId);
+                    lit(b, "\ntemplate=");  num(b, e.templateId);
+                    lit(b, "\ntrust=");     num(b, e.trust);
+                    lit(b, "\ndevices=");   hex(b, e.allowedDevices);
+                    lit(b, "\npolicyEpoch="); num(b, e.policyEpoch);
+                    put(b, '\n');
+                }
+                return cast(long)b.len;
+            }
+            return -2;
+        case OBJFS_SERVICES:
+            foreach (ref e; g_svcs) if (e.inUse && nameEq(objName, objLen, e.name[0 .. e.nameLen])) {
+                if (field == OBJF_CAPS) {
+                    lit(b, "# authority held by service "); foreach (i; 0 .. e.nameLen) put(b, e.name[i]); put(b, '\n');
+                    capDecode(b, e.rights);
+                } else {
+                    lit(b, "service=");  foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                    lit(b, "\nowner=");    num(b, e.ownerUserObjId);
+                    lit(b, "\nendpoint="); num(b, e.endpointObjId);
+                    lit(b, "\nversion=");  num(b, e.version_);
+                    lit(b, "\ngeneration="); num(b, e.genObjId);
+                    put(b, '\n');
+                }
+                return cast(long)b.len;
+            }
+            return -2;
+        case OBJFS_USERS:
+            foreach (ref e; g_users) if (e.inUse && nameEq(objName, objLen, e.name[0 .. e.nameLen])) {
+                if (field == OBJF_CAPS) {
+                    lit(b, "# administrative authority of user "); foreach (i; 0 .. e.nameLen) put(b, e.name[i]); put(b, '\n');
+                    capDecode(b, e.rights);
+                } else {
+                    lit(b, "user=");  foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                    lit(b, "\nuid="); num(b, e.uid);
+                    lit(b, "\ngid="); num(b, e.gid);
+                    put(b, '\n');
+                }
+                return cast(long)b.len;
+            }
+            return -2;
+        case OBJFS_NAMESPACES:
+            foreach (ref ns; g_namespaces) if (ns.inUse) {
+                char[16] nb = void; UB t; t.p = nb.ptr; t.cap = 16; t.len = 0; num(t, ns.objId);
+                if (nameEq(objName, objLen, nb[0 .. t.len])) {
+                    if (field == OBJF_CAPS) { lit(b, "rights=0x0\n(namespaces hold no rights bitmask)\n"); }
+                    else { lit(b, "namespace objId="); num(b, ns.objId); put(b, '\n'); }
+                    return cast(long)b.len;
+                }
+            }
+            return -2;
+        default: return -2;
+    }
+}
+
 // Render /objects/<kind>/<objName> metadata into buf; returns length or negative errno.
 public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, size_t buflen) {
     UB b; b.p = cast(char*)buf; b.cap = buflen; b.len = 0;

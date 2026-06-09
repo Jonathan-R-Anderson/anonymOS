@@ -1985,14 +1985,46 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
 }
 
 // ── F1: /objects live views — /objects/<kind>/<obj> over the kernel tables ─────
-import core.hoscall : objfsKindId, objfsEnum, objfsRead,
+import core.hoscall : objfsKindId, objfsEnum, objfsFieldId, objfsField,
                       configfsId, configfsEnum, configfsRender,
                       sysGenList, sysGenMeta;
 import core.objstore : objstoreMounted, objstoreBootCount, objstoreAppCount,
                        objstoreAppEnum, objstoreAppByName, objstoreApp, objstoreReadBlob,
                        ObjAppEntry;
-private enum ulong SYNTHDIR_OBJ_BASE = 0x0B1EC700;   // + kind id => /objects/<kind> dir
+private enum ulong SYNTHDIR_OBJ_BASE  = 0x0B1EC700;  // + kind id => /objects/<kind> dir
+private enum ulong SYNTHDIR_OBJ_ENTRY = 0x0B1ED700;  // F5: /objects/<kind>/<obj> object dir
 __gshared int g_objectsDirIdx = -1;                  // RT node index of /objects
+
+// F5: parse "/objects/<kind>/<obj>/<field>". Returns kind (>0); `obj`=null at the
+// /objects/<kind> level; `field` ∈ {0=object dir, 1=meta, 2=capabilities,
+// 3=relationships}.  0 if not an objfs path (apps/processes handled elsewhere).
+private int objfsParseDeep(const(char)* path, out const(char)* obj, out size_t objLen, out int field) {
+    obj = null; objLen = 0; field = 0;
+    static immutable string pre = "/objects/";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
+    const(char)* p = path + pre.length;
+    size_t klen = 0; while (p[klen] != 0 && p[klen] != '/') ++klen;
+    const int kid = objfsKindId(p, klen);
+    if (kid == 0) return 0;
+    p += klen;
+    if (*p == 0) return kid;                      // /objects/<kind>
+    if (*p != '/') return 0;
+    ++p;
+    if (*p == 0) return kid;                       // /objects/<kind>/
+    obj = p;
+    size_t ol = 0; while (p[ol] != 0 && p[ol] != '/') ++ol;
+    objLen = ol;
+    const(char)* q = p + ol;
+    if (*q == 0) return kid;                       // /objects/<kind>/<obj>  (object dir, field=0)
+    if (*q != '/') return 0;
+    ++q;
+    if (*q == 0) return kid;                       // trailing slash → object dir
+    size_t fl = 0; while (q[fl] != 0) ++fl;
+    foreach (i; 0 .. fl) if (q[i] == '/') return 0;   // no deeper than the field
+    field = objfsFieldId(q, fl);
+    if (field == 0) return 0;
+    return kid;                                    // /objects/<kind>/<obj>/<field>
+}
 
 // ── F4: /objects/apps persisted app objects (on the SATA object store) ─────────
 private enum ulong SYNTHDIR_APPS     = 0x0A99D100;   // /objects/apps dir
@@ -2164,27 +2196,6 @@ private int sysfsParse(const(char)* path, out const(char)* comp, out size_t comp
     return 5;                                     // /system/current/<component>
 }
 
-// Parse "/objects/<kind>[/<obj>]". Returns the kind id (>0) and the object name after
-// it (`obj`=null when the path is the /objects/<kind> directory); 0 if not such a path.
-private int objfsParse(const(char)* path, out const(char)* obj, out size_t objLen) {
-    obj = null; objLen = 0;
-    static immutable string pre = "/objects/";
-    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
-    const(char)* p = path + pre.length;
-    size_t klen = 0;
-    while (p[klen] != 0 && p[klen] != '/') ++klen;
-    const int kid = objfsKindId(p, klen);
-    if (kid == 0) return 0;
-    p += klen;
-    if (*p == 0) return kid;            // /objects/<kind>
-    if (*p != '/') return 0;
-    ++p;
-    if (*p == 0) return kid;            // /objects/<kind>/
-    obj = p;
-    while (p[objLen] != 0) ++objLen;
-    foreach (i; 0 .. objLen) if (obj[i] == '/') return 0;   // deeper not supported
-    return kid;
-}
 
 // ── A4: dynamic /proc/<pid> for ps/top ───────────────────────────────────────
 private enum ulong SYNTHDIR_PROC = 0x9120C400;
@@ -2455,12 +2466,13 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
-    // F1: /objects/<kind>/<obj> — render the live object's metadata (cat as a file).
+    // F1/F5: /objects/<kind>/<obj>/<field> — render the object's meta / capabilities /
+    // relationships (each object is a directory of these field files; F5).
     {
-        const(char)* osub; size_t osubLen;
-        const int okind = objfsParse(path, osub, osubLen);
-        if (okind > 0 && osub !is null) {
-            const long olen = objfsRead(okind, osub, osubLen, g_procBuf.ptr, g_procBuf.length - 1);
+        const(char)* osub; size_t osubLen; int ofield;
+        const int okind = objfsParseDeep(path, osub, osubLen, ofield);
+        if (okind > 0 && osub !is null && ofield > 0) {
+            const long olen = objfsField(okind, osub, osubLen, ofield, g_procBuf.ptr, g_procBuf.length - 1);
             if (olen > 0) {
                 g_fdTable[fd].type     = FileType.FD_FILE;
                 g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
@@ -2571,10 +2583,12 @@ public int sys_open(const(char)* path, int flags) {
         // Tag /proc so getdents64 enumerates the live process pids (ps/top).
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
         // F1: tag /objects/<kind> so getdents64 enumerates its live objects.
+        // F5: tag /objects/<kind>/<obj> so getdents64 lists its field files.
         {
-            const(char)* osub; size_t osubLen;
-            const int okind = objfsParse(path, osub, osubLen);
-            if (okind > 0 && osub is null) g_fdTable[fd].fileSize = SYNTHDIR_OBJ_BASE + okind;
+            const(char)* osub; size_t osubLen; int ofield;
+            const int okind = objfsParseDeep(path, osub, osubLen, ofield);
+            if (okind > 0 && osub is null)        g_fdTable[fd].fileSize = SYNTHDIR_OBJ_BASE + okind;
+            else if (okind > 0 && ofield == 0)    g_fdTable[fd].fileSize = SYNTHDIR_OBJ_ENTRY;
         }
         // F3: tag /system/current so getdents64 enumerates the base components.
         {
@@ -4910,9 +4924,12 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
         if (procParsePid(path, psub, psubLen) > 0 && psub is null) return true;
     }
     // F1: /objects/<kind> is a (live) object-collection directory.
+    // F5: /objects/<kind>/<obj> is the object's field directory (meta/caps/rels).
     {
-        const(char)* osub; size_t osubLen;
-        if (objfsParse(path, osub, osubLen) > 0 && osub is null) return true;
+        const(char)* osub; size_t osubLen; int ofield;
+        const int okind = objfsParseDeep(path, osub, osubLen, ofield);
+        if (okind > 0 && osub is null) return true;                 // /objects/<kind>
+        if (okind > 0 && osub !is null && ofield == 0) return true; // /objects/<kind>/<obj>
     }
     // F3: /system/current is the active-generation component directory.
     {
@@ -6807,6 +6824,7 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     }
 
     // F1: /objects/<kind> enumeration — one entry per live object of that kind.
+    // F5: each object is now a DIRECTORY (of meta/capabilities/relationships).
     if (f.fileSize >= SYNTHDIR_OBJ_BASE && f.fileSize < SYNTHDIR_OBJ_BASE + 16) {
         const int kind = cast(int)(f.fileSize - SYNTHDIR_OBJ_BASE);
         ulong logical = 2;
@@ -6816,7 +6834,22 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
             if (nl < 0) break;
             if (f.offset <= logical) {
                 if (!writeDirent64(buf, count, &written, cast(ulong)(li + 8192),
-                                   cast(long)logical + 1, DT_REG, nb.ptr, cast(size_t)nl))
+                                   cast(long)logical + 1, DT_DIR, nb.ptr, cast(size_t)nl))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+    // F5: /objects/<kind>/<obj> enumeration — the object's field files.
+    if (f.fileSize == SYNTHDIR_OBJ_ENTRY) {
+        static immutable string[3] fields = ["meta", "capabilities", "relationships"];
+        ulong logical = 2;
+        foreach (nm; fields) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 61440,
+                                   cast(long)logical + 1, DT_REG, nm.ptr, nm.length))
                     return cast(long)written;
                 f.offset = logical + 1;
             }

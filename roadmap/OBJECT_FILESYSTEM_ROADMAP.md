@@ -163,17 +163,31 @@ Back `/objects` with real storage so objects + their data survive reboot.
   → `objstoreStorageWrite` on close); content-address object bodies via StoreObject (dedup)
   + free-space reclamation/uninstall; an `ipc/` endpoint dir.
 
-## F5 — Capabilities + relationships as first-class FS · P: Med · E: 3 · R: med · deps: F1
+## F5 — Capabilities + relationships as first-class FS · ✅ DONE (read views, 2026-06-09) · P: Med · E: 3 · R: med · deps: F1
 
 Expose the cap/relationship graph the kernel already maintains as filesystem objects.
 
-- `/objects/<kind>/<obj>/capabilities/` — the cap set the object holds (rights, target,
-  derivation), derivable/attenuable; `/relationships/` — owner, identity, namespace,
-  IPC peers (the ORG/cap edges).
-- The native shell `cap`/`obj` mutating commands (Track B remainder) operate here,
-  cap-gated on the identity ceiling.
-- *Verify:* `ls /objects/processes/<pid>/capabilities` lists its caps; grant/attenuate
-  via the native shell is reflected; a denied grant (exceeds ceiling) fails + audits.
+- **DONE — objects are now directories of fields.** Each `/objects/<kind>/<obj>` is a
+  directory (realising F1's intended "directory of metadata files") containing:
+  `meta` (the F1 metadata), `capabilities` (the rights it holds, **decoded into named
+  bits**), `relationships` (its graph edges). core/hoscall.d `objfsFieldId`/`objfsField`
+  (+ `capDecode` over the 19 `CAP_RIGHT_*` bit names); posix.d `objfsParseDeep` resolves
+  `/objects/<kind>/<obj>/<field>`, the object is a synthetic dir (`SYNTHDIR_OBJ_ENTRY`,
+  getdents → meta/capabilities/relationships; objects now enumerate as DT_DIR).
+  - capabilities: identity→`rightsCeiling`, service→`rights`, user→admin `rights`.
+  - relationships: identity→namespace/objRoot/template/trust/devices/policyEpoch;
+    service→owner/endpoint/version/generation; user→uid/gid.
+- *Verified (GUI):* `ls /objects/identities/System` → `capabilities meta relationships`;
+  `cat …/System/capabilities` → `rights=0x7ffff` + all 19 named rights; `cat …/Untrusted/
+  capabilities` → `rights=0x503ff` (**attenuated** — no `admin-*` bits, a strict subset of
+  System), demonstrating the cap graph; `cat …/System/relationships`
+  (namespace=42/objRoot=56/trust=100); `cat …/System/meta` = the old flat metadata;
+  `/bin/ls` + rtfs selftest 11/11 unaffected.
+- **F5.2 remaining (mutation):** native shell `cap`/`obj` grant/attenuate operating on
+  these fields, cap-gated on the identity ceiling (a denied grant that exceeds the ceiling
+  fails + audits — the write side of the cap graph); per-process `capabilities` (over the
+  task cap table, through the `/objects/processes` view); IPC-peer edges in
+  `relationships`.
 
 ---
 
@@ -195,6 +209,10 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
 - **M-F4 Persisted objects.** ✅ (MVP) AHCI SATA disk + on-disk object store; the `hello`
   app object (manifest + caps + identity + `storage/`) survives reboot (north star reached;
   launch + writable storage + dedup are F4.2).
-- **M-F5 Capability FS.** Caps + relationships browsable and mutable via the native shell.
+- **M-F5 Capability FS.** ✅ (read) Each object is a dir with `meta`/`capabilities`/
+  `relationships`; the live cap graph (with attenuation) is browsable. Mutation via the
+  native shell is F5.2.
 
-Order: F0 ✅ → F1 ✅ → F2 ✅ → F3 ✅ → F4 ✅ (A5 disk + on-disk object store) → F5.
+Order: F0 ✅ → F1 ✅ → F2 ✅ → F3 ✅ → F4 ✅ (A5 disk + on-disk object store) → F5 ✅
+(read views). Remaining: F2.2/F2.3 (writable config + /etc view), F4.3 (writable storage +
+dedup), F5.2 (cap-graph mutation via the native shell).

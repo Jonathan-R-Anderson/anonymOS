@@ -1,0 +1,243 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Persisted object store  (OBJECT_FILESYSTEM_ROADMAP F4 — the north star)
+//
+// Backs /objects/apps with REAL storage on the SATA disk so objects + their data
+// survive reboot.  Apps are first-class objects: each carries a manifest, declared
+// permissions, an identity binding, and a private writable `storage` blob — the
+// only area an app may mutate, separate from the immutable system base (F3).
+//
+// On-disk layout (sector = 512B):
+//   LBA 0        superblock (magic, version, appCount, bootCount, nextFreeLba)
+//   LBA 1..32    app directory  (ObjAppEntry, 256B each → 2/sector, 64 entries)
+//   LBA 64..     blob region (manifest / permissions / executable / storage),
+//                allocated sequentially, sector-granular.
+//
+// A bootCount in the superblock, bumped every mount, is the persistence proof:
+// it keeps climbing across reboots because it is read from and written to disk.
+// ─────────────────────────────────────────────────────────────────────────────
+module core.objstore;
+
+import drivers.block.disk : diskReady, diskReadSectors, diskWriteSectors;
+import core.io : klog, klog_hex;
+import core.stdc.string : memset, memcpy;
+
+@nogc nothrow:
+
+enum uint  SECTOR        = 512;
+enum ulong DIR_LBA       = 1;          // app directory start
+enum uint  MAX_APPS      = 64;
+enum ulong BLOB_LBA_BASE = 64;         // blob region start
+enum uint  STAGE_BYTES   = 65536;      // 64 KiB blob staging window
+
+immutable char[8] OBJ_MAGIC = ['H','O','S','O','B','J','F','S'];
+
+struct ObjSuper {
+    char[8] magic;
+    uint    version_;
+    uint    appCount;
+    ulong   bootCount;
+    ulong   nextFreeLba;
+    ubyte[SECTOR - 32] _pad;
+}
+static assert(ObjSuper.sizeof == SECTOR);
+
+struct ObjAppEntry {
+    uint    inUse;
+    uint    nameLen;
+    char[64] name;
+    uint    identityLen;
+    char[32] identity;          // identity-domain binding
+    uint    rights;             // declared capability bits
+    ulong   manifestLba; uint manifestLen;
+    ulong   permsLba;    uint permsLen;
+    ulong   execLba;     uint execLen;
+    ulong   storageLba;  uint storageLen;  // private writable blob
+    ulong   storageCap;                    // sectors reserved for storage growth
+    ubyte[256 - 184] _pad;
+}
+static assert(ObjAppEntry.sizeof == 256);
+
+__gshared bool        g_mounted = false;
+__gshared ObjSuper    g_super;
+__gshared ObjAppEntry[MAX_APPS] g_apps;
+__gshared ubyte[STAGE_BYTES] g_stage;     // scratch for blob read/write
+
+public bool objstoreMounted() { return g_mounted; }
+public ulong objstoreBootCount() { return g_super.bootCount; }
+public uint  objstoreAppCount() { return g_super.appCount; }
+
+private uint sectorsFor(uint bytes) { return (bytes + SECTOR - 1) / SECTOR; }
+
+private bool magicOk() {
+    foreach (i; 0 .. 8) if (g_super.magic[i] != OBJ_MAGIC[i]) return false;
+    return true;
+}
+
+// Persist the superblock (LBA 0) and the directory (LBA 1..32).
+private bool flushMeta() {
+    if (!diskWriteSectors(0, 1, &g_super)) return false;
+    // directory: MAX_APPS*256 bytes = 16 KiB = 32 sectors
+    return diskWriteSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
+}
+
+// Allocate a blob region of `len` bytes; returns its LBA (0 on failure).
+private ulong allocBlob(uint len, uint reserveSectors = 0) {
+    uint sec = sectorsFor(len);
+    if (reserveSectors > sec) sec = reserveSectors;
+    const ulong lba = g_super.nextFreeLba;
+    g_super.nextFreeLba += sec;
+    return lba;
+}
+
+// Write `len` bytes to a blob at `lba` (zero-pads the trailing sector).
+private bool writeBlob(ulong lba, const(void)* data, uint len) {
+    if (len > STAGE_BYTES) return false;
+    const uint sec = sectorsFor(len);
+    memset(g_stage.ptr, 0, sec * SECTOR);
+    if (len) memcpy(g_stage.ptr, data, len);
+    return diskWriteSectors(lba, sec, g_stage.ptr);
+}
+
+// Read up to `cap` bytes of a blob (`len` bytes) at `lba` into `dst`; returns count.
+public int objstoreReadBlob(ulong lba, uint len, ubyte* dst, uint cap) {
+    if (!g_mounted || lba == 0 || len == 0) return 0;
+    uint want = len < cap ? len : cap;
+    const uint sec = sectorsFor(want);
+    if (sec * SECTOR > STAGE_BYTES) return 0;
+    if (!diskReadSectors(lba, sec, g_stage.ptr)) return 0;
+    memcpy(dst, g_stage.ptr, want);
+    return cast(int)want;
+}
+
+private void setStr(char* dst, ref uint dstLen, const(char)[] s, uint cap) {
+    uint n = cast(uint)(s.length < cap ? s.length : cap);
+    foreach (i; 0 .. n) dst[i] = s[i];
+    dstLen = n;
+}
+
+// Install an app object (manifest + permissions + identity + initial storage).
+public bool objstoreInstallApp(const(char)[] name, const(char)[] identity, uint rights,
+                               const(char)[] manifest, const(char)[] perms,
+                               const(char)[] storage0) {
+    if (!g_mounted || g_super.appCount >= MAX_APPS) return false;
+    int slot = -1;
+    foreach (i; 0 .. MAX_APPS) if (!g_apps[i].inUse) { slot = cast(int)i; break; }
+    if (slot < 0) return false;
+
+    ObjAppEntry e;
+    memset(&e, 0, ObjAppEntry.sizeof);
+    e.inUse = 1;
+    setStr(e.name.ptr, e.nameLen, name, 64);
+    setStr(e.identity.ptr, e.identityLen, identity, 32);
+    e.rights = rights;
+
+    e.manifestLen = cast(uint)manifest.length;
+    e.manifestLba = allocBlob(e.manifestLen);
+    e.permsLen = cast(uint)perms.length;
+    e.permsLba = allocBlob(e.permsLen);
+    e.storageLen = cast(uint)storage0.length;
+    e.storageCap = 8;                          // reserve 8 sectors (4 KiB) for storage
+    e.storageLba = allocBlob(e.storageLen, 8);
+
+    if (!writeBlob(e.manifestLba, manifest.ptr, e.manifestLen)) return false;
+    if (!writeBlob(e.permsLba, perms.ptr, e.permsLen)) return false;
+    if (!writeBlob(e.storageLba, storage0.ptr, e.storageLen)) return false;
+
+    g_apps[slot] = e;
+    g_super.appCount++;
+    return flushMeta();
+}
+
+// Overwrite an app's private storage blob (the round-trip-across-reboot area).
+public bool objstoreStorageWrite(int appIdx, const(void)* data, uint len) {
+    if (!g_mounted || appIdx < 0 || appIdx >= MAX_APPS || !g_apps[appIdx].inUse) return false;
+    if (sectorsFor(len) > g_apps[appIdx].storageCap) return false;   // would overrun reservation
+    if (!writeBlob(g_apps[appIdx].storageLba, data, len)) return false;
+    g_apps[appIdx].storageLen = len;
+    return flushMeta();
+}
+
+// Directory accessors for the /objects/apps FS views.
+public int objstoreAppByName(const(char)* name, uint nameLen) {
+    if (!g_mounted) return -1;
+    foreach (i; 0 .. MAX_APPS) {
+        if (!g_apps[i].inUse || g_apps[i].nameLen != nameLen) continue;
+        bool eq = true;
+        foreach (j; 0 .. nameLen) if (g_apps[i].name[j] != name[j]) { eq = false; break; }
+        if (eq) return cast(int)i;
+    }
+    return -1;
+}
+// Nth installed app's name → buf; returns len, or -1 past the end.
+public int objstoreAppEnum(int logical, char* buf, uint cap) {
+    if (!g_mounted) return -1;
+    int n = 0;
+    foreach (i; 0 .. MAX_APPS) if (g_apps[i].inUse) {
+        if (n == logical) {
+            uint l = g_apps[i].nameLen < cap ? g_apps[i].nameLen : cap;
+            foreach (j; 0 .. l) buf[j] = g_apps[i].name[j];
+            return cast(int)l;
+        }
+        ++n;
+    }
+    return -1;
+}
+public ObjAppEntry* objstoreApp(int idx) {
+    if (!g_mounted || idx < 0 || idx >= MAX_APPS || !g_apps[idx].inUse) return null;
+    return &g_apps[idx];
+}
+
+// Mount the on-disk store (format on first use), bump + persist the boot counter,
+// and seed a sample app so /objects/apps has something to show on first boot.
+public void objstoreMount() {
+    if (!diskReady()) { klog("[objstore] no disk — /objects/apps stays empty\n"); return; }
+
+    if (!diskReadSectors(0, 1, &g_super)) { klog("[objstore] superblock read failed\n"); return; }
+    g_mounted = true;
+
+    if (!magicOk()) {
+        klog("[objstore] formatting new object store\n");
+        memset(&g_super, 0, ObjSuper.sizeof);
+        foreach (i; 0 .. 8) g_super.magic[i] = OBJ_MAGIC[i];
+        g_super.version_ = 1;
+        g_super.appCount = 0;
+        g_super.bootCount = 0;
+        g_super.nextFreeLba = BLOB_LBA_BASE;
+        memset(g_apps.ptr, 0, MAX_APPS * ObjAppEntry.sizeof);
+        flushMeta();
+        seedSampleApp();
+    } else {
+        // load the directory
+        diskReadSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
+    }
+
+    g_super.bootCount++;
+    flushMeta();
+
+    // Demonstrate the private storage area persisting AND updating across reboots:
+    // stamp the sample app's storage with the live boot count (read from disk).
+    int hi = objstoreAppByName("hello".ptr, 5);
+    if (hi >= 0) {
+        char[32] sbuf = void; uint p = 0;
+        foreach (c; "boots=") sbuf[p++] = c;
+        ulong v = g_super.bootCount; char[20] t = void; int ti = 0;
+        if (!v) t[ti++] = '0'; while (v) { t[ti++] = cast(char)('0' + v % 10); v /= 10; }
+        while (ti > 0) sbuf[p++] = t[--ti];
+        sbuf[p++] = '\n';
+        objstoreStorageWrite(hi, sbuf.ptr, p);
+    }
+
+    klog("[objstore] mounted: apps=0x"); klog_hex(g_super.appCount);
+    klog(" boots=0x"); klog_hex(g_super.bootCount); klog("\n");
+}
+
+private void seedSampleApp() {
+    static immutable string manifest =
+        "{\n  \"name\": \"hello\",\n  \"version\": \"1.0\",\n  \"identity\": \"Personal\",\n"
+        ~ "  \"exec\": \"/objects/apps/hello/executable\",\n"
+        ~ "  \"capabilities\": [\"ipc\", \"storage\"]\n}\n";
+    static immutable string perms =
+        "{\n  \"net\": false,\n  \"storage\": true,\n  \"ipc\": true,\n  \"rights\": \"0x3\"\n}\n";
+    static immutable string storage0 = "installed on first boot\n";
+    objstoreInstallApp("hello", "Personal", 0x3, manifest, perms, storage0);
+}

@@ -25,7 +25,7 @@ already synthetic views — so this is a re-rooting + a few new views, not a rew
 | `/state` | `g_rt` writable ramfs (`/run`,`/var`,`/tmp`) | exists, re-root |
 | `/system` (immutable) | Generation + StoreObject (IMMUTABLE_ROOTLESS) | primitives exist, no view |
 | `/config/*.json` | `g_identities`/`g_svcs`/`g_users` tables | generate declarative views |
-| `/objects/apps/<app>/manifest.json + storage/` | — | needs a **persisted** store (disk, A5) |
+| `/objects/apps/<app>/manifest.json + storage/` | on-disk object store (objstore.d) | ✅ persisted (F4) |
 
 Principles (grounded): everything is an object; capabilities, not global perms;
 immutable system base; user/app state separate from system; **compat paths are views**;
@@ -128,18 +128,33 @@ A read-only view over the content-addressed Generation / StoreObject objects.
   (`gen1 … [active]`); `echo x > /system/current/weston` → "Read-only file system";
   `/bin/ls` + rtfs selftest 11/11 unaffected.
 
-## F4 — Persisted object store (the north star) · P: High · E: 5 · R: high · deps: F1, SHELL A5 (disk)
+## F4 — Persisted object store (the north star) · ✅ DONE (MVP, 2026-06-09) · P: High · E: 5 · R: high · deps: F1, SHELL A5 (disk)
 
 Back `/objects` with real storage so objects + their data survive reboot.
 
-- A real backing FS on disk (AHCI + ext2/own FS — shell-roadmap **A5**) + a
-  content-addressed object store (StoreObject) for object bodies.
-- **Apps as first-class objects:** `/objects/apps/<app>/{manifest.json, executable,
-  permissions.json, identity-binding.json, storage/, ipc/}`. Launch reads the manifest
-  + declared capabilities + identity binding; per-app `storage/` is the only writable
-  area, separate from system files.
-- *Verify:* install an app object, reboot, it persists and launches with exactly its
-  declared capabilities; its `storage/` round-trips across reboot.
+- **A5 disk layer DONE** (commit f7582294e): the dormant AHCI driver was fixed for
+  EpinAnonymOS's HHDM (no low identity map) — phys for DMA, `phys+hhdm_offset` for CPU,
+  `GHC.AE` enabled; `drivers/block/disk.d` gives polled `diskRead/WriteSectors` over a
+  64 KiB DMA bounce buffer. QEMU attaches a 32 MiB raw SATA disk on an AHCI controller.
+  Verified: `[disk] selftest PASS` + marker durably in `hos-disk.img`.
+- **DONE — own object-store FS + apps as first-class objects:** `core/objstore.d` is a
+  custom on-disk store (superblock @ LBA0 + 64-entry app directory @ LBA1–32 + sequential
+  blob region @ LBA64+). Apps persist as `/objects/apps/<app>/{manifest.json,
+  permissions.json, identity-binding.json, executable, storage/data}` (posix.d
+  `appsfsParse` + sys_open blob reads into `g_appsBuf` + 3-level getdents:
+  SYNTHDIR_APPS/APP_BASE/STOR_BASE). `/objects/store` reports the live store + a
+  `bootCount`. A sample `hello` app is seeded on first boot; per-app `storage/` is its
+  private area.
+- *Verified (two QEMU boots, same disk):* boot 1 = `[objstore] formatting`, `ls /objects/
+  apps`→`hello`, `cat /objects/store`→`boots=1`, `storage/data`→`boots=1`; **boot 2 = NO
+  reformat**, `boots=2`, `storage/data`→`boots=2`, `manifest.json` intact — the app object
+  + its manifest/capabilities/identity + storage all survived reboot (the on-disk boot
+  counter climbing across separate QEMU processes proves real persistence).
+- **F4.2 remaining:** actually *launch* the persisted app gated on its declared
+  capabilities/identity (store a real executable blob + exec it); make `storage/` user-
+  writable via the shell (a writable synthetic FD → `objstoreStorageWrite` on close);
+  content-address object bodies via StoreObject (dedup) + free-space reclamation/uninstall;
+  an `ipc/` endpoint dir.
 
 ## F5 — Capabilities + relationships as first-class FS · P: Med · E: 3 · R: med · deps: F1
 
@@ -170,7 +185,9 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
   tables; writable + `/etc`-from-`/config` are F2.2/F2.3.
 - **M-F3 Immutable system.** ✅ `/system` read-only Generation + base-component view
   (EROFS on write).
-- **M-F4 Persisted objects.** Apps with manifests + `storage/` survive reboot (north star).
+- **M-F4 Persisted objects.** ✅ (MVP) AHCI SATA disk + on-disk object store; the `hello`
+  app object (manifest + caps + identity + `storage/`) survives reboot (north star reached;
+  launch + writable storage + dedup are F4.2).
 - **M-F5 Capability FS.** Caps + relationships browsable and mutable via the native shell.
 
-Order: F0 → F1 → F2 → F3 → (F4 needs A5 disk) → F5.
+Order: F0 ✅ → F1 ✅ → F2 ✅ → F3 ✅ → F4 ✅ (A5 disk + on-disk object store) → F5.

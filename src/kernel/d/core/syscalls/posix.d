@@ -1988,8 +1988,71 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
 import core.hoscall : objfsKindId, objfsEnum, objfsRead,
                       configfsId, configfsEnum, configfsRender,
                       sysGenList, sysGenMeta;
+import core.objstore : objstoreMounted, objstoreBootCount, objstoreAppCount,
+                       objstoreAppEnum, objstoreAppByName, objstoreApp, objstoreReadBlob,
+                       ObjAppEntry;
 private enum ulong SYNTHDIR_OBJ_BASE = 0x0B1EC700;   // + kind id => /objects/<kind> dir
 __gshared int g_objectsDirIdx = -1;                  // RT node index of /objects
+
+// ── F4: /objects/apps persisted app objects (on the SATA object store) ─────────
+private enum ulong SYNTHDIR_APPS     = 0x0A99D100;   // /objects/apps dir
+private enum ulong SYNTHDIR_APP_BASE = 0x0A99D200;   // + appIdx => /objects/apps/<app> dir
+private enum ulong SYNTHDIR_STOR_BASE= 0x0A99D300;   // + appIdx => /objects/apps/<app>/storage dir
+__gshared char[8192] g_appsBuf;                      // rendered app blob/metadata (open→read)
+
+// Classify a /objects/apps path. Returns a kind code (0=not apps) and the app index.
+//   1=/objects/apps  2=/objects/apps/<app>  3=manifest.json  4=permissions.json
+//   5=identity-binding.json  6=executable  7=/storage  8=/storage/data
+private int appsfsParse(const(char)* path, out int appIdx) {
+    appIdx = -1;
+    static immutable string pre = "/objects/apps";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
+    const(char)* p = path + pre.length;
+    if (*p == 0) return 1;                       // /objects/apps
+    if (*p != '/') return 0;
+    ++p;
+    if (*p == 0) return 1;                        // /objects/apps/
+    // app name component
+    size_t nlen = 0; while (p[nlen] != 0 && p[nlen] != '/') ++nlen;
+    appIdx = objstoreAppByName(p, cast(uint)nlen);
+    if (appIdx < 0) return 0;
+    const(char)* q = p + nlen;
+    if (*q == 0) return 2;                         // /objects/apps/<app>
+    if (*q != '/') return 0;
+    ++q;
+    if (*q == 0) return 2;                         // /objects/apps/<app>/
+    if (cstrEq(q, "manifest.json"))         return 3;
+    if (cstrEq(q, "permissions.json"))      return 4;
+    if (cstrEq(q, "identity-binding.json")) return 5;
+    if (cstrEq(q, "executable"))            return 6;
+    static immutable string st = "storage";
+    foreach (i; 0 .. st.length) if (q[i] != st[i]) return 0;
+    q += st.length;
+    if (*q == 0) return 7;                         // /objects/apps/<app>/storage
+    if (*q != '/') return 0;
+    ++q;
+    if (*q == 0) return 7;
+    if (cstrEq(q, "data")) return 8;               // /objects/apps/<app>/storage/data
+    return 0;
+}
+
+// Render an app's identity-binding.json (derived from the directory entry).
+private int appsRenderIdentity(ObjAppEntry* e, ubyte* dst, uint cap) {
+    size_t pos = 0;
+    void put(const(char)* s) { while (*s && pos + 1 < cap) dst[pos++] = *s++; }
+    void hexb(uint v) {
+        put("0x".ptr); bool st = false;
+        for (int sh = 28; sh >= 0; sh -= 4) {
+            uint nib = (v >> sh) & 0xF;
+            if (nib || st || sh == 0) { st = true; if (pos+1<cap) dst[pos++] = cast(ubyte)(nib<10?('0'+nib):('a'+nib-10)); }
+        }
+    }
+    put("{\n  \"identity\": \"".ptr);
+    foreach (i; 0 .. e.identityLen) if (pos+1<cap) dst[pos++] = e.identity[i];
+    put("\",\n  \"rights\": \"".ptr); hexb(e.rights);
+    put("\"\n}\n".ptr);
+    return cast(int)pos;
+}
 
 // ── F2: /config declarative JSON views over the kernel tables ─────────────────
 __gshared int g_configDirIdx = -1;                   // RT node index of /config
@@ -2410,6 +2473,48 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
+    // F4: /objects/apps/<app>/<file> — read the persisted app blobs (manifest,
+    // permissions, identity-binding, executable, storage/data) off the object store.
+    {
+        int appIdx;
+        const int ak = appsfsParse(path, appIdx);
+        if (ak >= 3 && ak != 7) {                 // a file (not the /storage dir)
+            auto e = objstoreApp(appIdx);
+            if (e is null) return negErrno(ENOENT);
+            int n = 0;
+            if      (ak == 3) n = objstoreReadBlob(e.manifestLba, e.manifestLen, cast(ubyte*)g_appsBuf.ptr, g_appsBuf.length - 1);
+            else if (ak == 4) n = objstoreReadBlob(e.permsLba,    e.permsLen,    cast(ubyte*)g_appsBuf.ptr, g_appsBuf.length - 1);
+            else if (ak == 5) n = appsRenderIdentity(e, cast(ubyte*)g_appsBuf.ptr, g_appsBuf.length - 1);
+            else if (ak == 6) n = objstoreReadBlob(e.execLba,     e.execLen,     cast(ubyte*)g_appsBuf.ptr, g_appsBuf.length - 1);
+            else if (ak == 8) n = objstoreReadBlob(e.storageLba,  e.storageLen,  cast(ubyte*)g_appsBuf.ptr, g_appsBuf.length - 1);
+            g_fdTable[fd].type     = FileType.FD_FILE;
+            g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)g_appsBuf.ptr;
+            g_fdTable[fd].fileSize = cast(ulong)(n > 0 ? n : 0);
+            return publishActiveFdReturn(fd);
+        }
+    }
+
+    // F4: /objects/store — the object-store info file (boots = persistence proof).
+    if (cstrEq(path, "/objects/store")) {
+        size_t pos = 0;
+        void put(const(char)* s) { while (*s && pos < g_appsBuf.length - 1) g_appsBuf[pos++] = *s++; }
+        void dec(ulong v) { char[24] t=void; int i=0; if(!v)t[i++]='0'; while(v){t[i++]=cast(char)('0'+v%10);v/=10;} while(i>0 && pos<g_appsBuf.length-1) g_appsBuf[pos++]=t[--i]; }
+        if (objstoreMounted()) {
+            put("store=HOSOBJFS\nmounted=true\napps=".ptr); dec(objstoreAppCount());
+            put("\nboots=".ptr); dec(objstoreBootCount()); put("\n".ptr);
+        } else {
+            put("store=none\nmounted=false\n".ptr);
+        }
+        g_fdTable[fd].type = FileType.FD_FILE;
+        g_fdTable[fd].flags = flags & ~(O_WRONLY | O_RDWR);
+        g_fdTable[fd].offset = 0;
+        g_fdTable[fd].backend = cast(void*)g_appsBuf.ptr;
+        g_fdTable[fd].fileSize = cast(ulong)pos;
+        return publishActiveFdReturn(fd);
+    }
+
     // F2: /config/<name>.json — render the live tables as declarative JSON.
     {
         const int cfgId = configfsParse(path);
@@ -2475,6 +2580,14 @@ public int sys_open(const(char)* path, int flags) {
         {
             const(char)* sc; size_t scl;
             if (sysfsParse(path, sc, scl) == 3) g_fdTable[fd].fileSize = SYNTHDIR_SYSCUR;
+        }
+        // F4: tag the /objects/apps directory tree for getdents enumeration.
+        {
+            int ai;
+            const int ak = appsfsParse(path, ai);
+            if (ak == 1)      g_fdTable[fd].fileSize = SYNTHDIR_APPS;
+            else if (ak == 2) g_fdTable[fd].fileSize = SYNTHDIR_APP_BASE + ai;
+            else if (ak == 7) g_fdTable[fd].fileSize = SYNTHDIR_STOR_BASE + ai;
         }
         return publishActiveFdReturn(fd);
     }
@@ -4806,6 +4919,12 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
         const(char)* sc; size_t scl;
         if (sysfsParse(path, sc, scl) == 3) return true;
     }
+    // F4: /objects/apps, /objects/apps/<app>, and .../storage are directories.
+    {
+        int ai;
+        const int ak = appsfsParse(path, ai);
+        if (ak == 1 || ak == 2 || ak == 7) return true;
+    }
     return cstrEq(path, "/") ||
            cstrEq(path, "/bin") ||
            cstrEq(path, "/sbin") ||
@@ -6734,6 +6853,53 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         return cast(long)written;
     }
 
+    // F4: /objects/apps enumeration — one entry per installed (persisted) app.
+    if (f.fileSize == SYNTHDIR_APPS) {
+        ulong logical = 2;
+        for (int li = 0; ; ++li) {
+            char[80] nb = void;
+            const int nl = objstoreAppEnum(li, nb.ptr, nb.length);
+            if (nl < 0) break;
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, cast(ulong)(li + 49152),
+                                   cast(long)logical + 1, DT_DIR, nb.ptr, cast(size_t)nl))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+    // F4: /objects/apps/<app> enumeration — the app object's files.
+    if (f.fileSize >= SYNTHDIR_APP_BASE && f.fileSize < SYNTHDIR_APP_BASE + 4096) {
+        static immutable string[5] files = ["manifest.json", "permissions.json",
+                                            "identity-binding.json", "executable", "storage"];
+        static immutable ubyte[5] types = [DT_REG, DT_REG, DT_REG, DT_REG, DT_DIR];
+        ulong logical = 2;
+        foreach (i, nm; files) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 53248,
+                                   cast(long)logical + 1, types[i], nm.ptr, nm.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+    // F4: /objects/apps/<app>/storage enumeration — the writable storage blob.
+    if (f.fileSize >= SYNTHDIR_STOR_BASE && f.fileSize < SYNTHDIR_STOR_BASE + 4096) {
+        ulong logical = 2;
+        if (f.offset <= logical) {
+            static immutable string dname = "data";
+            if (!writeDirent64(buf, count, &written, logical + 57344,
+                               cast(long)logical + 1, DT_REG, dname.ptr, dname.length))
+                return cast(long)written;
+            f.offset = logical + 1;
+        }
+        return cast(long)written;
+    }
+
     // /sys/dev/char enumeration (input + DRM device discovery for libudev-zero).
     if (f.fileSize == SYNTHDIR_DEVCHAR) {
         ulong logical = 2;
@@ -6766,8 +6932,9 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
             ++logical;
         }
         // F1: /objects also lists the synthetic object kinds alongside its RT children.
+        // F4 adds the persisted "apps" collection (DT_DIR) + the "store" info file.
         if (dirIdx == g_objectsDirIdx) {
-            static immutable string[4] kinds = ["identities", "services", "namespaces", "users"];
+            static immutable string[5] kinds = ["identities", "services", "namespaces", "users", "apps"];
             foreach (k; kinds) {
                 if (f.offset <= logical) {
                     if (!writeDirent64(buf, count, &written, logical + 16384,
@@ -6777,6 +6944,14 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
                 }
                 ++logical;
             }
+            if (f.offset <= logical) {
+                static immutable string sname = "store";
+                if (!writeDirent64(buf, count, &written, logical + 16384,
+                                   cast(long)logical + 1, DT_REG, sname.ptr, sname.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
         }
         // F2: /config lists the generated declarative JSON documents.
         if (dirIdx == g_configDirIdx) {

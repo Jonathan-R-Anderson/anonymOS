@@ -46,6 +46,7 @@ import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 ty
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
+import core.objstore : objstoreMount; // F4 persisted object store (/objects/apps)
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
 import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + cap audit
 import core.distos : distosSelfTest, distosStats; // IR-P9 distributed refs + macaroons + dist store
@@ -2386,6 +2387,9 @@ void d_kernel_main() {
     // disk is attached — the store then stays in-memory).
     diskInit();
     diskSelfTest();
+    // F4: mount the persisted object store (formats on first boot, seeds the sample
+    // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
+    objstoreMount();
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

@@ -24,7 +24,14 @@ Legend: **P** priority · **E** effort (1=hrs … 5=weeks) · **R** risk · deps
 
 ---
 
-## R1 — Input never drops  ·  P: Critical · E: 2 · R: low · deps: —
+## R1 — Input never drops  ·  ✅ DONE (non-issue) · deps: —
+
+**Resolved: input was never actually dropping.** Added kernel enqueue/drop/read
+counters (`inputStats`): 30 paced keys → enq=120 **drop=0** read=120, and the
+manager selection walked exactly to the last domain. The earlier "~40% loss" was
+a measurement artifact — the manager only logs on a *selection change*, so
+alternating up/down at the list ends look like drops but aren't. Input is
+delivered to and read by the compositor with zero loss. (commit 00021b644)
 
 A keystroke/click that doesn't register feels worse than low fps. ~40% of paced
 keys are lost today.
@@ -41,7 +48,27 @@ keys are lost today.
 - *Verify:* send N paced keys via QMP `send-key`; ≥99% reach the focused client
   (`DOMAINMGR: key` count ≈ N). No dropped clicks in interactive use.
 
-## R2 — Weston presents every frame it should  ·  P: Critical · E: 3 · R: med · deps: —
+## R2 — Weston presents every frame it should  ·  🟧 MOSTLY DONE (latency remains → R3) · deps: —
+
+**Found two real bugs; the desktop went from "freezes after ~23 frames" to
+"responds in ~0.3 s".**
+
+- **memfd leak = the freeze (FIXED, 966568ba1).** wl-domain-manager / wl-files
+  created a NEW memfd+buffer every redraw; the compositor holds each, so the
+  kernel's small memfd-slot pool exhausted after ~23 redraws → `memfd_create`
+  failed → NO client could allocate a buffer → the whole desktop stopped
+  updating. Fix: create the shm buffer once, draw in place. Verified 200 redraws,
+  0 failures.
+- **Per-call fake clock (FIXED, 00021b644).** clock_gettime + the page-flip
+  timestamp used getTickCount() (increments per *read*); Weston paces repaints off
+  (now − flip_timestamp), so the math was garbage. Now both use the real PIT
+  clock. Flip events themselves deliver fine (flipQ==flipRd, Weston reads all).
+
+**Remaining:** a single action still takes ~0.2–0.4 s to appear. Root cause is
+scheduling latency — the parked pollers get force-woken by the all-idle fallback
+and spin, so the compositor doesn't get the core promptly to run its repaint
+timer. **This is gated by R3** (a proper idle). Weston coalescing *rapid* changes
+into fewer presents is correct behavior, not a bug.
 
 The real fps lever. Weston turns ~23 client redraws into ~2 presents — it is not
 scheduling/committing repaints promptly.

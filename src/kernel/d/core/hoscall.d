@@ -21,6 +21,7 @@ import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
 import core.user     : userByObj, g_users;
 import core.exports  : g_current_task_id;
+import core.store    : g_gens, g_activeGen;
 
 @nogc nothrow:
 
@@ -274,6 +275,45 @@ public long configfsRender(int id, char* buf, size_t buflen) {
         }
         default: return -2; // ENOENT
     }
+}
+
+// ── /system immutable base views (OBJECT_FILESYSTEM_ROADMAP F3) ───────────────
+// Read-only view over the content-addressed Generation snapshots: /system/current
+// is the active deployment, /system/generations lists every captured generation.
+// Writes are denied (EROFS); an update lands as a new Generation (anti-rollback
+// already enforced by the store layer).  Component bodies = the boot modules.
+
+// Render the active generation's metadata (for /system/current/generation).
+public long sysGenMeta(char* buf, size_t buflen) {
+    UB b; b.p = buf; b.cap = buflen; b.len = 0;
+    const uint active = g_activeGen;
+    foreach (ref g; g_gens) if (g.inUse && g.objId == active) {
+        lit(b, "type=Generation\nnumber="); num(b, g.number);
+        lit(b, "\nobjId=");      num(b, g.objId);
+        lit(b, "\nparent=");     num(b, g.parentObjId);
+        lit(b, "\ncomponents="); num(b, g.count);
+        lit(b, "\nstatus=active\nimmutable=true\n");
+        return cast(long)b.len;
+    }
+    // Boot generation captured with no store entries yet (count 0) — still active.
+    lit(b, "type=Generation\nnumber=0\nobjId="); num(b, active);
+    lit(b, "\nstatus=active\nimmutable=true\n");
+    return cast(long)b.len;
+}
+
+// List every live generation, the active one marked (for /system/generations).
+public long sysGenList(char* buf, size_t buflen) {
+    UB b; b.p = buf; b.cap = buflen; b.len = 0;
+    foreach (ref g; g_gens) if (g.inUse) {
+        lit(b, "gen");           num(b, g.number);
+        lit(b, " objId=");       num(b, g.objId);
+        lit(b, " parent=");      num(b, g.parentObjId);
+        lit(b, " components=");  num(b, g.count);
+        if (g.objId == g_activeGen) lit(b, " [active]");
+        put(b, '\n');
+    }
+    if (b.len == 0) lit(b, "(no generations)\n");
+    return cast(long)b.len;
 }
 
 // op = HOSQ_*, arg reserved, buf/buflen = caller's text buffer. Returns bytes

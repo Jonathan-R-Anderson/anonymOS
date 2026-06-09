@@ -1986,13 +1986,19 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
 
 // ── F1: /objects live views — /objects/<kind>/<obj> over the kernel tables ─────
 import core.hoscall : objfsKindId, objfsEnum, objfsRead,
-                      configfsId, configfsEnum, configfsRender;
+                      configfsId, configfsEnum, configfsRender,
+                      sysGenList, sysGenMeta;
 private enum ulong SYNTHDIR_OBJ_BASE = 0x0B1EC700;   // + kind id => /objects/<kind> dir
 __gshared int g_objectsDirIdx = -1;                  // RT node index of /objects
 
 // ── F2: /config declarative JSON views over the kernel tables ─────────────────
 __gshared int g_configDirIdx = -1;                   // RT node index of /config
 __gshared char[8192] g_configBuf;                    // rendered JSON (sequential open→read)
+
+// ── F3: /system immutable base views over the active Generation + components ───
+private enum ulong SYNTHDIR_SYSCUR = 0x59CC0700;     // tags the /system/current synthetic dir
+__gshared int g_systemDirIdx = -1;                   // RT node index of /system
+__gshared char[4096] g_sysBuf;                       // rendered /system text (sequential open→read)
 
 // Parse "/config/<name>". Returns the config id (>0) for a known *.json file, 0
 // otherwise. No subdirectories — /config is a flat set of generated documents.
@@ -2004,6 +2010,95 @@ private int configfsParse(const(char)* path) {
     while (p[nlen] != 0) ++nlen;
     foreach (i; 0 .. nlen) if (p[i] == '/') return 0;   // no subdirs
     return configfsId(p, nlen);
+}
+
+// F3 text builders over g_sysBuf (component metadata is assembled kernel-side because
+// the boot-module table lives here, not in hoscall.d).
+private void sbStr(ref size_t pos, const(char)* s) {
+    while (*s != 0 && pos < g_sysBuf.length - 1) g_sysBuf[pos++] = *s++;
+}
+private void sbNum(ref size_t pos, ulong n) {
+    char[24] tmp = void; int ti = 0;
+    if (n == 0) tmp[ti++] = '0';
+    while (n > 0) { tmp[ti++] = cast(char)('0' + n % 10); n /= 10; }
+    while (ti > 0 && pos < g_sysBuf.length - 1) g_sysBuf[pos++] = tmp[--ti];
+}
+private void sbHex(ref size_t pos, ulong v) {
+    sbStr(pos, "0x".ptr);
+    bool started = false;
+    for (int sh = 60; sh >= 0; sh -= 4) {
+        const uint nib = cast(uint)((v >> sh) & 0xF);
+        if (nib != 0 || started || sh == 0) {
+            started = true;
+            if (pos < g_sysBuf.length - 1)
+                g_sysBuf[pos++] = cast(char)(nib < 10 ? ('0' + nib) : ('a' + nib - 10));
+        }
+    }
+}
+
+// Classify a base component into the roadmap's {kernel,servers,drivers,interfaces}.
+private const(char)* sysComponentKind(const(char)* name) {
+    if (cstrEq(name, "kernel.elf")) return "kernel".ptr;
+    if (cstrLooksLikeSo(name))      return "interface".ptr;
+    size_t n = 0; while (name[n] != 0) ++n;
+    if (n >= 5 && name[n-5]=='.' && name[n-4]=='b' && name[n-3]=='l' && name[n-2]=='o' && name[n-1]=='b') return "data".ptr;
+    if (n >= 5 && name[n-5]=='.' && name[n-4]=='c' && name[n-3]=='o' && name[n-2]=='n' && name[n-1]=='f') return "data".ptr;
+    return "server".ptr;   // init / shells / wayland clients / drivers
+}
+
+// Nth boot-module basename -> nameBuf (for getdents over /system/current); -1 past end.
+private int sysComponentEnum(int logical, char* nameBuf, size_t cap) {
+    if (g_mboot_modules is null || g_module_count <= 0) return -1;
+    if (logical < 0 || logical >= g_module_count) return -1;
+    auto records = cast(BootModuleRecord*)g_mboot_modules;
+    const(char)* base = cstrLastComponent(records[logical].name.ptr, 120);
+    size_t l = 0; while (base[l] != 0 && l < cap) { nameBuf[l] = base[l]; ++l; }
+    return cast(int)l;
+}
+
+// Render /system/current/<name> component metadata into g_sysBuf; len or -2 (ENOENT).
+private long sysComponentMeta(const(char)* name, size_t nameLen) {
+    if (g_mboot_modules is null || g_module_count <= 0) return -2;
+    auto records = cast(BootModuleRecord*)g_mboot_modules;
+    foreach (i; 0 .. cast(size_t)g_module_count) {
+        const(char)* base = cstrLastComponent(records[i].name.ptr, 120);
+        size_t j = 0;
+        while (j < nameLen && base[j] != 0 && base[j] == name[j]) ++j;
+        if (j != nameLen || base[j] != 0) continue;
+        const ulong sz = cast(ulong)records[i].mod_end - cast(ulong)records[i].mod_start;
+        size_t pos = 0;
+        sbStr(pos, "type=Component\nname=".ptr); sbStr(pos, base);
+        sbStr(pos, "\nkind=".ptr);  sbStr(pos, sysComponentKind(base));
+        sbStr(pos, "\nsize=".ptr);  sbNum(pos, sz);
+        sbStr(pos, "\nphys=".ptr);  sbHex(pos, cast(ulong)records[i].mod_start);
+        sbStr(pos, "\nimmutable=true\n".ptr);
+        return cast(long)pos;
+    }
+    return -2;
+}
+
+// Classify a /system path: 0=not under /system; 1=/system; 2=/system/generations;
+// 3=/system/current (dir); 4=/system/current/generation; 5=/system/current/<comp>.
+private int sysfsParse(const(char)* path, out const(char)* comp, out size_t compLen) {
+    comp = null; compLen = 0;
+    static immutable string pre = "/system";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
+    const(char)* p = path + pre.length;
+    if (*p == 0) return 1;                       // /system
+    if (*p != '/') return 0;
+    ++p;
+    if (cstrEq(p, "generations")) return 2;
+    static immutable string cur = "current";
+    foreach (i; 0 .. cur.length) if (p[i] != cur[i]) return 0;
+    p += cur.length;
+    if (*p == 0) return 3;                        // /system/current
+    if (*p != '/') return 0;
+    ++p;
+    if (*p == 0) return 3;                        // /system/current/
+    if (cstrEq(p, "generation")) return 4;        // /system/current/generation
+    comp = p; while (p[compLen] != 0) ++compLen;
+    foreach (i; 0 .. compLen) if (comp[i] == '/') return 0;   // no deeper
+    return 5;                                     // /system/current/<component>
 }
 
 // Parse "/objects/<kind>[/<obj>]". Returns the kind id (>0) and the object name after
@@ -2333,6 +2428,33 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
+    // F3: /system immutable base — read-only views over the active generation +
+    // base components.  Any write/create ANYWHERE under /system is denied (EROFS),
+    // not just the recognised documents — the base is immutable.
+    {
+        if (cstrEq(path, "/system") || cstrEqPrefix(path, "/system/")) {
+            if ((flags & O_CREAT) || (flags & 3) != O_RDONLY) return negErrno(EROFS);
+        }
+        const(char)* scomp; size_t scompLen;
+        const int sk = sysfsParse(path, scomp, scompLen);
+        if (sk != 0) {
+            long slen = -1;
+            if      (sk == 2) slen = sysGenList(g_sysBuf.ptr, g_sysBuf.length - 1);
+            else if (sk == 4) slen = sysGenMeta(g_sysBuf.ptr, g_sysBuf.length - 1);
+            else if (sk == 5) slen = sysComponentMeta(scomp, scompLen);
+            if (slen > 0) {
+                g_fdTable[fd].type     = FileType.FD_FILE;
+                g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+                g_fdTable[fd].offset   = 0;
+                g_fdTable[fd].backend  = cast(void*)g_sysBuf.ptr;
+                g_fdTable[fd].fileSize = cast(ulong)slen;
+                return publishActiveFdReturn(fd);
+            }
+            if (sk == 5 && slen < 0) return negErrno(ENOENT);
+            // sk == 1 or 3 (a directory) falls through to the synthetic-dir handling.
+        }
+    }
+
     if (isSyntheticDirectoryPath(path) && !pathIsExactVfsFile(path)) {
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
@@ -2348,6 +2470,11 @@ public int sys_open(const(char)* path, int flags) {
             const(char)* osub; size_t osubLen;
             const int okind = objfsParse(path, osub, osubLen);
             if (okind > 0 && osub is null) g_fdTable[fd].fileSize = SYNTHDIR_OBJ_BASE + okind;
+        }
+        // F3: tag /system/current so getdents64 enumerates the base components.
+        {
+            const(char)* sc; size_t scl;
+            if (sysfsParse(path, sc, scl) == 3) g_fdTable[fd].fileSize = SYNTHDIR_SYSCUR;
         }
         return publishActiveFdReturn(fd);
     }
@@ -3594,6 +3721,7 @@ private void rtInit() {
     rtMkdirPath("/objects\0".ptr,       M0755, 0, 0);   // native object model (F1: live views)
     { int _p; const(char)* _l; size_t _ll; g_objectsDirIdx = rtResolve("/objects\0".ptr, _p, _l, _ll); }
     rtMkdirPath("/system\0".ptr,        M0755, 0, 0);   // immutable base (F3)
+    { int _p; const(char)* _l; size_t _ll; g_systemDirIdx = rtResolve("/system\0".ptr, _p, _l, _ll); }
     rtMkdirPath("/state\0".ptr,         M0755, 0, 0);   // mutable runtime/state
     rtMkdirPath("/config\0".ptr,        M0755, 0, 0);   // declarative config (F2)
     { int _p; const(char)* _l; size_t _ll; g_configDirIdx = rtResolve("/config\0".ptr, _p, _l, _ll); }
@@ -4672,6 +4800,11 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
     {
         const(char)* osub; size_t osubLen;
         if (objfsParse(path, osub, osubLen) > 0 && osub is null) return true;
+    }
+    // F3: /system/current is the active-generation component directory.
+    {
+        const(char)* sc; size_t scl;
+        if (sysfsParse(path, sc, scl) == 3) return true;
     }
     return cstrEq(path, "/") ||
            cstrEq(path, "/bin") ||
@@ -6573,6 +6706,34 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         return cast(long)written;
     }
 
+    // F3: /system/current enumeration — the active generation's base components
+    // (the boot modules) plus the `generation` metadata file.
+    if (f.fileSize == SYNTHDIR_SYSCUR) {
+        ulong logical = 2;
+        // the generation metadata file first
+        if (f.offset <= logical) {
+            static immutable string gname = "generation";
+            if (!writeDirent64(buf, count, &written, logical + 32768,
+                               cast(long)logical + 1, DT_REG, gname.ptr, gname.length))
+                return cast(long)written;
+            f.offset = logical + 1;
+        }
+        ++logical;
+        for (int li = 0; ; ++li) {
+            char[128] nb = void;
+            const int nl = sysComponentEnum(li, nb.ptr, nb.length);
+            if (nl < 0) break;
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, cast(ulong)(li + 40960),
+                                   cast(long)logical + 1, DT_REG, nb.ptr, cast(size_t)nl))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
     // /sys/dev/char enumeration (input + DRM device discovery for libudev-zero).
     if (f.fileSize == SYNTHDIR_DEVCHAR) {
         ulong logical = 2;
@@ -6626,6 +6787,20 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
                 if (f.offset <= logical) {
                     if (!writeDirent64(buf, count, &written, logical + 24576,
                                        cast(long)logical + 1, DT_REG, nb.ptr, cast(size_t)nl))
+                        return cast(long)written;
+                    f.offset = logical + 1;
+                }
+                ++logical;
+            }
+        }
+        // F3: /system lists the active deployment + the generations document.
+        if (dirIdx == g_systemDirIdx) {
+            static immutable string[2] names = ["current", "generations"];
+            static immutable ubyte[2]  types = [DT_DIR, DT_REG];
+            foreach (i, nm; names) {
+                if (f.offset <= logical) {
+                    if (!writeDirent64(buf, count, &written, logical + 28672,
+                                       cast(long)logical + 1, types[i], nm.ptr, nm.length))
                         return cast(long)written;
                     f.offset = logical + 1;
                 }

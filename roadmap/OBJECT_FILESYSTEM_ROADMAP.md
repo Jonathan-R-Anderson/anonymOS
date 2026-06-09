@@ -101,15 +101,32 @@ kernel object tables.
   `cat /config/system.json` live counts; write → EROFS; `/bin/ls` + rtfs selftest 11/11
   unaffected.
 
-## F3 — `/system` immutable base · P: Med · E: 3 · R: med · deps: IMMUTABLE_ROOTLESS
+## F3 — `/system` immutable base · ✅ DONE (read-only view, 2026-06-09) · P: Med · E: 3 · R: med · deps: IMMUTABLE_ROOTLESS
 
 A read-only view over the content-addressed Generation / StoreObject objects.
 
-- `/system/<generation>/{kernel,servers,drivers,interfaces}` from the boot
-  modules + StoreObject blobs; `/system/current` → the running Generation. Writes
-  denied (immutable); updates land as new Generations (anti-rollback already exists).
-- *Verify:* `ls /system/current` lists the base components; a write under `/system`
-  returns EROFS; an applied update appears as a new generation.
+- **DONE:** `/system/current` is the active deployment (a synthetic dir of the running
+  **base components = the boot modules**), `/system/generations` lists every captured
+  Generation (active marked), `/system/current/generation` renders the active
+  Generation's metadata (number/objId/parent/components/status/immutable). Each component
+  `/system/current/<name>` renders `type=Component name kind size phys immutable=true`,
+  `kind` ∈ {kernel,server,interface,data} by name (`.so`→interface, `.blob`/`.conf`→data,
+  `kernel.elf`→kernel, else server). **Writes denied:** any create/write anywhere under
+  `/system` returns EROFS (broad subtree guard, *before* the RT-create path).
+  - core/hoscall.d `sysGenMeta`/`sysGenList` (over `g_gens`/`g_activeGen`); posix.d
+    `sysfsParse` + a `sys_open` branch (renders into `g_sysBuf` 4 KB), `sysComponentEnum`/
+    `sysComponentMeta` (over the boot-module table), `SYNTHDIR_SYSCUR` getdents for
+    `/system/current`, `g_systemDirIdx` getdents for `/system`.
+  - *Truthful limits:* the boot **generation captures 0 store entries** (`components=0`),
+    so the component view uses the live boot modules (the de-facto running base), not the
+    Generation's entry list; `kernel.elf` is loaded by Limine (not a module) so no
+    `kind=kernel` entry appears. mkdir/unlink/rename under `/system` aren't yet
+    EROFS-guarded (only open-create/write is) — a hardening refinement.
+- *Verified (GUI):* `ls /system` → `current generations`; `ls /system/current` → the base
+  components + `generation`; `cat /system/current/generation` (number=1 objId=38 active);
+  `cat /system/current/weston` (kind=server size=100432); `cat /system/generations`
+  (`gen1 … [active]`); `echo x > /system/current/weston` → "Read-only file system";
+  `/bin/ls` + rtfs selftest 11/11 unaffected.
 
 ## F4 — Persisted object store (the north star) · P: High · E: 5 · R: high · deps: F1, SHELL A5 (disk)
 
@@ -151,7 +168,8 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
 - **M-F1 Live object FS.** ✅ Browse `/objects/*` reflecting live kernel state.
 - **M-F2 Declarative config.** ✅ (read-only) `/config/*.json` generated from the object
   tables; writable + `/etc`-from-`/config` are F2.2/F2.3.
-- **M-F3 Immutable system.** `/system` read-only Generation view.
+- **M-F3 Immutable system.** ✅ `/system` read-only Generation + base-component view
+  (EROFS on write).
 - **M-F4 Persisted objects.** Apps with manifests + `storage/` survive reboot (north star).
 - **M-F5 Capability FS.** Caps + relationships browsable and mutable via the native shell.
 

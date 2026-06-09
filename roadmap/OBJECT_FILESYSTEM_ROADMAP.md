@@ -76,19 +76,30 @@ The real native model: a synthetic object tree over the kernel's live tables.
   `ls /objects/processes` → live pids (clean, no errors); `cat /objects/processes/<pid>/
   comm` → the process name; `/bin/ls` + rtfs selftest 11/11 unaffected.
 
-## F2 — `/config` declarative views · P: Med · E: 3 · R: med · deps: F1
+## F2 — `/config` declarative views · ✅ DONE (read-only render, 2026-06-09) · P: Med · E: 3 · R: med · deps: F1
 
 System configuration as declarative data generated from (and applied back to) the
 kernel object tables.
 
-- Generated `/config/{system,identities,users,services,permissions}.json` rendered from
-  `g_identities`/`g_svcs`/`g_users`/policy state. Read = live render.
-- Writable for the mutable ones via the **signed-policy-transaction** path (the
-  identity `policyEpoch` mechanism) — start read-only, then writable.
-- `/etc` becomes a generated view derived from `/config` (replacing the static `g_vfs`
-  `/etc/*`).
-- *Verify:* `cat /config/identities.json` reflects the live domains; editing a writable
-  config field updates the corresponding object (epoch bumped, audited).
+- **DONE:** generated `/config/{system,identities,users,services}.json` rendered from
+  `g_identities`/`g_svcs`/`g_users` + the object table (`system.json` = kernel/model +
+  object/identity/namespace/service counts). Read = **live render** (verified: the object
+  count changed between two reads). core/hoscall.d `configfsId`/`configfsEnum`/
+  `configfsRender` (JSON via the UB text builder, `jstr` for names, hex strings for
+  rights/ceilings); posix.d `configfsParse` + a `sys_open` branch renders into
+  `g_configBuf` (8 KB) as an `FD_FILE`; getdents over the `/config` RT dir
+  (`g_configDirIdx`) lists the four documents. **Read-only:** a write-open returns EROFS
+  (verified `echo x > /config/system.json` → "Read-only file system", no shadowing RT
+  file created — the EROFS guard precedes the RT-create path).
+- **F2.2 remaining (writable):** make the mutable docs writable via the
+  **signed-policy-transaction** path (the identity `policyEpoch` mechanism) — parse the
+  edited JSON, apply to the object (epoch bumped, audited).
+- **F2.3 remaining (`/etc` view):** make `/etc` a generated view derived from `/config`
+  (replacing the static `g_vfs` `/etc/*`); add a `permissions.json` doc.
+- *Verified:* `ls /config` lists the four docs; `cat /config/identities.json` reflects the
+  live 7 domains (name/objId/trust/ceiling/state/disposable/namespace/policyEpoch);
+  `cat /config/system.json` live counts; write → EROFS; `/bin/ls` + rtfs selftest 11/11
+  unaffected.
 
 ## F3 — `/system` immutable base · P: Med · E: 3 · R: med · deps: IMMUTABLE_ROOTLESS
 
@@ -138,7 +149,8 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
 
 - **M-F0 Native root.** ✅ `ls /` is the object-OS tree; Linux still runs via `/compat`.
 - **M-F1 Live object FS.** ✅ Browse `/objects/*` reflecting live kernel state.
-- **M-F2 Declarative config.** `/config` + `/etc` generated from the object tables.
+- **M-F2 Declarative config.** ✅ (read-only) `/config/*.json` generated from the object
+  tables; writable + `/etc`-from-`/config` are F2.2/F2.3.
 - **M-F3 Immutable system.** `/system` read-only Generation view.
 - **M-F4 Persisted objects.** Apps with manifests + `storage/` survive reboot (north star).
 - **M-F5 Capability FS.** Caps + relationships browsable and mutable via the native shell.

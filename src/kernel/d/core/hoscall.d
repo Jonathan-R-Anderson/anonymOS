@@ -177,6 +177,105 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
     }
 }
 
+// ── /config declarative views (OBJECT_FILESYSTEM_ROADMAP F2) ──────────────────
+// /config/<name>.json renders the live kernel tables as declarative JSON — the
+// system's configuration as data generated from (and, later, applied back to) the
+// object tables.  Read-only for now; the mutable ones become writable via the
+// identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
+enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4;
+
+private immutable string[4] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json"];
+
+// "<name>.json" -> config id (0 = not a config file).
+public int configfsId(const(char)* name, size_t len) {
+    foreach (i, f; g_configFiles) if (nameEq(name, len, f)) return cast(int)(i + 1);
+    return CFG_NONE;
+}
+
+// Enumerate the config file names (for getdents over /config); -1 past the end.
+public int configfsEnum(int logical, char* nameBuf, size_t cap) {
+    if (logical < 0 || logical >= cast(int)g_configFiles.length) return -1;
+    auto s = g_configFiles[logical];
+    const size_t l = s.length < cap ? s.length : cap;
+    foreach (i; 0 .. l) nameBuf[i] = s[i];
+    return cast(int)l;
+}
+
+// JSON string literal (minimal escaping — kernel object names are controlled).
+private void jstr(ref UB b, const(char)* s, size_t n) {
+    put(b, '"');
+    foreach (i; 0 .. n) { const char c = s[i]; if (c == '"' || c == '\\') put(b, '\\'); put(b, c); }
+    put(b, '"');
+}
+
+// Render /config/<id>.json into buf; returns length or negative errno.
+public long configfsRender(int id, char* buf, size_t buflen) {
+    UB b; b.p = buf; b.cap = buflen; b.len = 0;
+    switch (id) {
+        case CFG_SYSTEM: {
+            uint objTotal = 0;
+            for (uint t = 1; t < ObjType.Count; ++t) objTotal += objCountType(cast(ObjType)t);
+            uint nsCount = 0;  foreach (ref ns; g_namespaces) if (ns.inUse) ++nsCount;
+            uint svcCount = 0; foreach (ref s; g_svcs)        if (s.inUse) ++svcCount;
+            lit(b, "{\n  \"kernel\": \"EpinAnonymOS\",\n  \"model\": \"object-capability\",\n");
+            lit(b, "  \"objects\": ");    num(b, objTotal);
+            lit(b, ",\n  \"identities\": "); num(b, identityCount());
+            lit(b, ",\n  \"namespaces\": "); num(b, nsCount);
+            lit(b, ",\n  \"services\": ");   num(b, svcCount);
+            lit(b, "\n}\n");
+            return cast(long)b.len;
+        }
+        case CFG_IDENTITIES: {
+            lit(b, "[\n"); bool first = true;
+            foreach (ref e; g_identities) if (e.inUse) {
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");        jstr(b, e.name.ptr, e.nameLen);
+                lit(b, ", \"objId\": ");         num(b, e.objId);
+                lit(b, ", \"trust\": ");         num(b, e.trust);
+                lit(b, ", \"ceiling\": \"");     hex(b, e.rightsCeiling); put(b, '"');
+                lit(b, ", \"state\": \"");       lit(b, e.active ? "active" : "draft"); put(b, '"');
+                lit(b, ", \"disposable\": ");    lit(b, e.disposable ? "true" : "false");
+                lit(b, ", \"namespace\": ");     num(b, e.nsTemplate);
+                lit(b, ", \"policyEpoch\": ");   num(b, e.policyEpoch);
+                lit(b, " }");
+            }
+            lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
+        case CFG_USERS: {
+            lit(b, "[\n"); bool first = true;
+            foreach (ref e; g_users) if (e.inUse) {
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");    jstr(b, e.name.ptr, e.nameLen);
+                lit(b, ", \"objId\": ");     num(b, e.objId);
+                lit(b, ", \"uid\": ");       num(b, e.uid);
+                lit(b, ", \"gid\": ");       num(b, e.gid);
+                lit(b, ", \"rights\": \"");  hex(b, e.rights); put(b, '"');
+                lit(b, " }");
+            }
+            lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
+        case CFG_SERVICES: {
+            lit(b, "[\n"); bool first = true;
+            foreach (ref e; g_svcs) if (e.inUse) {
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");      jstr(b, e.name.ptr, e.nameLen);
+                lit(b, ", \"objId\": ");       num(b, e.objId);
+                lit(b, ", \"state\": \"");     lit(b, e.started ? "started" : "stopped"); put(b, '"');
+                lit(b, ", \"rights\": \"");    hex(b, e.rights); put(b, '"');
+                lit(b, ", \"endpoint\": ");    num(b, e.endpointObjId);
+                lit(b, ", \"version\": ");     num(b, e.version_);
+                lit(b, " }");
+            }
+            lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
+        default: return -2; // ENOENT
+    }
+}
+
 // op = HOSQ_*, arg reserved, buf/buflen = caller's text buffer. Returns bytes
 // written (>= 0) or a negative errno.
 public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {

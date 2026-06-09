@@ -1985,9 +1985,26 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
 }
 
 // ── F1: /objects live views — /objects/<kind>/<obj> over the kernel tables ─────
-import core.hoscall : objfsKindId, objfsEnum, objfsRead;
+import core.hoscall : objfsKindId, objfsEnum, objfsRead,
+                      configfsId, configfsEnum, configfsRender;
 private enum ulong SYNTHDIR_OBJ_BASE = 0x0B1EC700;   // + kind id => /objects/<kind> dir
 __gshared int g_objectsDirIdx = -1;                  // RT node index of /objects
+
+// ── F2: /config declarative JSON views over the kernel tables ─────────────────
+__gshared int g_configDirIdx = -1;                   // RT node index of /config
+__gshared char[8192] g_configBuf;                    // rendered JSON (sequential open→read)
+
+// Parse "/config/<name>". Returns the config id (>0) for a known *.json file, 0
+// otherwise. No subdirectories — /config is a flat set of generated documents.
+private int configfsParse(const(char)* path) {
+    static immutable string pre = "/config/";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
+    const(char)* p = path + pre.length;
+    size_t nlen = 0;
+    while (p[nlen] != 0) ++nlen;
+    foreach (i; 0 .. nlen) if (p[i] == '/') return 0;   // no subdirs
+    return configfsId(p, nlen);
+}
 
 // Parse "/objects/<kind>[/<obj>]". Returns the kind id (>0) and the object name after
 // it (`obj`=null when the path is the /objects/<kind> directory); 0 if not such a path.
@@ -2295,6 +2312,24 @@ public int sys_open(const(char)* path, int flags) {
                 return publishActiveFdReturn(fd);
             }
             if (olen < 0) return negErrno(ENOENT);
+        }
+    }
+
+    // F2: /config/<name>.json — render the live tables as declarative JSON.
+    {
+        const int cfgId = configfsParse(path);
+        if (cfgId > 0) {
+            if ((flags & 3) != O_RDONLY) return negErrno(EROFS);  // read-only for now (F2.2 = writable)
+            const long clen = configfsRender(cfgId, g_configBuf.ptr, g_configBuf.length - 1);
+            if (clen > 0) {
+                g_fdTable[fd].type     = FileType.FD_FILE;
+                g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+                g_fdTable[fd].offset   = 0;
+                g_fdTable[fd].backend  = cast(void*)g_configBuf.ptr;
+                g_fdTable[fd].fileSize = cast(ulong)clen;
+                return publishActiveFdReturn(fd);
+            }
+            if (clen < 0) return negErrno(ENOENT);
         }
     }
 
@@ -3561,6 +3596,7 @@ private void rtInit() {
     rtMkdirPath("/system\0".ptr,        M0755, 0, 0);   // immutable base (F3)
     rtMkdirPath("/state\0".ptr,         M0755, 0, 0);   // mutable runtime/state
     rtMkdirPath("/config\0".ptr,        M0755, 0, 0);   // declarative config (F2)
+    { int _p; const(char)* _l; size_t _ll; g_configDirIdx = rtResolve("/config\0".ptr, _p, _l, _ll); }
     rtMkdirPath("/volumes\0".ptr,       M0755, 0, 0);   // mounted disks / containers
     rtMkdirPath("/compat\0".ptr,        M0755, 0, 0);   // compatibility overlays
     rtMkdirPath("/compat/linux\0".ptr,  M0755, 0, 0);
@@ -6575,6 +6611,21 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
                 if (f.offset <= logical) {
                     if (!writeDirent64(buf, count, &written, logical + 16384,
                                        cast(long)logical + 1, DT_DIR, k.ptr, k.length))
+                        return cast(long)written;
+                    f.offset = logical + 1;
+                }
+                ++logical;
+            }
+        }
+        // F2: /config lists the generated declarative JSON documents.
+        if (dirIdx == g_configDirIdx) {
+            for (int li = 0; ; ++li) {
+                char[32] nb = void;
+                const int nl = configfsEnum(li, nb.ptr, nb.length);
+                if (nl < 0) break;
+                if (f.offset <= logical) {
+                    if (!writeDirent64(buf, count, &written, logical + 24576,
+                                       cast(long)logical + 1, DT_REG, nb.ptr, cast(size_t)nl))
                         return cast(long)written;
                     f.offset = logical + 1;
                 }

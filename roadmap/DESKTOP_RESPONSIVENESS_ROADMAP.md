@@ -84,7 +84,21 @@ scheduling/committing repaints promptly.
 - *Verify:* 30 manager redraws → ≥~30 presents (`presentProfStats frames`); fps
   approaches the 60 Hz the mode advertises; screenshot tracks input within ~1 frame.
 
-## R3 — Proper idle (stop spinning when there's nothing to do)  ·  P: High · E: 2 · R: med · deps: R4(ideal)
+## R3 — Proper idle (stop spinning when there's nothing to do)  ·  🟧 IDLE TASK DONE (still spins → R4 for HLT) · deps: R4(ideal)
+
+**Done (a5362f21d): the idle task.** Profiling showed the residual latency was the
+KERNEL re-running parked pollers' epoll scans at ~190k/s (the all-idle fallback woke
+a poller → it re-ran a full fd scan → re-parked → repeat at full speed), saturating
+the kernel. Fixed with a dedicated idle task (`src/util/idle.c`, a userspace PAUSE
+spinner) that the scheduler runs ONLY when every real task is parked — so the real
+pollers stay parked and the kernel only handles real IRQs/events. Sched profile flips
+from "5 tasks each ~20% (kernel saturated)" to "only the idle task runs". **Still
+spins at 100% (can't HLT without R4),** so idle *power* is unchanged; the win is the
+kernel is no longer saturated, so the compositor isn't starved.
+**Surprise:** this did NOT fix the user-visible latency — with the kernel free, the
+residual erratic present latency (9 ms .. seconds) is now clearly **Weston-internal**
+(it doesn't reliably turn a client commit into a present). That's a libweston
+repaint-scheduling bug → folds back into **R2**, needs Weston-side debugging.
 
 The poll/epoll parking (de2813b67) can't pay off while the all-idle fallback
 force-wakes the pollers (because the kernel can't `hlt`). Give the scheduler a real

@@ -459,6 +459,12 @@ static int spawn_shell(struct app *a) {
         if (s < 0) _exit(127);
         dup2(s, 0); dup2(s, 1); dup2(s, 2);
         if (s > 2) close(s);
+        // Track A A3: give the shell a real PATH (so `which`/exec find /bin/<applet>)
+        // and a HOME, then start in the user's home directory.  Commands themselves
+        // run via busybox standalone (fork + applet), so they work even without PATH.
+        setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
+        setenv("HOME", "/root", 1);
+        setenv("TERM", "linux", 1);
         // The kernel forces argv[0] to the boot-module basename, so the shell
         // module is staged as "-sh": argv[0]="-sh" makes busybox ash a login
         // interactive shell that prints a prompt on the tty.

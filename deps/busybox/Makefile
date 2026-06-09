@@ -34,7 +34,7 @@ $(BB_SRC)/Makefile: $(BB_TARBALL)
 $(BB_SRC)/.config: $(BB_SRC)/Makefile busybox.config merge_config.sh
 	@echo "[busybox] Applying config..."
 	rm -f $(BB_SRC)/.config
-	$(MAKE) -C $(BB_SRC) allnoconfig CC=$(MUSL_CC) HOSTCC=gcc
+	$(MAKE) -C $(BB_SRC) defconfig CC=$(MUSL_CC) HOSTCC=gcc
 	./merge_config.sh $(BB_SRC)/.config busybox.config
 	cd $(BB_SRC) && yes '' | $(MAKE) oldconfig CC=$(MUSL_CC) HOSTCC=gcc
 

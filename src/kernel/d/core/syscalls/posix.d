@@ -1421,12 +1421,18 @@ void initFdTable() {
     g_fdTable[2].type = FileType.FD_CONSOLE;
     g_fdTable[2].flags = O_WRONLY;
 
-    rtInit();   // build the writable runtime-filesystem skeleton (/run, /tmp, …)
-
+    // Mark initialised BEFORE rtInit so the rtfs builders (rtSymlinkCreate etc.) that
+    // call initFdTable() re-enter as a no-op instead of recursively re-running setup
+    // and tripping the self-test before /bin is fully seeded.
     g_fdTableInitialized = true;
+
+    rtInit();   // build the writable runtime-filesystem skeleton (/run, /tmp, /bin, …)
+
     publishActiveFd(0);
     publishActiveFd(1);
     publishActiveFd(2);
+
+    rtfsSelfTest();   // Track A A2/A3: one-shot RT-filesystem self-test (now safe: init done)
 }
 
 private int negErrno(int n) {
@@ -1948,6 +1954,12 @@ public int sys_open(const(char)* path, int flags) {
         return negErrno(EFAULT);
     }
 
+    // Track A A2: resolve a leading RT-overlay symlink chain so open() follows
+    // symlinks (e.g. /bin/ls -> /busybox).  No-op unless the path ends at an RT_LNK.
+    char[1024] _lnkA = void;
+    char[1024] _lnkB = void;
+    path = rtFollowSymlinks(path, _lnkA.ptr, _lnkB.ptr, 1024);
+
     int nsOpen = namespaceCheckOpen(path, flags);
     if (nsOpen < 0) return nsOpen;
 
@@ -2328,7 +2340,7 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
     ++g_objOpsDispatch;
     if (_statBuf != 0) {
         if (f.type == FileType.FD_BUNDLE || f.type == FileType.FD_BOOT_MODULE) {
-            writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
+            writeLinuxStat(_statBuf, 0x8000 | 0x01ED, f.fileSize); // S_IFREG | 0755 (executable: busybox, libs)
             // A unique (st_dev, st_ino) per file is essential: the dynamic
             // linker dedups shared objects by (dev, ino), so without it every
             // .so collapses onto one and dlsym() fails.  The backend value
@@ -2342,7 +2354,8 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             const int idx = cast(int)cast(size_t)f.backend;
             const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
             const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
-            writeLinuxStatOwned(_statBuf, 0x4000 | 0x01ED, 0, uid, gid); // S_IFDIR | 0755
+            const uint dmode = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].mode : 0x1ED;
+            writeLinuxStatOwned(_statBuf, 0x4000 | dmode, 0, uid, gid); // S_IFDIR | mode
         } else if (fileIsDevNull(f) || f.type == FileType.FD_CONSOLE) {
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x0190; // S_IFCHR | 0620
@@ -2379,7 +2392,10 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             const uint sz = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].size : 0;
             const uint uid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].uid : userCurrentUid();
             const uint gid = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].gid : userCurrentGid();
-            writeLinuxStatOwned(_statBuf, 0x8000 | 0x01B6, sz, uid, gid); // S_IFREG | 0666
+            const uint fmode = (idx >= 0 && idx < RT_MAX_NODES) ? g_rt[idx].mode : 0x1B6;
+            const uint ftype = (idx >= 0 && idx < RT_MAX_NODES && g_rt[idx].kind == RT_LNK)
+                               ? 0xA000 : 0x8000;          // S_IFLNK : S_IFREG
+            writeLinuxStatOwned(_statBuf, ftype | fmode, sz, uid, gid);
         } else {
             writeLinuxStat(_statBuf, 0x8000 | 0x01a4, f.fileSize); // S_IFREG | 0644
         }
@@ -2962,28 +2978,35 @@ private const(char)[] displayInfoContent() {
 // idiom used for sockets/pipes elsewhere in this file); file payloads are
 // page-backed and allocated lazily on first write.
 // ─────────────────────────────────────────────────────────────────────────────
-private enum int    RT_MAX_NODES = 1024;
+// Track A (SHELL_AND_COMMANDS_ROADMAP A2): node count raised from 1024 so a full
+// FHS tree + ~380 /bin applet symlinks + user files fit; symlinks (RT_LNK) added;
+// payload pages are now freed on grow/unlink (no more leak) with byte accounting.
+private enum int    RT_MAX_NODES = 8192;
 private enum size_t RT_NAME_MAX  = 96;
+private enum ulong  RT_MAX_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap (ENOSPC past it)
 
 private enum ubyte RT_FREE = 0;
 private enum ubyte RT_DIR  = 1;
 private enum ubyte RT_REG  = 2;
+private enum ubyte RT_LNK  = 3;              // symbolic link; target string held in `data`
 
 private struct RtNode {
-    ubyte  kind;                 // RT_FREE / RT_DIR / RT_REG
+    ubyte  kind;                 // RT_FREE / RT_DIR / RT_REG / RT_LNK
     int    parent;               // parent node index; -1 only for root (index 0)
     ushort mode;                 // permission bits only (no S_IF type bits)
     uint   uid;
     uint   gid;
     ubyte  nameLen;
     char[RT_NAME_MAX] name;      // single path component
-    ubyte* data;                 // file payload (virtual ptr), null until written
-    uint   size;                 // current file length in bytes
+    ubyte* data;                 // file payload / link target (virtual ptr), null until written
+    ulong  dataPhys;             // phys addr backing `data` (0 = none) — so we can free it
+    uint   size;                 // current file length / link target length in bytes
     uint   cap;                  // allocated capacity (page multiple)
 }
 
 __gshared RtNode[RT_MAX_NODES] g_rt;
-__gshared bool g_rtInitialized = false;
+__gshared bool  g_rtInitialized = false;
+__gshared ulong g_rtBytes = 0;               // total bytes backing RT payloads (for the cap + df)
 
 private int rtAllocNode() {
     for (int i = 1; i < RT_MAX_NODES; ++i)        // index 0 reserved for root
@@ -3027,9 +3050,10 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].gid     = gid;
     g_rt[idx].nameLen = cast(ubyte)len;
     foreach (i; 0 .. len) g_rt[idx].name[i] = name[i];
-    g_rt[idx].data = null;
-    g_rt[idx].size = 0;
-    g_rt[idx].cap  = 0;
+    g_rt[idx].data     = null;
+    g_rt[idx].dataPhys = 0;
+    g_rt[idx].size     = 0;
+    g_rt[idx].cap      = 0;
     return idx;
 }
 
@@ -3083,19 +3107,87 @@ private int rtResolve(const(char)* path, out int outParent,
     }
 }
 
-// Grow a file node's page-backed payload to at least `need` bytes.
+// Grow a file node's page-backed payload to at least `need` bytes.  The old pages
+// are now FREED after the copy (was a leak) and the global byte total is kept so the
+// RT_MAX_BYTES cap and `df` reflect reality.
 private bool rtEnsureCap(ref RtNode n, uint need) {
     if (need <= n.cap) return true;
     const size_t pages = (need + 4095) / 4096;
+    const uint newCap = cast(uint)(pages * 4096);
+    // Enforce the tmpfs soft cap on the *additional* bytes this grow would commit.
+    if (g_rtBytes + (newCap - n.cap) > RT_MAX_BYTES) return false;
     const ulong phys = alloc_phys_pages(pages);
     if (phys == 0) return false;
     ubyte* nd = cast(ubyte*)phys_to_virt(phys);
-    const uint newCap = cast(uint)(pages * 4096);
     foreach (i; 0 .. n.size) nd[i] = n.data[i];          // copy existing bytes
     foreach (i; n.size .. newCap) nd[i] = 0;             // zero the remainder
-    n.data = nd;                                         // old pages leak (minimal tmpfs)
-    n.cap  = newCap;
+    const ulong oldPhys = n.dataPhys;
+    const uint  oldCap  = n.cap;
+    n.data     = nd;
+    n.dataPhys = phys;
+    n.cap      = newCap;
+    g_rtBytes += newCap;
+    if (oldPhys != 0 && oldCap != 0) {                   // release the previous backing
+        free_phys_pages(oldPhys, oldCap / 4096);
+        g_rtBytes -= oldCap;
+    }
     return true;
+}
+
+// Release a node's payload pages (on unlink / overwrite) and update the byte total.
+private void rtFreeData(ref RtNode n) {
+    if (n.dataPhys != 0 && n.cap != 0) {
+        free_phys_pages(n.dataPhys, n.cap / 4096);
+        g_rtBytes -= n.cap;
+    }
+    n.data = null; n.dataPhys = 0; n.size = 0; n.cap = 0;
+}
+
+// Build the absolute path of RT node `idx` ("/a/b/c") into `buf`; returns length.
+private size_t rtBuildPath(int idx, char* buf, size_t bufLen) {
+    int[64] chain = void;
+    int depth = 0;
+    int cur = idx;
+    while (cur > 0 && depth < 64) { chain[depth++] = cur; cur = g_rt[cur].parent; }
+    size_t pos = 0;
+    if (depth == 0) { if (bufLen > 1) buf[pos++] = '/'; buf[pos] = 0; return pos; }
+    for (int d = depth - 1; d >= 0; --d) {
+        const int n = chain[d];
+        if (pos + 1 < bufLen) buf[pos++] = '/';
+        foreach (i; 0 .. g_rt[n].nameLen)
+            if (pos + 1 < bufLen) buf[pos++] = g_rt[n].name[i];
+    }
+    buf[pos < bufLen ? pos : bufLen - 1] = 0;
+    return pos;
+}
+
+// Follow a leading symlink chain so callers (open) resolve through RT_LNK nodes.
+// Returns `path` unchanged when it does not end at a symlink; otherwise returns a
+// pointer into one of the two scratch buffers holding the rewritten target path.
+// Absolute targets restart from root; relative targets splice onto the link's parent.
+// Bounded to RT_LNK_MAX hops to break loops.
+private enum int RT_LNK_MAX = 16;
+private const(char)* rtFollowSymlinks(const(char)* path, char* bufA, char* bufB, size_t bufLen) {
+    const(char)* cur = path;
+    char* dst = bufA;
+    for (int hop = 0; hop < RT_LNK_MAX; ++hop) {
+        int rp; const(char)* rl; size_t rll;
+        const int ri = rtResolve(cur, rp, rl, rll);
+        if (ri < 0 || g_rt[ri].kind != RT_LNK) return cur;   // not a symlink — done
+        const uint tlen = g_rt[ri].size;
+        size_t pos = 0;
+        if (tlen > 0 && g_rt[ri].data[0] == '/') {           // absolute target
+            foreach (i; 0 .. tlen) if (pos + 1 < bufLen) dst[pos++] = cast(char)g_rt[ri].data[i];
+        } else {                                             // relative to link's parent
+            pos = rtBuildPath(g_rt[ri].parent, dst, bufLen);
+            if (pos + 1 < bufLen) dst[pos++] = '/';
+            foreach (i; 0 .. tlen) if (pos + 1 < bufLen) dst[pos++] = cast(char)g_rt[ri].data[i];
+        }
+        dst[pos < bufLen ? pos : bufLen - 1] = 0;
+        cur = dst;
+        dst = (dst == bufA) ? bufB : bufA;                   // ping-pong for the next hop
+    }
+    return cur;
 }
 
 // Seed one skeleton directory (idempotent).
@@ -3105,6 +3197,62 @@ private void rtMkdirPath(const(char)* path, ushort mode, uint uid, uint gid) {
     if (idx >= 0) return;                                // already exists
     if (parent < 0 || leaf is null) return;
     rtCreate(parent, leaf, leafLen, RT_DIR, mode, uid, gid);
+}
+
+// Track A A3: the full busybox applet set (deps/busybox/busybox.config / `busybox
+// --list`).  Each becomes /bin/<name> -> /busybox so `ls /bin`, `which`, and PATH
+// resolution see the real command set; busybox dispatches on argv[0]'s basename.
+private immutable string g_busyboxApplets =
+    "[ [[ acpid addgroup add-shell adduser adjtimex arch arp arping ascii ash awk " ~
+    "base32 base64 basename bash bc beep blkdiscard blkid blockdev bootchartd brctl " ~
+    "bunzip2 bzcat bzip2 cal cat chat chattr chgrp chmod chown chpasswd chpst chroot " ~
+    "chrt chvt cksum clear cmp comm conspy cp cpio crc32 crond crontab cryptpw cttyhack " ~
+    "cut date dc dd deallocvt delgroup deluser devmem df dhcprelay diff dirname dmesg " ~
+    "dnsd dnsdomainname dos2unix dpkg dpkg-deb du dumpkmap dumpleases echo ed egrep " ~
+    "eject env envdir envuidgid ether-wake expand expr factor fakeidentd fallocate false " ~
+    "fatattr fbset fbsplash fdflush fdformat fdisk fgconsole fgrep find findfs flock fold " ~
+    "free freeramdisk fsck fsck.minix fsfreeze fstrim fsync ftpd ftpget ftpput fuser " ~
+    "getopt getty grep groups gunzip gzip halt hd hdparm head hexdump hexedit hostid " ~
+    "hostname httpd hwclock i2cdetect i2cdump i2cget i2cset i2ctransfer id ifconfig " ~
+    "ifdown ifenslave ifplugd ifup inetd install ionice iostat ip ipaddr ipcalc ipcrm " ~
+    "ipcs iplink ipneigh iproute iprule iptunnel kbd_mode kill killall killall5 klogd " ~
+    "last less link linux32 linux64 ln loadfont loadkmap logger login logname logread " ~
+    "losetup lpd lpq lpr ls lsattr lsof lspci lsscsi lsusb lzcat lzma lzop makedevs " ~
+    "makemime man md5sum mesg microcom mim mkdir mkdosfs mke2fs mkfifo mkfs.ext2 " ~
+    "mkfs.minix mkfs.vfat mknod mkpasswd mkswap mktemp more mount mountpoint mpstat mt " ~
+    "mv nameif nbd-client nc netstat nice nl nmeter nohup nologin nproc nsenter nslookup " ~
+    "ntpd od openvt partprobe passwd paste patch pgrep pidof ping ping6 pipe_progress " ~
+    "pivot_root pkill pmap popmaildir poweroff powertop printenv printf ps pscan pstree " ~
+    "pwd pwdx raidautorun rdate rdev readahead readlink readprofile realpath reboot " ~
+    "reformime remove-shell renice reset resize resume rev rm rmdir route rpm rpm2cpio " ~
+    "rtcwake runlevel run-parts runsv runsvdir rx script scriptreplay sed seedrng " ~
+    "sendmail seq setarch setconsole setfattr setfont setkeycodes setlogcons setpriv " ~
+    "setserial setsid setuidgid sh sha1sum sha256sum sha3sum sha512sum showkey shred " ~
+    "shuf slattach sleep smemcap softlimit sort split ssl_client start-stop-daemon stat " ~
+    "strings stty su sulogin sum sv svc svlogd svok swapoff swapon sync sysctl syslogd " ~
+    "tac tail tar taskset tcpsvd tee telnet telnetd test tftp tftpd time timeout top " ~
+    "touch tr traceroute traceroute6 tree true truncate ts tsort tty ttysize tunctl " ~
+    "udhcpc udhcpc6 udhcpd udpsvd uevent umount uname unexpand uniq unix2dos unlink " ~
+    "unlzma unshare unxz unzip uptime users usleep uudecode uuencode vconfig vi vlock " ~
+    "volname w wall watch watchdog wc wget which who whoami whois xargs xxd xz xzcat " ~
+    "yes zcat zcip";
+
+// Create /bin/<applet> -> /busybox for every busybox applet (Track A A3).
+private void rtSeedBinSymlinks() {
+    char[160] linkbuf = void;
+    size_t i = 0;
+    while (i < g_busyboxApplets.length) {
+        while (i < g_busyboxApplets.length && g_busyboxApplets[i] == ' ') ++i;
+        const size_t start = i;
+        while (i < g_busyboxApplets.length && g_busyboxApplets[i] != ' ') ++i;
+        const size_t nlen = i - start;
+        if (nlen == 0 || nlen > 120) continue;
+        size_t p = 0;
+        linkbuf[p++] = '/'; linkbuf[p++] = 'b'; linkbuf[p++] = 'i'; linkbuf[p++] = 'n'; linkbuf[p++] = '/';
+        foreach (k; 0 .. nlen) linkbuf[p++] = g_busyboxApplets[start + k];
+        linkbuf[p] = 0;
+        rtSymlinkCreate("/busybox".ptr, linkbuf.ptr);   // absolute target, exec-followed
+    }
 }
 
 // Boot-time runtime-filesystem skeleton (emulates what pam_systemd/logind would
@@ -3138,6 +3286,24 @@ private void rtInit() {
     rtMkdirPath("/var/tmp\0".ptr,       M1777, 0, 0);
     rtMkdirPath("/var/run\0".ptr,       M0755, 0, 0);
 
+    // Track A A3: a standard FHS tree so the shell sees a real root.  /etc, /proc,
+    // /sys, /dev stay synthetic (served by g_vfs / device shims) and are intentionally
+    // not created here so their by-path content keeps resolving.
+    rtMkdirPath("/bin\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/sbin\0".ptr,          M0755, 0, 0);
+    rtMkdirPath("/usr\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/usr/bin\0".ptr,       M0755, 0, 0);
+    rtMkdirPath("/usr/sbin\0".ptr,      M0755, 0, 0);
+    rtMkdirPath("/usr/local\0".ptr,     M0755, 0, 0);
+    rtMkdirPath("/usr/local/bin\0".ptr, M0755, 0, 0);
+    rtMkdirPath("/lib\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/lib64\0".ptr,         M0755, 0, 0);
+    rtMkdirPath("/opt\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/mnt\0".ptr,           M0755, 0, 0);
+    rtMkdirPath("/root\0".ptr,          M0700, 0, 0);
+    rtMkdirPath("/var/log\0".ptr,       M0755, 0, 0);
+    rtSeedBinSymlinks();                 // /bin/<applet> -> /busybox for all applets
+
     // Unpack the bundled xkeyboard-config tree (rules/keycodes/symbols/...) into
     // the overlay so libxkbcommon can compile a real keymap.  Without this,
     // xkb_context_new() can't add its include path and returns NULL → Hyprland's
@@ -3149,6 +3315,74 @@ private void rtInit() {
     // into category blobs so fonts/icons/cursors/wallpapers/themes can evolve as
     // first-class OS resources while keeping the flat rtfs archive ABI.
     rtUnpackAssets();
+}
+
+// Track A A2/A3: one-shot boot self-test of the runtime filesystem — symlinks,
+// symlink-follow on open, mode/owner persistence (chmod), getdents, the /bin applet
+// tree, and payload-page accounting.  Prints `[rtfs] selftest PASS/FAIL` to serial.
+__gshared bool g_rtfsTested = false;
+private void rtfsSelfTest() {
+    if (g_rtfsTested) return;
+    g_rtfsTested = true;
+    int pass = 0, fail = 0;
+    void chk(bool c) { if (c) ++pass; else ++fail; }
+
+    // 1. /bin is a real overlay directory and holds the applet symlinks.
+    int bp; const(char)* bl; size_t bll;
+    const int binIdx = rtResolve("/bin\0".ptr, bp, bl, bll);
+    chk(binIdx > 0 && g_rt[binIdx].kind == RT_DIR);
+    int appletCount = 0;
+    for (int i = 1; i < RT_MAX_NODES; ++i)
+        if (g_rt[i].kind == RT_LNK && g_rt[i].parent == binIdx) ++appletCount;
+    chk(appletCount >= 300);
+
+    // 2. /bin/ls is a symlink whose target reads back as /busybox.
+    int lp; const(char)* ll; size_t lll;
+    const int lsIdx = rtResolve("/bin/ls\0".ptr, lp, ll, lll);
+    chk(lsIdx > 0 && g_rt[lsIdx].kind == RT_LNK);
+    {
+        char[32] tgt; const long rl = linux_sys_readlink(cast(ulong)"/bin/ls\0".ptr,
+                                                         cast(ulong)tgt.ptr, 32);
+        chk(rl == 8 && tgt[0] == '/' && tgt[1] == 'b' && tgt[7] == 'x'); // "/busybox"
+    }
+
+    // 3. open("/bin/ls") follows the symlink through to the busybox boot module.
+    {
+        const int fd = sys_open("/bin/ls\0".ptr, O_RDONLY);
+        chk(fd >= 0 && g_fdTable[fd].type == FileType.FD_BOOT_MODULE && g_fdTable[fd].fileSize > 0);
+        if (fd >= 0) sys_close(fd);
+    }
+
+    // 4. create + write + read-back + chmod + stat + unlink on a tmp file, and verify
+    //    the byte accounting returns to its starting point (no page leak).
+    {
+        const ulong bytes0 = g_rtBytes;
+        const int wf = sys_open("/tmp/.rtfs_test\0".ptr, O_RDWR | O_CREAT | O_TRUNC);
+        chk(wf >= 0);
+        if (wf >= 0) {
+            immutable ubyte[5] payload = ['h','e','l','l','o'];
+            chk(sys_write(wf, payload.ptr, 5) == 5);
+            sys_close(wf);
+            const int rf = sys_open("/tmp/.rtfs_test\0".ptr, O_RDONLY);
+            char[8] rb;
+            const long n = sys_read(rf, rb.ptr, 8);
+            chk(n == 5 && rb[0] == 'h' && rb[4] == 'o');
+            if (rf >= 0) sys_close(rf);
+            // chmod 0600 then stat the path and confirm the mode persisted.
+            linux_sys_chmod(cast(ulong)"/tmp/.rtfs_test\0".ptr, 0x180 /*0600*/);
+            ubyte[144] st;
+            chk(linux_sys_stat(cast(ulong)"/tmp/.rtfs_test\0".ptr, cast(ulong)st.ptr) == 0);
+            chk((*cast(uint*)(st.ptr + 24) & 0xFFF) == 0x180);
+            linux_sys_unlink(cast(ulong)"/tmp/.rtfs_test\0".ptr);
+        }
+        chk(g_rtBytes == bytes0);                       // unlink freed the page
+    }
+
+    klog("[rtfs] selftest ");
+    klog(fail == 0 ? "PASS".ptr : "FAIL".ptr);
+    klog(" (/bin applets="); klog_dec(cast(ulong)appletCount);
+    klog(", checks "); klog_dec(cast(ulong)pass); klog("/"); klog_dec(cast(ulong)(pass + fail));
+    klog(", rtBytes="); klog_dec(g_rtBytes); klog(")\n");
 }
 
 // Find-or-create a directory child `name`(len) under overlay dir `cur`.
@@ -4681,6 +4915,20 @@ public long linux_sys_readlink(ulong _path, ulong _buf, ulong _bufsiz) {
 
     auto path = cast(const(char)*)_path;
     auto outBuf = cast(char*)_buf;
+
+    // RT overlay symlink (Track A A2): return the stored target, never following it.
+    {
+        int rp; const(char)* rl; size_t rll;
+        const int ri = rtResolve(path, rp, rl, rll);
+        if (ri >= 0 && g_rt[ri].kind == RT_LNK) {
+            size_t n = cast(size_t)_bufsiz;
+            if (n > g_rt[ri].size) n = g_rt[ri].size;
+            foreach (i; 0 .. n) outBuf[i] = cast(char)g_rt[ri].data[i];
+            return cast(long)n;
+        }
+        if (ri >= 0) return cast(long)negErrno(EINVAL);   // exists but not a symlink
+    }
+
     string target;
     if (!getSyntheticReadlinkTarget(path, target)) {
         if (isSyntheticDirectoryPath(path) || isSyntheticSocketPath(path)) {
@@ -4753,7 +5001,14 @@ public long linux_sys_newfstatat(ulong _dirfd, ulong path, ulong statbuf, ulong 
         int rparent; const(char)* rleaf; size_t rleafLen;
         const int ridx = rtResolve(pathPtr, rparent, rleaf, rleafLen);
         if (ridx >= 0) {
-            const long rtFd = sys_open(pathPtr, O_RDONLY);
+            // lstat (AT_SYMLINK_NOFOLLOW) on an RT symlink: report the link itself
+            // (S_IFLNK + target length) rather than following it.  ls -l needs this.
+            if (g_rt[ridx].kind == RT_LNK && (_flags & AT_SYMLINK_NOFOLLOW) != 0) {
+                writeLinuxStatOwned(statbuf, 0xA000 | 0x1FF, g_rt[ridx].size,
+                                    g_rt[ridx].uid, g_rt[ridx].gid); // S_IFLNK | 0777
+                return 0;
+            }
+            const long rtFd = sys_open(pathPtr, O_RDONLY);  // follows symlinks (stat semantics)
             if (rtFd >= 0) {
                 const long rtStatRes = linux_sys_fstat(cast(ulong)rtFd, statbuf);
                 sys_close(cast(int)rtFd);
@@ -5884,6 +6139,7 @@ private struct linux_dirent64 {
 }
 private enum DT_DIR = 4;
 private enum DT_REG = 8;
+private enum DT_LNK = 10;
 
 // Linux ABI: d_ino(8) + d_off(8) + d_reclen(2) + d_type(1) = 19 bytes, then
 // d_name[] immediately at offset 19. The D struct above pads to 24 (8-byte
@@ -5955,7 +6211,8 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         for (int i = 1; i < RT_MAX_NODES; ++i) {
             if (g_rt[i].kind == RT_FREE || g_rt[i].parent != dirIdx) continue;
             if (f.offset <= logical) {
-                const ubyte dtype = (g_rt[i].kind == RT_DIR) ? DT_DIR : DT_REG;
+                const ubyte dtype = (g_rt[i].kind == RT_DIR) ? DT_DIR
+                                  : (g_rt[i].kind == RT_LNK) ? DT_LNK : DT_REG;
                 if (!writeDirent64(buf, count, &written, cast(ulong)i + 1,
                                    cast(long)logical + 1, dtype,
                                    g_rt[i].name.ptr, g_rt[i].nameLen))
@@ -6133,9 +6390,9 @@ private long rtUnlinkSyscall(const(char)* path, bool dirOnly) {
     } else if (g_rt[idx].kind == RT_DIR) {
         return negErrno(EISDIR);
     }
+    rtFreeData(g_rt[idx]);                           // release payload/link pages (no leak)
     g_rt[idx].kind   = RT_FREE;
     g_rt[idx].parent = -1;
-    g_rt[idx].size   = 0;                            // payload pages leak (minimal tmpfs)
     return 0;
 }
 
@@ -6163,6 +6420,7 @@ private long rtRenameSyscall(const(char)* oldp, const(char)* newp) {
     if (nidx >= 0) {                                 // replace existing target
         if (g_rt[nidx].kind == RT_DIR && g_rt[oidx].kind != RT_DIR)
             return negErrno(EISDIR);
+        rtFreeData(g_rt[nidx]);                       // release the overwritten node's pages
         g_rt[nidx].kind   = RT_FREE;
         g_rt[nidx].parent = -1;
     }
@@ -6179,8 +6437,39 @@ public long linux_sys_renameat2(ulong od, ulong o, ulong nd, ulong n_, ulong f) 
     return rtRenameSyscall(cast(const(char)*)o, cast(const(char)*)n_);
 }
 public long linux_sys_link(ulong o, ulong n_)    { return negErrno(EROFS); }
-public long linux_sys_symlink(ulong t, ulong l)  { return negErrno(EROFS); }
-public long linux_sys_symlinkat(ulong t, ulong d, ulong l) { return negErrno(EROFS); }
+
+// Create a symlink `linkPath` -> `target` in the RT overlay (Track A A2).
+private long rtSymlinkCreate(const(char)* target, const(char)* linkPath) {
+    initFdTable();
+    if (target is null || linkPath is null) return negErrno(EFAULT);
+    int parent; const(char)* leaf; size_t leafLen;
+    const int existing = rtResolve(linkPath, parent, leaf, leafLen);
+    if (existing >= 0) return negErrno(EEXIST);
+    if (parent < 0 || leaf is null || g_rt[parent].kind != RT_DIR) return negErrno(ENOENT);
+    if (leafLen == 0 || leafLen > RT_NAME_MAX) return negErrno(EINVAL);
+
+    size_t tlen = 0;
+    while (target[tlen] != 0) ++tlen;
+    if (tlen == 0) return negErrno(EINVAL);
+
+    const int idx = rtCreate(parent, leaf, leafLen, RT_LNK, 0x1FF, userCurrentUid(), userCurrentGid());
+    if (idx < 0) return negErrno(ENOSPC);
+    if (!rtEnsureCap(g_rt[idx], cast(uint)tlen)) {       // store the target string
+        g_rt[idx].kind = RT_FREE; g_rt[idx].parent = -1;
+        return negErrno(ENOSPC);
+    }
+    foreach (i; 0 .. tlen) g_rt[idx].data[i] = target[i];
+    g_rt[idx].size = cast(uint)tlen;
+    return 0;
+}
+
+public long linux_sys_symlink(ulong t, ulong l)  {
+    return rtSymlinkCreate(cast(const(char)*)t, cast(const(char)*)l);
+}
+public long linux_sys_symlinkat(ulong t, ulong d, ulong l) {
+    // AT_FDCWD / absolute link paths only (our shells always pass absolute paths).
+    return rtSymlinkCreate(cast(const(char)*)t, cast(const(char)*)l);
+}
 public long linux_sys_mknod(ulong p, ulong m, ulong d)   { return negErrno(EROFS); }
 public long linux_sys_mknodat(ulong d, ulong p, ulong m, ulong dv) { return negErrno(EROFS); }
 public long linux_sys_truncate(ulong p, ulong l)  { return negErrno(EROFS); }
@@ -6374,10 +6663,34 @@ public long fdMmapBacking(ulong fd, ulong offset, ulong* physOut,
     return mop(oh, offset, physOut, sizeOut, vmoOut, sharedOut);
 }
 
-// --- Permission / ownership stubs ---
-public long linux_sys_chmod(ulong p, ulong m)         { return 0; }
-public long linux_sys_fchmod(ulong fd, ulong m)        { return 0; }
-public long linux_sys_fchmodat(ulong d, ulong p, ulong m, ulong f) { return 0; }
+// --- Permission / ownership ---
+// Persist mode/owner on RT-overlay nodes (Track A A2) so chmod/chown/stat round-trip;
+// non-RT paths (synthetic /proc,/sys,/etc) keep the historical no-op so the OpenRC /
+// elogind startup that chmods pseudo-paths doesn't fail.
+private long rtChmodPath(const(char)* p, ushort mode) {
+    if (p is null) return negErrno(EFAULT);
+    int rp; const(char)* rl; size_t rll;
+    const int ri = rtResolve(p, rp, rl, rll);
+    if (ri >= 0) { g_rt[ri].mode = mode & 0xFFF; return 0; }
+    return 0;                                  // non-RT path: accept silently (compat)
+}
+
+public long linux_sys_chmod(ulong p, ulong m)  { return rtChmodPath(cast(const(char)*)p, cast(ushort)m); }
+public long linux_sys_fchmod(ulong fd, ulong m) {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd >= 0 && ifd < 1024 && g_fdTable[ifd].type != FileType.FD_NONE) {
+        File* f = &g_fdTable[ifd];
+        if (f.type == FileType.FD_RTFILE || f.type == FileType.FD_RTDIR) {
+            const int idx = cast(int)cast(size_t)f.backend;
+            if (idx >= 0 && idx < RT_MAX_NODES) g_rt[idx].mode = cast(ushort)(m & 0xFFF);
+        }
+    }
+    return 0;
+}
+public long linux_sys_fchmodat(ulong d, ulong p, ulong m, ulong f) {
+    return rtChmodPath(cast(const(char)*)p, cast(ushort)m);
+}
 
 private bool chownIsNoop(ulong u, ulong g) {
     bool uidOk = (u == ulong.max) || (u == userCurrentUid());
@@ -6385,15 +6698,42 @@ private bool chownIsNoop(ulong u, ulong g) {
     return uidOk && gidOk;
 }
 
-private long chownStub(ulong u, ulong g) {
-    if (chownIsNoop(u, g)) return 0;
+private long rtChownPath(const(char)* p, ulong u, ulong g) {
+    if (p !is null) {
+        int rp; const(char)* rl; size_t rll;
+        const int ri = rtResolve(p, rp, rl, rll);
+        if (ri >= 0) {                          // RT node: persist the requested owner
+            if (u != ulong.max) g_rt[ri].uid = cast(uint)u;
+            if (g != ulong.max) g_rt[ri].gid = cast(uint)g;
+            return 0;
+        }
+    }
+    if (chownIsNoop(u, g)) return 0;            // non-RT path: historical stub behaviour
     return adminRequire(CAP_RIGHT_ADMIN_USER) ? 0 : negErrno(EPERM);
 }
 
-public long linux_sys_chown(ulong p, ulong u, ulong g) { return chownStub(u, g); }
-public long linux_sys_lchown(ulong p, ulong u, ulong g){ return chownStub(u, g); }
-public long linux_sys_fchown(ulong fd, ulong u, ulong g){ return chownStub(u, g); }
-public long linux_sys_fchownat(ulong d, ulong p, ulong u, ulong g, ulong f) { return chownStub(u, g); }
+public long linux_sys_chown(ulong p, ulong u, ulong g) { return rtChownPath(cast(const(char)*)p, u, g); }
+public long linux_sys_lchown(ulong p, ulong u, ulong g){ return rtChownPath(cast(const(char)*)p, u, g); }
+public long linux_sys_fchown(ulong fd, ulong u, ulong g){
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd >= 0 && ifd < 1024 && g_fdTable[ifd].type != FileType.FD_NONE) {
+        File* f = &g_fdTable[ifd];
+        if (f.type == FileType.FD_RTFILE || f.type == FileType.FD_RTDIR) {
+            const int idx = cast(int)cast(size_t)f.backend;
+            if (idx >= 0 && idx < RT_MAX_NODES) {
+                if (u != ulong.max) g_rt[idx].uid = cast(uint)u;
+                if (g != ulong.max) g_rt[idx].gid = cast(uint)g;
+            }
+            return 0;
+        }
+    }
+    if (chownIsNoop(u, g)) return 0;
+    return adminRequire(CAP_RIGHT_ADMIN_USER) ? 0 : negErrno(EPERM);
+}
+public long linux_sys_fchownat(ulong d, ulong p, ulong u, ulong g, ulong f) {
+    return rtChownPath(cast(const(char)*)p, u, g);
+}
 public long linux_sys_utimensat(ulong d, ulong p, ulong t, ulong f) { return 0; }
 public long linux_sys_utimes(ulong p, ulong t)         { return 0; }
 
@@ -7227,7 +7567,7 @@ public long linux_sys_open_by_handle_at(ulong mfd, ulong handle, ulong fl) {
 // DRM / KMS ioctl handler
 // ============================================================================
 
-import memory.mm : alloc_phys_pages, physPagesSetOwner;
+import memory.mm : alloc_phys_pages, free_phys_pages, physPagesSetOwner;
 
 // DRM ioctl command number byte (request & 0xFF)
 private enum uint DRM_NR_VERSION            = 0x00;

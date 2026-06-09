@@ -45,6 +45,14 @@ static const uint32_t COL_BG     = 0xff101418;
 static const uint32_t COL_FG     = 0xfff2f2f2;
 static const uint32_t COL_CURSOR = 0xff30c030;
 
+// Client-side window decorations: a titlebar with minimize / maximize / close
+// buttons, drawn into the pixel buffer; the titlebar is also draggable (move).
+#define DECO_BASE_H 26          // titlebar height in base (scale=1) px
+#define BTN_LEFT_CODE 0x110     // linux/input BTN_LEFT
+static const uint32_t COL_DECO_BG = 0xff2a3140;   // titlebar bg (no-domain default)
+static const uint32_t COL_DECO_FG = 0xfff2f2f2;   // titlebar text + button glyphs
+static const uint32_t COL_DECO_SEP = 0xff10141a;  // hairline under the titlebar
+
 // IDENTITY_DOMAIN: the security domain this terminal was launched into (set by the
 // Domain Manager via EPIN_DOMAIN / EPIN_DOMAIN_COLOR).  Drawn as an unspoofable
 // colored border + window title so the user always sees which domain a terminal
@@ -64,6 +72,12 @@ struct app {
     struct wl_surface    *surface;
     struct xdg_surface   *xdg_surface;
     struct xdg_toplevel  *toplevel;
+    struct wl_pointer    *pointer;
+    double                px, py;       // pointer position (surface coords)
+    uint32_t              ptr_serial;   // latest pointer event serial (for the move grab)
+    int                   maximized;
+    int                   deco_h;       // titlebar height (scaled px)
+    char                  title[96];
     struct wl_buffer     *buffer;
     struct wl_callback   *frame_cb;
     uint32_t             *pixels;
@@ -114,8 +128,9 @@ static void init_layout(struct app *a) {
     a->font_px = BASE_FONT_PX * a->scale;
     a->cell_w = BASE_CELL_W * a->scale;
     a->cell_h = BASE_CELL_H * a->scale;
+    a->deco_h = DECO_BASE_H * a->scale;             // reserve a titlebar strip on top
     a->width = COLS * a->cell_w;
-    a->height = ROWS * a->cell_h;
+    a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
 }
 
@@ -243,6 +258,64 @@ static void render_ft_glyph(struct app *a, int x, int y, unsigned char ch, uint3
     }
 }
 
+// ── window decorations (titlebar + min/max/close buttons) ────────────────────
+static void put_px(struct app *a, int x, int y, uint32_t c) {
+    if (x < 0 || y < 0 || x >= a->width || y >= a->height) return;
+    a->pixels[y * a->width + x] = c;
+}
+// Button column x-origins (square buttons, right-aligned). Returns button width.
+static int deco_btns(struct app *a, int *minx, int *maxx, int *closex) {
+    int w = a->deco_h;
+    *closex = a->width - w;
+    *maxx   = a->width - 2 * w;
+    *minx   = a->width - 3 * w;
+    return w;
+}
+// Hit-test a pointer in surface coords: 0=content, 1=titlebar(drag), 2=min, 3=max, 4=close.
+static int deco_hit(struct app *a, double x, double y) {
+    if (y < 0 || y >= a->deco_h) return 0;
+    int minx, maxx, closex; deco_btns(a, &minx, &maxx, &closex);
+    if (x >= closex) return 4;
+    if (x >= maxx)   return 3;
+    if (x >= minx)   return 2;
+    return 1;
+}
+static void draw_deco(struct app *a) {
+    const uint32_t bg = g_has_domain ? g_domain_color : COL_DECO_BG;
+    gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->deco_h, bg);
+    gf_fill(a->pixels, a->width, a->width, a->height, 0, a->deco_h - 1, a->width, 1, COL_DECO_SEP);
+
+    int minx, maxx, closex, bw; bw = deco_btns(a, &minx, &maxx, &closex);
+    const int pad = a->deco_h / 3;
+
+    // title text on the left, truncated before the buttons
+    int tx = 6 * a->scale;
+    int ty = (a->deco_h - a->cell_h) / 2; if (ty < 0) ty = 0;
+    for (const char *p = a->title; *p && tx + a->cell_w < minx - 4; ++p) {
+        if (*p != ' ') render_ft_glyph(a, tx, ty, (unsigned char)*p, COL_DECO_FG);
+        tx += a->cell_w;
+    }
+    // minimize: a horizontal bar near the bottom
+    gf_fill(a->pixels, a->width, a->width, a->height,
+            minx + pad, a->deco_h - pad - 2, bw - 2 * pad, 2, COL_DECO_FG);
+    // maximize: a hollow square
+    {
+        int x0 = maxx + pad, y0 = pad, s = a->deco_h - 2 * pad;
+        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0, s, 1, COL_DECO_FG);
+        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0 + s - 1, s, 1, COL_DECO_FG);
+        gf_fill(a->pixels, a->width, a->width, a->height, x0, y0, 1, s, COL_DECO_FG);
+        gf_fill(a->pixels, a->width, a->width, a->height, x0 + s - 1, y0, 1, s, COL_DECO_FG);
+    }
+    // close: an X (two diagonals)
+    {
+        int x0 = closex + pad, y0 = pad, s = a->deco_h - 2 * pad;
+        for (int i = 0; i < s; i++) {
+            put_px(a, x0 + i, y0 + i, COL_DECO_FG);
+            put_px(a, x0 + s - 1 - i, y0 + i, COL_DECO_FG);
+        }
+    }
+}
+
 static void frame_done(void *data, struct wl_callback *cb, uint32_t time)
 {
     (void)time;
@@ -301,13 +374,14 @@ static void vt_byte(struct app *a, unsigned char b) {
 
 static void render(struct app *a) {
     if (!a->pixels) return;
+    const int top = a->deco_h;                       // terminal grid starts below the titlebar
     gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->height, COL_BG);
     for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++) {
             char ch = a->grid[r][c];
             if (ch != ' ') {
                 int x = c * a->cell_w;
-                int y = r * a->cell_h;
+                int y = top + r * a->cell_h;
                 if (a->font_ready)
                     render_ft_glyph(a, x, y, (unsigned char)ch, COL_FG);
                 else
@@ -317,27 +391,28 @@ static void render(struct app *a) {
         }
     // cursor block
     gf_fill(a->pixels, a->width, a->width, a->height,
-            a->cur_c * a->cell_w, a->cur_r * a->cell_h,
+            a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
             a->cell_w, a->cell_h, COL_CURSOR);
     char cc = a->grid[a->cur_r][a->cur_c];
     if (cc != ' ') {
         int x = a->cur_c * a->cell_w;
-        int y = a->cur_r * a->cell_h;
+        int y = top + a->cur_r * a->cell_h;
         if (a->font_ready)
             render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
         else
             gf_glyph(a->pixels, a->width, a->width, a->height,
                      x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
     }
-    // IDENTITY_DOMAIN §6: unspoofable colored border in the domain color, drawn LAST
-    // so app/terminal pixels can never reach the border ring.
+    // IDENTITY_DOMAIN §6: unspoofable colored border (left/right/bottom; the titlebar
+    // covers the top), drawn before the titlebar so app pixels never reach the ring.
     if (g_has_domain) {
         int t = 4 * a->scale;
-        gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, t, g_domain_color);
         gf_fill(a->pixels, a->width, a->width, a->height, 0, a->height - t, a->width, t, g_domain_color);
         gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, t, a->height, g_domain_color);
         gf_fill(a->pixels, a->width, a->width, a->height, a->width - t, 0, t, a->height, g_domain_color);
     }
+    // window decorations on top (the titlebar doubles as the domain indicator).
+    draw_deco(a);
 }
 
 static void commit(struct app *a) {
@@ -558,8 +633,54 @@ static const struct wl_keyboard_listener keyboard_listener = {
     .key = kb_key, .modifiers = kb_mods, .repeat_info = kb_repeat,
 };
 
+// ── pointer (for the titlebar: drag-to-move + the min/max/close buttons) ──────
+static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial,
+                      struct wl_surface *s, wl_fixed_t sx, wl_fixed_t sy) {
+    (void)p; (void)s; struct app *a = d;
+    a->ptr_serial = serial; a->px = wl_fixed_to_double(sx); a->py = wl_fixed_to_double(sy);
+}
+static void ptr_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_surface *s)
+{ (void)d; (void)p; (void)serial; (void)s; }
+static void ptr_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t sx, wl_fixed_t sy) {
+    (void)p; (void)t; struct app *a = d;
+    a->px = wl_fixed_to_double(sx); a->py = wl_fixed_to_double(sy);
+}
+static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
+                       uint32_t button, uint32_t state) {
+    (void)p; (void)t; struct app *a = d;
+    if (button != BTN_LEFT_CODE || state != WL_POINTER_BUTTON_STATE_PRESSED) return;
+    a->ptr_serial = serial;
+    switch (deco_hit(a, a->px, a->py)) {
+        case 1: xdg_toplevel_move(a->toplevel, a->seat, serial); break;   // drag the titlebar
+        case 2: xdg_toplevel_set_minimized(a->toplevel); break;
+        case 3: if (a->maximized) { xdg_toplevel_unset_maximized(a->toplevel); a->maximized = 0; }
+                else              { xdg_toplevel_set_maximized(a->toplevel);   a->maximized = 1; }
+                a->dirty = 1; break;
+        case 4: a->running = 0; break;                                    // close
+        default: break;
+    }
+}
+static void ptr_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t axis, wl_fixed_t v)
+{ (void)d; (void)p; (void)t; (void)axis; (void)v; }
+static void ptr_frame(void *d, struct wl_pointer *p) { (void)d; (void)p; }
+static void ptr_axis_source(void *d, struct wl_pointer *p, uint32_t s) { (void)d; (void)p; (void)s; }
+static void ptr_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax)
+{ (void)d; (void)p; (void)t; (void)ax; }
+static void ptr_axis_discrete(void *d, struct wl_pointer *p, uint32_t ax, int32_t disc)
+{ (void)d; (void)p; (void)ax; (void)disc; }
+static const struct wl_pointer_listener pointer_listener = {
+    .enter = ptr_enter, .leave = ptr_leave, .motion = ptr_motion, .button = ptr_button,
+    .axis = ptr_axis, .frame = ptr_frame, .axis_source = ptr_axis_source,
+    .axis_stop = ptr_axis_stop, .axis_discrete = ptr_axis_discrete,
+};
+
 static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
     struct app *a = data;
+    if ((caps & WL_SEAT_CAPABILITY_POINTER) && !a->pointer) {
+        a->pointer = wl_seat_get_pointer(seat);
+        wl_pointer_add_listener(a->pointer, &pointer_listener, a);
+        log_line("G4TERM: wl_seat has pointer; subscribed (window decorations live)");
+    }
     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !a->keyboard) {
         a->keyboard = wl_seat_get_keyboard(seat);
         wl_keyboard_add_listener(a->keyboard, &keyboard_listener, a);
@@ -659,12 +780,11 @@ int main(void) {
     xdg_surface_add_listener(a.xdg_surface, &xdg_surface_listener, &a);
     a.toplevel    = xdg_surface_get_toplevel(a.xdg_surface);
     xdg_toplevel_add_listener(a.toplevel, &toplevel_listener, &a);
-    char title[96];
     if (g_has_domain)
-        snprintf(title, sizeof(title), "[%s] EpinAnonymOS Terminal", g_domain);
+        snprintf(a.title, sizeof(a.title), "[%s] EpinAnonymOS Terminal", g_domain);
     else
-        snprintf(title, sizeof(title), "EpinAnonymOS Terminal");
-    xdg_toplevel_set_title(a.toplevel, title);
+        snprintf(a.title, sizeof(a.title), "EpinAnonymOS Terminal");
+    xdg_toplevel_set_title(a.toplevel, a.title);
     xdg_toplevel_set_app_id(a.toplevel, "epin-g4-term");
     wl_surface_commit(a.surface);
     wl_display_roundtrip(a.display);   // drive the first configure → commit

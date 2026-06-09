@@ -1984,6 +1984,33 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
     return false;
 }
 
+// ── F1: /objects live views — /objects/<kind>/<obj> over the kernel tables ─────
+import core.hoscall : objfsKindId, objfsEnum, objfsRead;
+private enum ulong SYNTHDIR_OBJ_BASE = 0x0B1EC700;   // + kind id => /objects/<kind> dir
+__gshared int g_objectsDirIdx = -1;                  // RT node index of /objects
+
+// Parse "/objects/<kind>[/<obj>]". Returns the kind id (>0) and the object name after
+// it (`obj`=null when the path is the /objects/<kind> directory); 0 if not such a path.
+private int objfsParse(const(char)* path, out const(char)* obj, out size_t objLen) {
+    obj = null; objLen = 0;
+    static immutable string pre = "/objects/";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return 0;
+    const(char)* p = path + pre.length;
+    size_t klen = 0;
+    while (p[klen] != 0 && p[klen] != '/') ++klen;
+    const int kid = objfsKindId(p, klen);
+    if (kid == 0) return 0;
+    p += klen;
+    if (*p == 0) return kid;            // /objects/<kind>
+    if (*p != '/') return 0;
+    ++p;
+    if (*p == 0) return kid;            // /objects/<kind>/
+    obj = p;
+    while (p[objLen] != 0) ++objLen;
+    foreach (i; 0 .. objLen) if (obj[i] == '/') return 0;   // deeper not supported
+    return kid;
+}
+
 // ── A4: dynamic /proc/<pid> for ps/top ───────────────────────────────────────
 private enum ulong SYNTHDIR_PROC = 0x9120C400;
 __gshared char[1024] g_procBuf;     // synthesised content (sequential open→read use)
@@ -2071,6 +2098,21 @@ public int sys_open(const(char)* path, int flags) {
         while (path[pi] != 0 && cl < 1023) _cwdAbs[cl++] = path[pi++];
         _cwdAbs[cl] = 0;
         path = _cwdAbs.ptr;
+    }
+
+    // F1: /objects/processes is the live process view = /proc. Rewrite the prefix so
+    // per-pid paths (/objects/processes/<pid>/stat) resolve through the procfs handler
+    // (the dir symlink alone only covers the final component / synthetic /proc target).
+    char[1024] _objp = void;
+    if (cstrEqPrefix(path, "/objects/processes")) {
+        const(char)* rest = path + 18;            // char after "/objects/processes"
+        if (*rest == 0 || *rest == '/') {
+            size_t pos = 0;
+            foreach (c; "/proc") _objp[pos++] = c;
+            while (*rest != 0 && pos + 1 < _objp.length) _objp[pos++] = *rest++;
+            _objp[pos] = 0;
+            path = _objp.ptr;
+        }
     }
 
     // Track A A2: resolve a leading RT-overlay symlink chain so open() follows
@@ -2238,6 +2280,24 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
 
+    // F1: /objects/<kind>/<obj> — render the live object's metadata (cat as a file).
+    {
+        const(char)* osub; size_t osubLen;
+        const int okind = objfsParse(path, osub, osubLen);
+        if (okind > 0 && osub !is null) {
+            const long olen = objfsRead(okind, osub, osubLen, g_procBuf.ptr, g_procBuf.length - 1);
+            if (olen > 0) {
+                g_fdTable[fd].type     = FileType.FD_FILE;
+                g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+                g_fdTable[fd].offset   = 0;
+                g_fdTable[fd].backend  = cast(void*)g_procBuf.ptr;
+                g_fdTable[fd].fileSize = cast(ulong)olen;
+                return publishActiveFdReturn(fd);
+            }
+            if (olen < 0) return negErrno(ENOENT);
+        }
+    }
+
     if (isSyntheticDirectoryPath(path) && !pathIsExactVfsFile(path)) {
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
@@ -2248,6 +2308,12 @@ public int sys_open(const(char)* path, int flags) {
         if (cstrEq(path, "/sys/dev/char")) g_fdTable[fd].fileSize = SYNTHDIR_DEVCHAR;
         // Tag /proc so getdents64 enumerates the live process pids (ps/top).
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
+        // F1: tag /objects/<kind> so getdents64 enumerates its live objects.
+        {
+            const(char)* osub; size_t osubLen;
+            const int okind = objfsParse(path, osub, osubLen);
+            if (okind > 0 && osub is null) g_fdTable[fd].fileSize = SYNTHDIR_OBJ_BASE + okind;
+        }
         return publishActiveFdReturn(fd);
     }
 
@@ -3491,6 +3557,7 @@ private void rtInit() {
     // Linux tree is also reachable under /compat/linux via dir symlinks, and the
     // writable runtime under /state.
     rtMkdirPath("/objects\0".ptr,       M0755, 0, 0);   // native object model (F1: live views)
+    { int _p; const(char)* _l; size_t _ll; g_objectsDirIdx = rtResolve("/objects\0".ptr, _p, _l, _ll); }
     rtMkdirPath("/system\0".ptr,        M0755, 0, 0);   // immutable base (F3)
     rtMkdirPath("/state\0".ptr,         M0755, 0, 0);   // mutable runtime/state
     rtMkdirPath("/config\0".ptr,        M0755, 0, 0);   // declarative config (F2)
@@ -3507,6 +3574,8 @@ private void rtInit() {
     rtSymlinkCreate("/var/log\0".ptr,   "/state/logs\0".ptr);
     rtSymlinkCreate("/var/cache\0".ptr, "/state/cache\0".ptr);
     rtSymlinkCreate("/run\0".ptr,       "/state/sessions\0".ptr);
+    // F1: /objects/processes reuses the live /proc view (per-pid object dirs).
+    rtSymlinkCreate("/proc\0".ptr,      "/objects/processes\0".ptr);
 
     // Unpack the bundled xkeyboard-config tree (rules/keycodes/symbols/...) into
     // the overlay so libxkbcommon can compile a real keymap.  Without this,
@@ -4562,6 +4631,11 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
     {
         const(char)* psub; size_t psubLen;
         if (procParsePid(path, psub, psubLen) > 0 && psub is null) return true;
+    }
+    // F1: /objects/<kind> is a (live) object-collection directory.
+    {
+        const(char)* osub; size_t osubLen;
+        if (objfsParse(path, osub, osubLen) > 0 && osub is null) return true;
     }
     return cstrEq(path, "/") ||
            cstrEq(path, "/bin") ||
@@ -6444,6 +6518,25 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         return cast(long)written;
     }
 
+    // F1: /objects/<kind> enumeration — one entry per live object of that kind.
+    if (f.fileSize >= SYNTHDIR_OBJ_BASE && f.fileSize < SYNTHDIR_OBJ_BASE + 16) {
+        const int kind = cast(int)(f.fileSize - SYNTHDIR_OBJ_BASE);
+        ulong logical = 2;
+        for (int li = 0; ; ++li) {
+            char[64] nb = void;
+            const int nl = objfsEnum(kind, li, nb.ptr, nb.length);
+            if (nl < 0) break;
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, cast(ulong)(li + 8192),
+                                   cast(long)logical + 1, DT_REG, nb.ptr, cast(size_t)nl))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
     // /sys/dev/char enumeration (input + DRM device discovery for libudev-zero).
     if (f.fileSize == SYNTHDIR_DEVCHAR) {
         ulong logical = 2;
@@ -6474,6 +6567,19 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
                 f.offset = logical + 1;
             }
             ++logical;
+        }
+        // F1: /objects also lists the synthetic object kinds alongside its RT children.
+        if (dirIdx == g_objectsDirIdx) {
+            static immutable string[4] kinds = ["identities", "services", "namespaces", "users"];
+            foreach (k; kinds) {
+                if (f.offset <= logical) {
+                    if (!writeDirent64(buf, count, &written, logical + 16384,
+                                       cast(long)logical + 1, DT_DIR, k.ptr, k.length))
+                        return cast(long)written;
+                    f.offset = logical + 1;
+                }
+                ++logical;
+            }
         }
     }
 

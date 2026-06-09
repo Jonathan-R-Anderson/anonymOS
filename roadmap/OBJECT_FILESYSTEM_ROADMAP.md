@@ -53,20 +53,28 @@ Make the object-OS tree appear at `/` without disturbing the working Linux FS.
 - *Verify:* `ls /` shows the native tree; `ls /compat/linux/bin` + `cat /compat/linux/
   bin/<applet>` work; `/bin/ls` still execs; the shell + busybox are unchanged.
 
-## F1 — `/objects` live views (generated, read-mostly) · P: High · E: 3 · R: med · deps: F0
+## F1 — `/objects` live views (generated, read-mostly) · ✅ DONE (2026-06-09) · P: High · E: 3 · R: med · deps: F0
 
 The real native model: a synthetic object tree over the kernel's live tables.
 
 - `/objects/<kind>/` directories — `processes` (= reframed `/proc`), `identities`,
-  `services`, `devices`, `namespaces`, `windows`, `users` — each enumerating live
-  objects (getdents over `g_objects`/`g_identities`/… , reusing the procfs mechanism).
-- Each object is a directory of metadata files: `type`, `id`, `refs`, `owner`,
-  `name`, plus `capabilities/` and `relationships/` (F5). E.g.
-  `/objects/identities/System/{trust,ceiling,state,namespace}`.
-- The native object shell browses it (`cd /objects/identities && ls`); `/proc` and
-  `/dev` become thin aliases/views of `/objects/processes` and `/objects/devices`.
-- *Verify:* `ls /objects/identities` shows the 7 domains; `cat /objects/identities/
-  System/trust` returns its trust level; `ls /objects/processes` mirrors `ps`.
+  `services`, `namespaces`, `users` — each enumerating live objects.
+  - **Implemented:** `objfsEnum`/`objfsRead`/`objfsKindId` in core/hoscall.d render the
+    live `g_identities`/`g_svcs`/`g_users` (+ object) tables; posix.d `sys_open` resolves
+    `/objects/<kind>/<obj>` to a generated metadata file (`SYNTHDIR_OBJ_BASE` getdents for
+    `/objects/<kind>`, kind list `identities/services/namespaces/users` as DT_DIR for
+    `/objects`). `/objects/processes` is an RT dir-symlink onto `/proc`, **plus** a
+    `sys_open` prefix-rewrite `/objects/processes/… → /proc/…` so per-pid paths reach the
+    procfs handler (the symlink alone only covers the final component / synthetic `/proc`).
+- Each object renders as a metadata file: `type`, `name`, `objId`, plus kind-specific
+  fields (identities: `trust`, `ceiling`, `state`, `disposable`, `namespace`,
+  `policyEpoch`; users: `uid/gid/rights`). Per-field dirs + `capabilities/`,
+  `relationships/` are F5.
+- *Verified (GUI):* `ls /objects` → `identities namespaces processes services users`;
+  `ls /objects/identities` → the 7 domains; `cat /objects/identities/System` →
+  `type=Identity name=System trust=100 ceiling=0x7ffff state=active …`;
+  `ls /objects/processes` → live pids (clean, no errors); `cat /objects/processes/<pid>/
+  comm` → the process name; `/bin/ls` + rtfs selftest 11/11 unaffected.
 
 ## F2 — `/config` declarative views · P: Med · E: 3 · R: med · deps: F1
 
@@ -128,8 +136,8 @@ Expose the cap/relationship graph the kernel already maintains as filesystem obj
 
 ## Milestones
 
-- **M-F0 Native root.** `ls /` is the object-OS tree; Linux still runs via `/compat`.
-- **M-F1 Live object FS.** Browse `/objects/*` reflecting live kernel state.
+- **M-F0 Native root.** ✅ `ls /` is the object-OS tree; Linux still runs via `/compat`.
+- **M-F1 Live object FS.** ✅ Browse `/objects/*` reflecting live kernel state.
 - **M-F2 Declarative config.** `/config` + `/etc` generated from the object tables.
 - **M-F3 Immutable system.** `/system` read-only Generation view.
 - **M-F4 Persisted objects.** Apps with manifests + `storage/` survive reboot (north star).

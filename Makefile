@@ -62,6 +62,7 @@ WLTERM_BIN    := build/wl-term
 WLCAIRO_DEMO_BIN := build/wl-cairo-demo
 WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
+IDLE_BIN := build/idle
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
@@ -215,6 +216,10 @@ $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 		-lm \
 		-pthread
 
+$(IDLE_BIN): src/util/idle.c
+	@echo "==== Building idle task (scheduler idle spinner) ===="
+	$(MUSL_CC) -static -O2 -o $@ src/util/idle.c
+
 $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-domain-manager (IDENTITY_DOMAIN Qubes-style manager) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
@@ -227,7 +232,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -274,6 +279,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(WLTERM_BIN) cd/wl-term
 	@echo "Included wl-term (GUI G4)"
+
+	cp $(IDLE_BIN) cd/idle
+	@echo "Included idle task (scheduler idle spinner)"
 
 	cp $(WLCAIRO_DEMO_BIN) cd/wl-cairo-demo
 	printf '\n    module_path: boot():/wl-cairo-demo\n' >> cd/boot/limine/limine.conf

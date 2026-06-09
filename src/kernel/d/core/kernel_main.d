@@ -173,6 +173,11 @@ __gshared ulong[MAX_TASKS] g_schedN;
 __gshared bool[MAX_TASKS]  g_pollBlocked;
 __gshared ulong[MAX_TASKS] g_pollDeadline;   // pitMs deadline; 0 = infinite (fd-only)
 
+// The idle task: a userspace PAUSE-spinner the scheduler runs ONLY when every real
+// task is parked, so the kernel isn't re-running parked pollers' epoll scans at full
+// rate (which saturated the kernel and starved the compositor).  -1 until spawned.
+__gshared int g_idleTid = -1;
+
 // Wake parked pollers so they re-check their fds.  Called from the PIT tick and
 // input IRQs.  Clearing `waiting` lets the scheduler pick them; they re-run their
 // poll/epoll and either return (fd ready / timed out) or re-park.
@@ -298,6 +303,7 @@ private void scheduleNext() {
     // main thread whenever it yielded.)
     for (uint i = 1; i <= MAX_TASKS; i++) {
         uint next = cast(uint)((cur + i) % MAX_TASKS);
+        if (cast(int)next == g_idleTid) continue;   // idle is a last resort only
         auto t = &g_tasks[next];
         if (t.active && !t.exited && !t.waiting) {
             g_current_task_id = next;
@@ -330,23 +336,24 @@ private void scheduleNext() {
     // live to service interrupts.  During active work the compositor is runnable
     // and chosen above, so the parked pollers keep yielding it the core — they are
     // only force-woken here when truly *everyone* is idle.
-    {
-        bool woke = false;
-        for (uint i = 0; i < MAX_TASKS; i++) {
-            if (g_pollBlocked[i] && g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].waiting) {
-                g_tasks[i].waiting = false;
-                woke = true;
-            }
-        }
-        if (woke) {
-            for (uint i = 1; i <= MAX_TASKS; i++) {
-                uint next = cast(uint)((cur + i) % MAX_TASKS);
-                auto t = &g_tasks[next];
-                if (t.active && !t.exited && !t.waiting) {
-                    g_current_task_id = next;
-                    return;
-                }
-            }
+    // Every real task is parked.  Run the dedicated idle task (a cheap userspace
+    // PAUSE-spinner) so the PIT/input IRQs keep firing WITHOUT re-running the parked
+    // pollers' expensive epoll scans — that re-run was saturating the kernel (~190k
+    // scans/s) and starving the compositor.  The pollers stay parked until a real
+    // event (input IRQ / sendmsg) or the ~8 ms timer wake.
+    if (g_idleTid > 0 && g_tasks[g_idleTid].active && !g_tasks[g_idleTid].exited
+        && !g_tasks[g_idleTid].waiting) {
+        g_current_task_id = cast(ulong)g_idleTid;
+        return;
+    }
+    // No idle task yet — fall back to waking one parked poller to keep IRQs alive.
+    for (uint i = 1; i <= MAX_TASKS; i++) {
+        uint next = cast(uint)((cur + i) % MAX_TASKS);
+        if (g_pollBlocked[next] && g_tasks[next].active && !g_tasks[next].exited
+            && g_tasks[next].waiting) {
+            g_tasks[next].waiting = false;
+            g_current_task_id = next;
+            return;
         }
     }
     // All tasks gone or stuck — just keep running the current one
@@ -365,6 +372,7 @@ private void exitTask(int tid, int code) {
     t.exited   = true;
     t.exitCode = code;
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
+    if (tid == g_idleTid) g_idleTid = -1;   // idle task died — re-spawn next loop
     objReleaseTask(tid);
     bool capTableStillShared = false;
     for (int i = 0; i < MAX_TASKS; ++i) {
@@ -896,6 +904,36 @@ private bool spawnWaylandProgram(const(char)* prog, const(char)* tag) {
     klog_hex(cast(ulong)t); klog("\n");
     g_current_task_id = cast(ulong)t;
     return true;
+}
+
+// Spawn the idle task (/idle boot module) once.  Like spawnWaylandProgram but does
+// NOT make it current (the scheduler only runs it as a last resort) and records its
+// tid in g_idleTid.
+private void maybeSpawnIdle() {
+    if (g_idleTid >= 0) return;                  // already spawned
+    int t = allocTask();
+    if (t <= 0) return;
+    g_tasks[t].parentId         = 0;
+    g_tasks[t].processLeaderTid = t;
+    g_tasks[t].userObjId        = g_tasks[0].userObjId;
+    g_tasks[t].untypedObjId     = untypedCreateProcess(0);
+    if (g_tasks[t].untypedObjId == 0) { releaseTask(t); return; }
+    g_tasks[t].namespaceObjId   = nsClone(g_tasks[0].namespaceObjId);
+    capTableClear(g_tasks[t].capTabId);
+    installTaskUntypedCap(t);
+    fdtabSetupConsoleStdio(g_tasks[t].fdTabId);
+
+    ulong savedCr3 = x64ReadCR3();
+    uint savedUntyped = physActiveUntyped();
+    ulong savedCur = g_current_task_id;          // execveTask/our setup must not steal `current`
+    physSetActiveUntyped(g_tasks[t].untypedObjId);
+    long r = execveTask(t, cast(ulong)"/idle\0".ptr, 0, 0);
+    physSetActiveUntyped(savedUntyped);
+    x64WriteCR3(savedCr3);
+    g_current_task_id = savedCur;
+    if (r != 0) { releaseTask(t); return; }
+    g_idleTid = t;
+    klog("[idle] idle task spawned as tid "); klog_hex(cast(ulong)t); klog("\n");
 }
 
 private void spawnWaylandClients() {
@@ -2003,6 +2041,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 private void kernelLoop() {
     while (true) {
         maybeSpawnWaylandClient();
+        maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;
         auto task = &g_tasks[tid];
@@ -2069,7 +2108,10 @@ private void kernelLoop() {
             if (irqIdx == 0) {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
-                wakePollers();   // re-check parked poll/epoll sleepers (≤1 ms latency)
+                // Re-check parked poll/epoll sleepers every tick (catch-all for passive
+                // fds like the compositor's repaint timerfd).  Cheap now that the idle
+                // task — not the parked pollers' epoll re-runs — absorbs the idle core.
+                wakePollers();
                 picEOI(false);
                 scheduleNext();
             } else if (irqIdx == 1) {

@@ -249,6 +249,9 @@ __gshared InputRing g_mouse_ring;  // /dev/input/event1
 // R1 input-drop profiling: events enqueued / dropped (ring full) / read by clients.
 __gshared ulong g_inKbdEnq, g_inKbdDrop, g_inKbdRead;
 __gshared ulong g_inMouseEnq, g_inMouseDrop, g_inMouseRead;
+// R2 latency: pitMs when a kbd event was read by the compositor; cleared + logged at
+// the next present → the full input→screen latency, one line per input burst.
+__gshared ulong g_pendingInputMs;
 public void inputStats() @nogc nothrow {
     klog("[input] kbd enq="); klog_dec(g_inKbdEnq);
     klog(" drop="); klog_dec(g_inKbdDrop);
@@ -1729,7 +1732,10 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
             dst[n++] = ring.events[ring.tail];
             ring.tail = (ring.tail + 1) % INPUT_RING_SIZE;
         }
-        if (devIdx == 1) g_inMouseRead += n; else g_inKbdRead += n;
+        if (devIdx == 1) g_inMouseRead += n; else {
+            g_inKbdRead += n;
+            if (n > 0 && g_pendingInputMs == 0) g_pendingInputMs = pitMs(); // R2 latency start
+        }
         return cast(ssize_t)(n * evtSz);
     }
 
@@ -7498,6 +7504,10 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
     presentAccount(_t0, rdtsc(), cast(ulong)copyW * copyH, true);
+    if (g_pendingInputMs != 0) {   // R2: full input→screen latency (one line per burst)
+        klog("[lat] input->present_ms="); klog_dec(pitMs() - g_pendingInputMs); klog("\n");
+        g_pendingInputMs = 0;
+    }
     return 0;
 }
 

@@ -436,6 +436,13 @@ static int spawn_shell(struct app *a) {
     snprintf(pts, sizeof(pts), "/dev/pts/%u", n);
     printf("G4TERM: pty master ready, slave = %s\n", pts); fflush(stdout);
 
+    // Track C1: tell the pty its real window size so full-screen apps (vi, top, less,
+    // and a future terminal emulator) lay out to the visible grid via TIOCGWINSZ.
+    struct winsize ws = { .ws_row = ROWS, .ws_col = COLS,
+                          .ws_xpixel = (unsigned short)a->width,
+                          .ws_ypixel = (unsigned short)a->height };
+    ioctl(m, TIOCSWINSZ, &ws);
+
     // fork() goes through the kernel's forkTask path, which gives the child a
     // private copy of the fd table — so the child's dup2 of the slave onto
     // 0/1/2 does not disturb the terminal's own descriptors.  (posix_spawn here

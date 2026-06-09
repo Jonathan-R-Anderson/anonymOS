@@ -63,6 +63,7 @@ WLCAIRO_DEMO_BIN := build/wl-cairo-demo
 WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
 IDLE_BIN := build/idle
+HOS_SH_BIN := build/hos-sh
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
@@ -220,6 +221,14 @@ $(IDLE_BIN): src/util/idle.c
 	@echo "==== Building idle task (scheduler idle spinner) ===="
 	$(MUSL_CC) -static -O2 -o $@ src/util/idle.c
 
+# Track B: the native EpinAnonymOS object shell (-sh / dash), written in D (-betterC,
+# same language as the kernel) and linked against musl for crt0 + stdio. It drives the
+# native object syscall ABI (HOS_SYS_QUERY) instead of the Linux-compat layer.
+$(HOS_SH_BIN): src/util/hos-sh.d
+	@echo "==== Building hos-sh (native object shell, D + musl) ===="
+	ldc2 -betterC -O2 -release -boundscheck=off -c src/util/hos-sh.d -of=build/hos-sh.o
+	$(MUSL_CC) -static -o $@ build/hos-sh.o
+
 $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-domain-manager (IDENTITY_DOMAIN Qubes-style manager) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
@@ -232,7 +241,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -282,6 +291,9 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(IDLE_BIN) cd/idle
 	@echo "Included idle task (scheduler idle spinner)"
+
+	cp $(HOS_SH_BIN) cd/hos-sh
+	@echo "Included hos-sh (native object shell)"
 
 	cp $(WLCAIRO_DEMO_BIN) cd/wl-cairo-demo
 	printf '\n    module_path: boot():/wl-cairo-demo\n' >> cd/boot/limine/limine.conf

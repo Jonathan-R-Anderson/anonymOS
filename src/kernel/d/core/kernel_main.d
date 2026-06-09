@@ -3,6 +3,7 @@
 module core.kernel_main;
 
 import core.task;
+import core.hoscall : hosQuery, HOS_SYS_QUERY;   // Track B0: native object query ABI
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -2140,6 +2141,11 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 334: return linux_sys_rseq(a, b, c, d);
         case 435: return linux_sys_clone3(a, b);
         case 441: return linux_sys_epoll_pwait2(a, b, c, d, e);
+
+        // Track B0: native object-model query ABI (outside the Linux range), used by
+        // the native object shell (-sh) for obj/id/ns/svc listings.
+        case HOS_SYS_QUERY: return hosQuery(a, b, c, d);
+
         default:
             klog("[syscall] ENOSYS "); klog_hex(n); klog("\n");
             return -38; // ENOSYS

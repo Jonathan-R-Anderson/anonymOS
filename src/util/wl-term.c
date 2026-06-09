@@ -407,23 +407,24 @@ static void term_notice(struct app *a, const char *l1, const char *l2, const cha
 }
 
 static int spawn_shell(struct app *a) {
-    // IDENTITY_DOMAIN: honor the requested shell flavor.  Only the Linux personality
-    // (busybox) is implemented; Windows and the native object-shell show a notice.
+    // IDENTITY_DOMAIN: honor the requested shell flavor. "linux" = busybox (Linux
+    // personality), "native" = the EpinAnonymOS object shell (/hos-sh, Track B),
+    // "windows" = not implemented (notice).
     const char *flavor = getenv("EPIN_SHELL");
-    if (flavor && *flavor && strcmp(flavor, "linux") != 0) {
+    const int is_native = (flavor && strcmp(flavor, "native") == 0);
+    if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native) {
         char l1[80];
         snprintf(l1, sizeof(l1), "Domain: %s", g_has_domain ? g_domain : "(none)");
-        if (strcmp(flavor, "windows") == 0)
-            term_notice(a, l1, "Windows subsystem is not implemented yet.",
-                        "Pick the 'Linux' shell in the Domain Manager to get a prompt.");
-        else
-            term_notice(a, l1, "EpinAnonymOS native object-shell is not yet available.",
-                        "Pick the 'Linux' shell in the Domain Manager to get a prompt.");
+        term_notice(a, l1, "Windows subsystem is not implemented yet.",
+                    "Pick the 'Linux' or 'Native' shell in the Domain Manager.");
         a->ptm = -1;
         printf("G4TERM: shell flavor '%s' not implemented; showing notice\n", flavor);
         fflush(stdout);
         return 0;
     }
+    // The shell binary + argv[0] depend on the flavor; the PTY plumbing is shared.
+    const char *shell_path = is_native ? "/hos-sh" : "/-sh";
+    char *const shell_arg0 = is_native ? "hos-sh" : "-sh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
@@ -465,11 +466,10 @@ static int spawn_shell(struct app *a) {
         setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
         setenv("HOME", "/root", 1);
         setenv("TERM", "linux", 1);
-        // The kernel forces argv[0] to the boot-module basename, so the shell
-        // module is staged as "-sh": argv[0]="-sh" makes busybox ash a login
-        // interactive shell that prints a prompt on the tty.
-        char *argv[] = { "-sh", NULL };
-        execve("/-sh", argv, environ);
+        // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash
+        // an interactive login shell; for the native shell, /hos-sh.
+        char *argv[] = { shell_arg0, NULL };
+        execve(shell_path, argv, environ);
         _exit(127);
     }
 

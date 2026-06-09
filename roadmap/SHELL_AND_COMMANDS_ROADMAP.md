@@ -142,13 +142,18 @@ arguments; **pipes work** (`echo hello | grep ell` → `hello`); no desktop regr
   *Gotcha:* `getpgid`/`getpgrp` must stay at the constant `1` — real pgids break ash's
   `getpgrp()==tcgetpgrp()` check and the shell never prompts.
 
-Remaining (lower-value, not interactive-blocking):
-- **`/proc/<pid>` listings** for `ps`/`top` (top runs but reports "no process info in
-  /proc"); `fstatfs`(138) still ENOSYS.
+**`/proc/<pid>` for ps/top (DONE):** /proc enumerates one dir entry per live task; each
+`/proc/<pid>/{stat,status,cmdline,comm}` is synthesised from the task table. Also fixed
+two busybox-side gaps: disabled `FEATURE_SHOW_THREADS` (procps_scan otherwise skips any
+pid lacking `/proc/<pid>/task/<tid>/`), and made `sys_open` resolve **relative** paths
+against the cwd (top `chdir`s into `/proc` then opens `"stat"`). Verified: `ls /proc`,
+`cat /proc/10/stat`, and `ps` + `top -bn1` all list the live processes with PID/PPID/
+USER/STAT/VSZ/%CPU/COMMAND.
+
+Remaining (low-value, not blocking):
 - **SIGWINCH / ^Z** need real user-handler invocation (sigreturn frames) — SIGWINCH's
   default action is *ignore* and SIGTSTP's is *stop*, so they can't use the
-  terminate-only delivery path.
-- *Verify done:* `vi` enters raw mode; `^C` interrupts `cat`. *(top/ps pending /proc.)*
+  terminate-only delivery path. `fstatfs`(138) still ENOSYS.
 
 ## A5 — Persistent disk-backed storage (optional) · P: Med · E: 4 · R: high · deps: A2
 

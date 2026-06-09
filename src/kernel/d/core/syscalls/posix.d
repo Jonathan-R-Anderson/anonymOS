@@ -12,7 +12,7 @@ import core.io;
 import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    objEnsureNamespace, taskIdFromLinuxPid,
-                   g_taskPgid, g_taskSigCustom, deliverSignalToGroup;
+                   g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -1984,10 +1984,93 @@ private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
     return false;
 }
 
+// ── A4: dynamic /proc/<pid> for ps/top ───────────────────────────────────────
+private enum ulong SYNTHDIR_PROC = 0x9120C400;
+__gshared char[1024] g_procBuf;     // synthesised content (sequential open→read use)
+
+// Parse "/proc/<digits>[/<sub>]". Returns the pid (>0) and the component after it
+// (`sub`=null when the path is the pid directory itself); -1 if not such a path.
+private int procParsePid(const(char)* path, out const(char)* sub, out size_t subLen) {
+    sub = null; subLen = 0;
+    static immutable string pre = "/proc/";
+    foreach (i; 0 .. pre.length) if (path[i] != pre[i]) return -1;
+    const(char)* p = path + pre.length;
+    if (*p < '0' || *p > '9') return -1;
+    int pid = 0;
+    while (*p >= '0' && *p <= '9') { pid = pid * 10 + (*p - '0'); ++p; }
+    if (*p == 0) return pid;            // /proc/<pid>
+    if (*p != '/') return -1;
+    ++p;
+    if (*p == 0) return pid;            // /proc/<pid>/  (trailing slash → still the dir)
+    sub = p;
+    while (p[subLen] != 0) ++subLen;
+    return pid;
+}
+
+private bool subEq(const(char)* sub, size_t subLen, string lit) {
+    if (subLen != lit.length) return false;
+    foreach (i; 0 .. lit.length) if (sub[i] != lit[i]) return false;
+    return true;
+}
+private void pbStr(ref size_t pos, const(char)* s) {
+    while (*s != 0 && pos < g_procBuf.length - 1) g_procBuf[pos++] = *s++;
+}
+private void pbNum(ref size_t pos, long n) {
+    if (n < 0) { if (pos < g_procBuf.length - 1) g_procBuf[pos++] = '-'; n = -n; }
+    char[24] tmp = void; int ti = 0;
+    if (n == 0) tmp[ti++] = '0';
+    while (n > 0) { tmp[ti++] = cast(char)('0' + n % 10); n /= 10; }
+    while (ti > 0 && pos < g_procBuf.length - 1) g_procBuf[pos++] = tmp[--ti];
+}
+
+// Build /proc/<pid>/<sub> into g_procBuf; returns length, or 0 if pid/sub unhandled.
+private size_t procSynth(int pid, const(char)* sub, size_t subLen) {
+    const int tid = taskIdFromLinuxPid(pid);
+    if (tid < 0 || tid >= MAX_TASKS || !g_tasks[tid].active || g_tasks[tid].exited) return 0;
+    const(char)* comm = (g_taskExecName[tid] !is null) ? g_taskExecName[tid] : "task".ptr;
+    const int ppid = (g_tasks[tid].parentId >= 0) ? linuxPidForTask(g_tasks[tid].parentId) : 0;
+    const char state = g_tasks[tid].waiting ? 'S' : 'R';
+    size_t pos = 0;
+    if (subEq(sub, subLen, "stat")) {
+        // pid (comm) state ppid pgrp ... utime stime ... vsize rss <tail zeros>
+        pbNum(pos, pid); pbStr(pos, " (".ptr); pbStr(pos, comm); pbStr(pos, ") ".ptr);
+        if (pos < g_procBuf.length - 1) g_procBuf[pos++] = state; pbStr(pos, " ".ptr);
+        pbNum(pos, ppid); pbStr(pos, " ".ptr); pbNum(pos, pid);
+        pbStr(pos, " 0 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 0 4194304 256 ".ptr);
+        pbStr(pos, "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0\n".ptr);
+    } else if (subEq(sub, subLen, "comm")) {
+        pbStr(pos, comm); if (pos < g_procBuf.length - 1) g_procBuf[pos++] = '\n';
+    } else if (subEq(sub, subLen, "cmdline")) {
+        pbStr(pos, comm); if (pos < g_procBuf.length - 1) g_procBuf[pos++] = 0;
+    } else if (subEq(sub, subLen, "status")) {
+        pbStr(pos, "Name:\t".ptr); pbStr(pos, comm);
+        pbStr(pos, "\nState:\t".ptr); if (pos < g_procBuf.length - 1) g_procBuf[pos++] = state;
+        pbStr(pos, " (running)\nTgid:\t".ptr); pbNum(pos, pid);
+        pbStr(pos, "\nPid:\t".ptr); pbNum(pos, pid);
+        pbStr(pos, "\nPPid:\t".ptr); pbNum(pos, ppid);
+        pbStr(pos, "\nVmRSS:\t1024 kB\nThreads:\t1\n".ptr);
+    } else return 0;
+    return pos;
+}
+
 public int sys_open(const(char)* path, int flags) {
     initFdTable();
     if (path is null) {
         return negErrno(EFAULT);
+    }
+
+    // A4: resolve a relative path against the current working directory (busybox top
+    // chdir's into /proc/<pid> then opens "stat").  The cwd is global (single shim),
+    // so this is best-effort but correct for the common foreground-tool case.
+    char[1024] _cwdAbs = void;
+    if (path[0] != '/' && path[0] != 0) {
+        size_t cl = 0;
+        for (; cl < g_cwd_len && cl < 1022; ++cl) _cwdAbs[cl] = g_cwd_buf[cl];
+        if (cl == 0 || _cwdAbs[cl - 1] != '/') _cwdAbs[cl++] = '/';
+        size_t pi = 0;
+        while (path[pi] != 0 && cl < 1023) _cwdAbs[cl++] = path[pi++];
+        _cwdAbs[cl] = 0;
+        path = _cwdAbs.ptr;
     }
 
     // Track A A2: resolve a leading RT-overlay symlink chain so open() follows
@@ -2137,6 +2220,24 @@ public int sys_open(const(char)* path, int flags) {
     // prefixes (isVirtualDirectoryPath), which would otherwise serve a real file
     // like /sys/class/drm/card0/uevent as an empty 0-byte directory — udev-zero
     // then reads no DEVNAME and Weston rejects "card0 is not a KMS device".
+    // A4: dynamic /proc/<pid>/<file> (stat/status/cmdline/comm) for ps/top.  Must run
+    // before the synthetic-directory shim so the file isn't mistaken for a directory.
+    {
+        const(char)* psub; size_t psubLen;
+        const int ppid = procParsePid(path, psub, psubLen);
+        if (ppid > 0 && psub !is null) {
+            const size_t plen = procSynth(ppid, psub, psubLen);
+            if (plen > 0) {
+                g_fdTable[fd].type     = FileType.FD_FILE;
+                g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+                g_fdTable[fd].offset   = 0;
+                g_fdTable[fd].backend  = cast(void*)g_procBuf.ptr;
+                g_fdTable[fd].fileSize = plen;
+                return publishActiveFdReturn(fd);
+            }
+        }
+    }
+
     if (isSyntheticDirectoryPath(path) && !pathIsExactVfsFile(path)) {
         if ((flags & 3) != O_RDONLY) {
             return negErrno(EISDIR);
@@ -2145,6 +2246,8 @@ public int sys_open(const(char)* path, int flags) {
         // Tag /sys/dev/char so getdents64 can enumerate the char-device entries
         // libudev-zero scans there to discover input (and DRM) devices.
         if (cstrEq(path, "/sys/dev/char")) g_fdTable[fd].fileSize = SYNTHDIR_DEVCHAR;
+        // Tag /proc so getdents64 enumerates the live process pids (ps/top).
+        if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
         return publishActiveFdReturn(fd);
     }
 
@@ -4404,6 +4507,11 @@ private void initSyntheticFileFd(int fd, int flags, size_t kind) {
 }
 
 private bool isSyntheticDirectoryPath(const(char)* path) {
+    // A4: /proc/<pid> is a (live) process directory.
+    {
+        const(char)* psub; size_t psubLen;
+        if (procParsePid(path, psub, psubLen) > 0 && psub is null) return true;
+    }
     return cstrEq(path, "/") ||
            cstrEq(path, "/bin") ||
            cstrEq(path, "/sbin") ||
@@ -6261,6 +6369,28 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     if (f.offset == 1) {
         if (!writeDirent64(buf, count, &written, 1, 2, DT_DIR, "..".ptr, 2)) return cast(long)written;
         f.offset = 2;
+    }
+
+    // A4: /proc enumeration — one directory entry per live process (ps/top).
+    if (f.fileSize == SYNTHDIR_PROC) {
+        ulong logical = 2;
+        for (int t = 0; t < MAX_TASKS; ++t) {
+            if (!g_tasks[t].active || g_tasks[t].exited) continue;
+            if (f.offset <= logical) {
+                char[12] nb = void; size_t nl = 0;
+                int pid = linuxPidForTask(t);
+                { char[12] tmp = void; int ti = 0;
+                  if (pid == 0) tmp[ti++] = '0';
+                  while (pid > 0) { tmp[ti++] = cast(char)('0' + pid % 10); pid /= 10; }
+                  while (ti > 0) nb[nl++] = tmp[--ti]; }
+                if (!writeDirent64(buf, count, &written, cast(ulong)(t + 4096),
+                                   cast(long)logical + 1, DT_DIR, nb.ptr, nl))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
     }
 
     // /sys/dev/char enumeration (input + DRM device discovery for libudev-zero).

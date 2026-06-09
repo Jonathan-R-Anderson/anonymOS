@@ -693,10 +693,10 @@ __gshared ulong[EXEC_ARG_MAX + 1] g_execArgPtrs;
 __gshared size_t g_execArgCount;
 
 // Track A A4: per-task loaded binary, so /proc/self/exe re-exec resolves to the
-// task's own image (busybox), not the global /init.elf.
+// task's own image (busybox), not the global /init.elf.  g_taskExecModPhys/Size live
+// here; g_taskExecName moved to core.task so posix.d's /proc/<pid> can read the comm.
 __gshared ulong[MAX_TASKS] g_taskExecModPhys;
 __gshared ulong[MAX_TASKS] g_taskExecModSize;
-__gshared const(char)*[MAX_TASKS] g_taskExecName;
 
 private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     auto task = &g_tasks[tid];

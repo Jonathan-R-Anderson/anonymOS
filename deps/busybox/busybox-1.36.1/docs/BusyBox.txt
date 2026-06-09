@@ -2677,12 +2677,11 @@ COMMAND DESCRIPTIONS
 
         Format and print ARG(s) according to FORMAT (a-la C printf)
 
-    ps  ps [-o COL1,COL2=HEADER] [-T]
+    ps  ps [-o COL1,COL2=HEADER]
 
         Show list of processes
 
                 -o COL1,COL2=HEADER     Select columns for display
-                -T                      Show threads
 
     pscan
         pscan [-cb] [-p MIN_PORT] [-P MAX_PORT] [-t TIMEOUT] [-T MIN_RTT]
@@ -3643,7 +3642,7 @@ COMMAND DESCRIPTIONS
         Run PROG. Send SIG to it if it is not gone in SECS seconds. Default
         SIG: TERM.If it still exists in KILL_SECS seconds, send KILL.
 
-    top top [-bmH] [-n COUNT] [-d SECONDS]
+    top top [-bm] [-n COUNT] [-d SECONDS]
 
         Show a view of process activity in real time. Read the status of all
         processes from /proc each SECONDS and show a screenful of them.
@@ -3652,7 +3651,7 @@ COMMAND DESCRIPTIONS
                 N/M/P/T: show CPU usage, sort by pid/mem/cpu/time
                 S: show memory
                 R: reverse sort
-                H: toggle threads, 1: toggle SMP
+                1: toggle SMP
                 Q,^C: exit
         Options:
 
@@ -3660,7 +3659,6 @@ COMMAND DESCRIPTIONS
                 -n N    Exit after N iterations
                 -d SEC  Delay between updates
                 -m      Same as 's' key
-                -H      Show threads
 
     touch
         touch [-cham] [-d DATE] [-t DATE] [-r FILE] FILE...

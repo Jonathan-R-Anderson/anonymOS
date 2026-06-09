@@ -165,6 +165,10 @@ __gshared int[MAX_TASKS]   g_taskPgid;
 __gshared ulong[MAX_TASKS] g_taskSigCustom;
 __gshared int[MAX_TASKS]   g_taskPendingSig;
 
+// A4: per-task program name (basename of the exec'd binary), for /proc/<pid> comm.
+// Set by execveTask / forkTask in kernel_main.d; read by posix.d's procfs.
+__gshared const(char)*[MAX_TASKS] g_taskExecName;
+
 // A task's effective process group: its own pid until setpgid() changes it.
 public int taskEffectivePgid(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return 0;

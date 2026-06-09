@@ -3248,12 +3248,11 @@ phy_address=NUM
 <dt id="ps"><b>ps</b></dt>
 <dd>
 
-<p>ps [-o COL1,COL2=HEADER] [-T]</p>
+<p>ps [-o COL1,COL2=HEADER]</p>
 
 <p>Show list of processes</p>
 
-<pre><code>-o COL1,COL2=HEADER     Select columns for display
--T                      Show threads</code></pre>
+<pre><code>-o COL1,COL2=HEADER     Select columns for display</code></pre>
 
 </dd>
 <dt id="pscan"><b>pscan</b></dt>
@@ -4441,22 +4440,21 @@ PROG ARGS       Program to run
 <dt id="top"><b>top</b></dt>
 <dd>
 
-<p>top [-bmH] [-n COUNT] [-d SECONDS]</p>
+<p>top [-bm] [-n COUNT] [-d SECONDS]</p>
 
 <p>Show a view of process activity in real time. Read the status of all processes from /proc each SECONDS and show a screenful of them. Keys:</p>
 
 <pre><code>        N/M/P/T: show CPU usage, sort by pid/mem/cpu/time
         S: show memory
         R: reverse sort
-        H: toggle threads, 1: toggle SMP
+        1: toggle SMP
         Q,^C: exit
 Options:
 
         -b      Batch mode
         -n N    Exit after N iterations
         -d SEC  Delay between updates
-        -m      Same as &#39;s&#39; key
-        -H      Show threads</code></pre>
+        -m      Same as &#39;s&#39; key</code></pre>
 
 </dd>
 <dt id="touch"><b>touch</b></dt>

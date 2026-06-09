@@ -3124,13 +3124,12 @@ printf FORMAT [ARG]...
 Format and print ARG(s) according to FORMAT (a\-la C printf)
 .IP \fBps\fR 4
 .IX Item "ps"
-ps [\-o COL1,COL2=HEADER] [\-T]
+ps [\-o COL1,COL2=HEADER]
 .Sp
 Show list of processes
 .Sp
-.Vb 2
+.Vb 1
 \&        \-o COL1,COL2=HEADER     Select columns for display
-\&        \-T                      Show threads
 .Ve
 .IP \fBpscan\fR 4
 .IX Item "pscan"
@@ -4237,7 +4236,7 @@ Run PROG. Send SIG to it if it is not gone in SECS seconds.
 Default SIG: TERM.If it still exists in KILL_SECS seconds, send KILL.
 .IP \fBtop\fR 4
 .IX Item "top"
-top [\-bmH] [\-n COUNT] [\-d SECONDS]
+top [\-bm] [\-n COUNT] [\-d SECONDS]
 .Sp
 Show a view of process activity in real time.
 Read the status of all processes from /proc each SECONDS
@@ -4248,7 +4247,7 @@ Keys:
 \&        N/M/P/T: show CPU usage, sort by pid/mem/cpu/time
 \&        S: show memory
 \&        R: reverse sort
-\&        H: toggle threads, 1: toggle SMP
+\&        1: toggle SMP
 \&        Q,^C: exit
 \&Options:
 \&
@@ -4256,7 +4255,6 @@ Keys:
 \&        \-n N    Exit after N iterations
 \&        \-d SEC  Delay between updates
 \&        \-m      Same as \*(Aqs\*(Aq key
-\&        \-H      Show threads
 .Ve
 .IP \fBtouch\fR 4
 .IX Item "touch"

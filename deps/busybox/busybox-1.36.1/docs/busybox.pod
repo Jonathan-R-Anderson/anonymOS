@@ -2959,12 +2959,11 @@ Format and print ARG(s) according to FORMAT (a-la C printf)
 
 =item B<ps>
 
-ps [-o COL1,COL2=HEADER] [-T]
+ps [-o COL1,COL2=HEADER]
 
 Show list of processes
 
 	-o COL1,COL2=HEADER	Select columns for display
-	-T			Show threads
 
 =item B<pscan>
 
@@ -4033,7 +4032,7 @@ Default SIG: TERM.If it still exists in KILL_SECS seconds, send KILL.
 
 =item B<top>
 
-top [-bmH] [-n COUNT] [-d SECONDS]
+top [-bm] [-n COUNT] [-d SECONDS]
 
 Show a view of process activity in real time.
 Read the status of all processes from /proc each SECONDS
@@ -4043,7 +4042,7 @@ Keys:
 	N/M/P/T: show CPU usage, sort by pid/mem/cpu/time
 	S: show memory
 	R: reverse sort
-	H: toggle threads, 1: toggle SMP
+	1: toggle SMP
 	Q,^C: exit
 Options:
 
@@ -4051,7 +4050,6 @@ Options:
 	-n N	Exit after N iterations
 	-d SEC	Delay between updates
 	-m	Same as 's' key
-	-H	Show threads
 
 =item B<touch>
 

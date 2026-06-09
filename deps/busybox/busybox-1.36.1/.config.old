@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Busybox version: 1.36.1
-# Mon Jun  8 22:21:47 2026
+# Tue Jun  9 00:16:25 2026
 #
 CONFIG_HAVE_DOT_CONFIG=y
 
@@ -1056,7 +1056,7 @@ CONFIG_SENDMAIL=y
 # Process Utilities
 #
 # CONFIG_FEATURE_FAST_TOP is not set
-CONFIG_FEATURE_SHOW_THREADS=y
+# CONFIG_FEATURE_SHOW_THREADS is not set
 CONFIG_FREE=y
 CONFIG_FUSER=y
 CONFIG_IOSTAT=y

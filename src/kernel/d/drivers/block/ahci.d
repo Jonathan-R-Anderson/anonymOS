@@ -3,9 +3,17 @@ module drivers.block.ahci;
 import drivers.pci;
 import userland.shell.console : print, printHex, printLine, printUnsigned;
 import memory.physmem : allocFrame, freeFrame;
+import memory.dma : dma_alloc;
+import core.globals : hhdm_offset;
 import core.stdc.string : memset;
 
 @nogc nothrow:
+
+// EpinAnonymOS has NO low identity map: a physical frame is reachable from the CPU
+// only through the HHDM (phys + hhdm_offset).  DMA descriptors must carry PHYSICAL
+// addresses (the HBA reads them), while the CPU touches the same frames via p2v().
+private void* p2v(size_t phys) { return cast(void*)(phys + cast(size_t)hhdm_offset); }
+private size_t v2p(void* virt) { return cast(size_t)virt - cast(size_t)hhdm_offset; }
 
 // AHCI Constants
 enum AHCI_CLASS_CODE = 0x01;
@@ -155,12 +163,22 @@ void initAHCI()
                     printHex(bus); print(":"); printHex(slot); print("."); printHex(func);
                     printLine("");
                     
-                    // Get BAR5 (ABAR)
+                    // Enable PCI bus-mastering + memory space (so the HBA can DMA).
+                    uint cmd = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04);
+                    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04,
+                                     cmd | 0x06);  // bit1 = memory space, bit2 = bus master
+
+                    // Get BAR5 (ABAR) — a 32-bit MMIO phys; reach it through the HHDM.
                     uint bar5 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x24);
-                    abar = cast(HBA_MEM*)(cast(ulong)bar5 & 0xFFFFFFF0); // Mask out lower 4 bits
-                    
-                    print("[ahci] ABAR: 0x"); printHex(cast(size_t)abar); printLine("");
-                    
+                    const size_t abarPhys = cast(size_t)(cast(ulong)bar5 & 0xFFFFFFF0);
+                    abar = cast(HBA_MEM*)p2v(abarPhys);
+
+                    print("[ahci] ABAR phys=0x"); printHex(abarPhys);
+                    print(" virt=0x"); printHex(cast(size_t)abar); printLine("");
+
+                    // AHCI Enable (GHC.AE, bit 31) so the ports speak AHCI not legacy.
+                    abar.ghc = abar.ghc | (1u << 31);
+
                     probePorts();
                     return;
                 }
@@ -263,15 +281,14 @@ void probePorts()
                 print("[ahci] SATA drive found at port ");
                 printUnsigned(i);
                 printLine("");
-                
-                // Configure port (simplified)
+
+                // Configure port (rebase command list / FIS into DMA-mapped frames).
                 portRebase(&abar.ports[i], i);
-                
-                // Run detection
-                detectMBR(&abar.ports[i]);
-                detectHiddenOS(&abar.ports[i]);
-                
+
                 g_ahciDevices[i].capacity = getDiskCapacity(&abar.ports[i]);
+
+                // First SATA disk = the persistence device (the object store lives here).
+                if (g_dataPort is null) g_dataPort = &abar.ports[i];
             }
             else if (dt == AHCI_DEV_SATAPI)
             {
@@ -355,17 +372,16 @@ bool allocatePortResources(HBA_PORT* port, int index)
     const size_t kFISSize = 256;
     const size_t kCmdTableSize = 4096;
 
-    const size_t clbPhys = allocFrame();
-    const size_t fisPhys = allocFrame();
-    const size_t cmdTblPhys = allocFrame();
-    if (clbPhys == 0 || fisPhys == 0 || cmdTblPhys == 0)
+    // dma_alloc returns the HHDM virtual pointer and the physical address: the HBA
+    // gets the phys (port.clb/fb, header.ctba), the CPU writes through the virt.
+    size_t clbPhys, fisPhys, cmdTblPhys;
+    auto cmdList = cast(HBA_CMD_HEADER*)dma_alloc(kCmdListSize, 1024, &clbPhys);
+    auto fisBase = cast(ubyte*)        dma_alloc(kFISSize,   256,  &fisPhys);
+    auto cmdTbl  = cast(HBA_CMD_TBL*)  dma_alloc(kCmdTableSize, 128, &cmdTblPhys);
+    if (cmdList is null || fisBase is null || cmdTbl is null)
     {
         return false;
     }
-
-    auto cmdList = cast(HBA_CMD_HEADER*)clbPhys;
-    auto fisBase = cast(ubyte*)fisPhys;
-    auto cmdTbl = cast(HBA_CMD_TBL*)cmdTblPhys;
 
     memset(cmdList, 0, kCmdListSize);
     memset(fisBase, 0, kFISSize);
@@ -386,12 +402,9 @@ bool allocatePortResources(HBA_PORT* port, int index)
 
 import core.stdc.string : memset;
 
-// Kernel linear map offset
-private enum ulong KERNEL_BASE = 0xFFFF_8000_0000_0000;
-
 private T* physToVirt(T)(size_t phys)
 {
-    return cast(T*)(phys + KERNEL_BASE);
+    return cast(T*)(phys + cast(size_t)hhdm_offset);
 }
 
 void startCmd(HBA_PORT* port)
@@ -443,6 +456,9 @@ void releasePortResources(int index)
 }
 
 __gshared HBA_PORT* g_primaryPort;
+public __gshared HBA_PORT* g_dataPort;   // the first SATA data disk (object-store device)
+
+public HBA_PORT* ahciDataPort() { return g_dataPort; }
 
 void portRebase(HBA_PORT* port, int portNumber)
 {
@@ -535,10 +551,11 @@ bool executeCommand(HBA_PORT* port, HBA_CMD_HEADER* header, HBA_CMD_TBL* tbl, SG
     
     flags |= (cast(uint)sgList.length << 16); // PRDTL
     
+    const size_t tblPhys = v2p(tbl);
     header.dw0 = flags;
     header.prdbc = 0;
-    header.ctba = cast(uint)(cast(size_t)tbl);
-    header.ctbau = cast(uint)((cast(size_t)tbl) >> 32);
+    header.ctba = cast(uint)tblPhys;
+    header.ctbau = cast(uint)(tblPhys >> 32);
 
     foreach (i, sg; sgList)
     {
@@ -580,10 +597,11 @@ bool packetCommand(HBA_PORT* port, HBA_CMD_HEADER* header, HBA_CMD_TBL* tbl, SGE
     
     if (sgList.length > 128) return false;
     
+    const size_t tblPhys = v2p(tbl);
     header.dw0 = flags | (cast(uint)sgList.length << 16);
     header.prdbc = 0;
-    header.ctba = cast(uint)(cast(size_t)tbl);
-    header.ctbau = cast(uint)((cast(size_t)tbl) >> 32);
+    header.ctba = cast(uint)tblPhys;
+    header.ctbau = cast(uint)(tblPhys >> 32);
 
     //printLine("[ahci] packetCommand: PRDT setup");
     foreach (i, sg; sgList)

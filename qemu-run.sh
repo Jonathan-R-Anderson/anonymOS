@@ -16,6 +16,14 @@ else
   echo "[qemu-run] /dev/kvm unavailable — using slow TCG emulation (expect a sluggish desktop)"
 fi
 
+# A5/F4 persistence: a 32 MiB raw SATA disk on an AHCI controller backs the object
+# store across reboots (created on first run; kept out of git via .gitignore).
+DISK_IMG="hos-disk.img"
+if [ ! -f "$DISK_IMG" ]; then
+  qemu-img create -f raw "$DISK_IMG" 32M >/dev/null 2>&1 || dd if=/dev/zero of="$DISK_IMG" bs=1M count=32 status=none
+  echo "[qemu-run] created $DISK_IMG (32M) for persistent object store"
+fi
+
 exec qemu-system-x86_64 \
   -boot d \
   -cdrom hos.iso \
@@ -26,6 +34,9 @@ exec qemu-system-x86_64 \
   -d int,cpu_reset,guest_errors \
   -D qemu-debug.log \
   "${ACCEL[@]}" \
+  -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
+  -device ahci,id=ahci0 \
+  -device ide-hd,drive=hosdisk,bus=ahci0.0 \
   -display gtk
 # NOTE: the guest exposes only a RELATIVE PS/2 mouse (no USB/virtio tablet), so
 # QEMU must *grab* the host pointer to deliver motion + keystrokes. `show-cursor=on`

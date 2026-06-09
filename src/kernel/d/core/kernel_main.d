@@ -45,6 +45,7 @@ import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
+import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
 import core.hardening : hardeningSelfTest, hardeningStats; // IR-P8.3/8.4 W^X + cap audit
 import core.distos : distosSelfTest, distosStats; // IR-P9 distributed refs + macaroons + dist store
@@ -2381,6 +2382,10 @@ void d_kernel_main() {
     // IMMUTABLE_ROOTLESS §6.1: stand up the A/B slots with the booted generation in
     // the active slot, marked known-good (the boot we are in succeeded this far).
     updateInit();
+    // A5/F4: bring up the SATA disk so the object store can persist (no-op if no
+    // disk is attached — the store then stays in-memory).
+    diskInit();
+    diskSelfTest();
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).

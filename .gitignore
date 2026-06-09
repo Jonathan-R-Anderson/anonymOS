@@ -39,3 +39,5 @@ jhc-0.8.2/
 hello
 kernel.elf
 kernel.symbols
+# A5/F4 persistent object-store disk image (per-machine, not tracked)
+hos-disk.img

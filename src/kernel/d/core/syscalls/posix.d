@@ -6505,7 +6505,20 @@ public long linux_sys_socketpair(ulong dom, ulong t, ulong p, ulong sv) {
 private __gshared int g_fdReadableDepth = 0;
 
 // --- Helper: test if FD has data available for reading ---
+// PERF: count fdReadable()==true by FileType — under a busy-spin, the dominant
+// type is the fd that keeps reporting "ready" without real data (the spin source).
+__gshared ulong[24] g_fdrdTrue;
+
 private bool fdReadable(int fd) @nogc nothrow {
+    const bool r = fdReadableImpl(fd);
+    if (r && fd >= 0 && fd < 1024) {
+        const uint t = cast(uint)g_fdTable[fd].type;
+        if (t < 24) ++g_fdrdTrue[t];
+    }
+    return r;
+}
+
+private bool fdReadableImpl(int fd) @nogc nothrow {
     if (fd < 0 || fd >= 1024) return false;
     if (!fdRequireCap(cast(ulong)fd, CAP_RIGHT_READ)) return false;
     auto f = &g_fdTable[fd];
@@ -6579,6 +6592,38 @@ private bool fdReadable(int fd) @nogc nothrow {
         return g_timerfds[tid].pending > 0;
     }
     return false;
+}
+
+private const(char)* fdTypeName(uint t) @nogc nothrow {
+    switch (cast(FileType)t) {
+        case FileType.FD_CONSOLE:    return "console";
+        case FileType.FD_FILE:       return "file";
+        case FileType.FD_SOCKET:     return "socket";
+        case FileType.FD_PIPE_READ:  return "pipe";
+        case FileType.FD_EPOLL:      return "epoll";
+        case FileType.FD_EVENTFD:    return "eventfd";
+        case FileType.FD_DRM:        return "drm";
+        case FileType.FD_INPUT_EVENT:return "input";
+        case FileType.FD_TIMERFD:    return "timerfd";
+        case FileType.FD_PTY_MASTER: return "ptym";
+        case FileType.FD_PTY_SLAVE:  return "ptys";
+        case FileType.FD_RTFILE:     return "rtfile";
+        default:                     return "other";
+    }
+}
+
+// PERF: dump fdReadable()==true counts by type (the busy-spin source) and reset.
+public void fdReadableStats() @nogc nothrow {
+    klog("[fdrd]");
+    bool any = false;
+    foreach (i; 0 .. 24) {
+        if (g_fdrdTrue[i] == 0) continue;
+        any = true;
+        klog(" "); klog(fdTypeName(cast(uint)i)); klog("="); klog_dec(g_fdrdTrue[i]);
+        g_fdrdTrue[i] = 0;
+    }
+    if (!any) klog(" (none)");
+    klog("\n");
 }
 
 // --- Helper: test if FD can accept writes ---

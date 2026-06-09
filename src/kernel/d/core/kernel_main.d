@@ -78,7 +78,7 @@ import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
-import core.ticks : increment_ticks, get_ticks;
+import core.ticks : increment_ticks, get_ticks, pitMs;
 import core.random;
 
 extern (C) @nogc nothrow:
@@ -165,6 +165,23 @@ __gshared ulong[MAX_TASKS] g_futexWaitUaddr;
 // counters reset each stats dump.
 __gshared ulong[MAX_TASKS] g_schedCyc;
 __gshared ulong[MAX_TASKS] g_schedN;
+
+// PERF: cooperative poll/epoll sleep.  A task that polls with nothing ready and a
+// non-zero timeout is parked (waiting=true) instead of being re-run every
+// round-robin cycle (which busy-spins the single core, starving the compositor).
+// It is re-checked when woken: every PIT tick (≤1 ms latency) and on input IRQs.
+__gshared bool[MAX_TASKS]  g_pollBlocked;
+__gshared ulong[MAX_TASKS] g_pollDeadline;   // pitMs deadline; 0 = infinite (fd-only)
+
+// Wake parked pollers so they re-check their fds.  Called from the PIT tick and
+// input IRQs.  Clearing `waiting` lets the scheduler pick them; they re-run their
+// poll/epoll and either return (fd ready / timed out) or re-park.
+private void wakePollers() @nogc nothrow {
+    foreach (i; 0 .. MAX_TASKS) {
+        if (g_pollBlocked[i] && g_tasks[i].active && !g_tasks[i].exited)
+            g_tasks[i].waiting = false;
+    }
+}
 __gshared int[MAX_TASKS]   g_futexWaitVal;
 __gshared uint[MAX_TASKS]  g_futexWaitBitset;
 __gshared ulong g_futexLogCount = 0;
@@ -307,6 +324,31 @@ private void scheduleNext() {
             }
         }
     }
+    // Nothing else runnable: rather than spin the run loop with interrupts masked
+    // (which would freeze the PIT/input IRQs and deadlock the parked poll/epoll
+    // sleepers), wake them so at least one becomes runnable and the system stays
+    // live to service interrupts.  During active work the compositor is runnable
+    // and chosen above, so the parked pollers keep yielding it the core — they are
+    // only force-woken here when truly *everyone* is idle.
+    {
+        bool woke = false;
+        for (uint i = 0; i < MAX_TASKS; i++) {
+            if (g_pollBlocked[i] && g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].waiting) {
+                g_tasks[i].waiting = false;
+                woke = true;
+            }
+        }
+        if (woke) {
+            for (uint i = 1; i <= MAX_TASKS; i++) {
+                uint next = cast(uint)((cur + i) % MAX_TASKS);
+                auto t = &g_tasks[next];
+                if (t.active && !t.exited && !t.waiting) {
+                    g_current_task_id = next;
+                    return;
+                }
+            }
+        }
+    }
     // All tasks gone or stuck — just keep running the current one
 }
 
@@ -322,6 +364,7 @@ private void exitTask(int tid, int code) {
     auto t = &g_tasks[tid];
     t.exited   = true;
     t.exitCode = code;
+    g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
     objReleaseTask(tid);
     bool capTableStillShared = false;
     for (int i = 0; i < MAX_TASKS; ++i) {
@@ -1326,6 +1369,7 @@ private void dispatchSyscall(int tid) {
             idwinStats();    // IDENTITY_DOMAIN P6: windows stamped / hook installed
             presentProfStats(); // PERF: frame rate + kernel-present share of each frame
             schedProfStats();   // PERF: per-task CPU share (find a hog starving the compositor)
+            fdReadableStats();  // PERF: which fd type keeps reporting ready (busy-spin source)
             linuxStats();
             linuxPersStats();
             kernelCensusStats();
@@ -1738,23 +1782,48 @@ private void dispatchSyscall(int tid) {
     //   epoll_pwait(281): handled below without RIP rewind. Hyprland's
     //     wl_event_loop must see timeout returns to fire timers, but other tasks
     //     still need a turn before Hyprland immediately re-enters epoll.
-    if (ret == 0 && (rax == 7 || rax == 271)) {
-        bool wouldBlock;
-        if (rax == 7) wouldBlock = (cast(long)rdx != 0);  // poll timeout!=0
-        else          wouldBlock = true;                  // ppoll: block
-        if (wouldBlock) {
-            task.regs[REG_RIP] -= 2;
-            scheduleNext();
-            return;
-        }
+    // ppoll(271) / epoll_pwait2(441): timeout is a userspace timespec we don't parse
+    // here, so keep the original rewind/return-0 yield (re-runs each round-robin turn).
+    if (ret == 0 && rax == 271) {
+        task.regs[REG_RIP] -= 2;
+        scheduleNext();
+        return;
     }
-
-    // epoll_wait/epoll_pwait timeout: let userspace observe 0 so Hyprland's
-    // event-loop timers still fire, but hand another runnable task a turn first.
-    if (ret == 0 && (rax == 232 || rax == 281 || rax == 441)) {
+    if (ret == 0 && rax == 441) {
         task.regs[REG_RAX] = 0;
         scheduleNext();
         return;
+    }
+
+    // poll(7) + epoll_wait/pwait(232/281): PARK the task until an fd is ready or the
+    // timeout expires, instead of returning 0 immediately (which busy-spins the
+    // single core).  Woken by wakePollers() on the PIT tick + input IRQs.
+    //   poll(7) timeout_ms = rdx ; epoll timeout_ms = r10 ; 0 = nonblock, <0 = infinite.
+    {
+        const bool isPoll  = (rax == 7);
+        const bool isEpoll = (rax == 232 || rax == 281);
+        if (ret == 0 && (isPoll || isEpoll)) {
+            const long tmo = isPoll ? cast(long)rdx : cast(long)r10;
+            if (tmo != 0) {
+                if (g_pollBlocked[tid]) {
+                    const ulong dl = g_pollDeadline[tid];
+                    if (dl != 0 && pitMs() >= dl) {
+                        g_pollBlocked[tid] = false;
+                        task.regs[REG_RAX] = 0;        // timed out → return 0
+                        return;
+                    }
+                } else {
+                    g_pollBlocked[tid]  = true;
+                    g_pollDeadline[tid] = (tmo < 0) ? 0 : (pitMs() + cast(ulong)tmo);
+                }
+                task.waiting = true;                  // park: scheduler skips us
+                task.regs[REG_RIP] -= 2;              // re-run the syscall on wake
+                scheduleNext();
+                return;
+            }
+        }
+        // got events (or an error): the wait is satisfied.
+        if ((isPoll || isEpoll) && ret != 0) g_pollBlocked[tid] = false;
     }
 
     // Wayland and other local-socket protocols use sendmsg() as an IPC handoff.
@@ -1762,6 +1831,7 @@ private void dispatchSyscall(int tid) {
     // without relying on debug logging or timer timing for fairness.
     if (ret > 0 && rax == 46) {
         task.regs[REG_RAX] = cast(ulong)ret;
+        wakePollers();   // the peer (parked on its socket via poll/epoll) can now read
         scheduleNext();
         return;
     }
@@ -1998,15 +2068,18 @@ private void kernelLoop() {
             if (irqIdx == 0) {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
+                wakePollers();   // re-check parked poll/epoll sleepers (≤1 ms latency)
                 picEOI(false);
                 scheduleNext();
             } else if (irqIdx == 1) {
                 // PS/2 keyboard — read all available scancodes
                 handleKbdIRQ();
+                wakePollers();   // wake input-waiting clients immediately (low latency)
                 picEOI(false);
             } else if (irqIdx == 12) {
                 // PS/2 mouse — accumulate 3-byte packet
                 handleMouseIRQ();
+                wakePollers();
                 picEOI(true);   // mouse is on PIC2 (slave), needs both EOIs
             } else {
                 // All other IRQs: just send EOI so PIC doesn't stay masked

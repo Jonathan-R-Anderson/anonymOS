@@ -1796,6 +1796,7 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         if (g_timerfds[tid].pending == 0) return negErrno(EAGAIN);
         *cast(ulong*)_buf = g_timerfds[tid].pending;
         g_timerfds[tid].pending = 0;
+        g_tfdRead++;
         return 8;
     }
 
@@ -6618,7 +6619,8 @@ private bool fdReadableImpl(int fd) @nogc nothrow {
         int tid = cast(int)cast(size_t)f.backend;
         if (tid < 0 || tid >= TIMERFD_MAX || !g_timerfds[tid].inUse) return false;
         timerfdRefresh(g_timerfds[tid]);
-        return g_timerfds[tid].pending > 0;
+        if (g_timerfds[tid].pending > 0) { g_tfdReady++; return true; }
+        return false;
     }
     return false;
 }
@@ -6859,8 +6861,20 @@ public long linux_sys_timerfd_settime(ulong fd, ulong flags, ulong newVal, ulong
         return 0;
     }
     g_timerfds[tid].intervalTicks = intervalMs;
-    g_timerfds[tid].nextExpiry    = get_ticks() + valueMs;
+    // TFD_TIMER_ABSTIME (1): it_value is an ABSOLUTE CLOCK_MONOTONIC deadline, not a
+    // relative delay.  libwayland's event-loop timer heap (wayland 1.23 set_timer())
+    // arms the loop timerfd this way.  get_ticks() and clock_gettime(MONOTONIC) are
+    // both the g_pitMs millisecond domain, so an absolute deadline is already in
+    // nextExpiry's units — store it directly.  Treating it as relative
+    // (get_ticks()+valueMs) made every repaint timer fire ~uptime seconds late and
+    // growing — the erratic multi-second desktop latency (R2).
+    if (flags & 1) {
+        g_timerfds[tid].nextExpiry = valueMs;            // absolute deadline (ms)
+    } else {
+        g_timerfds[tid].nextExpiry = get_ticks() + valueMs;  // relative delay
+    }
     g_timerfds[tid].pending       = 0;
+    g_tfdArm++;
     return 0;
 }
 
@@ -7519,6 +7533,9 @@ public void presentProfStats() @nogc nothrow {
     klog("[present] total="); klog_dec(g_presTotal);
     klog(" flipQ="); klog_dec(g_flipQueued);
     klog(" flipRd="); klog_dec(g_flipRead);
+    klog(" tfdArm="); klog_dec(g_tfdArm);
+    klog(" tfdReady="); klog_dec(g_tfdReady);
+    klog(" tfdRead="); klog_dec(g_tfdRead);
     if (g_presN == 0) { klog(" (idle: no frames this interval)\n"); return; }
 
     // cycles<->ms calibration over the whole run (clean PIT ms).
@@ -7570,6 +7587,7 @@ __gshared uint g_drmEvTail;     // read index
 __gshared uint g_drmFlipSeq;
 
 __gshared ulong g_flipQueued, g_flipRead;   // R2: flip-complete events queued vs read
+__gshared ulong g_tfdArm, g_tfdReady, g_tfdRead;  // R2: timerfd armed / became-ready / read
 
 private void drmQueueFlipEvent(int fd, ulong userData) @nogc nothrow {
     uint next = (g_drmEvHead + 1) % DRM_EVENT_QUEUE_MAX;

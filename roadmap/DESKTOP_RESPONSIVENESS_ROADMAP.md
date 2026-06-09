@@ -48,10 +48,25 @@ keys are lost today.
 - *Verify:* send N paced keys via QMP `send-key`; ≥99% reach the focused client
   (`DOMAINMGR: key` count ≈ N). No dropped clicks in interactive use.
 
-## R2 — Weston presents every frame it should  ·  🟧 MOSTLY DONE (latency remains → R3) · deps: —
+## R2 — Weston presents every frame it should  ·  ✅ DONE · deps: —
 
-**Found two real bugs; the desktop went from "freezes after ~23 frames" to
-"responds in ~0.3 s".**
+**ROOT CAUSE FOUND & FIXED — the desktop now responds in ~one refresh interval.**
+The kernel `timerfd_settime` ignored the **`TFD_TIMER_ABSTIME`** flag and always
+computed `nextExpiry = get_ticks() + value`. libwayland's event-loop timer heap
+(wayland 1.23 `set_timer()`) arms the loop timerfd with an **absolute**
+CLOCK_MONOTONIC deadline, so the kernel was doing `now + absolute_deadline` → every
+Weston repaint timer fired ~uptime-seconds late, and the error *grew with uptime*
+(the erratic 9 ms … 28 s latency). Fix (posix.d `linux_sys_timerfd_settime`): when
+`flags & TFD_TIMER_ABSTIME`, store `value` directly as `nextExpiry` (clock_gettime
+MONOTONIC and get_ticks() are both the `g_pitMs` ms domain, so an absolute deadline
+is already in the right units). **Measured before→after** (120 commits driven):
+output status stuck `SCHEDULED` 418× → drains normally (st0=103); repaints 3 → 102;
+presents 5 → 246 (1:1 with arms); **input→present latency 89 ms…21367 ms → a steady
+8–14 ms.** Diagnosed with HOSC repaint-chain counters (libweston, reverted) + kernel
+timerfd arm/ready/read counters (kept in `presentProfStats`): `arm=6 ready=4 read=0`
+proved the timerfd was barely armed, not a kernel-expiry or Weston-read problem.
+
+**Earlier bugs fixed on the way here (kept):**
 
 - **memfd leak = the freeze (FIXED, 966568ba1).** wl-domain-manager / wl-files
   created a NEW memfd+buffer every redraw; the compositor holds each, so the
@@ -96,9 +111,12 @@ from "5 tasks each ~20% (kernel saturated)" to "only the idle task runs". **Stil
 spins at 100% (can't HLT without R4),** so idle *power* is unchanged; the win is the
 kernel is no longer saturated, so the compositor isn't starved.
 **Surprise:** this did NOT fix the user-visible latency — with the kernel free, the
-residual erratic present latency (9 ms .. seconds) is now clearly **Weston-internal**
-(it doesn't reliably turn a client commit into a present). That's a libweston
-repaint-scheduling bug → folds back into **R2**, needs Weston-side debugging.
+residual erratic present latency (9 ms .. seconds) looked Weston-internal, but
+instrumenting the libweston repaint chain (HOSC counters) showed the output stuck in
+`REPAINT_SCHEDULED` with the repaint timer barely firing. Root cause turned out to be
+**kernel-side after all**: `timerfd_settime` ignored `TFD_TIMER_ABSTIME` (see **R2**,
+now ✅). The idle task was still the right call (kept) — it freed the kernel so the
+timerfd bug became visible/isolable instead of being masked by CPU saturation.
 
 The poll/epoll parking (de2813b67) can't pay off while the all-idle fallback
 force-wakes the pollers (because the kernel can't `hlt`). Give the scheduler a real

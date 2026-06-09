@@ -172,7 +172,14 @@ Decision (confirmed with user): the native shell's commands operate on the **obj
 capability model**, and it is written in **D calling native object syscalls** — a truly
 native binary, not the Linux compat layer.
 
-## B0 — Native object syscall ABI · P: High · E: 3 · R: high · deps: —
+> **STATUS (Track B core working):** B0/B1/B3/B4 landed as a working slice — the
+> native object shell `-sh` (`/hos-sh`, written in D) runs in the terminal and lists
+> the live kernel object model via a native syscall (`obj`/`id`/`ns`/`svc`/`sys`).
+> Remaining: B2's full parser (pipes/control-flow), B3's **mutating** commands
+> (cap/grant, ns/clone, id/freeze, svc/start — cap-gated), domain-scoping (B4), B5
+> safety. See commit "Track B (B0-B4)".
+
+## B0 — Native object syscall ABI · 🟢 read-only ABI done (HOS_SYS_QUERY) · deps: —
 
 The kernel manipulates objects internally but exposes nothing to userspace. Add a native,
 capability-checked syscall surface.

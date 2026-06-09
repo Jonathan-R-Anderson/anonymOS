@@ -15,9 +15,12 @@
 module core.hoscall;
 
 import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
-import core.identity : g_identities, identityCount;
+import core.identity : g_identities, identityCount, identityById;
 import core.namespace: g_namespaces;
 import core.servicemgr : g_svcs;
+import core.task     : g_tasks, MAX_TASKS;
+import core.user     : userByObj;
+import core.exports  : g_current_task_id;
 
 @nogc nothrow:
 
@@ -29,6 +32,7 @@ enum : ulong {
     HOSQ_NAMESPACES = 3,   // namespaces in use
     HOSQ_SERVICES   = 4,   // services: name, state
     HOSQ_SYS        = 5,   // one-line system summary
+    HOSQ_WHOAMI     = 6,   // "<user>@<namespace>" for the calling task (shell prompt)
 }
 
 private immutable string[ObjType.Count] g_objTypeNames = [
@@ -115,6 +119,20 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
             lit(b, "identities  "); num(b, identityCount()); put(b, '\n');
             lit(b, "namespaces  "); num(b, nsCount);      put(b, '\n');
             lit(b, "services    "); num(b, svcCount);     put(b, '\n');
+            break;
+        }
+
+        case HOSQ_WHOAMI: {
+            // "<user>@<namespace>" — the calling task's User name and identity-domain
+            // (namespace) name, for the native shell's prompt.
+            const int tid = cast(int)g_current_task_id;
+            auto u = (tid >= 0 && tid < MAX_TASKS) ? userByObj(g_tasks[tid].userObjId) : null;
+            if (u !is null && u.nameLen > 0) foreach (i; 0 .. u.nameLen) put(b, u.name[i]);
+            else lit(b, "user");
+            put(b, '@');
+            auto e = (tid >= 0 && tid < MAX_TASKS) ? identityById(g_tasks[tid].identityObjId) : null;
+            if (e !is null && e.nameLen > 0) foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+            else lit(b, "system");
             break;
         }
 

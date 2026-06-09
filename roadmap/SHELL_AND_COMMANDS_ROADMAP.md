@@ -50,6 +50,11 @@ Legend: **P** priority · **E** effort (1 = hrs … 5 = weeks) · **R** risk · 
 
 ## A1 — Enable the full busybox applet set · P: High · E: 1 · R: low · deps: —
 
+**✅ DONE (commit Track A A1-A3).** Switched the busybox build base from `allnoconfig`
+to `defconfig` (deps/busybox/Makefile) and reduced the fragment to static/musl + ash
+as sh/bash with `STANDALONE`+`PREFER_APPLETS`, disabling only `tc` (musl breaker),
+MTD/UBI flash tools, kernel modules, and init. **117 → 381 applets.**
+
 Go from the curated 117 applets to the full useful set (~300–400).
 
 - Expand `deps/busybox/busybox.config`: coreutils (`ln rmdir head tail cut sort uniq wc
@@ -64,7 +69,15 @@ Go from the curated 117 applets to the full useful set (~300–400).
 - *Verify:* a smoke script in the terminal exercises one applet per category; record any
   applet that aborts with `ENOSYS <n>` → feeds A4.
 
-## A2 — Harden the runtime ramfs into a real tmpfs · P: High · E: 2 · R: med · deps: —
+## A2 — Harden the runtime ramfs into a real tmpfs · ✅ DONE · deps: —
+
+**Done (posix.d).** `rtEnsureCap` frees old pages on grow (was a leak) + tracks
+`g_rtBytes` against a 64 MB `RT_MAX_BYTES` cap; `rtFreeData` releases pages on
+unlink/overwrite/rename. Added `RT_LNK` symlinks (symlink/symlinkat create,
+readlink/readlinkat, lstat S_IFLNK, getdents DT_LNK, `sys_open` follows a leading
+symlink chain). chmod/chown/fchmod/fchown persist mode/uid/gid on RT nodes and
+`fileObjStat` reports them; boot modules report 0755. `RT_MAX_NODES` 1024 → 8192.
+Verified by the `[rtfs] selftest` (11/11).
 
 `g_rt` is a "minimal tmpfs"; make it production-grade so coreutils round-trip.
 
@@ -78,7 +91,13 @@ Go from the curated 117 applets to the full useful set (~300–400).
 - *Verify:* `cp -a` a tree, `find`, `tar -c | tar -x`, `chmod`+`stat`, symlink + `readlink`
   all round-trip; node/byte caps enforced.
 
-## A3 — Populate a realistic root filesystem · P: High · E: 2 · R: med · deps: A2
+## A3 — Populate a realistic root filesystem · ✅ DONE · deps: A2
+
+**Done (posix.d rtInit).** Seeds `/bin /sbin /usr/{bin,sbin} /usr/local/bin /lib
+/lib64 /opt /mnt /root /var/log` and creates `/bin/<applet> -> /busybox` for all 381
+applets (`rtSeedBinSymlinks`); wl-term sets `PATH`/`HOME`/`TERM`. `/etc`,`/proc`,`/sys`,
+`/dev` stay synthetic (served by g_vfs/device shims). Verified: `ls /` shows the FHS
+tree, `ls /bin` the command set, `which`/`readlink /bin/ls` resolve, exec-follow works.
 
 Today `ls /` is nearly empty. Give the shell a real FHS tree.
 
@@ -92,20 +111,33 @@ Today `ls /` is nearly empty. Give the shell a real FHS tree.
 - *Verify:* `ls -la /bin`, `which ls`, `cd /home/user && pwd`, `echo $PATH`, ash
   tab-completion resolve real entries.
 
-## A4 — Fill the termios / signal / syscall gaps · P: High · E: 3 · R: med · deps: A3
+## A4 — Fill the termios / signal / syscall gaps · 🟧 CORE DONE (interactive shell works) · deps: A3
 
-The gap between "applet launches" and "applet is usable interactively".
+**The shell is now fully interactive** (commit Track A A4). Three kernel fixes:
+- **wait4 process-group semantics** (`wait4Task`): treat `waitPid <= 0` (0 / -pgid) as
+  "any child" — busybox ash's job control uses `waitpid(0)`/`waitpid(-pgid)`, which
+  previously matched nothing and wedged the shell after its first forking command; plus
+  ECHILD when no child exists so the reap loop ends.
+- **wait4 transparent blocking** (case 61/114): rewind RIP + reschedule instead of a
+  spurious EINTR.
+- **execve `/proc/self/exe` + symlink + argv** (`execveTask`): busybox standalone
+  re-execs `/proc/self/exe` (then PATH) with `argv[0]=<applet>`; now we track each
+  task's binary (so `/proc/self/exe` → busybox, inherited on fork), follow RT symlinks
+  (`/bin/cat` → `/busybox`), and snapshot+pass the caller's real argv.
 
-- **termios:** implement real canonical vs raw mode + echo (today `TCSETS` stores
-  nothing) so line editing, `vi`, `less`, `top` work.
-- **Signals + job control:** generate `SIGINT`/`SIGTSTP`/`SIGQUIT` from the PTY line
-  discipline (`^C`/`^Z`/`^\`), `TIOCSPGRP`/`tcsetpgrp`, process groups, `SIGWINCH` on
-  resize; correct `waitpid` semantics.
-- **Missing fs/proc syscalls** surfaced by A1's smoke run: `utimensat fchmodat fchownat
-  linkat symlinkat statvfs sync fsync sendfile copy_file_range`, real `/proc/<pid>` and
-  `/proc/self` listings for `ps`/`top`.
-- *Verify:* `vi` edits + saves a file, `top` refreshes and quits, `^C` interrupts a
-  `sleep`, `sort < big | uniq | wc -l` pipeline completes, `dd`/`tar` finish.
+**Verified:** multi-command prompts return; `cat`/`grep`/`head`/`date`/`wc` run with
+arguments; **pipes work** (`echo hello | grep ell` → `hello`); no desktop regression.
+
+Remaining for full A4 (interactive editors / signals — not yet needed for the core
+command set):
+- **termios:** real canonical vs raw mode + echo (today `TCSETS` stores nothing) for
+  `vi`, `less`, `top` line editing. The PTY *does* default to a canonical line
+  discipline with echo, which is why the shell works; raw-mode apps need real tcsetattr.
+- **Signals:** generate `SIGINT`/`SIGTSTP`/`SIGQUIT` from the PTY (`^C`/`^Z`/`^\`),
+  `SIGWINCH` on resize.
+- **Missing fs/proc syscalls:** `utimensat`-as-real, `fstatfs`(138), real `/proc/<pid>`
+  listings for `ps`/`top`.
+- *Verify:* `vi` edits + saves; `^C` interrupts a `sleep`; `top` refreshes.
 
 ## A5 — Persistent disk-backed storage (optional) · P: Med · E: 4 · R: high · deps: A2
 
@@ -245,8 +277,10 @@ Any emulator hosts a shell on a PTY; make ours robust.
 
 ## Milestones
 
-- **M-A — Linux complete.** A1–A4: the full busybox command set on a real, hardened FHS
-  filesystem; interactive apps (`vi`/`top`) and pipelines work.
+- **M-A — Linux complete.** ✅ *Largely reached* (A1–A3 done, A4 core done): the full
+  381-applet busybox command set on a real, hardened FHS filesystem; the terminal is a
+  fully interactive shell — multi-command, arguments, and pipelines (`echo … | grep …`)
+  all work. Remaining: raw-mode terminal apps (`vi`/`top`) + PTY signals (`^C`).
 - **M-B — Native shell.** B0–B4: `-sh` drives objects/caps/namespaces/identity/services,
   domain-scoped from the Domain Manager.
 - **M-C1 — Terminal substrate.** C1 (+A4): a robust PTY hosts any shell or emulator.

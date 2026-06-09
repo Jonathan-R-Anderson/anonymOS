@@ -372,6 +372,7 @@ private void exitTask(int tid, int code) {
     t.exited   = true;
     t.exitCode = code;
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
+    if (tid >= 0 && tid < MAX_TASKS) g_taskExecModPhys[tid] = 0; // A4: clear exe info
     if (tid == g_idleTid) g_idleTid = -1;   // idle task died — re-spawn next loop
     objReleaseTask(tid);
     bool capTableStillShared = false;
@@ -527,6 +528,14 @@ private int forkTask(int parentTid) {
     objSetProcess(childTid, childTid, parent.processObjId);
     objCloneNamespace(childTid, parentTid); // Phase 9: child gets a private namespace clone
 
+    // Track A A4: the child runs the same binary as the parent (CoW fork), so it
+    // inherits /proc/self/exe resolution (busybox standalone re-execs it for applets).
+    if (parentTid >= 0 && parentTid < MAX_TASKS && childTid >= 0 && childTid < MAX_TASKS) {
+        g_taskExecModPhys[childTid] = g_taskExecModPhys[parentTid];
+        g_taskExecModSize[childTid] = g_taskExecModSize[parentTid];
+        g_taskExecName[childTid]    = g_taskExecName[parentTid];
+    }
+
     klog("[fork] parent="); klog_hex(parentTid);
     klog(" child="); klog_hex(childTid); klog("\n");
     return childTid;
@@ -666,18 +675,49 @@ __gshared char[EXEC_ENV_STR_CAP]  g_execEnvStrings;
 __gshared ulong[EXEC_ENV_MAX + 1] g_execEnvPtrs;
 __gshared size_t g_execEnvCount;
 
+// Track A A4: argv snapshot (mirror of the envp snapshot) so an exec'd program gets
+// its REAL arguments, not just [execName].  busybox standalone's applet dispatch
+// re-execs /proc/self/exe with argv[0]=<applet> — passing the real argv is what makes
+// `cat`, `grep`, … run the right applet.
+private enum size_t EXEC_ARG_MAX     = 128;
+private enum size_t EXEC_ARG_STR_CAP = 8192;
+__gshared char[EXEC_ARG_STR_CAP]  g_execArgStrings;
+__gshared ulong[EXEC_ARG_MAX + 1] g_execArgPtrs;
+__gshared size_t g_execArgCount;
+
+// Track A A4: per-task loaded binary, so /proc/self/exe re-exec resolves to the
+// task's own image (busybox), not the global /init.elf.
+__gshared ulong[MAX_TASKS] g_taskExecModPhys;
+__gshared ulong[MAX_TASKS] g_taskExecModSize;
+__gshared const(char)*[MAX_TASKS] g_taskExecName;
+
 private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
     auto task = &g_tasks[tid];
 
     // Find the ELF binary in the boot modules by filename
     const(char)* path = cast(const(char)*)pathPtr;
-    const(char)* pathBase = cstrBasenameK(path);
     const(char)* execName = null;
     ulong modPhys = 0;
     ulong modSize = 0;
 
+    // Track A A4: /proc/self/exe re-exec (busybox standalone applet dispatch) resolves
+    // to THIS task's own loaded binary, recorded on its last successful exec.
+    if (cstrEqK(path, "/proc/self/exe") && tid >= 0 && tid < MAX_TASKS &&
+        g_taskExecModPhys[tid] != 0) {
+        modPhys  = g_taskExecModPhys[tid];
+        modSize  = g_taskExecModSize[tid];
+        execName = g_taskExecName[tid];
+    }
+
+    // Track A A4: follow a leading RT-overlay symlink chain (e.g. /bin/cat -> /busybox)
+    // so the boot-module scan below matches by the real binary's basename.
+    char[512] _canonPath = void;
+    if (modPhys == 0 && posixCanonExecPath(path, _canonPath.ptr, 512))
+        path = _canonPath.ptr;
+    const(char)* pathBase = cstrBasenameK(path);
+
     // Try boot module scan
-    if (g_mboot_modules !is null && g_module_count > 0) {
+    if (modPhys == 0 && g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
         for (int i = 0; i < g_module_count; i++) {
             auto rec = cast(multiboot_module_t*)(recs + i * 128);
@@ -701,6 +741,37 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog(path);
         klog("\n");
         return -2; // ENOENT
+    }
+
+    // Track A A4: remember this task's binary so a later /proc/self/exe re-exec
+    // (busybox standalone) resolves back to it.
+    if (tid >= 0 && tid < MAX_TASKS) {
+        g_taskExecModPhys[tid] = modPhys;
+        g_taskExecModSize[tid] = modSize;
+        g_taskExecName[tid]    = execName;
+    }
+
+    // Track A A4: snapshot the caller's argv (mirror of the envp snapshot below) so the
+    // new image gets its real arguments + argv[0].  For busybox, argv[0] is the applet
+    // name (e.g. "cat"), which is how it dispatches the right applet after re-exec.
+    g_execArgCount = 0;
+    {
+        size_t strOff = 0;
+        if (argvPtr != 0) {
+            auto argArr = cast(const(ulong)*)argvPtr;
+            for (size_t i = 0; i < EXEC_ARG_MAX && argArr[i] != 0; ++i) {
+                auto s = cast(const(char)*)argArr[i];
+                if (s is null) continue;
+                size_t len = 0;
+                while (s[len] != 0 && len < 4095) ++len;
+                if (strOff + len + 1 >= EXEC_ARG_STR_CAP) break;
+                foreach (j; 0 .. len) g_execArgStrings[strOff + j] = s[j];
+                g_execArgStrings[strOff + len] = 0;
+                g_execArgPtrs[g_execArgCount++] = cast(ulong)&g_execArgStrings[strOff];
+                strOff += len + 1;
+            }
+        }
+        g_execArgPtrs[g_execArgCount] = 0;   // NULL terminator
     }
 
     // Snapshot the caller's envp into kernel buffers WHILE the outgoing address
@@ -827,11 +898,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         mainBias,
         cast(ulong)execName
     ];
+    // Track A A4: pass the caller's real argv (snapshotted above) so the new image
+    // gets its arguments + the right argv[0]; fall back to execfn-as-argv[0] only for
+    // kernel-internal execs that supply no argv (e.g. /idle).
     ulong rsp;
-    if (g_execEnvCount > 0) {
+    if (g_execArgCount > 0 || g_execEnvCount > 0) {
         rsp = linux_seed_initial_stack_with_args(
             stackPhys, stackSize, stackBase, infoWords.ptr, 4096,
-            0 /* argv: use execfn as argv[0] */, cast(ulong)&g_execEnvPtrs[0]);
+            (g_execArgCount > 0) ? cast(ulong)&g_execArgPtrs[0] : 0,
+            (g_execEnvCount > 0) ? cast(ulong)&g_execEnvPtrs[0] : 0);
     } else {
         rsp = linux_seed_initial_stack(
             stackPhys, stackSize, stackBase, infoWords.ptr, 4096);
@@ -974,20 +1049,27 @@ private void maybeSpawnWaylandClient() {
 
 private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     auto task = &g_tasks[tid];
-    int targetTid = waitPid;
+
+    // waitPid semantics (Track A A4): -1 = any child; 0 = any child in the caller's
+    // process group; < -1 = any child in process group |waitPid|; > 0 = that pid.
+    // We don't track process groups precisely, so 0 and < -1 are treated as "any
+    // child" — the case busybox ash's job control uses (waitpid(0)/waitpid(-pgid)).
+    // Without this, those calls checked childExited[0], never matched, and the shell
+    // blocked forever after its first forking command.
+    const bool anyChild = (waitPid <= 0);
+    int targetTid = -1;
     if (waitPid > 0) {
         targetTid = taskIdFromLinuxPid(waitPid);
         if (targetTid < 0 || targetTid >= MAX_TASKS) return -10; // ECHILD
     }
 
-    // Look for an already-exited child
-    if (targetTid == -1) {
+    // Reap an already-exited matching child.
+    if (anyChild) {
         for (int c = 1; c < MAX_TASKS; c++) {
             if (task.childExited[c]) {
                 int code = task.childExitCode[c];
                 task.childExited[c] = false;
-                if (statusPtr != 0)
-                    *cast(int*)statusPtr = (code & 0xff) << 8;
+                if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
                 int childPid = linuxPidForTask(c);
                 releaseTask(c);
                 return cast(long)childPid;
@@ -998,23 +1080,39 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
         if (c < MAX_TASKS && task.childExited[c]) {
             int code = task.childExitCode[c];
             task.childExited[c] = false;
-            if (statusPtr != 0)
-                *cast(int*)statusPtr = (code & 0xff) << 8;
+            if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
             int childPid = linuxPidForTask(cast(int)c);
             releaseTask(c);
             return cast(long)childPid;
         }
     }
 
+    // No matching child has exited.  If the task has no living matching child either,
+    // return ECHILD instead of blocking — otherwise ash's reap loop (which waits until
+    // ECHILD) would hang.
+    bool hasLivingChild = false;
+    if (anyChild) {
+        for (int i = 1; i < MAX_TASKS; i++)
+            if (g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].parentId == tid) {
+                hasLivingChild = true; break;
+            }
+    } else {
+        if (targetTid > 0 && targetTid < MAX_TASKS &&
+            g_tasks[targetTid].active && !g_tasks[targetTid].exited &&
+            g_tasks[targetTid].parentId == tid)
+            hasLivingChild = true;
+    }
+    if (!hasLivingChild) return -10; // ECHILD — no matching child at all
+
     // WNOHANG?
     enum WNOHANG = 1;
     if (options & WNOHANG) return 0;
 
-    // Block waiting for child
+    // Block.  Return the -4 sentinel so the dispatcher rewinds RIP and reschedules —
+    // the task transparently re-runs wait4 when a child exits (no spurious EINTR).
     task.waiting       = true;
-    task.waitingForPid = targetTid;
-    scheduleNext();
-    return -4; // EINTR (will be retried by kernel loop when unblocked)
+    task.waitingForPid = anyChild ? -1 : targetTid;
+    return -4;
 }
 
 // ------------------------------------------------------------------
@@ -1644,7 +1742,9 @@ private void dispatchSyscall(int tid) {
         // wait4
         case 61:
             ret = wait4Task(tid, cast(int)rdi, rsi, rdx);
-            // If blocking (ret == -EINTR): we'll retry next time this task runs
+            // Blocking: rewind RIP so the task transparently re-runs wait4 on wake
+            // (the child's exit clears `waiting`), instead of returning EINTR.
+            if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
             break;
 
         // kill
@@ -1655,6 +1755,7 @@ private void dispatchSyscall(int tid) {
         // waitpid (via wait4 with NULL rusage)
         case 114:
             ret = wait4Task(tid, cast(int)rdi, rsi, rdx);
+            if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
             break;
 
         // mprotect

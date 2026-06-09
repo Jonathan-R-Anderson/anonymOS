@@ -3190,6 +3190,20 @@ private const(char)* rtFollowSymlinks(const(char)* path, char* bufA, char* bufB,
     return cur;
 }
 
+// Track A A4: resolve a leading RT-overlay symlink chain for an exec path (e.g.
+// /bin/cat -> /busybox), so execveTask can match the boot module.  Returns true and
+// fills `outbuf` when the path was rewritten; false (outbuf untouched) otherwise.
+public bool posixCanonExecPath(const(char)* path, char* outbuf, size_t outlen) {
+    char[512] a = void;
+    char[512] b = void;
+    const(char)* r = rtFollowSymlinks(path, a.ptr, b.ptr, 512);
+    if (r is path) return false;
+    size_t i = 0;
+    while (r[i] != 0 && i + 1 < outlen) { outbuf[i] = r[i]; ++i; }
+    outbuf[i] = 0;
+    return true;
+}
+
 // Seed one skeleton directory (idempotent).
 private void rtMkdirPath(const(char)* path, ushort mode, uint uid, uint gid) {
     int parent; const(char)* leaf; size_t leafLen;

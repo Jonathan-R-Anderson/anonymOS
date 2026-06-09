@@ -2070,7 +2070,6 @@ private void kernelLoop() {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
                 wakePollers();   // re-check parked poll/epoll sleepers (≤1 ms latency)
-                if ((pitMs() % 3000) == 0) { inputStats(); presentProfStats(); schedProfStats(); } // PERF (temp)
                 picEOI(false);
                 scheduleNext();
             } else if (irqIdx == 1) {

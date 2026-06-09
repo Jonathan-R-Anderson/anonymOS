@@ -467,31 +467,33 @@ static void draw_manager(struct app *app)
 
 // --- buffer / commit ------------------------------------------------------
 
-static int publish_pixels(struct app *app)
+// Create the shm buffer ONCE and keep it mapped — app->pixels IS the shared
+// memory the compositor reads.  Creating a fresh memfd per frame (the old code)
+// leaked the kernel's small pool of memfd slots: the compositor holds each
+// buffer's fd, so after a few dozen redraws memfd_create failed and NO client
+// could allocate a buffer (the whole desktop froze).  Now: one memfd, draw in
+// place, just re-attach+commit each frame.
+static int create_buffer_once(struct app *app)
 {
-    if (!app->pixels || app->buffer_size == 0) return -1;
+    if (app->buffer) return 0;
     int fd = create_memfd("epin-domain-manager");
     if (fd < 0) { perror("DOMAINMGR: memfd_create"); return -1; }
     if (ftruncate(fd, (off_t)app->buffer_size) < 0) { perror("DOMAINMGR: ftruncate"); close(fd); return -1; }
-    void *shm_pixels = mmap(NULL, app->buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (shm_pixels == MAP_FAILED) { perror("DOMAINMGR: mmap"); close(fd); return -1; }
-    memcpy(shm_pixels, app->pixels, app->buffer_size);
+    app->pixels = (uint32_t *)mmap(NULL, app->buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (app->pixels == MAP_FAILED) { perror("DOMAINMGR: mmap"); close(fd); app->pixels = NULL; return -1; }
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)app->buffer_size);
-    struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, app->width, app->height,
-                                                         app->stride, WL_SHM_FORMAT_XRGB8888);
+    app->buffer = wl_shm_pool_create_buffer(pool, 0, app->width, app->height,
+                                            app->stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
-    munmap(shm_pixels, app->buffer_size);
-    close(fd);
-    if (!buffer) { log_line("DOMAINMGR: create_buffer failed"); return -1; }
-    app->buffer = buffer;
+    close(fd);   // the compositor holds the buffer's reference; this is the only memfd
+    if (!app->buffer) { log_line("DOMAINMGR: create_buffer failed"); return -1; }
     return 0;
 }
 
 static void redraw_commit(struct app *app, const char *marker)
 {
-    if (!app->buffer) return;
-    draw_manager(app);
-    if (publish_pixels(app) < 0) return;
+    if (!app->buffer || !app->pixels) return;
+    draw_manager(app);                 // draw directly into the persistent shared buffer
     wl_surface_attach(app->surface, app->buffer, 0, 0);
     wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
     wl_surface_commit(app->surface);
@@ -505,11 +507,10 @@ static int create_shm_buffer(struct app *app, int width, int height)
     app->height = height > 0 ? height : DEFAULT_HEIGHT;
     app->stride = app->width * 4;
     app->buffer_size = (size_t)app->stride * (size_t)app->height;
-    app->pixels = malloc(app->buffer_size);
-    if (!app->pixels) { perror("DOMAINMGR: malloc"); return -1; }
     if (!app->font_ready) init_freetype(app);
+    if (create_buffer_once(app) < 0) return -1;
     draw_manager(app);
-    return publish_pixels(app);
+    return 0;
 }
 
 // --- launch ---------------------------------------------------------------
@@ -675,7 +676,7 @@ static void frame_done(void *data, struct wl_callback *callback, uint32_t time)
     if (app->post_map_frame_done) return;
     app->post_map_frame_done = 1;
     draw_manager(app);
-    if (publish_pixels(app) == 0) {
+    if (app->buffer) {
         wl_surface_attach(app->surface, app->buffer, 0, 0);
         wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
         wl_surface_commit(app->surface);

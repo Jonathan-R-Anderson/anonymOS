@@ -27,6 +27,7 @@
 #include FT_FREETYPE_H
 
 #include "xdg-shell-client-protocol.h"
+#include "wl-deco.h"
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
@@ -71,6 +72,7 @@ struct app {
     struct wl_output *output;
     struct wl_shm *shm;
     struct wl_seat *seat;
+    int maximized;
     struct wl_keyboard *keyboard;
     struct wl_pointer *pointer;
     struct xdg_wm_base *wm_base;
@@ -448,7 +450,7 @@ static void draw_files(struct app *app)
     cairo_line_to(cr, SIDEBAR_W + 24, 23);
     cairo_line_to(cr, SIDEBAR_W + 31, 30);
     cairo_stroke(cr);
-    rounded_rect(cr, SIDEBAR_W + 52, 9, app->width - SIDEBAR_W - 64, 28, 7);
+    rounded_rect(cr, SIDEBAR_W + 52, 9, app->width - SIDEBAR_W - 64 - 3 * DECO_BTN_H, 28, 7);
     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
     cairo_fill_preserve(cr);
     cairo_set_source_rgb(cr, 0.84, 0.87, 0.91);
@@ -499,7 +501,7 @@ static void draw_files(struct app *app)
         draw_text(app, PLACES[i].label, 46, ry + 8, SIDEBAR_W - 56, 13,
                   i == app->place_sel ? 0xff1b2430u : 0xff37404bu);
     }
-    draw_text(app, app->cwd, SIDEBAR_W + 64, 17, app->width - SIDEBAR_W - 84, 13, 0xff2a3340u);
+    draw_text(app, app->cwd, SIDEBAR_W + 64, 17, app->width - SIDEBAR_W - 84 - 3 * DECO_BTN_H, 13, 0xff2a3340u);
     for (int r = 0; r < vis; r++) {
         int idx = app->scroll + r;
         if (idx >= app->n_entries)
@@ -512,6 +514,9 @@ static void draw_files(struct app *app)
     char status[160];
     snprintf(status, sizeof(status), "%d items   identity: system   domain: trusted", app->n_entries);
     draw_text(app, status, 28, app->height - STATUS_H + 6, app->width - 40, 11, 0xff48515du);
+
+    // window-control buttons (minimize / maximize / close) at the top-right.
+    wl_deco_draw(app->pixels, app->width, app->width, app->height, 0xff7a828fu);
 }
 
 // Create the shm buffer ONCE and keep it mapped (app->pixels IS the shared
@@ -740,9 +745,20 @@ static void pointer_button(void *data, struct wl_pointer *p, uint32_t serial, ui
                            uint32_t button, uint32_t state)
 {
     struct app *app = data;
-    (void)p; (void)serial; (void)time;
+    (void)p; (void)time;
     if (button != 0x110 || state != WL_POINTER_BUTTON_STATE_PRESSED)
         return;
+    switch (wl_deco_hit(app->pointer_x, app->pointer_y, app->width)) {
+        case 4: app->running = 0; return;                            // close
+        case 2: xdg_toplevel_set_minimized(app->toplevel); return;
+        case 3: if (app->maximized) { xdg_toplevel_unset_maximized(app->toplevel); app->maximized = 0; }
+                else              { xdg_toplevel_set_maximized(app->toplevel);   app->maximized = 1; } return;
+        default: break;
+    }
+    // drag the toolbar (the path-bar strip) to move the window
+    if (app->pointer_y < TOOLBAR_H && app->pointer_x >= SIDEBAR_W + 52) {
+        xdg_toplevel_move(app->toplevel, app->seat, serial); return;
+    }
     handle_click(app);
 }
 static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value)

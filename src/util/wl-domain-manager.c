@@ -37,6 +37,7 @@
 #include FT_FREETYPE_H
 
 #include "xdg-shell-client-protocol.h"
+#include "wl-deco.h"
 
 #ifndef MFD_CLOEXEC
 #define MFD_CLOEXEC 0x0001U
@@ -128,6 +129,7 @@ struct app {
     struct wl_compositor *compositor;
     struct wl_shm *shm;
     struct wl_seat *seat;
+    int maximized;
     struct wl_keyboard *keyboard;
     struct wl_pointer *pointer;
     struct xdg_wm_base *wm_base;
@@ -463,6 +465,9 @@ static void draw_manager(struct app *app)
              DOMAINS[app->sel].name, memstr, DISK_LBL[cc->disk], NET_LBL[cc->net],
              CLIP_LBL[cc->clip], cc->secure_ipc ? "required" : "optional", SHELL_LBL[cc->shell]);
     draw_text(app, foot, PAD, app->height - FOOTER_H + 9, app->width - 2 * PAD, 12, 0xff9aa4b3u);
+
+    // window-control buttons (minimize / maximize / close) at the top-right.
+    wl_deco_draw(app->pixels, app->width, app->width, app->height, 0xffd0d6e0u);
 }
 
 // --- buffer / commit ------------------------------------------------------
@@ -610,7 +615,20 @@ static void pointer_leave(void *data, struct wl_pointer *p, uint32_t serial, str
 static void pointer_motion(void *data, struct wl_pointer *p, uint32_t time, wl_fixed_t sx, wl_fixed_t sy)
 { struct app *app = data; (void)p; (void)time; app->pointer_x = wl_fixed_to_double(sx); app->pointer_y = wl_fixed_to_double(sy); }
 static void pointer_button(void *data, struct wl_pointer *p, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
-{ struct app *app = data; (void)p; (void)serial; (void)time; if (button == 0x110 && state == WL_POINTER_BUTTON_STATE_PRESSED) handle_click(app); }
+{
+    struct app *app = data; (void)p; (void)time;
+    if (button != 0x110 || state != WL_POINTER_BUTTON_STATE_PRESSED) return;
+    switch (wl_deco_hit(app->pointer_x, app->pointer_y, app->width)) {
+        case 4: app->running = 0; return;                            // close
+        case 2: xdg_toplevel_set_minimized(app->toplevel); return;
+        case 3: if (app->maximized) { xdg_toplevel_unset_maximized(app->toplevel); app->maximized = 0; }
+                else              { xdg_toplevel_set_maximized(app->toplevel);   app->maximized = 1; } return;
+        default: break;
+    }
+    // drag the header strip to move the window
+    if (app->pointer_y < HEADER_H) { xdg_toplevel_move(app->toplevel, app->seat, serial); return; }
+    handle_click(app);
+}
 static void pointer_axis(void *data, struct wl_pointer *p, uint32_t time, uint32_t axis, wl_fixed_t value) { (void)data; (void)p; (void)time; (void)axis; (void)value; }
 static void pointer_frame(void *data, struct wl_pointer *p) { (void)data; (void)p; }
 static void pointer_axis_source(void *data, struct wl_pointer *p, uint32_t s) { (void)data; (void)p; (void)s; }

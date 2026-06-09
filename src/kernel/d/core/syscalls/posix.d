@@ -11,7 +11,8 @@ import core.random;
 import core.io;
 import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
-                   objEnsureNamespace;
+                   objEnsureNamespace, taskIdFromLinuxPid,
+                   g_taskPgid, g_taskSigCustom, deliverSignalToGroup;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -336,13 +337,15 @@ private int ptyRingPop(ref PtyRing r) @nogc nothrow {
 // termios flag bits we honor
 private enum uint TIO_INLCR = 0x40, TIO_IGNCR = 0x80, TIO_ICRNL = 0x100;
 private enum uint TIO_OPOST = 0x1,  TIO_ONLCR = 0x4;
-private enum uint TIO_ICANON = 0x2, TIO_ECHO = 0x8;
+private enum uint TIO_ICANON = 0x2, TIO_ECHO = 0x8, TIO_ISIG = 0x1;
 
 struct Pty {
     bool      inUse;
     uint      iflag, oflag, cflag, lflag;
     ubyte[19] cc;
     ushort    rows, cols, xpix, ypix;
+    int       fgPgid;      // A4: foreground process group (TIOCSPGRP) for ^C/^\ delivery
+    int       lastReader;  // A4: tid of the last task to read the slave (fg job fallback)
     ubyte[PTY_BUF] line;   // canonical line accumulator
     uint      lineLen;
     PtyRing   toMaster;    // master read queue (echo + slave output)
@@ -385,6 +388,16 @@ private void ptyEchoErase(ref Pty p) @nogc nothrow {
     ptyRingPush(p.toMaster, '\b');
 }
 
+// A4: the foreground process group for ^C/^\ — the kernel-set tcsetpgrp group if the
+// shell drives job control, else the effective group of the last task to read the
+// slave (the running command, or the shell itself at the prompt).
+private int ptyFgGroup(ref Pty p) @nogc nothrow {
+    if (p.fgPgid != 0) return p.fgPgid;
+    int t = p.lastReader;
+    if (t <= 0 || t >= MAX_TASKS) return 0;
+    return g_taskPgid[t] != 0 ? g_taskPgid[t] : linuxPidForTask(t);
+}
+
 // one byte of terminal input (master write) through the input discipline
 private void ptyInputByte(ref Pty p, ubyte b) @nogc nothrow {
     if (b == '\r') {
@@ -392,6 +405,21 @@ private void ptyInputByte(ref Pty p, ubyte b) @nogc nothrow {
         if (p.iflag & TIO_ICRNL) b = '\n';
     } else if (b == '\n' && (p.iflag & TIO_INLCR)) {
         b = '\r';
+    }
+    // A4: ISIG — terminal-generated signals to the foreground process group.  ^C/^\
+    // discard the pending input line, echo a newline, and signal the fg job (the shell
+    // and apps that catch the signal are skipped by deliverSignalToGroup).
+    if (p.lflag & TIO_ISIG) {
+        if (b == p.cc[0]) {            // VINTR (^C) → SIGINT (2)
+            p.lineLen = 0; ptyOut(p, '\n');
+            deliverSignalToGroup(ptyFgGroup(p), 2);
+            return;
+        }
+        if (b == p.cc[1]) {            // VQUIT (^\) → SIGQUIT (3)
+            p.lineLen = 0; ptyOut(p, '\n');
+            deliverSignalToGroup(ptyFgGroup(p), 3);
+            return;
+        }
     }
     const bool canon = (p.lflag & TIO_ICANON) != 0;
     const bool echo  = (p.lflag & TIO_ECHO) != 0;
@@ -458,9 +486,12 @@ private long ptyIoctl(int idx, ulong cmd, ulong arg) @nogc nothrow {
             }
             return 0;
         case 0x540f: // TIOCGPGRP
-            if (arg != 0) *cast(int*)arg = 1;
+            if (arg != 0) *cast(int*)arg = (p.fgPgid != 0) ? p.fgPgid : 1;
             return 0;
-        case 0x5410: case 0x540e: case 0x5422: // TIOCSPGRP / TIOCSCTTY / TIOCNOTTY
+        case 0x5410: // TIOCSPGRP — set the foreground process group (for ^C/^\)
+            if (arg != 0) p.fgPgid = *cast(int*)arg;
+            return 0;
+        case 0x540e: case 0x5422: // TIOCSCTTY / TIOCNOTTY
             return 0;
         default:
             return negErrno(25); // ENOTTY
@@ -1781,6 +1812,11 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
     if (f.type == FileType.FD_PTY_MASTER || f.type == FileType.FD_PTY_SLAVE) {
         int idx = cast(int)cast(size_t)f.backend;
         if (idx < 0 || idx >= PTY_MAX || !g_ptys[idx].inUse) return negErrno(EBADF);
+        // A4: the task reading the slave is the de-facto foreground process (the shell
+        // at the prompt, or the running command). Record it so ^C can target it when
+        // the shell doesn't drive tcsetpgrp.
+        if (f.type == FileType.FD_PTY_SLAVE)
+            g_ptys[idx].lastReader = cast(int)g_current_task_id;
         auto ring = (f.type == FileType.FD_PTY_MASTER) ? &g_ptys[idx].toMaster
                                                        : &g_ptys[idx].toSlave;
         auto dst = cast(ubyte*)_buf;
@@ -5604,7 +5640,20 @@ public long linux_sys_getpid() {
 }
 
 public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong sigsetsize) {
-    // Return success but do nothing.
+    // Track A A4: record only whether each signal has a NON-default disposition
+    // (SIG_IGN or a handler) for the current task, so the PTY ^C/^\ path knows which
+    // foreground tasks to auto-terminate (default) vs leave alone (the shell, vi, …).
+    // We don't yet invoke user handlers — a non-default disposition just suppresses the
+    // default terminate, which is what keeps interactive apps alive on ^C.
+    const int tid = cast(int)g_current_task_id;
+    if (signum < 64 && tid >= 0 && tid < MAX_TASKS) {
+        if (act != 0) {
+            const ulong handler = *cast(ulong*)act;       // sa_handler at offset 0
+            // SIG_DFL = 0 → default; SIG_IGN = 1 or any handler → custom (suppress kill)
+            if (handler == 0) g_taskSigCustom[tid] &= ~(1UL << signum);
+            else              g_taskSigCustom[tid] |=  (1UL << signum);
+        }
+    }
     return 0;
 }
 
@@ -5836,8 +5885,18 @@ public long linux_sys_getppid() {
     if (parent < 0 || parent >= MAX_TASKS) return 0;
     return cast(long)linuxPidForTask(parent);
 }
+// Track A A4: setpgid records the task's process group for terminal ^C/^\ delivery.
+// getpgid/getpgrp keep the historical constant (1): busybox ash's job-control init
+// compares getpgrp() == tcgetpgrp(tty) to decide it owns the terminal, and both have
+// long reported 1, so the shell reaches its interactive prompt.  Returning real,
+// mismatched pgids here makes ash think it's a background shell and it never prompts.
 public long linux_sys_getpgid(ulong pid) { return 1; }
-public long linux_sys_setpgid(ulong pid, ulong pgid) { return 0; }
+public long linux_sys_setpgid(ulong pid, ulong pgid) {
+    int t = (pid == 0) ? cast(int)g_current_task_id : taskIdFromLinuxPid(cast(int)pid);
+    if (t < 0 || t >= MAX_TASKS) return 0;
+    g_taskPgid[t] = (pgid == 0) ? linuxPidForTask(t) : cast(int)pgid;
+    return 0;
+}
 public long linux_sys_getpgrp() { return 1; }
 public long linux_sys_setsid()  { return 1; }
 public long linux_sys_gettid()  {

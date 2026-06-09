@@ -372,7 +372,10 @@ private void exitTask(int tid, int code) {
     t.exited   = true;
     t.exitCode = code;
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
-    if (tid >= 0 && tid < MAX_TASKS) g_taskExecModPhys[tid] = 0; // A4: clear exe info
+    if (tid >= 0 && tid < MAX_TASKS) {
+        g_taskExecModPhys[tid] = 0;                 // A4: clear exe info
+        g_taskPgid[tid] = 0; g_taskSigCustom[tid] = 0; g_taskPendingSig[tid] = 0;
+    }
     if (tid == g_idleTid) g_idleTid = -1;   // idle task died — re-spawn next loop
     objReleaseTask(tid);
     bool capTableStillShared = false;
@@ -534,6 +537,10 @@ private int forkTask(int parentTid) {
         g_taskExecModPhys[childTid] = g_taskExecModPhys[parentTid];
         g_taskExecModSize[childTid] = g_taskExecModSize[parentTid];
         g_taskExecName[childTid]    = g_taskExecName[parentTid];
+        // A4: a child inherits its parent's process group + signal dispositions.
+        g_taskPgid[childTid]      = g_taskPgid[parentTid];
+        g_taskSigCustom[childTid] = g_taskSigCustom[parentTid];
+        g_taskPendingSig[childTid] = 0;
     }
 
     klog("[fork] parent="); klog_hex(parentTid);
@@ -749,6 +756,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
+        // A4: execve resets caught/ignored signals to the default disposition (POSIX),
+        // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
+        g_taskSigCustom[tid]   = 0;
+        g_taskPendingSig[tid]  = 0;
     }
 
     // Track A A4: snapshot the caller's argv (mirror of the envp snapshot below) so the
@@ -2168,6 +2179,17 @@ private void kernelLoop() {
         }
         if (task.waiting) {
             scheduleNext();
+            continue;
+        }
+
+        // Track A A4: a terminal signal (^C/^\) marked this task for the default
+        // terminate action.  Apply it now from the victim's own context (about to run
+        // tid) — exitTask switches to tid's CR3 to free its pages, which is unsafe to
+        // do from the keystroke-writer's context where the signal was raised.
+        if (g_taskPendingSig[tid] != 0) {
+            int psig = g_taskPendingSig[tid];
+            g_taskPendingSig[tid] = 0;
+            exitTask(tid, 128 + psig);   // 128+signo, as a shell reports a killed job
             continue;
         }
 

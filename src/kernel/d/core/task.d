@@ -155,6 +155,40 @@ struct Task {
 
 __gshared Task[MAX_TASKS] g_tasks;
 
+// Track A A4 — terminal signals (^C/^\). Kept as side arrays (not Task fields) so the
+// shared Task layout is untouched. g_taskPgid: the task's process group (linux pid of
+// the group leader; 0 = use the task's own pid). g_taskSigCustom: bitmask of signals
+// with a non-default disposition (SIG_IGN or a handler) — those are NOT auto-terminated.
+// g_taskPendingSig: a pending terminate-signal the run loop delivers from the victim's
+// own context (signalling another task's exitTask from the writer's context is unsafe).
+__gshared int[MAX_TASKS]   g_taskPgid;
+__gshared ulong[MAX_TASKS] g_taskSigCustom;
+__gshared int[MAX_TASKS]   g_taskPendingSig;
+
+// A task's effective process group: its own pid until setpgid() changes it.
+public int taskEffectivePgid(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    return g_taskPgid[tid] != 0 ? g_taskPgid[tid] : linuxPidForTask(tid);
+}
+
+// Terminal line discipline (^C/^\) → deliver `sig` to every task in process group
+// `pgid` whose disposition for it is default. SIG_IGN/handler tasks (the shell, vi,
+// less, …) are skipped so they aren't killed. Blocked victims are woken so the run
+// loop schedules them and applies the pending signal.  Returns # of tasks signalled.
+public int deliverSignalToGroup(int pgid, int sig) {
+    if (pgid == 0 || sig <= 0 || sig >= 64) return 0;
+    int n = 0;
+    for (int t = 1; t < MAX_TASKS; ++t) {
+        if (!g_tasks[t].active || g_tasks[t].exited) continue;
+        if (taskEffectivePgid(t) != pgid) continue;
+        if (g_taskSigCustom[t] & (1UL << sig)) continue;   // SIG_IGN / has handler → skip
+        g_taskPendingSig[t] = sig;
+        g_tasks[t].waiting  = false;                        // wake a blocked victim
+        ++n;
+    }
+    return n;
+}
+
 private bool taskAddressSpaceIsShared(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return false;
     ulong pml4 = g_tasks[tid].pml4Phys;

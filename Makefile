@@ -7,7 +7,13 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets
+.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets
+
+# ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
+# (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
+# *builds* zsh — it is NOT yet staged into hos.iso (that is Z1).  `make zsh`.
+zsh:
+	$(MAKE) -C deps/zsh
 .NOTPARALLEL:
 
 # =========================================================

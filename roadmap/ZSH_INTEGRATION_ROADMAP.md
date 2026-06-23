@@ -57,13 +57,26 @@ that gates the native ABI).
 
 ---
 
-## Z0 — Toolchain + upstream fetch · ☐ · P: High · E: 2
+## Z0 — Toolchain + upstream fetch · ✅ DONE · P: High · E: 2
 
-- Add an offline-cached upstream zsh tarball under `deps/zsh/` (pinned version + checksum),
-  mirroring how `deps/busybox` and the GUI deps are vendored.
-- Wire `deps/zsh` into the Makefile: configure with the existing `musl-clang` cross
-  toolchain (the one that builds the Wayland clients), `--enable-shared`, `--disable-dynamic-nss`.
-- *Deliverable 5 (build), 1 (source tree).* No OS behaviour change yet.
+- **Vendored** the upstream `zsh-5.9.tar.xz` under `deps/zsh/`, pinned + SHA256-verified
+  (`9b8d1ec…`), mirroring how `deps/busybox` vendors its tarball (offline-cached; the
+  build never fetches if the tarball is present).
+- **Term-lib prerequisite:** zsh needs a curses/termcap library, which the musl sysroot
+  lacks, so the build also vendors + builds **ncurses-6.4** (`6931283…`) against musl —
+  `libncursesw.a`/`libtinfow.a`, widechar, **with the terminal entries compiled in**
+  (`--with-fallbacks=linux,xterm,xterm-256color,vt100,…`) so **no terminfo DB is needed**
+  on the OS (TERM=linux, which wl-term sets, is built in).
+- **Wired into the Makefile** (`deps/zsh/Makefile` + top-level `make zsh`): configures with
+  the existing `musl-clang` toolchain (x86-64 musl runs on the x86-64 build host, so
+  configure's test programs run natively — no cross-compile cache) and builds a **static**
+  zsh with `--disable-dynamic` (modules linked in) + `--disable-dynamic-nss`. (The
+  `--enable-shared`/dynamically-loaded-module split is Z2; static is the correct first
+  build for musl and for Z1.)
+- *Deliverable 5 (build), 1 (source tree).* **No OS behaviour change** — zsh is built but
+  **not** staged into `hos.iso` yet (that's Z1).
+- *Verified:* a clean `make zsh` produces a 1.8 MB static x86-64 musl ELF that runs —
+  `zsh --version` = 5.9; arrays, associative arrays, and globbing/modifiers all work.
 
 ## Z1 — Linux-personality zsh · ☐ · P: High · E: 3 · deps: Z0
 

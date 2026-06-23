@@ -548,6 +548,30 @@ static int spawn_shell(struct app *a) {
         setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
         setenv("HOME", "/root", 1);
         setenv("TERM", "linux", 1);
+        // Rich PS1 so the Linux (busybox) shell prompt shows the same four fields as the
+        // native shell: username, permissions, namespace (domain), and the working dir —
+        // `[<domain>] <user> [<perms>]:<cwd>$`.  The domain + permission flags come from
+        // the per-domain policy the Domain Manager passes in the environment; \u and \w
+        // are expanded live by ash (ASH_EXPAND_PRMT).  (Only for the Linux flavor; the
+        // native shell builds its own prompt from the kernel via HOS_SYS_QUERY.)
+        if (!is_native) {
+            const char *dom  = getenv("EPIN_DOMAIN");
+            const char *disk = getenv("EPIN_DISK");        // none / ro / rw
+            const char *net  = getenv("EPIN_NET");         // none / nat / vpn / tor / local / disposable
+            const char *sipc = getenv("EPIN_SECURE_IPC");  // "1" / "0"
+            if (!dom || !*dom) dom = "linux";
+            char caps[96]; int cl = 0; caps[0] = 0;
+            if (disk && *disk && strcmp(disk, "none"))
+                cl += snprintf(caps + cl, sizeof(caps) - cl, "fs:%s ", disk);
+            if (net && *net && strcmp(net, "none"))
+                cl += snprintf(caps + cl, sizeof(caps) - cl, "net:%s ", net);
+            if (sipc && !strcmp(sipc, "1"))
+                cl += snprintf(caps + cl, sizeof(caps) - cl, "ipc ");
+            if (cl > 0 && caps[cl - 1] == ' ') caps[cl - 1] = 0;   // trim trailing space
+            char ps1[256];
+            snprintf(ps1, sizeof(ps1), "[%s] \\u [%s]:\\w\\$ ", dom, caps);
+            setenv("PS1", ps1, 1);
+        }
         // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash
         // an interactive login shell; for the native shell, /hos-sh.
         char *argv[] = { shell_arg0, NULL };

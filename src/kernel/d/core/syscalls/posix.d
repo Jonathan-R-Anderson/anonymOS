@@ -4174,7 +4174,7 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/hosts",         "127.0.0.1 localhost hanonymOS\n::1 localhost\n"                           },
     { "/etc/machine-id",    "deadbeefcafe00001234567890abcdef\n"                                       },
     { "/etc/nsswitch.conf", "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\n"          },
-    { "/etc/passwd",        "root:x:0:0:root:/root:/bin/sh\n"                                         },
+    { "/etc/passwd",        "root:x:0:0:root:/root:/bin/sh\nuser:x:1000:1000:user:/home/user:/bin/sh\n" },
     { "/etc/shadow",        "root::::::::\n"                                                           },
     { "/etc/group",         "root:x:0:\n"                                                              },
     { "/etc/shells",        "/bin/sh\n/bin/ash\n/busybox\n"                                            },

@@ -15,7 +15,9 @@
 module core.hoscall;
 
 import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
-import core.identity : g_identities, identityCount, identityById;
+import core.identity : g_identities, identityCount, identityById, NetPolicy;
+import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
+                       CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL;
 import core.namespace: g_namespaces;
 import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
@@ -480,6 +482,29 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
             auto e = (tid >= 0 && tid < MAX_TASKS) ? identityById(g_tasks[tid].identityObjId) : null;
             if (e !is null && e.nameLen > 0) foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
             else lit(b, "system");
+            // Prompt permissions: a compact capability-flag summary derived from the
+            // calling task's identity (rights ceiling + net policy + brokered devices),
+            // so the native prompt shows user@namespace [perms]:/path.
+            if (e !is null) {
+                lit(b, " [");
+                bool first = true;
+                void flag(string s) { if (!first) put(b, ' '); first = false; lit(b, s); }
+                if (e.rightsCeiling & CAP_RIGHT_WRITE)     flag("fs:rw");
+                else if (e.rightsCeiling & CAP_RIGHT_READ) flag("fs:ro");
+                final switch (e.net) {
+                    case NetPolicy.None:       break;
+                    case NetPolicy.NAT:        flag("net:nat");   break;
+                    case NetPolicy.VPN:        flag("net:vpn");   break;
+                    case NetPolicy.Tor:        flag("net:tor");   break;
+                    case NetPolicy.LocalOnly:  flag("net:local"); break;
+                    case NetPolicy.Disposable: flag("net:disp");  break;
+                }
+                if (e.rightsCeiling & CAP_RIGHT_CALL)      flag("ipc");
+                if (e.allowedDevices != 0)                 flag("dev");
+                if (e.rightsCeiling & CAP_RIGHT_EXEC)      flag("exec");
+                if (e.rightsCeiling & CAP_RIGHT_ADMIN_ALL) flag("admin");
+                put(b, ']');
+            }
             break;
         }
 

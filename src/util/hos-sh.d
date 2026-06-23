@@ -51,15 +51,43 @@ void runQuery(long op, const(char)* header) @nogc nothrow {
 }
 
 void help() @nogc nothrow {
-    printf("native object commands:\n");
-    printf("  obj     list kernel objects by type (File, Process, Identity, ...)\n");
-    printf("  id      list identity domains (trust, rights ceiling, state)\n");
-    printf("  ns      list namespaces\n");
-    printf("  svc     list services and their state\n");
-    printf("  sys     system object summary\n");
-    printf("  cd P    change the current path (prompt shows user@namespace:/path)\n");
-    printf("  help    this list\n");
-    printf("  exit    leave the native shell\n");
+    printf("native object forms (LFE / Lisp-flavored s-expressions; bare words also work):\n");
+    printf("  (obj)         list kernel objects by type (File, Process, Identity, ...)\n");
+    printf("  (id)          list identity domains (trust, rights ceiling, state)\n");
+    printf("  (ns)          list namespaces\n");
+    printf("  (svc)         list services and their state\n");
+    printf("  (sys)         system object summary\n");
+    printf("  (cd \"/path\")  change the current path (prompt shows user@namespace:/path)\n");
+    printf("  (help)        this list\n");
+    printf("  (exit)        leave the native shell\n");
+}
+
+// Minimal LFE (Lisp Flavored Erlang) reader: rewrite an s-expression `(head arg ...)`
+// into the bare "head arg ..." form the dispatcher already understands — outer parens
+// dropped, "string" atoms unquoted, nested grouping flattened.  The native AnonymOS
+// shell follows the LFE syntax/structure of the `-sh` project; this is the first step
+// (the object commands as LFE forms).  Bare words still work for convenience.
+__gshared char[512] g_lfe;
+char* lfeNormalize(char* s) @nogc nothrow {
+    const(char)* p = s + 1;             // caller guarantees s[0] == '('
+    size_t o = 0;
+    int depth = 1;
+    while (*p != 0 && o + 1 < g_lfe.length) {
+        const char c = *p;
+        if (c == '(') { ++depth; ++p; continue; }
+        if (c == ')') { if (--depth <= 0) break; ++p; continue; }
+        if (c == '"') {                 // unquote a string atom
+            ++p;
+            while (*p != 0 && *p != '"' && o + 1 < g_lfe.length) g_lfe[o++] = *p++;
+            if (*p == '"') ++p;
+            continue;
+        }
+        if (c == ' ' || c == '\t') { if (o > 0 && g_lfe[o-1] != ' ') g_lfe[o++] = ' '; ++p; continue; }
+        g_lfe[o++] = c; ++p;
+    }
+    while (o > 0 && g_lfe[o-1] == ' ') --o;
+    g_lfe[o] = 0;
+    return g_lfe.ptr;
 }
 
 // Build "user@namespace" from the native whoami query (once).
@@ -70,8 +98,8 @@ void loadWho() @nogc nothrow {
 }
 
 extern(C) int main() @nogc nothrow {
-    printf("\nEpinAnonymOS native object shell  (-sh / dash)\n");
-    printf("Drives the microkernel object model directly. Type 'help'.\n\n");
+    printf("\nEpinAnonymOS native object shell  (-sh, LFE syntax)\n");
+    printf("Drives the microkernel object model with Lisp-flavored (LFE) forms. Type (help).\n\n");
     loadWho();
 
     char[256] line = void;
@@ -87,6 +115,13 @@ extern(C) int main() @nogc nothrow {
         char* cmd = line.ptr;
         while (*cmd == ' ' || *cmd == '\t') ++cmd;
         if (*cmd == 0) continue;
+
+        // LFE: an s-expression `(head arg ...)` is read into the bare command form.
+        if (*cmd == '(') {
+            cmd = lfeNormalize(cmd);
+            while (*cmd == ' ') ++cmd;
+            if (*cmd == 0) continue;
+        }
 
         if      (strcmp(cmd, "exit".ptr) == 0 || strcmp(cmd, "quit".ptr) == 0) break;
         else if (strcmp(cmd, "help".ptr) == 0) help();

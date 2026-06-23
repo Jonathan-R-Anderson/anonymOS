@@ -255,6 +255,63 @@ already implemented), then the deep native port last (it needs the most platform
 
 ---
 
+## Companion: the native shell — `-sh` (LFE / Lisp-Flavored Erlang)
+
+AnonymOS has **two interactive shells, one per personality** (NATIVE_OBJECT_ABI §3):
+
+- **zsh** — the **Linux personality** shell (POSIX): everything above. Familiar, scriptable,
+  Oh-My-Zsh-customizable; runs ordinary Linux/POSIX programs.
+- **`-sh`** — the **native (AnonymOS) personality** shell: it abides by the **syntax and
+  structure of LFE (Lisp-Flavored Erlang)** as defined by the
+  [`-sh` project](https://github.com/Jonathan-R-Anderson/-sh). Where zsh is line-oriented
+  POSIX, `-sh` is **s-expression / Lisp**, which fits the object-capability model directly:
+  objects, capabilities, identities, and namespaces are first-class **data** (atoms, lists,
+  tuples), and every action is a **form** — `(verb target args…)` — that maps onto a native
+  object-ABI call. This is the "actual OS shell" the Domain Manager offers as the **native**
+  option; it drives the kernel object model the way zsh drives POSIX.
+
+**Why LFE for the native shell.** The native ABI is object-oriented and message-passing
+(§6/§8); LFE's homoiconic forms + pattern matching + immutable data are a natural surface
+for it — an object query is a list, a capability is a tagged tuple, a method call is a form,
+and policies/declarative config (`shell.json`, the `/config` views) are just data the shell
+reads and writes. It keeps the native shell *introspectable and scriptable* (the AI-/agent-
+friendly goal) without bolting POSIX onto the object model.
+
+### LFE integration phases (parallel to the zsh phases)
+
+- **L0 — LFE reader (s-expressions) · ✅ DONE (first cut).** `hos-sh` now reads LFE forms:
+  `(obj)`, `(id)`, `(ns)`, `(svc)`, `(sys)`, `(cd "/path")`, `(help)`, `(exit)` — outer parens
+  dropped, `"string"` atoms unquoted, nested grouping flattened (`src/util/hos-sh.d`
+  `lfeNormalize`). Bare words still work for convenience. Verified: `(sys)`/`(ns)`/
+  `(cd "/objects/identities")` run and the prompt tracks the path.
+- **L1 — vendor the `-sh` source · ☐ · E: 3.** Vendor the upstream `-sh` (LFE) project under
+  `/system/shell/-sh/` (cached, pinned), like zsh under `/system/shell/zsh/`. Decide the
+  runtime: a native LFE reader+evaluator in betterC D/Rust, OR LFE-on-BEAM if/when an Erlang
+  VM is ported. (The current D `hos-sh` is the bootstrap; `-sh` upstream supersedes it.)
+- **L2 — evaluator + builtins as LFE functions · ☐ · E: 4 · deps: L1.** The object commands
+  become LFE functions over the native ABI: `(objects)` → `object_enumerate`, `(cap-grant cap
+  proc)` → `cap_grant`, `(ns-bind ns path obj rights)` → `namespace_bind`, `(spawn manifest)`
+  → `spawn_process`. Forms evaluate to data (lists/tuples) that further forms consume —
+  pipelines as composition, not text streams.
+- **L3 — full LFE language · ☐ · E: 5 · deps: L2.** Atoms, lists, tuples, maps, `defun`/
+  `lambda`, `let`, pattern matching, guards, list comprehensions, macros — the real LFE so
+  the native shell is a programmable Lisp over the object model (scripts, functions, the
+  theme/prompt as LFE).
+- **L4 — capability/namespace/identity-aware forms · ☐ · E: 3 · deps: L2.** First-class forms
+  for the security model: `(identity)`/`(identity-switch …)`, `(namespace …)`, `(caps)`/
+  `(cap-derive …)` — the same fields the prompt shows, manipulable as LFE. All gated by the
+  native-personality gate (§3) and the identity ceiling — `-sh` never bypasses the managers.
+- **L5 — make `-sh` the native shell · ☐ · E: 2 · deps: L3.** The Domain Manager's per-domain
+  Shell control offers **linux (zsh)** / **native (`-sh`/LFE)**; `wl-term` (then ratty)
+  launches whichever on the PTY. The native shell's prompt already shows the four fields
+  (Z6) and now reads LFE.
+
+> **Two shells, one terminal.** zsh and `-sh` are independent — zsh is POSIX for Linux
+> programs, `-sh` is LFE for the object model; the terminal (`wl-term`, later ratty) hosts
+> either. Neither blocks the other; both share the rich prompt and the customization config.
+
+---
+
 ## Companion: ratty terminal emulator roadmap
 
 [ratty](https://github.com/orhun/ratty) (orhun) is a Rust, GPU-accelerated terminal

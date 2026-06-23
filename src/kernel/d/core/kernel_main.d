@@ -383,6 +383,22 @@ private void exitTask(int tid, int code) {
     }
     if (tid == g_idleTid) g_idleTid = -1;   // idle task died — re-spawn next loop
     objReleaseTask(tid);
+
+    // Close the dying task's fds so socket PEERS see the hangup — without this a
+    // Wayland client's exit never reaches Weston, so a closed window's surface is
+    // never destroyed and its pixels linger on screen.  Skipped while a live thread
+    // still shares the fd table (CLONE_VM); fork copies the table (own fdTabId), so
+    // the refcount-aware close only hangs up a peer when the last holder goes.
+    {
+        bool fdTabShared = false;
+        for (int i = 0; i < MAX_TASKS; i++) {
+            if (i == tid) continue;
+            if (g_tasks[i].active && !g_tasks[i].exited && g_tasks[i].fdTabId == t.fdTabId) {
+                fdTabShared = true; break;
+            }
+        }
+        if (!fdTabShared) taskCloseAllFds(t.fdTabId);
+    }
     bool capTableStillShared = false;
     for (int i = 0; i < MAX_TASKS; ++i) {
         if (i != tid && g_tasks[i].active && !g_tasks[i].exited &&

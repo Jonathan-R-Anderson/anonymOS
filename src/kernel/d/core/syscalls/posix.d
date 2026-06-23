@@ -2803,6 +2803,26 @@ public int sys_close(int fd) {
     return ret;
 }
 
+// Close EVERY fd in a task's fd table on exit (no cap check — the task is gone).
+// Critical for sockets: closeLocalSocket marks the PEER's `peerClosed`, so a
+// Wayland client's exit makes Weston's end readable → Weston reaps the dead
+// client and repaints (otherwise the closed window lingers on screen).  It is
+// refcount-aware, so closing a fork-shared copy only hangs up the peer when the
+// last holder goes.  Caller must ensure no live thread still shares `fdTabId`.
+public void taskCloseAllFds(int fdTabId) {
+    if (fdTabId < 0 || fdTabId >= FDTAB_COUNT) return;
+    fdtabSetActive(fdTabId);
+    foreach (fd; 0 .. 1024) {
+        if (g_fdTable[fd].type == FileType.FD_NONE) continue;
+        ObjHeader* oh = fdObjectByIndex(cast(int)fd);
+        if (oh !is null) {
+            auto cop = g_objOps[oh.type].close;
+            if (cop !is null) cop(oh);
+        }
+        g_fdTable[fd].type = FileType.FD_NONE;
+    }
+}
+
 public long linux_sys_read(ulong fd, ulong buf, ulong count) {
     return cast(long)sys_read(cast(int)fd, cast(void*)buf, cast(size_t)count);
 }

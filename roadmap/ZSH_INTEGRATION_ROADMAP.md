@@ -165,6 +165,44 @@ in both current shells today**, and the same data feeds the zsh theme later:
   (grammar extended for `objctl/identityctl/nsctl/servicectl/packagectl`).
 - *Deliverable 10 (plugin architecture).* Plugins dynamically loaded (Z2).
 
+## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ☐ · P: Med · E: 3 · deps: Z5, Z7, Z9
+
+The popular customization stack (cf. the `ni-c/install-zsh.sh` gist — oh-my-zsh +
+powerlevel9k + zsh-autosuggestions + zsh-syntax-highlighting + Nerd Fonts), made
+**available so anyone can customize their shell** the way they already know how. We vendor
+the frameworks (no network at runtime) and wire them to the AnonymOS prompt data.
+
+- **Oh My Zsh** — vendor the framework under `/system/shell/zsh/omz/` (cached, pinned). A
+  default `~/.zshrc` sources `$ZSH/oh-my-zsh.sh`, sets `plugins=(…)` and `ZSH_THEME=…`. Users
+  customize by editing `~/.zshrc` exactly as upstream — the whole point.
+- **Powerlevel9k / Powerlevel10k** — vendor as a custom theme
+  (`$ZSH/custom/themes/powerlevel10k`). The brief's segment layout maps cleanly to AnonymOS:
+  ```
+  POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(anonymos_identity anonymos_namespace dir vcs)
+  POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(anonymos_caps status background_jobs time)
+  POWERLEVEL9K_MODE="nerdfont-complete"
+  ```
+  We add three **custom prompt segments** (a tiny `prompt_anonymos_*` each) that surface the
+  same fields the live prompt already shows (Z6): `anonymos_identity` (the security domain),
+  `anonymos_namespace` (with the domain color as the segment background), and `anonymos_caps`
+  (the capability flags `fs:rw net:nat ipc …`). On native zsh they read the identity/namespace/
+  caps via the platform layer (`object_query`/`namespace_lookup`/`cap_rights`); on Linux zsh
+  they read the `EPIN_*` env. The `custom_live`-style example from the gist becomes an
+  `anonymos_disposable` segment that flags disposable domains.
+- **zsh-autosuggestions** + **zsh-syntax-highlighting** — vendor under `$ZSH/custom/plugins/`,
+  enabled by default in the shipped `.zshrc` (this is Z9's "standard plugins load unchanged",
+  pinned to the gist's choices). Syntax-highlighting grammar is extended for
+  `objctl/identityctl/nsctl/servicectl/packagectl` (Z9).
+- **Nerd Fonts** — bundle one patched Nerd Font into the asset blob (the GUI font path already
+  ships TTFs); the terminal advertises it so the powerline glyphs render, ASCII fallback
+  otherwise (Z7).
+- **An installer for parity with the gist** — `omz-setup` (a native script, the AnonymOS
+  analogue of `install-zsh.sh`): copies the default `.zshrc`, selects powerlevel10k, enables
+  the two plugins, and is idempotent — so "set up my shell like the gist" is one command, but
+  fully offline and capability-respecting (it never fetches from the network; everything is
+  vendored).
+- *Deliverables 8/10/11 (theme/plugin/completion) realized as the familiar OMZ experience.*
+
 ## Z10 — History (incl. secure) · ☐ · P: Med · E: 2 · deps: Z1
 
 - Persistent shared history (`fc`, `Ctrl-R`). **Per identity / per namespace / per
@@ -212,6 +250,50 @@ Each milestone leaves the shell fully functional:
 Order rationale: Linux zsh first (it's just another musl binary over the live ABI), the
 config/prompt/theme layer next (mostly data + a theme function, and the prompt fields are
 already implemented), then the deep native port last (it needs the most platform plumbing).
+
+---
+
+---
+
+## Companion: ratty terminal emulator roadmap
+
+[ratty](https://github.com/orhun/ratty) (orhun) is a Rust, GPU-accelerated terminal
+emulator. It is the **terminal** layer, distinct from the **shell** (zsh) above: ratty
+draws the grid and owns the PTY; zsh runs inside it. The goal is to make ratty the
+AnonymOS terminal that *hosts* zsh — the same "the terminal contains no shell logic, only
+PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the current
+`wl-term`. This was Track C of `SHELL_AND_COMMANDS_ROADMAP.md`; gated on a Rust toolchain
++ a GPU stack the OS does not yet have (software Pixman only — see [[weston-perf-profiling]]).
+
+- **R0 — Rust musl toolchain · E: 3.** Stand up a Rust→musl cross-compiler producing static
+  AnonymOS binaries (the analogue of the `musl-clang` C toolchain that builds the Wayland
+  clients). Validate with a "hello, Wayland" Rust client over the live Linux ABI. **Hard
+  dependency for everything below — no Rust on the host today.**
+- **R1 — CPU/Ratatui intermediate · E: 2 · deps: R0.** A CPU-rendered Ratatui terminal (the
+  ratatui ecosystem ratty builds on) on the software Wayland/SHM path the GUI clients use —
+  proves PTY + input + Unicode rendering in Rust without needing the GPU. A usable terminal
+  on the current stack; de-risks the ratty port.
+- **R2 — GPU stack · E: 5 · deps: R1.** ratty renders via `wgpu`/Vulkan/GL. The OS is
+  software-Pixman only; this needs the GPU/Mesa work tracked under desktop responsiveness
+  R8 (a real render node + EGL, the dmabuf import the Hyprland bring-up stalled on). The
+  largest dependency and the reason ratty is later-stage.
+- **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`
+  (live) or the native `Device` PTY object (§12), input via the Wayland seat, clipboard via
+  OSC52, and the GPU backend from R2. Honour the unspoofable per-domain window border
+  (the identity color) the kernel/compositor already enforce.
+- **R4 — make ratty the terminal · E: 2 · deps: R3.** ratty launches `zsh` on a PTY and
+  nothing else (Z3); the desktop's terminal keybinding + the Domain Manager "Launch Terminal"
+  target ratty. Feature parity with `wl-term` (decorations, domain border, scrollback) plus
+  ratty's extras (tabs, true-color, ligatures, GPU scrolling, Kitty-graphics/Sixel later).
+- **R5 — advanced terminal features · E: 3.** 24-bit color, Nerd-Font glyphs (shared with
+  Z9b), bracketed paste, OSC52 clipboard, hyperlinks, mouse, Kitty graphics + Sixel (future).
+
+**Ordering / honesty:** R0→R1 are achievable on today's software stack and give a working
+Rust terminal early; R2 (GPU) is the gating blocker and shares the desktop-GPU effort, so
+the GPU-accelerated ratty is the last milestone. Until then, `wl-term` (with its new
+decorations + 4-field prompt) remains the terminal, and Ratatui-CPU (R1) is the
+intermediate. zsh integration (Z*) is independent of ratty — zsh runs in `wl-term` today
+and in ratty later; neither blocks the other.
 
 ---
 

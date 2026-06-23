@@ -3899,6 +3899,81 @@ private void rtInit() {
     // into category blobs so fonts/icons/cursors/wallpapers/themes can evolve as
     // first-class OS resources while keeping the flat rtfs archive ABI.
     rtUnpackAssets();
+
+    // Seed the editable shell-customization files (writable rtfs) — the live
+    // "customize your shell" surface today; the full zsh/Oh-My-Zsh path is roadmapped.
+    rtSeedShellConfig();
+}
+
+// Editable shell customization, seeded into the writable rtfs so a user can change
+// it: /etc/profile (sourced by the busybox/ash login shell — aliases + prompt) and
+// /etc/shell.json (the declarative config the future zsh config system consumes).
+// See roadmap/ZSH_INTEGRATION_ROADMAP.md.
+private void rtSeedShellConfig() {
+    static immutable string PROFILE =
+`# /etc/profile — AnonymOS shell customization.  EDIT THIS to customize your shell:
+# aliases, options, and (optionally) the prompt.  Sourced by the interactive shell
+# at login.  The full Z-shell + Oh-My-Zsh / Powerlevel customization is described in
+# roadmap/ZSH_INTEGRATION_ROADMAP.md; this is the live customization point today.
+
+# --- aliases (add your own) ---
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias grep='grep --color=auto'
+# AnonymOS object-model shortcuts:
+alias objects='cat /objects/store'
+alias caps='cat /config/identities.json'
+alias services='cat /config/services.json'
+alias sysinfo='cat /config/system.json'
+# git (work once git is installed):
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+
+# --- prompt ---
+# The terminal sets a 4-field prompt by default:  [domain] user [perms]:cwd$
+# To override it, uncomment and edit one of these:
+#PS1='\u@\h:\w\$ '
+#PS1='\w \$ '
+
+# --- local override hook (not overwritten on update) ---
+[ -r /etc/profile.local ] && . /etc/profile.local
+`;
+    static immutable string SHELL_JSON =
+`{
+  "shell": {
+    "default": "zsh",
+    "theme": "anonymos",
+    "prompt": {
+      "showUser": true,
+      "showHost": true,
+      "showNamespace": true,
+      "showIdentity": true,
+      "showWorkingDirectory": true,
+      "showGit": true,
+      "showCapabilities": true,
+      "showTime": false
+    },
+    "history": { "size": 100000, "shared": true, "saveDuplicates": false },
+    "completion": { "enabled": true, "menu": true, "caseInsensitive": true, "fuzzy": true },
+    "autosuggestions": true,
+    "syntaxHighlighting": true,
+    "plugins": ["git","history","extract","fzf","capabilities","namespace","identity","objects"],
+    "aliases": {
+      "ll": "ls -lah",
+      "gs": "git status",
+      "objects": "objctl",
+      "namespace": "nsctl",
+      "identity": "identityctl"
+    }
+  }
+}
+`;
+    rtAddFile("etc/profile\0".ptr,    "etc/profile".length,    cast(const(ubyte)*)PROFILE.ptr,    cast(uint)PROFILE.length);
+    rtAddFile("etc/shell.json\0".ptr, "etc/shell.json".length, cast(const(ubyte)*)SHELL_JSON.ptr, cast(uint)SHELL_JSON.length);
 }
 
 // Track A A2/A3: one-shot boot self-test of the runtime filesystem — symlinks,

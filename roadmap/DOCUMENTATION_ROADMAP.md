@@ -19,6 +19,16 @@ The Linux x86-64 syscall ABI the kernel emulates (160 syscalls), the dispatch mo
 the per-syscall behaviour + EpinAnonymOS-specific quirks, and the **native** object
 ABI (`HOS_SYS_QUERY = 0x4000`). Dispatcher: `kernel_main.d:dispatchSyscall`.
 
+## D1b — Native object ABI (design spec) · ✅ [docs/NATIVE_OBJECT_ABI.md](../docs/NATIVE_OBJECT_ABI.md) · P: High · E: 4
+
+The object-oriented, capability-based native ABI — the *other* personality. Full
+category-by-category spec (process/thread/object/cap/IPC/VM/FS/namespace/device/sync/
+net/identity/time/crypto/debug/sysinfo/power/module/service/package/observability) with
+prototypes, errors, security, examples; the **access-control model** (§3: native shell
+only, Linux denied `ENOSYS`, native introspects Linux); the AI-friendly mapping; and the
+N0–N7 implementation roadmap. **N0 (the access gate) is implemented** — per-task native
+personality on `/hos-sh` exec, `HOS_SYS_QUERY` gated, verified both ways.
+
 ## D2 — Filesystem reference · ✅ [docs/FILESYSTEM.md](../docs/FILESYSTEM.md) · P: High · E: 3
 
 The layered VFS: the writable RT ramfs (`g_rt`), the static synthetic table (`g_vfs`:

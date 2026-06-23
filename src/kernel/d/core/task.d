@@ -169,6 +169,13 @@ __gshared int[MAX_TASKS]   g_taskPendingSig;
 // Set by execveTask / forkTask in kernel_main.d; read by posix.d's procfs.
 __gshared const(char)*[MAX_TASKS] g_taskExecName;
 
+// NATIVE_OBJECT_ABI §3: per-task personality. true = the AnonymOS native shell context
+// (may call the native object ABI HOS_SYS_QUERY); false = Linux personality (the native
+// ABI returns ENOSYS).  Set on execve of /hos-sh, inherited by fork/clone, cleared on
+// execve of any non-native image.  Native tasks ALSO speak the Linux ABI (downward
+// introspection: see the Linux process table, manage its permissions/settings).
+__gshared bool[MAX_TASKS] g_taskNativeAbi;
+
 // A task's effective process group: its own pid until setpgid() changes it.
 public int taskEffectivePgid(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return 0;

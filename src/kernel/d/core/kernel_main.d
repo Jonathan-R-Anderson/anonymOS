@@ -558,6 +558,9 @@ private int forkTask(int parentTid) {
         g_taskExecModPhys[childTid] = g_taskExecModPhys[parentTid];
         g_taskExecModSize[childTid] = g_taskExecModSize[parentTid];
         g_taskExecName[childTid]    = g_taskExecName[parentTid];
+        // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
+        // helpers the shell spawns stay native; a Linux fork stays Linux).
+        g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
         // A4: a child inherits its parent's process group + signal dispositions.
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
         g_taskSigCustom[childTid] = g_taskSigCustom[parentTid];
@@ -656,6 +659,8 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.untypedObjId = parent.untypedObjId;
     child.userObjId  = parent.userObjId;
     child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: threads share the label
+    g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
+    g_taskExecName[childTid]  = g_taskExecName[parentTid];
 
     // Threads share one address space but keep separate mmap bump pointers; give
     // each thread a disjoint 64 GiB window so concurrent mmap()s never collide.
@@ -809,6 +814,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
+        // NATIVE_OBJECT_ABI §3: enter the native personality iff this is the trusted
+        // /hos-sh image; any other exec leaves it (so the native shell can't launch a
+        // Linux tool INTO the native object ABI).  fork/clone inherit the flag below.
+        g_taskNativeAbi[tid]   = (execName !is null && cstrEqK(execName, "hos-sh"));
         // A4: execve resets caught/ignored signals to the default disposition (POSIX),
         // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
         g_taskSigCustom[tid]   = 0;
@@ -2194,9 +2203,17 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 435: return linux_sys_clone3(a, b);
         case 441: return linux_sys_epoll_pwait2(a, b, c, d, e);
 
-        // Track B0: native object-model query ABI (outside the Linux range), used by
-        // the native object shell (-sh) for obj/id/ns/svc listings.
-        case HOS_SYS_QUERY: return hosQuery(a, b, c, d);
+        // Track B0 / NATIVE_OBJECT_ABI §3: the native object ABI (outside the Linux
+        // range).  GATED to the AnonymOS native shell personality — a Linux-personality
+        // task gets ENOSYS, identical to a kernel without the ABI compiled in, so the
+        // object/capability surface is unreachable from the Linux shell.  (Native tasks
+        // still speak the Linux ABI, which is how they introspect/override Linux state.)
+        case HOS_SYS_QUERY: {
+            const int ctid = cast(int)g_current_task_id;
+            if (ctid < 0 || ctid >= MAX_TASKS || !g_taskNativeAbi[ctid])
+                return cast(long)(-38);   // ENOSYS — native ABI absent for this personality
+            return hosQuery(a, b, c, d);
+        }
 
         default:
             klog("[syscall] ENOSYS "); klog_hex(n); klog("\n");

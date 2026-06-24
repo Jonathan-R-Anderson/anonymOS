@@ -210,13 +210,19 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   lseek route to the verbs; otherwise every hook falls straight through to `__real_*`.
   Verified: the **Linux** zsh (default shell) is fully unregressed with the layer linked in
   (`is_native()=0` ⇒ transparent) — builtins, external commands, and pipes all work.
-- **Z4a.4 — Wire zsh FS ops through the hooks** · ☐ · route zsh's file I/O (`open`/`read`/
-  `write`/`close`/`lseek` in `zsh.h`/`utils.c`/`input.c`) through the `anon_*` shims. **No
-  change to the parser/expander** — only the host I/O calls. Verify a sourced file
-  (`source /etc/zshrc`) is read via `object_read`.
-- **Z4a.5 — Native zsh launch** · ☐ · the Domain Manager's *native* shell flavor launches
-  zsh in the **native personality** (the `HOS_SYS_QUERY` gate open) via a native-shell image
-  marker, not `/hos-sh`; verify zsh's FS flows through the native ABI (serial: `object_open`).
+- **Z4a.4 — Wire zsh FS ops through the hooks** · ✅ DONE · the `--wrap` interposition (Z4a.3)
+  *is* the wiring — no parser/expander change, only the host I/O calls. **Verified live:** a
+  native zsh reads its startup files (`/etc/zshenv`, `/etc/zshrc`, `/root/.zshenv`) through
+  `object_open`/`object_read` (the kernel logged each native open) — zsh's filesystem flows
+  through the native object ABI. Added `object_fstat` (`HOSQ_FSTAT`=12) too.
+- **Z4a.5 — Native zsh launch** · ◐ PARTIAL · `/hos-zsh` (an rtfs symlink to the shared zsh
+  boot module) launches zsh in the **native personality** — `execveTask` marks native by the
+  request-path basename `hos-zsh` (same activation model as `/hos-sh`, no binary duplication).
+  Verified: it enters native personality and routes its FS through the native ABI (above).
+  **Not yet a prompt:** native zsh OOMs (`alloc_phys_page`) during rc processing — a remaining
+  FS host-op on the native handle returns a wrong value, driving a huge allocation; pinning
+  that down (likely `stat`/`mmap`/the read-loop size) + routing it is the next step. The
+  Domain Manager's native flavor therefore still launches `/hos-sh` until native zsh prompts.
 - **Z4a.6 — Native TTY (Device-object PTY)** · ☐ · expose the shell's controlling terminal as
   a `Device` object (§12): `device_open`/`device_read`/`device_write` verbs over the PTY, and
   route zsh's terminal I/O through them when native.

@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <sys/stat.h>
 
 /* native ABI (mirrors core/hoscall.d) */
 #define HOS_SYS_QUERY   0x4000L
@@ -27,6 +28,7 @@
 #define HOSQ_WRITE      9L
 #define HOSQ_CLOSE      10L
 #define HOSQ_LSEEK      11L
+#define HOSQ_FSTAT      12L
 #define CAP_RIGHT_READ  1L
 #define CAP_RIGHT_WRITE 2L
 
@@ -38,6 +40,7 @@ extern ssize_t __real_read(int fd, void *buf, size_t n);
 extern ssize_t __real_write(int fd, const void *buf, size_t n);
 extern int     __real_close(int fd);
 extern off_t   __real_lseek(int fd, off_t off, int whence);
+extern int     __real_fstat(int fd, struct stat *st);
 
 static long hosq(long op, long a, long b, long c) {
     return syscall(HOS_SYS_QUERY, op, a, b, c);
@@ -84,4 +87,8 @@ int __wrap_close(int fd) {
 off_t __wrap_lseek(int fd, off_t off, int whence) {
     if (fd >= (int)ANON_BASE) return hosq(HOSQ_LSEEK, fd - ANON_BASE, (long)off, (long)whence);
     return __real_lseek(fd, off, whence);
+}
+int __wrap_fstat(int fd, struct stat *st) {
+    if (fd >= (int)ANON_BASE) return (int)hosq(HOSQ_FSTAT, fd - ANON_BASE, (long)st, 0);
+    return __real_fstat(fd, st);
 }

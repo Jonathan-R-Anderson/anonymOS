@@ -28,7 +28,7 @@ import core.store    : g_gens, g_activeGen;
 // imports hoscall.d; the reverse import is a function-only cycle, fine under -betterC
 // (no module static-ctor init order).
 import core.syscalls.posix : linux_sys_open, linux_sys_read, linux_sys_write,
-                             linux_sys_close, linux_sys_lseek;
+                             linux_sys_close, linux_sys_lseek, linux_sys_fstat;
 
 @nogc nothrow:
 
@@ -48,6 +48,7 @@ enum : ulong {
     HOSQ_WRITE      = 9,   // object_write(arg=handle, buf=src, buflen=n)-> bytes
     HOSQ_CLOSE      = 10,  // object_close(arg=handle)                   -> 0
     HOSQ_LSEEK      = 11,  // object_lseek(arg=handle, buf=off, buflen=whence) -> offset
+    HOSQ_FSTAT      = 12,  // object_fstat(arg=handle, buf=struct stat*)      -> 0
 }
 
 // Z4a.1: per-task native object handles for the FS verbs.  A handle is an index into this
@@ -103,6 +104,11 @@ private long hosLseek(ulong handle, ulong off, ulong whence) @nogc nothrow {
     const int fd = hosFdOf(cast(int)g_current_task_id, handle);
     if (fd < 0) return -9;
     return linux_sys_lseek(cast(ulong)fd, cast(long)off, whence);
+}
+private long hosFstat(ulong handle, ulong statbuf) @nogc nothrow {
+    const int fd = hosFdOf(cast(int)g_current_task_id, handle);
+    if (fd < 0) return -9;
+    return linux_sys_fstat(cast(ulong)fd, statbuf);
 }
 
 // Z4a.1: drop a task's native handles (exec/exit).  The backing fds are closed by the
@@ -499,6 +505,7 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_WRITE: return hosWrite(arg, buf, buflen);
         case HOSQ_CLOSE: return hosClose(arg);
         case HOSQ_LSEEK: return hosLseek(arg, buf, buflen);   // arg=handle, buf=off, buflen=whence
+        case HOSQ_FSTAT: return hosFstat(arg, buf);           // arg=handle, buf=struct stat*
         default: break;
     }
 

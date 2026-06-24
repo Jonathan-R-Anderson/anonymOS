@@ -3889,6 +3889,9 @@ private void rtInit() {
     rtMkdirPath("/system/shell\0".ptr,      M0755, 0, 0);
     rtMkdirPath("/system/shell/zsh\0".ptr,  M0755, 0, 0);
     rtSymlinkCreate("/zsh\0".ptr, "/system/shell/zsh/zsh\0".ptr);
+    // Z4a.5: /hos-zsh launches the SAME zsh boot module but in the native personality
+    // (execveTask marks native by this request-path basename) — zsh as the native shell.
+    rtSymlinkCreate("/zsh\0".ptr, "/hos-zsh\0".ptr);
 
     // OBJECT_FILESYSTEM_ROADMAP F0: the native object-OS root, additive over the Linux
     // FHS (which stays put and keeps working). `ls /` now shows the object tree; the

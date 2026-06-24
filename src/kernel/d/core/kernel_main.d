@@ -833,10 +833,15 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskExecModPhys[tid] = modPhys;
         g_taskExecModSize[tid] = modSize;
         g_taskExecName[tid]    = execName;
-        // NATIVE_OBJECT_ABI §3: enter the native personality iff this is the trusted
-        // /hos-sh image; any other exec leaves it (so the native shell can't launch a
-        // Linux tool INTO the native object ABI).  fork/clone inherit the flag below.
-        g_taskNativeAbi[tid]   = (execName !is null && cstrEqK(execName, "hos-sh"));
+        // NATIVE_OBJECT_ABI §3 / Z4a.5: enter the native personality iff this is the
+        // trusted /hos-sh image, OR a native-shell launch of zsh — requested via /hos-zsh,
+        // a symlink to the shared zsh boot module (the *request path* marks it native, the
+        // same activation model as /hos-sh; the image is shared, no duplication).  Any
+        // other exec leaves the personality (the native shell can't launch a Linux tool
+        // INTO the native object ABI).  fork/clone inherit the flag below.
+        const(char)* origBase = cstrBasenameK(cast(const(char)*)pathPtr);
+        g_taskNativeAbi[tid]   = (execName !is null && cstrEqK(execName, "hos-sh")) ||
+                                 (origBase !is null && cstrEqK(origBase, "hos-zsh"));
         // A4: execve resets caught/ignored signals to the default disposition (POSIX),
         // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
         g_taskSigCustom[tid]   = 0;

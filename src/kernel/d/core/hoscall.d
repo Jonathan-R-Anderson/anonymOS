@@ -51,72 +51,25 @@ enum : ulong {
     HOSQ_FSTAT      = 12,  // object_fstat(arg=handle, buf=struct stat*)      -> 0
 }
 
-// Z4a.1: per-task native object handles for the FS verbs.  A handle is an index into this
-// table; the slot stores the backing Linux VFS fd + 1 (0 = free).  A native task reaches
-// the filesystem ONLY through object_open/read/write/close — it never issues a Linux
-// open(); the kernel reuses the VFS (namespace-gated path resolution, the F0–F5 object FS)
-// behind the handle.  Distinct number space from Linux fds.
-private enum NHANDLE = 64;
-__gshared int[NHANDLE][MAX_TASKS] g_nativeFd;
-
-private int hosFdOf(int tid, ulong handle) @nogc nothrow {
-    if (tid < 0 || tid >= MAX_TASKS || handle >= NHANDLE) return -1;
-    const int v = g_nativeFd[tid][cast(size_t)handle];
-    return (v == 0) ? -1 : (v - 1);
-}
-
-// object_open: resolve `path` through the object FS and bind a native handle to it.
+// Z4a.5: native FS verbs.  object_open resolves the path through the object FS (the F0–F5
+// tree, namespace-gated) and returns a handle that, for a VFS-backed file, IS the backing
+// fd.  Making the handle a real fd is what lets a native shell actually run: every other fd
+// operation it does (dup/fcntl/mmap/fstat/…) keeps working through the normal path, and zsh
+// doesn't blow up its fd-indexed tables on a huge handle number.  (A future *pure* object
+// filesystem — files that are not VFS-backed — would instead hand back an opaque handle and
+// route every byte through object_read/write.)  The data verbs take that handle = fd.
 private long hosOpen(ulong pathPtr, ulong rights) @nogc nothrow {
-    const int tid = cast(int)g_current_task_id;
-    if (tid < 0 || tid >= MAX_TASKS) return -9;   // EBADF
     if (pathPtr == 0) return -14;                  // EFAULT
-    int slot = -1;
-    foreach (i; 0 .. NHANDLE) if (g_nativeFd[tid][i] == 0) { slot = cast(int)i; break; }
-    if (slot < 0) return -24;                      // EMFILE
     const bool wr = (rights & CAP_RIGHT_WRITE) != 0;
     const bool rd = (rights & CAP_RIGHT_READ)  != 0;
     const ulong flags = (wr && rd) ? 2UL : (wr ? 1UL : 0UL);   // O_RDWR / O_WRONLY / O_RDONLY
-    const long fd = linux_sys_open(pathPtr, flags, 0);
-    if (fd < 0) return fd;
-    g_nativeFd[tid][slot] = cast(int)fd + 1;
-    return slot;
+    return linux_sys_open(pathPtr, flags, 0);      // the real backing fd is the native handle
 }
-
-private long hosRead(ulong handle, ulong buf, ulong len) @nogc nothrow {
-    const int fd = hosFdOf(cast(int)g_current_task_id, handle);
-    if (fd < 0) return -9;
-    return linux_sys_read(cast(ulong)fd, buf, len);
-}
-private long hosWrite(ulong handle, ulong buf, ulong len) @nogc nothrow {
-    const int fd = hosFdOf(cast(int)g_current_task_id, handle);
-    if (fd < 0) return -9;
-    return linux_sys_write(cast(ulong)fd, buf, len);
-}
-private long hosClose(ulong handle) @nogc nothrow {
-    const int tid = cast(int)g_current_task_id;
-    const int fd = hosFdOf(tid, handle);
-    if (fd < 0) return -9;
-    const long r = linux_sys_close(cast(ulong)fd);
-    g_nativeFd[tid][cast(size_t)handle] = 0;
-    return r;
-}
-private long hosLseek(ulong handle, ulong off, ulong whence) @nogc nothrow {
-    const int fd = hosFdOf(cast(int)g_current_task_id, handle);
-    if (fd < 0) return -9;
-    return linux_sys_lseek(cast(ulong)fd, cast(long)off, whence);
-}
-private long hosFstat(ulong handle, ulong statbuf) @nogc nothrow {
-    const int fd = hosFdOf(cast(int)g_current_task_id, handle);
-    if (fd < 0) return -9;
-    return linux_sys_fstat(cast(ulong)fd, statbuf);
-}
-
-// Z4a.1: drop a task's native handles (exec/exit).  The backing fds are closed by the
-// normal fd-table teardown; this just frees the slots so a reused tid starts clean.
-public void hosClearHandles(int tid) @nogc nothrow {
-    if (tid < 0 || tid >= MAX_TASKS) return;
-    foreach (i; 0 .. NHANDLE) g_nativeFd[tid][i] = 0;
-}
+private long hosRead (ulong h, ulong buf, ulong len)    @nogc nothrow { return linux_sys_read (h, buf, len); }
+private long hosWrite(ulong h, ulong buf, ulong len)    @nogc nothrow { return linux_sys_write(h, buf, len); }
+private long hosClose(ulong h)                          @nogc nothrow { return linux_sys_close(h); }
+private long hosLseek(ulong h, ulong off, ulong whence) @nogc nothrow { return linux_sys_lseek(h, cast(long)off, whence); }
+private long hosFstat(ulong h, ulong statbuf)           @nogc nothrow { return linux_sys_fstat(h, statbuf); }
 
 private immutable string[ObjType.Count] g_objTypeNames = [
     "Invalid", "File", "Process", "Thread", "MemRegion", "Vmo", "Directory",

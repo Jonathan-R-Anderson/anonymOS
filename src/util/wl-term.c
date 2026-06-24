@@ -552,13 +552,15 @@ static int spawn_shell(struct app *a) {
         fflush(stdout);
         return 0;
     }
-    // The shell binary + argv[0] depend on the flavor; the PTY plumbing is shared.
-    // Z1 (ZSH_INTEGRATION_ROADMAP): the Linux personality now runs real upstream zsh
-    // (the `/zsh` boot module; /bin/zsh symlinks to it).  argv[0]="-zsh" makes it an
-    // interactive login shell.  busybox stays available as /bin/sh and as the coreutils
-    // zsh execs for external commands.  Native flavor still runs /hos-sh.
-    const char *shell_path = is_native ? "/hos-sh" : "/bin/zsh";
-    char *const shell_arg0 = is_native ? "hos-sh" : "-zsh";
+    // The shell binary depends on the flavor; the PTY plumbing + argv[0] are shared.
+    // Both flavors now run real upstream zsh as an interactive login shell (argv[0]="-zsh"):
+    //  - Linux:  /bin/zsh  (Z1) — Linux personality.
+    //  - Native: /hos-zsh  (Z4a.5) — the SAME zsh boot module, launched into the native
+    //    personality (execveTask marks native by the /hos-zsh request path), so the shell
+    //    reaches the filesystem through the native object ABI (object_open).  /hos-sh is
+    //    still a boot module, reachable directly; its object commands move into zsh in Z9.
+    const char *shell_path = is_native ? "/hos-zsh" : "/bin/zsh";
+    char *const shell_arg0 = "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
@@ -614,10 +616,10 @@ static int spawn_shell(struct app *a) {
         // native shell: username, permissions, namespace (domain), and the working dir —
         // `[<domain>] <user> [<perms>]:<cwd>$`.  The domain + permission flags come from
         // the per-domain policy the Domain Manager passes in the environment; zsh expands
-        // %n (user), %~ (cwd, ~-abbreviated) and %# (%/# by privilege) live.  (Only for the
-        // Linux flavor; the native shell builds its own prompt from the kernel via
-        // HOS_SYS_QUERY.)  Z6 (a richer powerlevel-style prompt) layers on top in /etc/zshrc.
-        if (!is_native) {
+        // %n (user), %~ (cwd, ~-abbreviated) and %# (%/# by privilege) live.  Both zsh
+        // flavors get it now (Z4a.5: the native shell is also zsh); a future native prompt
+        // can derive the fields from the kernel via HOS_SYS_QUERY instead of the env.
+        {
             const char *dom  = getenv("EPIN_DOMAIN");
             const char *disk = getenv("EPIN_DISK");        // none / ro / rw
             const char *net  = getenv("EPIN_NET");         // none / nat / vpn / tor / local / disposable

@@ -86,7 +86,7 @@ static const char *CLIP_LBL[] = {"Deny","Ask","Same-domain","Down-trust"};
 static const char *CLIP_ENV[] = {"deny","ask","same","downtrust"};
 
 enum { SH_LINUX, SH_WINDOWS, SH_NATIVE, SH_N };
-static const char *SHELL_LBL[] = {"Linux","Windows (n/a)","Native OS (n/a)"};
+static const char *SHELL_LBL[] = {"Linux","Windows (n/a)","Native OS"};
 static const char *SHELL_ENV[] = {"linux","windows","native"};
 
 struct domain {

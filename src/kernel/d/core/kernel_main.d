@@ -3,7 +3,7 @@
 module core.kernel_main;
 
 import core.task;
-import core.hoscall : hosQuery, HOS_SYS_QUERY, hosClearHandles;   // Track B0 / Z4a native ABI
+import core.hoscall : hosQuery, HOS_SYS_QUERY;   // Track B0 / Z4a native ABI
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -847,7 +847,6 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         g_taskSigCustom[tid]   = 0;
         g_taskPendingSig[tid]  = 0;
         g_sigHandler[tid][] = 0; g_sigRestorer[tid][] = 0;   // Z1: exec resets handlers to default
-        hosClearHandles(tid);                                // Z4a.1: drop native FS handles on exec
     }
 
     // Track A A4: snapshot the caller's argv (mirror of the envp snapshot below) so the

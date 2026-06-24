@@ -195,42 +195,49 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
 ### Z4a — FS + TTY + process hooks → interactive native prompt
 
 - **Z4a.1 — Kernel native FS verbs** · ✅ DONE · `object_open`/`read`/`write`/`close`/`lseek`
-  as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`=7…`LSEEK`=11) in `hoscall.d`, with a per-task
-  `g_nativeFd[]` native-handle table; the path resolves through the object FS (namespace-
-  gated) and the handle reuses the VFS fd behind the scenes — the *surface* is pure native
-  ABI (a native task never calls Linux `open`). Cleared on exec/exit (`hosClearHandles`).
+  as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`=7…`FSTAT`=12) in `hoscall.d`; the path resolves through
+  the object FS (namespace-gated) and the returned handle **is the real backing VFS fd** (see
+  Z4a.5 — a separate handle space broke the shell). The *surface* is still pure native ABI: a
+  native task opens via `object_open`, never Linux `open`.
 - **Z4a.2 — Native FS test** · ✅ DONE · added a native `cat <path>` to `hos-sh` (already a
   native-personality task) that drives `object_open`+`object_read`+`object_close`. Verified
   live: `cat /etc/passwd` printed the file through the native ABI — proves the verbs +
   handle lifecycle end-to-end.
 - **Z4a.3 — zsh `platform/anonymos/` host-hooks layer** · ✅ DONE · `deps/zsh/anon.c` provides
-  `__wrap_open/read/write/close/lseek`, linked into zsh via `-Wl,--wrap` (no call-site
-  patching). When native (one-time `HOSQ_SYS` probe) a read-only `open` returns a native
-  handle (surfaced as an fd ≥ `0x40000000`) backed by `object_open`, and read/write/close/
-  lseek route to the verbs; otherwise every hook falls straight through to `__real_*`.
-  Verified: the **Linux** zsh (default shell) is fully unregressed with the layer linked in
-  (`is_native()=0` ⇒ transparent) — builtins, external commands, and pipes all work.
+  `__wrap_open`, linked into zsh via `-Wl,--wrap=open` (no call-site patching). When native
+  (one-time `HOSQ_SYS` probe) a read-only `open` goes through `object_open` (which returns a
+  real fd, so read/write/close/… need no wrapping); otherwise it falls straight through to
+  `__real_open`. Verified: the **Linux** zsh (default shell) is fully unregressed with the
+  layer linked in (`is_native()=0` ⇒ transparent) — builtins, external commands, pipes work.
 - **Z4a.4 — Wire zsh FS ops through the hooks** · ✅ DONE · the `--wrap` interposition (Z4a.3)
   *is* the wiring — no parser/expander change, only the host I/O calls. **Verified live:** a
   native zsh reads its startup files (`/etc/zshenv`, `/etc/zshrc`, `/root/.zshenv`) through
   `object_open`/`object_read` (the kernel logged each native open) — zsh's filesystem flows
   through the native object ABI. Added `object_fstat` (`HOSQ_FSTAT`=12) too.
-- **Z4a.5 — Native zsh launch** · ◐ PARTIAL · `/hos-zsh` (an rtfs symlink to the shared zsh
-  boot module) launches zsh in the **native personality** — `execveTask` marks native by the
+- **Z4a.5 — Native zsh launch** · ✅ DONE · **the Domain Manager's "Native OS" shell flavor now
+  launches a fully interactive native zsh.** `EPIN_SHELL=native` → wl-term execs `/hos-zsh`
+  (an rtfs symlink to the *shared* zsh boot module); `execveTask` marks the task native by the
   request-path basename `hos-zsh` (same activation model as `/hos-sh`, no binary duplication).
-  Verified: it enters native personality and routes its FS through the native ABI (above).
-  **Not yet a prompt:** native zsh OOMs (`alloc_phys_page`) during rc processing — a remaining
-  FS host-op on the native handle returns a wrong value, driving a huge allocation; pinning
-  that down (likely `stat`/`mmap`/the read-loop size) + routing it is the next step. The
-  Domain Manager's native flavor therefore still launches `/hos-sh` until native zsh prompts.
+  zsh reaches the filesystem through `object_open` and runs with the rich 4-field prompt.
+  **The OOM was the handle design:** a separate high handle space (fd ≥ `0x40000000`) made zsh
+  grow its fd-indexed tables to ~1e9 entries → `alloc_phys_page` OOM. Fixed by having
+  `object_open` return the **real backing fd as the handle** — so every other fd op
+  (dup/fcntl/fstat/mmap) keeps working and there's no blowup; the handle table + the
+  read/write/close/lseek/fstat wrappers are gone (only `--wrap=open` remains). Verified live:
+  `echo`, `print -l`, and `whoami` (external fork/exec) all work; no OOM, no faults. `/hos-sh`
+  stays a boot module — its object commands (`obj/id/ns/svc/sys`) move into native zsh in Z9.
 - **Z4a.6 — Native TTY (Device-object PTY)** · ☐ · expose the shell's controlling terminal as
   a `Device` object (§12): `device_open`/`device_read`/`device_write` verbs over the PTY, and
-  route zsh's terminal I/O through them when native.
+  route zsh's terminal I/O through them when native. (Today native zsh's TTY is the Linux PTY,
+  which native tasks speak — functional, not yet through a Device object.)
 - **Z4a.7 — Native process spawn** · ☐ · `spawn_process` verb (§4) — create a process from an
   image cap + args/env in a namespace under an identity; route zsh's external-command exec
-  through it when native (fork/exec → `spawn_process`).
-- **Z4a.8 — Interactive native-ABI prompt** · ☐ · the milestone: an interactive zsh whose FS,
-  TTY, and process spawning all flow through the native object ABI, reached at a prompt.
+  through it when native (fork/exec → `spawn_process`). (Today native zsh forks/execs via the
+  Linux ABI — `whoami` etc. work; not yet through `spawn_process`.)
+- **Z4a.8 — Interactive native-ABI prompt** · ◐ PARTIAL · **reached for the FS path** — an
+  interactive native zsh whose *filesystem* flows through the native object ABI, at a working
+  prompt. The TTY (Z4a.6) and process spawn (Z4a.7) still use the Linux ABI; routing those
+  through Device/`spawn_process` objects completes the "all I/O native" milestone.
 
 ### Z4b — signals + IPC · ☐ · deps: Z4a
 

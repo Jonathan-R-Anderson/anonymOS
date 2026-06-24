@@ -288,15 +288,16 @@ machinery — the same "re-surface, don't rewrite" pattern as Z4a.  Tracked sub-
   all native read/write), so the *data* path is native today; a dedicated native endpoint
   (`object_send`/`object_recv` over a §8 channel, replacing the pipe) is the fuller primitive —
   tracked refinement.
-- **Z4b.5 — Verify** · ◐ · foreground job-wait verified native (commands + pipes reap via
-  `object_wait`, `[obj-wait]` confirmed, shell functional, Linux unregressed).  **Background**
-  jobs (`sleep N &`) are blocked by a pre-existing kernel quirk *unrelated to signals/IPC*: zsh
-  redirects a bg job's stdin with `zclose(0); if (open("/dev/null"))` — it expects the open to
-  land on **fd 0**, but the kernel's `open` allocates from `i=3` ([posix.d](../src/kernel/d/core/syscalls/posix.d)
-  `for(int i=3; …)`), never reusing 0/1/2, so zsh errors `can't open /dev/null`.  Supporting fix
-  shipped this step: **`FD_NULL`** (`/dev/null` now opens, reads EOF, discards writes — verified
-  `cat /dev/null`).  Full bg jobs additionally need the POSIX `open`-lowest-free-fd change
-  (start the scan at 0), which is broad/desktop-risky — **tracked follow-up**, not done here.
+- **Z4b.5 — Verify** · ✅ DONE · foreground *and* **background** job-wait work native (reap via
+  `object_wait`, `[obj-wait]` confirmed, shell functional, Linux unregressed).  Closing the bg
+  path took three fixes, all landed: (1) **`FD_NULL`** — `/dev/null` is now a real device (opens,
+  reads EOF, discards writes); (2) **`open` POSIX lowest-free-fd** — the scan starts at 0 (not 3),
+  so zsh's `zclose(0); open("/dev/null", O_RDWR)` bg-stdin idiom lands on fd 0 as it expects
+  (only reuses 0/1/2 when explicitly closed; normal tasks still get ≥3 — desktop + Linux shell
+  verified unregressed); (3) **`setpriority`/`getpriority` (140/141) wired** — were defined but
+  not dispatched, so zsh's `nice()` of a bg job warned `function not implemented`.  Verified:
+  `echo X &` prints `X` cleanly (no `/dev/null` error, no nice warning), `wait` returns, both
+  flavors; full Weston desktop renders and runs.
 
 ### Z4c — env + cap + namespace + object hooks · ◐ · deps: Z4a
 

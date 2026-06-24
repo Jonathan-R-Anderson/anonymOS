@@ -2337,6 +2337,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 138: return linux_sys_fstatfs(a, b);     // Z1: zsh probes the cwd filesystem
         case 154: return linux_sys_sched_setparam(a, b);
         case 155: return linux_sys_sched_getparam(a, b);
+        case 140: return linux_sys_getpriority(a, b);        // no-op: priority is moot on the
+        case 141: return linux_sys_setpriority(a, b, c);     // cooperative scheduler (zsh nice's bg jobs)
         case 157: return linux_sys_prctl(a, b, c, d, e);
         case 160: return linux_sys_setrlimit(a, b);
         case 162: return linux_sys_sync();

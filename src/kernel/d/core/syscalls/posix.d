@@ -2339,9 +2339,13 @@ public int sys_open(const(char)* path, int flags) {
     int nsOpen = namespaceCheckOpen(path, flags);
     if (nsOpen < 0) return nsOpen;
 
-    // Find free FD
+    // Find free FD — POSIX: the lowest-numbered free descriptor, INCLUDING 0/1/2 when those
+    // have been explicitly closed (matches dup()/pipe(), which already scan from 0).  This is
+    // what makes the classic "close fd 0, reopen to land it on 0" idiom work — e.g. zsh
+    // redirecting a background job's stdin: `zclose(0); open("/dev/null", O_RDWR)` expects fd 0.
+    // For a normal task 0/1/2 stay open (stdin/stdout/stderr), so open still returns >= 3.
     int fd = -1;
-    for(int i=3; i<1024; i++) {
+    for(int i=0; i<1024; i++) {
         if (g_fdTable[i].type == FileType.FD_NONE) {
             fd = i;
             break;

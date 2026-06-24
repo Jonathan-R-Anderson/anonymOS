@@ -33,7 +33,7 @@ import core.io : klog, klog_hex;
 import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : cryptoVerify;
 import core.namespace : nsAlloc;
-import core.identity : identityCreate, identityFreeze, NetPolicy, ClipPolicy;
+import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy;
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
 import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
@@ -208,6 +208,12 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
             const(char)* nsName = cast(const(char)*)(payload + off);
             nsTemplate = lookupNs(nsName);
         }
+        // An identity of this name may already exist (the kernel's compiled-in
+        // identityInitDefaults creates System/Personal/Banking before the config
+        // runs). Treat that as a successful no-op re-assertion (the config agrees
+        // with the built-ins) rather than a failure — count it applied.
+        const uint existing = identityByName(name);
+        if (existing != 0) { ++g_cfgIdApplied; break; }
         // ceiling must be ⊆ UNIVERSE (identityCreate checks this); a declared
         // ceiling of 0 means "use the safe default (no ambient rights)".
         const uint safeCeiling = (ceiling == 0) ? 0 : ceiling;

@@ -83,6 +83,7 @@ import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
 import core.configboot : configBootApply; // DECLARITIVE_MODEL_ROADMAP §4: verified-config boot lowering
+import display.splash : splashRun;        // native boot splash (particle network + boot log)
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks, get_ticks, pitMs;
 import core.random;
@@ -2921,6 +2922,12 @@ void d_kernel_main() {
     initPIT();
     // Enable PS/2 mouse and its IRQ
     initPS2Mouse();
+
+    // Native boot splash: particle-network animation + boot-log console drawn
+    // directly to the framebuffer (~6s). Runs now — after initPIT (so pitMs
+    // paces it) and before kernelLoop (so it owns the framebuffer until the
+    // desktop compositor presents). No-op on serial-only/headless boots.
+    splashRun();
 
     klog("[dkernel] entering kernel loop\n");
     kernelLoop();

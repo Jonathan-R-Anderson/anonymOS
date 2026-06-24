@@ -131,8 +131,25 @@ $(HOST_BISON): $(DLDIR)/bison-$(HOST_BISON_VER).tar.xz | dirs
 	    $(MAKE) $(MAKE_BUILD_FLAGS) && \
 	    $(MAKE) $(MAKE_BUILD_FLAGS) install
 
+# ── Sysroot path relocation ───────────────────────────────────────────────────
+# The committed sysroot metadata (.la/.pc/.cmake) carries absolute paths from
+# the original developer's machine (/home/bruns/Documents/{Epin,H}anonymOS).
+# Rewrite them to this checkout's $(PROJECT_ROOT) before any package build reads
+# them. Idempotent: after the first run the literal is gone, so re-runs no-op.
+$(STAMPS)/sysroot-relocated: $(SELF)/Makefile | dirs
+	@echo "[gtk-stack] Relocating sysroot metadata to $(PROJECT_ROOT) ..."
+	@find $(SYSROOT) -type f \( -name '*.pc' -o -name '*.la' -o -name '*.cmake' \) \
+	    -exec sed -i \
+	      -e 's|/home/bruns/Documents/EpinAnonymOS|$(PROJECT_ROOT)|g' \
+	      -e 's|/home/bruns/Documents/HanonymOS|$(PROJECT_ROOT)|g' \
+	      -e 's|/home/bruns/Documents/haskellos|$(PROJECT_ROOT)|g' \
+	      {} +
+	@touch $@
+
 # ── Meson cross-file (shared by all meson-based packages) ─────────────────────
-$(STAMPS)/meson-cross.ini: $(MUSL_CC) $(MUSL_CXX) $(CXXRT_STAMP) $(HOST_PY_STAMP) $(SELF)/Makefile | dirs
+# Depends on sysroot-relocated so the regenerated cross-file (and every package
+# that consumes it) sees correct, local paths.
+$(STAMPS)/meson-cross.ini: $(STAMPS)/sysroot-relocated $(MUSL_CC) $(MUSL_CXX) $(CXXRT_STAMP) $(HOST_PY_STAMP) $(SELF)/Makefile | dirs
 	@echo "[gtk-stack] Generating meson cross-file..."
 	@printf '[binaries]\n'                                             >  $@
 	@printf "c = '%s'\n"            "$(CC)"                           >> $@

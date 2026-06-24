@@ -4,7 +4,10 @@ BUILD_ROOT=$(PROJECT_ROOT)/build
 
 # Host Configuration
 CROSSCOMPILE_PREFIX ?= /usr
-LLVM_PREFIX ?= /usr/lib/llvm-18
+# Auto-detect the LLVM install prefix from clang's location (portable across
+# distros: Ubuntu → /usr/lib/llvm-18, Arch → /usr, etc.). Override explicitly
+# with `make LLVM_PREFIX=/path` for non-standard installs.
+LLVM_PREFIX ?= $(shell dir=$$(dirname $$(dirname $$(readlink -f $$(which clang) 2>/dev/null) 2>/dev/null) 2>/dev/null); [ -n "$$dir" ] && echo "$$dir" || echo /usr/lib/llvm-18)
 HOST_TOOLS_ROOT ?= $(PROJECT_ROOT)/deps/.host-tools
 HOST_TOOLS_BIN ?= $(HOST_TOOLS_ROOT)/bin
 export PATH := $(HOST_TOOLS_BIN):$(PATH)

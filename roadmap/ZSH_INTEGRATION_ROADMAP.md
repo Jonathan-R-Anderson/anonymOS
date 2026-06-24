@@ -113,13 +113,32 @@ that gates the native ABI).
   full job control (process groups + `tcsetpgrp`) and the upstream test-suite run are
   follow-ups; the interactive shell is fully usable.
 
-## Z2 — Dynamic linking · ☐ · P: Med · E: 3 · deps: Z1
+## Z2 — Dynamic linking · ✅ DONE · P: Med · E: 3 · deps: Z1
 
-- Compile `libzsh.so` / `libzshmodules.so` / `libzshcompletion.so`; load zmodules via
-  `zmodload` over the **existing kernel dynamic linker** (PT_INTERP/ET_DYN load, file-backed
-  mmap, `.so` basename resolve + unique-inode fstat — all live, see [[project_gui_progress]]).
-- *Deliverable 6 (dynamic linking).* Validates the loader against a second large dynamic
-  program besides the GUI stack.
+- zsh is now built **dynamically** (`deps/zsh/Makefile`: `--enable-dynamic`, replacing Z1's
+  static `--disable-dynamic`): a PIE `zsh` with `PT_INTERP=ld-musl` + `NEEDED libc.so`, plus
+  **36 dlopen-able zmodule `.so`** (`zle`, `complete`, `compctl`, `computil`, `zutil`,
+  `parameter`, `terminfo`, …).  (zsh keeps its core in the exe rather than a separate
+  `libzsh.so`; the modules resolve the core symbols from the exe — see the export-dynamic
+  note below.)
+- **Loaded over the existing kernel dynamic linker:** the OS execs `/zsh` → ld-musl
+  (PT_INTERP) loads `libc.so`; zsh then dlopens `/system/shell/zsh/lib/zsh/5.9/zsh/<m>.so`,
+  which the kernel resolves by **basename → boot module** (the same `.so` path the GUI stack
+  uses; [posix.d](../src/kernel/d/core/syscalls/posix.d) `isSharedObject`/basename resolve).
+  The 36 modules + ld-musl are staged as boot modules by the iso build.
+- *Verified live in the OS:* the serial shows zsh dlopening `zle.so`/`complete.so`/`compctl.so`
+  from the module path; `zmodload` lists `zsh/zle zsh/complete zsh/compctl zsh/main` loaded;
+  the shell is fully functional (prompt rendered by the dlopen'd zle, builtins, external
+  commands, pipes) — no relocation failures.
+- **Two cross-build gotchas** (recorded for Z4+ and any future dynamic dep):
+  1. configure can't *run* its musl-dynamic probe programs on the glibc build host, so the
+     dynamic-loading capabilities are passed as `zsh_cv_*` cache vars (true for ELF/musl);
+     Z1's static build sidestepped this because static binaries run anywhere.
+  2. the rdynamic flag that exports the exe's symbols to its modules is set only inside
+     configure's (cache-skipped) rdynamic test, so it must be forced via
+     `EXTRA_LDFLAGS=-Wl,--export-dynamic` — without it modules fail `hashgetfn: not found`.
+- *Deliverable 6 (dynamic linking).* **Validates the kernel loader against a second large
+  dynamic program besides the GUI stack** (zsh + 36 dlopen'd modules), as intended.
 
 ## Z3 — PTY / terminal split · ☐ · P: High · E: 2 · deps: Z1
 

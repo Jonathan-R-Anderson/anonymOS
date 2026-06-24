@@ -49,21 +49,43 @@ $(NC_LIB): $(NC_TAR)
 	$(MAKE) -C ncurses-$(NC_VER) libs
 	$(MAKE) -C ncurses-$(NC_VER) install.libs
 
-# --- zsh: static musl, modules linked in (--disable-dynamic), against musl ncursesw ---
+# --- zsh: DYNAMIC musl (Z2), against musl ncursesw ---
+# Z2 (ZSH_INTEGRATION_ROADMAP): build zsh dynamically (--enable-dynamic) so the zmodules
+# become dlopen-able .so files loaded over the kernel's dynamic linker (PT_INTERP=ld-musl,
+# .so basename->boot-module resolution).  Two cross-build gotchas, both handled here:
+#   * configure can't RUN its musl-dynamic probe programs on the glibc build host, so the
+#     dynamic-loading capabilities are supplied as zsh_cv_* cache vars (they're true for
+#     ELF/musl).  (Z1's static build sidestepped this — static binaries run anywhere.)
+#   * the rdynamic flag that exports the zsh exe's symbols to its dlopen'd modules is only
+#     applied inside configure's (skipped, because cached) rdynamic test — so force it via
+#     EXTRA_LDFLAGS=-Wl,--export-dynamic.  Without it modules fail: "hashgetfn: not found".
+# The exe is NOT stripped (keep .dynsym so modules resolve the core symbols); modules are.
+ZMODDIR := $(CURDIR)/modules
 $(ZSH_BIN): $(ZSH_TAR) $(NC_LIB)
 	echo "$(ZSH_SHA)  $(ZSH_TAR)" | sha256sum -c -
 	rm -rf zsh-$(ZSH_VER) && tar xf $(ZSH_TAR)
 	cd zsh-$(ZSH_VER) && \
 	  CC="$(MUSL_CC)" \
 	  CPPFLAGS="-I$(SYSROOT)/include -I$(SYSROOT)/include/ncursesw" \
-	  LDFLAGS="-static -L$(SYSROOT)/lib" LIBS="-lncursesw -ltinfow" \
-	  ./configure --host=x86_64-pc-linux-musl --prefix=/system/shell/zsh \
-	    --disable-dynamic --disable-dynamic-nss --without-tcsetpgrp
+	  LDFLAGS="-L$(SYSROOT)/lib" EXTRA_LDFLAGS="-Wl,--export-dynamic" \
+	  LIBS="-lncursesw -ltinfow" \
+	  zsh_cv_func_dlsym_needs_underscore=no \
+	  zsh_cv_shared_environ=yes zsh_cv_shared_tgetent=yes zsh_cv_shared_tigetstr=yes \
+	  zsh_cv_sys_dynamic_clash_ok=yes zsh_cv_sys_dynamic_execsyms=yes \
+	  zsh_cv_sys_dynamic_rtld_global=yes \
+	  zsh_cv_sys_dynamic_strip_exe=no zsh_cv_sys_dynamic_strip_lib=no \
+	  ./configure --prefix=/system/shell/zsh \
+	    --enable-dynamic --disable-dynamic-nss --without-tcsetpgrp
 	$(MAKE) -C zsh-$(ZSH_VER)
-	cp zsh-$(ZSH_VER)/Src/zsh $@ && strip $@
-	@echo "Z0 OK: built static musl zsh -> $@"
+	cp zsh-$(ZSH_VER)/Src/zsh $@
+	# collect the dlopen-able zmodules (zsh/<name>.so), stripped, for the OS to stage
+	rm -rf $(ZMODDIR) && mkdir -p $(ZMODDIR)
+	cp zsh-$(ZSH_VER)/Src/Modules/*.so zsh-$(ZSH_VER)/Src/Zle/*.so \
+	   zsh-$(ZSH_VER)/Src/Builtins/*.so $(ZMODDIR)/
+	strip $(ZMODDIR)/*.so
+	@echo "Z2 OK: built dynamic musl zsh + $$(ls $(ZMODDIR)/*.so | wc -l) zmodules -> $@"
 
 clean:
-	rm -rf zsh-$(ZSH_VER) ncurses-$(NC_VER) sysroot zsh
+	rm -rf zsh-$(ZSH_VER) zsh-$(ZSH_VER)-dyn ncurses-$(NC_VER) sysroot zsh modules
 
 .PHONY: all clean

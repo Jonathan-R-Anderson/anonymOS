@@ -316,7 +316,15 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	@echo "Included hos-sh (native object shell)"
 
 	cp $(ZSH_BIN) cd/zsh
-	@echo "Included zsh (Z1: real upstream zsh, static musl)"
+	@echo "Included zsh (Z2: real upstream zsh, dynamic musl)"
+	# Z2: dynamic zsh loads libc.so via ld-musl (PT_INTERP, staged by the WESTON dynamic
+	# block) and dlopens its zmodules.  Stage every zmodule .so as a boot module; the
+	# kernel resolves zsh's dlopen("/system/shell/zsh/lib/zsh/5.9/zsh/<m>.so") by basename.
+	@for so in deps/zsh/modules/*.so; do \
+	  b=$$(basename $$so); cp $$so cd/$$b; \
+	  printf '    module_path: boot():/%s\n' "$$b" >> cd/boot/limine/limine.conf; \
+	done
+	@echo "Included $$(ls deps/zsh/modules/*.so | wc -l) zsh zmodules (.so) for dynamic loading"
 
 	cp $(WLCAIRO_DEMO_BIN) cd/wl-cairo-demo
 	printf '\n    module_path: boot():/wl-cairo-demo\n' >> cd/boot/limine/limine.conf

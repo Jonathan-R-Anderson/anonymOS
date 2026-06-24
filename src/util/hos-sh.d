@@ -118,10 +118,58 @@ void loadWho() @nogc nothrow {
     else { g_who[0]='u'; g_who[1]='s'; g_who[2]='e'; g_who[3]='r'; g_who[4]=0; }
 }
 
-extern(C) int main() @nogc nothrow {
+// Dispatch one command line.  Returns 0 to exit the shell, 1 to keep going.  Shared by the
+// interactive loop and the Z4c non-interactive (`hos-sh <verb>`) mode.
+int runCommand(char* cmd) @nogc nothrow {
+    while (*cmd == ' ' || *cmd == '\t') ++cmd;
+    if (*cmd == 0) return 1;
+
+    // LFE: an s-expression `(head arg ...)` is read into the bare command form.
+    if (*cmd == '(') {
+        cmd = lfeNormalize(cmd);
+        while (*cmd == ' ') ++cmd;
+        if (*cmd == 0) return 1;
+    }
+
+    if      (strcmp(cmd, "exit".ptr) == 0 || strcmp(cmd, "quit".ptr) == 0) return 0;
+    else if (strcmp(cmd, "help".ptr) == 0) help();
+    else if (strcmp(cmd, "cd".ptr) == 0) chdir("/".ptr);
+    else if (strncmp(cmd, "cd ".ptr, 3) == 0) {
+        char* arg = cmd + 3; while (*arg == ' ') ++arg;
+        if (chdir(arg) != 0) printf("hos-sh: cd: %s: no such directory\n", arg);
+    }
+    else if (strncmp(cmd, "cat ".ptr, 4) == 0) catFile(cmd + 4);
+    else if (strncmp(cmd, "obj".ptr, 3) == 0) runQuery(HOSQ_OBJECTS,    "TYPE                COUNT\n".ptr);
+    else if (strncmp(cmd, "id".ptr,  2) == 0) runQuery(HOSQ_IDENTITIES, "IDENTITY DOMAINS\n".ptr);
+    else if (strncmp(cmd, "ns".ptr,  2) == 0) runQuery(HOSQ_NAMESPACES, "NAMESPACES\n".ptr);
+    else if (strncmp(cmd, "svc".ptr, 3) == 0) runQuery(HOSQ_SERVICES,   "SERVICES\n".ptr);
+    else if (strcmp(cmd, "sys".ptr) == 0)     runQuery(HOSQ_SYS,        null);
+    else printf("hos-sh: unknown command '%s' (try 'help')\n", cmd);
+    return 1;
+}
+
+extern(C) int main(int argc, char** argv) @nogc nothrow {
+    loadWho();
+
+    // Z4c.1: non-interactive mode — `hos-sh <verb> [args]` runs one command and exits.  This
+    // is how native zsh exposes the object model at its prompt: obj/id/ns/svc/sys are zsh
+    // functions that spawn `/hos-sh <verb>` (which self-gates to the native ABI by name), so
+    // the kernel object model is reachable from zsh without zsh itself holding the N0 gate.
+    if (argc > 1) {
+        char[256] cmd = void;
+        size_t p = 0;
+        for (int i = 1; i < argc && p + 1 < cmd.length; ++i) {
+            if (i > 1 && p + 1 < cmd.length) cmd[p++] = ' ';
+            const(char)* a = argv[i];
+            while (*a != 0 && p + 1 < cmd.length) cmd[p++] = *a++;
+        }
+        cmd[p] = 0;
+        runCommand(cmd.ptr);
+        return 0;
+    }
+
     printf("\nEpinAnonymOS native object shell  (-sh, LFE syntax)\n");
     printf("Drives the microkernel object model with Lisp-flavored (LFE) forms. Type (help).\n\n");
-    loadWho();
 
     char[256] line = void;
     for (;;) {
@@ -133,31 +181,7 @@ extern(C) int main() @nogc nothrow {
 
         size_t l = strlen(line.ptr);
         while (l > 0 && (line[l-1] == '\n' || line[l-1] == '\r')) line[--l] = 0;
-        char* cmd = line.ptr;
-        while (*cmd == ' ' || *cmd == '\t') ++cmd;
-        if (*cmd == 0) continue;
-
-        // LFE: an s-expression `(head arg ...)` is read into the bare command form.
-        if (*cmd == '(') {
-            cmd = lfeNormalize(cmd);
-            while (*cmd == ' ') ++cmd;
-            if (*cmd == 0) continue;
-        }
-
-        if      (strcmp(cmd, "exit".ptr) == 0 || strcmp(cmd, "quit".ptr) == 0) break;
-        else if (strcmp(cmd, "help".ptr) == 0) help();
-        else if (strcmp(cmd, "cd".ptr) == 0) chdir("/".ptr);
-        else if (strncmp(cmd, "cd ".ptr, 3) == 0) {
-            char* arg = cmd + 3; while (*arg == ' ') ++arg;
-            if (chdir(arg) != 0) printf("hos-sh: cd: %s: no such directory\n", arg);
-        }
-        else if (strncmp(cmd, "cat ".ptr, 4) == 0) catFile(cmd + 4);
-        else if (strncmp(cmd, "obj".ptr, 3) == 0) runQuery(HOSQ_OBJECTS,    "TYPE                COUNT\n".ptr);
-        else if (strncmp(cmd, "id".ptr,  2) == 0) runQuery(HOSQ_IDENTITIES, "IDENTITY DOMAINS\n".ptr);
-        else if (strncmp(cmd, "ns".ptr,  2) == 0) runQuery(HOSQ_NAMESPACES, "NAMESPACES\n".ptr);
-        else if (strncmp(cmd, "svc".ptr, 3) == 0) runQuery(HOSQ_SERVICES,   "SERVICES\n".ptr);
-        else if (strcmp(cmd, "sys".ptr) == 0)     runQuery(HOSQ_SYS,        null);
-        else printf("hos-sh: unknown command '%s' (try 'help')\n", cmd);
+        if (!runCommand(line.ptr)) break;
     }
     printf("bye\n");
     return 0;

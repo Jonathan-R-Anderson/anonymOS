@@ -644,6 +644,10 @@ static int spawn_shell(struct app *a) {
             snprintf(ps1, sizeof(ps1), "[%s] %s [%s]:%%~%%# ", dom, usr, caps);
             setenv("PS1", ps1, 1);
         }
+        // Make EPIN_SHELL in the child reflect the shell actually launched, so the zshrc's
+        // native-only object-command block (Z4c) keys off the real flavor — not just whatever
+        // the Domain Manager passed in.
+        setenv("EPIN_SHELL", is_native ? "native" : "linux", 1);
         // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash
         // an interactive login shell; for the native shell, /hos-sh.
         char *argv[] = { shell_arg0, NULL };

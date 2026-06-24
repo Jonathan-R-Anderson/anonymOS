@@ -4023,6 +4023,22 @@ alias sysinfo='cat /config/system.json'
 # git (works once git is installed):
 alias gs='git status'
 
+# --- Z4c: native object-shell commands (native flavor only) -------------------
+# The kernel object model as zsh commands.  Each spawns /hos-sh <verb>, the native
+# object shell, which self-gates to the native ABI by name — so the object/cap
+# surface is reachable from the zsh prompt without zsh itself holding the gate
+# (the Linux shell, where EPIN_SHELL != native, gets none of this).  'hos' is the
+# full dispatcher; obj/id/ns/svc/sys are shortcuts.  ('id' shadows coreutils id in
+# the native object shell on purpose — use 'command id' for the POSIX one.)
+if [[ "$EPIN_SHELL" == native ]]; then
+  hos() { /hos-sh "$@" }
+  obj() { /hos-sh obj "$@" }
+  id()  { /hos-sh id  "$@" }
+  ns()  { /hos-sh ns  "$@" }
+  svc() { /hos-sh svc "$@" }
+  sys() { /hos-sh sys "$@" }
+fi
+
 # --- local override hook (not overwritten on update) ---
 [[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
 `;

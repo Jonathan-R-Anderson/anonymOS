@@ -298,10 +298,32 @@ machinery — the same "re-surface, don't rewrite" pattern as Z4a.  Tracked sub-
   `cat /dev/null`).  Full bg jobs additionally need the POSIX `open`-lowest-free-fd change
   (start the scan at 0), which is broad/desktop-risky — **tracked follow-up**, not done here.
 
-### Z4c — env + cap + namespace + object hooks · ☐ · deps: Z4a
+### Z4c — env + cap + namespace + object hooks · ◐ · deps: Z4a
 
-- Environment + capability passing on spawn, `namespace`/`object` hooks; the object commands
-  (`obj/id/ns/svc/sys`) become first-class zsh builtins (overlaps Z9).
+Give the native zsh prompt the distinctly-native surface — the kernel object model as
+commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
+
+- **Z4c.1 — Object commands at the zsh prompt (`obj/id/ns/svc/sys`)** · ✅ DONE · the HOSQ
+  enumeration verbs surfaced as native-shell commands.  Added a **non-interactive mode** to the
+  native object shell — `/hos-sh <verb> [args]` runs one command and exits (refactored its
+  dispatch into `runCommand`, reused by both the interactive loop and `main(argc, argv)`) — and
+  seeded **native-flavor** zsh functions (`obj`/`id`/`ns`/`svc`/`sys` + an `hos` dispatcher) that
+  spawn it.  `/hos-sh` self-gates to the native ABI **by name** (`execName=="hos-sh"`), so the N0
+  gate holds — zsh never calls HOSQ itself; the gated helper does.  Gated on `EPIN_SHELL==native`
+  (and wl-term now sets `EPIN_SHELL` to match the shell it actually launches), so the Linux shell
+  stays clean.  Verified live: native `sys`/`obj`/`id`/`ns`/`hos sys` print the live object model
+  (1128 objects, 7 identities, 17 namespaces, …); Linux flavor → `command not found: obj`.
+  (`id` shadows coreutils `id` in the native shell on purpose; `command id` / `/bin/id` still reach it.)
+- **Z4c.2 — Environment passing on spawn** · ✅ DONE · native zsh's `spawn_process` forwards
+  `envp` to `execveTask` (Z4a.7), so exported vars reach spawned children — verified
+  `export FOO=z4cbar; printenv FOO` → `z4cbar`.
+- **Z4c.3 — Capability + namespace inheritance / hooks** · ◐ · a spawned child inherits its caps
+  and namespace via fork/exec today, and `id`/`ns` (Z4c.1) read them back; explicit native
+  cap-grant and namespace clone/enter on the §4 spawn manifest are **mutations** (deny-by-default
+  gated on the identity ceiling) — a tracked refinement, not done here.
+- **Z4c.4 — Real in-process zsh-module builtins** (overlaps Z9) · ◐ · the object commands as a
+  zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
+  Z4c.1 — a fuller-integration refinement.
 
 ## Z5 — Configuration system · ☐ · P: Med · E: 3 · deps: Z1
 

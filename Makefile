@@ -479,6 +479,47 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 		-o hos.iso
 
 # =========================================================
+# Minimal ISO — kernel + busybox + the signed config manifest ONLY.
+#
+# `make hos.iso` requires the full desktop deps (weston, hyprland, wl-term, …)
+# which need the Ubuntu-18.04 Docker image to build. This target builds a
+# bootable ISO from a CLEAN checkout with just the host toolchain (ldc2/ld/
+# xorriso + busybox): the native boot splash renders, the declarative config
+# manifest is HMAC-verified and applied, and busybox is init. Use this when the
+# desktop deps aren't built. `make hos-minimal.iso`.
+# =========================================================
+HOS_MINIMAL_ISO := hos-minimal.iso
+
+.PHONY: hos-minimal.iso
+hos-minimal.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(IDLE_BIN) build-display-conf build-config-manifest
+	@echo "==== Building minimal ISO (kernel + busybox + config manifest; no desktop deps) ===="
+	rm -rf cd
+	mkdir -p cd/boot/limine
+	cp kernel.elf cd/boot/kernel.elf
+	# A trimmed limine.conf listing only the modules we actually stage, so Limine
+	# does not hard-fail on a missing module_path (which the full conf would do).
+	printf 'timeout: 3\n\n/EpinAnonymOS\n    protocol: limine\n    path: boot():/boot/kernel.elf\n    cmdline: display.width=$(DISPLAY_WIDTH) display.height=$(DISPLAY_HEIGHT) display.scale=$(DISPLAY_SCALE) display.refresh=$(DISPLAY_REFRESH) display.force_mode=$(DISPLAY_FORCE_MODE) gui.autostart=$(GUI_AUTOSTART)\n    resolution: $(DISPLAY_WIDTH)x$(DISPLAY_HEIGHT)x32\n    module_path: boot():/busybox\n    module_path: boot():/test-drm\n    module_path: boot():/compositor\n    module_path: boot():/hello-gui\n    module_path: boot():/idle\n    module_path: boot():/display.conf\n' > cd/boot/limine/limine.conf
+	cp src/boot/limine-bios.sys src/boot/limine-bios-cd.bin src/boot/limine-uefi-cd.bin cd/boot/limine/
+	cp $(BUSYBOX_BIN) cd/busybox
+	cp $(TEST_DRM_BIN) cd/test-drm
+	cp $(COMPOSITOR_BIN) cd/compositor
+	cp $(HELLO_GUI_BIN) cd/hello-gui
+	cp $(IDLE_BIN) cd/idle
+	cp $(DISPLAY_CONF) cd/display.conf
+	@echo "Included busybox + freestanding tools (minimal ISO)"
+	# Stage the signed declarative-config manifest (the splash + configboot path).
+	@if [ "$(DECLARATIVE_CONFIG)" != "none" ] && [ -f $(CONFIG_MANIFEST) ]; then \
+		cp $(CONFIG_MANIFEST) cd/manifest.blob; \
+		printf '    module_path: boot():/manifest.blob\n' >> cd/boot/limine/limine.conf; \
+		echo "Included manifest.blob (declarative config: $(DECLARATIVE_CONFIG))"; \
+	fi
+	$(XORRISO) -as mkisofs \
+		-b boot/limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
+		--efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
+		--protective-msdos-label cd -o $(HOS_MINIMAL_ISO)
+	@echo "✅ Built $(HOS_MINIMAL_ISO) (boot with: qemu-system-x86_64 -boot d -cdrom $(HOS_MINIMAL_ISO))"
+
+# =========================================================
 # Legacy: Haskell userspace programs (optional, not part of main build)
 # =========================================================
 

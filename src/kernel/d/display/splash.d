@@ -22,11 +22,12 @@
 module display.splash;
 
 import display.canvas;
-import display.framebuffer : framebufferAvailable, initFramebuffer;
+import display.framebuffer : framebufferAvailable, initFramebuffer, framebufferDescriptor;
 import display.common : glyphWidth, glyphHeight;
 import core.console : g_fbConsoleEnabled;
 import core.random : rdtsc; // TSC — the only monotonic counter usable with interrupts off
 import core.io : klog;
+import core.stdc.string : memcpy; // atomic back-buffer → framebuffer flip (no tearing)
 // The bootstrap-level Limine framebuffer pointer (set in bootstrap_kernel
 // before d_kernel_main). The display module's own g_fb is NOT initialized until
 // the (later, lazy) d_init_display heartbeat, so the splash seeds it itself,
@@ -64,23 +65,32 @@ enum uint C_BAR_BG   = 0xFF11131F; // progress bar track
 // Particle palette (ParticleNetwork.tsx:44).
 private enum uint[4] PARTICLE_COLORS = [0xFF9B87F5, 0xFF7E69AB, 0xFF33C3F0, 0xFF1EAEDB];
 
-private enum PARTICLE_COUNT = 50;     // base count (grows with progress up to +30)
+private enum PARTICLE_COUNT = 50;     // base counts (grows with progress up to +30)
 private enum CONNECT_DIST   = 250;    // px — edge drawn only if distance < this
 private enum SPLASH_DURATION = 6000;  // ms (matches React default)
-private enum FRAME_MS        = 33;    // ~30fps pacing
+private enum FRAME_MS        = 16;    // ~60fps target (smooth motion)
+private enum VELOCITY_PXS    = 30;    // particle speed: ~30 px/sec (calm, drifting)
 
 // ── particle simulation (fixed table, deterministic seed) ────────────────────
+// Positions/velocities are in fixed-point units of 1/256 px so motion advances
+// smoothly even at low per-frame displacement (a 30px/s particle at 60fps moves
+// only 0.5px/frame — integer px would round that to 0 and freeze the field).
 private struct Particle
 {
-    short x, y;          // position (fixed-point would be nicer; px is fine here)
-    short vx, vy;        // velocity per frame
-    ubyte radius;        // 2..5
-    ubyte colorIdx;      // index into PARTICLE_COLORS
-    ubyte alpha255;      // 0..255 (77..255)
+    int  x, y;          // position, fixed-point (×256)
+    int  vx, vy;        // velocity, fixed-point px/sec (×256)
+    ubyte radius;       // 2..5
+    ubyte colorIdx;     // index into PARTICLE_COLORS
+    ubyte alpha255;     // 0..255 (77..255)
 }
 
 private __gshared Particle[PARTICLE_COUNT] g_particles;
 private __gshared uint g_seed = 0xA10A5EED; // seed; rewritten to a real value at boot
+
+// Offscreen back buffer for double-buffered rendering (no tearing on flip).
+// Sized for up to 1920×1080 (the same cap the compositor uses).
+private enum SPLASH_MAX_PIXELS = 1920u * 1080u;
+private __gshared uint[SPLASH_MAX_PIXELS] g_backBuf;
 
 // Deterministic LCG so the particle field is reproducible (and avoids pulling
 // in the kernel's entropy source for a cosmetic boot screen).
@@ -100,60 +110,70 @@ private void seedParticles(uint w, uint h)
     g_seed = 0xC0FFEE42; // fixed seed → identical particle field every boot
     foreach (ref p; g_particles)
     {
-        p.x = cast(short)(randNext() % (w > 1 ? w - 1 : 1) + 1);
-        p.y = cast(short)(randNext() % (h > 1 ? h - 1 : 1) + 1);
+        // positions in fixed-point (×256)
+        p.x = cast(int)((randNext() % (w > 1 ? w - 1 : 1) + 1) * 256);
+        p.y = cast(int)((randNext() % (h > 1 ? h - 1 : 1) + 1) * 256);
         p.radius = cast(ubyte)(2 + randNext() % 4);         // 2..5
-        p.vx = cast(short)((randNext() % 2 ? 1 : -1) * (1 + randNext() % 1)); // ±1 px
-        p.vy = cast(short)((randNext() % 2 ? 1 : -1) * (1 + randNext() % 1));
+        // velocity: ±VELOCITY_PXS in fixed-point px/sec (×256)
+        p.vx = cast(int)((randNext() % 2 ? 1 : -1) * (VELOCITY_PXS + randNext() % VELOCITY_PXS) * 256);
+        p.vy = cast(int)((randNext() % 2 ? 1 : -1) * (VELOCITY_PXS + randNext() % VELOCITY_PXS) * 256);
         p.colorIdx = cast(ubyte)(randNext() % 4);
         p.alpha255 = cast(ubyte)(77 + randNext() % 179);    // 0.3..1.0 *255
     }
 }
 
-private void stepParticles(ref Canvas canvas, uint w, uint h, uint progress255)
+// Advance + draw one frame. `dtMs` is the wall-time elapsed since the last
+// frame, so motion is frame-rate-independent (smooth at any fps).
+private void stepParticles(ref Canvas canvas, uint w, uint h, uint progress255, uint dtMs)
 {
-    // how many particles are "active" — grows with progress (50 → 80)
     uint active = PARTICLE_COUNT + (cast(uint)(progress255) * 30) / 255;
     if (active > g_particles.length) active = g_particles.length;
+
+    // integrate motion by elapsed time (fixed-point: pos += vel * dt / 1000)
+    foreach (i; 0 .. active)
+    {
+        ref Particle p = g_particles[i];
+        p.x += p.vx * cast(int) dtMs / 1000;
+        p.y += p.vy * cast(int) dtMs / 1000;
+        const int w256 = cast(int) w * 256;
+        const int h256 = cast(int) h * 256;
+        if (p.x < 256)              { p.x = 256;             p.vx = -p.vx; }
+        if (p.x >= w256 - 256)      { p.x = w256 - 256;      p.vx = -p.vx; }
+        if (p.y < 256)              { p.y = 256;             p.vy = -p.vy; }
+        if (p.y >= h256 - 256)      { p.y = h256 - 256;      p.vy = -p.vy; }
+    }
 
     // connections first (so bodies draw on top)
     foreach (i; 0 .. active)
     {
+        const int xi = g_particles[i].x / 256;
+        const int yi = g_particles[i].y / 256;
         foreach (j; i + 1 .. active)
         {
-            int dx = g_particles[i].x - g_particles[j].x;
-            int dy = g_particles[i].y - g_particles[j].y;
+            const int xj = g_particles[j].x / 256;
+            const int yj = g_particles[j].y / 256;
+            int dx = xi - xj;
+            int dy = yi - yj;
             uint d2 = cast(uint)(dx * dx + dy * dy);
             if (d2 < CONNECT_DIST * CONNECT_DIST)
             {
-                // distance fade: alpha = max(0, 1 - d/250) * 0.5 * progress.
-                // Avoid core.stdc.math (c_long undefined under -betterC freestanding):
-                // approximate d/250 with d2/250² (close enough for a cosmetic fade,
-                // and monotonic so the visual gradient is preserved).
                 uint alpha = (CONNECT_DIST * CONNECT_DIST - d2) * 128u /
                              (CONNECT_DIST * CONNECT_DIST);
                 alpha = (alpha * progress255) / 255u;
                 if (alpha > 255) alpha = 255;
-                if (alpha > 6) // ~0.02 * 255
+                if (alpha > 6)
                 {
                     uint col = (alpha << 24) | (C_CONN & 0x00FFFFFF);
-                    canvasLine(canvas, g_particles[i].x, g_particles[i].y,
-                               g_particles[j].x, g_particles[j].y, col);
+                    canvasLine(canvas, xi, yi, xj, yj, col);
                 }
             }
         }
     }
-    // bodies + motion integration + bounce
+    // bodies
     foreach (i; 0 .. active)
     {
-        ref Particle p = g_particles[i];
-        canvasCircle(canvas, p.x, p.y, p.radius, PARTICLE_COLORS[p.colorIdx], true);
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 1 || p.x >= cast(short) w) p.vx = cast(short)(-p.vx);
-        if (p.y < 1 || p.y >= cast(short) h) p.vy = cast(short)(-p.vy);
-        p.x = p.x < 1 ? 1 : (p.x >= cast(short) w ? cast(short)(w - 1) : p.x);
-        p.y = p.y < 1 ? 1 : (p.y >= cast(short) h ? cast(short)(h - 1) : p.y);
+        canvasCircle(canvas, g_particles[i].x / 256, g_particles[i].y / 256,
+                     g_particles[i].radius, PARTICLE_COLORS[g_particles[i].colorIdx], true);
     }
 }
 
@@ -312,42 +332,62 @@ public void splashRun()
     }
     if (!framebufferAvailable()) return;
 
-    Canvas canvas = createFramebufferCanvas();
-    if (!canvas.available) return;
+    Canvas frontCanvas = createFramebufferCanvas();
+    if (!frontCanvas.available) return;
 
     // Stop the kernel text console scribbling over our splash (serial keeps
     // logging). The userspace compositor will claim the framebuffer next.
     g_fbConsoleEnabled = false;
 
-    const uint w = canvas.width;
-    const uint h = canvas.height;
+    const uint w = frontCanvas.width;
+    const uint h = frontCanvas.height;
+    const ulong pixels = cast(ulong) w * cast(ulong) h;
+    if (pixels == 0 || pixels > SPLASH_MAX_PIXELS) return; // too big for the back buffer
+
+    // Double-buffer: render each frame to an offscreen back buffer, then flip it
+    // to the live framebuffer in one memcpy. Without this the per-line redraw is
+    // visible mid-paint (tearing/flicker) and looks choppy.
+    Canvas back = createBufferCanvas(g_backBuf.ptr, w, h, w);
+    if (!back.available) return;
+
     seedParticles(w, h);
 
-    // Pace on TSC with the rough estimate (interrupts are off; see note above).
+    // Pace on TSC (interrupts are off — pitMs/IRQ0 is frozen; see note above).
     const ulong cyclesPerMs = TSC_PER_MS_ESTIMATE;
     const ulong durationCycles = cyclesPerMs * SPLASH_DURATION;
     const ulong frameCycles = cyclesPerMs * FRAME_MS;
 
     const ulong start = rdtsc();
+    ulong lastTsc = start;
     for (;;)
     {
-        ulong elapsed = rdtsc() - start;
-        uint progress255; // 0..255
+        const ulong now = rdtsc();
+        const ulong elapsed = now - start;
+        uint progress255;
         if (elapsed >= durationCycles)
             progress255 = 255;
         else
             progress255 = cast(uint)((elapsed * 255) / durationCycles);
 
-        // render frame
-        canvasFill(canvas, C_BG);
-        stepParticles(canvas, w, h, progress255);
-        drawCard(canvas, w, h, progress255);
+        // frame-rate-independent motion: advance particles by the real elapsed
+        // time since the last frame (dtMs), so the animation speed is constant
+        // regardless of how fast/slow frames render.
+        uint dtMs = cast(uint)((now - lastTsc) / (cyclesPerMs > 0 ? cyclesPerMs : 1));
+        if (dtMs > 100) dtMs = 100; // clamp (avoid huge jumps if a frame stalled)
+        lastTsc = now;
+
+        // render to the OFFSCREEN back buffer
+        canvasFill(back, C_BG);
+        stepParticles(back, w, h, progress255, dtMs);
+        drawCard(back, w, h, progress255);
+
+        // atomic flip: one memcpy to the live framebuffer (no tearing)
+        memcpy(frontCanvas.pixels, back.pixels, pixels * uint.sizeof);
 
         if (progress255 >= 255) break;
 
-        // pace to ~30fps (busy-wait on TSC — interrupts are off, no pitMs)
-        const ulong frameStart = rdtsc();
-        while (rdtsc() - frameStart < frameCycles) {}
+        // pace to ~60fps (busy-wait on TSC — interrupts are off)
+        while (rdtsc() - now < frameCycles) {}
     }
 
     // brief hold on the final frame (~400ms via TSC), then hand off to the

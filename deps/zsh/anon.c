@@ -20,6 +20,8 @@
 #include <sys/syscall.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <sys/wait.h>
+#include <sys/resource.h>
 
 /* native ABI (mirrors core/hoscall.d) */
 #define HOS_SYS_QUERY   0x4000L
@@ -28,12 +30,15 @@
 #define HOSQ_DEV_READ   13L
 #define HOSQ_DEV_WRITE  14L
 #define HOSQ_SPAWN      15L
+#define HOSQ_WAIT       16L
 #define CAP_RIGHT_READ  1L
 
 extern int     __real_open(const char *path, int flags, ...);
 extern ssize_t __real_read(int fd, void *buf, size_t n);
 extern ssize_t __real_write(int fd, const void *buf, size_t n);
 extern int     __real_execve(const char *path, char *const argv[], char *const envp[]);
+extern pid_t   __real_wait3(int *status, int options, struct rusage *rusage);
+extern pid_t   __real_waitpid(pid_t pid, int *status, int options);
 
 static long hosq(long op, long a, long b, long c) {
     return syscall(HOS_SYS_QUERY, op, a, b, c);
@@ -88,4 +93,19 @@ ssize_t __wrap_write(int fd, const void *buf, size_t n) {
 int __wrap_execve(const char *path, char *const argv[], char *const envp[]) {
     if (anon_native()) hosq(HOSQ_SPAWN, (long)path, (long)argv, (long)envp);
     return __real_execve(path, argv, envp);
+}
+
+/* Z4b.2: zsh reaps its jobs with wait3 (any child) and waitpid (a specific one); when native,
+ * route both through object_wait — the §6 process-exit event verb.  The kernel blocks a
+ * foreground wait the same way the Linux wait4 does (yield-and-re-run until the child exits),
+ * and honours WNOHANG for the non-blocking reaps zsh's SIGCHLD handler does, so job control is
+ * unchanged.  (rusage is dropped — wait4Task already ignores it on the Linux path too.)
+ * hosq()'s syscall() does the -errno->-1/errno translation, matching wait3/waitpid. */
+pid_t __wrap_wait3(int *status, int options, struct rusage *rusage) {
+    if (anon_native()) return (pid_t)hosq(HOSQ_WAIT, -1, (long)status, (long)options);
+    return __real_wait3(status, options, rusage);
+}
+pid_t __wrap_waitpid(pid_t pid, int *status, int options) {
+    if (anon_native()) return (pid_t)hosq(HOSQ_WAIT, (long)pid, (long)status, (long)options);
+    return __real_waitpid(pid, status, options);
 }

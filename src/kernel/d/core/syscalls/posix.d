@@ -94,6 +94,7 @@ enum FileType {
     FD_MEMFD,            // anonymous memory fd (memfd_create), mmap-able
     FD_TIMERFD,          // timerfd_create timer
     FD_ZERO,
+    FD_NULL,             // /dev/null — read EOF, writes discarded
     FD_RANDOM,
     FD_URANDOM,
     FD_RTFILE,           // writable runtime-overlay (rtfs) regular file
@@ -660,6 +661,7 @@ private ObjType objTypeForFile(File* f) {
         case FileType.FD_INPUT_EVENT:
         case FileType.FD_CONSOLE:
         case FileType.FD_ZERO:
+        case FileType.FD_NULL:
         case FileType.FD_RANDOM:
         case FileType.FD_URANDOM:
         case FileType.FD_PTY_MASTER:
@@ -733,6 +735,7 @@ private uint capRightsForFile(File* f) {
             rights |= CAP_RIGHT_READ;
             break;
         case FileType.FD_TIMERFD:
+        case FileType.FD_NULL:        // /dev/null is read+write (bg-job stdin and stdout/stderr)
             rights |= CAP_RIGHT_READ | CAP_RIGHT_WRITE;
             break;
         case FileType.FD_PIPE_WRITE:
@@ -1629,6 +1632,10 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
     if (f is null) return negErrno(EBADF);
     ++g_objOpsDispatch;
 
+    if (f.type == FileType.FD_NULL) {
+        return 0;   // /dev/null always reads EOF
+    }
+
     if (f.type == FileType.FD_ZERO) {
         auto buffer = cast(ubyte*)_buf;
 
@@ -2341,6 +2348,16 @@ public int sys_open(const(char)* path, int flags) {
         }
     }
     if (fd == -1) return negErrno(EMFILE);
+
+    if (cstrEq(path, "/dev/null")) {
+        g_fdTable[fd].type = FileType.FD_NULL;
+        g_fdTable[fd].flags = flags;
+        g_fdTable[fd].offset = 0;
+        g_fdTable[fd].backend = null;
+        g_fdTable[fd].fileSize = 0;
+        deviceNoteOpen(path);
+        return publishActiveFdReturn(fd);
+    }
 
     if (cstrEq(path, "/dev/zero")) {
         g_fdTable[fd].type = FileType.FD_ZERO;

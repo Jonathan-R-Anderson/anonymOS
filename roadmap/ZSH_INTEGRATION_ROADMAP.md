@@ -257,10 +257,46 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   The "all core I/O native" milestone — **Z4a complete.** (Refinements remain: Z4b signals/IPC,
   Z4c env/cap/ns, and the noted dup-PTY `ioctl` + §4 spawn-handle items.)
 
-### Z4b — signals + IPC · ☐ · deps: Z4a
+### Z4b — signals + IPC · ◐ · deps: Z4a
 
-- Native signal delivery (`object_subscribe`/`object_wait` for SIGCHLD/SIGINT, §6) and the
-  message-passing IPC primitives (§8) behind zsh's job-wait + coproc/`zsh/zselect`.
+Route native zsh's job-wait / signal / IPC surfaces onto the native object ABI (§6 event
+subscription + §8 message-passing), reusing the kernel's existing signal + child-exit
+machinery — the same "re-surface, don't rewrite" pattern as Z4a.  Tracked sub-steps:
+
+- **Z4b.1 — Kernel native wait verb (`object_wait`, §6)** · ✅ DONE · `object_wait(pid,
+  statusbuf, options)` (`HOSQ_WAIT`=16) over the existing `wait4Task`, with the **same**
+  rewind-RIP + `scheduleNext` cooperative blocking the Linux `wait4` (case 61) uses; handled in
+  the **outer** dispatcher (like `spawn_process`) so it can yield-and-re-run — its block path is
+  byte-for-byte the Linux wait path's.
+- **Z4b.2 — Route zsh's child-reaping through `object_wait`** · ✅ DONE · `__wrap_wait3` /
+  `__wrap_waitpid` (`-Wl,--wrap=wait3,waitpid`) send zsh's reaps (`wait3` ×3, `waitpid` ×1) to
+  `object_wait` when native; `WNOHANG` reaps return immediately, foreground waits yield (same
+  `wait4Task` semantics).  Verified live: native `whoami`/`uname`/`cat /dev/null` and pipes all
+  reap their children through `object_wait` (one-shot `[obj-wait]` confirmed), shell fully
+  functional; Linux zsh unregressed (`is_native()=0` ⇒ `__real_wait3`/`__real_waitpid`).  (Can't
+  demo a *multi-second* block because `nanosleep` is a kernel no-op OS-wide — `sleep N` exits
+  instantly for both flavors, so no child ever takes wall-clock time; the block *logic* is
+  identical to the working Linux `wait4`.)
+- **Z4b.3 — Native async-event surface (`object_subscribe`, §6) for SIGCHLD + SIGINT** · ◐ ·
+  the kernel already delivers these to native zsh — SIGCHLD as an rt_sigframe (Z1) and ^C as
+  an EINTR at a blocking `device_read` (Z3/Z4a.6) — so native job-notify + interrupt already
+  *work*; this step is the explicit native subscription registration (`object_subscribe(obj,
+  events)`), a formalization of the already-functional delivery.  Deferred unless a concrete
+  need (e.g. `zsh/zselect` on object events) forces it.
+- **Z4b.4 — Native IPC message-passing (§8) behind coproc / `zsh/zselect`** · ◐ · zsh's coproc
+  and `zsh/zselect` already move their bytes through `device_read`/`device_write` (Z4a.6 routes
+  all native read/write), so the *data* path is native today; a dedicated native endpoint
+  (`object_send`/`object_recv` over a §8 channel, replacing the pipe) is the fuller primitive —
+  tracked refinement.
+- **Z4b.5 — Verify** · ◐ · foreground job-wait verified native (commands + pipes reap via
+  `object_wait`, `[obj-wait]` confirmed, shell functional, Linux unregressed).  **Background**
+  jobs (`sleep N &`) are blocked by a pre-existing kernel quirk *unrelated to signals/IPC*: zsh
+  redirects a bg job's stdin with `zclose(0); if (open("/dev/null"))` — it expects the open to
+  land on **fd 0**, but the kernel's `open` allocates from `i=3` ([posix.d](../src/kernel/d/core/syscalls/posix.d)
+  `for(int i=3; …)`), never reusing 0/1/2, so zsh errors `can't open /dev/null`.  Supporting fix
+  shipped this step: **`FD_NULL`** (`/dev/null` now opens, reads EOF, discards writes — verified
+  `cat /dev/null`).  Full bg jobs additionally need the POSIX `open`-lowest-free-fd change
+  (start the scan at 0), which is broad/desktop-risky — **tracked follow-up**, not done here.
 
 ### Z4c — env + cap + namespace + object hooks · ☐ · deps: Z4a
 

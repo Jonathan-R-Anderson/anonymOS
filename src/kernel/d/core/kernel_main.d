@@ -3,7 +3,7 @@
 module core.kernel_main;
 
 import core.task;
-import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN;   // Track B0 / Z4a native ABI
+import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -1950,6 +1950,14 @@ private void dispatchSyscall(int tid) {
             if (rdi == HOSQ_SPAWN) {
                 ret = execveTask(ctid, rsi, rdx, r10);
                 if (ret == 0) return;   // image loaded — re-enter from scratch (regs reset)
+                break;
+            }
+            if (rdi == HOSQ_WAIT) {
+                // Z4b.1: object_wait(pid, statusbuf, options) over wait4Task, with the SAME
+                // cooperative wait-block the Linux wait4 (case 61) uses — rewind RIP so the
+                // task transparently re-runs the wait on wake (the child's exit clears it).
+                ret = wait4Task(ctid, cast(int)rsi, rdx, r10);
+                if (ret == -4) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
                 break;
             }
             ret = hosQuery(rdi, rsi, rdx, r10);

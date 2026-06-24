@@ -56,6 +56,9 @@ enum : ulong {
     // Z4a.7 — Process (§4).  spawn_process loads an image into the (forked) caller — the
     // native-ABI counterpart of execve; handled in kernel_main.d (it re-enters userspace).
     HOSQ_SPAWN      = 15,  // spawn_process(rsi=path, rdx=argv, r10=envp) -> (re-enter) / -errno
+    // Z4b.1 — Process-exit event wait (§6 object_wait specialised to child-exit = SIGCHLD).
+    // Over wait4Task + the cooperative wait-block; handled in kernel_main.d (it can yield).
+    HOSQ_WAIT       = 16,  // object_wait(rsi=pid, rdx=statusbuf, r10=options) -> pid / 0 / -errno
 }
 
 // Z4a.5: native FS verbs.  object_open resolves the path through the object FS (the F0–F5

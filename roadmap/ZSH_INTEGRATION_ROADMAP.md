@@ -172,7 +172,7 @@ that gates the native ABI).
 - *Deliverable 7 (PTY/terminal).*  Remaining job-control items (`^Z`/`bg`/`fg`, process
   groups + `tcsetpgrp`) stay deferred per Z1.
 
-## Z4 — Native platform layer · ☐ · P: High · E: 5 · deps: Z1, Z2
+## Z4 — Native platform layer · ◐ IN PROGRESS · P: High · E: 5 · deps: Z1, Z2
 
 The big one: port zsh to native userspace via `platform/anonymos/`.
 
@@ -186,6 +186,51 @@ The big one: port zsh to native userspace via `platform/anonymos/`.
   personality keeps using `/hos-sh` (which already drives the object model and carries the
   rich prompt). zsh becomes the native shell when Z4a lands; `/hos-sh`'s object commands
   (`obj/id/ns/svc/sys`) survive as zsh builtins/plugins (Z9).
+
+**Decision (this pass): begin the true native-ABI port — start with the FS path.** Not the
+pragmatic "zsh-in-native-personality-over-the-Linux-ABI" shortcut; the real platform layer.
+The native ABI today is read-only `HOSQ_*` queries, so each phase below first adds the
+needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
+
+### Z4a — FS + TTY + process hooks → interactive native prompt
+
+- **Z4a.1 — Kernel native FS verbs** · ☐ · the foundation. Add `object_open`/`object_read`/
+  `object_write`/`object_close`/`object_lseek` as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`/`READ`/
+  `WRITE`/`CLOSE`/`LSEEK`) with a **per-task native-handle table**, resolving the path through
+  the object FS (so namespace gating applies). First cut may reuse the VFS internals behind
+  the handle; the *surface* is pure native ABI (a native task never calls Linux `open`).
+- **Z4a.2 — Native FS test helper** · ☐ · a tiny C program (like `store-app`) that
+  `object_open`+`object_read`s a known file via the verbs and prints it — proves the verbs
+  end-to-end + the native-handle lifecycle, independent of zsh.
+- **Z4a.3 — zsh `platform/anonymos/` host-hooks layer** · ☐ · add `Src/anon.c`/`anon.h` (built
+  into zsh): `anon_open/read/write/close/lseek` that call the native ABI when the process is
+  native personality, else fall through to the Linux syscall. The dispatch reads a one-time
+  "am I native?" probe (a `HOSQ_SYS` success ⇒ native).
+- **Z4a.4 — Wire zsh FS ops through the hooks** · ☐ · route zsh's file I/O (`open`/`read`/
+  `write`/`close`/`lseek` in `zsh.h`/`utils.c`/`input.c`) through the `anon_*` shims. **No
+  change to the parser/expander** — only the host I/O calls. Verify a sourced file
+  (`source /etc/zshrc`) is read via `object_read`.
+- **Z4a.5 — Native zsh launch** · ☐ · the Domain Manager's *native* shell flavor launches
+  zsh in the **native personality** (the `HOS_SYS_QUERY` gate open) via a native-shell image
+  marker, not `/hos-sh`; verify zsh's FS flows through the native ABI (serial: `object_open`).
+- **Z4a.6 — Native TTY (Device-object PTY)** · ☐ · expose the shell's controlling terminal as
+  a `Device` object (§12): `device_open`/`device_read`/`device_write` verbs over the PTY, and
+  route zsh's terminal I/O through them when native.
+- **Z4a.7 — Native process spawn** · ☐ · `spawn_process` verb (§4) — create a process from an
+  image cap + args/env in a namespace under an identity; route zsh's external-command exec
+  through it when native (fork/exec → `spawn_process`).
+- **Z4a.8 — Interactive native-ABI prompt** · ☐ · the milestone: an interactive zsh whose FS,
+  TTY, and process spawning all flow through the native object ABI, reached at a prompt.
+
+### Z4b — signals + IPC · ☐ · deps: Z4a
+
+- Native signal delivery (`object_subscribe`/`object_wait` for SIGCHLD/SIGINT, §6) and the
+  message-passing IPC primitives (§8) behind zsh's job-wait + coproc/`zsh/zselect`.
+
+### Z4c — env + cap + namespace + object hooks · ☐ · deps: Z4a
+
+- Environment + capability passing on spawn, `namespace`/`object` hooks; the object commands
+  (`obj/id/ns/svc/sys`) become first-class zsh builtins (overlaps Z9).
 
 ## Z5 — Configuration system · ☐ · P: Med · E: 3 · deps: Z1
 

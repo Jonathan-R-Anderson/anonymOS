@@ -1,0 +1,12 @@
+{
+  "services": [
+    { "name": "init", "executable": "/init", "identity": "System",
+      "capabilities": ["fs-rw"], "restart": "never" },
+    { "name": "net-broker", "executable": "/sbin/netd", "identity": "System",
+      "capabilities": ["call"], "depends": ["init"] }
+  ],
+  "ipc": [
+    { "name": "secure", "dh": true, "keyBroker": "net-broker", "audit": true,
+      "allow": [ { "from": "Personal", "to": "System", "broker": "net-broker" } ] }
+  ]
+}

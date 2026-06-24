@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets
+.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -15,6 +15,17 @@ include build.opts
 zsh:
 	$(MAKE) -C deps/zsh
 .NOTPARALLEL:
+
+# DECLARITIVE_MODEL_ROADMAP: the host-side declarative-config compiler
+# (anonymos-config), written in D + Phobos (the project's DC ?= ldc2 toolchain,
+# see build.opts).  This is a HOST tool, so it deliberately does NOT use the
+# kernel's cross DFLAGS: it needs std.json/std.digest/std.file.  Builds the CLI
+# (check|build|diff|switch|rollback|graph|schema) that lowers one JSON file into
+# the existing src/kernel/d/core object model.  `make anonymos-config`.
+anonymos-config:
+	$(MAKE) -C anonymos-config
+anonymos-config-test:
+	$(MAKE) -C anonymos-config test
 
 # =========================================================
 # Main Build
@@ -93,6 +104,14 @@ CURSOR_BLOB   := $(ASSET_BLOBS_DIR)/cursors.blob
 WALLPAPER_BLOB := $(ASSET_BLOBS_DIR)/wallpapers.blob
 THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
 DISPLAY_CONF := build/display.conf
+# DECLARITIVE_MODEL_ROADMAP §4: the verified declarative-config boot manifest.
+# Generated from a default system.json by the host `anonymos-config emit-manifest`
+# (a flat, parser-free, HMAC-signed TLV blob the kernel lowers at boot).  Set
+# DECLARATIVE_CONFIG to override the source JSON; set DECLARATIVE_CONFIG=none to
+# skip staging a manifest entirely (kernel falls through to hardcoded init).
+DECLARATIVE_CONFIG ?= anonymos-config/examples/system.json
+CONFIG_MANIFEST := build/manifest.blob
+ANONYMOS_CONFIG_BIN := anonymos-config/build/anonymos-config
 WAYLAND_SYSROOT := deps/gtk-stack/sysroot
 WAYLAND_SCANNER ?= wayland-scanner
 MUSL_CC := deps/musl/install/bin/musl-clang
@@ -149,6 +168,23 @@ build-display-conf:
 	printf 'display.force_mode=%s\n' "$(DISPLAY_FORCE_MODE)" >> $(DISPLAY_CONF)
 	printf 'gui.autostart=%s\n' "$(GUI_AUTOSTART)" >> $(DISPLAY_CONF)
 	printf 'gui.launcher_demo=%s\n' "$(GUI_LAUNCHER_DEMO)" >> $(DISPLAY_CONF)
+
+# DECLARITIVE_MODEL_ROADMAP §4: lower the default declarative config into the
+# HMAC-signed binary manifest the kernel applies at boot.  Built by the host
+# `anonymos-config` compiler (D + Phobos); needs ldc2 on the host (brew install
+# ldc on macOS, or `ldc` in the Docker build image).  Set DECLARATIVE_CONFIG=none
+# to omit the manifest and fall back to hardcoded init.
+build-config-manifest: $(ANONYMOS_CONFIG_BIN)
+ifneq ($(DECLARATIVE_CONFIG),none)
+	@echo "==== Generating manifest.blob from $(DECLARATIVE_CONFIG) (§4 config boot) ===="
+	mkdir -p $(dir $(CONFIG_MANIFEST))
+	$(ANONYMOS_CONFIG_BIN) emit-manifest -o $(CONFIG_MANIFEST) $(DECLARATIVE_CONFIG)
+else
+	@echo "==== DECLARATIVE_CONFIG=none — skipping manifest.blob (hardcoded init) ===="
+endif
+
+$(ANONYMOS_CONFIG_BIN):
+	$(MAKE) -C anonymos-config
 
 build-font-assets:
 	@echo "==== Staging Noto fonts (GUI G9 text rendering) ===="
@@ -258,7 +294,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -347,6 +383,15 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 
 	cp $(DISPLAY_CONF) cd/display.conf
 	@echo "Included display.conf + display-info (GUI G7)"
+
+	# DECLARITIVE_MODEL_ROADMAP §4: stage the verified config manifest as a boot
+	# module (kernel finds "manifest.blob" and applies it before PID1).  Omitted
+	# entirely when DECLARATIVE_CONFIG=none.
+	@if [ "$(DECLARATIVE_CONFIG)" != "none" ] && [ -f $(CONFIG_MANIFEST) ]; then \
+		cp $(CONFIG_MANIFEST) cd/manifest.blob; \
+		printf '\n    module_path: boot():/manifest.blob\n' >> cd/boot/limine/limine.conf; \
+		echo "Included manifest.blob (§4 declarative config: $(DECLARATIVE_CONFIG))"; \
+	fi
 
 	@if [ -n "$(DYNTEST)" ] && [ -f src/test-dyn/dyntest ]; then \
 		cp src/test-dyn/dyntest cd/dyntest; \

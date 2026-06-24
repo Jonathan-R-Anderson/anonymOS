@@ -326,31 +326,32 @@ commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
   zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
   Z4c.1 — a fuller-integration refinement.
 
-## Z5 — Configuration system · ◐ · P: Med · E: 3 · deps: Z1
+## Z5 — Configuration system · ◐ (core ✅) · P: Med · E: 3 · deps: Z1
 
 Make the declarative `shell.json` the **source of truth** for the user-facing shell config —
 today it is seeded at `/etc/shell.json` but nothing reads it (the zshrc settings are
 hardcoded).  A translator reads it at shell startup and applies the settings, layered system
 → user.  Tracked sub-steps:
 
-- **Z5.1 — `shell.json` schema** · ◐ · the declarative config (theme/prompt/history/completion/
-  autosuggestions/highlighting/plugins/aliases) is already seeded at `/etc/shell.json`; tidy the
-  `aliases` to real commands and add a marker so the translator is testable.  (Surfacing it as a
-  `/config` object-FS view + `/system/config/shell.json` path is a later cross-link — refinement.)
-- **Z5.2 — JSON→zsh translator (Deliverable 9)** · ☐ · a `zshenv`-style function
-  `__hos_apply_shell_json <file>` that maps `shell.json` keys to zsh: `history.size`→
-  `HISTSIZE`/`SAVEHIST`, `history.shared`→`SHARE_HISTORY`, `history.saveDuplicates:false`→
-  `HIST_IGNORE_DUPS`, `completion.menu`→`zstyle … menu select`, `completion.caseInsensitive`→
-  `zstyle … matcher-list`, and the `aliases` block→`alias`.  **Pure zsh** (reads the file with
-  `read` + matches with `[[ … =~ … ]]`/`$match`), so it needs no external tool and runs in both
-  flavors.  (A native C/D JSON-parser binary is the fuller Deliverable-9 form — refinement.)
-- **Z5.3 — Wire into startup + resolution priority** · ☐ · at the end of `/etc/zshrc` apply the
-  **system** `/etc/shell.json` then the **user** `~/.shell.json` (user overrides system); zsh
-  sources `~/.zshrc` last, so an explicit user rc stays the final word.  (The brief's exact
-  *user JSON > user `.zshrc`* ordering would need a one-shot `precmd` hook after the rc — refinement.)
-- **Z5.4 — Verify** · ☐ · a JSON-only alias + a `history.size` value show up in the running shell
-  (`alias z5demo`, `$HISTSIZE`), a user `~/.shell.json` overrides the system one, both flavors,
-  no regression to the hardcoded defaults.
+- **Z5.1 — `shell.json` schema** · ✅ DONE · the declarative config (theme/prompt/history/
+  completion/autosuggestions/highlighting/plugins/aliases) seeded at `/etc/shell.json`; aliases
+  tidied to real commands + a `z5demo` marker.  (Surfacing it as a `/config` object-FS view +
+  `/system/config/shell.json` path is a later cross-link — refinement.)
+- **Z5.2 — JSON→zsh translator (Deliverable 9)** · ✅ DONE · `__hos_apply_shell_json <file>` in
+  `/etc/zshrc` maps `shell.json` keys to zsh: `history.size`→`HISTSIZE`/`SAVEHIST`,
+  `history.shared`→`SHARE_HISTORY`, `history.saveDuplicates:false`→`HIST_IGNORE_DUPS`,
+  `completion.menu`→`zstyle … menu select`, `completion.caseInsensitive`→`matcher-list`, and the
+  `aliases` block→`alias`.  **Pure zsh** (reads with `read`, matches with `[[ … =~ … ]]`/`$match`/
+  glob), so no external tool — runs in both flavors (native reads the file via `object_open`).
+  (A native C/D JSON-parser binary is the fuller Deliverable-9 form — refinement.)
+- **Z5.3 — Wire into startup + resolution priority** · ✅ DONE · `/etc/zshrc` applies the **system**
+  `/etc/shell.json` then the **user** `~/.shell.json` (user overrides system); zsh sources
+  `~/.zshrc` last, so an explicit user rc stays the final word.  (The brief's exact *user JSON >
+  user `.zshrc`* ordering would need a one-shot `precmd` hook — refinement.)
+- **Z5.4 — Verify** · ✅ DONE · both flavors: `z5demo`→`Z5-CONFIG-LIVE` (JSON alias),
+  `$HISTSIZE`=100000 (JSON `history.size`), `setopt|grep share`→`sharehistory` (JSON
+  `history.shared`); resolution priority — wrote `{"history":{"size":42}}` to `~/.shell.json`,
+  re-sourced, `$HISTSIZE`=42 (user JSON overrode system); hardcoded defaults unregressed, no faults.
 
 ## Z6 — Prompt: identity / namespace / capabilities / path · ✅ DONE (current shells; carries to zsh) · P: High · E: 2
 

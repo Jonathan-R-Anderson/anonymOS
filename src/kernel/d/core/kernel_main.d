@@ -430,6 +430,7 @@ private void exitTask(int tid, int code) {
 
     // Notify parent
     int parent = t.parentId;
+    klog("[exitT tid="); klog_dec(cast(uint)tid); klog(" par="); klog_dec(cast(uint)parent); klog(" pact="); klog_dec((parent>=0&&parent<MAX_TASKS)?(g_tasks[parent].active?1:0):9); klog("]\n"); // TEMP
     // parent >= 0: task 0 (the main process) can also be a parent — children of
     // it (fork/vfork) must set its childExited[] so its wait4() returns.
     if (parent >= 0 && parent < MAX_TASKS && parent != tid) {
@@ -1147,6 +1148,8 @@ private void maybeSpawnWaylandClient() {
 
 private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     auto task = &g_tasks[tid];
+    static uint g_w4N; const bool w4log = ((g_w4N++ & 0x1FFF) == 0); // TEMP throttle
+    if (w4log) { klog("[w4 tid="); klog_dec(cast(uint)tid); klog(" pid="); klog_dec(cast(uint)waitPid); klog("]\n"); }
 
     // waitPid semantics (Track A A4): -1 = any child; 0 = any child in the caller's
     // process group; < -1 = any child in process group |waitPid|; > 0 = that pid.
@@ -1169,6 +1172,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
                 task.childExited[c] = false;
                 if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
                 int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(c);
+                klog("[w4 REAP tid="); klog_dec(cast(uint)tid); klog(" c="); klog_dec(cast(uint)c); klog(" pid="); klog_dec(cast(uint)childPid); klog("]\n"); // TEMP
                 releaseTask(c);
                 return cast(long)childPid;
             }
@@ -1180,6 +1184,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
             task.childExited[c] = false;
             if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
             int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(cast(int)c);
+            klog("[w4 REAPp tid="); klog_dec(cast(uint)tid); klog(" c="); klog_dec(cast(uint)c); klog(" pid="); klog_dec(cast(uint)childPid); klog("]\n"); // TEMP
             releaseTask(c);
             return cast(long)childPid;
         }
@@ -1200,7 +1205,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
             g_tasks[targetTid].parentId == tid)
             hasLivingChild = true;
     }
-    if (!hasLivingChild) return -10; // ECHILD — no matching child at all
+    if (!hasLivingChild) { if (w4log) { klog("[w4 ECHILD tid="); klog_dec(cast(uint)tid); klog("]\n"); } return -10; } // ECHILD — no matching child at all
 
     // WNOHANG?
     enum WNOHANG = 1;
@@ -1210,6 +1215,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     // the task transparently re-runs wait4 when a child exits (no spurious EINTR).
     task.waiting       = true;
     task.waitingForPid = anyChild ? -1 : targetTid;
+    if (w4log) { klog("[w4 BLOCK tid="); klog_dec(cast(uint)tid); klog(" wfp="); klog_dec(cast(uint)task.waitingForPid); klog("]\n"); }
     return -4;
 }
 
@@ -1617,6 +1623,8 @@ private void dispatchSyscall(int tid) {
     ulong r10 = x64LastSyscallR10;
     ulong r8  = x64LastSyscallR8;
     ulong r9  = x64LastSyscallR9;
+
+    { static uint g_scN; if ((g_scN++ & 0x1FFF) == 0) { klog("[sc t="); klog_dec(cast(uint)tid); klog(" n="); klog_dec(cast(uint)rax); klog(" di="); klog_dec(cast(uint)rdi); klog("]\n"); } } // TEMP throttled syscall trace
 
     // Per-syscall trace — extremely verbose (hundreds of thousands of lines) and a
     // heavy perf drain since every syscall writes to the serial port.  Gated off by

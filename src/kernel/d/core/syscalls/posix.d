@@ -160,7 +160,7 @@ public void fdtabForkCopy(int srcTabId, int dstTabId) {
             if (p !is null) ++p.readers;
         } else if (f.type == FileType.FD_PIPE_WRITE) {
             auto p = getPipe(cast(size_t)pipeIdFromFd(f));
-            if (p !is null) ++p.writers;
+            if (p !is null) { ++p.writers; klog("[pw FORK i="); klog_dec(cast(uint)pipeIdFromFd(f)); klog(" fd="); klog_dec(cast(uint)i); klog(" w="); klog_dec(cast(uint)p.writers); klog("]\n"); } // TEMP
         }
         if (f.type != FileType.FD_NONE)
             publishFdInTable(dstTabId, cast(int)i, f, srcTabId, cast(int)i);
@@ -557,6 +557,7 @@ private int allocPipeId() {
             p.inUse  = true;
             p.readers = 1;
             p.writers = 1;
+            klog("[pw NEW i="); klog_dec(cast(uint)i); klog(" w=1]\n"); // TEMP pipe-trace
             return cast(int)i;
         }
     }
@@ -1760,7 +1761,9 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         if (pipe_ is null) return negErrno(EBADF);
         size_t avail = pipe_.head - pipe_.tail;
         if (avail == 0) {
-            if (pipe_.writers <= 0) return 0; // EOF
+            if (pipe_.writers <= 0) { klog("[pw EOF i="); klog_dec(cast(uint)pipeIdFromFd(f)); klog("]\n"); return 0; } // TEMP / EOF
+            static uint g_pwBlkN = 0;
+            if ((g_pwBlkN++ & 0x3FFF) == 0) { klog("[pw BLK i="); klog_dec(cast(uint)pipeIdFromFd(f)); klog(" w="); klog_dec(cast(uint)pipe_.writers); klog(" t="); klog_dec(cast(uint)g_current_task_id); klog("]\n"); } // TEMP
             return negErrno(EAGAIN);
         }
         size_t toRead = _count < avail ? cast(size_t)_count : avail;
@@ -2821,6 +2824,7 @@ private long fileObjClose(ObjHeader* oh) {
         auto pipe_ = getPipe(cast(size_t)pipeIdFromFd(f));
         if (pipe_ !is null) {
             --pipe_.writers;
+            klog("[pw CLOSE i="); klog_dec(cast(uint)pipeIdFromFd(f)); klog(" w="); klog_dec(cast(uint)pipe_.writers); klog(" t="); klog_dec(cast(uint)g_current_task_id); klog("]\n"); // TEMP
             if (pipe_.readers <= 0 && pipe_.writers <= 0)
                 pipe_.inUse = false;
         }
@@ -6832,7 +6836,7 @@ private void incPipeRef(int fd) {
         if (p !is null) ++p.readers;
     } else if (f.type == FileType.FD_PIPE_WRITE) {
         auto p = getPipe(cast(size_t)pipeIdFromFd(f));
-        if (p !is null) ++p.writers;
+        if (p !is null) { ++p.writers; klog("[pw DUP i="); klog_dec(cast(uint)pipeIdFromFd(f)); klog(" fd="); klog_dec(cast(uint)fd); klog(" w="); klog_dec(cast(uint)p.writers); klog("]\n"); } // TEMP
     } else if (f.type == FileType.FD_SOCKET) {
         // dup of a socket fd: another reference to the same LocalSocket, so the
         // socket (and its connection to the peer) must outlive the original fd.

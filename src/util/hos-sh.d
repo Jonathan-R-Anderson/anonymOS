@@ -144,6 +144,9 @@ int runCommand(char* cmd) @nogc nothrow {
     else if (strncmp(cmd, "ns".ptr,  2) == 0) runQuery(HOSQ_NAMESPACES, "NAMESPACES\n".ptr);
     else if (strncmp(cmd, "svc".ptr, 3) == 0) runQuery(HOSQ_SERVICES,   "SERVICES\n".ptr);
     else if (strcmp(cmd, "sys".ptr) == 0)     runQuery(HOSQ_SYS,        null);
+    // Z6.1: print the kernel identity line (HOSQ_WHOAMI: "user@namespace [<rights ceiling>]").
+    // Native zsh uses `/hos-sh whoami` to build a prompt that shows the full native identity.
+    else if (strcmp(cmd, "whoami".ptr) == 0)  printf("%s\n", g_who.ptr);
     else printf("hos-sh: unknown command '%s' (try 'help')\n", cmd);
     return 1;
 }

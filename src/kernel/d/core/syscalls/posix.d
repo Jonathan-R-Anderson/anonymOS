@@ -4041,6 +4041,18 @@ if [[ "$EPIN_SHELL" == native ]]; then
   ns()  { /hos-sh ns  "$@" }
   svc() { /hos-sh svc "$@" }
   sys() { /hos-sh sys "$@" }
+  # Z6.1: a native prompt from the kernel identity — "user@namespace [<full rights ceiling>]"
+  # (e.g. ...exec admin) via HOSQ_WHOAMI, so the native shell's prompt visibly differs from the
+  # Linux flavor's EPIN_*-derived one.  zsh can't issue the native syscall, so /hos-sh prints it.
+  # NB: routed through a temp file + the read builtin, NOT command substitution: $(...) that
+  # captures a spawned child's pipe currently hangs in native zsh (tracked); writing to a file
+  # and reading it with the read builtin avoids the capture pipe entirely.  Computed once (the
+  # identity is fixed per session); %~ (path) and %# still update live.
+  /hos-sh whoami > "$HOME/.hos_id" 2>/dev/null
+  __hos_id=; read -r __hos_id < "$HOME/.hos_id" 2>/dev/null
+  rm -f "$HOME/.hos_id"
+  [[ -n "$__hos_id" ]] && PROMPT="${__hos_id//\%/%%}:%~%# "
+  unset __hos_id
 fi
 
 # --- Z5: declarative shell.json -> zsh config --------------------------------

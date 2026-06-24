@@ -371,6 +371,24 @@ in both current shells today**, and the same data feeds the zsh theme later:
   (Linux), so the multi-line `╭─ user@machine … ├─ Identity … ├─ Namespace … ╰─ λ` layout
   from the brief is a theme, not hardcoded shell logic.
 
+- **Z6.1 — Native zsh prompt from the kernel identity** · ✅ DONE · native *zsh* now shows the
+  **full native identity** — `user@namespace [<full rights ceiling>]` — instead of the Linux-style
+  `PS1`.  Added a `whoami` verb to `/hos-sh` (prints the `HOSQ_WHOAMI` string), and in `/etc/zshrc`
+  under the `EPIN_SHELL==native` gate set `PROMPT` from it.  Verified live: the native prompt reads
+  `user@System [fs:rw net:nat ipc exec admin]:/%` (note `user@namespace` + the `exec admin` rights
+  the Linux flavor omits); Linux flavor keeps `[System] user [fs:rw net:nat ipc]:/%` (gate holds).
+  zsh can't issue the syscall itself, and `$(/hos-sh whoami)` would hit the bug below, so the value
+  is routed through a temp file + the `read` builtin (no capture pipe).  Computed once; `%~`/`%#`
+  update live.  A foretaste of the Z7 theme reading identity natively.
+
+> **KNOWN BUG (found during Z6.1) — command substitution `$(cmd)` hangs.** Capturing a spawned
+> child's output via a pipe — `X=$(whoami)` — wedges the shell in **both** flavors (the parent's
+> pipe read never sees EOF; the child runs and the kernel's pipe `close`/EOF logic looks correct on
+> inspection, so it needs live tracing of the pipe writer refcount through fork/exec/exit).  Plain
+> pipes between children (`a | b`), redirects (`> f`), and `$(<file)`/`read < f` all work, so the
+> Z6.1 prompt and the Z5 translator are unaffected.  This is **fundamental for Z7/Z8/Z9** (themes,
+> completion, plugins all use `$()`), so it should be fixed before them — tracked as the next item.
+
 ## Z7 — Theme engine · ☐ · P: Med · E: 3 · deps: Z5, Z6
 
 - Oh-My-Zsh-style themes under `themes/`; ship `themes/anonymos.zsh-theme` with the

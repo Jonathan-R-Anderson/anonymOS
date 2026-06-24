@@ -35,6 +35,10 @@ enum long HOSQ_NAMESPACES = 3;
 enum long HOSQ_SERVICES   = 4;
 enum long HOSQ_SYS        = 5;
 enum long HOSQ_WHOAMI     = 6;
+enum long HOSQ_OPEN       = 7;   // Z4a: object_open(path, rights) -> handle
+enum long HOSQ_READ       = 8;   // object_read(handle, buf, len)  -> bytes
+enum long HOSQ_CLOSE      = 10;  // object_close(handle)           -> 0
+enum long CAP_RIGHT_READ_V = 1;  // CAP_RIGHT_READ = bit 0
 
 __gshared char[8192] g_buf;
 __gshared char[128]  g_who;   // "user@namespace" (cached)
@@ -57,6 +61,7 @@ void help() @nogc nothrow {
     printf("  (ns)          list namespaces\n");
     printf("  (svc)         list services and their state\n");
     printf("  (sys)         system object summary\n");
+    printf("  (cat \"/path\") read a file through the NATIVE FS verbs (object_open/read)\n");
     printf("  (cd \"/path\")  change the current path (prompt shows user@namespace:/path)\n");
     printf("  (help)        this list\n");
     printf("  (exit)        leave the native shell\n");
@@ -88,6 +93,22 @@ char* lfeNormalize(char* s) @nogc nothrow {
     while (o > 0 && g_lfe[o-1] == ' ') --o;
     g_lfe[o] = 0;
     return g_lfe.ptr;
+}
+
+// Z4a.2: read a file through the NATIVE FS verbs (object_open/read/close) — never a Linux
+// open().  Proves the native-ABI filesystem path end-to-end from a native-personality task.
+void catFile(const(char)* path) @nogc nothrow {
+    while (*path == ' ') ++path;
+    const long h = syscall(HOS_SYS_QUERY, HOSQ_OPEN, CAP_RIGHT_READ_V, cast(long)path, 0);
+    if (h < 0) { printf("hos-sh: cat: %s: native open failed (errno %ld)\n", path, -h); return; }
+    char[512] buf = void;
+    for (;;) {
+        const long n = syscall(HOS_SYS_QUERY, HOSQ_READ, h, cast(long)buf.ptr, cast(long)buf.length);
+        if (n <= 0) break;
+        fwrite(buf.ptr, 1, cast(size_t)n, stdout);
+    }
+    fflush(stdout);
+    syscall(HOS_SYS_QUERY, HOSQ_CLOSE, h, 0, 0);
 }
 
 // Build "user@namespace" from the native whoami query (once).
@@ -130,6 +151,7 @@ extern(C) int main() @nogc nothrow {
             char* arg = cmd + 3; while (*arg == ' ') ++arg;
             if (chdir(arg) != 0) printf("hos-sh: cd: %s: no such directory\n", arg);
         }
+        else if (strncmp(cmd, "cat ".ptr, 4) == 0) catFile(cmd + 4);
         else if (strncmp(cmd, "obj".ptr, 3) == 0) runQuery(HOSQ_OBJECTS,    "TYPE                COUNT\n".ptr);
         else if (strncmp(cmd, "id".ptr,  2) == 0) runQuery(HOSQ_IDENTITIES, "IDENTITY DOMAINS\n".ptr);
         else if (strncmp(cmd, "ns".ptr,  2) == 0) runQuery(HOSQ_NAMESPACES, "NAMESPACES\n".ptr);

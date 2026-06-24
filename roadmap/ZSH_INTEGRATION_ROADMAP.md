@@ -194,14 +194,15 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
 
 ### Z4a — FS + TTY + process hooks → interactive native prompt
 
-- **Z4a.1 — Kernel native FS verbs** · ☐ · the foundation. Add `object_open`/`object_read`/
-  `object_write`/`object_close`/`object_lseek` as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`/`READ`/
-  `WRITE`/`CLOSE`/`LSEEK`) with a **per-task native-handle table**, resolving the path through
-  the object FS (so namespace gating applies). First cut may reuse the VFS internals behind
-  the handle; the *surface* is pure native ABI (a native task never calls Linux `open`).
-- **Z4a.2 — Native FS test helper** · ☐ · a tiny C program (like `store-app`) that
-  `object_open`+`object_read`s a known file via the verbs and prints it — proves the verbs
-  end-to-end + the native-handle lifecycle, independent of zsh.
+- **Z4a.1 — Kernel native FS verbs** · ✅ DONE · `object_open`/`read`/`write`/`close`/`lseek`
+  as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`=7…`LSEEK`=11) in `hoscall.d`, with a per-task
+  `g_nativeFd[]` native-handle table; the path resolves through the object FS (namespace-
+  gated) and the handle reuses the VFS fd behind the scenes — the *surface* is pure native
+  ABI (a native task never calls Linux `open`). Cleared on exec/exit (`hosClearHandles`).
+- **Z4a.2 — Native FS test** · ✅ DONE · added a native `cat <path>` to `hos-sh` (already a
+  native-personality task) that drives `object_open`+`object_read`+`object_close`. Verified
+  live: `cat /etc/passwd` printed the file through the native ABI — proves the verbs +
+  handle lifecycle end-to-end.
 - **Z4a.3 — zsh `platform/anonymos/` host-hooks layer** · ☐ · add `Src/anon.c`/`anon.h` (built
   into zsh): `anon_open/read/write/close/lseek` that call the native ABI when the process is
   native personality, else fall through to the Linux syscall. The dispatch reads a one-time

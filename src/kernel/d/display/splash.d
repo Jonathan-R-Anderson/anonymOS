@@ -25,8 +25,7 @@ import display.canvas;
 import display.framebuffer : framebufferAvailable, initFramebuffer;
 import display.common : glyphWidth, glyphHeight;
 import core.console : g_fbConsoleEnabled;
-import core.ticks : pitMs;
-import core.random : rdtsc; // TSC counter — paces the splash (pitMs/IRQ0 is frozen pre-interrupts)
+import core.random : rdtsc; // TSC — the only monotonic counter usable with interrupts off
 import core.io : klog;
 // The bootstrap-level Limine framebuffer pointer (set in bootstrap_kernel
 // before d_kernel_main). The display module's own g_fb is NOT initialized until
@@ -38,25 +37,15 @@ import arch.x86_64.bootstrap : g_fb;
 // splash. pitMs()/IRQ0 is frozen before interrupts come on (at the iretq into
 // userspace), so we calibrate TSC against pitMs() (briefly enabling interrupts)
 // then run the loop on TSC alone.
-// Calibrate TSC cycles-per-millisecond against the PIT. The splash runs before
-// interrupts are enabled (IF comes on only at the iretq into userspace), so
-// pitMs()/IRQ0 is frozen during the loop. We briefly enable interrupts (sti),
-// sample rdtsc across a known pitMs() interval to get cycles/ms, then disable
-// (cli) again — after which the splash loop paces itself on rdtsc alone.
-ulong calibrateTscPerMs() @nogc nothrow
-{
-    asm @nogc nothrow { sti; }   // allow PIT IRQ0 to advance pitMs()
-    const ulong t0 = rdtsc();
-    const ulong m0 = pitMs();
-    // spin ~20ms for a stable measurement (enough ticks to reduce jitter)
-    while (pitMs() - m0 < 20) {}
-    const ulong t1 = rdtsc();
-    const ulong m1 = pitMs();
-    asm @nogc nothrow { cli; }   // back to interrupt-off for the splash loop
-    const ulong dms = m1 - m0;
-    if (dms == 0) return 3_000_000UL; // fallback: assume ~3 GHz
-    return (t1 - t0) / dms;
-}
+// The splash runs BEFORE interrupts are enabled (IF comes on only at the
+// iretq into userspace), so pitMs()/IRQ0 is frozen and sti is unsafe (firing
+// IRQ0 raw, outside kernelLoop's software dispatch, page-faults). We can't
+// calibrate TSC against pitMs either. So pace on TSC with a rough estimate:
+// modern x86 (incl. QEMU/KVM host passthrough) is ~2-4 GHz; assume 3 GHz.
+// The exact wall-time is cosmetic — what matters is the animation runs then
+// ENDS (the prior bug was it never ended). If a host is faster/slower the
+// splash is just a touch quicker/longer; it always terminates.
+private enum ulong TSC_PER_MS_ESTIMATE = 3_000_000UL;
 
 extern (C) @nogc nothrow:
 
@@ -334,8 +323,8 @@ public void splashRun()
     const uint h = canvas.height;
     seedParticles(w, h);
 
-    // Calibrate TSC (briefly enables interrupts, then disables for the loop).
-    const ulong cyclesPerMs = calibrateTscPerMs();
+    // Pace on TSC with the rough estimate (interrupts are off; see note above).
+    const ulong cyclesPerMs = TSC_PER_MS_ESTIMATE;
     const ulong durationCycles = cyclesPerMs * SPLASH_DURATION;
     const ulong frameCycles = cyclesPerMs * FRAME_MS;
 

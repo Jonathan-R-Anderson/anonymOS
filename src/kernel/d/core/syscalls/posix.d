@@ -4043,6 +4043,34 @@ if [[ "$EPIN_SHELL" == native ]]; then
   sys() { /hos-sh sys "$@" }
 fi
 
+# --- Z5: declarative shell.json -> zsh config --------------------------------
+# AnonymOS keeps the user-facing shell config in a declarative /etc/shell.json (history,
+# completion, aliases).  This translator reads it at startup and applies the known keys onto
+# zsh, so editing the JSON changes the shell.  Pure zsh (no jq/sed) — it scans the file line
+# by line and matches with zsh's =~ / glob, so it runs in both the Linux and native flavors.
+__hos_apply_shell_json() {
+  local f=$1 line inaliases=0
+  [[ -r $f ]] || return 0
+  while IFS= read -r line; do
+    if [[ $line == *'"size"'* ]] && [[ $line =~ '"size"[^0-9]*([0-9]+)' ]]; then
+      HISTSIZE=$match[1]; SAVEHIST=$match[1]
+    fi
+    [[ $line == *'"shared"'*true* ]]          && setopt SHARE_HISTORY
+    [[ $line == *'"saveDuplicates"'*false* ]] && setopt HIST_IGNORE_DUPS
+    [[ $line == *'"menu"'*true* ]]            && zstyle ':completion:*' menu select
+    [[ $line == *'"caseInsensitive"'*true* ]] && zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
+    if [[ $line == *'"aliases"'* ]]; then inaliases=1; continue; fi
+    if (( inaliases )); then
+      [[ $line == *'}'* ]] && { inaliases=0; continue; }
+      [[ $line =~ '"([^"]+)"[[:space:]]*:[[:space:]]*"([^"]*)"' ]] && alias -- "$match[1]=$match[2]"
+    fi
+  done < $f
+}
+# Resolution: system JSON first, then per-user ~/.shell.json overrides it.  zsh sources
+# ~/.zshrc after this file, so an explicit user rc still gets the final word.
+__hos_apply_shell_json /etc/shell.json
+[[ -r "$HOME/.shell.json" ]] && __hos_apply_shell_json "$HOME/.shell.json"
+
 # --- local override hook (not overwritten on update) ---
 [[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
 `;
@@ -4068,10 +4096,9 @@ fi
     "plugins": ["git","history","extract","fzf","capabilities","namespace","identity","objects"],
     "aliases": {
       "ll": "ls -lah",
+      "la": "ls -A",
       "gs": "git status",
-      "objects": "objctl",
-      "namespace": "nsctl",
-      "identity": "identityctl"
+      "z5demo": "echo Z5-CONFIG-LIVE"
     }
   }
 }

@@ -326,17 +326,31 @@ commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
   zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
   Z4c.1 — a fuller-integration refinement.
 
-## Z5 — Configuration system · ☐ · P: Med · E: 3 · deps: Z1
+## Z5 — Configuration system · ◐ · P: Med · E: 3 · deps: Z1
 
-- Standard zsh config files (`/etc/zsh/*`, `~/.z*`) **plus** the declarative `shell.json`.
-- Resolution priority (a `zshenv` shim reads JSON and exports the derived settings before
-  the user rc runs): **user JSON → user `.zshrc` → system JSON → system `zshrc` → defaults.**
-- `shell.json` lives at `/system/config/shell.json` (and is surfaceable as a `/config`
-  object-FS view — [FILESYSTEM.md](../docs/FILESYSTEM.md) F2). Ship the full default
-  (theme/prompt/history/completion/autosuggestions/highlighting/plugins/aliases) from the
-  brief.
-- A small JSON→zsh translator (a native plugin or a `zshenv` function) maps `shell.json`
-  keys to `setopt`/`zstyle`/`PROMPT`/`alias`. *Deliverable 9 (JSON parser).*
+Make the declarative `shell.json` the **source of truth** for the user-facing shell config —
+today it is seeded at `/etc/shell.json` but nothing reads it (the zshrc settings are
+hardcoded).  A translator reads it at shell startup and applies the settings, layered system
+→ user.  Tracked sub-steps:
+
+- **Z5.1 — `shell.json` schema** · ◐ · the declarative config (theme/prompt/history/completion/
+  autosuggestions/highlighting/plugins/aliases) is already seeded at `/etc/shell.json`; tidy the
+  `aliases` to real commands and add a marker so the translator is testable.  (Surfacing it as a
+  `/config` object-FS view + `/system/config/shell.json` path is a later cross-link — refinement.)
+- **Z5.2 — JSON→zsh translator (Deliverable 9)** · ☐ · a `zshenv`-style function
+  `__hos_apply_shell_json <file>` that maps `shell.json` keys to zsh: `history.size`→
+  `HISTSIZE`/`SAVEHIST`, `history.shared`→`SHARE_HISTORY`, `history.saveDuplicates:false`→
+  `HIST_IGNORE_DUPS`, `completion.menu`→`zstyle … menu select`, `completion.caseInsensitive`→
+  `zstyle … matcher-list`, and the `aliases` block→`alias`.  **Pure zsh** (reads the file with
+  `read` + matches with `[[ … =~ … ]]`/`$match`), so it needs no external tool and runs in both
+  flavors.  (A native C/D JSON-parser binary is the fuller Deliverable-9 form — refinement.)
+- **Z5.3 — Wire into startup + resolution priority** · ☐ · at the end of `/etc/zshrc` apply the
+  **system** `/etc/shell.json` then the **user** `~/.shell.json` (user overrides system); zsh
+  sources `~/.zshrc` last, so an explicit user rc stays the final word.  (The brief's exact
+  *user JSON > user `.zshrc`* ordering would need a one-shot `precmd` hook after the rc — refinement.)
+- **Z5.4 — Verify** · ☐ · a JSON-only alias + a `history.size` value show up in the running shell
+  (`alias z5demo`, `$HISTSIZE`), a user `~/.shell.json` overrides the system one, both flavors,
+  no regression to the hardcoded defaults.
 
 ## Z6 — Prompt: identity / namespace / capabilities / path · ✅ DONE (current shells; carries to zsh) · P: High · E: 2
 

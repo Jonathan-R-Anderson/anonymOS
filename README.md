@@ -1,344 +1,402 @@
-# HanonymOS
+# anonymOS
 
-HanonymOS is an experimental 64-bit operating system that mixes a Haskell kernel core with low-level runtime, bootstrap, and hardware support written in D, C, and assembly. The kernel's high-level scheduling, task, syscall, and address-space logic lives in Haskell; hard realtime and hardware-facing work stays in D and C where that is the practical choice.
+**A capability-secured, object-graph operating system** — a from-scratch x86_64
+kernel that boots a real Linux desktop while, underneath, reducing everything
+(tasks, files, windows, identities, services, even the Linux personality itself)
+to a single capability-gated object model with a declarative configuration system.
 
-## Current Status
+The kernel boots Limine → a D kernel (no GC, `-betterC`) → a **Linux
+personality** that runs unmodified musl binaries, BusyBox, Weston, GTK apps and
+the real Z Shell — all answering to ~160 syscall numbers. Beneath that surface,
+*nothing* is a Unix uid or a file inode: every resource is an **Object** with
+identity, capabilities, and typed edges in a validated **Object-Reference-Graph**.
+One JSON file (`system.json`) is the declarative source of truth for the whole
+running system.
 
-**May 2026 — desktop stack built, process creation is the critical gap**
-
-The kernel boots, enters Haskell land, and runs the init task with a rich Linux-compatibility surface. A large software stack has been built and loaded into the ISO. The missing piece is process creation: `fork`, `clone`, and `execve` all return `ENOSYS` because the Haskell task scheduler does not yet implement them. Everything above that layer is waiting on this single unlock.
-
-### What works today
-
-**Kernel and boot:**
-- ISO builds with `make hos.iso` and boots reliably under QEMU
-- D bootstrap → Haskell kernel → Linux-personality init task handoff
-- Serial console and framebuffer console
-- Memory manager: physical page allocator, paging, `brk`, `mmap`/`munmap` with allocate-on-demand BSS and copy-on-write
-- JHC pipeline: Haskell → C → freestanding kernel binary
-
-**Linux compatibility layer (~100+ syscalls):**
-- Core I/O: `read`, `write`, `open`, `close`, `stat`/`fstat`/`lstat`, `lseek`, `ioctl`, `fcntl`
-- Memory: `mmap`, `munmap`, `mprotect`, `brk`, `memfd_create` with `ftruncate` + shared `mmap`
-- File ops: `openat`, `newfstatat`, `readlinkat`, `faccessat2`, `getdents64`, `chdir`, `getcwd`, `access`
-- Pipes: `pipe`/`pipe2` with ring-buffer `PipeBuf`, ref-counted lifetime, `dup`/`dup2`/`dup3`
-- Sockets: `socket`, `bind`, `listen`, `connect`, `accept`, `send*`, `recv*`, `getsockopt`, `setsockopt`
-- IPC: `epoll_create1`/`epoll_ctl`/`epoll_pwait`, `eventfd`/`eventfd2`, `timerfd_create`/`timerfd_settime`, `socketpair`, `SCM_RIGHTS` fd passing over `sendmsg`/`recvmsg`
-- Signals: `rt_sigaction`, `rt_sigprocmask`, `rt_sigpending`, `rt_sigsuspend`, `rt_sigtimedwait`, `sigaltstack`
-- Time: `clock_gettime`, `gettimeofday`, `nanosleep`, `settimeofday`, `adjtimex`
-- Process info: `getpid`, `gettid`, `getuid`/`gid`/`euid`/`egid`, `getppid`, `uname`, `arch_prctl`
-- Threading: `futex`, `set_tid_address`, `set_robust_list`, `rseq`, `sched_setaffinity`, `clone` (ENOSYS)
-- Process: `fork` (ENOSYS), `execve` (ENOSYS), `exit`/`exit_group`, `wait4` (ECHILD), `kill`, `tgkill`
-- Misc: `getrandom`, `writev`, `statfs`, `poll`, `select`, `prlimit64`, `setrlimit`, `prctl`, `reboot`
-- xattr group (188–199): ENOTSUP stubs
-- DRM/KMS: `ioctl` on `/dev/dri/card0` handles 23 cases including `MODE_GETRESOURCES`, `MODE_GETCRTC`, `MODE_SETCRTC`, `MODE_GETCONNECTOR`, `MODE_CREATE_DUMB`, `MODE_MAP_DUMB`, `MODE_PAGE_FLIP`
-
-**Virtual filesystem:**
-- `/proc`: `version`, `self/cgroup`, `self/environ`, `self/maps` (stub), `mounts`
-- `/dev`: `console`, `null`, `zero`, `urandom`, `random`, `tty`, `dri/card0`, `dri/renderD128`, `input/event0-1`
-- `/sys`: DRM connector status, input device names
-- `/etc`: `hostname`, `passwd`, `group`, `fstab`, `rc.conf`, `inittab`, `machine-id`, `locale.conf`, `elogind/logind.conf`, `dbus-1/system.conf`, GTK/font config
-- `/run`: `openrc/` tree, `user/1000/wayland-0` (in-kernel Wayland socket), `seatd.sock` stub
-
-**Userland binaries built and loaded into ISO:**
-- `init.elf` — kernel launches this as the first task
-- `busybox` — BusyBox 1.36.1 (ash + coreutils + grep + sed + awk + tar + vi), static musl build
-- `openrc` — OpenRC 0.54 init system, static musl build
-- `elogind` — elogind 255.4 session manager, static musl build
-- `gtk-hello` — GTK3 test binary (18-package static build chain)
-- `mutter` — Mutter 44.9 compositor (11-package static build chain including Mesa 23.3.5 swrast)
-- `Hyprland` — external compositor target; source is vendored in `deps/hyprland` and included in the ISO only after `make deps-hyprland` produces a binary
-
-**Display:**
-- Framebuffer bridge initialized at boot, DRM/KMS stubs expose it as `/dev/dri/card0`
-- In-kernel Wayland server listening on `/run/user/1000/wayland-0`
-- DRM dumb buffer mmap: full-screen GEM buffers map directly to the Limine framebuffer physical address (page flip = no-op), other sizes allocate physical RAM
-- Input polling infrastructure (USB HID) wired but deferred until a task owns the input queue
+> The boot banner reads `=== EpinAnonymOS ===`. Code and docs use the names
+> interchangeably.
 
 ---
 
-## Critical Blocker: Process Creation
+## What works today
 
-`fork`, `clone`, and `execve` are currently `ENOSYS` stubs. Implementing them in the Haskell task scheduler is the single most important next step. Every layer of the stack above the init task — BusyBox, OpenRC, the GTK app, Mutter — is waiting for this.
+The system boots, renders a desktop, and runs Linux programs. Every subsystem
+below is **implemented and self-tested** (each prints `[<tag>] selftest PASS` at
+boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 
-The kernel already has most of what is needed:
-- ELF parser (used to load `init.elf`)
-- Address space and paging layer
-- `mmap`/`munmap`/`mprotect` working
-- Linux-style initial stack setup
-- Linux personality established for the first task
-
-What is missing is the Haskell scheduler implementing task duplication (fork) and image replacement (execve).
-
----
-
-## Next Steps
-
-Steps are ordered by dependency. Each unlocks the one after it.
-
-### 1. Implement `fork` / `clone` in the Haskell scheduler
-
-- Duplicate the current task's address space (COW page table copy)
-- Duplicate the file descriptor table
-- Return 0 to child, child PID to parent
-- This is the single blocker for everything else
-
-Relevant files:
-- [src/kernel/hs/main.hs](src/kernel/hs/main.hs) — task creation entry point
-- [src/kernel/hs/Hos/LinuxCompat.hs](src/kernel/hs/Hos/LinuxCompat.hs) — dispatch table
-
-### 2. Implement `execve`
-
-- Re-use the existing ELF loader (already used for `init.elf`)
-- Replace the calling task's address space with the new image
-- Set up a fresh Linux-style initial stack with `argv`/`envp`/`auxv`
-
-### 3. Validate musl startup end-to-end
-
-- musl does `arch_prctl(ARCH_SET_FS)`, `set_tid_address`, `set_robust_list`, then enters `main`
-- Some `futex` paths need real blocking (currently stubs that return immediately)
-- Signal mask and `sigaltstack` need to hold state per-task
-
-### 4. Run the init → OpenRC → userland chain
-
-- `init.elf` should exec `/openrc` which runs rc scripts and spawns services
-- BusyBox ash becomes the interactive shell
-- `/dev/console` stdio is already wired
-
-### 5. Reconcile the kernel Wayland server with Mutter
-
-- The in-kernel `wserver.d` currently owns `/run/user/1000/wayland-0`
-- Once Mutter is launched via `execve`, it will try to create that socket
-- Either disable `wserver.d` before Mutter starts, or make it hand off
-- Mutter will enumerate `/dev/dri/card0` via DRM `MODE_GETRESOURCES`, create dumb buffers, mmap them, and render via the swrast Mesa path
-
-### 6. DRM / Mutter bring-up
-
-- Verify `MODE_GETRESOURCES` returns a consistent connector/CRTC/encoder set
-- Verify `MODE_CREATE_DUMB` + `MODE_MAP_DUMB` round-trips correctly
-- Mutter's GBM/EGL path uses Mesa swrast; no GPU needed
-- Watch for `libseat` probing `/run/seatd.sock` — stub is in place, may need expansion
-
-### 7. Login manager and session
-
-- gdm can be added after Mutter runs
-- Or drop directly into a GNOME Shell session once the compositor is up
-- Session environment (`WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `DISPLAY`) must be seeded before GTK apps launch
-
-### 8. Writable filesystem
-
-- Today the filesystem is a read-only bundle
-- A simple tmpfs-style writable layer would unblock most of the remaining userland friction
-- `/tmp`, `/run/user/1000/`, and `/var` need to be writable for session plumbing
-
-### 9. Real signal delivery
-
-- Signal delivery is currently stub-level; the mask is stored but signals are not actually queued or delivered asynchronously
-- This matters for job control, `SIGCHLD`, and `SIGTERM` handling in init scripts
-
-### 10. Real `futex` blocking
-
-- `futex(WAIT)` returns immediately today; real thread synchronization requires suspending the calling task
-- Needed for proper musl threading and any multi-threaded userland
+| Area | Status | Roadmap |
+|------|:------:|---------|
+| Object-capability kernel (6 pillars, 16 object families) | ✅ | [`OBJECT_OS_ROADMAP`](roadmap/OBJECT_OS_ROADMAP.md) |
+| Capability model (19 rights, derive, revoke, typed admin) | ✅ | [`CAPABILITY_MODEL`](roadmap/CAPABILITY_MODEL.md) |
+| Object-Reference-Graph + cycle-detecting GC | ✅ | [`OBJECT_REFERENCE_GRAPH_ROADMAP`](roadmap/OBJECT_REFERENCE_GRAPH_ROADMAP.md) / [`ORG_ARCHITECTURE`](roadmap/ORG_ARCHITECTURE.md) |
+| Identity / security domains (Qubes-style, no VMs) | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) |
+| Native object filesystem (`/objects`, `/config`, `/system`) | ✅ | [`OBJECT_FILESYSTEM_ROADMAP`](roadmap/OBJECT_FILESYSTEM_ROADMAP.md) |
+| Declarative config compiler + verified-config boot | ✅ | [`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md) / [`anonymos-config/`](anonymos-config/) |
+| Secure IPC (X25519 / HKDF / ChaCha20-Poly1305) | ✅ | [`SECURE_IPC_ROADMAP`](roadmap/SECURE_IPC_ROADMAP.md) |
+| Immutable store + A/B updates + rollback | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
+| Rootless administration (no UID 0) | ✅ | [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) |
+| Weston 14 desktop (Pixman software renderer) | ✅ | [`GUI_ROADMAP`](roadmap/GUI_ROADMAP.md) / [`DESKTOP_RESPONSIVENESS_ROADMAP`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md) |
+| Real Z Shell (Linux + native-ABI port) | ✅ | [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) |
+| Shell & command set (`hos-sh`, `esh`, busybox 381 applets) | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) |
+| Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
 
 ---
 
-## Architecture Overview
+## Architecture at a glance
 
-The system is split into four layers.
+```
+                ┌─────────────────────────────────────────────┐
+                │            system.json  (declarative)        │
+                │   → anonymos-config compiler (host, D)       │
+                │   → manifest.blob (HMAC-signed TLV)          │
+                └────────────────────┬────────────────────────┘
+                                     │ verified at boot
+        ┌────────────────────────────▼───────────────────────────┐
+        │   anonymOS kernel  (D, -betterC, no GC)  · x86_64       │
+        │                                                          │
+        │   ┌─────────────── 6 native pillars ───────────────┐    │
+        │   │ Scheduler · Object Mgr · Capability Mgr        │    │
+        │   │ IPC Router · Memory Mgr · HAL                  │    │
+        │   └────────────────────────────────────────────────┘    │
+        │                      ▲                                   │
+        │   Linux personality   │  Native object ABI (0x4000)      │
+        │   (~160 syscalls) ────┘  deny-by-default unless /hos-sh  │
+        └───────────┬───────────────────────────────┬─────────────┘
+                    │                               │
+        ┌───────────▼───────────┐         ┌─────────▼──────────┐
+        │  Linux userland        │         │  Native shell       │
+        │  busybox · zsh · Weston│         │  hos-sh · esh · LFE │
+        │  GTK · Hyprland        │         │  (object model)     │
+        └────────────────────────┘         └─────────────────────┘
+```
 
-### 1. Boot and machine bring-up
-
-Limine loads the kernel. Early startup, memory map handoff, framebuffer, and entrypoint ownership live in the D bootstrap:
-
-- [src/kernel/d/core/kmain.d](src/kernel/d/core/kmain.d)
-- [src/kernel/d/arch](src/kernel/d/arch)
-
-### 2. Haskell kernel core
-
-The higher-level kernel logic: task and schedule state, syscall modeling, address-space manipulation, IPC, Linux compatibility handoff. Compiled with JHC to C, then compiled freestanding.
-
-- [src/kernel/hs/main.hs](src/kernel/hs/main.hs)
-- [src/kernel/hs/Hos/LinuxCompat.hs](src/kernel/hs/Hos/LinuxCompat.hs)
-
-### 3. Low-level runtime and support
-
-Runtime system, garbage collector, machine glue, drivers, display bridge, and all D-side syscall implementations:
-
-- [src/libs/rts](src/libs/rts)
-- [src/kernel/d/core](src/kernel/d/core)
-- [src/kernel/d/memory](src/kernel/d/memory)
-- [src/kernel/d/drivers](src/kernel/d/drivers)
-- [src/kernel/d/display](src/kernel/d/display)
-
-The Linux syscall implementations live in:
-
-- [src/kernel/d/core/syscalls/posix.d](src/kernel/d/core/syscalls/posix.d)
-
-### 4. Userland and bundled programs
-
-- [src/progs](src/progs) — in-tree programs: `init`, `esh`, storage/ATA utilities
-- [src/progs/deps/redepend/esh](src/progs/deps/redepend/esh) — `esh` shell
-- [deps/musl](deps/musl) — musl 1.2.5 static libc
-- [deps/busybox](deps/busybox) — BusyBox 1.36.1
-- [deps/openrc](deps/openrc) — OpenRC 0.54
-- [deps/elogind](deps/elogind) — elogind 255.4
-- [deps/gtk-stack](deps/gtk-stack) — 18-package GTK3 static build chain
-- [deps/mutter](deps/mutter) — 11-package Mutter compositor build chain
-- [deps/hyprland](deps/hyprland) — Hyprland upstream checkout with submodules
-- [deps/hyprland-hos](deps/hyprland-hos) — HanonymOS build glue and dependency gate for Hyprland
+The **native kernel is six pillars**: Scheduler, Object Manager, Capability
+Manager, IPC Router, Memory Manager, HAL. Everything else — including the entire
+Linux personality — is implemented *as objects* and can be gated off
+(`g_linuxEnabled`). A live boot census confirms exactly this:
+`[census] PASS native kernel = 6 pillars; families=0x10 are objects` — 16
+distinct object families populated.
 
 ---
 
-## Repository Layout
+## Features
 
-- [src/kernel/hs](src/kernel/hs) — Haskell kernel
-- [src/kernel/d](src/kernel/d) — D bootstrap, memory, drivers, display, syscalls
-- [src/libs/rts](src/libs/rts) — JHC runtime and GC support
-- [src/libs/common](src/libs/common) — shared kernel/userland code
-- [src/progs](src/progs) — userspace programs
-- [src/boot](src/boot) — Limine bootloader config
-- [src/docs](src/docs) — subsystem notes and roadmaps
-- [deps](deps) — vendored dependencies and build chains
-- [build](build) — generated build output
-- [cd](cd) — ISO staging directory
+### 🧩 Object-capability kernel
+*Roadmap: [`OBJECT_OS_ROADMAP`](roadmap/OBJECT_OS_ROADMAP.md) — Phases P2–P13 all implemented.*
 
-Key files:
+Everything is an `Object` (`core/objmgr.d`): processes, threads, fds, memory
+regions, VMOs, directories, devices, drivers, network interfaces, windows,
+users, services, namespaces, endpoints, and the Linux-compat singletons. The
+syscall surface dispatches through `ObjOps` method tables (`g_objOps`) rather
+than `switch(file.type)` chains. A live boot holds a steady object population
+(`[obj] live=39`) reconciled every 256 syscalls. Three milestones reached: MVOO,
+Linux Compatibility Object, and a structurally Fully Object-Oriented OS.
 
-- [Makefile](Makefile) — top-level build orchestration
-- [build.opts](build.opts) — toolchain and path configuration
-- [qemu-run.sh](qemu-run.sh) — quick serial-log boot run
-- [qemu-test.sh](qemu-test.sh) — verbose QEMU debug run
+### 🔐 Capability security model
+*Roadmap: [`CAPABILITY_MODEL`](roadmap/CAPABILITY_MODEL.md) — ratified + implemented.*
+
+- **19 rights bits** in a monotone lattice; every derived capability must be a
+  bitwise subset of its parent (`capDerive` rejects escalation).
+- **Transitive revocation** walks the derive-DAG to fixpoint — `[cap] revclosure PASS`.
+- **Typed admin capabilities** (`ObjType.Admin`) gate mount/reboot/update/user/
+  device/inspect. There is **no god-capability** and **no `uid==0` privilege
+  predicate** — authority is split across distinct typed caps.
+- **Unforgeable**: capabilities only come into existence via `capInstall` /
+  `capDerive` against a live object; IPC passes them **by value** (`{objId,rights}`),
+  never as raw pointers.
+- Every fd is a capability; `requireCap` gates the fd surface; endpoint calls
+  require `CAP_RIGHT_CALL`; namespace binds enforce binding rights; fork narrows.
+
+### 🕸️ Object-Reference-Graph (ORG) + GC
+*Roadmap: [`OBJECT_REFERENCE_GRAPH_ROADMAP`](roadmap/OBJECT_REFERENCE_GRAPH_ROADMAP.md) — all 12 phases implemented; design in [`ORG_ARCHITECTURE`](roadmap/ORG_ARCHITECTURE.md).*
+
+A directed graph over the object model with five typed edge kinds
+(`StrongOwn`, `StrongRef`, `Weak`, `Cap`, `Observer`). Features live in-kernel:
+
+- **Online cycle prevention** at the `edgeAdd` chokepoint (bounded DFS) +
+  iterative **Tarjan SCC** (no recursion → no kernel-stack blowup).
+- **Mark-sweep GC** integrated with `free_phys_page`, with a complete root set
+  that yields **zero false GC candidates** in production.
+- **Validator daemon** (`core/org_validator.d`): budgeted epoch-driven state
+  machine (Reach → SCC → Invariant → GC → Audit), quarantines invariant
+  violations as `[org] SECURITY`.
+- **8 invariants (I1–I8)** + **threat model (T1–T10)**; the canonical
+  SCM_RIGHTS in-flight cycle is proven collectable.
+- **DOT visualization** + the `orgctl` userspace tool (stats/dump/render/sccs).
+- Live Linux fd/socket/epoll/SCM operations create real ORG edges.
+
+### 🎭 Identity / security domains (Qubes without VMs)
+*Roadmap: [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) — M0–M2 complete.*
+
+Every process belongs to a named, colored **identity**, inherited at fork and
+immutable thereafter. Seven compiled-in domains: `System` (gray), `Personal`
+(green), `Work` (blue), `Banking` (yellow), `Development` (purple), `Untrusted`
+(red), `Disposable` (orange).
+
+- **Per-identity namespaces** (`core/idns.d`): disjoint object roots with
+  rule-gated, cap-wrapped cross-domain shares.
+- **Deny-by-default cross-identity IPC**: both domains signed into the 50-byte
+  session descriptor at broker issuance.
+- **Unspoofable window borders**: `winRegister` stamps `identityObjId` +
+  `identityColor` from the owning process — apps cannot supply them.
+
+### 📁 Native object filesystem
+*Roadmap: [`OBJECT_FILESYSTEM_ROADMAP`](roadmap/OBJECT_FILESYSTEM_ROADMAP.md) — F0–F5 done.*
+
+A native root replaces the Linux-historical tree; POSIX paths are *generated
+compatibility views*:
+
+```
+/objects   live kernel object views   (processes, identities, services, …)
+/config    *.json rendered from kernel tables
+/system    immutable base + generations
+/state     logs · cache · sessions
+/compat    /bin /sbin /usr /lib  →  Linux symlinks
+```
+
+- `/objects/<kind>/<obj>` directories render each object as fields: `meta`,
+  `capabilities` (19 decoded bits), `relationships` (graph edges).
+- **Persisted object store** (`core/objstore.d`, custom HOSOBJFS on a 32 MiB
+  AHCI SATA disk): apps persist as `/objects/apps/<app>/{manifest, permissions,
+  identity-binding, executable, storage}` — **verified surviving reboot**.
+- **Capability-gated launch**: `execve` of `/objects/apps/<app>/executable` is
+  intercepted and checked against the identity's rights ceiling (`hello`
+  launches, `rogue` is denied with EPERM + audit).
+
+### ⚙️ Declarative configuration
+*Roadmap: [`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md); tool in [`anonymos-config/`](anonymos-config/).*
+
+"NixOS spirit, object-tree body." **One JSON file** is the single declarative
+source of truth for the whole running system — services, identities, namespaces,
+capabilities, mounts, IPC rules, GUI colors, storage, snapshots.
+
+- **`anonymos-config`** — a host-side D+Phobos compiler with **8 stages**:
+  parse → schema-validate (collect-all) → imports deep-merge → resolve refs →
+  assign stable deterministic IDs → detect cycles (3-color DFS over 4 edge sets)
+  → check capability subsets (escalation rejected at *compile* time) → lower to a
+  `CompiledGraph`. Pure function `JSON → CompiledGraph ⊎ [Error]`.
+- **CLI**: `check | build | diff | switch | rollback | graph | schema |
+  emit-manifest`.
+- **Content-addressed generations** (sha256 of canonical JSON) with atomic
+  switch + parent-chain rollback; a module/import system.
+- **Verified boot integration**: `emit-manifest` lowers the graph to a flat
+  HMAC-SHA-256-signed TLV `manifest.blob`; the kernel (`core/configboot.d`)
+  locates the boot module, HMAC-verifies it, and walks records calling the
+  existing `serviceRegister` / `identityCreate` / `nsAlloc` / `genSetActive`
+  APIs. Policy is authored outside the kernel; the kernel only *applies a
+  verified, pre-compiled plan*. Missing/tampered manifest falls through safely.
+- 87/87 host tests across 13 phases.
+
+### 🔒 Secure IPC
+*Roadmap: [`SECURE_IPC_ROADMAP`](roadmap/SECURE_IPC_ROADMAP.md) — all 5 phases implemented.*
+
+Capability-gated channels where the **kernel holds no keys and does no crypto**
+(`K1`). A privileged broker issues signed `SessionDescriptor`s; each endpoint
+performs its own X25519 DH — keys never leave the process.
+
+- **RFC-vector-proven** X25519 (RFC 7748), HKDF-SHA256 (RFC 5869),
+  ChaCha20-Poly1305 AEAD (RFC 8439) in `core/libsecipc.d`.
+- **SIGMA-style signed-DH** handshake, per-direction monotonic counter + 64-entry
+  sliding replay window, downgrade resistance via signed transcript.
+- **Lifecycle**: key rotation/rekey, epoch-bump revocation, fail-closed on
+  auth-flood / counter exhaustion / peer death + zeroize.
+- 6 proven invariants (K1–K6): forward secrecy, no (key,nonce) reuse,
+  delegated-only authority. *Production wiring note:* broker/identity services
+  run in-kernel today; relocating them to userspace is the remaining seam.
+
+### 🗄️ Immutable store + A/B updates
+*Roadmap: [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) — Phases 1–9 done.*
+
+- **Content-addressed store** (`core/store.d`): write-creates-never-mutates,
+  de-duplicating, with a **dm-verity-style block hash tree**
+  (`storeReadVerified` faults on a tampered block).
+- **A/B slots** (`core/update.d`): inactive-only, capability-gated,
+  signature-verified, anti-downgrade `updateApply`; boot-success counter +
+  **auto-rollback**. Real HMAC-SHA-256 signatures.
+- **Rootless**: PID1 starts as uid/gid 1000 with only mount/reboot/inspect admin
+  caps. `getuid`/`geteuid`/`SO_PEERCRED` read the task's `User` object; no
+  `uid==0` code path exists. *Honest caveat:* backing is RAM, not yet real disk
+  for the system image; the "truly immutable on storage" bar is not yet met.
+
+### 🖥️ Weston desktop
+*Roadmaps: [`GUI_ROADMAP`](roadmap/GUI_ROADMAP.md), [`DESKTOP_RESPONSIVENESS_ROADMAP`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md).*
+
+A pivot from Hyprland (2026-06-07) to **Weston 14.0 + Pixman software renderer** —
+no OpenGL/Mesa dependency, which crashes in this freestanding/musl environment.
+
+- Full desktop renders through a kernel **KMS** backend (ADDFB2/SETCRTC/
+  PAGE_FLIP/universal planes), screenshot-verified (background + top panel +
+  live clock).
+- **Input**: visible, snappy mouse cursor — the kernel draws an 11×17 `left_ptr`
+  sprite directly on the framebuffer, decoupled from Weston's repaint.
+- **Input→present latency 8–14 ms** (was multi-second; root cause was
+  `timerfd_settime` ignoring `TFD_TIMER_ABSTIME`).
+- Desktop shell: persistent panel/menu bar, Cairo antialiased text, default
+  wallpaper, decorated windows (drop shadow + titlebar + identity-accent dot +
+  min/max/close + rounded corners), a Spotlight-style launcher (Super+Space),
+  and a real Finder-style **file manager** (`wl-files`).
+- Bundled assets: Noto fonts, icons, cursors, wallpapers, themes (license-guarded).
+
+### 🐚 Shells & command set
+*Roadmaps: [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md), [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md).*
+
+- **Real upstream Z Shell 5.9** — vendored + built both static and dynamic (PIE
+  exe + 36 dlopen-able zmodules) against musl. The default Linux shell: ZLE
+  editing, tab completion, history, pipes, `^C`, job control. Termios line
+  discipline + VT/CSI interpreter added so ZLE redraw works.
+- **Native-ABI zsh port (Z4)**: the same zsh, filesystem (`object_open`),
+  terminal I/O (`device_read`/`device_write`), and external-command spawn
+  (`spawn_process`) all flow through the **native object ABI** at a working
+  prompt. Z4a fully done; Z4b/Z4c largely done.
+- **`shell.json` declarative config** (Z5): a pure-zsh translator
+  (`__hos_apply_shell_json`) applies system → user → user-zshrc at startup. The
+  **four-field prompt** `[domain] user [perms]:cwd` is live in every shell.
+- **`hos-sh`** (`src/util/hos-sh.d`) — the native object shell in D; drives the
+  kernel model via `syscall(0x4000, …)`. Reads LFE s-expression forms:
+  `(obj)`, `(id)`, `(ns)`, `(svc)`, `(whoami)`.
+- **`esh`** — a from-scratch D Unix shell with ~94 applets (awk, ls, cp, grep,
+  find, dd, …) and an LFE REPL.
+- **BusyBox 1.36.1** — 381 applets on a hardened FHS tmpfs, fully interactive
+  (multi-command, pipelines, `vi`, `^C`, job control).
+
+### 🔑 Cryptography
+*Roadmap: [`IMMUTABLE_ROOTLESS_ROADMAP`](roadmap/IMMUTABLE_ROOTLESS_ROADMAP.md) §8.*
+
+Real **SHA-256** and **HMAC-SHA-256** (`core/crypto.d`), proven against NIST /
+RFC test vectors — used by the content store, A/B signatures, config manifest,
+and secure IPC. A PCR-like measurement register + signed module manifest + an
+audit log of capability use (~466k decisions on a live boot). *Ed25519
+asymmetric signing is pending (HMAC stand-in today).*
+
+### 🌐 Networking
+A complete in-kernel network stack: Ethernet, ARP, IPv4/IPv6, ICMP/ICMPv6, TCP,
+UDP, DNS, DHCP, HTTP, HTTPS, TLS — plus VirtIO and VeraCrypt driver stubs.
 
 ---
 
-## Build System
+## Build & run
 
-1. JHC compiles kernel Haskell sources to C
-2. Generated C is postprocessed for the freestanding environment
-3. Clang compiles to object code
-4. D and C runtime/kernel components are built separately
-5. Everything is linked into `kernel.elf`
-6. Programs are built and packed into `hos.bundle`
-7. ISO assembled with Limine boot assets
+The kernel is **D + x86_64 assembly** (`-betterC`, no GC/druntime), built with
+LDC2 and linked with a custom `linker.ld`. The old Haskell kernel has been
+migrated to D (`kernel_main.d` opens with *"D replacement for the Haskell
+kernel"*); Haskell now survives only as userspace services and the jhc RTS.
 
-Build the core kernel and ISO:
+```sh
+# Full build (serialized/low-resource by default; memory-heavy dep builds)
+make                        # → kernel.elf + busybox + Wayland utils + hos.iso
 
-```bash
-make
+# Declarative config tool (host toolchain, needs ldc2 + Phobos)
+make anonymos-config        # or: make -C anonymos-config
+make anonymos-config-test   # 87/87 host tests
+
+# Emit + sign the verified boot manifest, then build the ISO
+anonymos-config/build/anonymos-config emit-manifest -o manifest.blob \
+    anonymos-config/examples/system.json
 make hos.iso
-```
 
-Build optional desktop dependency chains (heavy, not in default build):
-
-```bash
-make deps-desktop
-make deps-hyprland
-```
-
-Primary outputs:
-
-- [kernel.elf](kernel.elf)
-- [hos.iso](hos.iso)
-- [build/hos.bundle](build/hos.bundle)
-
-Clean:
-
-```bash
-make clean
-```
-
----
-
-## Toolchain
-
-Expects a Unix-like host with:
-
-- `jhc` (JHC 0.8.2)
-- `clang` / `ldc2`
-- `ld`, `as`, `ar`
-- `xorriso`
-- GNU `make`
-
-Configured in [build.opts](build.opts). JHC material and patches live in [jhc-0.8.2](jhc-0.8.2) and [deps/bdepend/toolchain](deps/bdepend/toolchain).
-
----
-
-## Boot Flow
-
-1. Limine loads `kernel.elf`, `hos.bundle`, `init.elf`, and optional desktop modules
-2. D bootstrap initializes CPU, paging, framebuffer, GDT/IDT
-3. Haskell kernel starts, parses `init.elf`, creates the first task with a Linux-personality stack
-4. `init.elf` runs; it is expected to `execve` into the real init chain once fork/exec are implemented
-
----
-
-## Running Under QEMU
-
-```bash
+# Run (Linux host, KVM)
 ./qemu-run.sh
-tail -f serial.log
+
+# Run (macOS / Apple Silicon — TCG software emulation, no /dev/kvm)
+./qemu-run-mac.sh              # native cocoa window + serial.log
+./qemu-run-mac.sh --serial     # serial console in the terminal
+./qemu-run-mac.sh --vnc        # headless + VNC on :0
+
+# Verify the declarative config applied at boot (greps serial for the marker)
+./scripts/qemu-config-verify.sh
 ```
 
-Verbose diagnostic run:
+Containerized builds: `Dockerfile` + `build-in-docker.sh`; host prep via
+`setup_host.sh`. Builds require the Docker/Linux cross-toolchain; the ISO +
+QEMU boot gate is not reproducible on macOS alone.
 
-```bash
-./qemu-test.sh
+### Useful targets
+
+| Target | Builds |
+|--------|--------|
+| `make` / `make all` | `kernel.elf` → `hos.iso` |
+| `make build/libkernel_d.a` | the D kernel archive |
+| `make zsh` | static + dynamic upstream zsh 5.9 |
+| `make anonymos-config` | the declarative-config compiler CLI |
+| `make build-config-manifest` | signed `manifest.blob` |
+| `make progs-haskell` | Haskell userspace services |
+| `make build-gui-assets` | fonts/icons/cursors/wallpapers blobs |
+
+---
+
+## Repository layout
+
+```
+src/
+├── boot/            Limine config + BIOS/UEFI binaries (SYSLINUX/GRUB fallbacks)
+├── kernel/d/        THE KERNEL — D + x86_64 asm
+│   ├── arch/x86_64/ gdt, idt, paging, context switch, bootstrap
+│   ├── core/        ~60 subsystem .d files + syscalls/  (objmgr, cap, org,
+│   │                ipc, identity, namespace, store, update, servicemgr,
+│   │                crypto, secipc, configboot, …)
+│   ├── display/     compositor, framebuffer, freetype/harfbuzz, wayland server
+│   ├── drivers/     ahci, drm, virtio_gpu, hid, pci, network
+│   ├── memory/      paging, physmem, dma
+│   └── network/     ethernet → tls full stack
+├── libs/            Haskell RTS (jhc) + D userland glue + vendored containers
+├── progs/           esh D-shell, Haskell userspace services (init/storage/pci/ata)
+├── util/            userspace tools: hos-sh, wl-term, wl-files, wl-domain-manager,
+│                    store-app, idle, hello-gui, compositor, …
+└── test-dyn/        dynamic-linker verification harness
+anonymos-config/     declarative-config compiler (D + Phobos) + examples + tests
+cd/                  staged boot image contents (kernel modules, GUI, shells)
+deps/                busybox, musl, zsh, weston, hyprland, gtk-stack, …
+docs/                SYSCALL_ABI · NATIVE_OBJECT_ABI · FILESYSTEM · NAMESPACING
+roadmap/             the feature roadmaps this README is grounded in
+scripts/             qemu-*-verify harnesses + asset packers + orgctl
 ```
 
-The serial console is the primary debug channel while the system is in bring-up.
+---
+
+## Honesty: what is *not* yet done
+
+anonymOS is honest about its gaps (each roadmap names them):
+
+- **Memory hardening** ([`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md)) — W^X
+  is partial (enforced on `mprotect` tighten; the inline mmap path still maps
+  W+X for ld.so relocation); **no ASLR**, no NX stack, no guard pages, no stack
+  canaries, SMAP/SMEP disabled in QEMU. This is the headline remaining work.
+- **Truly immutable image on real storage** — the content store is RAM-backed
+  today; real disk-backed verification + physical `/var` separation pending.
+- **Ed25519 + Limine verified boot** — HMAC stand-in today.
+- **Kernel-mode IRQ handling** ([`DESKTOP_RESPONSIVENESS`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md))
+  — IRQs caught only in userspace; the scheduler is **cooperative** (no
+  preemption), single-core, polled. This blocks true `hlt`-idle, SMP, and
+  preemption.
+- **GPU compositing** — Weston composites every pixel on CPU (Pixman); virtio-gpu
+  + Mesa (R8) pending.
+- **Userspace relocation** of Wayland/DRM/fs into user-space servers — the
+  in-kernel services work but are not yet demoted (the "honestly rootless"
+  finish line).
+- **ratty Rust/GPU terminal** — blocked on a Rust musl toolchain + GPU stack.
+- **Disposable identities, brokers, signed identity policy** (Identity M3/M4);
+  **zsh theme/plugin/secure-history/login flow** (Z7–Z12); **desktop settings
+  app, animations, multi-window workspaces** (G18–G21).
 
 ---
 
-## Debugging
+## Design influences
 
-Start with [serial.log](serial.log) and [qemu.log](qemu.log). The kernel emits explicit diagnostics for:
+anonymOS synthesizes several traditions:
 
-- kernel faults (`KERNEL FAULT trap=...`)
-- JHC runtime failures (`JHC Case Fell Off line: ...`)
-- physical memory exhaustion (`OOM in alloc_phys_page!`)
-- syscall traces (enabled in the Linux compat layer)
+- **seL4 / Genode** — capability-based authority, no ambient privilege.
+- **Plan 9** — per-process namespaces; the `/objects` live-view tree.
+- **Qubes OS** — security domains — but **without VMs**, via identities +
+  namespaces + capability labels.
+- **NixOS** — declarative single-source-of-truth configuration + generations.
+- **Silverblue / ChromeOS / AVB** — immutable content-addressed store, A/B
+  updates, dm-verity, anti-rollback index.
 
----
+See [`ORG_ARCHITECTURE`](roadmap/ORG_ARCHITECTURE.md) for the threat model and
+[`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md) for the config
+philosophy.
 
-## Known Limitations
+## License
 
-- `fork`/`clone`/`execve` return `ENOSYS` — no child processes can be spawned yet
-- Filesystem is read-only (boot bundle); no writable layer
-- `futex(WAIT)` returns immediately — no real task suspension
-- Signal delivery is stub-level (masks stored, not delivered asynchronously)
-- DRM/KMS stubs are sufficient for Mutter enumeration but untested end-to-end
-- The kernel Wayland server will conflict with Mutter once it runs; needs handoff
-
----
-
-## Why The Name?
-
-Historically the project used the shorter name `Hos`, and that still appears throughout paths and code. The current project identity is `HanonymOS`; both names are in the tree.
-
-
-
-
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b70e3-cf4c-83ea-bd42-ba2e23f7fea9 (fully homomorphic encryption)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/69371c98-eef4-8331-9719-070b2df3ea90 (perlin noise generator)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/69372881-2548-8332-a7ac-1c9f0b1e0844 (blockchain)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a0cd0e9-8620-83ea-9081-8208ef797e3b (distributed os)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b900c-4c1c-83ea-b830-3a0137c662cc (dynamically linked)
-
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b92a0-a1d8-83ea-b43b-22632cb2c59a (react os compatibility layer)
-
-make sure the kernel can handle multiple cores/multithreading/dynamic linking
-
-make sure it does hardware abstraction
-
-control panel like with qubes os, different subsystems have colored borders to indicate profiles
-
-https://www.gnunet.org/en/index.html
-https://github.com/orhun/ratty
-https://github.com/Jonathan-R-Anderson/-sh
-https://github.com/Jonathan-R-Anderson/web3-kinetic-loader (as the splash page for booting the os and wallpaper)
+See individual files; vendored third-party components under `deps/` retain their
+upstream licenses (busybox GPLv2, musl MIT, zsh ISC-style, Weston MIT, etc.).

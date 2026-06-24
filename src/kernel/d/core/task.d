@@ -165,6 +165,22 @@ __gshared int[MAX_TASKS]   g_taskPgid;
 __gshared ulong[MAX_TASKS] g_taskSigCustom;
 __gshared int[MAX_TASKS]   g_taskPendingSig;
 
+// Z1: the child's Linux pid captured at exit, BEFORE cleanup resets processLeaderTid
+// (which would make linuxPidForTask return a stale 1).  wait4 returns this so the pid a
+// reaping parent sees matches the pid fork() gave it — zsh matches reaped pids to its job
+// table, so a mismatch left the job forever "not done".  Indexed by the child's tid.
+__gshared int[MAX_TASKS]   g_childExitLinuxPid;
+
+// Z1 (ZSH_INTEGRATION_ROADMAP): real userspace signal-handler delivery.  g_taskSigCustom
+// above only records *that* a signal has a non-default disposition (to suppress the
+// default terminate); these hold the actual sa_handler + sa_restorer addresses so the
+// run loop can build an x86-64 rt_sigframe and invoke the handler.  Used for SIGCHLD so
+// zsh's wait_for_processes() runs, reaps the child, and returns from sigsuspend — without
+// it zsh wedges after its first external command.  [signo] indexed (standard 1..31; 0
+// unused).  0 = no handler (default / SIG_IGN).
+__gshared ulong[64][MAX_TASKS] g_sigHandler;
+__gshared ulong[64][MAX_TASKS] g_sigRestorer;
+
 // A4: per-task program name (basename of the exec'd binary), for /proc/<pid> comm.
 // Set by execveTask / forkTask in kernel_main.d; read by posix.d's procfs.
 __gshared const(char)*[MAX_TASKS] g_taskExecName;

@@ -374,12 +374,16 @@ private void exitTask(int tid, int code) {
         clearFutexWait(tid, -4); // EINTR-like cleanup for the exiting waiter
 
     auto t = &g_tasks[tid];
+    // Z1: snapshot the Linux pid NOW, before any cleanup below resets processLeaderTid;
+    // the parent-notify further down stores it for wait4 to return (zsh matches on it).
+    const int exitLinuxPid = linuxPidForTask(tid);
     t.exited   = true;
     t.exitCode = code;
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
     if (tid >= 0 && tid < MAX_TASKS) {
         g_taskExecModPhys[tid] = 0;                 // A4: clear exe info
         g_taskPgid[tid] = 0; g_taskSigCustom[tid] = 0; g_taskPendingSig[tid] = 0;
+        g_sigHandler[tid][] = 0; g_sigRestorer[tid][] = 0;   // Z1: clear signal handlers
     }
     if (tid == g_idleTid) g_idleTid = -1;   // idle task died — re-spawn next loop
     objReleaseTask(tid);
@@ -433,12 +437,25 @@ private void exitTask(int tid, int code) {
         if (p.active) {
             p.childExited[tid]   = true;
             p.childExitCode[tid] = code;
+            // The child's Linux pid snapshotted at entry (processLeaderTid is reset by the
+            // cleanup above), so wait4 returns the same pid fork() gave the parent.
+            g_childExitLinuxPid[tid] = exitLinuxPid;
             if (p.waiting) {
                 bool unblock = false;
                 if (p.waitingForPid == -1) unblock = true;
                 else if (p.waitingForPid == tid) unblock = true;
                 if (unblock) p.waiting = false;
             }
+            // Z1: if the parent installed a SIGCHLD handler (zsh does, and waits for jobs
+            // via sigsuspend+SIGCHLD rather than a blocking waitpid), raise a pending
+            // SIGCHLD so the run loop invokes that handler — which reaps the child and
+            // lets sigsuspend return.  Tasks without a handler use the blocking-wait path
+            // (childExited above) and never see this.
+            // SIGCHLD delivery is driven from rt_sigsuspend (case 130), where zsh
+            // temporarily unblocks SIGCHLD — not from here, since outside sigsuspend zsh
+            // keeps SIGCHLD blocked (child_block) and would queue, not reap.  The
+            // childExited[] flag set above is what sigsuspendTask polls; the waiting-clear
+            // below wakes the parent so it re-runs sigsuspend and delivers.
         }
     }
     // Reclaim this task's private physical pages if it is the LAST user of its
@@ -565,6 +582,8 @@ private int forkTask(int parentTid) {
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
         g_taskSigCustom[childTid] = g_taskSigCustom[parentTid];
         g_taskPendingSig[childTid] = 0;
+        g_sigHandler[childTid]  = g_sigHandler[parentTid];    // Z1: inherit signal handlers
+        g_sigRestorer[childTid] = g_sigRestorer[parentTid];
     }
 
     klog("[fork] parent="); klog_hex(parentTid);
@@ -822,6 +841,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
         g_taskSigCustom[tid]   = 0;
         g_taskPendingSig[tid]  = 0;
+        g_sigHandler[tid][] = 0; g_sigRestorer[tid][] = 0;   // Z1: exec resets handlers to default
     }
 
     // Track A A4: snapshot the caller's argv (mirror of the envp snapshot below) so the
@@ -1143,7 +1163,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
                 int code = task.childExitCode[c];
                 task.childExited[c] = false;
                 if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
-                int childPid = linuxPidForTask(c);
+                int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(c);
                 releaseTask(c);
                 return cast(long)childPid;
             }
@@ -1154,7 +1174,7 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
             int code = task.childExitCode[c];
             task.childExited[c] = false;
             if (statusPtr != 0) *cast(int*)statusPtr = (code & 0xff) << 8;
-            int childPid = linuxPidForTask(cast(int)c);
+            int childPid = g_childExitLinuxPid[c] != 0 ? g_childExitLinuxPid[c] : linuxPidForTask(cast(int)c);
             releaseTask(c);
             return cast(long)childPid;
         }
@@ -1186,6 +1206,114 @@ private long wait4Task(int tid, int waitPid, ulong statusPtr, ulong options) {
     task.waiting       = true;
     task.waitingForPid = anyChild ? -1 : targetTid;
     return -4;
+}
+
+// ------------------------------------------------------------------
+// Z1: userspace signal-handler delivery (rt_sigframe).  See task.d g_sigHandler.
+// ------------------------------------------------------------------
+
+// Build an x86-64 rt_sigframe on `tid`'s user stack and redirect the task into its
+// installed handler for `sig`.  Mirrors what Linux pushes (struct rt_sigframe): the
+// restorer trampoline at the top (pretcode), then a ucontext whose uc_mcontext.gregs[]
+// hold the interrupted register state.  The handler runs `void h(int signo)`, returns
+// into the restorer, which calls rt_sigreturn → sigreturnTask restores the context.
+// Returns false (caller does the default action) if no usable handler/restorer exists.
+private bool deliverUserSignal(int tid, int sig) {
+    if (tid < 0 || tid >= MAX_TASKS || sig <= 0 || sig >= 64) return false;
+    auto task = &g_tasks[tid];
+    const ulong handler  = g_sigHandler[tid][sig];
+    const ulong restorer = g_sigRestorer[tid][sig];
+    if (handler == 0 || restorer == 0) return false;
+
+    // Carve the frame from the user stack below the 128-byte red zone; 16-align then -8 so
+    // the handler sees the ABI's post-`call` alignment (RSP % 16 == 8 at entry).
+    enum ulong FRAME = 512;
+    enum ulong GREGS = 48;          // pretcode(8) + offsetof(ucontext,uc_mcontext)=40
+    ulong sp = task.regs[REG_RSP];
+    sp -= 128;
+    sp -= FRAME;
+    sp &= ~15UL;
+    sp -= 8;
+    const ulong frame = sp;
+
+    const ulong savedCr3 = x64ReadCR3();
+    x64WriteCR3(task.pml4Phys);     // user stack is in the low half; kernel stays mapped (high half)
+    {
+        auto b = cast(ubyte*)frame;
+        for (ulong i = 0; i < FRAME; ++i) b[i] = 0;
+        *cast(ulong*)(frame + 0) = restorer;            // pretcode = restorer trampoline
+        ulong* g = cast(ulong*)(frame + GREGS);         // uc_mcontext.gregs[] (R8..CR2 order)
+        g[0]=task.regs[REG_R8];  g[1]=task.regs[REG_R9];  g[2]=task.regs[REG_R10];
+        g[3]=task.regs[REG_R11]; g[4]=task.regs[REG_R12]; g[5]=task.regs[REG_R13];
+        g[6]=task.regs[REG_R14]; g[7]=task.regs[REG_R15]; g[8]=task.regs[REG_RDI];
+        g[9]=task.regs[REG_RSI]; g[10]=task.regs[REG_RBP];g[11]=task.regs[REG_RBX];
+        g[12]=task.regs[REG_RDX];g[13]=task.regs[REG_RAX];g[14]=task.regs[REG_RCX];
+        g[15]=task.regs[REG_RSP];g[16]=task.regs[REG_RIP];g[17]=task.regs[REG_RFLAGS];
+    }
+    x64WriteCR3(savedCr3);
+
+    task.regs[REG_RIP] = handler;
+    task.regs[REG_RSP] = frame;
+    task.regs[REG_RDI] = cast(ulong)sig;     // void handler(int signo)
+    task.regs[REG_RSI] = frame + 312;        // &siginfo  (zeroed; SA_SIGINFO handlers)
+    task.regs[REG_RDX] = frame + 8;          // &ucontext
+    task.regs[REG_RAX] = 0;
+    task.regs[REG_RFLAGS] &= ~(0x100UL | 0x400UL);   // clear TF, DF for the handler
+    return true;
+}
+
+// rt_sigreturn: restore the context deliverUserSignal saved.  The restorer was reached by
+// the handler's `ret` (which popped pretcode), so the user RSP now points at the ucontext
+// (frame+8); uc_mcontext.gregs[] is at RSP+40.  We run in syscall context with the task's
+// CR3 active, so the user stack is directly readable.
+private void sigreturnTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    auto task = &g_tasks[tid];
+    const ulong uc = task.regs[REG_RSP];
+    ulong* g = cast(ulong*)(uc + 40);
+    task.regs[REG_R8]=g[0];   task.regs[REG_R9]=g[1];   task.regs[REG_R10]=g[2];
+    task.regs[REG_R11]=g[3];  task.regs[REG_R12]=g[4];  task.regs[REG_R13]=g[5];
+    task.regs[REG_R14]=g[6];  task.regs[REG_R15]=g[7];  task.regs[REG_RDI]=g[8];
+    task.regs[REG_RSI]=g[9];  task.regs[REG_RBP]=g[10]; task.regs[REG_RBX]=g[11];
+    task.regs[REG_RDX]=g[12]; task.regs[REG_RAX]=g[13]; task.regs[REG_RCX]=g[14];
+    task.regs[REG_RSP]=g[15]; task.regs[REG_RIP]=g[16]; task.regs[REG_RFLAGS]=g[17];
+}
+
+// rt_sigsuspend (Z1): zsh waits for a foreground job here, temporarily unblocking SIGCHLD.
+// This is the correct point to deliver the SIGCHLD handler (it runs wait_for_processes(),
+// reaps the child, marks the job done).  Returns:
+//   SIGSUSP_DELIVERED — a handler was armed (task.regs set up; dispatcher must `return`)
+//   SIGSUSP_BLOCK     — no child has exited yet (dispatcher rewinds RIP + reschedules)
+//   -4 (-EINTR)       — nothing to wait for / no handler (classic immediate return)
+private enum long SIGSUSP_DELIVERED = 0x7fffffff;
+private enum long SIGSUSP_BLOCK     = 0x7ffffffe;
+private long sigsuspendTask(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return cast(long)(-4); // -EINTR
+    auto task = &g_tasks[tid];
+    enum int SIGCHLD = 17;
+    const bool hasHandler = (g_taskSigCustom[tid] & (1UL << SIGCHLD)) != 0 &&
+                            g_sigHandler[tid][SIGCHLD] != 0;
+    if (hasHandler) {
+        // A child has already exited → deliver the handler now.  Arrange that, after the
+        // handler returns (rt_sigreturn), sigsuspend itself returns -EINTR so zsh's
+        // zwaitjob loop re-checks the (now STAT_DONE) job.
+        for (int c = 1; c < MAX_TASKS; c++) {
+            if (task.childExited[c]) {
+                task.regs[REG_RAX] = cast(ulong)(-4);   // saved as the post-handler sigsuspend result
+                if (deliverUserSignal(tid, SIGCHLD)) return SIGSUSP_DELIVERED;
+                break;
+            }
+        }
+        // No child has exited yet, but one is still running → block until it does (the
+        // child's exitTask clears `waiting`), then re-run sigsuspend and deliver.
+        for (int c = 1; c < MAX_TASKS; c++) {
+            if (g_tasks[c].active && !g_tasks[c].exited && g_tasks[c].parentId == tid) {
+                task.waiting = true; task.waitingForPid = -1;
+                return SIGSUSP_BLOCK;
+            }
+        }
+    }
+    return cast(long)(-4); // -EINTR: no handler / no children
 }
 
 // ------------------------------------------------------------------
@@ -1812,6 +1940,23 @@ private void dispatchSyscall(int tid) {
             exitTask(tid, cast(int)rdi);
             return; // exitTask switches tasks; we never reach the set-RAX below
 
+        // rt_sigreturn (Z1: return from a signal handler — restore the saved context)
+        case 15:
+            sigreturnTask(tid);
+            return;   // task.regs fully restored (incl. RAX/RIP/RSP); don't touch them
+
+        // pause (34) / rt_sigsuspend (130): zsh's foreground-job wait point.  zsh's
+        // configure picked BROKEN_POSIX_SIGSUSPEND (our sigsuspend returned EINTR), so it
+        // actually waits with sigprocmask+pause — handle both.  This is where SIGCHLD is
+        // unblocked, so deliver its handler here (it reaps the child, returns from the
+        // wait), instead of from the generic run-loop point where zsh keeps it blocked.
+        case 34:
+        case 130:
+            ret = sigsuspendTask(tid);
+            if (ret == SIGSUSP_DELIVERED) return;   // handler armed; task.regs set up
+            if (ret == SIGSUSP_BLOCK) { task.regs[REG_RIP] -= 2; scheduleNext(); return; }
+            break;                                  // -EINTR → set RAX below
+
         // wait4
         case 61:
             ret = wait4Task(tid, cast(int)rdi, rsi, rdx);
@@ -1976,7 +2121,8 @@ private void dispatchSyscall(int tid) {
     // scheduler), rewind RIP to the `syscall` instruction (2 bytes: 0F 05) and
     // yield.  The task transparently re-runs read() next time it is scheduled,
     // so userspace still sees a normal blocking read once data arrives.
-    if (rax == 0 && ret == -11 /*EAGAIN*/ && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi))) {
+    if (rax == 0 && ret == -11 /*EAGAIN*/ &&
+        (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) {
         task.regs[REG_RIP] -= 2;
         scheduleNext();
         return;
@@ -2116,6 +2262,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 89:  return linux_sys_readlink(a, b, c);
         case 96:  return linux_sys_gettimeofday(a, b);
         case 97:  return linux_sys_getrlimit(a, b);
+        case 98:  return linux_sys_getrusage(a, b);   // Z1: zsh's `time`/resource reporting
         case 99:  return linux_sys_sysinfo(a);
         case 100: return linux_sys_times(a);
         case 102: return linux_sys_getuid();
@@ -2138,6 +2285,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 124: return linux_sys_getsid(a);
         case 131: return linux_sys_sigaltstack(a, b);
         case 137: return linux_sys_statfs(a, b);
+        case 138: return linux_sys_fstatfs(a, b);     // Z1: zsh probes the cwd filesystem
         case 154: return linux_sys_sched_setparam(a, b);
         case 155: return linux_sys_sched_getparam(a, b);
         case 157: return linux_sys_prctl(a, b, c, d, e);
@@ -2201,6 +2349,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 332: return linux_sys_statx(a, b, c, d, e);
         case 334: return linux_sys_rseq(a, b, c, d);
         case 435: return linux_sys_clone3(a, b);
+        case 439: return linux_sys_faccessat2(a, b, c, d);  // Z1: zsh/musl access() checks
         case 441: return linux_sys_epoll_pwait2(a, b, c, d, e);
 
         // Track B0 / NATIVE_OBJECT_ABI §3: the native object ABI (outside the Linux
@@ -2264,8 +2413,17 @@ private void kernelLoop() {
         if (g_taskPendingSig[tid] != 0) {
             int psig = g_taskPendingSig[tid];
             g_taskPendingSig[tid] = 0;
-            exitTask(tid, 128 + psig);   // 128+signo, as a shell reports a killed job
-            continue;
+            // Z1: if the task installed a real handler for this signal, invoke it (build an
+            // x86-64 rt_sigframe on its user stack and redirect to the handler) instead of
+            // the default terminate.  Used for SIGCHLD (zsh).  If the frame can't be built
+            // we fall through to the default action.
+            if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
+                g_sigHandler[tid][psig] != 0 && deliverUserSignal(tid, psig)) {
+                // handler armed; fall through to run the task (it enters the handler).
+            } else {
+                exitTask(tid, 128 + psig);   // 128+signo, as a shell reports a killed job
+                continue;
+            }
         }
 
         physSetActiveUntyped(task.untypedObjId);

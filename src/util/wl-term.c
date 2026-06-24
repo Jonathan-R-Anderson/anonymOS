@@ -498,8 +498,12 @@ static int spawn_shell(struct app *a) {
         return 0;
     }
     // The shell binary + argv[0] depend on the flavor; the PTY plumbing is shared.
-    const char *shell_path = is_native ? "/hos-sh" : "/-sh";
-    char *const shell_arg0 = is_native ? "hos-sh" : "-sh";
+    // Z1 (ZSH_INTEGRATION_ROADMAP): the Linux personality now runs real upstream zsh
+    // (the `/zsh` boot module; /bin/zsh symlinks to it).  argv[0]="-zsh" makes it an
+    // interactive login shell.  busybox stays available as /bin/sh and as the coreutils
+    // zsh execs for external commands.  Native flavor still runs /hos-sh.
+    const char *shell_path = is_native ? "/hos-sh" : "/zsh";
+    char *const shell_arg0 = is_native ? "hos-sh" : "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }
@@ -548,12 +552,16 @@ static int spawn_shell(struct app *a) {
         setenv("PATH", "/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin", 1);
         setenv("HOME", "/root", 1);
         setenv("TERM", "linux", 1);
-        // Rich PS1 so the Linux (busybox) shell prompt shows the same four fields as the
+        // Z1: give zsh a username so %n (and \u) resolve; the passwd DB has uid 1000=user.
+        setenv("USER", "user", 1);
+        setenv("LOGNAME", "user", 1);
+        // Rich PS1 so the Linux (zsh) shell prompt shows the same four fields as the
         // native shell: username, permissions, namespace (domain), and the working dir —
         // `[<domain>] <user> [<perms>]:<cwd>$`.  The domain + permission flags come from
-        // the per-domain policy the Domain Manager passes in the environment; \u and \w
-        // are expanded live by ash (ASH_EXPAND_PRMT).  (Only for the Linux flavor; the
-        // native shell builds its own prompt from the kernel via HOS_SYS_QUERY.)
+        // the per-domain policy the Domain Manager passes in the environment; zsh expands
+        // %n (user), %~ (cwd, ~-abbreviated) and %# (%/# by privilege) live.  (Only for the
+        // Linux flavor; the native shell builds its own prompt from the kernel via
+        // HOS_SYS_QUERY.)  Z6 (a richer powerlevel-style prompt) layers on top in /etc/zshrc.
         if (!is_native) {
             const char *dom  = getenv("EPIN_DOMAIN");
             const char *disk = getenv("EPIN_DISK");        // none / ro / rw
@@ -568,8 +576,15 @@ static int spawn_shell(struct app *a) {
             if (sipc && !strcmp(sipc, "1"))
                 cl += snprintf(caps + cl, sizeof(caps) - cl, "ipc ");
             if (cl > 0 && caps[cl - 1] == ' ') caps[cl - 1] = 0;   // trim trailing space
+            // Embed the username literally rather than zsh's %n: assigning the special
+            // USERNAME parameter (which %n reads) attempts a setuid, so a zshrc fallback
+            // can't set it, and getpwuid races zsh startup leaving %n empty.
+            const char *usr = getenv("EPIN_USER");
+            if (!usr || !*usr) usr = getenv("USER");
+            if (!usr || !*usr) usr = "user";
+            // zsh prompt escapes (%% -> literal %): [<dom>] <user> [<perms>]:%~%#
             char ps1[256];
-            snprintf(ps1, sizeof(ps1), "[%s] \\u [%s]:\\w\\$ ", dom, caps);
+            snprintf(ps1, sizeof(ps1), "[%s] %s [%s]:%%~%%# ", dom, usr, caps);
             setenv("PS1", ps1, 1);
         }
         // Launch the chosen shell on the pty.  For busybox, argv[0]="-sh" makes ash

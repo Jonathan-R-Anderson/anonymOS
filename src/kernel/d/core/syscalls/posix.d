@@ -12,7 +12,8 @@ import core.io;
 import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    objEnsureNamespace, taskIdFromLinuxPid,
-                   g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName;
+                   g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName,
+                   g_sigHandler, g_sigRestorer;
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -507,6 +508,27 @@ public bool ptyBlockingReadFd(ulong fd) @nogc nothrow {
     auto f = &g_fdTable[ifd];
     if (f.type != FileType.FD_PTY_MASTER && f.type != FileType.FD_PTY_SLAVE) return false;
     return (f.flags & 0x800 /*O_NONBLOCK*/) == 0;
+}
+
+// True when fd is the read end of a blocking pipe that is currently empty but still
+// has live writers — so the dispatcher should rewind+yield (exactly like a blocking
+// PTY read) instead of surfacing EAGAIN.  zsh's fork/job-control coordination
+// (exec.c execcmd_fork) does a blocking read_loop() on a `synch` pipe waiting for the
+// child to report its process-group leader, and treats EAGAIN as fatal — which wedged
+// every external command.  Yielding lets the forked child run and write the pipe; the
+// parent's read transparently completes when it is rescheduled.  When the last writer
+// closes (or the child dies, dropping its fds) writers hits 0 and the read returns EOF
+// instead of blocking, so this can't spin forever.
+public bool pipeBlockingReadFd(ulong fd) @nogc nothrow {
+    initFdTable();
+    int ifd = cast(int)fd;
+    if (ifd < 0 || ifd >= 1024) return false;
+    auto f = &g_fdTable[ifd];
+    if (f.type != FileType.FD_PIPE_READ) return false;
+    if (f.flags & 0x800 /*O_NONBLOCK*/) return false;   // genuine non-blocking pipe: real EAGAIN
+    auto pipe_ = getPipe(cast(size_t)pipeIdFromFd(f));
+    if (pipe_ is null) return false;
+    return (pipe_.head - pipe_.tail) == 0 && pipe_.writers > 0;
 }
 
 // ── DRM / KMS infrastructure ─────────────────────────────────────────────────
@@ -3860,6 +3882,13 @@ private void rtInit() {
     rtMkdirPath("/root\0".ptr,          M0700, 0, 0);
     rtMkdirPath("/var/log\0".ptr,       M0755, 0, 0);
     rtSeedBinSymlinks();                 // /bin/<applet> -> /busybox for all applets
+    // Z1 (ZSH_INTEGRATION_ROADMAP): real upstream zsh is a boot module `/zsh`; expose it
+    // at /bin/zsh (so `exec /bin/zsh` + PATH find it) and at the canonical
+    // /system/shell/zsh/zsh.  execveTask follows the leading symlink to the boot module.
+    rtSymlinkCreate("/zsh\0".ptr, "/bin/zsh\0".ptr);
+    rtMkdirPath("/system/shell\0".ptr,      M0755, 0, 0);
+    rtMkdirPath("/system/shell/zsh\0".ptr,  M0755, 0, 0);
+    rtSymlinkCreate("/zsh\0".ptr, "/system/shell/zsh/zsh\0".ptr);
 
     // OBJECT_FILESYSTEM_ROADMAP F0: the native object-OS root, additive over the Linux
     // FHS (which stays put and keeps working). `ls /` now shows the object tree; the
@@ -3942,6 +3971,41 @@ alias gp='git push'
 # --- local override hook (not overwritten on update) ---
 [ -r /etc/profile.local ] && . /etc/profile.local
 `;
+    // Z1: zsh does NOT read /etc/profile — its global interactive config is /etc/zshrc.
+    // This makes real zsh usable as the default Linux shell on the cooperative kernel.
+    static immutable string ZSHRC =
+`# /etc/zshrc — AnonymOS global zsh config (interactive shells).
+# zsh ignores /etc/profile; THIS is the zsh customization point.  The full
+# Oh-My-Zsh / Powerlevel plan is roadmap/ZSH_INTEGRATION_ROADMAP.md (Z5/Z6).
+
+# Job control (MONITOR) needs process groups + tcsetpgrp the cooperative kernel does
+# not fully model yet; with it on, zsh wedges after the first external command.  Turn
+# it off so commands run sequentially.  (Ctrl-Z / bg / fg are a later kernel item.)
+unsetopt MONITOR
+# No reverse-video '%' partial-line marker, no beeping.
+unsetopt PROMPT_SP PROMPT_CR
+setopt NO_BEEP
+
+# Make %n (username) resolve even if the passwd lookup raced shell startup.
+[[ -z "$USERNAME" ]] && USERNAME=${USER:-user}
+
+# --- aliases (zsh has no /etc/profile; mirror the busybox /etc/profile set) ---
+alias ll='ls -lah'
+alias la='ls -A'
+alias l='ls -CF'
+alias ..='cd ..'
+alias grep='grep --color=auto'
+# AnonymOS object-model shortcuts:
+alias objects='cat /objects/store'
+alias caps='cat /config/identities.json'
+alias services='cat /config/services.json'
+alias sysinfo='cat /config/system.json'
+# git (works once git is installed):
+alias gs='git status'
+
+# --- local override hook (not overwritten on update) ---
+[[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
+`;
     static immutable string SHELL_JSON =
 `{
   "shell": {
@@ -3973,6 +4037,7 @@ alias gp='git push'
 }
 `;
     rtAddFile("etc/profile\0".ptr,    "etc/profile".length,    cast(const(ubyte)*)PROFILE.ptr,    cast(uint)PROFILE.length);
+    rtAddFile("etc/zshrc\0".ptr,      "etc/zshrc".length,      cast(const(ubyte)*)ZSHRC.ptr,      cast(uint)ZSHRC.length);
     rtAddFile("etc/shell.json\0".ptr, "etc/shell.json".length, cast(const(ubyte)*)SHELL_JSON.ptr, cast(uint)SHELL_JSON.length);
 }
 
@@ -4249,10 +4314,10 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/hosts",         "127.0.0.1 localhost hanonymOS\n::1 localhost\n"                           },
     { "/etc/machine-id",    "deadbeefcafe00001234567890abcdef\n"                                       },
     { "/etc/nsswitch.conf", "passwd: files\ngroup: files\nshadow: files\nhosts: files dns\n"          },
-    { "/etc/passwd",        "root:x:0:0:root:/root:/bin/sh\nuser:x:1000:1000:user:/home/user:/bin/sh\n" },
+    { "/etc/passwd",        "root:x:0:0:root:/root:/bin/zsh\nuser:x:1000:1000:user:/home/user:/bin/zsh\n" },
     { "/etc/shadow",        "root::::::::\n"                                                           },
     { "/etc/group",         "root:x:0:\n"                                                              },
-    { "/etc/shells",        "/bin/sh\n/bin/ash\n/busybox\n"                                            },
+    { "/etc/shells",        "/bin/zsh\n/bin/sh\n/bin/ash\n/busybox\n"                                  },
     { "/etc/resolv.conf",   "nameserver 8.8.8.8\nnameserver 1.1.1.1\n"                                },
     { "/etc/localtime",     ""                                                                         },
     { "/etc/timezone",      "UTC\n"                                                                    },
@@ -6280,11 +6345,29 @@ public long linux_sys_rt_sigaction(ulong signum, ulong act, ulong oldact, ulong 
     // default terminate, which is what keeps interactive apps alive on ^C.
     const int tid = cast(int)g_current_task_id;
     if (signum < 64 && tid >= 0 && tid < MAX_TASKS) {
+        if (oldact != 0 && signum < 64) {
+            // Report the previously-installed handler (zsh queries this).
+            *cast(ulong*)oldact = g_sigHandler[tid][signum];
+        }
         if (act != 0) {
-            const ulong handler = *cast(ulong*)act;       // sa_handler at offset 0
+            // x86-64 kernel sigaction layout: sa_handler(+0), sa_flags(+8), sa_restorer(+16).
+            const ulong handler  = *cast(ulong*)(act + 0);
+            const ulong flags    = *cast(ulong*)(act + 8);
+            const ulong restorer = *cast(ulong*)(act + 16);
             // SIG_DFL = 0 → default; SIG_IGN = 1 or any handler → custom (suppress kill)
             if (handler == 0) g_taskSigCustom[tid] &= ~(1UL << signum);
             else              g_taskSigCustom[tid] |=  (1UL << signum);
+            // Z1: store the real handler so the run loop can invoke it (SIGCHLD).  A real
+            // function pointer (not SIG_DFL/SIG_IGN = 0/1) with SA_RESTORER's trampoline is
+            // what we can build a frame for; otherwise clear it (default/ignore handling).
+            enum ulong SA_RESTORER = 0x04000000;
+            if (handler > 1 && (flags & SA_RESTORER) && restorer != 0) {
+                g_sigHandler[tid][signum]  = handler;
+                g_sigRestorer[tid][signum] = restorer;
+            } else {
+                g_sigHandler[tid][signum]  = 0;
+                g_sigRestorer[tid][signum] = 0;
+            }
         }
     }
     return 0;

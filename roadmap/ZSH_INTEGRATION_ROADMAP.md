@@ -78,19 +78,40 @@ that gates the native ABI).
 - *Verified:* a clean `make zsh` produces a 1.8 MB static x86-64 musl ELF that runs —
   `zsh --version` = 5.9; arrays, associative arrays, and globbing/modifiers all work.
 
-## Z1 — Linux-personality zsh · ☐ · P: High · E: 3 · deps: Z0
+## Z1 — Linux-personality zsh · ✅ DONE · P: High · E: 3 · deps: Z0
 
-- Build `zsh` as a static (then shared) musl binary; stage it as a boot module + into the
-  rtfs at `/bin/zsh` and `/system/shell/zsh/zsh`.
-- `exec("/bin/zsh")` runs upstream zsh **with no behavioural differences** — the Linux
-  compatibility goal. Validate the upstream test suite subset that the live syscall set
-  supports (globbing, expansion, arrays, assoc arrays, functions, aliases, completion).
-- Make it the default `/etc/passwd` shell for `user`/`root` (replacing `/bin/sh`).
-- *Deliverable 4 (Linux integration), 18 (regression vs upstream).*
-- **Risk/dep:** zsh uses a handful of syscalls beyond busybox's set (e.g. `wait4` flags,
-  job-control `tcsetpgrp`, `setpgid`, `poll`). Most are live; gaps get filled in posix.d
-  exactly as busybox's were (the `getpgid/getpgrp==1` trap and PTY line discipline already
-  exist — see [[shell-track-a]]).
+- **Staged** the static-musl zsh (Z0) as a limine **boot module `/zsh`** + rtfs symlinks
+  `/bin/zsh` and `/system/shell/zsh/zsh` → it (`rtInit`); the iso build copies it (`make`
+  wired `$(ZSH_BIN)` into the `hos.iso` prereqs + `cd/zsh`).
+- `exec("/bin/zsh")` runs upstream **zsh 5.9** as the default Linux shell — wl-term's
+  `linux` flavour launches `/zsh` (argv0 `-zsh`, a login shell); busybox stays as `/bin/sh`
+  and as the coreutils zsh execs. `/etc/passwd` shell for `user`/`root` is now `/bin/zsh`.
+- *Verified live in the GUI:* prompt with all four fields (`[domain] user [perms]:cwd%`),
+  builtins (`echo`, `for` loops, arrays), **external commands** (`whoami`, `uname`, `ls`,
+  `id`, `tr`), **pipes** (`echo … | cat`), command sequences (`;`), `$var` expansion —
+  all run, each returning cleanly to the prompt.
+- **Three kernel fixes were required** (the syscall gaps the risk note predicted, plus two
+  deeper ones), all in `posix.d`/`kernel_main.d`/`task.d`:
+  1. **Blocking pipe reads** — zsh's `execcmd_fork` does a blocking `read_loop` on a
+     `pipe()` to sync with the forked child; the kernel returned EAGAIN. Added
+     `pipeBlockingReadFd` so the dispatcher rewinds+yields (like a PTY) until the child
+     writes — the cooperative-scheduler blocking-read path now covers pipes.
+  2. **Userspace SIGCHLD handler delivery** — zsh waits for jobs via SIGCHLD (it picked
+     `BROKEN_POSIX_SIGSUSPEND`, so really `sigprocmask`+`pause`), but the kernel had no
+     handler invocation at all (only default-terminate). Built x86-64 rt_sigframe delivery
+     (`deliverUserSignal` + `rt_sigreturn`/`case 15`, handler/restorer stored by
+     `rt_sigaction`), delivered from the `pause`/`sigsuspend` wait point (`case 34/130`)
+     where SIGCHLD is unblocked. **General signal-handler delivery — benefits the whole OS.**
+  3. **pid stability across exit** — `linuxPidForTask = processLeaderTid+1`, and exit
+     cleanup zeroes `processLeaderTid`, so `wait4` returned pid 1 instead of the pid `fork`
+     gave the parent; zsh matches reaped pids to its job table, so the job never went DONE.
+     Snapshot the pid at `exitTask` entry (`g_childExitLinuxPid`) and return it from wait4.
+  - Plus 3 already-implemented handlers wired into dispatch (98 `getrusage`, 138 `fstatfs`,
+    439 `faccessat2`), and `unsetopt MONITOR` in `/etc/zshrc` (job control needs process
+    groups the cooperative kernel doesn't fully model; `^Z`/`bg`/`fg` are a later item).
+- *Deliverable 4 (Linux integration), 18 (regression vs upstream).* Remaining nuance:
+  full job control (process groups + `tcsetpgrp`) and the upstream test-suite run are
+  follow-ups; the interactive shell is fully usable.
 
 ## Z2 — Dynamic linking · ☐ · P: Med · E: 3 · deps: Z1
 

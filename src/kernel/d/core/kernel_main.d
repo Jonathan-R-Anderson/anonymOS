@@ -3,7 +3,7 @@
 module core.kernel_main;
 
 import core.task;
-import core.hoscall : hosQuery, HOS_SYS_QUERY;   // Track B0 / Z4a native ABI
+import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ;   // Track B0 / Z4a native ABI
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -2126,8 +2126,14 @@ private void dispatchSyscall(int tid) {
     // scheduler), rewind RIP to the `syscall` instruction (2 bytes: 0F 05) and
     // yield.  The task transparently re-runs read() next time it is scheduled,
     // so userspace still sees a normal blocking read once data arrives.
-    if (rax == 0 && ret == -11 /*EAGAIN*/ &&
-        (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) {
+    // Z4a.6: a native device_read (HOS_SYS_QUERY, op=rdi=HOSQ_DEV_READ, fd=rsi) over the PTY
+    // is a blocking terminal read too — give it the same treatment as a Linux read(rdi) so
+    // native zsh's terminal input blocks correctly and ^C still interrupts it.
+    const bool blkRead =
+        (rax == 0 && (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) ||
+        (rax == HOS_SYS_QUERY && rdi == HOSQ_DEV_READ &&
+         (ptyBlockingReadFd(rsi) || pipeBlockingReadFd(rsi) || isConsoleFd(rsi)));
+    if (blkRead && ret == -11 /*EAGAIN*/) {
         // Z3: a pending handler-signal (e.g. ^C -> SIGINT for zsh) interrupts the blocking
         // read with EINTR — POSIX semantics.  RIP is still just past the `syscall`, so we
         // make the read "return" -EINTR (saved by deliverUserSignal) and run the handler;

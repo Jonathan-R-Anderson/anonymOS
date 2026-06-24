@@ -226,18 +226,27 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   read/write/close/lseek/fstat wrappers are gone (only `--wrap=open` remains). Verified live:
   `echo`, `print -l`, and `whoami` (external fork/exec) all work; no OOM, no faults. `/hos-sh`
   stays a boot module — its object commands (`obj/id/ns/svc/sys`) move into native zsh in Z9.
-- **Z4a.6 — Native TTY (Device-object PTY)** · ☐ · expose the shell's controlling terminal as
-  a `Device` object (§12): `device_open`/`device_read`/`device_write` verbs over the PTY, and
-  route zsh's terminal I/O through them when native. (Today native zsh's TTY is the Linux PTY,
-  which native tasks speak — functional, not yet through a Device object.)
+- **Z4a.6 — Native TTY (Device-object PTY)** · ✅ DONE · `device_read`/`device_write` verbs
+  (`HOSQ_DEV_READ`=13/`WRITE`=14) over the PTY, and native zsh's terminal I/O routed through
+  them via `__wrap_read`/`__wrap_write` (`-Wl,--wrap=read,write`).  The kernel gives
+  `device_read` the **same cooperative blocking + ^C→EINTR** a Linux terminal read gets
+  (`ptyBlockingReadFd`/`pipeBlockingReadFd`/`isConsoleFd` on `rsi`).  Verified live: native
+  zsh's prompt/output/input flow through the Device verbs (`[dev-io]` fired), commands and
+  **^C** (aborts the line) work; the Linux zsh is unregressed (`is_native()=0` ⇒ transparent).
+  *Note:* the routing currently covers **all** of native zsh's wrapped read/write, not just the
+  tty — `isatty` can't single out the terminal because the kernel mishandles `ioctl(TCGETS)`
+  on a **dup'd** PTY fd (zsh moves its terminal to a high fd via `movefd`), and zsh's stdio
+  output bypasses the wrapper anyway.  A finer file/device split + that dup-PTY `ioctl` fix
+  are refinements.
 - **Z4a.7 — Native process spawn** · ☐ · `spawn_process` verb (§4) — create a process from an
   image cap + args/env in a namespace under an identity; route zsh's external-command exec
   through it when native (fork/exec → `spawn_process`). (Today native zsh forks/execs via the
   Linux ABI — `whoami` etc. work; not yet through `spawn_process`.)
-- **Z4a.8 — Interactive native-ABI prompt** · ◐ PARTIAL · **reached for the FS path** — an
-  interactive native zsh whose *filesystem* flows through the native object ABI, at a working
-  prompt. The TTY (Z4a.6) and process spawn (Z4a.7) still use the Linux ABI; routing those
-  through Device/`spawn_process` objects completes the "all I/O native" milestone.
+- **Z4a.8 — Interactive native-ABI prompt** · ◐ PARTIAL · **FS + TTY now native** — an
+  interactive native zsh whose *filesystem* (`object_open`) and *terminal I/O*
+  (`device_read`/`device_write`) flow through the native object ABI, at a working prompt with
+  ^C. Only process spawn (Z4a.7 — `spawn_process`) still uses the Linux ABI; routing that
+  through a Process object completes the "all I/O native" milestone.
 
 ### Z4b — signals + IPC · ☐ · deps: Z4a
 

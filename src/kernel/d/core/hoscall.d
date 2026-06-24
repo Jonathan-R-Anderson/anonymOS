@@ -49,6 +49,10 @@ enum : ulong {
     HOSQ_CLOSE      = 10,  // object_close(arg=handle)                   -> 0
     HOSQ_LSEEK      = 11,  // object_lseek(arg=handle, buf=off, buflen=whence) -> offset
     HOSQ_FSTAT      = 12,  // object_fstat(arg=handle, buf=struct stat*)      -> 0
+    // Z4a.6 — Device (the controlling terminal as a §12 Device object).  Same VFS reuse as
+    // the file verbs, but a distinct surface: native zsh's terminal I/O goes through these.
+    HOSQ_DEV_READ   = 13,  // device_read(arg=fd, buf, buflen)  -> bytes
+    HOSQ_DEV_WRITE  = 14,  // device_write(arg=fd, buf, buflen) -> bytes
 }
 
 // Z4a.5: native FS verbs.  object_open resolves the path through the object FS (the F0–F5
@@ -459,6 +463,8 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_CLOSE: return hosClose(arg);
         case HOSQ_LSEEK: return hosLseek(arg, buf, buflen);   // arg=handle, buf=off, buflen=whence
         case HOSQ_FSTAT: return hosFstat(arg, buf);           // arg=handle, buf=struct stat*
+        case HOSQ_DEV_READ:  return hosRead(arg, buf, buflen);   // Z4a.6: terminal Device read
+        case HOSQ_DEV_WRITE: return hosWrite(arg, buf, buflen);  // Z4a.6: terminal Device write
         default: break;
     }
 

@@ -73,7 +73,7 @@ $(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c
 	  CC="$(MUSL_CC)" \
 	  CPPFLAGS="-I$(SYSROOT)/include -I$(SYSROOT)/include/ncursesw" \
 	  LDFLAGS="-L$(SYSROOT)/lib" \
-	  EXTRA_LDFLAGS="-Wl,--export-dynamic -Wl,--wrap=open" \
+	  EXTRA_LDFLAGS="-Wl,--export-dynamic -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=write" \
 	  LIBS="-lncursesw -ltinfow -lanon" \
 	  zsh_cv_func_dlsym_needs_underscore=no \
 	  zsh_cv_shared_environ=yes zsh_cv_shared_tgetent=yes zsh_cv_shared_tigetstr=yes \

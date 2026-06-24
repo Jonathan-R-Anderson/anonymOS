@@ -180,7 +180,8 @@ private __gshared immutable BootStage[35] BOOT_STAGES = [
     { "[dkernel]\0".ptr, "AnonymOS ready\0".ptr }, // BOOT_COMPLETE (index 34)
 ];
 
-private size_t cstrLen(const(char)* s)
+// (renamed splashCstrLen: a plain splashCstrLen collides with device.d at link)
+private size_t splashCstrLen(const(char)* s)
 {
     size_t n = 0;
     while (s[n] != 0) ++n;
@@ -232,9 +233,9 @@ private void drawCard(ref Canvas canvas, uint w, uint h, uint progress255)
     {
         const(char)* tag = BOOT_STAGES[stageIdx].tag;
         const(char)* msg = BOOT_STAGES[stageIdx].message;
-        canvasText(canvas, null, cx, cy, tag[0 .. cstrLen(tag)], C_DIM, C_PANEL_BG, true);
-        uint tw = cast(uint)(glyphWidth / 2) * cast(uint) cstrLen(tag) + 6;
-        canvasText(canvas, null, cx + tw, cy, msg[0 .. cstrLen(msg)], C_WHITE70, C_PANEL_BG, true);
+        canvasText(canvas, null, cx, cy, tag[0 .. splashCstrLen(tag)], C_DIM, C_PANEL_BG, true);
+        uint tw = cast(uint)(glyphWidth / 2) * cast(uint) splashCstrLen(tag) + 6;
+        canvasText(canvas, null, cx + tw, cy, msg[0 .. splashCstrLen(msg)], C_WHITE70, C_PANEL_BG, true);
     }
     cy += glyphHeight + 10;
 
@@ -255,9 +256,9 @@ private void drawCard(ref Canvas canvas, uint w, uint h, uint progress255)
         const(char)* tag = BOOT_STAGES[li].tag;
         const(char)* msg = BOOT_STAGES[li].message;
         uint lx = cx;
-        canvasText(canvas, null, lx, cy, tag[0 .. cstrLen(tag)], C_DIM, C_PANEL_BG, true);
-        lx += (cast(uint)(glyphWidth / 2)) * cast(uint) cstrLen(tag) + 6;
-        canvasText(canvas, null, lx, cy, msg[0 .. cstrLen(msg)], C_WHITE70, C_PANEL_BG, true);
+        canvasText(canvas, null, lx, cy, tag[0 .. splashCstrLen(tag)], C_DIM, C_PANEL_BG, true);
+        lx += (cast(uint)(glyphWidth / 2)) * cast(uint) splashCstrLen(tag) + 6;
+        canvasText(canvas, null, lx, cy, msg[0 .. splashCstrLen(msg)], C_WHITE70, C_PANEL_BG, true);
         // " ok" on the right
         uint okx = cx + barW - (cast(uint)(glyphWidth / 2)) * 3;
         canvasText(canvas, null, okx, cy, "ok\0".ptr[0 .. 2], C_LIGHT, C_PANEL_BG, true);

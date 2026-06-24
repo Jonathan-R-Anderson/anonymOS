@@ -1,0 +1,62 @@
+{
+  "system":  { "name": "thinkpad-x1", "hostname": "anon", "generation": 3 },
+  "kernel":  { "features": ["smp", "wayland", "linux-compat"],
+               "options": { "console": "serial0", "mem": "2048M" } },
+  "boot":    { "configPath": "/system.json", "measured": true,
+               "signature": "hmac-sha256:9f3a" },
+  "security":{ "rootless": true, "immutableImage": true,
+               "profiles": ["default-deny-net"] },
+  "objects": {
+    "root":     { "_type": "Directory", "source": "bundle:/" },
+    "usr":      { "_type": "Directory", "source": "store:/usr@gen3" },
+    "var":      { "_type": "Directory", "source": "store:/var", "writable": true }
+  },
+  "capabilities": {
+    "fs-rw":   { "rights": ["read","write","stat"] },
+    "fs-ro":   { "inherits": "fs-rw", "rights": ["read","stat"] },
+    "call":    { "rights": ["call"] },
+    "net-out": { "inherits": "call", "rights": ["call"] },
+    "admin":   { "rights": ["read","call","admin_reboot","admin_mount"] }
+  },
+  "identities": [
+    { "name": "System",   "color": "#2A2A2A", "trust": "system",
+      "rightsCeiling": "admin",   "namespace": "system-ns", "net": "none" },
+    { "name": "Personal", "color": "#3478F6", "trust": "personal",
+      "rightsCeiling": "fs-rw",   "namespace": "user-ns",   "net": "nat",
+      "clip": "same" },
+    { "name": "Banking",  "color": "#E02020", "trust": "banking",
+      "rightsCeiling": "fs-ro",   "namespace": "bank-ns",   "net": "vpn",
+      "clip": "deny", "gui": ["borderAlways","noScreenshotAcrossId"] }
+  ],
+  "namespaces": [
+    { "name": "system-ns", "root": "$root", "isolated": true },
+    { "name": "user-ns",   "root": "$root", "inherits": "system-ns" },
+    { "name": "bank-ns",   "root": "$root", "isolated": true }
+  ],
+  "services": [
+    { "name": "init",        "executable": "/init",        "identity": "System",
+      "capabilities": ["admin"], "restart": "never" },
+    { "name": "net-broker",  "executable": "/sbin/netd",   "identity": "System",
+      "capabilities": ["net-out"], "depends": ["init"] },
+    { "name": "ipc-broker",  "executable": "/sbin/ipcd",   "identity": "System",
+      "capabilities": ["call"],    "depends": ["init"], "ipc": "secure" }
+  ],
+  "ipc": [
+    { "name": "secure", "dh": true, "keyBroker": "ipc-broker", "audit": true,
+      "allow": [ { "from": "Personal", "to": "System", "broker": "ipc-broker" } ] }
+  ],
+  "storage": [
+    { "name": "system-base", "kind": "immutable", "generation": "gen3", "readOnly": true },
+    { "name": "user-state",  "kind": "object-store", "source": "/var", "readOnly": false }
+  ],
+  "snapshots": [ { "name": "gen2", "auto": true },
+                  { "name": "gen3", "base": "gen2", "auto": true } ],
+  "gui":      { "compositor": "mutter", "borderPolicy": "always",
+                "defaultColor": "#2A2A2A" },
+  "compatibility": { "linux":   { "enabled": true,  "personality": "x86_64" },
+                     "windows": { "enabled": false, "backend": "wine" } },
+  "logging":  { "level": "info", "audit": true, "sink": "/var/log/audit" },
+  "networking":{ "hostname": "anon", "dns": ["10.0.0.1"],
+                 "interfaces": [ { "name": "eth0", "dhcp": true } ] },
+  "distributed": { "enabled": false }
+}

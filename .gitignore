@@ -2,6 +2,7 @@ qemu.log
 qemu-verify.log
 *.log
 .claude/
+web3-kinetic-loader/
 .build-home/
 .venv/
 deps/.host-tools/

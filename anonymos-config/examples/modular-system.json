@@ -1,0 +1,11 @@
+{
+  "imports": [ "modules/base.json", "modules/hardware.json",
+               "modules/identities.json", "modules/services.json",
+               "modules/gui.json" ],
+  "snapshots": [ { "name": "gen1", "auto": true } ],
+  "storage": [
+    { "name": "system-base", "kind": "immutable", "generation": "gen1", "readOnly": true },
+    { "name": "user-state",  "kind": "object-store", "source": "/var", "readOnly": false }
+  ],
+  "distributed": { "enabled": false }
+}

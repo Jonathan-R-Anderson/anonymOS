@@ -22,11 +22,17 @@
 module display.splash;
 
 import display.canvas;
-import display.framebuffer : framebufferAvailable;
+import display.framebuffer : framebufferAvailable, initFramebuffer;
 import display.common : glyphWidth, glyphHeight;
 import core.console : g_fbConsoleEnabled;
 import core.ticks : pitMs;
 import core.io : klog;
+// The bootstrap-level Limine framebuffer pointer (set in bootstrap_kernel
+// before d_kernel_main). The display module's own g_fb is NOT initialized until
+// the (later, lazy) d_init_display heartbeat, so the splash seeds it itself,
+// mirroring exactly what d_init_display does (hs_bridge.d:93-102).
+import arch.x86_64.limine : limine_framebuffer;
+extern __gshared limine_framebuffer* g_fb; // from arch.x86_64.bootstrap
 
 extern (C) @nogc nothrow:
 
@@ -278,7 +284,20 @@ private void drawBracket(ref Canvas canvas, uint x, uint y, int dx, int dy)
 // ── the entry point ──────────────────────────────────────────────────────────
 public void splashRun()
 {
-    if (!framebufferAvailable()) return; // serial-only/headless: nothing to draw
+    // The display module's g_fb is not initialized until the (later, lazy)
+    // d_init_display heartbeat. Seed it now from the bootstrap Limine framebuffer,
+    // exactly as hs_bridge.d:d_init_display does, so canvas/framebuffer drawing
+    // works during the early-boot splash window.
+    if (!framebufferAvailable())
+    {
+        if (g_fb is null) return; // serial-only/headless: nothing to draw
+        const bool isBGR = g_fb.blue_mask_shift > g_fb.red_mask_shift;
+        initFramebuffer(cast(const(void)*) g_fb.address,
+                        cast(uint) g_fb.width, cast(uint) g_fb.height,
+                        cast(uint) g_fb.pitch, cast(uint) g_fb.bpp,
+                        isBGR, 0, true);
+    }
+    if (!framebufferAvailable()) return;
 
     Canvas canvas = createFramebufferCanvas();
     if (!canvas.available) return;

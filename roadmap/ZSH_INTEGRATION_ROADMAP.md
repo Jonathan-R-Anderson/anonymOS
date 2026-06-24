@@ -140,14 +140,37 @@ that gates the native ABI).
 - *Deliverable 6 (dynamic linking).* **Validates the kernel loader against a second large
   dynamic program besides the GUI stack** (zsh + 36 dlopen'd modules), as intended.
 
-## Z3 — PTY / terminal split · ☐ · P: High · E: 2 · deps: Z1
+## Z3 — PTY / terminal split · ✅ DONE · P: High · E: 2 · deps: Z1
 
-- The terminal (`wl-term`) must contain **no shell logic** — it only creates a PTY and
-  `exec`s the shell. wl-term already does exactly this (`spawn_shell`: `/dev/ptmx` →
-  fork → `execve` the shell on the slave). Switch its default shell binary to `/bin/zsh`.
-- Keep wl-term's responsibilities (keyboard, pointer, clipboard, PTY, Unicode, rendering,
-  window decorations); everything else is zsh.
-- *Deliverable 7 (PTY/terminal).* Mostly a one-line target change + termios coverage check.
+- **wl-term is a pure terminal** — `spawn_shell` only opens `/dev/ptmx`, forks, and
+  `execve`s the shell on the slave (no parsing/builtins/command logic).  Its default
+  Linux shell is now the canonical **`/bin/zsh`** (the rtfs symlink → the `/zsh` boot
+  module).  It keeps keyboard/pointer/PTY/Unicode/rendering/window-decoration duties;
+  everything line-editing is zsh.
+- **termios line discipline** (kernel PTY, `posix.d` `ptyIoctl`/`ptyInputByte`) is complete
+  for ZLE: `TCSETS` *applies* the termios so zsh's raw mode (ICANON/ECHO off) takes effect;
+  raw passthrough, canonical VERASE/VKILL editing, ISIG (^C/^\), `TIOCGWINSZ/SWINSZ`, and
+  `TIOC[GS]PGRP` all work.
+- **The coverage check found + fixed two real gaps** (wl-term, both verified live):
+  1. *Input:* `key_to_pty` didn't emit escape sequences for navigation keys — so Up/Down
+     (history), Left/Right (cursor), Home/End/Del/PgUp/PgDn did nothing.  Added the
+     linux-console sequences (`\E[A..D`, `\E[N~`).
+  2. *Output:* the VT interpreter merely **swallowed** CSI sequences, so ZLE's line-redraw
+     (cursor addressing + erase) was lost — recalling history over an existing line printed
+     `second-cmdfirst-cmd`.  Added a real CSI interpreter (`vt_exec_csi`): cursor move
+     (`A/B/C/D/G/H`), erase line/display (`K/J`), insert/delete chars (`@/P`).
+- **^C** now aborts the line and interrupts a running foreground command.  This needed
+  extending Z1's signal delivery to **SIGINT**: `deliverSignalToGroup` no longer skips a
+  handler-bearing task (zsh), the run loop leaves a handler-signal pending so it is
+  delivered at the next blocking read as an **EINTR** (POSIX), and zsh's own SIGINT handler
+  then aborts ZLE.  A foreground command (default disposition) is still terminated.  (The
+  fg-group is `lastReader`-scoped, so ^C hits the running command, not the shell behind it.)
+- *Verified live:* history (Up/Down) with clean redraw, in-line cursor editing
+  (`echo abcde` → Left×2 → insert → `echo abcXde`), **tab completion** (`ls /et`<Tab> →
+  `/etc`), and ^C (aborts the line; interrupts `sleep 9` instantly) — external commands /
+  pipes unregressed.
+- *Deliverable 7 (PTY/terminal).*  Remaining job-control items (`^Z`/`bg`/`fg`, process
+  groups + `tcsetpgrp`) stay deferred per Z1.
 
 ## Z4 — Native platform layer · ☐ · P: High · E: 5 · deps: Z1, Z2
 

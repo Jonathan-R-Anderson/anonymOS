@@ -208,7 +208,11 @@ public int deliverSignalToGroup(int pgid, int sig) {
     for (int t = 1; t < MAX_TASKS; ++t) {
         if (!g_tasks[t].active || g_tasks[t].exited) continue;
         if (taskEffectivePgid(t) != pgid) continue;
-        if (g_taskSigCustom[t] & (1UL << sig)) continue;   // SIG_IGN / has handler → skip
+        // SIG_IGN (a custom disposition with no real handler) → ignore, don't deliver.
+        // Z3: a task WITH a handler (e.g. zsh's SIGINT) now gets the signal pending too —
+        // the run loop invokes its handler (Z1 delivery) instead of terminating it.  A
+        // default-disposition task still gets the default terminate.
+        if ((g_taskSigCustom[t] & (1UL << sig)) && g_sigHandler[t][sig] == 0) continue;
         g_taskPendingSig[t] = sig;
         g_tasks[t].waiting  = false;                        // wake a blocked victim
         ++n;

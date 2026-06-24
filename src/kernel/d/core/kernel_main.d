@@ -2123,6 +2123,18 @@ private void dispatchSyscall(int tid) {
     // so userspace still sees a normal blocking read once data arrives.
     if (rax == 0 && ret == -11 /*EAGAIN*/ &&
         (isConsoleFd(rdi) || ptyBlockingReadFd(rdi) || pipeBlockingReadFd(rdi))) {
+        // Z3: a pending handler-signal (e.g. ^C -> SIGINT for zsh) interrupts the blocking
+        // read with EINTR — POSIX semantics.  RIP is still just past the `syscall`, so we
+        // make the read "return" -EINTR (saved by deliverUserSignal) and run the handler;
+        // after rt_sigreturn the read has returned EINTR and zsh's ZLE re-checks its abort
+        // flag instead of swallowing the keystroke.  Else: rewind + yield (normal block).
+        int psig = g_taskPendingSig[tid];
+        if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
+            g_sigHandler[tid][psig] != 0) {
+            g_taskPendingSig[tid] = 0;
+            task.regs[REG_RAX] = cast(ulong)(-4);   // the read returns -EINTR after the handler
+            if (deliverUserSignal(tid, psig)) return;
+        }
         task.regs[REG_RIP] -= 2;
         scheduleNext();
         return;
@@ -2412,16 +2424,16 @@ private void kernelLoop() {
         // do from the keystroke-writer's context where the signal was raised.
         if (g_taskPendingSig[tid] != 0) {
             int psig = g_taskPendingSig[tid];
-            g_taskPendingSig[tid] = 0;
-            // Z1: if the task installed a real handler for this signal, invoke it (build an
-            // x86-64 rt_sigframe on its user stack and redirect to the handler) instead of
-            // the default terminate.  Used for SIGCHLD (zsh).  If the frame can't be built
-            // we fall through to the default action.
             if (psig > 0 && psig < 64 && (g_taskSigCustom[tid] & (1UL << psig)) &&
-                g_sigHandler[tid][psig] != 0 && deliverUserSignal(tid, psig)) {
-                // handler armed; fall through to run the task (it enters the handler).
+                g_sigHandler[tid][psig] != 0) {
+                // Z3: the task has a real handler (e.g. zsh's SIGINT for ^C).  Leave the
+                // signal pending and run the task — it will be delivered at its next
+                // blocking syscall (the read/pause yield below), where it interrupts that
+                // syscall with EINTR so userspace (zsh's ZLE) re-checks its interrupt flag.
+                // Delivering it async here would resume the rewound read and never EINTR.
             } else {
-                exitTask(tid, 128 + psig);   // 128+signo, as a shell reports a killed job
+                g_taskPendingSig[tid] = 0;
+                exitTask(tid, 128 + psig);   // default action: 128+signo (killed job)
                 continue;
             }
         }

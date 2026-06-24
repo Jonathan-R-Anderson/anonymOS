@@ -97,6 +97,8 @@ struct app {
     int                   cur_r, cur_c;
     int                   dirty;
     int                   esc;      // ANSI escape state machine
+    char                  csi[24];  // accumulated CSI parameter/intermediate bytes
+    int                   csi_len;
 
     char                  mirror[256];
     int                   mirror_len;
@@ -353,11 +355,64 @@ static void grid_newline(struct app *a) {
     if (++a->cur_r >= ROWS) { a->cur_r = ROWS - 1; grid_scroll(a); }
 }
 
+// Z3 (terminal coverage): execute a CSI sequence "ESC [ <params> <final>".  Implements
+// the subset zsh's ZLE actually emits to redraw an edited line — cursor movement, column
+// addressing, and erase — so history recall / in-line editing render correctly (without
+// these, replacing a line just appends, e.g. "second-cmdfirst-cmd").  SGR colours (m) and
+// private modes (?...) are accepted and ignored.
+static void vt_exec_csi(struct app *a, char final) {
+    int p0 = -1, p1 = -1, idx = 0, v = 0, have = 0;
+    for (int i = 0; i < a->csi_len; i++) {
+        char ch = a->csi[i];
+        if (ch >= '0' && ch <= '9') { v = v * 10 + (ch - '0'); have = 1; }
+        else if (ch == ';') { if (idx == 0) p0 = have ? v : -1; else if (idx == 1) p1 = have ? v : -1; idx++; v = 0; have = 0; }
+        // ignore intermediate/private bytes ('?', ' ', etc.) for parameter parsing
+    }
+    if (idx == 0) p0 = have ? v : -1; else if (idx == 1) p1 = have ? v : -1;
+    int n = (p0 > 0) ? p0 : 1;
+    switch (final) {
+        case 'C': a->cur_c += n; if (a->cur_c >= COLS) a->cur_c = COLS - 1; break;        // cursor right
+        case 'D': a->cur_c -= n; if (a->cur_c < 0) a->cur_c = 0; break;                   // cursor left
+        case 'A': a->cur_r -= n; if (a->cur_r < 0) a->cur_r = 0; break;                   // cursor up
+        case 'B': a->cur_r += n; if (a->cur_r >= ROWS) a->cur_r = ROWS - 1; break;        // cursor down
+        case 'G': a->cur_c = (p0 > 0 ? p0 - 1 : 0);                                       // column absolute
+                  if (a->cur_c >= COLS) a->cur_c = COLS - 1; if (a->cur_c < 0) a->cur_c = 0; break;
+        case 'H': case 'f': {                                                            // cursor position r;c (1-based)
+            int rr = (p0 > 0 ? p0 - 1 : 0), cc = (p1 > 0 ? p1 - 1 : 0);
+            a->cur_r = rr < 0 ? 0 : (rr >= ROWS ? ROWS - 1 : rr);
+            a->cur_c = cc < 0 ? 0 : (cc >= COLS ? COLS - 1 : cc);
+            break;
+        }
+        case 'K': {                                                                      // erase line (0 EOL, 1 BOL, 2 all)
+            int mode = (p0 < 0 ? 0 : p0);
+            int start = (mode == 1) ? 0 : a->cur_c;
+            int end   = (mode == 0) ? COLS - 1 : a->cur_c;
+            for (int c = start; c <= end && c < COLS; c++) a->grid[a->cur_r][c] = ' ';
+            break;
+        }
+        case 'J': {                                                                      // erase display (0 to end, 2 all)
+            int mode = (p0 < 0 ? 0 : p0);
+            if (mode == 2) { for (int r = 0; r < ROWS; r++) for (int c = 0; c < COLS; c++) a->grid[r][c] = ' '; }
+            else { for (int c = a->cur_c; c < COLS; c++) a->grid[a->cur_r][c] = ' ';
+                   for (int r = a->cur_r + 1; r < ROWS; r++) for (int c = 0; c < COLS; c++) a->grid[r][c] = ' '; }
+            break;
+        }
+        case 'P': for (int c = a->cur_c; c < COLS; c++)                                   // delete n chars (shift left)
+                      a->grid[a->cur_r][c] = (c + n < COLS) ? a->grid[a->cur_r][c + n] : ' '; break;
+        case '@': for (int c = COLS - 1; c >= a->cur_c; c--)                              // insert n blanks (shift right)
+                      a->grid[a->cur_r][c] = (c - n >= a->cur_c) ? a->grid[a->cur_r][c - n] : ' '; break;
+        default: break;                                                                  // m (SGR), l/h (modes), … ignored
+    }
+}
+
 // Feed one byte of shell output through a tiny VT interpreter.
 static void vt_byte(struct app *a, unsigned char b) {
-    // Swallow ANSI/VT escape sequences so they don't render as garbage.
-    if (a->esc == 1) { a->esc = (b == '[') ? 2 : 0; return; }
-    if (a->esc == 2) { if (b >= 0x40 && b <= 0x7e) a->esc = 0; return; }
+    if (a->esc == 1) { a->esc = (b == '[') ? 2 : 0; a->csi_len = 0; return; }
+    if (a->esc == 2) {
+        if (b >= 0x40 && b <= 0x7e) { vt_exec_csi(a, (char)b); a->esc = 0; return; }
+        if (a->csi_len < (int)sizeof(a->csi)) a->csi[a->csi_len++] = (char)b;  // accumulate params
+        return;
+    }
     switch (b) {
         case 0x1b: a->esc = 1; return;
         case '\r': a->cur_c = 0; return;
@@ -502,7 +557,7 @@ static int spawn_shell(struct app *a) {
     // (the `/zsh` boot module; /bin/zsh symlinks to it).  argv[0]="-zsh" makes it an
     // interactive login shell.  busybox stays available as /bin/sh and as the coreutils
     // zsh execs for external commands.  Native flavor still runs /hos-sh.
-    const char *shell_path = is_native ? "/hos-sh" : "/zsh";
+    const char *shell_path = is_native ? "/hos-sh" : "/bin/zsh";
     char *const shell_arg0 = is_native ? "hos-sh" : "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
@@ -623,7 +678,35 @@ static const char kmap_shift[59] = {
 /*48*/'B','N','M','<','>','?',0,0,0,' '
 };
 
+// Z3 (PTY/terminal split): the navigation/editing keys a real shell line editor needs.
+// zsh's ZLE (and any full-screen app) reads these as terminfo escape sequences, not
+// single bytes — the linux-console set (TERM=linux): cursor keys \E[A..D, Home/End/Ins/
+// Del/PgUp/PgDn as \E[N~.  Without them the shell has no history (Up/Down), no in-line
+// cursor movement (Left/Right), and no Delete.  The terminal only transports these bytes;
+// what they DO (history, completion menus, …) is entirely zsh's.
+static const char *special_key_seq(uint32_t code) {
+    switch (code) {
+        case 103: return "\x1b[A";   // Up        -> up-line-or-history
+        case 108: return "\x1b[B";   // Down      -> down-line-or-history
+        case 106: return "\x1b[C";   // Right     -> forward-char
+        case 105: return "\x1b[D";   // Left      -> backward-char
+        case 102: return "\x1b[1~";  // Home      -> beginning-of-line
+        case 107: return "\x1b[4~";  // End       -> end-of-line
+        case 110: return "\x1b[2~";  // Insert
+        case 111: return "\x1b[3~";  // Delete    -> delete-char
+        case 104: return "\x1b[5~";  // PageUp
+        case 109: return "\x1b[6~";  // PageDown
+        default:  return NULL;
+    }
+}
+
 static void key_to_pty(struct app *a, uint32_t code) {
+    const char *seq = special_key_seq(code);
+    if (seq) {
+        if (a->ptm >= 0) write(a->ptm, seq, strlen(seq));
+        printf("G4KEY: code=%u -> ESC-seq\n", code); fflush(stdout);
+        return;
+    }
     char c = 0;
     switch (code) {
         case 1:  c = 0x1b; break;          // ESC

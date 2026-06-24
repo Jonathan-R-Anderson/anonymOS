@@ -52,8 +52,8 @@ align(8) private struct BootModuleRecord {
 private enum MANIFEST_MODULE = "manifest.blob\0";
 // Buffer cap: a config manifest is a few hundred bytes; cap generously.
 private enum CONFIG_BUF_MAX = 4096;
-__gshared ubyte[CONFIG_BUF_MAX] g_configBuf;
-__gshared ulong g_configLen = 0;
+__gshared ubyte[CONFIG_BUF_MAX] g_cfgbootBuf;   // renamed: g_cfgbootBuf collides with posix.d
+__gshared ulong g_cfgbootLen = 0;
 
 // Record tags — mirror anonymos-config/source/manifest.d Tag.
 private enum ubyte TAG_END            = 0;
@@ -89,7 +89,7 @@ private bool findManifestModule(out ulong physStart, out ulong size) {
         const(char)* nm = cast(const(char)*)&rec.name[0];
         const(char)* base = nm;
         for (const(char)* p = nm; *p != 0; p++) if (*p == '/') base = p + 1;
-        if (cstrEq(base, "manifest.blob")) {
+        if (cfgCstrEq(base, "manifest.blob")) {
             physStart = cast(ulong) rec.mod_start;
             size = cast(ulong) rec.mod_end - cast(ulong) rec.mod_start;
             return true;
@@ -98,7 +98,8 @@ private bool findManifestModule(out ulong physStart, out ulong size) {
     return false;
 }
 
-private bool cstrEq(const(char)* a, const(char)* b) {
+// (renamed cfgCstrEq: a plain cfgCstrEq collides with posix.d's definition at link)
+private bool cfgCstrEq(const(char)* a, const(char)* b) {
     while (*a != 0 && *b != 0) { if (*a != *b) return false; ++a; ++b; }
     return *a == *b;
 }
@@ -108,7 +109,7 @@ private bool cstrEq(const(char)* a, const(char)* b) {
 // are initialized, BEFORE the PID1 module scan.  Returns true if a verified
 // manifest was applied; false (and falls through silently) if absent/tampered.
 public bool configBootApply() {
-    g_configLen = 0;
+    g_cfgbootLen = 0;
     g_cfgApplied = false;
 
     // 1. Locate the manifest boot module.
@@ -124,13 +125,13 @@ public bool configBootApply() {
 
     // 2. Read it into the static buffer (clone of the display.conf pattern).
     const(ubyte)* src = cast(const(ubyte)*) phys_to_virt(phys);
-    for (ulong i = 0; i < sz; i++) g_configBuf[i] = src[i];
-    g_configLen = sz;
+    for (ulong i = 0; i < sz; i++) g_cfgbootBuf[i] = src[i];
+    g_cfgbootLen = sz;
 
     // 3. Verify the HMAC trailer over (header ++ records).
     const ulong bodyLen = sz - MANIFEST_HMAC_SIZE;
-    const(ubyte)* sig = &g_configBuf[bodyLen];
-    if (!cryptoVerify(&g_configBuf[0], bodyLen, sig)) {
+    const(ubyte)* sig = &g_cfgbootBuf[bodyLen];
+    if (!cryptoVerify(&g_cfgbootBuf[0], bodyLen, sig)) {
         klog("[dkernel] config: manifest HMAC FAILED — refusing to apply (safe fallthrough)\n");
         auditLog(AuditKind.InvariantBreach, 0, 0); // record the refusal
         return false;
@@ -139,7 +140,7 @@ public bool configBootApply() {
     // 4. Walk the records and lower them onto the kernel managers.
     applyRecords();
     g_cfgApplied = true;
-    auditLog(AuditKind.ControlOk, 0, g_configLen); // "config applied" measurement
+    auditLog(AuditKind.ControlOk, 0, g_cfgbootLen); // "config applied" measurement
     klog("[dkernel] config: applied ");
     klog_hex(g_cfgSvcApplied);
     klog(" services, ");
@@ -159,15 +160,15 @@ private void applyRecords() {
     g_cfgNsApplied = 0; g_cfgIdApplied = 0;
     g_cfgSvcApplied = 0; g_cfgSvcDeps = 0;
 
-    if (g_configLen < MANIFEST_HEADER_SIZE) return;
+    if (g_cfgbootLen < MANIFEST_HEADER_SIZE) return;
     // (record count is in the header but we just walk until the HMAC boundary)
     ulong i = MANIFEST_HEADER_SIZE;
-    const ulong bodyEnd = g_configLen - MANIFEST_HMAC_SIZE;
+    const ulong bodyEnd = g_cfgbootLen - MANIFEST_HMAC_SIZE;
     while (i + 2 <= bodyEnd) {
-        const ubyte tag = g_configBuf[i];
-        const ubyte len = g_configBuf[i + 1];
+        const ubyte tag = g_cfgbootBuf[i];
+        const ubyte len = g_cfgbootBuf[i + 1];
         if (i + 2 + len > bodyEnd) break;        // truncated record — stop
-        const(ubyte)* payload = &g_configBuf[i + 2];
+        const(ubyte)* payload = &g_cfgbootBuf[i + 2];
         applyOne(tag, len, payload);
         i += 2 + len;
         if (tag == TAG_END) break;
@@ -281,7 +282,7 @@ private uint lookupTab(const ref NameSlot[CFG_NAME_TAB] tab, const(char)* name) 
     foreach (ref s; tab) {
         if (!s.inUse) continue;
         const(char)* n = cast(const(char)*)&s.name[0];
-        if (cstrEq(n, name)) return s.objId;
+        if (cfgCstrEq(n, name)) return s.objId;
     }
     return 0;
 }

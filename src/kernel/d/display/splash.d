@@ -26,12 +26,37 @@ import display.framebuffer : framebufferAvailable, initFramebuffer;
 import display.common : glyphWidth, glyphHeight;
 import core.console : g_fbConsoleEnabled;
 import core.ticks : pitMs;
+import core.random : rdtsc; // TSC counter — paces the splash (pitMs/IRQ0 is frozen pre-interrupts)
 import core.io : klog;
 // The bootstrap-level Limine framebuffer pointer (set in bootstrap_kernel
 // before d_kernel_main). The display module's own g_fb is NOT initialized until
 // the (later, lazy) d_init_display heartbeat, so the splash seeds it itself,
 // mirroring exactly what d_init_display does (hs_bridge.d:93-102).
 import arch.x86_64.bootstrap : g_fb;
+
+// rdtsc comes from core.random (the kernel's existing TSC helper) — paces the
+// splash. pitMs()/IRQ0 is frozen before interrupts come on (at the iretq into
+// userspace), so we calibrate TSC against pitMs() (briefly enabling interrupts)
+// then run the loop on TSC alone.
+// Calibrate TSC cycles-per-millisecond against the PIT. The splash runs before
+// interrupts are enabled (IF comes on only at the iretq into userspace), so
+// pitMs()/IRQ0 is frozen during the loop. We briefly enable interrupts (sti),
+// sample rdtsc across a known pitMs() interval to get cycles/ms, then disable
+// (cli) again — after which the splash loop paces itself on rdtsc alone.
+ulong calibrateTscPerMs() @nogc nothrow
+{
+    asm @nogc nothrow { sti; }   // allow PIT IRQ0 to advance pitMs()
+    const ulong t0 = rdtsc();
+    const ulong m0 = pitMs();
+    // spin ~20ms for a stable measurement (enough ticks to reduce jitter)
+    while (pitMs() - m0 < 20) {}
+    const ulong t1 = rdtsc();
+    const ulong m1 = pitMs();
+    asm @nogc nothrow { cli; }   // back to interrupt-off for the splash loop
+    const ulong dms = m1 - m0;
+    if (dms == 0) return 3_000_000UL; // fallback: assume ~3 GHz
+    return (t1 - t0) / dms;
+}
 
 extern (C) @nogc nothrow:
 
@@ -309,15 +334,20 @@ public void splashRun()
     const uint h = canvas.height;
     seedParticles(w, h);
 
-    const ulong start = pitMs();
+    // Calibrate TSC (briefly enables interrupts, then disables for the loop).
+    const ulong cyclesPerMs = calibrateTscPerMs();
+    const ulong durationCycles = cyclesPerMs * SPLASH_DURATION;
+    const ulong frameCycles = cyclesPerMs * FRAME_MS;
+
+    const ulong start = rdtsc();
     for (;;)
     {
-        ulong now = pitMs();
+        ulong elapsed = rdtsc() - start;
         uint progress255; // 0..255
-        if (now >= start + SPLASH_DURATION)
+        if (elapsed >= durationCycles)
             progress255 = 255;
         else
-            progress255 = cast(uint)(((now - start) * 255) / SPLASH_DURATION);
+            progress255 = cast(uint)((elapsed * 255) / durationCycles);
 
         // render frame
         canvasFill(canvas, C_BG);
@@ -326,12 +356,14 @@ public void splashRun()
 
         if (progress255 >= 255) break;
 
-        // pace to ~30fps (busy-wait on the monotonic ms clock — no sleep exists)
-        ulong frameStart = now;
-        while (pitMs() - frameStart < FRAME_MS) {}
+        // pace to ~30fps (busy-wait on TSC — interrupts are off, no pitMs)
+        const ulong frameStart = rdtsc();
+        while (rdtsc() - frameStart < frameCycles) {}
     }
 
-    // brief hold on the final frame, then hand the framebuffer to the compositor
-    const ulong doneAt = pitMs();
-    while (pitMs() - doneAt < 400) {}
+    // brief hold on the final frame (~400ms via TSC), then hand off to the
+    // compositor (kernelLoop → iretq re-enables interrupts normally).
+    const ulong holdCycles = cyclesPerMs * 400;
+    const ulong doneAt = rdtsc();
+    while (rdtsc() - doneAt < holdCycles) {}
 }

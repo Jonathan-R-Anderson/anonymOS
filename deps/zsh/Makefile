@@ -61,14 +61,20 @@ $(NC_LIB): $(NC_TAR)
 #     EXTRA_LDFLAGS=-Wl,--export-dynamic.  Without it modules fail: "hashgetfn: not found".
 # The exe is NOT stripped (keep .dynsym so modules resolve the core symbols); modules are.
 ZMODDIR := $(CURDIR)/modules
-$(ZSH_BIN): $(ZSH_TAR) $(NC_LIB)
+$(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c
 	echo "$(ZSH_SHA)  $(ZSH_TAR)" | sha256sum -c -
 	rm -rf zsh-$(ZSH_VER) && tar xf $(ZSH_TAR)
+	# Z4a.3: the platform/anonymos/ host hooks (native-personality FS dispatch).  Built as
+	# libanon.a and linked into zsh via --wrap so zsh's open/read/write/close/lseek route
+	# through the native ABI when native (transparent for the Linux-personality default).
+	$(MUSL_CC) -O2 -fPIC -c anon.c -o anon.o
+	ar rcs $(SYSROOT)/lib/libanon.a anon.o
 	cd zsh-$(ZSH_VER) && \
 	  CC="$(MUSL_CC)" \
 	  CPPFLAGS="-I$(SYSROOT)/include -I$(SYSROOT)/include/ncursesw" \
-	  LDFLAGS="-L$(SYSROOT)/lib" EXTRA_LDFLAGS="-Wl,--export-dynamic" \
-	  LIBS="-lncursesw -ltinfow" \
+	  LDFLAGS="-L$(SYSROOT)/lib" \
+	  EXTRA_LDFLAGS="-Wl,--export-dynamic -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=write -Wl,--wrap=close -Wl,--wrap=lseek" \
+	  LIBS="-lncursesw -ltinfow -lanon" \
 	  zsh_cv_func_dlsym_needs_underscore=no \
 	  zsh_cv_shared_environ=yes zsh_cv_shared_tgetent=yes zsh_cv_shared_tigetstr=yes \
 	  zsh_cv_sys_dynamic_clash_ok=yes zsh_cv_sys_dynamic_execsyms=yes \

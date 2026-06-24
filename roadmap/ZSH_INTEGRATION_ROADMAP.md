@@ -203,10 +203,13 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   native-personality task) that drives `object_open`+`object_read`+`object_close`. Verified
   live: `cat /etc/passwd` printed the file through the native ABI — proves the verbs +
   handle lifecycle end-to-end.
-- **Z4a.3 — zsh `platform/anonymos/` host-hooks layer** · ☐ · add `Src/anon.c`/`anon.h` (built
-  into zsh): `anon_open/read/write/close/lseek` that call the native ABI when the process is
-  native personality, else fall through to the Linux syscall. The dispatch reads a one-time
-  "am I native?" probe (a `HOSQ_SYS` success ⇒ native).
+- **Z4a.3 — zsh `platform/anonymos/` host-hooks layer** · ✅ DONE · `deps/zsh/anon.c` provides
+  `__wrap_open/read/write/close/lseek`, linked into zsh via `-Wl,--wrap` (no call-site
+  patching). When native (one-time `HOSQ_SYS` probe) a read-only `open` returns a native
+  handle (surfaced as an fd ≥ `0x40000000`) backed by `object_open`, and read/write/close/
+  lseek route to the verbs; otherwise every hook falls straight through to `__real_*`.
+  Verified: the **Linux** zsh (default shell) is fully unregressed with the layer linked in
+  (`is_native()=0` ⇒ transparent) — builtins, external commands, and pipes all work.
 - **Z4a.4 — Wire zsh FS ops through the hooks** · ☐ · route zsh's file I/O (`open`/`read`/
   `write`/`close`/`lseek` in `zsh.h`/`utils.c`/`input.c`) through the `anon_*` shims. **No
   change to the parser/expander** — only the host I/O calls. Verify a sourced file

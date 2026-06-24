@@ -27,11 +27,13 @@
 #define HOSQ_OPEN       7L
 #define HOSQ_DEV_READ   13L
 #define HOSQ_DEV_WRITE  14L
+#define HOSQ_SPAWN      15L
 #define CAP_RIGHT_READ  1L
 
 extern int     __real_open(const char *path, int flags, ...);
 extern ssize_t __real_read(int fd, void *buf, size_t n);
 extern ssize_t __real_write(int fd, const void *buf, size_t n);
+extern int     __real_execve(const char *path, char *const argv[], char *const envp[]);
 
 static long hosq(long op, long a, long b, long c) {
     return syscall(HOS_SYS_QUERY, op, a, b, c);
@@ -76,4 +78,14 @@ ssize_t __wrap_read(int fd, void *buf, size_t n) {
 ssize_t __wrap_write(int fd, const void *buf, size_t n) {
     if (anon_native()) return hosq(HOSQ_DEV_WRITE, fd, (long)buf, (long)n);
     return __real_write(fd, buf, n);
+}
+
+/* Z4a.7: an external command's exec.  zsh forks, the child sets up its fds, then execve()s
+ * the command; when native, route that through spawn_process — the kernel loads the image
+ * into the (forked) caller via its process-creation machinery (Process object, cap-gate,
+ * identity binding).  On success the call does not return (the task becomes the new image);
+ * on failure (or non-native) fall through to the Linux exec. */
+int __wrap_execve(const char *path, char *const argv[], char *const envp[]) {
+    if (anon_native()) hosq(HOSQ_SPAWN, (long)path, (long)argv, (long)envp);
+    return __real_execve(path, argv, envp);
 }

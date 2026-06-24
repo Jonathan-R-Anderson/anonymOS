@@ -192,7 +192,7 @@ pragmatic "zsh-in-native-personality-over-the-Linux-ABI" shortcut; the real plat
 The native ABI today is read-only `HOSQ_*` queries, so each phase below first adds the
 needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
 
-### Z4a — FS + TTY + process hooks → interactive native prompt
+### Z4a — FS + TTY + process hooks → interactive native prompt · ✅ DONE
 
 - **Z4a.1 — Kernel native FS verbs** · ✅ DONE · `object_open`/`read`/`write`/`close`/`lseek`
   as `HOS_SYS_QUERY` ops (`HOSQ_OPEN`=7…`FSTAT`=12) in `hoscall.d`; the path resolves through
@@ -238,15 +238,24 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   on a **dup'd** PTY fd (zsh moves its terminal to a high fd via `movefd`), and zsh's stdio
   output bypasses the wrapper anyway.  A finer file/device split + that dup-PTY `ioctl` fix
   are refinements.
-- **Z4a.7 — Native process spawn** · ☐ · `spawn_process` verb (§4) — create a process from an
-  image cap + args/env in a namespace under an identity; route zsh's external-command exec
-  through it when native (fork/exec → `spawn_process`). (Today native zsh forks/execs via the
-  Linux ABI — `whoami` etc. work; not yet through `spawn_process`.)
-- **Z4a.8 — Interactive native-ABI prompt** · ◐ PARTIAL · **FS + TTY now native** — an
-  interactive native zsh whose *filesystem* (`object_open`) and *terminal I/O*
-  (`device_read`/`device_write`) flow through the native object ABI, at a working prompt with
-  ^C. Only process spawn (Z4a.7 — `spawn_process`) still uses the Linux ABI; routing that
-  through a Process object completes the "all I/O native" milestone.
+- **Z4a.7 — Native process spawn** · ✅ DONE · `spawn_process` verb (`HOSQ_SPAWN`=15) — native
+  zsh's external-command exec routes through it via `__wrap_execve` (`-Wl,--wrap=execve`).  zsh
+  forks, the child sets up its fds, then `execve`s the command; when native that becomes
+  `spawn_process(path, argv, envp)`, which the kernel turns into `execveTask` — loading the
+  image into the forked caller through its process-creation machinery (Process object,
+  F4.2 cap-gate, identity binding, personality reset).  Handled in the **outer** dispatcher so
+  it re-enters userspace like `execve` (regs reset, no RAX write).  Verified live: native zsh's
+  `whoami`, `uname -a`, `echo … | tr` (pipes too) all run through `spawn_process` (`[spawn]`
+  logged `/bin/whoami` etc.), no faults; Linux zsh unregressed (`is_native()=0` ⇒ `__real_execve`).
+  *Note:* this is the fork+exec idiom's exec leg routed native (the child becomes the image);
+  the §4 parent-driven *create-a-child-and-return-a-handle* form, plus explicit ns/identity
+  args on the manifest, are a later refinement (zsh inherits both via fork today).
+- **Z4a.8 — Interactive native-ABI prompt** · ✅ DONE · **FS + TTY + process spawn all native.**
+  An interactive native zsh whose *filesystem* (`object_open`), *terminal I/O*
+  (`device_read`/`device_write`), and *external-command spawn* (`spawn_process`) all flow
+  through the native object ABI, at a working prompt with ^C, pipes, and external commands.
+  The "all core I/O native" milestone — **Z4a complete.** (Refinements remain: Z4b signals/IPC,
+  Z4c env/cap/ns, and the noted dup-PTY `ioctl` + §4 spawn-handle items.)
 
 ### Z4b — signals + IPC · ☐ · deps: Z4a
 

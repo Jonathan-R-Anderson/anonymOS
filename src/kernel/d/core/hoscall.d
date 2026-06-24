@@ -53,6 +53,9 @@ enum : ulong {
     // the file verbs, but a distinct surface: native zsh's terminal I/O goes through these.
     HOSQ_DEV_READ   = 13,  // device_read(arg=fd, buf, buflen)  -> bytes
     HOSQ_DEV_WRITE  = 14,  // device_write(arg=fd, buf, buflen) -> bytes
+    // Z4a.7 — Process (§4).  spawn_process loads an image into the (forked) caller — the
+    // native-ABI counterpart of execve; handled in kernel_main.d (it re-enters userspace).
+    HOSQ_SPAWN      = 15,  // spawn_process(rsi=path, rdx=argv, r10=envp) -> (re-enter) / -errno
 }
 
 // Z4a.5: native FS verbs.  object_open resolves the path through the object FS (the F0–F5

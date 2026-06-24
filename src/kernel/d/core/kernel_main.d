@@ -3,7 +3,7 @@
 module core.kernel_main;
 
 import core.task;
-import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ;   // Track B0 / Z4a native ABI
+import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN;   // Track B0 / Z4a native ABI
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -1938,6 +1938,24 @@ private void dispatchSyscall(int tid) {
             }
             break;
 
+        // Z4a.7 / Track B0 + native ABI (HOS_SYS_QUERY): handled in the OUTER dispatcher so
+        // spawn_process can re-enter userspace (like execve).  GATED to the native shell
+        // personality — a Linux task gets ENOSYS, so the object surface is unreachable from
+        // the Linux shell.  HOSQ_SPAWN(rsi=path, rdx=argv, r10=envp) loads the image into the
+        // (forked) caller via execveTask — the native-ABI counterpart of execve; all other
+        // ops format/return through hosQuery.
+        case HOS_SYS_QUERY: {
+            const int ctid = cast(int)g_current_task_id;
+            if (ctid < 0 || ctid >= MAX_TASKS || !g_taskNativeAbi[ctid]) { ret = -38; break; }
+            if (rdi == HOSQ_SPAWN) {
+                ret = execveTask(ctid, rsi, rdx, r10);
+                if (ret == 0) return;   // image loaded — re-enter from scratch (regs reset)
+                break;
+            }
+            ret = hosQuery(rdi, rsi, rdx, r10);
+            break;
+        }
+
         // exit
         case 60:
         // exit_group
@@ -2375,17 +2393,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
         case 439: return linux_sys_faccessat2(a, b, c, d);  // Z1: zsh/musl access() checks
         case 441: return linux_sys_epoll_pwait2(a, b, c, d, e);
 
-        // Track B0 / NATIVE_OBJECT_ABI §3: the native object ABI (outside the Linux
-        // range).  GATED to the AnonymOS native shell personality — a Linux-personality
-        // task gets ENOSYS, identical to a kernel without the ABI compiled in, so the
-        // object/capability surface is unreachable from the Linux shell.  (Native tasks
-        // still speak the Linux ABI, which is how they introspect/override Linux state.)
-        case HOS_SYS_QUERY: {
-            const int ctid = cast(int)g_current_task_id;
-            if (ctid < 0 || ctid >= MAX_TASKS || !g_taskNativeAbi[ctid])
-                return cast(long)(-38);   // ENOSYS — native ABI absent for this personality
-            return hosQuery(a, b, c, d);
-        }
+        // NOTE: HOS_SYS_QUERY (the native object ABI) is handled in the OUTER dispatchSyscall
+        // (so HOSQ_SPAWN can re-enter userspace like execve); it never reaches here.
 
         default:
             klog("[syscall] ENOSYS "); klog_hex(n); klog("\n");

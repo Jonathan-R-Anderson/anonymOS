@@ -107,15 +107,16 @@ private void stepParticles(ref Canvas canvas, uint w, uint h, uint progress255)
             uint d2 = cast(uint)(dx * dx + dy * dy);
             if (d2 < CONNECT_DIST * CONNECT_DIST)
             {
-                // distance fade: alpha = max(0, 1 - d/250) * 0.5 * progress
-                import core.stdc.math : sqrtf;
-                float d = sqrtf(cast(float) d2);
-                float a = (1.0f - d / cast(float) CONNECT_DIST) * 0.5f *
-                          (cast(float) progress255 / 255.0f);
-                if (a > 0.02f)
+                // distance fade: alpha = max(0, 1 - d/250) * 0.5 * progress.
+                // Avoid core.stdc.math (c_long undefined under -betterC freestanding):
+                // approximate d/250 with d2/250² (close enough for a cosmetic fade,
+                // and monotonic so the visual gradient is preserved).
+                uint alpha = (CONNECT_DIST * CONNECT_DIST - d2) * 128u /
+                             (CONNECT_DIST * CONNECT_DIST);
+                alpha = (alpha * progress255) / 255u;
+                if (alpha > 255) alpha = 255;
+                if (alpha > 6) // ~0.02 * 255
                 {
-                    uint alpha = cast(uint)(a * 255.0f);
-                    if (alpha > 255) alpha = 255;
                     uint col = (alpha << 24) | (C_CONN & 0x00FFFFFF);
                     canvasLine(canvas, g_particles[i].x, g_particles[i].y,
                                g_particles[j].x, g_particles[j].y, col);

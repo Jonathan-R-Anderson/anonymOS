@@ -31,8 +31,7 @@ import core.io : klog;
 // before d_kernel_main). The display module's own g_fb is NOT initialized until
 // the (later, lazy) d_init_display heartbeat, so the splash seeds it itself,
 // mirroring exactly what d_init_display does (hs_bridge.d:93-102).
-import arch.x86_64.limine : limine_framebuffer;
-extern __gshared limine_framebuffer* g_fb; // from arch.x86_64.bootstrap
+import arch.x86_64.bootstrap : g_fb;
 
 extern (C) @nogc nothrow:
 

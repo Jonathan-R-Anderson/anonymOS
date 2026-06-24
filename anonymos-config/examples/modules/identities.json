@@ -1,0 +1,12 @@
+{
+  "identities": [
+    { "name": "System",   "color": "#2A2A2A", "trust": "system",
+      "rightsCeiling": "system-baseline", "namespace": "system-ns", "net": "none" },
+    { "name": "Personal", "color": "#3478F6", "trust": "personal",
+      "rightsCeiling": "fs-rw", "namespace": "user-ns",   "net": "nat",
+      "clip": "same" }
+  ],
+  "namespaces": [
+    { "name": "user-ns", "root": "$root", "inherits": "system-ns" }
+  ]
+}

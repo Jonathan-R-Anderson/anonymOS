@@ -1,0 +1,7 @@
+{
+  "system": { "hostname": "anon" },
+  "kernel": { "options": { "mem": "2048M", "console": "serial0" } },
+  "networking": { "hostname": "anon", "dns": ["10.0.0.1"],
+                  "interfaces": [ { "name": "eth0", "dhcp": true } ] },
+  "compatibility": { "linux": { "enabled": true, "personality": "x86_64" } }
+}

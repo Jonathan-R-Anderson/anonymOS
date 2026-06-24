@@ -82,6 +82,7 @@ import core.org_validator : orgValidatorInit, orgValidatorTick,
 import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
+import core.configboot : configBootApply; // DECLARITIVE_MODEL_ROADMAP §4: verified-config boot lowering
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks, get_ticks, pitMs;
 import core.random;
@@ -2697,6 +2698,12 @@ void d_kernel_main() {
     // for weak-edge coherence) before any object churn.
     orgInit();
     orgValidatorInit(); // ORG P8: stand up the validator daemon + its capability token
+    // DECLARITIVE_MODEL_ROADMAP §4: apply the verified declarative-config manifest
+    // (if staged as the manifest.blob boot module).  Locates it, HMAC-verifies it
+    // (cryptoVerify), and lowers it onto the service/identity/namespace managers
+    // — so a declared config, not hardcoded init, constructs running state.  Safe
+    // fallthrough: a missing/tampered manifest logs + continues to hardcoded init.
+    configBootApply();
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

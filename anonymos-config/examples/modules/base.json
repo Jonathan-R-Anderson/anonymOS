@@ -1,0 +1,22 @@
+{
+  "system":  { "name": "anonymos-base", "generation": 1 },
+  "kernel":  { "features": ["smp", "wayland", "linux-compat"] },
+  "boot":    { "configPath": "/system.json", "measured": true },
+  "security":{ "rootless": true, "immutableImage": true },
+  "objects": {
+    "root": { "_type": "Directory", "source": "bundle:/" }
+  },
+  "capabilities": {
+    "fs-rw": { "rights": ["read","write","stat"] },
+    "fs-ro": { "inherits": "fs-rw", "rights": ["read","stat"] },
+    "call":  { "rights": ["call"] },
+    "system-baseline": { "rights": ["read","write","stat","call"] }
+  },
+  "namespaces": [
+    { "name": "system-ns", "root": "$root", "isolated": true }
+  ],
+  "services": [
+    { "name": "init", "executable": "/init", "identity": "System",
+      "capabilities": ["fs-rw"], "restart": "never" }
+  ]
+}

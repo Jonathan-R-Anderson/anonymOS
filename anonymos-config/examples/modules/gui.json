@@ -1,0 +1,5 @@
+{
+  "gui": { "compositor": "mutter", "borderPolicy": "always",
+           "defaultColor": "#2A2A2A" },
+  "logging": { "level": "info", "audit": true, "sink": "/var/log/audit" }
+}

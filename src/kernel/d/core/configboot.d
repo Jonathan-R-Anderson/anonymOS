@@ -39,6 +39,11 @@ import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
 import core.user : userDefaultObjId;
 
+// NB: this module is `extern (C)` (its symbols are unmangled).  That means any helper name here
+// must NOT collide with another module's C-linkage symbol — `cbStrEq` and `g_cbBuf` already
+// exist in posix.d, so this module's copies are renamed `cbStrEq` / `g_cbBuf` to avoid a
+// multiple-definition link failure (the partner verified -betterC *compiles* but never *linked*
+// the kernel, so the collision was missed).
 extern (C) @nogc nothrow:
 
 // The boot-module record layout published by bootstrap.d (128 bytes).
@@ -52,7 +57,7 @@ align(8) private struct BootModuleRecord {
 private enum MANIFEST_MODULE = "manifest.blob\0";
 // Buffer cap: a config manifest is a few hundred bytes; cap generously.
 private enum CONFIG_BUF_MAX = 4096;
-__gshared ubyte[CONFIG_BUF_MAX] g_configBuf;
+__gshared ubyte[CONFIG_BUF_MAX] g_cbBuf;
 __gshared ulong g_configLen = 0;
 
 // Record tags — mirror anonymos-config/source/manifest.d Tag.
@@ -89,7 +94,7 @@ private bool findManifestModule(out ulong physStart, out ulong size) {
         const(char)* nm = cast(const(char)*)&rec.name[0];
         const(char)* base = nm;
         for (const(char)* p = nm; *p != 0; p++) if (*p == '/') base = p + 1;
-        if (cstrEq(base, "manifest.blob")) {
+        if (cbStrEq(base, "manifest.blob")) {
             physStart = cast(ulong) rec.mod_start;
             size = cast(ulong) rec.mod_end - cast(ulong) rec.mod_start;
             return true;
@@ -98,7 +103,7 @@ private bool findManifestModule(out ulong physStart, out ulong size) {
     return false;
 }
 
-private bool cstrEq(const(char)* a, const(char)* b) {
+private bool cbStrEq(const(char)* a, const(char)* b) {
     while (*a != 0 && *b != 0) { if (*a != *b) return false; ++a; ++b; }
     return *a == *b;
 }
@@ -124,13 +129,13 @@ public bool configBootApply() {
 
     // 2. Read it into the static buffer (clone of the display.conf pattern).
     const(ubyte)* src = cast(const(ubyte)*) phys_to_virt(phys);
-    for (ulong i = 0; i < sz; i++) g_configBuf[i] = src[i];
+    for (ulong i = 0; i < sz; i++) g_cbBuf[i] = src[i];
     g_configLen = sz;
 
     // 3. Verify the HMAC trailer over (header ++ records).
     const ulong bodyLen = sz - MANIFEST_HMAC_SIZE;
-    const(ubyte)* sig = &g_configBuf[bodyLen];
-    if (!cryptoVerify(&g_configBuf[0], bodyLen, sig)) {
+    const(ubyte)* sig = &g_cbBuf[bodyLen];
+    if (!cryptoVerify(&g_cbBuf[0], bodyLen, sig)) {
         klog("[dkernel] config: manifest HMAC FAILED — refusing to apply (safe fallthrough)\n");
         auditLog(AuditKind.InvariantBreach, 0, 0); // record the refusal
         return false;
@@ -164,10 +169,10 @@ private void applyRecords() {
     ulong i = MANIFEST_HEADER_SIZE;
     const ulong bodyEnd = g_configLen - MANIFEST_HMAC_SIZE;
     while (i + 2 <= bodyEnd) {
-        const ubyte tag = g_configBuf[i];
-        const ubyte len = g_configBuf[i + 1];
+        const ubyte tag = g_cbBuf[i];
+        const ubyte len = g_cbBuf[i + 1];
         if (i + 2 + len > bodyEnd) break;        // truncated record — stop
-        const(ubyte)* payload = &g_configBuf[i + 2];
+        const(ubyte)* payload = &g_cbBuf[i + 2];
         applyOne(tag, len, payload);
         i += 2 + len;
         if (tag == TAG_END) break;
@@ -281,7 +286,7 @@ private uint lookupTab(const ref NameSlot[CFG_NAME_TAB] tab, const(char)* name) 
     foreach (ref s; tab) {
         if (!s.inUse) continue;
         const(char)* n = cast(const(char)*)&s.name[0];
-        if (cstrEq(n, name)) return s.objId;
+        if (cbStrEq(n, name)) return s.objId;
     }
     return 0;
 }

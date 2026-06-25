@@ -95,6 +95,8 @@ WESTON_BUILD := deps/weston-14.0.0/build-epin
 WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
+ZSHFNS_SRC   := deps/zsh/zsh-5.9
+ZSHFNS_BLOB  := build/zshfns.blob
 ASSET_SRC_DIR := build/assets
 ASSET_BLOB    := build/assets.blob
 ASSET_BLOBS_DIR := build/asset-blobs
@@ -415,6 +417,14 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 			cp $(XKB_BLOB) cd/xkb.blob; \
 			printf '\n    module_path: boot():/xkb.blob\n' >> cd/boot/limine/limine.conf; \
 			echo "Included xkb.blob (xkeyboard-config data)"; \
+		fi; \
+		if [ ! -f $(ZSHFNS_BLOB) ] && [ -d $(ZSHFNS_SRC)/Completion ]; then \
+			python3 scripts/pack-zshfns.py $(ZSHFNS_SRC) $(ZSHFNS_BLOB) 5.9; \
+		fi; \
+		if [ -f $(ZSHFNS_BLOB) ]; then \
+			cp $(ZSHFNS_BLOB) cd/zshfns.blob; \
+			printf '\n    module_path: boot():/zshfns.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included zshfns.blob (Z8: zsh functions + completion)"; \
 		fi; \
 		if [ -d $(ASSET_SRC_DIR) ]; then \
 			rm -rf $(ASSET_BLOBS_DIR); \

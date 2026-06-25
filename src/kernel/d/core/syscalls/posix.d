@@ -3538,7 +3538,7 @@ private const(char)[] displayInfoContent() {
 // Track A (SHELL_AND_COMMANDS_ROADMAP A2): node count raised from 1024 so a full
 // FHS tree + ~380 /bin applet symlinks + user files fit; symlinks (RT_LNK) added;
 // payload pages are now freed on grow/unlink (no more leak) with byte accounting.
-private enum int    RT_MAX_NODES = 8192;
+private enum int    RT_MAX_NODES = 12288;   // Z8: +~1018 zsh function/completion nodes
 private enum size_t RT_NAME_MAX  = 96;
 private enum ulong  RT_MAX_BYTES = 64UL * 1024 * 1024;   // tmpfs soft cap (ENOSPC past it)
 
@@ -3565,9 +3565,15 @@ __gshared RtNode[RT_MAX_NODES] g_rt;
 __gshared bool  g_rtInitialized = false;
 __gshared ulong g_rtBytes = 0;               // total bytes backing RT payloads (for the cap + df)
 
+// Z8: a rolling free-slot hint turns the boot-time bulk creates (busybox, xkb, the
+// ~1018 zsh functions) from O(n^2) into ~O(n).  Scan forward from the hint, then wrap
+// to catch slots freed below it.
+__gshared int g_rtAllocHint = 1;
 private int rtAllocNode() {
-    for (int i = 1; i < RT_MAX_NODES; ++i)        // index 0 reserved for root
-        if (g_rt[i].kind == RT_FREE) return i;
+    for (int i = g_rtAllocHint; i < RT_MAX_NODES; ++i)   // index 0 reserved for root
+        if (g_rt[i].kind == RT_FREE) { g_rtAllocHint = i + 1; return i; }
+    for (int i = 1; i < g_rtAllocHint && i < RT_MAX_NODES; ++i)
+        if (g_rt[i].kind == RT_FREE) { g_rtAllocHint = i + 1; return i; }
     return -1;
 }
 
@@ -4086,6 +4092,22 @@ __hos_apply_shell_json() {
 __hos_apply_shell_json /etc/shell.json
 [[ -r "$HOME/.shell.json" ]] && __hos_apply_shell_json "$HOME/.shell.json"
 
+# --- Z8: completion engine ---------------------------------------------------
+# zsh's function/completion tree is staged at the compiled-in default $fpath
+# (/system/shell/zsh/share/zsh/5.9/functions, unpacked at boot from zshfns.blob).  Bring up
+# the completion system: compinit scans $fpath for #compdef-tagged functions and builds the
+# completion map.  -C skips the per-file security audit (the tree is kernel-seeded + trusted)
+# so startup stays fast; the dump is cached in ~/.zcompdump.
+autoload -Uz compinit
+compinit -C -d "${HOME:-/root}/.zcompdump"
+print -r "Z8DIAG compinit-rc=$? mainfn=${+functions[_main_complete]} eocw=${+widgets[expand-or-complete]} compdef=${+functions[compdef]}"
+# AnonymOS object-model completions (Z8.2): #compdef-tagged _hos/_obj/_ns/_svc/_sys are staged
+# alongside the upstream functions and picked up by compinit automatically.
+zstyle ':completion:*' completer _complete _approximate
+zstyle ':completion:*' menu select
+zstyle ':completion:*:descriptions' format '%F{8}-- %d --%f'
+zstyle ':completion:*' group-name ''
+
 # --- Z7: theme engine --------------------------------------------------------
 # Oh-My-Zsh-style themes live in $ZSH_THEMES_DIR.  The default 'anonymos' theme paints a colored
 # multi-line prompt (identity/namespace/capabilities/path/git + an exit-status-tinted prompt char)
@@ -4411,6 +4433,12 @@ private void rtUnpackAssets() {
     if (g_assetFiles == before) {
         rtUnpackAssetBlob("/assets.blob\0".ptr);
     }
+
+    // Z8: zsh's autoloadable function + completion tree (compinit, compaudit, _<cmd>
+    // completions, add-zsh-hook, promptinit, vcs_info, zle widgets) flattened at zsh's
+    // compiled-in default $fpath (/system/shell/zsh/share/zsh/5.9/functions) so
+    // `autoload -Uz compinit && compinit` brings up the whole completion system.
+    rtUnpackAssetBlob("/zshfns.blob\0".ptr);
 }
 
 private enum size_t fileBackendPlain = 0;

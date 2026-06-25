@@ -425,12 +425,27 @@ in both current shells today**, and the same data feeds the zsh theme later:
   (user `~/.zsh/themes/` overrides). The theme reads `EPIN_DOMAIN_COLOR` (0xAARRGGBB → `\e[38;2;R;G;Bm`)
   so the namespace text matches the unspoofable window border.
 
-## Z8 — Completion engine · ☐ · P: Med · E: 3 · deps: Z2, Z5
+## Z8 — Completion engine · ◑ · P: Med · E: 3 · deps: Z2, Z5
 
 - Upstream zsh completion + AnonymOS extensions (`_objctl`, `_identityctl`, `_nsctl`,
   `_capctl`, `_servicectl`, `_packagectl`): complete objects, capabilities, namespaces,
   services, packages, identities, permissions — driven by `object_enumerate`/`service_lookup`
   (native) or the `/objects` FS views (Linux). *Deliverable 11 (completion).*
+
+**Sub-steps (in progress):**
+- **Z8.1 — stage zsh's function/completion tree + enable compinit (the foundation).** Until now
+  zsh's autoloadable functions weren't staged at all — `$fpath` pointed at an empty
+  `/system/shell/zsh/share/zsh/5.9/functions` (zsh's compiled-in default), so neither `compinit`
+  nor `add-zsh-hook` (Z7) existed and TAB did nothing. Pack `deps/zsh/zsh-5.9/{Functions,Completion}`
+  (flattened by basename, OS-specific completion dirs pruned) into a `zshfns.blob` (the same flat
+  `[u32 pathLen][path][u32 dataLen][data]` archive as xkb.blob/fonts.blob) staged at that default
+  fpath dir; the kernel unpacks it at boot via the existing `rtUnpackAssetBlob`. `/etc/zshrc` then
+  runs `autoload -Uz compinit && compinit -C` so the full completion system loads. Bump
+  `RT_MAX_NODES` + add an `rtAllocNode` free-slot hint for the extra ~900 nodes.
+- **Z8.2 — AnonymOS completion extensions.** Completion functions for the object-model commands
+  (the Z4c `hos`/`obj`/`ns`/`svc`/`sys`): `#compdef`-tagged `_hos` etc. that enumerate objects,
+  namespaces, services, identities, and capabilities — via `/hos-sh` on native, or the `/objects`
+  store + `/config/*.json` FS views on Linux — seeded next to the upstream functions.
 
 ## Z9 — Plugin system · ☐ · P: Med · E: 3 · deps: Z2
 

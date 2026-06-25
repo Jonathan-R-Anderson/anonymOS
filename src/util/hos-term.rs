@@ -316,7 +316,8 @@ fn render(map: *mut u8, width: i32, height: i32, t: &Term) {
             for gy in 0..8i32 {
                 let row = glyph[gy as usize];
                 for gx in 0..8i32 {
-                    let on = (row >> (7 - gx)) & 1 != 0;
+                    // this font stores the leftmost pixel in bit 0 (LSB), so shift by gx (not 7-gx)
+                    let on = (row >> gx) & 1 != 0;
                     let color = if on { fg } else { bg };
                     for sy in 0..SCALE {
                         for sx in 0..SCALE {

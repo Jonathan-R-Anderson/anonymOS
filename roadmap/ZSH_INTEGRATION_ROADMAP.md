@@ -841,14 +841,19 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
   Linux ABI. OK"*.  (Key OS quirk handled: sockets come back non-blocking + the scheduler is
   cooperative, so the client `poll`s — like libwayland — instead of busy-reading.)  R1+ (Ratatui CPU
   terminal, then the GPU stack) build on this.
-- **R1 — CPU/Ratatui intermediate · 🚧 IN PROGRESS · E: 2 · deps: R0.** A CPU-rendered terminal in
-  Rust on the software Wayland/SHM path the GUI clients use — proves PTY + input + glyph rendering in
-  Rust without needing the GPU. A usable terminal on the current stack; de-risks the ratty port.
-  Pure-std (no crates, like R0) so the build stays a single `rustc` invocation with zero dependency
-  risk on the OS's partial Linux ABI. Sub-steps:
+- **R1 — CPU/Ratatui intermediate · ✅ DONE · E: 2 · deps: R0.** A CPU-rendered terminal in
+  Rust ([src/util/hos-term.rs], `/hos-term`) on the software Wayland/SHM path the GUI clients use —
+  proves PTY + input + glyph rendering in Rust without needing the GPU. A usable terminal on the
+  current stack; de-risks the ratty port. Pure-std (no crates, like R0) so the build stays a single
+  `rustc` invocation with zero dependency risk on the OS's partial Linux ABI. **Verified live:** the
+  Rust terminal autostarts (also SUPER+R), hosts the Linux `/bin/zsh` on a PTY, renders its colored
+  prompt + zsh syntax highlighting (`[user@linux] /`), and runs typed input — `echo rust-term-works`
+  → the command echoes (green `echo`) and its output `rust-term-works` prints, then a fresh prompt.
+  Sub-steps (all done):
   - **R1.1 — Rust Wayland SHM window** · bind `wl_compositor`/`wl_shm`/`xdg_wm_base`/`wl_seat`; create
-    a surface + xdg-toplevel; an SHM buffer via `memfd_create`+`mmap`+`create_pool` (fd passed with
-    `sendmsg`/`SCM_RIGHTS`); render loop gated on `wl_buffer.release`.
+    a surface + xdg-toplevel; **double-buffered** SHM (one pool, two buffers via `memfd_create`+
+    `mmap`+`create_pool`, fd passed with `sendmsg`/`SCM_RIGHTS`) ping-ponged by `wl_buffer.release` —
+    a single buffer deadlocks (the compositor never releases a re-attached buffer, so the grid froze).
   - **R1.2 — PTY + shell host** · `open(/dev/ptmx)` → `TIOCSPTLCK`/`TIOCGPTN` → `/dev/pts/N`,
     `TIOCSWINSZ`, `fork` → child `setsid`+`dup2`(slave→0/1/2)+`execve` zsh; parent reads the master.
   - **R1.3 — VT parser + cell grid** · printable + BS/TAB/LF/CR/BEL + CSI (CUU/CUD/CUF/CUB/CUP, ED/EL,

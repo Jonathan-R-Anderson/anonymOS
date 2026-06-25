@@ -4122,6 +4122,29 @@ if [[ $ZSH_THEME != none ]]; then
   unset __td
 fi
 
+# --- Z9: plugin system ------------------------------------------------------------------------
+# Oh-My-Zsh-compatible loader.  Each plugin in $plugins is sourced from
+# $ZSH_PLUGINS_DIR/<name>/<name>.plugin.zsh (unpacked at boot from zshplugins.blob).  Ships the
+# native AnonymOS object-model plugin + zsh-autosuggestions + zsh-syntax-highlighting.  The
+# highlighter wraps ZLE widgets, so it is ALWAYS sourced LAST, after every other plugin.
+ZSH_PLUGINS_DIR=${ZSH_PLUGINS_DIR:-/system/shell/zsh/plugins}
+typeset -ga plugins
+(( ${#plugins} )) || plugins=(anonymos zsh-autosuggestions zsh-syntax-highlighting)
+__hos_load_plugin() {
+  local p=$1 f
+  for f in "$ZSH_PLUGINS_DIR/$p/$p.plugin.zsh" "$ZSH_PLUGINS_DIR/$p/$p.zsh" "$ZSH_PLUGINS_DIR/$p.plugin.zsh"; do
+    [[ -r $f ]] && { source "$f"; return 0; }
+  done
+  return 1
+}
+__hos_syn=0
+for __p in $plugins; do
+  [[ $__p == zsh-syntax-highlighting ]] && { __hos_syn=1; continue; }
+  __hos_load_plugin "$__p"
+done
+(( __hos_syn )) && __hos_load_plugin zsh-syntax-highlighting
+unset __p __hos_syn
+
 # --- local override hook (not overwritten on update) ---
 [[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
 `;
@@ -4466,6 +4489,12 @@ private void rtUnpackAssets() {
     // compiled-in default $fpath (/system/shell/zsh/share/zsh/5.9/functions) so
     // `autoload -Uz compinit && compinit` brings up the whole completion system.
     rtUnpackAssetBlob("/zshfns.blob\0".ptr);
+
+    // Z9: zsh plugins (zsh-syntax-highlighting, zsh-autosuggestions, and the native anonymos
+    // object-model plugin), under /system/shell/zsh/plugins/<name>/… with their directory
+    // structure preserved (plugins source sibling files by relative path).  The Z9 loader in
+    // /etc/zshrc sources them (syntax-highlighting last, as it wraps ZLE widgets).
+    rtUnpackAssetBlob("/zshplugins.blob\0".ptr);
 }
 
 private enum size_t fileBackendPlain = 0;

@@ -97,6 +97,8 @@ XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ZSHFNS_SRC   := deps/zsh/zsh-5.9
 ZSHFNS_BLOB  := build/zshfns.blob
+ZSHPLUG_SRC  := deps/zsh-plugins
+ZSHPLUG_BLOB := build/zshplugins.blob
 ASSET_SRC_DIR := build/assets
 ASSET_BLOB    := build/assets.blob
 ASSET_BLOBS_DIR := build/asset-blobs
@@ -425,6 +427,14 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 			cp $(ZSHFNS_BLOB) cd/zshfns.blob; \
 			printf '\n    module_path: boot():/zshfns.blob\n' >> cd/boot/limine/limine.conf; \
 			echo "Included zshfns.blob (Z8: zsh functions + completion)"; \
+		fi; \
+		if [ ! -f $(ZSHPLUG_BLOB) ] && [ -d $(ZSHPLUG_SRC) ]; then \
+			python3 scripts/pack-zshplugins.py $(ZSHPLUG_BLOB) $(ZSHPLUG_SRC) >/dev/null; \
+		fi; \
+		if [ -f $(ZSHPLUG_BLOB) ]; then \
+			cp $(ZSHPLUG_BLOB) cd/zshplugins.blob; \
+			printf '\n    module_path: boot():/zshplugins.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included zshplugins.blob (Z9: zsh plugins — syntax-highlighting/autosuggestions/anonymos)"; \
 		fi; \
 		if [ -d $(ASSET_SRC_DIR) ]; then \
 			rm -rf $(ASSET_BLOBS_DIR); \

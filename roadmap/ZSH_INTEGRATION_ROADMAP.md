@@ -461,7 +461,7 @@ in both current shells today**, and the same data feeds the zsh theme later:
   compinit can't cache its dump (`~/.zcompdump`) — harmless (the ramfs cache is lost each boot
   anyway, and per-completion autoload is the real first-use cost), tracked separately.
 
-## Z9 — Plugin system · ☐ · P: Med · E: 3 · deps: Z2
+## Z9 — Plugin system · ✅ DONE · P: Med · E: 3 · deps: Z2
 
 - Standard zsh plugins (`git`, `history`, `fzf`, `extract`) load unchanged. Native plugins
   (`objects`, `identity`, `namespace`, `capabilities`, `security`, `process`, `package`,
@@ -469,6 +469,25 @@ in both current shells today**, and the same data feeds the zsh theme later:
   plugins. Integrate `zsh-autosuggestions` (history-driven) and `zsh-syntax-highlighting`
   (grammar extended for `objctl/identityctl/nsctl/servicectl/packagectl`).
 - *Deliverable 10 (plugin architecture).* Plugins dynamically loaded (Z2).
+
+**Sub-steps:**
+- ✅ **Z9.1 — plugin loader (the architecture).** An Oh-My-Zsh-compatible loader in `/etc/zshrc`:
+  a `plugins=(…)` array + a loop that sources `$ZSH_PLUGINS_DIR/<name>/<name>.plugin.zsh`
+  (fallback `<name>.zsh`). zsh-syntax-highlighting is always sourced **last** (it wraps ZLE
+  widgets). `ZSH_PLUGINS_DIR=/system/shell/zsh/plugins`, staged from a `zshplugins.blob`.
+- ✅ **Z9.2 — native AnonymOS plugin.** `anonymos.plugin.zsh`: the object-model commands as a
+  plugin — on Linux it defines `obj/svc/sys` + `objects/identities/services/sysinfo` reading
+  the `/objects` store + `/config/*.json` views; native already has them as `/hos-sh` builtins.
+  Wires the Z8.2 `_hos` completion via `compdef`. Makes the object model reachable + completable
+  in **both** flavours.
+- ✅ **Z9.3 — zsh-syntax-highlighting (vendored 0.8.0).** The big visible win now that wl-term has
+  ANSI colour (Z7): commands/paths/options/strings coloured live as you type. Vendored tarball
+  + the ~8 runtime highlighter files packed (tests/docs excluded).
+- ✅ **Z9.4 — zsh-autosuggestions (vendored 0.7.1).** History-driven inline suggestion (grey) that
+  Right-arrow/End accepts. Vendored tarball, packed.
+- Staging: `pack-zshplugins.py` reads the vendored tarballs (+ the native plugin), filters to
+  runtime files, packs to `/system/shell/zsh/plugins/<plugin>/…` (paths preserved, unlike the
+  flattened Z8 functions) → `zshplugins.blob`, unpacked at boot by `rtUnpackAssetBlob`.
 
 ## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ☐ · P: Med · E: 3 · deps: Z5, Z7, Z9
 

@@ -580,6 +580,7 @@ private int forkTask(int parentTid) {
         // NATIVE_OBJECT_ABI §3: the native personality is inherited across fork (native
         // helpers the shell spawns stay native; a Linux fork stays Linux).
         g_taskNativeAbi[childTid]   = g_taskNativeAbi[parentTid];
+        g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
         // A4: a child inherits its parent's process group + signal dispositions.
         g_taskPgid[childTid]      = g_taskPgid[parentTid];
         g_taskSigCustom[childTid] = g_taskSigCustom[parentTid];
@@ -681,6 +682,7 @@ private int cloneThread(int parentTid, ulong flags, ulong childStack,
     child.userObjId  = parent.userObjId;
     child.identityObjId = parent.identityObjId; // IDENTITY_DOMAIN §3: threads share the label
     g_taskNativeAbi[childTid] = g_taskNativeAbi[parentTid]; // NATIVE_OBJECT_ABI §3: same personality
+    g_taskNativeLaunch[childTid] = g_taskNativeLaunch[parentTid];   // L5.2: inherit the native-launch authorization
     g_taskExecName[childTid]  = g_taskExecName[parentTid];
 
     // Threads share one address space but keep separate mmap bump pointers; give
@@ -849,9 +851,22 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         // distinguishes the native launch (/hos-zsh) from the Linux one (/bin/zsh), both /zsh.
         // /hos-sh is its own trusted image.  So: native iff a trusted image AND, for zsh, the
         // hos-zsh request path.  A spoofed /tmp/hos-zsh -> /busybox has execName=="busybox" -> denied.
-        g_taskNativeAbi[tid]   = (execName !is null && cstrEqK(execName, "hos-sh")) ||
-                                 (execName !is null && cstrEqK(execName, "zsh") &&
-                                  origBase !is null && cstrEqK(origBase, "hos-zsh"));
+        const bool trustedNativeImage =
+            (execName !is null && cstrEqK(execName, "hos-sh")) ||
+            (execName !is null && cstrEqK(execName, "zsh") &&
+             origBase !is null && cstrEqK(origBase, "hos-zsh"));
+        // L5.2 — confine the Linux shell: a trusted native image enters the native personality only
+        // when the caller is ALREADY native OR holds the native-launch authorization.  That
+        // authorization rides the trusted desktop/terminal chain (default true, inherited on fork)
+        // and is DROPPED on the Linux-shell exec just below — so a Linux-personality shell, and
+        // everything it spawns, can never reach the native object ABI even by exec'ing /hos-sh.
+        const bool wasNative = g_taskNativeAbi[tid];
+        g_taskNativeAbi[tid] = trustedNativeImage && (wasNative || g_taskNativeLaunch[tid]);
+        // Exec'ing the Linux interactive shell (/bin/zsh: execName "zsh", NOT the /hos-zsh request
+        // path) drops the authorization; a re-run /wl-term from that shell inherits the cleared flag.
+        if (execName !is null && cstrEqK(execName, "zsh") &&
+            !(origBase !is null && cstrEqK(origBase, "hos-zsh")))
+            g_taskNativeLaunch[tid] = false;
         // A4: execve resets caught/ignored signals to the default disposition (POSIX),
         // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
         g_taskSigCustom[tid]   = 0;

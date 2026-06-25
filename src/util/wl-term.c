@@ -651,14 +651,14 @@ static int spawn_shell(struct app *a) {
         return 0;
     }
     // The shell binary depends on the flavor; the PTY plumbing + argv[0] are shared.
-    // Both flavors now run real upstream zsh as an interactive login shell (argv[0]="-zsh"):
-    //  - Linux:  /bin/zsh  (Z1) — Linux personality.
-    //  - Native: /hos-zsh  (Z4a.5) — the SAME zsh boot module, launched into the native
-    //    personality (execveTask marks native by the /hos-zsh request path), so the shell
-    //    reaches the filesystem through the native object ABI (object_open).  /hos-sh is
-    //    still a boot module, reachable directly; its object commands move into zsh in Z9.
-    const char *shell_path = is_native ? "/hos-zsh" : "/bin/zsh";
-    char *const shell_arg0 = "-zsh";
+    // The two personalities run two different shells (ZSH_INTEGRATION_ROADMAP "two shells"):
+    //  - Linux:  /bin/zsh  (Z1) — real upstream zsh, the POSIX Linux-personality login shell.
+    //  - Native: /hos-sh   (L5) — `-sh`, the LFE (Lisp) shell: a programmable Lisp over the object
+    //    model (L2–L4), a native-personality task (gated native by the trusted "hos-sh" image AND
+    //    the native-launch authorization this terminal holds — L5.2).  A Linux shell can NOT reach
+    //    it: exec'ing /hos-sh from /bin/zsh runs Linux-personality (HOS_SYS_QUERY -> ENOSYS).
+    const char *shell_path = is_native ? "/hos-sh" : "/bin/zsh";
+    char *const shell_arg0 = is_native ? "-sh" : "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }

@@ -192,6 +192,12 @@ __gshared const(char)*[MAX_TASKS] g_taskExecName;
 // introspection: see the Linux process table, manage its permissions/settings).
 __gshared bool[MAX_TASKS] g_taskNativeAbi;
 
+// L5.2 — native-launch authorization.  Entering the native personality on exec requires this OR
+// an already-native caller.  Held by the trusted desktop/terminal chain (default true, inherited
+// on fork) and DROPPED when the Linux interactive shell (/bin/zsh) is exec'd — so a Linux shell,
+// and everything it spawns, can never enter the native object ABI (even by exec'ing /hos-sh).
+__gshared bool[MAX_TASKS] g_taskNativeLaunch = true;
+
 // A task's effective process group: its own pid until setpgid() changes it.
 public int taskEffectivePgid(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return 0;

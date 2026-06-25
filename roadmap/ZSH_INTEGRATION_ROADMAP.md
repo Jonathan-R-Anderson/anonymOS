@@ -777,10 +777,26 @@ friendly goal) without bolting POSIX onto the object model.
     relabels to `user@Personal`); `(identity-switch System)` → `-1` (escalation back DENIED, trust
     100 > 50, kernel logged one `[id-switch … trust=0x32]` only); `(case (identity) ((tuple u n c) n))`
     → `Personal` (the security model is pattern-matchable LFE data).
-- **L5 — make `-sh` the native shell · ☐ · E: 2 · deps: L3.** The Domain Manager's per-domain
-  Shell control offers **linux (zsh)** / **native (`-sh`/LFE)**; `wl-term` (then ratty)
-  launches whichever on the PTY. The native shell's prompt already shows the four fields
-  (Z6) and now reads LFE.
+- **L5 — make `-sh` the native shell · ✅ DONE · E: 2 · deps: L3.** The Domain Manager's
+  per-domain Shell control offers **linux (zsh)** / **native (`-sh`/LFE)**; `wl-term` (then ratty)
+  launches whichever on the PTY. The native shell's prompt already shows the four fields (Z6).
+  - **L5.1 — wire `-sh` as the native shell** · `wl-term` launches `/hos-sh` (the LFE shell, L2–L4)
+    for `EPIN_SHELL=native` instead of native zsh; the DM Shell label becomes **"Native (-sh/LFE)"**.
+  - **L5.2 — confine the Linux shell to Linux** (security, requested) · a Linux-personality shell
+    must only run ordinary Linux programs + the Linux syscall surface — never the native object ABI,
+    *even by exec'ing `/hos-sh`*.  The kernel already `ENOSYS`-gates direct `HOS_SYS_QUERY` from a
+    Linux task (Z12), but a Linux shell could exec the trusted native image to become native.  New
+    kernel gate: a per-task `g_taskNativeLaunch` authorization (inherited on fork, held by the
+    trusted desktop/terminal chain) is now *required* to enter the native personality on exec, and
+    is **dropped when the Linux interactive shell (`/bin/zsh`) is exec'd** — so the Linux shell and
+    everything it spawns can never reach the object ABI (running `/hos-sh` from it runs Linux-
+    personality → `ENOSYS`).  The legit native launch (desktop → `wl-term` → `/hos-sh`) keeps the
+    authorization; a re-run `/wl-term` from a Linux shell inherits the dropped flag and cannot.  **Verified live:** the DM Shell control reads **"Native (-sh/LFE)"**; a native-domain
+    terminal launches `/hos-sh` and `(obj)` returns the live object table (the LFE shell over the
+    object model).  A **Linux-domain** terminal runs Linux fine (`echo hello-from-linux` → ok) but
+    `/hos-sh obj` / `/hos-sh sys` → `native query failed` (kernel `ENOSYS` ×3) — the Linux shell
+    cannot reach the object ABI.  **This closes the L-series (L0–L5): `-sh` is the native LFE shell,
+    cleanly isolated from the Linux zsh.**
 
 > **Two shells, one terminal.** zsh and `-sh` are independent — zsh is POSIX for Linux
 > programs, `-sh` is LFE for the object model; the terminal (`wl-term`, later ratty) hosts

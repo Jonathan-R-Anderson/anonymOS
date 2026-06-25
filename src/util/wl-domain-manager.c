@@ -86,9 +86,9 @@ static const char *CLIP_LBL[] = {"Deny","Ask","Same-domain","Down-trust"};
 static const char *CLIP_ENV[] = {"deny","ask","same","downtrust"};
 
 enum { SH_LINUX, SH_WINDOWS, SH_NATIVE, SH_N };
-// Z11: zsh is the default login shell in both personalities — "Linux (zsh)" runs /bin/zsh, and
-// "Native (zsh)" runs /hos-zsh (the same zsh, launched into the native object personality).
-static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (zsh)"};
+// Z11/L5: the two personalities run two different shells — "Linux (zsh)" runs /bin/zsh (POSIX),
+// and "Native (-sh/LFE)" runs /hos-sh, the LFE (Lisp) shell over the object model (L2–L5).
+static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (-sh/LFE)"};
 static const char *SHELL_ENV[] = {"linux","windows","native"};
 
 struct domain {

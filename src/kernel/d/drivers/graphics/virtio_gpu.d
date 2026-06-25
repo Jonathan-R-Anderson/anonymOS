@@ -369,61 +369,69 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuPutU(48, 1);        // depth
     gpuPutU(52, 1);        // array_size
     uint c2 = gpuCtrl(72, 24);
-    // (c) CTX_ATTACH_RESOURCE: bind resource 1 to context 1.
-    gpuZeroReq(32);
-    gpuPutU(0, 0x0206);    // hdr.type = VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
-    gpuPutU(16, 1);        // hdr.ctx_id = 1
-    gpuPutU(24, 1);        // resource_id = 1
-    uint c3 = gpuCtrl(32, 24);
-
-    printLine("[virtio-gpu] R2.3: CTX_CREATE / RESOURCE_CREATE_3D / CTX_ATTACH resp types:");
+    // CTX_ATTACH_RESOURCE is deliberately deferred to R2.3b: the real Linux guest attaches the
+    // resource to its context only AFTER create + backing, and QEMU's attach handler returns void
+    // (OK_NODATA is not a success signal), so order is what matters.
+    printLine("[virtio-gpu] R2.3: CTX_CREATE / RESOURCE_CREATE_3D resp types:");
     printHex(c1);
     printHex(c2);
-    printHex(c3);
-    if (c1 == VIRTIO_GPU_RESP_OK_NODATA && c2 == VIRTIO_GPU_RESP_OK_NODATA && c3 == VIRTIO_GPU_RESP_OK_NODATA) {
-        printLine("[virtio-gpu] R2.3: 3D context + resource commands OK (virgl objects live on the GPU)");
+    if (c1 == VIRTIO_GPU_RESP_OK_NODATA && c2 == VIRTIO_GPU_RESP_OK_NODATA) {
+        printLine("[virtio-gpu] R2.3: 3D context + resource created (virgl objects live on the GPU)");
         g_gpu3dReady = true;
     } else {
         printLine("[virtio-gpu] R2.3: a 3D command was rejected by the device");
         return;
     }
 
-    // R2.3b — render: attach a guest backing page, clear the resource RED via a virgl command
-    // stream, transfer the result back, and read pixel (0,0).  This proves the GPU actually rendered.
+    // R2.3b — the canonical virgl render-to-texture readback, in the exact order + ctx_ids the real
+    // Linux virtio_gpu guest uses (verified against virglrenderer 1.8.8 + QEMU 8.2.2 source):
+    //   RESOURCE_ATTACH_BACKING -> CTX_ATTACH_RESOURCE(ctx1) -> SUBMIT_3D(ctx1: surface+fb+clear)
+    //   -> TRANSFER_FROM_HOST_3D(ctx1).  CTX_ATTACH must follow create+backing; the transfer must use
+    //   the OWNING context (ctx 1) — ctx_id=0 routes to virglrenderer's internal ctx0 against an
+    //   unrendered texture and reads zeros.  A standalone transfer needs BOTH res-in-ctx-res_hash
+    //   (CTX_ATTACH) and res->iov (ATTACH_BACKING) or vrend logs "Illegal resource".
     ulong backPhys = alloc_phys_page();
     auto back = cast(uint*)(backPhys + hhdm_offset);
-    foreach (i; 0 .. 1024) back[i] = 0;   // 32*32 pixels
+    foreach (i; 0 .. 1024) back[i] = 0;   // 32*32 pixels (so a red readback is unambiguous)
 
-    // (d) RESOURCE_ATTACH_BACKING(resource 1; one mem entry: backPhys, 4096 bytes).
+    // (c) RESOURCE_ATTACH_BACKING(resource 1; one mem entry: backPhys, 4096 bytes) -> sets res->iov.
     gpuZeroReq(48);
     gpuPutU(0, 0x0106);          // VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING
     gpuPutU(24, 1);              // resource_id
     gpuPutU(28, 1);              // nr_entries
     gpuPutQ(32, backPhys);       // mem_entry.addr
-    gpuPutU(40, 4096);           // mem_entry.length
+    gpuPutU(40, 4096);           // mem_entry.length (>= stride*height = 128*32)
     uint d1 = gpuCtrl(48, 24);
 
-    // (e) SUBMIT_3D: virgl stream = CREATE_OBJECT(SURFACE) + SET_FRAMEBUFFER_STATE + CLEAR(red).
+    // (d) CTX_ATTACH_RESOURCE(ctx 1, resource 1) -> inserts the typed resource into ctx 1's res_hash.
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
+    gpuPutU(16, 1);              // hdr.ctx_id = 1
+    gpuPutU(24, 1);              // resource_id = 1
+    uint a1 = gpuCtrl(32, 24);
+
+    // (e) SUBMIT_3D (hdr.ctx_id = 1): a virgl stream that clears resource 1 RED.
+    //   CREATE_OBJECT(SURFACE) wrapping res 1 -> SET_FRAMEBUFFER_STATE(cbuf=surface) -> CLEAR(red).
     gpuZeroReq(108);
     gpuPutU(0, 0x0203);          // VIRTIO_GPU_CMD_SUBMIT_3D
-    gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE (defer response until GL done)
+    gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
     gpuPutQ(8, 1);               // hdr.fence_id = 1
     gpuPutU(16, 1);              // hdr.ctx_id = 1
-    gpuPutU(24, 76);             // size of the command stream in bytes
+    gpuPutU(24, 76);             // command-stream size in bytes (19 dwords)
     enum uint S = 32;            // stream begins after hdr(24)+size(4)+padding(4)
-    // CREATE_OBJECT SURFACE: (len5 << 16) | (VIRGL_OBJECT_SURFACE=8 << 8) | VIRGL_CCMD_CREATE_OBJECT=1
+    // CREATE_OBJECT SURFACE: (len5<<16)|(VIRGL_OBJECT_SURFACE=8<<8)|VIRGL_CCMD_CREATE_OBJECT=1
     gpuPutU(S +  0, (5 << 16) | (8 << 8) | 1);
     gpuPutU(S +  4, 1);          // surface handle
-    gpuPutU(S +  8, 1);          // resource handle
+    gpuPutU(S +  8, 1);          // resource handle (res 1)
     gpuPutU(S + 12, 1);          // format = B8G8R8A8_UNORM
     gpuPutU(S + 16, 0);          // texture level
-    gpuPutU(S + 20, 0);          // first|last layer
-    // SET_FRAMEBUFFER_STATE: (len3 << 16) | VIRGL_CCMD_SET_FRAMEBUFFER_STATE=5
+    gpuPutU(S + 20, 0);          // first_layer | last_layer<<16
+    // SET_FRAMEBUFFER_STATE: (len3<<16)|VIRGL_CCMD_SET_FRAMEBUFFER_STATE=5
     gpuPutU(S + 24, (3 << 16) | 5);
     gpuPutU(S + 28, 1);          // nr_cbufs
     gpuPutU(S + 32, 0);          // zsurf handle
     gpuPutU(S + 36, 1);          // cbuf[0] = surface handle 1
-    // CLEAR: (len8 << 16) | VIRGL_CCMD_CLEAR=7
+    // CLEAR: (len8<<16)|VIRGL_CCMD_CLEAR=7
     gpuPutU(S + 40, (8 << 16) | 7);
     gpuPutU(S + 44, 4);          // buffers = PIPE_CLEAR_COLOR0 (1<<2)
     gpuPutU(S + 48, 0x3f800000); // color r = 1.0f
@@ -435,21 +443,27 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuPutU(S + 72, 0);          // stencil
     uint e1 = gpuCtrl(108, 24);
 
-    // (f) TRANSFER_FROM_HOST_3D(resource 1, box 0,0,0..32,32,1) -> the guest backing.
+    // (f) TRANSFER_FROM_HOST_3D (hdr.ctx_id = 1): copy the cleared texture into the guest backing.
     gpuZeroReq(72);
     gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D
-    gpuPutU(16, 1);              // hdr.ctx_id = 1
+    gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
+    gpuPutQ(8, 2);               // hdr.fence_id = 2
+    gpuPutU(16, 1);              // hdr.ctx_id = 1 (owning context — NOT 0)
     gpuPutU(36, 32);             // box.w
     gpuPutU(40, 32);             // box.h
     gpuPutU(44, 1);              // box.d
     gpuPutQ(48, 0);              // offset
     gpuPutU(56, 1);              // resource_id
+    gpuPutU(60, 0);              // level
+    gpuPutU(64, 128);            // stride = 32px * 4 bytes
+    gpuPutU(68, 4096);           // layer_stride = stride * height
     uint f1 = gpuCtrl(72, 24);
 
     memBarrier();
     uint px0 = back[0];
-    printLine("[virtio-gpu] R2.3b: ATTACH / SUBMIT / TRANSFER resp + pixels[0,1,256,1023]:");
+    printLine("[virtio-gpu] R2.3b: BACKING/ATTACH/SUBMIT/TRANSFER resp + pixels[0,1,256,1023]:");
     printHex(d1);
+    printHex(a1);
     printHex(e1);
     printHex(f1);
     printHex(back[0]);

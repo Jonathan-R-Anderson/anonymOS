@@ -19,7 +19,7 @@ import core.identity : g_identities, identityCount, identityById, NetPolicy;
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
-import core.namespace: g_namespaces, nsClone;   // Z4c.3
+import core.namespace: g_namespaces, nsClone, nsRecByObj;   // Z4c.3 / Z12.1
 import core.io       : klog, klog_hex;           // Z4b.3/Z4c.3 verb tracing
 import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
@@ -119,7 +119,9 @@ private long hosCapGrant(ulong srcHandle, ulong wantRights) @nogc nothrow {
     if (!capUsable(src)) return -1;                       // -EPERM: no such usable source cap
     const int tid = cast(int)g_current_task_id;
     auto e = (tid >= 0 && tid < MAX_TASKS) ? identityById(g_tasks[tid].identityObjId) : null;
-    const uint ceiling   = (e !is null) ? e.rightsCeiling : src.rights;
+    // Z12.1 hardening: a missing/invalid identity record fails CLOSED (ceiling 0 ⇒ deny), never
+    // open — never fall back to src.rights, which would silently drop the rights-ceiling clamp.
+    const uint ceiling   = (e !is null) ? e.rightsCeiling : 0;
     const uint newRights = cast(uint)wantRights & src.rights & ceiling;
     if (newRights == 0) return -1;                        // attenuation left nothing → deny
     uint h = CAP_INVALID;                                 // a free slot in the caller's active table
@@ -155,7 +157,12 @@ private long hosNsClone() @nogc nothrow {
 private long hosNsEnter(ulong nsObjId) @nogc nothrow {
     const int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return -1;
-    if (nsObjId == 0 || cast(uint)nsObjId != g_taskOwnedNs[tid]) return -1;   // -EPERM: not yours
+    // -EPERM unless this is the namespace the caller itself cloned (g_taskOwnedNs) AND it is
+    // still a LIVE namespace object — Z12.1 hardening: object ids are recycled without a
+    // generation tag, so re-validate the id still resolves to a namespace (fail closed if the
+    // slot was released + reused for a non-namespace object) before committing the switch.
+    if (nsObjId == 0 || cast(uint)nsObjId != g_taskOwnedNs[tid] ||
+        nsRecByObj(cast(uint)nsObjId) is null) return -1;
     g_tasks[tid].namespaceObjId = cast(uint)nsObjId;
     klog("[ns-enter tid="); klog_hex(cast(ulong)tid); klog(" ns="); klog_hex(nsObjId); klog("]\n");
     return 0;

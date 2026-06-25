@@ -605,7 +605,7 @@ the frameworks (no network at runtime) and wire them to the AnonymOS prompt data
   plugins → theme → prompt`. New users get `/system/shell/zsh/zsh` as their login shell;
   the Domain Manager's per-domain Shell control gains a "zsh" option alongside linux/native.
 
-## Z12 — Security review + tests + benchmarks · ☐ · P: High · E: 3 · deps: all
+## Z12 — Security review + tests + benchmarks · ◐ IN PROGRESS · P: High · E: 3 · deps: all
 
 - *Deliverable 16 (security review):* zsh never bypasses the capability/identity/namespace
   managers — every privileged op goes through the native ABI (which is itself gated to the
@@ -617,6 +617,30 @@ the frameworks (no network at runtime) and wire them to the AnonymOS prompt data
   [[window-decorations]]); reboot/persistence checks for history.
 - *Deliverable 19 (benchmarks):* startup time, prompt render latency, completion latency vs
   busybox `ash` and `/hos-sh`; ensure zsh's larger footprint fits the 512 MiB boot ceiling.
+
+Tracked sub-steps:
+
+- **Z12.1 — Security review (D16)** · ✅ DONE · four independent adversarial audits of the platform
+  layer (N0 gate, the six Z4 verbs, the anon.c `--wrap` hooks, the `zsh/anonymos` module, the
+  native-exec personality binding).  Findings + dispositions in [docs/ZSH_SECURITY_REVIEW.md].
+  **One High finding fixed: F1** — the native-personality grant keyed off the *request* basename
+  (`origBase=="hos-zsh"`), so a user-created symlink `/tmp/hos-zsh -> /busybox` could smuggle an
+  arbitrary image onto the object ABI; now requires the trusted *resolved* image
+  (`execName=="zsh" && origBase=="hos-zsh"`, or `execName=="hos-sh"`).  Two fail-closed hardenings:
+  **F2** `cap_grant` ceiling → 0 (deny) on a missing identity (was fail-open to `src.rights`); **F3**
+  `ns_enter` re-validates the id still resolves to a live namespace (recycled-objId guard).
+  Documented as pre-existing/out-of-scope: F4 (unchecked user `buf` in read/write — OS-wide, not
+  native-specific, SMAP off in dev), F5 (nominal namespace gating — equal in both personalities),
+  F6 (no per-file mode), F7 (`ns_clone` un-entered-clone leak).  Verified live: the core invariant
+  holds both ways — a **Linux** zsh's `builtin obj` → "native object ABI unavailable" (`ENOSYS`),
+  a **native** zsh's `builtin obj` → the live object table (the gate fix did not regress native launch).
+- **Z12.2 — Regression + smoke tests (D17/D18)** · ☐ · run the supported subset of upstream
+  zsh's `Test/` suite on Linux-personality zsh (build-host proxy + in-VM smoke); golden
+  prompt/completion/plugin smoke tests headless via the QMP harness; history persistence across
+  reboot.  Commit the harness under `tests/zsh/`.
+- **Z12.3 — Benchmarks (D19)** · ☐ · startup / prompt-render / completion latency for zsh vs
+  busybox `ash` vs `/hos-sh`, and peak RSS against the 512 MiB ceiling.  Commit the bench script
+  + the recorded numbers.
 
 ---
 

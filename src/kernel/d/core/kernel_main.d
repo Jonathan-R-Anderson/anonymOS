@@ -842,8 +842,16 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         // other exec leaves the personality (the native shell can't launch a Linux tool
         // INTO the native object ABI).  fork/clone inherit the flag below.
         const(char)* origBase = cstrBasenameK(cast(const(char)*)pathPtr);
+        // Z12.1 hardening: the native flag must require the TRUSTED *image*, not merely the
+        // request basename — otherwise a user-created symlink (/tmp/hos-zsh -> /busybox) would
+        // smuggle an arbitrary boot module onto the native object ABI (origBase=="hos-zsh").
+        // /hos-zsh canonicalises to the /zsh boot module (execName=="zsh"); origBase only
+        // distinguishes the native launch (/hos-zsh) from the Linux one (/bin/zsh), both /zsh.
+        // /hos-sh is its own trusted image.  So: native iff a trusted image AND, for zsh, the
+        // hos-zsh request path.  A spoofed /tmp/hos-zsh -> /busybox has execName=="busybox" -> denied.
         g_taskNativeAbi[tid]   = (execName !is null && cstrEqK(execName, "hos-sh")) ||
-                                 (origBase !is null && cstrEqK(origBase, "hos-zsh"));
+                                 (execName !is null && cstrEqK(execName, "zsh") &&
+                                  origBase !is null && cstrEqK(origBase, "hos-zsh"));
         // A4: execve resets caught/ignored signals to the default disposition (POSIX),
         // so a freshly exec'd foreground command (cat/grep) is interruptible by ^C.
         g_taskSigCustom[tid]   = 0;

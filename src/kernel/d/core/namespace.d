@@ -71,7 +71,7 @@ public uint nsRootDir() {
     return g_rootDirObjId;
 }
 
-private NamespaceRec* nsRecByObj(uint objId) {
+public NamespaceRec* nsRecByObj(uint objId) {   // Z12.1: re-validate a live namespace for ns_enter
     if (objId == 0) return null;
     foreach (ref ns; g_namespaces)
         if (ns.inUse && ns.objId == objId) return &ns;

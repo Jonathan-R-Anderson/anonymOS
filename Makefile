@@ -539,9 +539,7 @@ hos-minimal.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(H
 	rm -rf cd
 	mkdir -p cd/boot/limine
 	cp kernel.elf cd/boot/kernel.elf
-	# A trimmed limine.conf listing only the modules we actually stage, so Limine
-	# does not hard-fail on a missing module_path (which the full conf would do).
-	printf 'timeout: 3\n\n/EpinAnonymOS\n    protocol: limine\n    path: boot():/boot/kernel.elf\n    cmdline: display.width=$(DISPLAY_WIDTH) display.height=$(DISPLAY_HEIGHT) display.scale=$(DISPLAY_SCALE) display.refresh=$(DISPLAY_REFRESH) display.force_mode=$(DISPLAY_FORCE_MODE) gui.autostart=$(GUI_AUTOSTART)\n    resolution: $(DISPLAY_WIDTH)x$(DISPLAY_HEIGHT)x32\n    module_path: boot():/busybox\n    module_path: boot():/test-drm\n    module_path: boot():/compositor\n    module_path: boot():/hello-gui\n    module_path: boot():/idle\n    module_path: boot():/display.conf\n' > cd/boot/limine/limine.conf
+	printf 'timeout: 3\nverbose: no\nquiet: yes\n\n/EpinAnonymOS\n    protocol: limine\n    path: boot():/boot/kernel.elf\n    cmdline: display.width=$(DISPLAY_WIDTH) display.height=$(DISPLAY_HEIGHT) display.scale=$(DISPLAY_SCALE) display.refresh=$(DISPLAY_REFRESH) display.force_mode=$(DISPLAY_FORCE_MODE) gui.autostart=$(GUI_AUTOSTART)\n    resolution: $(DISPLAY_WIDTH)x$(DISPLAY_HEIGHT)x32\n    module_path: boot():/busybox\n    module_path: boot():/test-drm\n    module_path: boot():/compositor\n    module_path: boot():/hello-gui\n    module_path: boot():/idle\n    module_path: boot():/display.conf\n' > cd/boot/limine/limine.conf
 	cp src/boot/limine-bios.sys src/boot/limine-bios-cd.bin src/boot/limine-uefi-cd.bin cd/boot/limine/
 	cp $(BUSYBOX_BIN) cd/busybox
 	cp $(TEST_DRM_BIN) cd/test-drm

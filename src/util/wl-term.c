@@ -39,6 +39,8 @@
 extern char **environ;
 
 enum { COLS = 80, ROWS = 24 };
+enum { SB_CAP = 1000 };            // scrollback ring capacity (lines)
+enum { SCROLLBAR_W = 10 };         // scrollbar width (base px, scaled)
 enum { BASE_FONT_PX = 17, BASE_CELL_W = 10, BASE_CELL_H = 20 };
 
 static const uint32_t COL_BG     = 0xff101418;
@@ -52,6 +54,8 @@ static const uint32_t COL_CURSOR = 0xff30c030;
 static const uint32_t COL_DECO_BG = 0xff2a3140;   // titlebar bg (no-domain default)
 static const uint32_t COL_DECO_FG = 0xfff2f2f2;   // titlebar text + button glyphs
 static const uint32_t COL_DECO_SEP = 0xff10141a;  // hairline under the titlebar
+static const uint32_t COL_SB_TRACK = 0xff20262e;  // scrollback scrollbar track (subtle)
+static const uint32_t COL_SB_THUMB = 0xff5a6675;  // scrollbar thumb (brighter)
 
 // Z7.1: ANSI SGR colour support.  The 16-colour base palette (ARGB, opaque) — a
 // muted "Tango"-ish set that reads well on the dark COL_BG; indices 0-7 normal,
@@ -123,6 +127,18 @@ struct app {
     int                   pen_rev;           // reverse video (SGR 7)
     int                   cur_r, cur_c;
     int                   dirty;
+
+    // Scrollback ring (oldest at logical 0). When full, sb_head is the oldest physical slot.
+    char                  sb_ch[SB_CAP][COLS];
+    uint32_t              sb_fg[SB_CAP][COLS];
+    uint32_t              sb_bg[SB_CAP][COLS];
+    int                   sb_head;        // index where the next evicted line is written
+    int                   sb_count;       // valid lines (<= SB_CAP)
+    int                   view_offset;    // 0 = following live bottom; >0 = scrolled up
+    int                   sb_dragging;    // dragging the scrollbar thumb
+    double                sb_drag_y0;     // py at drag start
+    int                   sb_drag_off0;   // view_offset at drag start
+
     int                   esc;      // ANSI escape state machine
     char                  csi[24];  // accumulated CSI parameter/intermediate bytes
     int                   csi_len;
@@ -158,7 +174,7 @@ static void init_layout(struct app *a) {
     a->cell_w = BASE_CELL_W * a->scale;
     a->cell_h = BASE_CELL_H * a->scale;
     a->deco_h = DECO_BASE_H * a->scale;             // reserve a titlebar strip on top
-    a->width = COLS * a->cell_w;
+    a->width = COLS * a->cell_w + SCROLLBAR_W * a->scale;  // grid + a strip for the scrollback bar
     a->height = ROWS * a->cell_h + a->deco_h;
     a->baseline = (BASE_FONT_PX - 3) * a->scale;
 }
@@ -375,6 +391,15 @@ static void grid_clear(struct app *a) {
 }
 
 static void grid_scroll(struct app *a) {
+    // Push the row about to be discarded (row 0) into the scrollback ring.
+    int slot = a->sb_head;
+    memcpy(a->sb_ch[slot], a->grid[0], COLS);
+    memcpy(a->sb_fg[slot], a->fgc[0],  COLS * sizeof(uint32_t));
+    memcpy(a->sb_bg[slot], a->bgc[0],  COLS * sizeof(uint32_t));
+    a->sb_head = (a->sb_head + 1) % SB_CAP;
+    if (a->sb_count < SB_CAP) a->sb_count++;
+    // Keep a scrolled-up view stable: the virtual sequence grew one line at the bottom.
+    if (a->view_offset > 0 && a->view_offset < a->sb_count) a->view_offset++;
     for (int r = 0; r < ROWS - 1; r++) {
         memcpy(a->grid[r], a->grid[r + 1], COLS);
         memcpy(a->fgc[r],  a->fgc[r + 1],  COLS * sizeof(uint32_t));
@@ -385,6 +410,47 @@ static void grid_scroll(struct app *a) {
         a->fgc[ROWS - 1][c] = COL_FG;
         a->bgc[ROWS - 1][c] = 0;
     }
+}
+
+static void clamp_view(struct app *a) {
+    if (a->view_offset < 0) a->view_offset = 0;
+    if (a->view_offset > a->sb_count) a->view_offset = a->sb_count;   // max = scroll to oldest line
+}
+// Resolve screen row sr (0..ROWS-1) to a source: 1 + ring pointers if from scrollback, else 0 +
+// *live_r (a live-grid row).  Virtual sequence: [ring 0..sb_count) then [live grid 0..ROWS).
+static int view_src(struct app *a, int sr, char **ch, uint32_t **fg, uint32_t **bg, int *live_r) {
+    int src_i = (a->sb_count - a->view_offset) + sr;   // view_offset<=sb_count -> src_i>=0
+    if (src_i < a->sb_count) {
+        int slot = (a->sb_count == SB_CAP) ? (a->sb_head + src_i) % SB_CAP : src_i; // full: head=oldest
+        *ch = a->sb_ch[slot]; *fg = a->sb_fg[slot]; *bg = a->sb_bg[slot];
+        return 1;
+    }
+    *live_r = src_i - a->sb_count;
+    return 0;
+}
+// Scrollbar geometry in surface coords. Returns 0 if there is no history (no bar).
+static int scrollbar_geom(struct app *a, int *tx, int *ty, int *tw, int *th, int *thumb_y, int *thumb_h) {
+    if (a->sb_count <= 0) return 0;
+    int w = SCROLLBAR_W * a->scale;
+    *tw = w; *tx = a->width - w;
+    *ty = a->deco_h;
+    *th = a->height - a->deco_h - (g_has_domain ? 4 * a->scale : 0); // keep off the bottom domain border
+    int total = a->sb_count + ROWS;
+    int h = (int)((double)ROWS / total * (*th));
+    if (h < 16) h = 16;
+    if (h > *th) h = *th;
+    int travel = *th - h;
+    // bottom-anchored: view_offset 0 (following) -> thumb at the bottom; max -> top.
+    int up = (a->sb_count > 0) ? (int)((double)a->view_offset / a->sb_count * travel) : 0;
+    *thumb_y = *ty + (travel - up);
+    *thumb_h = h;
+    return 1;
+}
+static void draw_scrollbar(struct app *a) {
+    int tx, ty, tw, th, thy, thh;
+    if (!scrollbar_geom(a, &tx, &ty, &tw, &th, &thy, &thh)) return;
+    gf_fill(a->pixels, a->width, a->width, a->height, tx, ty, tw, th, COL_SB_TRACK);
+    gf_fill(a->pixels, a->width, a->width, a->height, tx + 1, thy + 1, tw - 2, thh - 2, COL_SB_THUMB);
 }
 
 static void grid_newline(struct app *a) {
@@ -525,16 +591,23 @@ static void render(struct app *a) {
     if (!a->pixels) return;
     const int top = a->deco_h;                       // terminal grid starts below the titlebar
     gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->height, COL_BG);
-    for (int r = 0; r < ROWS; r++)
+    const int content_w = a->width - SCROLLBAR_W * a->scale;  // glyphs stop before the scrollbar strip
+    for (int r = 0; r < ROWS; r++) {
+        char *rch; uint32_t *rfg, *rbg; int live_r;          // scrollback-aware row source
+        int from_ring = view_src(a, r, &rch, &rfg, &rbg, &live_r);
+        char     *gch = from_ring ? rch : a->grid[live_r];
+        uint32_t *gfg = from_ring ? rfg : a->fgc[live_r];
+        uint32_t *gbg = from_ring ? rbg : a->bgc[live_r];
         for (int c = 0; c < COLS; c++) {
             int x = c * a->cell_w;
+            if (x + a->cell_w > content_w) break;
             int y = top + r * a->cell_h;
-            uint32_t bg = a->bgc[r][c];
+            uint32_t bg = gbg[c];
             if (bg)                                          // Z7.1: per-cell background block
                 gf_fill(a->pixels, a->width, a->width, a->height, x, y, a->cell_w, a->cell_h, bg);
-            char ch = a->grid[r][c];
+            char ch = gch[c];
             if (ch != ' ') {
-                uint32_t fg = a->fgc[r][c];                  // Z7.1: per-cell foreground
+                uint32_t fg = gfg[c];                        // Z7.1: per-cell foreground
                 if (a->font_ready)
                     render_ft_glyph(a, x, y, (unsigned char)ch, fg);
                 else
@@ -542,20 +615,24 @@ static void render(struct app *a) {
                              x, y + (a->cell_h - 8) / 2, ch, fg, -1);
             }
         }
-    // cursor block
-    gf_fill(a->pixels, a->width, a->width, a->height,
-            a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
-            a->cell_w, a->cell_h, COL_CURSOR);
-    char cc = a->grid[a->cur_r][a->cur_c];
-    if (cc != ' ') {
-        int x = a->cur_c * a->cell_w;
-        int y = top + a->cur_r * a->cell_h;
-        if (a->font_ready)
-            render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
-        else
-            gf_glyph(a->pixels, a->width, a->width, a->height,
-                     x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
     }
+    // cursor block — only when following the live bottom (hidden while viewing scrollback)
+    if (a->view_offset == 0) {
+        gf_fill(a->pixels, a->width, a->width, a->height,
+                a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
+                a->cell_w, a->cell_h, COL_CURSOR);
+        char cc = a->grid[a->cur_r][a->cur_c];
+        if (cc != ' ') {
+            int x = a->cur_c * a->cell_w;
+            int y = top + a->cur_r * a->cell_h;
+            if (a->font_ready)
+                render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
+            else
+                gf_glyph(a->pixels, a->width, a->width, a->height,
+                         x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
+        }
+    }
+    draw_scrollbar(a);   // scrollback bar (drawn before the domain border so the border stays intact)
     // IDENTITY_DOMAIN §6: unspoofable colored border (left/right/bottom; the titlebar
     // covers the top), drawn before the titlebar so app pixels never reach the ring.
     if (g_has_domain) {
@@ -848,7 +925,12 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     int down = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
     if (code == 42 || code == 54) { a->shift = down; return; } // L/R shift
     if (code == 29 || code == 97) { a->ctrl = down; return; }  // L/R ctrl
-    if (down) key_to_pty(a, code);
+    if (!down) return;
+    // Shift+PageUp / Shift+PageDown = local scrollback scroll, NOT sent to the PTY.
+    if (a->shift && code == 104) { a->view_offset += ROWS; clamp_view(a); a->dirty = 1; return; }
+    if (a->shift && code == 109) { a->view_offset -= ROWS; clamp_view(a); a->dirty = 1; return; }
+    if (a->view_offset != 0) { a->view_offset = 0; a->dirty = 1; } // typing snaps back to live
+    key_to_pty(a, code);
 }
 static void kb_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t lat,
                     uint32_t lock, uint32_t grp)
@@ -872,12 +954,36 @@ static void ptr_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_
 static void ptr_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t sx, wl_fixed_t sy) {
     (void)p; (void)t; struct app *a = d;
     a->px = wl_fixed_to_double(sx); a->py = wl_fixed_to_double(sy);
+    if (a->sb_dragging) {
+        int tx, ty, tw, th, thy, thh;
+        if (!scrollbar_geom(a, &tx, &ty, &tw, &th, &thy, &thh)) return;
+        int travel = th - thh;
+        if (travel <= 0) return;
+        double dy = a->py - a->sb_drag_y0;                       // drag DOWN -> toward live -> smaller offset
+        int doff = (int)(-dy * (double)a->sb_count / travel);
+        a->view_offset = a->sb_drag_off0 + doff;
+        clamp_view(a); a->dirty = 1;
+    }
 }
 static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
                        uint32_t button, uint32_t state) {
     (void)p; (void)t; struct app *a = d;
-    if (button != BTN_LEFT_CODE || state != WL_POINTER_BUTTON_STATE_PRESSED) return;
+    if (button != BTN_LEFT_CODE) return;
+    if (state == WL_POINTER_BUTTON_STATE_RELEASED) { a->sb_dragging = 0; return; }
     a->ptr_serial = serial;
+    // Scrollbar first (it lives below the titlebar at the right edge — disjoint from deco_hit).
+    int tx, ty, tw, th, thy, thh;
+    if (scrollbar_geom(a, &tx, &ty, &tw, &th, &thy, &thh) &&
+        a->px >= tx && a->px < tx + tw && a->py >= ty && a->py < ty + th) {
+        if (a->py >= thy && a->py < thy + thh) {                 // on the thumb -> start drag
+            a->sb_dragging = 1; a->sb_drag_y0 = a->py; a->sb_drag_off0 = a->view_offset;
+        } else if (a->py < thy) {                                // above the thumb -> page up (older)
+            a->view_offset += ROWS; clamp_view(a); a->dirty = 1;
+        } else {                                                 // below the thumb -> page down
+            a->view_offset -= ROWS; clamp_view(a); a->dirty = 1;
+        }
+        return;
+    }
     switch (deco_hit(a, a->px, a->py)) {
         case 1: xdg_toplevel_move(a->toplevel, a->seat, serial); break;   // drag the titlebar
         case 2: xdg_toplevel_set_minimized(a->toplevel); break;
@@ -889,7 +995,13 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
     }
 }
 static void ptr_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t axis, wl_fixed_t v)
-{ (void)d; (void)p; (void)t; (void)axis; (void)v; }
+{
+    (void)p; (void)t; struct app *a = d;
+    if (axis != 0) return;                       // 0 = vertical scroll
+    double dv = wl_fixed_to_double(v);           // >0 = scroll down (toward live)
+    a->view_offset += (dv > 0) ? -3 : 3;         // 3 lines per notch (wheel is a bonus; QMP can't send it)
+    clamp_view(a); a->dirty = 1;
+}
 static void ptr_frame(void *d, struct wl_pointer *p) { (void)d; (void)p; }
 static void ptr_axis_source(void *d, struct wl_pointer *p, uint32_t s) { (void)d; (void)p; (void)s; }
 static void ptr_axis_stop(void *d, struct wl_pointer *p, uint32_t t, uint32_t ax)
@@ -967,7 +1079,7 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 int main(void) {
-    struct app a;
+    static struct app a;   // BSS, not the stack: the scrollback ring makes this ~740 KB
     memset(&a, 0, sizeof(a));
     a.running = 1;
     a.ptm = -1;

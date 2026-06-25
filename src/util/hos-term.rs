@@ -10,6 +10,7 @@
 // as SCM_RIGHTS ancillary data on sendmsg; received fds (the keyboard keymap) are simply dropped,
 // since we map keycodes with a hardcoded US table (mirrored from wl-term.c) instead of xkb.
 
+use std::collections::VecDeque;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::UnixStream;
 
@@ -107,6 +108,8 @@ struct Wl {
     compositor: u32, shm: u32, wm_base: u32, seat: u32,
     surface: u32, xdg_surface: u32, xdg_toplevel: u32, keyboard: u32, pointer: u32,
     ptr_x: i32, ptr_y: i32,
+    // scrollbar thumb-drag state (transient; the scrollback view lives in Term)
+    sb_dragging: bool, sb_drag_y0: i32, sb_drag_off0: usize,
     // shm — double-buffered (one pool, two buffers) so we always have a free buffer to render
     // into while the compositor holds the other; the buffer.release event ping-pongs them.
     buffers: [u32; 2], maps: [*mut u8; 2], busy: [bool; 2],
@@ -160,6 +163,10 @@ const TITLE_H: i32 = 26;           // client-side decoration titlebar height
 const TITLE_BG: u32 = 0xff_2a2f3a;
 const TITLE_FG: u32 = 0xff_f2f2f2;
 const CLOSE_BG: u32 = 0xff_c0392b;
+const SCROLLBAR_W: i32 = 10;       // scrollback scrollbar, on the right edge of the grid area
+const SB_CAP: usize = 1000;        // scrollback ring capacity (lines)
+const SB_TRACK: u32 = 0xff_20262e; // scrollbar track (subtle)
+const SB_THUMB: u32 = 0xff_5a6675; // scrollbar thumb (brighter)
 
 #[derive(Clone, Copy)]
 struct Cell { ch: u8, fg: u32, bg: u32 }
@@ -174,6 +181,10 @@ struct Term {
     state: u8,            // 0 ground, 1 esc, 2 csi
     params: [u32; 8], np: usize, has_param: bool,
     dirty: bool,
+    // scrollback: oldest at front, newest at back; cap SB_CAP. view_offset = lines scrolled UP
+    // from the live bottom (0 = following the live grid).
+    scrollback: VecDeque<[Cell; COLS]>,
+    view_offset: usize,
 }
 const PALETTE: [u32; 16] = [
     0xff_10141a, 0xff_e06c75, 0xff_98c379, 0xff_e5c07b, 0xff_61afef, 0xff_c678dd, 0xff_56b6c2, 0xff_c0c4cc,
@@ -184,11 +195,29 @@ impl Term {
     fn new() -> Term {
         Term { grid: [[Cell { ch: b' ', fg: DEF_FG, bg: DEF_BG }; COLS]; ROWS],
                cx: 0, cy: 0, fg: DEF_FG, bg: DEF_BG,
-               state: 0, params: [0; 8], np: 0, has_param: false, dirty: true }
+               state: 0, params: [0; 8], np: 0, has_param: false, dirty: true,
+               scrollback: VecDeque::with_capacity(SB_CAP), view_offset: 0 }
     }
     fn scroll(&mut self) {
+        // push the row being evicted (grid[0]) into scrollback, capped at SB_CAP.
+        if self.scrollback.len() >= SB_CAP { self.scrollback.pop_front(); }
+        self.scrollback.push_back(self.grid[0]);   // Cell: Copy -> copies the row
+        // keep a scrolled-up view stable: the virtual sequence grew one line at the bottom.
+        if self.view_offset > 0 && self.view_offset < self.scrollback.len() {
+            self.view_offset += 1;
+        }
         for r in 1..ROWS { self.grid[r - 1] = self.grid[r]; }
         self.grid[ROWS - 1] = [Cell { ch: b' ', fg: self.fg, bg: self.bg }; COLS];
+    }
+    fn clamp_view(&mut self) {
+        let m = self.scrollback.len();   // max offset = scroll until the oldest line is the top row
+        if self.view_offset > m { self.view_offset = m; }
+    }
+    // Resolve screen row sr (0..ROWS) to a row of cells (scrollback line or live grid row).
+    fn row_at(&self, sr: usize) -> &[Cell; COLS] {
+        let count = self.scrollback.len();
+        let src_i = (count - self.view_offset) + sr;   // safe: view_offset <= count
+        if src_i < count { &self.scrollback[src_i] } else { &self.grid[src_i - count] }
     }
     fn newline(&mut self) { if self.cy + 1 >= ROWS { self.scroll(); } else { self.cy += 1; } }
     fn put(&mut self, c: u8) {
@@ -359,16 +388,48 @@ fn render(map: *mut u8, width: i32, height: i32, t: &Term) {
     fill_rect(px, pitch, height, cb_x, 0, TITLE_H, TITLE_H, CLOSE_BG);
     blit_char(px, pitch, height, cb_x + (TITLE_H - 16) / 2, (TITLE_H - 16) / 2, b'x',
               0xff_ffffff, CLOSE_BG, 2, 2, false);
-    // --- terminal grid, offset below the titlebar ---
+    // --- terminal grid (scrollback-aware), offset below the titlebar ---
+    let sb_w = if t.scrollback.is_empty() { 0 } else { SCROLLBAR_W };
+    let content_w = width - sb_w;
+    let following = t.view_offset == 0;
     for ry in 0..ROWS {
+        let row = t.row_at(ry);
         for rx in 0..COLS {
-            let cell = t.grid[ry][rx];
-            let cursor = rx == t.cx && ry == t.cy;
-            let (fg, bg) = if cursor { (cell.bg, cell.fg) } else { (cell.fg, cell.bg) };
             let ox = rx as i32 * CELL_W;
+            if ox + CELL_W > content_w { break; }   // never draw text under the scrollbar
+            let cell = row[rx];
+            let cursor = following && rx == t.cx && ry == t.cy;   // cursor only at the live bottom
+            let (fg, bg) = if cursor { (cell.bg, cell.fg) } else { (cell.fg, cell.bg) };
             let oy = TITLE_H + ry as i32 * CELL_H;
             blit_char(px, pitch, height, ox, oy, cell.ch, fg, bg, SCALE_X, SCALE_Y, true);
         }
+    }
+    draw_scrollbar(px, pitch, width, height, t);
+}
+
+// Scrollbar geometry: (track_x, track_y, track_w, track_h, thumb_y, thumb_h). None if no history.
+fn scrollbar_geom(width: i32, height: i32, t: &Term) -> Option<(i32, i32, i32, i32, i32, i32)> {
+    let count = t.scrollback.len();
+    if count == 0 { return None; }
+    let tw = SCROLLBAR_W;
+    let tx = width - tw;
+    let ty = TITLE_H;
+    let th = height - TITLE_H;
+    let total = (count + ROWS) as f64;
+    let mut thumb_h = (ROWS as f64 / total * th as f64) as i32;
+    if thumb_h < 16 { thumb_h = 16; }
+    if thumb_h > th { thumb_h = th; }
+    let travel = th - thumb_h;
+    // bottom-anchored: view_offset 0 (following) -> thumb at the bottom; max -> top.
+    let up = (t.view_offset as f64 / count as f64 * travel as f64) as i32;
+    let thumb_y = ty + (travel - up);
+    Some((tx, ty, tw, th, thumb_y, thumb_h))
+}
+
+fn draw_scrollbar(px: &mut [u32], pitch: usize, width: i32, height: i32, t: &Term) {
+    if let Some((tx, ty, tw, th, thy, thh)) = scrollbar_geom(width, height, t) {
+        fill_rect(px, pitch, height, tx, ty, tw, th, SB_TRACK);
+        fill_rect(px, pitch, height, tx + 1, thy + 1, tw - 2, thh - 2, SB_THUMB);
     }
 }
 
@@ -465,12 +526,39 @@ fn handle(wl: &mut Wl, t: &mut Term, obj: u32, opcode: u16, body: &[u8]) {
     if obj == wl.pointer {
         match opcode {
             0 => { wl.ptr_x = (read_u32(body, 8) as i32) / 256; wl.ptr_y = (read_u32(body, 12) as i32) / 256; }
-            2 => { wl.ptr_x = (read_u32(body, 4) as i32) / 256; wl.ptr_y = (read_u32(body, 8) as i32) / 256; }
+            2 => {
+                wl.ptr_x = (read_u32(body, 4) as i32) / 256; wl.ptr_y = (read_u32(body, 8) as i32) / 256;
+                if wl.sb_dragging {
+                    if let Some((_, _, _, th, _, thh)) = scrollbar_geom(wl.width, wl.height, t) {
+                        let travel = th - thh;
+                        if travel > 0 {
+                            let dy = wl.ptr_y - wl.sb_drag_y0;   // drag DOWN -> toward live -> smaller offset
+                            let doff = (-(dy as f64) * t.scrollback.len() as f64 / travel as f64) as i32;
+                            let base = wl.sb_drag_off0 as i32 + doff;
+                            t.view_offset = base.max(0) as usize; t.clamp_view(); t.dirty = true;
+                        }
+                    }
+                }
+            }
             3 => {
                 let serial = read_u32(body, 0);
                 let btn = read_u32(body, 8);
                 let st = read_u32(body, 12);
+                if btn == 0x110 && st == 0 { wl.sb_dragging = false; }   // release
                 if btn == 0x110 && st == 1 { // BTN_LEFT pressed
+                    // scrollbar first (it is below TITLE_H, at the right edge — disjoint from the titlebar)
+                    if let Some((tx, ty, tw, th, thy, thh)) = scrollbar_geom(wl.width, wl.height, t) {
+                        if wl.ptr_x >= tx && wl.ptr_x < tx + tw && wl.ptr_y >= ty && wl.ptr_y < ty + th {
+                            if wl.ptr_y >= thy && wl.ptr_y < thy + thh {
+                                wl.sb_dragging = true; wl.sb_drag_y0 = wl.ptr_y; wl.sb_drag_off0 = t.view_offset;
+                            } else if wl.ptr_y < thy {
+                                t.view_offset += ROWS; t.clamp_view(); t.dirty = true;          // page up (older)
+                            } else {
+                                t.view_offset = t.view_offset.saturating_sub(ROWS); t.dirty = true; // page down
+                            }
+                            return;
+                        }
+                    }
                     if wl.ptr_y < TITLE_H && wl.ptr_x >= wl.width - TITLE_H {
                         wl.closed = true;                 // close button
                     } else if wl.ptr_y < TITLE_H {
@@ -478,6 +566,15 @@ fn handle(wl: &mut Wl, t: &mut Term, obj: u32, opcode: u16, body: &[u8]) {
                         let mut b = Vec::new(); put_u32(&mut b, wl.seat); put_u32(&mut b, serial);
                         wl.send(&msg(wl.xdg_toplevel, 5, &b));
                     }
+                }
+            }
+            4 => { // wl_pointer.axis(time, axis, value) — mouse wheel (bonus; QMP can't send it)
+                let axis = read_u32(body, 4);
+                let value = read_u32(body, 8) as i32;   // wl_fixed, signed; >0 = down/toward live
+                if axis == 0 {
+                    let lines = if value > 0 { -3i32 } else { 3i32 };
+                    let base = t.view_offset as i32 + lines;
+                    t.view_offset = base.max(0) as usize; t.clamp_view(); t.dirty = true;
                 }
             }
             _ => {}
@@ -494,8 +591,13 @@ fn handle(wl: &mut Wl, t: &mut Term, obj: u32, opcode: u16, body: &[u8]) {
             29 | 97 => { wl.ctrl = down; return; }
             _ => {}
         }
-        if down { key_to_pty(wl, code); }
-        let _ = t;
+        if down {
+            // Shift+PageUp / Shift+PageDown = local scrollback scroll, NOT sent to the PTY.
+            if wl.shift && code == 104 { t.view_offset += ROWS; t.clamp_view(); t.dirty = true; return; }
+            if wl.shift && code == 109 { t.view_offset = t.view_offset.saturating_sub(ROWS); t.dirty = true; return; }
+            if t.view_offset != 0 { t.view_offset = 0; t.dirty = true; } // typing snaps back to live
+            key_to_pty(wl, code);
+        }
         return;
     }
 }
@@ -653,8 +755,9 @@ fn main() {
         compositor: 0, shm: 0, wm_base: 0, seat: 0,
         surface: 0, xdg_surface: 0, xdg_toplevel: 0, keyboard: 0, pointer: 0,
         ptr_x: 0, ptr_y: 0,
+        sb_dragging: false, sb_drag_y0: 0, sb_drag_off0: 0,
         buffers: [0, 0], maps: [core::ptr::null_mut(); 2], busy: [false, false],
-        map_len: 0, width: (COLS as i32) * CELL_W, height: TITLE_H + (ROWS as i32) * CELL_H,
+        map_len: 0, width: (COLS as i32) * CELL_W + SCROLLBAR_W, height: TITLE_H + (ROWS as i32) * CELL_H,
         configured: false, closed: false,
         shift: false, ctrl: false, ptm: -1,
         rbuf: Vec::with_capacity(8192),

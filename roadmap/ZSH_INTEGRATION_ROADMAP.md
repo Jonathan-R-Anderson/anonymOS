@@ -747,10 +747,20 @@ friendly goal) without bolting POSIX onto the object model.
   So L2 ports the upstream *evaluation model* into the betterC `hos-sh` that already runs natively,
   gated, over `HOS_SYS_QUERY`; `(ns-bind …)` and `(spawn …)` (which need new kernel verbs) and the
   full-upstream build are L3/L4 follow-ups.
-- **L3 — full LFE language · ☐ · E: 5 · deps: L2.** Atoms, lists, tuples, maps, `defun`/
-  `lambda`, `let`, pattern matching, guards, list comprehensions, macros — the real LFE so
-  the native shell is a programmable Lisp over the object model (scripts, functions, the
-  theme/prompt as LFE).
+- **L3 — full LFE language · ✅ DONE (core) · E: 5 · deps: L2.** The native shell is now a real
+  **programmable Lisp over the object model**.  The L2 flat-value evaluator grew into a cell-based
+  interpreter (`src/util/hos-sh.d`, betterC, grow-only arenas, no GC): a full value model (ints,
+  atoms, strings, **cons lists, tuples, closures**), lexical **environments** with a global frame,
+  `defun`/`lambda`/`let`, `if`/`case` with **pattern matching + `when` guards**, **recursion**, and
+  list/tuple ops (`list`/`cons`/`car`/`cdr`/`length`/`element`).  The object-ABI verbs are ordinary
+  functions whose results feed the language.  **Verified** — host (language): `(fac 5)` → `120`
+  (recursion), `((lambda (x) (+ x 1)) 41)` → `42`, `(let ((a 3)(b 4)) (+ (* a a)(* b b)))` → `25`,
+  `(case (tuple 1 2) ((tuple a b) (+ a b)))` → `3`, `(case 5 (n (when (> n 3)) 'big) …)` → `big`;
+  in-VM (object model): `(let ((n (ns-clone))) (ns-enter n))` → `0`, `(case (ns-enter (ns-clone))
+  (0 'ok) (e 'fail))` → `ok`, and a recursive `(defun countdown …)` defined on one line then
+  `(countdown 3)` → `done` (defuns persist across REPL lines).  **Remaining polish:** maps,
+  `defmacro`/quasiquote, and list comprehensions (the advanced ~15%) — not required for the
+  programmable-Lisp milestone.
 - **L4 — capability/namespace/identity-aware forms · ☐ · E: 3 · deps: L2.** First-class forms
   for the security model: `(identity)`/`(identity-switch …)`, `(namespace …)`, `(caps)`/
   `(cap-derive …)` — the same fields the prompt shows, manipulable as LFE. All gated by the

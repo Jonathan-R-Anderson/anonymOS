@@ -63,52 +63,91 @@ void runQuery(long op, const(char)* header) @nogc nothrow {
 }
 
 void help() @nogc nothrow {
-    printf("LFE forms — evaluated to data; object-ABI verbs are functions, results compose:\n");
-    printf("  (obj) (id) (ns) (svc) (sys)   enumerate objects/identities/namespaces/services\n");
-    printf("  (whoami)                      the identity line, as data\n");
-    printf("  (ns-clone)                    clone my namespace -> new id (data)\n");
-    printf("  (ns-enter <id>)               enter an owned namespace -> 0/-errno\n");
-    printf("  (cap-grant <h> <rights>)      attenuating capability grant -> new handle\n");
-    printf("  (subscribe <events>)          §6 event subscription\n");
-    printf("  (+ - * /) e.g. (+ 1 (* 2 3))  arithmetic; args evaluate first, so forms NEST\n");
-    printf("  (ns-enter (ns-clone))         composition: clone yields the id enter consumes\n");
-    printf("  (cat \"/path\") (cd \"/path\")     read a file / change path (native FS verbs)\n");
-    printf("  (print x ...)  (help)  (exit)  print values / this list / leave\n");
+    printf("-sh — a Lisp (LFE) over the object model.  Forms evaluate to data:\n");
+    printf("  values   1   \"str\"   foo   (list 1 2 3)   (tuple 1 2)   ()   true / false\n");
+    printf("  define   (defun sq (x) (* x x))     then  (sq 9) => 81   (recursion ok)\n");
+    printf("  lambda   ((lambda (x) (+ x 1)) 41) => 42\n");
+    printf("  let      (let ((a 3) (b 4)) (+ (* a a) (* b b))) => 25\n");
+    printf("  if/case  (if (> n 0) (quote pos) (quote neg))\n");
+    printf("           (case (ns-clone) (0 (quote fail)) (n (ns-enter n)))   ; pattern match + (when g)\n");
+    printf("  lists    (car L) (cdr L) (cons h t) (length L) (++ a b)   tuples (element i T)\n");
+    printf("  arith    (+ - * /)    compare (== /= < > >= =<)\n");
+    printf("  objects  (obj) (id) (ns) (svc) (sys) (whoami)    (ns-clone) (ns-enter id) (cap-grant h r)\n");
+    printf("  shell    (cat \"/p\")  (cd \"/p\")  (print x)  (reset)  (exit)\n");
 }
 
-// ── L2: a real LFE (Lisp-Flavored Erlang) evaluator ─────────────────────────────────────────
-// L0 only *read* a form into the bare command; L2 *evaluates* it.  An s-expression parses to an
-// AST and evaluates to DATA (a number or text), so the object-ABI verbs are LFE functions whose
-// results further forms consume — composition, not text streams:
-//     (+ 1 (* 2 3))        => 7
-//     (ns-enter (ns-clone)) => 0           ; clone returns an id, enter consumes it
-//     (obj)                => the object table (as data)
-// Ported from the upstream `-sh` evaluation model (deps/lfe-sh, vendored in L1) into betterC: a
-// fixed node pool + value tags, no GC / exceptions.  Bare words still work for the zsh integration.
+// ── L3: a real LFE (Lisp-Flavored Erlang) interpreter ───────────────────────────────────────
+// L2 evaluated forms to a flat value; L3 makes the native shell a *programmable Lisp over the
+// object model*: a cell-based value model (ints, atoms, strings, cons lists, tuples, closures),
+// lexical environments, `defun`/`lambda`/`let`, `if`/`case` with pattern matching + guards,
+// recursion, and the object-ABI verbs as ordinary functions whose results are first-class data.
+// Ported from the upstream `-sh` model (deps/lfe-sh, vendored L1) into betterC: fixed grow-only
+// arenas (AST nodes / interned strings / value cells), no GC — `(reset)` clears a session.
+// (Macros + list comprehensions: remaining L3 polish.)
 
 enum SK : ubyte { Num, Sym, Str, List }
-struct Node { SK kind; int off; int len; long num; int head; int next; }
-__gshared Node[256] g_nodes;
-__gshared int g_nnodes;
-__gshared const(char)* g_src;   // the form text being parsed/evaluated
-__gshared int g_pos;
-__gshared int g_exitReq;        // (exit)/(quit) sets this
+struct Node { SK kind; int aoff; int len; long num; int head; int next; }
+__gshared Node[4096]   g_nodes;     // AST — persistent across REPL lines (defun bodies live here)
+__gshared int          g_nnodes;
+__gshared char[16384]  g_strarena;  // interned atom/string text — persistent
+__gshared int          g_strn;
+__gshared const(char)* g_src;       // current line being parsed
+__gshared int          g_pos;
+__gshared int          g_exitReq;
+__gshared int          g_resetReq;
 
-enum VK : ubyte { Nil, Num, Str, Err }
-struct Val { VK kind; long num; const(char)* sp; int slen; }
-Val vnil() @nogc nothrow { Val v; v.kind=VK.Nil; v.num=0; v.sp=null; v.slen=0; return v; }
-Val vnum(long x) @nogc nothrow { Val v; v.kind=VK.Num; v.num=x; v.sp=null; v.slen=0; return v; }
-Val vstr(const(char)* s, int n) @nogc nothrow { Val v; v.kind=VK.Str; v.num=0; v.sp=s; v.slen=n; return v; }
-Val verr() @nogc nothrow { Val v; v.kind=VK.Err; v.num=0; v.sp=null; v.slen=0; return v; }
+enum CT : ubyte { Nil, Int, Atom, Str, Cons, Tuple, Fun, Err }
+struct Cell { CT t; long i; int s; int n; int a; int d; }
+//  Int: i.  Atom/Str: s=arena off, n=len.  Cons: a=car cell, d=cdr cell.
+//  Tuple: a=elements (a cons-list cell), i=count.  Fun: a=params NODE, d=body NODE, i=env cell.
+__gshared Cell[8192] g_cells;
+__gshared int g_ncells;
+__gshared int g_globalEnv;          // top-level env: a cons-list of (name . val) bindings
+__gshared bool g_inited;
+__gshared int g_trueCell, g_falseCell;
+enum int NIL = 0;                   // cell 0 is the canonical Nil
 
-int allocNode(SK k) @nogc nothrow {
-    if (g_nnodes >= cast(int)g_nodes.length) return -1;
-    const int n = g_nnodes++;
-    g_nodes[n].kind=k; g_nodes[n].off=0; g_nodes[n].len=0; g_nodes[n].num=0;
-    g_nodes[n].head=-1; g_nodes[n].next=-1;
-    return n;
+int allocCell(CT t) @nogc nothrow {
+    if (g_ncells >= cast(int)g_cells.length) return NIL;            // soft OOM -> Nil
+    const int c = g_ncells++;
+    g_cells[c].t=t; g_cells[c].i=0; g_cells[c].s=0; g_cells[c].n=0; g_cells[c].a=0; g_cells[c].d=0;
+    return c;
 }
-bool isNum(const(char)* s, int n) @nogc nothrow {
+int mkInt(long x) @nogc nothrow { const int c=allocCell(CT.Int); g_cells[c].i=x; return c; }
+int mkAtom(int off, int len) @nogc nothrow { const int c=allocCell(CT.Atom); g_cells[c].s=off; g_cells[c].n=len; return c; }
+int mkStr(int off, int len) @nogc nothrow { const int c=allocCell(CT.Str); g_cells[c].s=off; g_cells[c].n=len; return c; }
+int mkCons(int car, int cdr) @nogc nothrow { const int c=allocCell(CT.Cons); g_cells[c].a=car; g_cells[c].d=cdr; return c; }
+int mkFun(int params, int body, int env) @nogc nothrow { const int c=allocCell(CT.Fun); g_cells[c].a=params; g_cells[c].d=body; g_cells[c].i=env; return c; }
+
+int internRange(const(char)* s, int len) @nogc nothrow {
+    if (g_strn + len > cast(int)g_strarena.length) return 0;
+    const int off = g_strn;
+    for (int k=0; k<len; ++k) g_strarena[off+k]=s[k];
+    g_strn += len;
+    return off;
+}
+int internLit(string lit) @nogc nothrow { return internRange(lit.ptr, cast(int)lit.length); }
+
+void ensureInit() @nogc nothrow {
+    if (g_inited) return;
+    g_inited = true;
+    g_ncells = 0; g_strn = 0; g_nnodes = 0;
+    allocCell(CT.Nil);                                     // cell 0 == NIL
+    g_trueCell  = mkAtom(internLit("true"), 4);
+    g_falseCell = mkAtom(internLit("false"), 5);
+    g_globalEnv = NIL;
+}
+
+bool symEqA(int off, int len, string lit) @nogc nothrow {
+    if (len != cast(int)lit.length) return false;
+    for (int k=0; k<len; ++k) if (g_strarena[off+k] != lit[k]) return false;
+    return true;
+}
+bool arenaEq(int o1, int o2, int len) @nogc nothrow {
+    for (int k=0; k<len; ++k) if (g_strarena[o1+k] != g_strarena[o2+k]) return false;
+    return true;
+}
+bool isNumTok(const(char)* s, int n) @nogc nothrow {
     if (n==0) return false;
     int i=0; if (s[0]=='-') { if (n==1) return false; i=1; }
     for (; i<n; ++i) if (s[i]<'0' || s[i]>'9') return false;
@@ -118,20 +157,31 @@ long toLong(const(char)* s, int n) @nogc nothrow {
     int i=0; long sign=1; if (s[0]=='-') { sign=-1; i=1; }
     long v=0; for (; i<n; ++i) v = v*10 + (s[i]-'0'); return v*sign;
 }
-bool symEq(const(char)* s, int n, string lit) @nogc nothrow {
-    if (n != cast(int)lit.length) return false;
-    for (int i=0; i<n; ++i) if (s[i] != lit[i]) return false;
-    return true;
-}
 
+// ── parser: s-expression text -> AST nodes (strings interned into the arena) ────────────────
 void pskip() @nogc nothrow { while (g_src[g_pos]==' ' || g_src[g_pos]=='\t') ++g_pos; }
+int allocNode(SK k) @nogc nothrow {
+    if (g_nnodes >= cast(int)g_nodes.length) return -1;
+    const int n=g_nnodes++;
+    g_nodes[n].kind=k; g_nodes[n].aoff=0; g_nodes[n].len=0; g_nodes[n].num=0; g_nodes[n].head=-1; g_nodes[n].next=-1;
+    return n;
+}
 int parseExpr() @nogc nothrow {
     pskip();
     const char c = g_src[g_pos];
     if (c==0) return -1;
+    if (c=='\'') { ++g_pos; return parseQuoteSugar(); }  // 'x  ->  (quote x)
     if (c=='(') { ++g_pos; return parseList(); }
     if (c=='"') return parseStr();
     return parseAtom();
+}
+int parseQuoteSugar() @nogc nothrow {
+    const int lst = allocNode(SK.List); if (lst<0) return -1;
+    const int q = allocNode(SK.Sym); if (q<0) return -1;
+    g_nodes[q].aoff = internLit("quote"); g_nodes[q].len = 5;
+    const int inner = parseExpr();
+    g_nodes[lst].head = q; g_nodes[q].next = inner;
+    return lst;
 }
 int parseList() @nogc nothrow {
     const int n = allocNode(SK.List); if (n<0) return -1;
@@ -151,7 +201,7 @@ int parseStr() @nogc nothrow {
     ++g_pos; const int start=g_pos;
     while (g_src[g_pos]!=0 && g_src[g_pos]!='"') ++g_pos;
     const int n=allocNode(SK.Str); if (n<0) return -1;
-    g_nodes[n].off=start; g_nodes[n].len=g_pos-start;
+    g_nodes[n].aoff=internRange(g_src+start, g_pos-start); g_nodes[n].len=g_pos-start;
     if (g_src[g_pos]=='"') ++g_pos;
     return n;
 }
@@ -159,88 +209,278 @@ int parseAtom() @nogc nothrow {
     const int start=g_pos;
     while (g_src[g_pos]!=0) { const char c=g_src[g_pos]; if (c==' '||c=='\t'||c=='('||c==')') break; ++g_pos; }
     const int len=g_pos-start;
-    const bool num = isNum(g_src+start, len);
+    const bool num = isNumTok(g_src+start, len);
     const int n=allocNode(num?SK.Num:SK.Sym); if (n<0) return -1;
-    g_nodes[n].off=start; g_nodes[n].len=len;
     if (num) g_nodes[n].num=toLong(g_src+start, len);
+    else { g_nodes[n].aoff=internRange(g_src+start, len); g_nodes[n].len=len; }
     return n;
 }
 
-// A null-terminated copy of a string Value (for chdir/open which need a C string).
+// ── environment: a cons-list of (name . value) bindings, with a global fallback ─────────────
+int envExtend(int env, int nameAtom, int val) @nogc nothrow { return mkCons(mkCons(nameAtom, val), env); }
+int envLookup(int env, int off, int len) @nogc nothrow {
+    int e=env;
+    while (e!=NIL && g_cells[e].t==CT.Cons) {
+        const int b=g_cells[e].a, nm=g_cells[b].a;
+        if (g_cells[nm].t==CT.Atom && g_cells[nm].n==len && arenaEq(g_cells[nm].s, off, len)) return g_cells[b].d;
+        e=g_cells[e].d;
+    }
+    return -1;
+}
+
+bool truthy(int c) @nogc nothrow {
+    if (c==NIL) return false;
+    if (g_cells[c].t==CT.Int) return g_cells[c].i != 0;
+    if (g_cells[c].t==CT.Atom) return !(g_cells[c].n==5 && symEqA(g_cells[c].s,5,"false"));
+    return true;
+}
+int boolCell(bool b) @nogc nothrow { return b ? g_trueCell : g_falseCell; }
+long asInt(int c) @nogc nothrow { return (g_cells[c].t==CT.Int) ? g_cells[c].i : 0; }
+bool valEq(int x, int y) @nogc nothrow {
+    if (g_cells[x].t != g_cells[y].t) return false;
+    final switch (g_cells[x].t) {
+        case CT.Nil:  return true;
+        case CT.Int:  return g_cells[x].i == g_cells[y].i;
+        case CT.Atom: case CT.Str:
+            return g_cells[x].n==g_cells[y].n && arenaEq(g_cells[x].s, g_cells[y].s, g_cells[x].n);
+        case CT.Cons: return x==y;
+        case CT.Tuple: case CT.Fun: case CT.Err: return x==y;
+    }
+}
 __gshared char[256] g_argbuf;
-const(char)* cstr(Val v) @nogc nothrow {
-    int n = (v.kind==VK.Str) ? v.slen : 0;
+const(char)* cstrCell(int c) @nogc nothrow {
+    int n = (g_cells[c].t==CT.Str || g_cells[c].t==CT.Atom) ? g_cells[c].n : 0;
     if (n > cast(int)g_argbuf.length-1) n = cast(int)g_argbuf.length-1;
-    for (int i=0; i<n; ++i) g_argbuf[i]=v.sp[i];
+    for (int k=0; k<n; ++k) g_argbuf[k]=g_strarena[g_cells[c].s+k];
     g_argbuf[n]=0; return g_argbuf.ptr;
 }
-// A native enumeration query returned AS DATA (its text), so a form can yield the object table.
-Val queryVal(long op) @nogc nothrow {
-    const long n = syscall(HOS_SYS_QUERY, op, 0, cast(long)g_buf.ptr, cast(long)(g_buf.length-1));
-    if (n <= 0) return vnil();
-    return vstr(g_buf.ptr, cast(int)n);
-}
-void printVal(Val v) @nogc nothrow {
-    final switch (v.kind) {
-        case VK.Nil: case VK.Err: break;
-        case VK.Num: printf("%ld\n", v.num); break;
-        case VK.Str:
-            if (v.slen>0) { fwrite(v.sp, 1, cast(size_t)v.slen, stdout);
-                if (v.sp[v.slen-1] != '\n') printf("\n"); fflush(stdout); }
-            break;
+int whoCell() @nogc nothrow { const int l=cast(int)strlen(g_who.ptr); return mkStr(internRange(g_who.ptr, l), l); }
+
+// ── evaluator ───────────────────────────────────────────────────────────────────────────────
+int eval(int nd, int env) @nogc nothrow {
+    if (nd < 0) return NIL;
+    final switch (g_nodes[nd].kind) {
+        case SK.Num: return mkInt(g_nodes[nd].num);
+        case SK.Str: return mkStr(g_nodes[nd].aoff, g_nodes[nd].len);
+        case SK.Sym: {
+            int v = envLookup(env, g_nodes[nd].aoff, g_nodes[nd].len);
+            if (v < 0 && env != g_globalEnv) v = envLookup(g_globalEnv, g_nodes[nd].aoff, g_nodes[nd].len);
+            return (v >= 0) ? v : mkAtom(g_nodes[nd].aoff, g_nodes[nd].len);   // unbound symbol -> atom
+        }
+        case SK.List: return evalList(nd, env);
     }
 }
 
-Val eval(int n) @nogc nothrow {
-    if (n<0) return vnil();
-    final switch (g_nodes[n].kind) {
-        case SK.Num:  return vnum(g_nodes[n].num);
-        case SK.Str:  return vstr(g_src+g_nodes[n].off, g_nodes[n].len);
-        case SK.Sym:  return vstr(g_src+g_nodes[n].off, g_nodes[n].len);  // bare symbol -> itself
-        case SK.List: return evalList(n);
+int applyFun(int fn, int firstArg, int callerEnv) @nogc nothrow {
+    const int paramsNode = g_cells[fn].a;
+    const int bodyNode   = g_cells[fn].d;
+    int newEnv = cast(int)g_cells[fn].i;                  // captured env
+    int p = (paramsNode>=0) ? g_nodes[paramsNode].head : -1;
+    int arg = firstArg;
+    while (p>=0) {
+        const int av = (arg>=0) ? eval(arg, callerEnv) : NIL;
+        newEnv = envExtend(newEnv, mkAtom(g_nodes[p].aoff, g_nodes[p].len), av);
+        p = g_nodes[p].next;
+        arg = (arg>=0) ? g_nodes[arg].next : -1;
+    }
+    return eval(bodyNode, newEnv);
+}
+
+// pattern match: returns the extended env on success, -1 on mismatch
+int matchPat(int pn, int val, int env) @nogc nothrow {
+    final switch (g_nodes[pn].kind) {
+        case SK.Num: return (g_cells[val].t==CT.Int && g_cells[val].i==g_nodes[pn].num) ? env : -1;
+        case SK.Str: return (g_cells[val].t==CT.Str && g_cells[val].n==g_nodes[pn].len
+                             && arenaEq(g_cells[val].s, g_nodes[pn].aoff, g_nodes[pn].len)) ? env : -1;
+        case SK.Sym:
+            if (g_nodes[pn].len==1 && g_strarena[g_nodes[pn].aoff]=='_') return env;   // wildcard
+            return envExtend(env, mkAtom(g_nodes[pn].aoff, g_nodes[pn].len), val);     // variable -> bind
+        case SK.List: {
+            const int head=g_nodes[pn].head;
+            if (head<0) return (val==NIL) ? env : -1;
+            if (g_nodes[head].kind==SK.Sym) {
+                const int ho=g_nodes[head].aoff, hl=g_nodes[head].len, a0=g_nodes[head].next;
+                if (symEqA(ho,hl,"quote"))                  // (quote atom) -> match an atom literal
+                    return (g_cells[val].t==CT.Atom && g_cells[val].n==g_nodes[a0].len
+                            && arenaEq(g_cells[val].s, g_nodes[a0].aoff, g_nodes[a0].len)) ? env : -1;
+                if (symEqA(ho,hl,"tuple")) { if (g_cells[val].t!=CT.Tuple) return -1; return matchSeq(a0, g_cells[val].a, env); }
+                if (symEqA(ho,hl,"list"))  { if (!(val==NIL || g_cells[val].t==CT.Cons)) return -1; return matchSeq(a0, val, env); }
+                if (symEqA(ho,hl,"cons"))  { if (g_cells[val].t!=CT.Cons) return -1;
+                    const int e=matchPat(a0, g_cells[val].a, env); if (e<0) return -1;
+                    return matchPat(g_nodes[a0].next, g_cells[val].d, e); }
+            }
+            return -1;
+        }
     }
 }
-Val evalList(int ln) @nogc nothrow {
-    const int head = g_nodes[ln].head;
-    if (head < 0) return vnil();                                  // ()
-    if (g_nodes[head].kind != SK.Sym) return eval(head);          // ((..)) -> evaluate the head form
-    const(char)* op = g_src + g_nodes[head].off;
-    const int ol = g_nodes[head].len;
-    const int a0 = g_nodes[head].next;                            // first argument node (-1 if none)
-
-    // arithmetic — args evaluate first, so nesting composes: (+ 1 (* 2 3)) -> 7
-    if (ol==1 && (op[0]=='+'||op[0]=='-'||op[0]=='*'||op[0]=='/')) {
-        int ai=a0; if (ai<0) return vnum(0);
-        long acc = eval(ai).num; ai=g_nodes[ai].next;
-        while (ai>=0) { const long v=eval(ai).num;
-            switch (op[0]) { case '+': acc+=v; break; case '-': acc-=v; break;
-                case '*': acc*=v; break; case '/': acc = v ? acc/v : 0; break; default: break; }
-            ai=g_nodes[ai].next; }
-        return vnum(acc);
+int matchSeq(int pn, int vcell, int env) @nogc nothrow {
+    int p=pn, v=vcell, e=env;
+    while (p>=0) {
+        if (v==NIL || g_cells[v].t!=CT.Cons) return -1;
+        e = matchPat(p, g_cells[v].a, e); if (e<0) return -1;
+        p=g_nodes[p].next; v=g_cells[v].d;
     }
-    // object-model enumeration forms -> the table AS DATA
-    if (symEq(op,ol,"objects")  || symEq(op,ol,"obj")) return queryVal(HOSQ_OBJECTS);
-    if (symEq(op,ol,"identities")|| symEq(op,ol,"id"))  return queryVal(HOSQ_IDENTITIES);
-    if (symEq(op,ol,"namespaces")|| symEq(op,ol,"ns"))  return queryVal(HOSQ_NAMESPACES);
-    if (symEq(op,ol,"services") || symEq(op,ol,"svc")) return queryVal(HOSQ_SERVICES);
-    if (symEq(op,ol,"sys"))    return queryVal(HOSQ_SYS);
-    if (symEq(op,ol,"whoami")) return vstr(g_who.ptr, cast(int)strlen(g_who.ptr));
-    // native mutation/event verbs -> their result AS DATA (handle / id / status), composable
-    if (symEq(op,ol,"ns-clone"))  return vnum(syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0));
-    if (symEq(op,ol,"ns-enter"))  return vnum(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, eval(a0).num, 0, 0));
-    if (symEq(op,ol,"cap-grant")) { const long s=eval(a0).num;
-        const long r=(a0>=0) ? eval(g_nodes[a0].next).num : 0;
-        return vnum(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, s, r, 0)); }
-    if (symEq(op,ol,"subscribe")) return vnum(syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, eval(a0).num, 0, 0));
-    // shell builtins (side effects -> Nil)
-    if (symEq(op,ol,"cat")) { catFile(cstr(eval(a0))); return vnil(); }
-    if (symEq(op,ol,"cd"))  { const(char)* p=(a0>=0) ? cstr(eval(a0)) : "/".ptr;
-        if (chdir(p)!=0) printf("hos-sh: cd: %s: no such directory\n", p); return vnil(); }
-    if (symEq(op,ol,"print")||symEq(op,ol,"echo")) { int ai=a0; while (ai>=0) { printVal(eval(ai)); ai=g_nodes[ai].next; } return vnil(); }
-    if (symEq(op,ol,"help")) { help(); return vnil(); }
-    if (symEq(op,ol,"exit")||symEq(op,ol,"quit")) { g_exitReq=1; return vnil(); }
-    printf("hos-sh: unknown form '%.*s' (try (help))\n", ol, op);
-    return verr();
+    return (v==NIL) ? e : -1;
+}
+
+int evalLet(int a0, int env) @nogc nothrow {
+    int newEnv = env;
+    int b = (a0>=0) ? g_nodes[a0].head : -1;
+    while (b>=0) {
+        const int nameNode = g_nodes[b].head;
+        const int valNode  = (nameNode>=0) ? g_nodes[nameNode].next : -1;
+        newEnv = envExtend(newEnv, mkAtom(g_nodes[nameNode].aoff, g_nodes[nameNode].len), eval(valNode, env));
+        b = g_nodes[b].next;
+    }
+    int body = (a0>=0) ? g_nodes[a0].next : -1;
+    int r=NIL; while (body>=0) { r=eval(body, newEnv); body=g_nodes[body].next; }
+    return r;
+}
+int evalCase(int a0, int env) @nogc nothrow {
+    if (a0 < 0) return NIL;                                        // malformed (case ...)
+    const int val = eval(a0, env);
+    int clause = g_nodes[a0].next;
+    while (clause>=0) {
+        const int pat = g_nodes[clause].head;
+        if (pat>=0) {
+            const int e = matchPat(pat, val, env);
+            if (e>=0) {
+                int body = g_nodes[pat].next;
+                if (body>=0 && g_nodes[body].kind==SK.List) {       // optional (when guard)
+                    const int gh = g_nodes[body].head;
+                    if (gh>=0 && g_nodes[gh].kind==SK.Sym && symEqA(g_nodes[gh].aoff, g_nodes[gh].len, "when")) {
+                        if (!truthy(eval(g_nodes[gh].next, e))) { clause=g_nodes[clause].next; continue; }
+                        body = g_nodes[body].next;
+                    }
+                }
+                int r=NIL; while (body>=0) { r=eval(body, e); body=g_nodes[body].next; }
+                return r;
+            }
+        }
+        clause = g_nodes[clause].next;
+    }
+    return NIL;
+}
+int buildList(int firstArg, int env) @nogc nothrow {       // (list a b c) -> a cons-list of eval'd args
+    if (firstArg<0) return NIL;
+    const int hd = eval(firstArg, env);
+    return mkCons(hd, buildList(g_nodes[firstArg].next, env));
+}
+int evalList(int nd, int env) @nogc nothrow {
+    const int head = g_nodes[nd].head;
+    if (head < 0) return NIL;                                          // ()
+    if (g_nodes[head].kind == SK.Sym) {
+        const int ho=g_nodes[head].aoff, hl=g_nodes[head].len, a0=g_nodes[head].next;
+        const int a1=(a0>=0)?g_nodes[a0].next:-1;
+
+        // special forms (control evaluation of arguments)
+        if (symEqA(ho,hl,"quote")) return quoteNode(a0);
+        if (symEqA(ho,hl,"if")) return truthy(eval(a0,env)) ? eval(a1,env) : eval((a1>=0)?g_nodes[a1].next:-1, env);
+        if (symEqA(ho,hl,"progn")||symEqA(ho,hl,"begin")) { int r=NIL,ai=a0; while(ai>=0){r=eval(ai,env);ai=g_nodes[ai].next;} return r; }
+        if (symEqA(ho,hl,"let")) return evalLet(a0, env);
+        if (symEqA(ho,hl,"lambda")) return mkFun(a0, a1, env);
+        if (symEqA(ho,hl,"defun")) {
+            if (a0<0 || a1<0) return NIL;                          // malformed (defun ...)
+            const int fn = mkFun(a1, (a1>=0)?g_nodes[a1].next:-1, g_globalEnv);
+            const int nameAtom = mkAtom(g_nodes[a0].aoff, g_nodes[a0].len);
+            g_globalEnv = envExtend(g_globalEnv, nameAtom, fn);
+            return nameAtom;
+        }
+        if (symEqA(ho,hl,"case")) return evalCase(a0, env);
+        if (symEqA(ho,hl,"reset")) { g_resetReq=1; return NIL; }
+        if (symEqA(ho,hl,"exit")||symEqA(ho,hl,"quit")) { g_exitReq=1; return NIL; }
+
+        // arithmetic (variadic; args evaluate first -> forms nest/compose)
+        if (hl==1 && (g_strarena[ho]=='+'||g_strarena[ho]=='-'||g_strarena[ho]=='*'||g_strarena[ho]=='/')) {
+            const char op=g_strarena[ho]; int ai=a0; if (ai<0) return mkInt(0);
+            long acc=asInt(eval(ai,env)); ai=g_nodes[ai].next;
+            while (ai>=0) { const long v=asInt(eval(ai,env));
+                if (op=='+') acc+=v; else if (op=='-') acc-=v; else if (op=='*') acc*=v; else acc = v ? acc/v : 0;
+                ai=g_nodes[ai].next; }
+            return mkInt(acc);
+        }
+        // comparison -> a boolean atom
+        if (symEqA(ho,hl,"==")) return boolCell(valEq(eval(a0,env), eval(a1,env)));
+        if (symEqA(ho,hl,"/=")) return boolCell(!valEq(eval(a0,env), eval(a1,env)));
+        if (symEqA(ho,hl,"<"))  return boolCell(asInt(eval(a0,env)) <  asInt(eval(a1,env)));
+        if (symEqA(ho,hl,">"))  return boolCell(asInt(eval(a0,env)) >  asInt(eval(a1,env)));
+        if (symEqA(ho,hl,">=")) return boolCell(asInt(eval(a0,env)) >= asInt(eval(a1,env)));
+        if (symEqA(ho,hl,"=<")||symEqA(ho,hl,"<=")) return boolCell(asInt(eval(a0,env)) <= asInt(eval(a1,env)));
+
+        // list / tuple data
+        if (symEqA(ho,hl,"list")) return buildList(a0, env);
+        if (symEqA(ho,hl,"cons")) return mkCons(eval(a0,env), eval(a1,env));
+        if (symEqA(ho,hl,"car")||symEqA(ho,hl,"hd")) { const int x=eval(a0,env); return (g_cells[x].t==CT.Cons)?g_cells[x].a:NIL; }
+        if (symEqA(ho,hl,"cdr")||symEqA(ho,hl,"tl")) { const int x=eval(a0,env); return (g_cells[x].t==CT.Cons)?g_cells[x].d:NIL; }
+        if (symEqA(ho,hl,"length")) { int x=eval(a0,env), c=0; while(x!=NIL && g_cells[x].t==CT.Cons){++c;x=g_cells[x].d;} return mkInt(c); }
+        if (symEqA(ho,hl,"tuple")) { const int el=buildList(a0,env); const int t=allocCell(CT.Tuple); g_cells[t].a=el;
+            int cnt=0,e=el; while(e!=NIL&&g_cells[e].t==CT.Cons){++cnt;e=g_cells[e].d;} g_cells[t].i=cnt; return t; }
+        if (symEqA(ho,hl,"element")) { const long ix=asInt(eval(a0,env)); const int t=eval(a1,env);
+            if (g_cells[t].t!=CT.Tuple) return NIL; int e=g_cells[t].a; long k=1;
+            while(e!=NIL&&g_cells[e].t==CT.Cons){ if(k==ix) return g_cells[e].a; ++k; e=g_cells[e].d; } return NIL; }
+
+        // object-model verbs as functions (enumeration prints; mutations return their result as data)
+        if (symEqA(ho,hl,"obj")||symEqA(ho,hl,"objects"))    { runQuery(HOSQ_OBJECTS,    "TYPE                COUNT\n".ptr); return NIL; }
+        if (symEqA(ho,hl,"id")||symEqA(ho,hl,"identities"))  { runQuery(HOSQ_IDENTITIES, "IDENTITY DOMAINS\n".ptr); return NIL; }
+        if (symEqA(ho,hl,"ns")||symEqA(ho,hl,"namespaces"))  { runQuery(HOSQ_NAMESPACES, "NAMESPACES\n".ptr); return NIL; }
+        if (symEqA(ho,hl,"svc")||symEqA(ho,hl,"services"))   { runQuery(HOSQ_SERVICES,   "SERVICES\n".ptr); return NIL; }
+        if (symEqA(ho,hl,"sys")) { runQuery(HOSQ_SYS, null); return NIL; }
+        if (symEqA(ho,hl,"whoami")) return whoCell();
+        if (symEqA(ho,hl,"ns-clone")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0));
+        if (symEqA(ho,hl,"ns-enter")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, asInt(eval(a0,env)), 0, 0));
+        if (symEqA(ho,hl,"cap-grant")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, asInt(eval(a0,env)), asInt(eval(a1,env)), 0));
+        if (symEqA(ho,hl,"subscribe")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, asInt(eval(a0,env)), 0, 0));
+
+        // shell side-effects
+        if (symEqA(ho,hl,"print")) { int ai=a0; while(ai>=0){ printCell(eval(ai,env)); printf("\n"); ai=g_nodes[ai].next; } fflush(stdout); return NIL; }
+        if (symEqA(ho,hl,"cat")) { catFile(cstrCell(eval(a0,env))); return NIL; }
+        if (symEqA(ho,hl,"cd"))  { const(char)* p=(a0>=0)?cstrCell(eval(a0,env)):"/".ptr; if (chdir(p)!=0) printf("hos-sh: cd: %s: no such directory\n", p); return NIL; }
+        if (symEqA(ho,hl,"help")) { help(); return NIL; }
+    }
+
+    // application: the head evaluates to a closure (user-defined via defun/lambda)
+    const int fn = eval(head, env);
+    if (g_cells[fn].t == CT.Fun) return applyFun(fn, g_nodes[head].next, env);
+    printf("hos-sh: cannot apply '%.*s' (try (help))\n", g_nodes[head].len, g_strarena.ptr + g_nodes[head].aoff);
+    return allocCell(CT.Err);
+}
+
+int quoteNode(int nd) @nogc nothrow {
+    if (nd<0) return NIL;
+    final switch (g_nodes[nd].kind) {
+        case SK.Num: return mkInt(g_nodes[nd].num);
+        case SK.Str: return mkStr(g_nodes[nd].aoff, g_nodes[nd].len);
+        case SK.Sym: return mkAtom(g_nodes[nd].aoff, g_nodes[nd].len);
+        case SK.List: {                                    // a quoted list -> a cons-list of quoted elems
+            int first=NIL, last=NIL, ch=g_nodes[nd].head;
+            while (ch>=0) { const int cell=mkCons(quoteNode(ch), NIL);
+                if (first==NIL) first=cell; else g_cells[last].d=cell; last=cell; ch=g_nodes[ch].next; }
+            return first;
+        }
+    }
+}
+
+void printCell(int c) @nogc nothrow {
+    switch (g_cells[c].t) {
+        case CT.Nil: printf("()"); break;
+        case CT.Int: printf("%ld", g_cells[c].i); break;
+        case CT.Atom: fwrite(g_strarena.ptr+g_cells[c].s, 1, cast(size_t)g_cells[c].n, stdout); break;
+        case CT.Str: printf("\""); fwrite(g_strarena.ptr+g_cells[c].s, 1, cast(size_t)g_cells[c].n, stdout); printf("\""); break;
+        case CT.Cons: { printf("("); int e=c; bool first=true;
+            while (e!=NIL && g_cells[e].t==CT.Cons) { if(!first) printf(" "); first=false; printCell(g_cells[e].a); e=g_cells[e].d; }
+            if (e!=NIL) { printf(" . "); printCell(e); } printf(")"); break; }
+        case CT.Tuple: { printf("#("); int e=g_cells[c].a; bool first=true;
+            while (e!=NIL && g_cells[e].t==CT.Cons) { if(!first) printf(" "); first=false; printCell(g_cells[e].a); e=g_cells[e].d; } printf(")"); break; }
+        case CT.Fun: printf("#<fun>"); break;
+        default: break;
+    }
+}
+// top-level REPL print: a Str prints raw (the object tables are big text); others print as data.
+void printResult(int c) @nogc nothrow {
+    if (c==NIL) return;
+    if (g_cells[c].t==CT.Str) { if (g_cells[c].n>0) { fwrite(g_strarena.ptr+g_cells[c].s, 1, cast(size_t)g_cells[c].n, stdout); printf("\n"); fflush(stdout); } return; }
+    if (g_cells[c].t==CT.Err) return;
+    printCell(c); printf("\n"); fflush(stdout);
 }
 
 // Z4a.2: read a file through the NATIVE FS verbs (object_open/read/close) — never a Linux
@@ -263,11 +503,8 @@ void catFile(const(char)* path) @nogc nothrow {
 // enter, cap_grant) from a native-personality task, printing each result.  A live proof that the
 // mutation surface works AND that the security gates hold (deny-by-default, attenuation-only).
 void z4test() @nogc nothrow {
-    // §6 event subscription (SIGCHLD + SIGINT) — formalizes the already-working delivery.
     const long s = syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, SIG_CHLD_BIT | SIG_INT_BIT, 0, 0);
     printf("subscribe(SIGCHLD|SIGINT) -> %ld\n", s);
-
-    // §8 channel message-passing — a self-pipe proves object_send/recv move bytes over a channel.
     int[2] fds;
     if (pipe(fds.ptr) == 0) {
         const long w = syscall(HOS_SYS_QUERY, HOSQ_SEND, fds[1], cast(long)"hos-ipc".ptr, 7);
@@ -275,8 +512,6 @@ void z4test() @nogc nothrow {
         const long r = syscall(HOS_SYS_QUERY, HOSQ_RECV, fds[0], cast(long)rb.ptr, 7);
         printf("object_send/recv over a channel -> sent %ld, recv %ld: \"%s\"\n", w, r, rb.ptr);
     }
-
-    // §11 namespace clone (a private copy of my namespace) + enter it; then prove the gate.
     const long nid = syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0);
     printf("namespace_clone() -> %ld\n", nid);
     if (nid > 0) {
@@ -285,9 +520,6 @@ void z4test() @nogc nothrow {
         const long e2 = syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, nid + 4242, 0, 0);
         printf("namespace_enter(%ld) -> %ld  (not mine: expect -1 EPERM)\n", nid + 4242, e2);
     }
-
-    // §7 capability grant — attenuation only.  Grant READ derived from handle 1; the kernel
-    // intersects with what I hold and my identity ceiling, so it can only shrink (or be denied).
     const long g = syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, 1, CAP_RIGHT_READ_V, 0);
     if (g >= 0) printf("cap_grant(h1, READ) -> new handle %ld (attenuated)\n", g);
     else        printf("cap_grant(h1, READ) -> %ld (deny-by-default: no usable source cap)\n", g);
@@ -306,12 +538,18 @@ int runCommand(char* cmd) @nogc nothrow {
     while (*cmd == ' ' || *cmd == '\t') ++cmd;
     if (*cmd == 0) return 1;
 
-    // L2 — LFE evaluator: an s-expression parses to an AST and EVALUATES to data (a number or
-    // text); object-ABI verbs are functions whose results further forms consume.  Bare words
+    // L3 — LFE interpreter: parse + evaluate every top-level form on the line, sharing the
+    // session's global environment (so `(defun ..)` persists for later lines).  Bare words
     // (below) still drive the simple dispatch the zsh integration spawns (`/hos-sh obj`).
-    if (*cmd == '(') {
-        g_src = cmd; g_pos = 0; g_nnodes = 0; g_exitReq = 0;
-        printVal(eval(parseExpr()));
+    if (*cmd == '(' || *cmd == '\'') {
+        ensureInit();
+        g_src = cmd; g_pos = 0; g_exitReq = 0;
+        for (;;) {
+            pskip();
+            if (g_src[g_pos] == 0) break;
+            printResult(eval(parseExpr(), g_globalEnv));
+        }
+        if (g_resetReq) { g_inited = false; g_resetReq = 0; }   // clear the session on next form
         return g_exitReq ? 0 : 1;
     }
 
@@ -356,8 +594,8 @@ extern(C) int main(int argc, char** argv) @nogc nothrow {
         return 0;
     }
 
-    printf("\nEpinAnonymOS native object shell  (-sh, LFE syntax)\n");
-    printf("Drives the microkernel object model with Lisp-flavored (LFE) forms. Type (help).\n\n");
+    printf("\nEpinAnonymOS native object shell  (-sh, LFE — a programmable Lisp over the object model)\n");
+    printf("Type (help).  e.g. (defun sq (x) (* x x))  then  (sq 9)\n\n");
 
     char[256] line = void;
     for (;;) {

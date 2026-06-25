@@ -529,15 +529,15 @@ xkbcommon: $(STAMPS)/xkbcommon
 # gl-headers  (stage host Khronos/OpenGL headers into the target sysroot)
 # ==========================================================================
 $(STAMPS)/gl-headers: $(SELF)/Makefile | dirs
-	@echo "[gl-headers] Staging host GL/EGL headers..."
+	@echo "[gl-headers] Staging host GL/EGL headers (optional: skipped if absent)..."
 	mkdir -p $(SYSROOT)/include
 	rm -rf $(addprefix $(SYSROOT)/include/,$(GL_HEADER_DIRS))
 	for d in $(GL_HEADER_DIRS); do \
 	    if [ ! -d "/usr/include/$$d" ]; then \
-	        echo "missing required host header directory: /usr/include/$$d" >&2; \
-	        exit 1; \
+	        echo "[gl-headers] host header directory /usr/include/$$d not found — skipping (GL/EGL optional; software-rendering path unaffected)"; \
+	    else \
+	        cp -a "/usr/include/$$d" "$(SYSROOT)/include/"; \
 	    fi; \
-	    cp -a "/usr/include/$$d" "$(SYSROOT)/include/"; \
 	done
 	touch $@
 

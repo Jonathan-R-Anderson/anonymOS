@@ -47,6 +47,16 @@ private ulong* leafPTEPtr(ulong pml4Phys, ulong va) {
     return &p1[(va >> 12) & 0x1FF];
 }
 
+// Is the page containing `va` present in task `taskId`'s address space?  Used by the
+// fatal-page-fault path so it can safely peek at the user stack (e.g. to log the return
+// address) WITHOUT itself faulting the kernel — a stack overflow leaves rsp unmapped, and
+// dereferencing it from kernel context would otherwise escalate to a fatal KERNEL FAULT.
+public bool userPageMapped(int taskId, ulong va) {
+    if (taskId < 0 || taskId >= MAX_TASKS) return false;
+    auto pte = leafPTEPtr(g_tasks[taskId].pml4Phys, va & ~0xFFFUL);
+    return pte !is null && (*pte & PTE_PRESENT) != 0;
+}
+
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page
 // from srcPml4Phys into dstPml4Phys.  Called during fork.
 void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {

@@ -4099,8 +4099,7 @@ __hos_apply_shell_json /etc/shell.json
 # completion map.  -C skips the per-file security audit (the tree is kernel-seeded + trusted)
 # so startup stays fast; the dump is cached in ~/.zcompdump.
 autoload -Uz compinit
-compinit -C -d "${HOME:-/root}/.zcompdump"
-print -r "Z8DIAG compinit-rc=$? mainfn=${+functions[_main_complete]} eocw=${+widgets[expand-or-complete]} compdef=${+functions[compdef]}"
+compinit -C -d "${HOME:-/root}/.zcompdump" 2>/dev/null
 # AnonymOS object-model completions (Z8.2): #compdef-tagged _hos/_obj/_ns/_svc/_sys are staged
 # alongside the upstream functions and picked up by compinit automatically.
 zstyle ':completion:*' completer _complete _approximate
@@ -4252,6 +4251,34 @@ __anonymos_precmd
     rtAddFile("etc/shell.json\0".ptr, "etc/shell.json".length, cast(const(ubyte)*)SHELL_JSON.ptr, cast(uint)SHELL_JSON.length);
     rtAddFile("etc/zsh/themes/anonymos.zsh-theme\0".ptr, "etc/zsh/themes/anonymos.zsh-theme".length,
               cast(const(ubyte)*)THEME.ptr, cast(uint)THEME.length);
+
+    // Z8.2: AnonymOS object-model completion, dropped into zsh's default $fpath next to the
+    // upstream functions so compinit picks it up automatically.  Completes the verbs the Z4c
+    // `hos` dispatcher and its obj/id/ns/svc/sys shortcuts accept.
+    static immutable string HOSCOMP =
+`#compdef hos obj id ns svc sys
+# AnonymOS object-model completion (Z8.2 / Deliverable 11).  The Z4c object commands query the
+# kernel object model (objects / identities / namespaces / services / system) — natively via the
+# object ABI, or on Linux via the /objects store + /config/*.json FS views.  This completes the
+# verb after the hos dispatcher; the bare shortcuts (obj/id/ns/svc/sys) are themselves the verbs.
+local -a verbs
+verbs=(
+  'obj:list objects by type (kernel object store)'
+  'id:list identity domains'
+  'ns:list namespaces'
+  'svc:list services'
+  'sys:system and kernel info'
+  'whoami:print this shell identity and rights'
+)
+if [[ $service == hos ]]; then
+  _describe -t hos-verbs 'hos verb' verbs
+else
+  _message -e args 'no further arguments'
+fi
+`;
+    rtAddFile("system/shell/zsh/share/zsh/5.9/functions/_hos\0".ptr,
+              "system/shell/zsh/share/zsh/5.9/functions/_hos".length,
+              cast(const(ubyte)*)HOSCOMP.ptr, cast(uint)HOSCOMP.length);
 }
 
 // Track A A2/A3: one-shot boot self-test of the runtime filesystem — symlinks,

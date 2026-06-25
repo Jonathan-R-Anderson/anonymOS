@@ -967,8 +967,11 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog(" entry="); klog_hex(entryRip); klog("\n");
     }
 
-    // Allocate user stack (32 pages = 128 KB)
-    enum stackPages = 32;
+    // Allocate user stack (256 pages = 1 MB).  Z8: zsh's completion system recurses deep
+    // (_main_complete -> _complete -> _normal -> _dispatch -> _<cmd> -> _arguments -> _files …)
+    // and the 128 KB stack overflowed mid-completion (esp. inside a forked $() subshell),
+    // faulting below the stack region; 1 MB gives the interpreter ample headroom.
+    enum stackPages = 256;
     ulong stackPhys = alloc_phys_pages(stackPages);
     if (stackPhys == 0) return -12;
     ulong stackSize = stackPages * 4096;
@@ -2560,10 +2563,14 @@ private void kernelLoop() {
                 // [rsp] holds the return address into the caller — log it (and a
                 // few stack slots) to locate the offending call site.
                 {
+                    // Only peek at the user stack if it is actually mapped — on a STACK
+                    // OVERFLOW rsp itself is unmapped, and dereferencing it here would fault
+                    // the kernel (a fatal nested KERNEL FAULT, exactly what zsh's deep
+                    // completion triggered).  Guard every read.
                     ulong rsp = task.regs[REG_RSP];
-                    if (rsp >= 0x1000) {
+                    if (rsp >= 0x1000 && userPageMapped(tid, rsp)) {
                         klog(" ret0="); klog_hex(*cast(ulong*)(rsp));
-                        klog(" ret1="); klog_hex(*cast(ulong*)(rsp + 8));
+                        if (userPageMapped(tid, rsp + 8)) { klog(" ret1="); klog_hex(*cast(ulong*)(rsp + 8)); }
                     }
                 }
                 klog(" err="); klog_hex(x64TrapErrorCode); klog("\n");
@@ -2864,8 +2871,9 @@ void d_kernel_main() {
         }
     }
 
-    // Allocate user stack (32 pages = 128 KB at 0x700000000000)
-    enum stackPages = 32;
+    // Allocate user stack (256 pages = 1 MB at 0x700000000000).  See the matching note above:
+    // zsh's completion recursion overflowed the old 128 KB stack.
+    enum stackPages = 256;
     ulong stackPhys = alloc_phys_pages(stackPages);
     if (stackPhys == 0) {
         klog("[dkernel] OOM allocating stack\n");

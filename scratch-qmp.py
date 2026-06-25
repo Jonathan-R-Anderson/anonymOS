@@ -32,7 +32,7 @@ def moveto(f,x,y):
 def click(f):
     cmd(f,"input-send-event",events=[{"type":"btn","data":{"button":"left","down":True}}]);time.sleep(0.05)
     cmd(f,"input-send-event",events=[{"type":"btn","data":{"button":"left","down":False}}])
-CH={' ':'spc','\n':'ret','-':'minus','/':'slash','.':'dot',':':('shift','semicolon'),'_':('shift','minus'),'=':'equal','$':('shift','4'),';':'semicolon',',':'comma','|':('shift','backslash'),'(':('shift','9'),')':('shift','0'),'<':('shift','comma'),'>':('shift','dot')}
+CH={'[':'bracket_left',']':'bracket_right',' ':'spc','\n':'ret','-':'minus','/':'slash','.':'dot',':':('shift','semicolon'),'_':('shift','minus'),'=':'equal','$':('shift','4'),';':'semicolon',',':'comma','|':('shift','backslash'),'(':('shift','9'),')':('shift','0'),'<':('shift','comma'),'>':('shift','dot')}
 for c in "abcdefghijklmnopqrstuvwxyz": CH[c]=c
 for d in "0123456789": CH[d]=d
 for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ": CH[c]=('shift',c.lower())

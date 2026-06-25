@@ -1,4 +1,4 @@
-# zsh regression + smoke results (Z12.2, Deliverables 17/18)
+# zsh regression + smoke + benchmark results (Z12.2/Z12.3, Deliverables 17/18/19)
 
 ## 1. In-VM golden smoke — the authoritative regression net · ✅ 8/8
 
@@ -50,11 +50,45 @@ follow-up nicety, not a gate (the source is unmodified upstream).
   tracked in the object-FS roadmap. Disposable domains intentionally `unset HISTFILE` (Z10), so for
   them non-persistence is the desired behaviour.
 
+## 4. Benchmarks (Z12.3, Deliverable 19) — [`bench.py`](bench.py)
+
+The headline question — *does zsh's larger footprint fit the 512 MiB boot ceiling?* — is **yes, with
+~50× headroom**:
+
+| metric | value | of 512 MiB |
+|---|---|---|
+| on-disk footprint (zsh bin + 37 zmodules + fn/plugin/omz ramfs blobs) | **10.1 MB** | 2.0 % |
+| peak RSS of the fully-loaded interactive zsh | **4.0 MB** | 0.78 % |
+
+(zsh's *binary* is 1.12 MB — actually smaller than busybox's 1.42 MB; the bulk is the 4.5 MB of
+autoload function/completion/omz data in ramfs and the 2.3 MB of dynamic modules.)
+
+**Startup latency — zsh is free relative to the alternatives.** Mean per-exec startup, measured
+in-VM via `zsh/datetime` `EPOCHREALTIME`:
+
+| shell exec | per-exec |
+|---|---|
+| `zsh -fc exit` (bare) | ≈ baseline |
+| `busybox true`        | ≈ baseline |
+| `/hos-sh sys` (56 KB native) | ≈ baseline |
+
+All three land **within ~0.5 % of each other in any given run** — the per-exec cost is *entirely* the
+kernel's fork/exec/binary-load path (cooperative scheduler, CoW fork, page-table setup), not the
+shell: a 56 KB native shell, busybox, and the 1.1 MB zsh all cost the same to launch. **Caveat:** the
+*absolute* number is unreliable on this dev kernel — it swings 1.6 s → 7 s run-to-run with desktop
+load and the coarse clock — so only the relative parity is reported (and it is stable). The full
+login startup (`zsh -ic exit`, which sources compinit + plugins + omz once) and isolated
+prompt-render / completion latency are not cleanly measurable here (the rc work plus the timing noise
+exceed the harness's per-step budget); qualitatively the login shell is interactively responsive in
+the live smoke tests. The latency floor is a *kernel-exec* optimisation target (orthogonal to zsh),
+not a shell-footprint problem — and the footprint/RSS, the actual ceiling concern, are settled.
+
 ## Running
 
 ```
 WESTON=1 make hos.iso          # build the image (if not current)
-python3 tests/zsh/zsh_smoke.py # boot headless + assert; exit 0 == all green
+python3 tests/zsh/zsh_smoke.py # regression: boot headless + assert; exit 0 == all green
+python3 tests/zsh/bench.py      # benchmarks: footprint / RSS / startup latency
 ```
 The harness uses its own qemu instance (`serial-smoke.log`, `qmp-smoke.sock`) so it does not clobber
 an interactive dev VM.

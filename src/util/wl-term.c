@@ -485,12 +485,25 @@ static void vt_exec_csi(struct app *a, char final) {
 
 // Feed one byte of shell output through a tiny VT interpreter.
 static void vt_byte(struct app *a, unsigned char b) {
-    if (a->esc == 1) { a->esc = (b == '[') ? 2 : 0; a->csi_len = 0; return; }
+    if (a->esc == 1) {
+        if (b == '[') { a->esc = 2; a->csi_len = 0; return; }                  // CSI
+        // OSC (set title etc., ESC ]) and the DCS/SOS/PM/APC string families are terminated by
+        // BEL or ST (ESC \).  Consume them silently — programs like Oh My Zsh / vim emit OSC
+        // title sequences constantly, and without this the payload leaks onto the screen.
+        if (b == ']' || b == 'P' || b == 'X' || b == '^' || b == '_') { a->esc = 3; return; }
+        a->esc = 0; return;                                                    // other 2-byte escapes: ignore
+    }
     if (a->esc == 2) {
         if (b >= 0x40 && b <= 0x7e) { vt_exec_csi(a, (char)b); a->esc = 0; return; }
         if (a->csi_len < (int)sizeof(a->csi)) a->csi[a->csi_len++] = (char)b;  // accumulate params
         return;
     }
+    if (a->esc == 3) {                                                         // inside OSC/string
+        if (b == 0x07) { a->esc = 0; return; }                                 // BEL terminates
+        if (b == 0x1b) { a->esc = 4; return; }                                 // maybe ST (ESC \)
+        return;                                                                // discard the body
+    }
+    if (a->esc == 4) { a->esc = 0; return; }                                   // ST terminator — done
     switch (b) {
         case 0x1b: a->esc = 1; return;
         case '\r': a->cur_c = 0; return;

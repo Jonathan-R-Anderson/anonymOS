@@ -4145,6 +4145,20 @@ done
 (( __hos_syn )) && __hos_load_plugin zsh-syntax-highlighting
 unset __p __hos_syn
 
+# --- Z9b: Oh My Zsh + Powerlevel9k (opt-in via omz-setup) -------------------------------------
+# The popular customization stack is vendored under /system/shell/zsh/omz/.  This default config
+# keeps the lean AnonymOS theme (Z7); omz-setup installs the ready Oh My Zsh + Powerlevel9k
+# profile to ~/.zshrc (the offline, capability-respecting analogue of the gist's install-zsh.sh),
+# so "set up my shell like everyone's" is one command — fully vendored, no network.
+omz-setup() {
+  local src=/system/shell/zsh/omz/anonymos/zshrc.omz dst=${HOME:-/root}/.zshrc
+  [[ -r $src ]] || { print -ru2 'omz-setup: Oh My Zsh profile not found (omz.blob missing?)'; return 1; }
+  if [[ -e $dst ]] && ! grep -q 'Oh My Zsh + Powerlevel9k profile' "$dst" 2>/dev/null; then
+    cp -- "$dst" "$dst.pre-omz" 2>/dev/null && print -r -- 'omz-setup: backed up your ~/.zshrc to ~/.zshrc.pre-omz'
+  fi
+  cp -- "$src" "$dst" && print -r -- 'omz-setup: Oh My Zsh + Powerlevel9k installed to ~/.zshrc — run  exec zsh  (or open a new terminal).'
+}
+
 # --- local override hook (not overwritten on update) ---
 [[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
 `;
@@ -4495,6 +4509,11 @@ private void rtUnpackAssets() {
     // structure preserved (plugins source sibling files by relative path).  The Z9 loader in
     // /etc/zshrc sources them (syntax-highlighting last, as it wraps ZLE widgets).
     rtUnpackAssetBlob("/zshplugins.blob\0".ptr);
+
+    // Z9b: the Oh My Zsh + Powerlevel9k stack under /system/shell/zsh/omz/ (framework + lib +
+    // git plugin + the P9k theme + the Z9 plugins + the AnonymOS profile).  Opt-in via the
+    // `omz-setup` function in /etc/zshrc, which installs the profile to ~/.zshrc.
+    rtUnpackAssetBlob("/omz.blob\0".ptr);
 }
 
 private enum size_t fileBackendPlain = 0;
@@ -7203,7 +7222,17 @@ public long linux_sys_getcwd(ulong buf, ulong size) {
 public long linux_sys_chdir(ulong path) {
     if (path == 0) return negErrno(EFAULT);
     auto p = cast(const(char)*)path;
-    if (!isSyntheticDirectoryPath(p)) return negErrno(ENOENT);
+    bool ok = isSyntheticDirectoryPath(p);
+    if (!ok) {
+        // Also accept any REAL directory in the rtfs overlay — chdir previously only honoured a
+        // hardcoded whitelist + the synthetic FS views, so `cd` into a normal/blob-staged dir
+        // (e.g. /system/shell/zsh/omz, /etc/zsh/themes) failed with ENOENT even though `open`
+        // resolved files under it.  Resolve the path; if it lands on a directory node, allow it.
+        int rparent; const(char)* rleaf; size_t rleafLen;
+        const int ri = rtResolve(p, rparent, rleaf, rleafLen);
+        if (ri >= 0 && ri < RT_MAX_NODES && g_rt[ri].kind == RT_DIR) ok = true;
+    }
+    if (!ok) return negErrno(ENOENT);
     size_t len = 0;
     while (len < g_cwd_buf.length - 1 && p[len] != 0) g_cwd_buf[len] = p[len++];
     g_cwd_buf[len] = 0;

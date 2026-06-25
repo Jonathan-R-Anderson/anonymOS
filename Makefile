@@ -99,6 +99,7 @@ ZSHFNS_SRC   := deps/zsh/zsh-5.9
 ZSHFNS_BLOB  := build/zshfns.blob
 ZSHPLUG_SRC  := deps/zsh-plugins
 ZSHPLUG_BLOB := build/zshplugins.blob
+OMZ_BLOB     := build/omz.blob
 ASSET_SRC_DIR := build/assets
 ASSET_BLOB    := build/assets.blob
 ASSET_BLOBS_DIR := build/asset-blobs
@@ -435,6 +436,14 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 			cp $(ZSHPLUG_BLOB) cd/zshplugins.blob; \
 			printf '\n    module_path: boot():/zshplugins.blob\n' >> cd/boot/limine/limine.conf; \
 			echo "Included zshplugins.blob (Z9: zsh plugins — syntax-highlighting/autosuggestions/anonymos)"; \
+		fi; \
+		if [ ! -f $(OMZ_BLOB) ] && ls $(ZSHPLUG_SRC)/ohmyzsh*.tar.gz >/dev/null 2>&1; then \
+			python3 scripts/pack-omz.py $(OMZ_BLOB) $(ZSHPLUG_SRC) >/dev/null; \
+		fi; \
+		if [ -f $(OMZ_BLOB) ]; then \
+			cp $(OMZ_BLOB) cd/omz.blob; \
+			printf '\n    module_path: boot():/omz.blob\n' >> cd/boot/limine/limine.conf; \
+			echo "Included omz.blob (Z9b: Oh My Zsh + Powerlevel9k + AnonymOS profile)"; \
 		fi; \
 		if [ -d $(ASSET_SRC_DIR) ]; then \
 			rm -rf $(ASSET_BLOBS_DIR); \

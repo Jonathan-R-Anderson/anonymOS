@@ -489,7 +489,25 @@ in both current shells today**, and the same data feeds the zsh theme later:
   runtime files, packs to `/system/shell/zsh/plugins/<plugin>/…` (paths preserved, unlike the
   flattened Z8 functions) → `zshplugins.blob`, unpacked at boot by `rtUnpackAssetBlob`.
 
-## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ☐ · P: Med · E: 3 · deps: Z5, Z7, Z9
+## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ◑ · P: Med · E: 3 · deps: Z5, Z7, Z9
+
+**Sub-steps (in progress):**
+- **Z9b.1 — vendor Oh My Zsh (subset) + Powerlevel9k.** Fetch + pin OMZ (master) and Powerlevel9k
+  0.6.7; pack a *functional subset* (oh-my-zsh.sh + lib/ + plugins/git + P9k theme/functions +
+  the Z9 plugins under custom/plugins/) into `omz.blob`, staged at `/system/shell/zsh/omz/`
+  (`$ZSH`), `$ZSH_CUSTOM=$ZSH/custom`. **Powerlevel9k, not 10k** — pure-zsh (no `gitstatusd`
+  binary, no terminal-probe/instant-prompt gymnastics the minimal VT can't answer), and it
+  showcases Z7's background-colour support.
+- **Z9b.2 — AnonymOS custom segments + ready profile.** A `~/.zshrc` (`zshrc.omz`) that sources
+  `$ZSH/oh-my-zsh.sh`, `ZSH_THEME=powerlevel9k/powerlevel9k`, `plugins=(git zsh-autosuggestions
+  zsh-syntax-highlighting)`, ASCII mode (the grid is single-byte — Nerd glyphs need terminal
+  UTF-8, tracked), gitstatus disabled. Three P9k `custom_anonymos_*` segments — identity,
+  namespace (domain colour), capabilities — read `EPIN_*` (Linux) / the kernel identity (native).
+- **Z9b.3 — `omz-setup` installer.** The offline, idempotent analogue of the gist's
+  `install-zsh.sh`: copies the profile to `~/.zshrc` (backing up any existing rc) so "set up my
+  shell like everyone's" is one command — fully vendored, no network, capability-respecting. The
+  Z7 anonymos theme stays the default; OMZ+P9k is opt-in via `omz-setup`.
+- *Nerd Fonts + nerdfont-mode glyphs are deferred to terminal UTF-8 support (the Z7 follow-up).*
 
 The popular customization stack (cf. the `ni-c/install-zsh.sh` gist — oh-my-zsh +
 powerlevel9k + zsh-autosuggestions + zsh-syntax-highlighting + Nerd Fonts), made

@@ -1,0 +1,69 @@
+# AnonymOS — Oh My Zsh + Powerlevel9k profile (Z9b).  Installed by `omz-setup`.
+# This is your personal ~/.zshrc — edit it exactly like the upstream Oh My Zsh workflow.
+# (Everything is vendored under $ZSH; nothing is fetched from the network.)
+
+# wl-term is a 256-colour (24-bit, Z7) terminal; advertise it so Powerlevel9k uses full colour
+# (TERM=linux otherwise makes it warn + fall back to 8 colours).
+export TERM=xterm-256color
+
+export ZSH=/system/shell/zsh/omz
+export ZSH_CUSTOM=$ZSH/custom
+ZSH_THEME="powerlevel9k/powerlevel9k"
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+
+# everything is vendored offline — no update checks, no network.
+DISABLE_AUTO_UPDATE=true
+DISABLE_UPDATE_PROMPT=true
+zstyle ':omz:update' mode disabled
+# wl-term now consumes OSC title sequences, but there's no window-manager title to set anyway.
+DISABLE_AUTO_TITLE=true
+
+# --- Powerlevel9k presentation ----------------------------------------------------------------
+# ASCII-safe: the wl-term grid is single-byte today, so Nerd-Font / powerline glyphs would be
+# dropped — colour-delineated segments instead (no separator glyph).  Nerd glyphs arrive with
+# terminal UTF-8 (the Z7 follow-up); then set POWERLEVEL9K_MODE=nerdfont-complete.
+POWERLEVEL9K_MODE="default"
+POWERLEVEL9K_PROMPT_ON_NEWLINE=true
+POWERLEVEL9K_LEFT_SEGMENT_SEPARATOR=''
+POWERLEVEL9K_RIGHT_SEGMENT_SEPARATOR=''
+POWERLEVEL9K_LEFT_SUBSEGMENT_SEPARATOR=' '
+POWERLEVEL9K_RIGHT_SUBSEGMENT_SEPARATOR=' '
+POWERLEVEL9K_WHITESPACE_BETWEEN_LEFT_SEGMENTS=' '
+
+# --- AnonymOS custom segments — identity / namespace / capabilities (the Z6/Z7 prompt fields) --
+# P9k calls prompt_<element> for each element in the *_PROMPT_ELEMENTS arrays; $1 = left|right,
+# $2 = segment index.  "$1_prompt_segment" name index bg fg content icon  draws a coloured segment.
+
+# map the 24-bit domain colour (EPIN_DOMAIN_COLOR) to the nearest xterm-256 cube index, so the
+# namespace segment background matches wl-term's unspoofable window border (computed once).
+__anonymos_ns_bg() {
+  local dc=${EPIN_DOMAIN_COLOR:-0xff3b82f6}; dc=${dc#0x}; dc=${dc#0X}
+  local rgb; (( ${#dc} >= 8 )) && rgb=${dc[3,8]} || rgb=${dc[1,6]}; (( ${#rgb} == 6 )) || rgb=3b82f6
+  local r=$(( 16#${rgb[1,2]} )) g=$(( 16#${rgb[3,4]} )) b=$(( 16#${rgb[5,6]} ))
+  print -rn -- $(( 16 + 36*((r*5+127)/255) + 6*((g*5+127)/255) + ((b*5+127)/255) ))
+}
+typeset -g _ANON_NS_BG=$(__anonymos_ns_bg)
+
+prompt_anonymos_identity() { "$1_prompt_segment" "$0" "$2" "green" "black" "${EPIN_USER:-${USER:-user}}" '' }
+prompt_anonymos_namespace() { "$1_prompt_segment" "$0" "$2" "$_ANON_NS_BG" "white" "${EPIN_DOMAIN:-linux}" '' }
+prompt_anonymos_caps() {
+  local c=''
+  [[ -n $EPIN_DISK && $EPIN_DISK != none ]] && c+="fs:$EPIN_DISK "
+  [[ -n $EPIN_NET  && $EPIN_NET  != none ]] && c+="net:$EPIN_NET "
+  [[ $EPIN_SECURE_IPC == 1 ]]               && c+="ipc "
+  [[ $EPIN_SHELL == native && $__hos_id == *exec*  ]] && c+="exec "
+  [[ $EPIN_SHELL == native && $__hos_id == *admin* ]] && c+="admin "
+  c=${c% }
+  [[ -z $c ]] && return
+  "$1_prompt_segment" "$0" "$2" "238" "250" "$c" ''
+}
+
+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(anonymos_identity anonymos_namespace dir)
+POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(anonymos_caps status command_execution_time)
+
+# --- load the framework (sources lib/, the plugins, and the theme) ----------------------------
+# Drop the lean AnonymOS theme's prompt hooks (Z7, registered by /etc/zshrc) — Powerlevel9k owns
+# the prompt now.
+precmd_functions=(${precmd_functions:#__anonymos_precmd})
+preexec_functions=(${preexec_functions:#__anonymos_preexec})
+source $ZSH/oh-my-zsh.sh

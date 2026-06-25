@@ -1,0 +1,46 @@
+#!/bin/bash
+# hos-low-resource-run — resource-constraining wrapper for dependency builds.
+#
+# When LOW_RESOURCE_BUILD=1 (the default in build.opts), every dependency
+# build command is run through this script.  It applies nice/ionice (and,
+# if set, memory/cpu limits via ulimit) so heavy parallel builds don't OOM
+# or starve smaller machines.  On a beefy box, set LOW_RESOURCE_BUILD=0 to
+# skip this wrapper entirely for full-speed parallel builds.
+#
+# Env vars (exported by build.opts):
+#   BUILD_NICE            nice level (default 15)
+#   BUILD_IONICE_CLASS    ionice class (default 3 = idle)
+#   BUILD_MEMORY_LIMIT_KB ulimit -v (default 0 = unlimited)
+#   BUILD_CPU_LIMIT_SECONDS  cpulimit seconds (default 0 = no cpulimit)
+#
+# Usage: hos-low-resource-run <command> [args...]
+
+set -e
+
+NICE_LEVEL="${BUILD_NICE:-15}"
+IONICE_CLASS="${BUILD_IONICE_CLASS:-3}"
+MEM_LIMIT_KB="${BUILD_MEMORY_LIMIT_KB:-0}"
+CPU_LIMIT="${BUILD_CPU_LIMIT_SECONDS:-0}"
+
+# Build the prefix command (nice + ionice if available).
+PREFIX=()
+
+if command -v nice >/dev/null 2>&1; then
+    PREFIX+=(nice -n "$NICE_LEVEL")
+fi
+
+if command -v ionice >/dev/null 2>&1; then
+    PREFIX+=(ionice -c "$IONICE_CLASS")
+fi
+
+# Apply memory limit via ulimit (0 = unlimited).
+if [ "$MEM_LIMIT_KB" != "0" ] && [ -n "$MEM_LIMIT_KB" ]; then
+    ulimit -v "$MEM_LIMIT_KB" 2>/dev/null || true
+fi
+
+# If cpulimit is installed and a limit is set, wrap the whole command.
+if [ "$CPU_LIMIT" != "0" ] && [ -n "$CPU_LIMIT" ] && command -v cpulimit >/dev/null 2>&1; then
+    exec cpulimit -l "$CPU_LIMIT" "${PREFIX[@]}" "$@"
+else
+    exec "${PREFIX[@]}" "$@"
+fi

@@ -179,9 +179,9 @@ $(STAMPS)/meson-cross.ini: $(STAMPS)/sysroot-relocated $(MUSL_CC) $(MUSL_CXX) $(
 	    "$(CLANG_RESOURCE_INCLUDE)"                                    >> $@
 	@printf "            '-I%s/include', '-I%s/include/freetype2', '-I%s/include/libpng16', '-I%s/include']\n" \
 	    "$(SYSROOT)" "$(SYSROOT)" "$(SYSROOT)" "$(MUSL_INSTALL)"      >> $@
-	@printf "c_link_args = ['-no-pie', '-L%s/lib', '-L%s/lib']\n" \
+	@printf "c_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib']\n" \
 	    "$(SYSROOT)" "$(MUSL_INSTALL)"                                 >> $@
-	@printf "cpp_link_args = ['-no-pie', '-L%s/lib', '-L%s/lib']\n" \
+	@printf "cpp_link_args = ['-Wl,--allow-multiple-definition', '-no-pie', '-L%s/lib', '-L%s/lib']\n" \
 	    "$(SYSROOT)" "$(MUSL_INSTALL)"                                 >> $@
 	@printf '\n[properties]\n'                                         >> $@
 	@printf "need_exe_wrapper = true\n"                                 >> $@
@@ -549,6 +549,20 @@ $(STAMPS)/gl-headers: $(SELF)/Makefile | dirs
 	        cp -a "/usr/include/$$d" "$(SYSROOT)/include/"; \
 	    fi; \
 	done
+	# Create empty stub static libraries for EGL/gbm/GLESv2/glapi so packages
+	# that detect the GL headers and add -lEGL etc. to their link line succeed.
+	# anonymOS uses the Pixman software renderer — GL is never called at runtime,
+	# so the stubs only need to satisfy the linker (empty archives with one .o).
+	@for lib in EGL gbm GLESv2 glapi; do \
+	    if [ ! -f "$(SYSROOT)/lib/lib$$lib.a" ]; then \
+	        tmpobj=$$(mktemp /tmp/glstub_XXXXXX.o); \
+	        printf '' | $(CC) -xc -c - -o $$tmpobj 2>/dev/null || \
+	        printf '' | clang -xc -c - -o $$tmpobj 2>/dev/null; \
+	        $(AR) rcs "$(SYSROOT)/lib/lib$$lib.a" $$tmpobj; \
+	        rm -f $$tmpobj; \
+	        echo "[gl-headers] created stub: lib$$lib.a"; \
+	    fi; \
+	done
 	touch $@
 
 gl-headers: $(STAMPS)/gl-headers
@@ -585,13 +599,33 @@ $(STAMPS)/cairo: $(DLDIR)/cairo-$(CAIRO_VER).tar.xz \
 cairo: $(STAMPS)/cairo
 
 # ==========================================================================
+# fribidi 1.0.16  (meson) — Unicode bidirectional algorithm, needed by pango.
+# The committed sysroot has the headers + .pc but no libfribidi.a (gitignored).
+# ==========================================================================
+FRIBIDI_VER := 1.0.16
+$(eval $(call FETCH,fribidi-$(FRIBIDI_VER).tar.xz,https://github.com/fribidi/fribidi/releases/download/v$(FRIBIDI_VER)/fribidi-$(FRIBIDI_VER).tar.xz))
+
+$(STAMPS)/fribidi: $(DLDIR)/fribidi-$(FRIBIDI_VER).tar.xz $(CROSS_FILE) $(SELF)/Makefile | dirs
+	@echo "[fribidi] Building..."
+	rm -rf $(BLDDIR)/fribidi-$(FRIBIDI_VER)
+	tar -C $(BLDDIR) -xf $<
+	$(call MESON_SETUP, \
+	    $(BLDDIR)/fribidi-$(FRIBIDI_VER), \
+	    $(BLDDIR)/fribidi-$(FRIBIDI_VER)/_build) \
+	    -Ddocs=false -Dbin=false
+	$(NINJA) -C $(BLDDIR)/fribidi-$(FRIBIDI_VER)/_build $(NINJA_BUILD_FLAGS) install
+	touch $@
+
+fribidi: $(STAMPS)/fribidi
+
+# ==========================================================================
 # pango  (meson)
 # ==========================================================================
 $(eval $(call FETCH,pango-$(PANGO_VER).tar.xz,https://download.gnome.org/sources/pango/$(PANGO_MAJ)/pango-$(PANGO_VER).tar.xz))
 
 $(STAMPS)/pango: $(DLDIR)/pango-$(PANGO_VER).tar.xz \
     $(STAMPS)/glib $(STAMPS)/harfbuzz $(STAMPS)/fontconfig \
-    $(STAMPS)/freetype $(STAMPS)/cairo $(CROSS_FILE) \
+    $(STAMPS)/freetype $(STAMPS)/cairo $(STAMPS)/fribidi $(CROSS_FILE) \
     $(SELF)/Makefile | dirs
 	@echo "[pango] Building..."
 	rm -rf $(BLDDIR)/pango-$(PANGO_VER)

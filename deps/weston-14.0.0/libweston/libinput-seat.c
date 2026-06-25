@@ -179,10 +179,14 @@ udev_input_disable(struct udev_input *input)
 	if (input->suspended)
 		return;
 
-	wl_event_source_remove(input->libinput_source);
-	input->libinput_source = NULL;
-	libinput_suspend(input->libinput);
-	process_events(input);
+	if (input->libinput_source) {
+		wl_event_source_remove(input->libinput_source);
+		input->libinput_source = NULL;
+	}
+	if (input->libinput) {
+		libinput_suspend(input->libinput);
+		process_events(input);
+	}
 	input->suspended = 1;
 }
 
@@ -338,44 +342,18 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 		struct udev *udev, const char *seat_id,
 		udev_configure_device_t configure_device)
 {
-	enum libinput_log_priority priority = LIBINPUT_LOG_PRIORITY_INFO;
-	const char *log_priority = NULL;
-
 	memset(input, 0, sizeof *input);
 
 	input->compositor = c;
 	input->configure_device = configure_device;
 
-	log_priority = getenv("WESTON_LIBINPUT_LOG_PRIORITY");
-
-	input->libinput = libinput_udev_create_context(&libinput_interface,
-						       input, udev);
-	if (!input->libinput) {
-		return -1;
-	}
-
-	libinput_log_set_handler(input->libinput, &libinput_log_func);
-
-	if (log_priority) {
-		if (strcmp(log_priority, "debug") == 0) {
-			priority = LIBINPUT_LOG_PRIORITY_DEBUG;
-		} else if (strcmp(log_priority, "info") == 0) {
-			priority = LIBINPUT_LOG_PRIORITY_INFO;
-		} else if (strcmp(log_priority, "error") == 0) {
-			priority = LIBINPUT_LOG_PRIORITY_ERROR;
-		}
-	}
-
-	libinput_log_set_priority(input->libinput, priority);
-
-	if (libinput_udev_assign_seat(input->libinput, seat_id) != 0) {
-		libinput_unref(input->libinput);
-		return -1;
-	}
-
-	process_events(input);
-
-	return udev_input_enable(input);
+	/* Sessionless input: anonymOS delivers keyboard/pointer events
+	 * directly from the kernel (EV_ABS pointer, kernel cursor
+	 * overlay), so weston's libinput/evdev path is unused.  Fail
+	 * soft here so the compositor comes up without input devices
+	 * rather than aborting the whole backend. */
+	weston_log("Sessionless input active (forced); kernel delivers input directly\n");
+	return 0;
 }
 
 void
@@ -387,7 +365,8 @@ udev_input_destroy(struct udev_input *input)
 		wl_event_source_remove(input->libinput_source);
 	wl_list_for_each_safe(seat, next, &input->compositor->seat_list, base.link)
 		udev_seat_destroy(seat);
-	libinput_unref(input->libinput);
+	if (input->libinput)
+		libinput_unref(input->libinput);
 }
 
 static void

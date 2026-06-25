@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest hos-minimal.iso
+.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest hos-minimal.iso
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -34,6 +34,13 @@ anonymos-config-test:
 all:
 	@echo "==== Build Start ===="
 
+	# Build the host-side anonymos-config compiler (needed for the config manifest).
+	$(MAKE) -j1 anonymos-config
+	# Build dependencies: musl, busybox, gtk-stack (weston/gtk-hello), zsh, and
+	# (if WESTON=1) the weston compositor + its device-stack libraries.
+	$(MAKE) -j1 deps-desktop
+	$(MAKE) -j1 zsh
+	# Build the kernel + ISO.
 	$(MAKE) -j1 build/libkernel_d.a
 	$(MAKE) -j1 kernel.elf
 	$(MAKE) -j1 hos.iso
@@ -91,7 +98,7 @@ HYPRLAND_BIN := deps/hyprland/Hyprland
 # and the kernel selects it as init ahead of Hyprland. Set WESTON=0 to fall back
 # to Hyprland for comparison.
 WESTON       ?= 1
-WESTON_BUILD := deps/weston-14.0.0/build-epin
+WESTON_BUILD ?= deps/weston-14.0.0/build-epin
 WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
@@ -123,10 +130,13 @@ MUSL_CC := deps/musl/install/bin/musl-clang
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
-FONT_SRC_DIR ?= /usr/share/fonts/truetype/noto
-FONT_LICENSE_FILE ?= /usr/share/doc/fonts-noto-core/copyright
-DMZ_CURSOR_SRC_DIR ?= /usr/share/icons/DMZ-White
-DMZ_CURSOR_LICENSE_FILE ?= /usr/share/doc/dmz-cursor-theme/copyright
+# Font/cursor source paths: auto-detect across distros (Ubuntu keeps Noto under
+# /usr/share/fonts/truetype/noto, Arch/Fedora under /usr/share/fonts/noto).
+# Override with FONT_SRC_DIR=/path if your distro differs.
+FONT_SRC_DIR ?= $(shell for d in /usr/share/fonts/truetype/noto /usr/share/fonts/noto /usr/local/share/fonts/noto; do [ -f "$$d/NotoSans-Regular.ttf" ] && echo "$$d" && break; done)
+FONT_LICENSE_FILE ?= $(shell for f in /usr/share/doc/fonts-noto-core/copyright /usr/share/licenses/noto-fonts/LICENSE; do [ -f "$$f" ] && echo "$$f" && break; done)
+DMZ_CURSOR_SRC_DIR ?= $(shell for d in /usr/share/icons/DMZ-White /usr/share/icons/Whiteglass; do [ -d "$$d" ] && echo "$$d" && break; done)
+DMZ_CURSOR_LICENSE_FILE ?= $(shell for f in /usr/share/doc/dmz-cursor-theme/copyright /usr/share/licenses/dmz-cursor-theme/COPYING; do [ -f "$$f" ] && echo "$$f" && break; done)
 
 DISPLAY_WIDTH ?= 1280
 DISPLAY_HEIGHT ?= 800
@@ -409,10 +419,14 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	@if [ -f $(HYPRLAND_BIN) ]; then \
 		cp $(HYPRLAND_BIN) cd/Hyprland; \
 		cp deps/musl/install/lib/libc.so cd/ld-musl-x86_64.so.1; \
-		cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/kms_swrast_dri.so; \
-		cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/swrast_dri.so; \
-		printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n    module_path: boot():/swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
-		echo "Included Hyprland (dynamic) + ld-musl + kms_swrast/swrast _dri.so"; \
+		if [ -f deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so ]; then \
+			cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/kms_swrast_dri.so; \
+			cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/swrast_dri.so; \
+			printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n    module_path: boot():/swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
+		else \
+			printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n' >> cd/boot/limine/limine.conf; \
+		fi; \
+		echo "Included Hyprland (dynamic) + ld-musl"; \
 		if [ ! -f $(XKB_BLOB) ] && [ -d $(XKB_SRC_DIR) ]; then \
 			python3 scripts/pack-xkb.py $(XKB_SRC_DIR) $(XKB_BLOB); \
 		fi; \
@@ -564,6 +578,9 @@ deps-core:
 
 deps-desktop:
 	+$(MAKE) $(MAKE_BUILD_FLAGS) -C deps desktop
+
+deps-weston:
+	+$(MAKE) $(MAKE_BUILD_FLAGS) -C deps weston
 
 deps-hyprland:
 	+$(MAKE) $(MAKE_BUILD_FLAGS) -C deps hyprland

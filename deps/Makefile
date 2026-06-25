@@ -1,10 +1,10 @@
 PROJECT_ROOT ?= $(abspath ..)
 include $(PROJECT_ROOT)/build.opts
 
-.PHONY: all core desktop full musl cxxrt busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber gtk-stack staged-desktop mutter hyprland hyprland-status gnome-settings-daemon gnome-control-center gnome-shell gdm gnome clean distclean
+.PHONY: all core desktop full musl cxxrt busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber gtk-stack staged-desktop mutter weston hyprland hyprland-status gnome-settings-daemon gnome-control-center gnome-shell gdm gnome clean distclean
 
 CORE_DEPS := musl busybox openrc dbus dconf networkmanager elogind logind pipewire pipewire-pulse wireplumber
-DESKTOP_DEPS := gtk-stack staged-desktop mutter
+DESKTOP_DEPS := gtk-stack staged-desktop mutter weston
 
 all: core
 
@@ -55,6 +55,13 @@ gtk-stack: cxxrt
 
 staged-desktop: gtk-stack
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C staged-desktop all
+
+# Weston needs the gtk-stack sysroot + cross-file (for meson), which requires
+# gtk-stack to be built first.  deps/weston/Makefile builds the six device-stack
+# libraries (libdrm/libevdev/libudev-zero/libinput/libdisplay-info/libseat)
+# then weston itself into deps/weston-14.0.0/build-epin.
+weston: gtk-stack
+	$(MAKE) $(MAKE_BUILD_FLAGS) -C weston all
 
 gnome-settings-daemon: dconf dbus
 	$(MAKE) $(MAKE_BUILD_FLAGS) -C compat gnome-settings-daemon

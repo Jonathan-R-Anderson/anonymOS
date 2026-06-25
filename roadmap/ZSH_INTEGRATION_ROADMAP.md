@@ -880,9 +880,15 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     and tests `VIRTIO_GPU_F_VIRGL` (bit 0). **Verified live:** `low=0x30000003` (VIRGL + EDID +
     ring-indirect/event-idx), `high=0x00000101` (VERSION_1) → *"[virtio-gpu] R2.1: VIRGL 3D capability
     OFFERED -- GPU acceleration is reachable"*. The 3D path is reachable; foundation for R2.2+.
-  - **R2.2 — modern virtio 1.0 transport** · upgrade the legacy PIO/PFN driver to virtio-1.0 (PCI
-    capability config, `FEATURES_OK`, proper split virtqueues), then `GET_CAPSET_INFO`/`GET_CAPSET`
-    for the virgl capset (the protocol version Mesa needs).
+  - **R2.2 — modern virtio 1.0 transport · 🚧 handshake DONE** · the modern virtio-1.0 device
+    bring-up now works: reset → ACKNOWLEDGE → DRIVER → read `device_feature` → **accept VIRGL +
+    `VIRTIO_F_VERSION_1`** → `FEATURES_OK` → verify the device kept it. **Verified live:**
+    *"[virtio-gpu] R2.2: modern handshake OK -- FEATURES_OK accepted (virtio-1.0)"*, `num_queues=2`
+    (controlq + cursorq), control-queue size `256`. Status/feature/queue fields are reached through
+    the common-config (byte/word/dword/qword volatile MMIO helpers). **Remaining (R2.2b):** allocate
+    the split virtqueue DMA rings (`alloc_phys_page`/`phys_to_virt`), program `queue_desc/driver/
+    device` + `queue_enable`, parse the NOTIFY cap (+ `notify_off_multiplier`), `DRIVER_OK`, then a
+    `GET_CAPSET_INFO` round-trip to read the virgl capset id/version (the protocol version Mesa needs).
   - **R2.3 — 3D context + resources + SUBMIT_3D** · `CTX_CREATE`, `RESOURCE_CREATE_3D`,
     `TRANSFER_*_3D`, `SUBMIT_3D` — the virgl command-stream path.
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl

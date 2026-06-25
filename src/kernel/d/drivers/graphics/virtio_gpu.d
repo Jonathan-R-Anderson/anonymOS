@@ -96,6 +96,9 @@ enum VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM = 1;
 __gshared VirtioDevice g_gpuDev;
 __gshared bool g_gpuAvailable = false;
 __gshared bool g_gpuVirgl = false;   // R2.1: device offers VIRTIO_GPU_F_VIRGL (3D acceleration)
+__gshared bool g_gpuModern = false;  // R2.2: modern virtio-1.0 handshake completed (FEATURES_OK)
+__gshared ulong  g_gpuCommon = 0;    // R2.2: common-config virtual base (via HHDM)
+__gshared ushort g_gpuQueueSize = 0; // R2.2: control virtqueue size
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -109,8 +112,20 @@ __gshared ushort g_nextDescIdx = 0;
 // --------------------------------------------------------------------------
 
 // Volatile 32-bit MMIO accessors (shared cast = volatile in D), for the virtio common config.
-private uint  volLoadU(uint* p)         @nogc nothrow { return *cast(shared const uint*)p; }
-private void  volStoreU(uint* p, uint v) @nogc nothrow { *cast(shared uint*)p = v; }
+private uint   volLoadU(uint* p)           @nogc nothrow { return *cast(shared const uint*)p; }
+private void   volStoreU(uint* p, uint v)  @nogc nothrow { *cast(shared uint*)p = v; }
+private ubyte  volLoadB(ubyte* p)          @nogc nothrow { return *cast(shared const ubyte*)p; }
+private void   volStoreB(ubyte* p, ubyte v) @nogc nothrow { *cast(shared ubyte*)p = v; }
+private ushort volLoadW(ushort* p)         @nogc nothrow { return *cast(shared const ushort*)p; }
+private void   volStoreW(ushort* p, ushort v) @nogc nothrow { *cast(shared ushort*)p = v; }
+private void   volStoreQ(ulong* p, ulong v) @nogc nothrow { *cast(shared ulong*)p = v; }
+
+// virtio-1.0 device-status bits + the common-config field offsets.
+private enum { VS_ACK = 1, VS_DRIVER = 2, VS_DRIVER_OK = 4, VS_FEATURES_OK = 8, VS_FAILED = 128 }
+private enum { CC_DEV_FEAT_SEL = 0x00, CC_DEV_FEAT = 0x04, CC_DRV_FEAT_SEL = 0x08, CC_DRV_FEAT = 0x0C,
+               CC_NUM_QUEUES = 0x12, CC_STATUS = 0x14, CC_Q_SELECT = 0x16, CC_Q_SIZE = 0x18,
+               CC_Q_ENABLE = 0x1C, CC_Q_NOTIFY_OFF = 0x1E, CC_Q_DESC = 0x20, CC_Q_DRIVER = 0x28,
+               CC_Q_DEVICE = 0x30 }
 
 // R2.1 — modern (virtio-1.0) virgl 3D capability detection.
 //
@@ -162,15 +177,25 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         uint barHi = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + commonBar * 4 + 4));
         barBase |= (cast(ulong)barHi << 32);
     }
-    auto cfg = cast(uint*)(barBase + commonOff + hhdm_offset); // common config via the HHDM
+    ulong cc = barBase + commonOff + hhdm_offset; // common config via the HHDM
+    g_gpuCommon = cc;                              // kept for R2.2b (the virtqueue + GET_CAPSET)
+    auto pStatus  = cast(ubyte*)(cc + CC_STATUS);
+    auto pFeatSel = cast(uint*)(cc + CC_DEV_FEAT_SEL);
+    auto pFeat    = cast(uint*)(cc + CC_DEV_FEAT);
+    auto pDrvSel  = cast(uint*)(cc + CC_DRV_FEAT_SEL);
+    auto pDrvFeat = cast(uint*)(cc + CC_DRV_FEAT);
 
-    // device_feature_select @ +0x00 (cfg[0]), device_feature @ +0x04 (cfg[1]).
-    volStoreU(&cfg[0], 0); uint featLo = volLoadU(&cfg[1]);
-    volStoreU(&cfg[0], 1); uint featHi = volLoadU(&cfg[1]);
+    // R2.2 — virtio-1.0 modern handshake: reset -> ACKNOWLEDGE -> DRIVER.
+    volStoreB(pStatus, 0);                                   // reset
+    volStoreB(pStatus, VS_ACK);
+    volStoreB(pStatus, cast(ubyte)(VS_ACK | VS_DRIVER));
+
+    // Read device feature bits (low/high) and detect VIRGL (R2.1).
+    volStoreU(pFeatSel, 0); uint featLo = volLoadU(pFeat);
+    volStoreU(pFeatSel, 1); uint featHi = volLoadU(pFeat);
     printLine("[virtio-gpu] R2.1: device_feature low / high:");
     printHex(featLo);
     printHex(featHi);
-
     enum VIRTIO_GPU_F_VIRGL = 0; // device feature bit 0
     if (featLo & (1u << VIRTIO_GPU_F_VIRGL)) {
         printLine("[virtio-gpu] R2.1: VIRGL 3D capability OFFERED -- GPU acceleration is reachable");
@@ -179,6 +204,29 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         printLine("[virtio-gpu] R2.1: VIRGL bit NOT set -- 2D scanout only");
         g_gpuVirgl = false;
     }
+
+    // R2.2 — negotiate: accept VIRGL (if offered) in the low word + VIRTIO_F_VERSION_1 (bit 32,
+    // = bit 0 of the high word) which is mandatory for a modern device.
+    volStoreU(pDrvSel, 0); volStoreU(pDrvFeat, g_gpuVirgl ? (1u << VIRTIO_GPU_F_VIRGL) : 0u);
+    volStoreU(pDrvSel, 1); volStoreU(pDrvFeat, 1u);          // VIRTIO_F_VERSION_1
+    volStoreB(pStatus, cast(ubyte)(VS_ACK | VS_DRIVER | VS_FEATURES_OK));
+    ubyte st = volLoadB(pStatus);
+    if (st & VS_FEATURES_OK) {
+        printLine("[virtio-gpu] R2.2: modern handshake OK -- FEATURES_OK accepted (virtio-1.0)");
+        g_gpuModern = true;
+    } else {
+        printLine("[virtio-gpu] R2.2: FEATURES_OK REJECTED by device");
+        return;
+    }
+
+    // Control virtqueue (queue 0) inventory.
+    ushort nq = volLoadW(cast(ushort*)(cc + CC_NUM_QUEUES));
+    volStoreW(cast(ushort*)(cc + CC_Q_SELECT), 0);
+    ushort qsz = volLoadW(cast(ushort*)(cc + CC_Q_SIZE));
+    g_gpuQueueSize = qsz;
+    printLine("[virtio-gpu] R2.2: num_queues / control-queue size:");
+    printUnsigned(nq);
+    printUnsigned(qsz);
 }
 
 export void virtioGpuInit() @nogc nothrow {

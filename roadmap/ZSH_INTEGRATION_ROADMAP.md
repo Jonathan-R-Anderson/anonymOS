@@ -398,13 +398,32 @@ in both current shells today**, and the same data feeds the zsh theme later:
 > Verified live: `echo A=$(whoami) B=$(echo hi)` → `A=user B=hi`, pipes + external commands work,
 > fresh prompt.  **Z7/Z8/Z9 (themes/completion/plugins, all of which use `$()`) are now unblocked.**
 
-## Z7 — Theme engine · ☐ · P: Med · E: 3 · deps: Z5, Z6
+## Z7 — Theme engine · ✅ DONE (core; Nerd-glyph *rendering* follow-up) · P: Med · E: 3 · deps: Z5, Z6
 
 - Oh-My-Zsh-style themes under `themes/`; ship `themes/anonymos.zsh-theme` with the
   multi-line layout (identity/namespace/capabilities/git/object/exit-status/exec-time).
 - Nerd-Font glyphs when the terminal advertises them (an env/termcap probe), ASCII fallback.
 - Window border color already matches the namespace (the unspoofable domain border in
   wl-term); the theme reads the same `EPIN_DOMAIN_COLOR`. *Deliverable 8 (theme engine).*
+
+**Sub-steps:**
+- ✅ **Z7.1 — wl-term ANSI color (the enabler).** wl-term was monochrome: its `char grid[ROWS][COLS]`
+  stored chars only and rendered every cell with a fixed `COL_FG`; SGR (`m`) was parsed-and-dropped.
+  Add per-cell `fgc/bgc` + a pen, parse SGR `m` (reset 0, bold/reverse, 30–37/90–97 fg, 40–47/100–107
+  bg, `38;5;N`/`48;5;N` 256-color, `38;2;R;G;B`/`48;2` truecolor, defaults 39/49), and render glyph
+  with the per-cell fg over a per-cell bg rect. Without this every theme is invisible (and Z9b
+  Powerlevel + Z9 syntax-highlighting are impossible).
+- ✅ **Z7.2 — `anonymos.zsh-theme`.** Colored multi-line prompt: line 1 = identity(user) · namespace
+  (in the truecolor domain color) · capabilities · object/path · git; line 2 = exit-status-tinted
+  prompt char. `RPROMPT` = exec-time (preexec/precmd timer, shown past a threshold) + clock. Works in
+  both flavors (native reads the kernel identity it already cached in `~/.hos_id` via Z6.1; Linux
+  reads `EPIN_*`). A glyph set vs ASCII set switched by an advertise probe (`EPIN_NERDFONT`), ASCII
+  active — actual Nerd glyph *rendering* needs terminal UTF-8 + a Nerd font (the grid is single-byte,
+  bytes ≥0x7f dropped) → tracked as a follow-up, the probe-branch lands now.
+- ✅ **Z7.3 — loader + seeding.** Seed `themes/anonymos.zsh-theme` to `/etc/zsh/themes/` (rtSeedShellConfig,
+  like /etc/zshrc); `/etc/zshrc` sets `ZSH_THEME=anonymos` + sources `$ZSH_THEMES_DIR/$ZSH_THEME.zsh-theme`
+  (user `~/.zsh/themes/` overrides). The theme reads `EPIN_DOMAIN_COLOR` (0xAARRGGBB → `\e[38;2;R;G;Bm`)
+  so the namespace text matches the unspoofable window border.
 
 ## Z8 — Completion engine · ☐ · P: Med · E: 3 · deps: Z2, Z5
 

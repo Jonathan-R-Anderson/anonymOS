@@ -53,6 +53,29 @@ static const uint32_t COL_DECO_BG = 0xff2a3140;   // titlebar bg (no-domain defa
 static const uint32_t COL_DECO_FG = 0xfff2f2f2;   // titlebar text + button glyphs
 static const uint32_t COL_DECO_SEP = 0xff10141a;  // hairline under the titlebar
 
+// Z7.1: ANSI SGR colour support.  The 16-colour base palette (ARGB, opaque) — a
+// muted "Tango"-ish set that reads well on the dark COL_BG; indices 0-7 normal,
+// 8-15 bright.  256-colour (38;5;N) and 24-bit truecolour (38;2;R;G;B) build on it.
+static const uint32_t ANSI16[16] = {
+    0xff263238, 0xffe53935, 0xff43a047, 0xfffdd835,  // black  red     green  yellow
+    0xff3b82f6, 0xffab47bc, 0xff00acc1, 0xffd0d4d8,  // blue   magenta cyan   white
+    0xff546e7a, 0xffff6e6e, 0xff81c784, 0xfffff176,  // br-blk br-red  br-grn br-yel
+    0xff64b5f6, 0xffce93d8, 0xff4dd0e1, 0xfff5f5f5   // br-blu br-mag  br-cyn br-wht
+};
+static uint32_t ansi256(int n) {
+    if (n < 0)   n = 0;
+    if (n > 255) n = 255;
+    if (n < 16)  return ANSI16[n];
+    if (n < 232) {                      // 6x6x6 colour cube
+        n -= 16;
+        int r = n / 36, g = (n / 6) % 6, b = n % 6;
+        int R = r ? r * 40 + 55 : 0, G = g ? g * 40 + 55 : 0, B = b ? b * 40 + 55 : 0;
+        return 0xff000000u | ((uint32_t)R << 16) | ((uint32_t)G << 8) | (uint32_t)B;
+    }
+    int v = (n - 232) * 10 + 8;         // 24-step grayscale ramp
+    return 0xff000000u | ((uint32_t)v << 16) | ((uint32_t)v << 8) | (uint32_t)v;
+}
+
 // IDENTITY_DOMAIN: the security domain this terminal was launched into (set by the
 // Domain Manager via EPIN_DOMAIN / EPIN_DOMAIN_COLOR).  Drawn as an unspoofable
 // colored border + window title so the user always sees which domain a terminal
@@ -94,6 +117,10 @@ struct app {
     int                   shift, ctrl;
 
     char                  grid[ROWS][COLS];
+    uint32_t              fgc[ROWS][COLS];   // Z7.1: per-cell foreground (ARGB)
+    uint32_t              bgc[ROWS][COLS];   // Z7.1: per-cell background (0 = default COL_BG)
+    uint32_t              pen_fg, pen_bg;    // current SGR pen
+    int                   pen_rev;           // reverse video (SGR 7)
     int                   cur_r, cur_c;
     int                   dirty;
     int                   esc;      // ANSI escape state machine
@@ -338,16 +365,26 @@ static const struct wl_callback_listener frame_listener = { .done = frame_done }
 // ── terminal grid ────────────────────────────────────────────────────────────
 static void grid_clear(struct app *a) {
     for (int r = 0; r < ROWS; r++)
-        for (int c = 0; c < COLS; c++)
+        for (int c = 0; c < COLS; c++) {
             a->grid[r][c] = ' ';
+            a->fgc[r][c] = COL_FG;
+            a->bgc[r][c] = 0;
+        }
     a->cur_r = a->cur_c = 0;
+    a->pen_fg = COL_FG; a->pen_bg = 0; a->pen_rev = 0;
 }
 
 static void grid_scroll(struct app *a) {
-    for (int r = 0; r < ROWS - 1; r++)
+    for (int r = 0; r < ROWS - 1; r++) {
         memcpy(a->grid[r], a->grid[r + 1], COLS);
-    for (int c = 0; c < COLS; c++)
+        memcpy(a->fgc[r],  a->fgc[r + 1],  COLS * sizeof(uint32_t));
+        memcpy(a->bgc[r],  a->bgc[r + 1],  COLS * sizeof(uint32_t));
+    }
+    for (int c = 0; c < COLS; c++) {
         a->grid[ROWS - 1][c] = ' ';
+        a->fgc[ROWS - 1][c] = COL_FG;
+        a->bgc[ROWS - 1][c] = 0;
+    }
 }
 
 static void grid_newline(struct app *a) {
@@ -360,15 +397,23 @@ static void grid_newline(struct app *a) {
 // addressing, and erase — so history recall / in-line editing render correctly (without
 // these, replacing a line just appends, e.g. "second-cmdfirst-cmd").  SGR colours (m) and
 // private modes (?...) are accepted and ignored.
+// Blank cell (r,c): space with the default colours (used by the erase ops so a
+// cleared cell drops any colour it carried).
+static inline void cell_blank(struct app *a, int r, int c) {
+    a->grid[r][c] = ' '; a->fgc[r][c] = COL_FG; a->bgc[r][c] = 0;
+}
+
 static void vt_exec_csi(struct app *a, char final) {
-    int p0 = -1, p1 = -1, idx = 0, v = 0, have = 0;
+    int params[16]; int np = 0, v = 0, have = 0;
     for (int i = 0; i < a->csi_len; i++) {
         char ch = a->csi[i];
         if (ch >= '0' && ch <= '9') { v = v * 10 + (ch - '0'); have = 1; }
-        else if (ch == ';') { if (idx == 0) p0 = have ? v : -1; else if (idx == 1) p1 = have ? v : -1; idx++; v = 0; have = 0; }
+        else if (ch == ';') { if (np < 16) params[np++] = have ? v : -1; v = 0; have = 0; }
         // ignore intermediate/private bytes ('?', ' ', etc.) for parameter parsing
     }
-    if (idx == 0) p0 = have ? v : -1; else if (idx == 1) p1 = have ? v : -1;
+    if (np < 16) params[np++] = have ? v : -1;   // always at least one param (-1 if absent)
+    int p0 = params[0];                           // absent => -1 (matches the original semantics)
+    int p1 = (np >= 2) ? params[1] : -1;
     int n = (p0 > 0) ? p0 : 1;
     switch (final) {
         case 'C': a->cur_c += n; if (a->cur_c >= COLS) a->cur_c = COLS - 1; break;        // cursor right
@@ -387,21 +432,54 @@ static void vt_exec_csi(struct app *a, char final) {
             int mode = (p0 < 0 ? 0 : p0);
             int start = (mode == 1) ? 0 : a->cur_c;
             int end   = (mode == 0) ? COLS - 1 : a->cur_c;
-            for (int c = start; c <= end && c < COLS; c++) a->grid[a->cur_r][c] = ' ';
+            for (int c = start; c <= end && c < COLS; c++) cell_blank(a, a->cur_r, c);
             break;
         }
         case 'J': {                                                                      // erase display (0 to end, 2 all)
             int mode = (p0 < 0 ? 0 : p0);
-            if (mode == 2) { for (int r = 0; r < ROWS; r++) for (int c = 0; c < COLS; c++) a->grid[r][c] = ' '; }
-            else { for (int c = a->cur_c; c < COLS; c++) a->grid[a->cur_r][c] = ' ';
-                   for (int r = a->cur_r + 1; r < ROWS; r++) for (int c = 0; c < COLS; c++) a->grid[r][c] = ' '; }
+            if (mode == 2) { for (int r = 0; r < ROWS; r++) for (int c = 0; c < COLS; c++) cell_blank(a, r, c); }
+            else { for (int c = a->cur_c; c < COLS; c++) cell_blank(a, a->cur_r, c);
+                   for (int r = a->cur_r + 1; r < ROWS; r++) for (int c = 0; c < COLS; c++) cell_blank(a, r, c); }
             break;
         }
-        case 'P': for (int c = a->cur_c; c < COLS; c++)                                   // delete n chars (shift left)
-                      a->grid[a->cur_r][c] = (c + n < COLS) ? a->grid[a->cur_r][c + n] : ' '; break;
-        case '@': for (int c = COLS - 1; c >= a->cur_c; c--)                              // insert n blanks (shift right)
-                      a->grid[a->cur_r][c] = (c - n >= a->cur_c) ? a->grid[a->cur_r][c - n] : ' '; break;
-        default: break;                                                                  // m (SGR), l/h (modes), … ignored
+        case 'P': for (int c = a->cur_c; c < COLS; c++) {                                 // delete n chars (shift left)
+                      if (c + n < COLS) { a->grid[a->cur_r][c] = a->grid[a->cur_r][c + n];
+                                          a->fgc[a->cur_r][c] = a->fgc[a->cur_r][c + n];
+                                          a->bgc[a->cur_r][c] = a->bgc[a->cur_r][c + n]; }
+                      else cell_blank(a, a->cur_r, c); } break;
+        case '@': for (int c = COLS - 1; c >= a->cur_c; c--) {                            // insert n blanks (shift right)
+                      if (c - n >= a->cur_c) { a->grid[a->cur_r][c] = a->grid[a->cur_r][c - n];
+                                               a->fgc[a->cur_r][c] = a->fgc[a->cur_r][c - n];
+                                               a->bgc[a->cur_r][c] = a->bgc[a->cur_r][c - n]; }
+                      else cell_blank(a, a->cur_r, c); } break;
+        case 'm': {                                                                      // Z7.1: SGR — set colour pen
+            if (np == 1 && p0 <= 0) { a->pen_fg = COL_FG; a->pen_bg = 0; a->pen_rev = 0; break; }  // reset
+            for (int i = 0; i < np; i++) {
+                int p = params[i] < 0 ? 0 : params[i];
+                if      (p == 0)  { a->pen_fg = COL_FG; a->pen_bg = 0; a->pen_rev = 0; }
+                else if (p == 7)  a->pen_rev = 1;
+                else if (p == 27) a->pen_rev = 0;
+                else if (p == 39) a->pen_fg = COL_FG;
+                else if (p == 49) a->pen_bg = 0;
+                else if (p >= 30 && p <= 37)   a->pen_fg = ANSI16[p - 30];
+                else if (p >= 90 && p <= 97)   a->pen_fg = ANSI16[p - 90 + 8];
+                else if (p >= 40 && p <= 47)   a->pen_bg = ANSI16[p - 40];
+                else if (p >= 100 && p <= 107) a->pen_bg = ANSI16[p - 100 + 8];
+                else if (p == 38 || p == 48) {
+                    uint32_t col = COL_FG; int ok = 0;
+                    if (i + 2 < np && params[i + 1] == 5) { col = ansi256(params[i + 2]); i += 2; ok = 1; }
+                    else if (i + 4 < np && params[i + 1] == 2) {
+                        int R = params[i + 2] & 0xff, G = params[i + 3] & 0xff, B = params[i + 4] & 0xff;
+                        col = 0xff000000u | ((uint32_t)R << 16) | ((uint32_t)G << 8) | (uint32_t)B;
+                        i += 4; ok = 1;
+                    }
+                    if (ok) { if (p == 38) a->pen_fg = col; else a->pen_bg = col; }
+                }
+                // 1/2/22/23 (bold/faint/normal) accepted, no glyph-weight change
+            }
+            break;
+        }
+        default: break;                                                                  // l/h (modes), … ignored
     }
 }
 
@@ -424,6 +502,9 @@ static void vt_byte(struct app *a, unsigned char b) {
     }
     if (b < 0x20 || b >= 0x7f) return;
     a->grid[a->cur_r][a->cur_c] = (char)b;
+    // Z7.1: stamp the current colour pen onto the cell; reverse video swaps fg/bg.
+    a->fgc[a->cur_r][a->cur_c] = a->pen_rev ? (a->pen_bg ? a->pen_bg : COL_BG) : a->pen_fg;
+    a->bgc[a->cur_r][a->cur_c] = a->pen_rev ? a->pen_fg : a->pen_bg;
     if (++a->cur_c >= COLS) grid_newline(a);
 }
 
@@ -433,15 +514,19 @@ static void render(struct app *a) {
     gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->height, COL_BG);
     for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++) {
+            int x = c * a->cell_w;
+            int y = top + r * a->cell_h;
+            uint32_t bg = a->bgc[r][c];
+            if (bg)                                          // Z7.1: per-cell background block
+                gf_fill(a->pixels, a->width, a->width, a->height, x, y, a->cell_w, a->cell_h, bg);
             char ch = a->grid[r][c];
             if (ch != ' ') {
-                int x = c * a->cell_w;
-                int y = top + r * a->cell_h;
+                uint32_t fg = a->fgc[r][c];                  // Z7.1: per-cell foreground
                 if (a->font_ready)
-                    render_ft_glyph(a, x, y, (unsigned char)ch, COL_FG);
+                    render_ft_glyph(a, x, y, (unsigned char)ch, fg);
                 else
                     gf_glyph(a->pixels, a->width, a->width, a->height,
-                             x, y + (a->cell_h - 8) / 2, ch, COL_FG, -1);
+                             x, y + (a->cell_h - 8) / 2, ch, fg, -1);
             }
         }
     // cursor block
@@ -523,7 +608,7 @@ static int create_shm_buffer(struct app *a) {
 static void term_notice(struct app *a, const char *l1, const char *l2, const char *l3) {
     for (int r = 0; r < ROWS; r++)
         for (int c = 0; c < COLS; c++)
-            a->grid[r][c] = ' ';
+            cell_blank(a, r, c);
     const char *lines[3] = { l1, l2, l3 };
     for (int i = 0; i < 3; i++) {
         if (!lines[i]) continue;

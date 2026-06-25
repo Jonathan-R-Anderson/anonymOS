@@ -4051,8 +4051,11 @@ if [[ "$EPIN_SHELL" == native ]]; then
   /hos-sh whoami > "$HOME/.hos_id" 2>/dev/null
   __hos_id=; read -r __hos_id < "$HOME/.hos_id" 2>/dev/null
   rm -f "$HOME/.hos_id"
+  # Fallback prompt; the Z7 theme (loaded below) overrides PROMPT in its precmd.  __hos_id
+  # (e.g. "user@System [fs:rw net:nat ipc exec admin]") is kept GLOBAL so the theme can surface
+  # the native-only exec/admin rights the Linux flavor's EPIN_* env doesn't carry.
   [[ -n "$__hos_id" ]] && PROMPT="${__hos_id//\%/%%}:%~%# "
-  unset __hos_id
+  typeset -g __hos_id
 fi
 
 # --- Z5: declarative shell.json -> zsh config --------------------------------
@@ -4082,6 +4085,21 @@ __hos_apply_shell_json() {
 # ~/.zshrc after this file, so an explicit user rc still gets the final word.
 __hos_apply_shell_json /etc/shell.json
 [[ -r "$HOME/.shell.json" ]] && __hos_apply_shell_json "$HOME/.shell.json"
+
+# --- Z7: theme engine --------------------------------------------------------
+# Oh-My-Zsh-style themes live in $ZSH_THEMES_DIR.  The default 'anonymos' theme paints a colored
+# multi-line prompt (identity/namespace/capabilities/path/git + an exit-status-tinted prompt char)
+# using the truecolor SGR wl-term understands (Z7.1); the namespace is drawn in the domain color
+# (EPIN_DOMAIN_COLOR) — the same unspoofable color on the window border.  A user theme in
+# ~/.zsh/themes/ overrides the system one; set ZSH_THEME=none to keep the plain prompt.
+ZSH_THEMES_DIR=${ZSH_THEMES_DIR:-/etc/zsh/themes}
+: ${ZSH_THEME:=anonymos}
+if [[ $ZSH_THEME != none ]]; then
+  for __td in "$HOME/.zsh/themes" "$ZSH_THEMES_DIR"; do
+    if [[ -r "$__td/$ZSH_THEME.zsh-theme" ]]; then source "$__td/$ZSH_THEME.zsh-theme"; break; fi
+  done
+  unset __td
+fi
 
 # --- local override hook (not overwritten on update) ---
 [[ -r /etc/zshrc.local ]] && source /etc/zshrc.local
@@ -4115,9 +4133,103 @@ __hos_apply_shell_json /etc/shell.json
   }
 }
 `;
+    // Z7: the default 'anonymos' theme.  A self-contained zsh prompt theme: colored multi-line
+    // layout (identity/namespace/capabilities/object-path/git + exit-status-tinted prompt char,
+    // exec-time on the right).  Works in both flavors — native surfaces the kernel identity's
+    // exec/admin rights via $__hos_id (Z6.1), Linux reads EPIN_*.  The namespace is painted in the
+    // domain's 24-bit color (EPIN_DOMAIN_COLOR), matching wl-term's unspoofable window border.
+    // A Nerd-Font glyph set is selected when EPIN_NERDFONT is advertised, ASCII otherwise (the
+    // terminal grid is single-byte today, so ASCII is the live path; the branch is ready for
+    // terminal UTF-8 + a Nerd font).  No command substitution in the hot path except git (which
+    // only runs when git is actually installed), so the prompt stays fork-light.
+    static immutable string THEME =
+`# anonymos.zsh-theme — AnonymOS multi-line prompt (Z7 theme engine, Deliverable 8).
+# Segments: [identity@namespace] capabilities  object-path  git ;  line 2 = exit-tinted char.
+# RPROMPT = exec-time.  Override per-user by dropping ~/.zsh/themes/anonymos.zsh-theme.
+
+# --- glyph set: Nerd-Font when advertised (EPIN_NERDFONT), ASCII fallback otherwise ----------
+if [[ -n "$EPIN_NERDFONT" ]]; then
+  __a_arrow=$'\u276f'; __a_at='@'; __a_glyph=$'\ue0a0 '
+else
+  __a_arrow='>'; __a_at='@'; __a_glyph='git:'
+fi
+__a_rst=$'\e[0m'
+
+# --- namespace color: EPIN_DOMAIN_COLOR is 0xAARRGGBB (Domain Manager); convert to a 24-bit SGR
+# --- (wl-term groks 38;2;R;G;B since Z7.1) so the prompt's domain matches the window border. ----
+__a_dom_sgr() {
+  local dc=${EPIN_DOMAIN_COLOR:-0xff3b82f6}
+  dc=${dc#0x}; dc=${dc#0X}
+  local rgb
+  if (( ${#dc} >= 8 )); then rgb=${dc[3,8]}; else rgb=${dc[1,6]}; fi
+  (( ${#rgb} == 6 )) || rgb=3b82f6
+  local r g b
+  r=$(( 16#${rgb[1,2]} )) g=$(( 16#${rgb[3,4]} )) b=$(( 16#${rgb[5,6]} ))
+  __a_dom=$'\e[38;2;'"${r};${g};${b}"$'m'
+}
+__a_dom_sgr 2>/dev/null || __a_dom=$'\e[38;2;59;130;246m'
+
+# --- exec-time timer (preexec stamps the start second; precmd reports the delta) -------------
+typeset -gi __a_t0=-1
+__anonymos_preexec() { __a_t0=$SECONDS }
+
+# --- git segment: only when git is installed AND inside a work tree (silent otherwise) -------
+__anonymos_git() {
+  __a_git=''
+  (( $+commands[git] )) || return
+  local b; b=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || return
+  [[ -n $b && $b != HEAD ]] || return
+  local d=''; git diff --quiet --ignore-submodules 2>/dev/null || d='*'
+  __a_git=" %F{yellow}${__a_glyph}${b}${d}%f"
+}
+
+# --- assemble PROMPT/RPROMPT for each new prompt (precmd) ------------------------------------
+__anonymos_precmd() {
+  local last=$?
+  # capabilities from the domain policy env (both flavors); native adds exec/admin from the id
+  local caps='' dsk=$EPIN_DISK net=$EPIN_NET
+  [[ -n $dsk && $dsk != none ]] && caps+="fs:$dsk "
+  [[ -n $net && $net != none ]] && caps+="net:$net "
+  [[ $EPIN_SECURE_IPC == 1 ]]    && caps+="ipc "
+  if [[ $EPIN_SHELL == native && -n $__hos_id ]]; then
+    [[ $__hos_id == *exec*  ]] && caps+="exec "
+    [[ $__hos_id == *admin* ]] && caps+="admin "
+  fi
+  caps=${caps%% }
+  local capseg=''; [[ -n $caps ]] && capseg=" %F{8}${caps}%f"
+  local dom=${EPIN_DOMAIN:-linux}
+  # %n (USERNAME) is unreliable: setting USERNAME attempts a setuid so the zshrc fallback can't,
+  # and getpwuid races shell startup — so read the literal user from the env wl-term passes.
+  local usr=${EPIN_USER:-${USER:-user}}
+  local ns="%{${__a_dom}%}${dom}%{${__a_rst}%}"
+  __anonymos_git
+  # line 1: identity + namespace(domain color) + caps + object-path + git
+  local l1="%F{8}[%f%B%F{green}${usr}%f%b%F{8}${__a_at}%f%B${ns}%b%F{8}]%f${capseg} %F{cyan}%~%f${__a_git}"
+  # line 2: prompt char, green if the last command succeeded, red if it failed
+  local mark; (( last == 0 )) && mark="%F{green}${__a_arrow}%f" || mark="%F{red}${__a_arrow}%f"
+  PROMPT=$'\n'"${l1}"$'\n'"${mark} "
+  # right prompt: elapsed wall-clock of the last command once it crosses ~2s
+  RPROMPT=''
+  if (( __a_t0 >= 0 )); then
+    local el=$(( SECONDS - __a_t0 )); __a_t0=-1
+    (( el >= 2 )) && RPROMPT="%F{8}${el}s%f"
+  fi
+}
+
+# Register the hooks via the precmd_functions/preexec_functions arrays directly — these are
+# zsh builtins that need no autoloaded helper (add-zsh-hook's function file isn't on $fpath in
+# the base image yet; that arrives with the Z8/Z9 zsh function tree).  Guard against a double
+# add if the theme is re-sourced, then paint the first prompt immediately.
+typeset -ga precmd_functions preexec_functions
+(( ${precmd_functions[(I)__anonymos_precmd]} ))  || precmd_functions+=(__anonymos_precmd)
+(( ${preexec_functions[(I)__anonymos_preexec]} )) || preexec_functions+=(__anonymos_preexec)
+__anonymos_precmd
+`;
     rtAddFile("etc/profile\0".ptr,    "etc/profile".length,    cast(const(ubyte)*)PROFILE.ptr,    cast(uint)PROFILE.length);
     rtAddFile("etc/zshrc\0".ptr,      "etc/zshrc".length,      cast(const(ubyte)*)ZSHRC.ptr,      cast(uint)ZSHRC.length);
     rtAddFile("etc/shell.json\0".ptr, "etc/shell.json".length, cast(const(ubyte)*)SHELL_JSON.ptr, cast(uint)SHELL_JSON.length);
+    rtAddFile("etc/zsh/themes/anonymos.zsh-theme\0".ptr, "etc/zsh/themes/anonymos.zsh-theme".length,
+              cast(const(ubyte)*)THEME.ptr, cast(uint)THEME.length);
 }
 
 // Track A A2/A3: one-shot boot self-test of the runtime filesystem — symlinks,

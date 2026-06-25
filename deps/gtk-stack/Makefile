@@ -56,6 +56,12 @@ BASE_CXXFLAGS:= $(BASE_CFLAGS)
 BASE_LDFLAGS := -static -no-pie -L$(SYSROOT)/lib -L$(MUSL_INSTALL)/lib
 GL_HEADER_DIRS := EGL GL GLES GLES2 GLES3 KHR
 
+# Skip info-page generation/installation in every autotools `make install` —
+# install-info fails on hosts without texinfo and the info pages are irrelevant
+# to a static sysroot. MAKEINFO=true makes configure skip building them.
+MAKEINFO := true
+export MAKEINFO
+
 PKG_CONFIG_ENV := \
     PKG_CONFIG_LIBDIR="$(SYSROOT)/lib/pkgconfig:$(SYSROOT)/share/pkgconfig" \
     PKG_CONFIG_PATH="" \

@@ -257,7 +257,7 @@ needed kernel verbs, then the zsh host-hook that uses them. Tracked sub-steps:
   The "all core I/O native" milestone — **Z4a complete.** (Refinements remain: Z4b signals/IPC,
   Z4c env/cap/ns, and the noted dup-PTY `ioctl` + §4 spawn-handle items.)
 
-### Z4b — signals + IPC · ◐ · deps: Z4a
+### Z4b — signals + IPC · ✅ DONE · deps: Z4a
 
 Route native zsh's job-wait / signal / IPC surfaces onto the native object ABI (§6 event
 subscription + §8 message-passing), reusing the kernel's existing signal + child-exit
@@ -277,17 +277,19 @@ machinery — the same "re-surface, don't rewrite" pattern as Z4a.  Tracked sub-
   demo a *multi-second* block because `nanosleep` is a kernel no-op OS-wide — `sleep N` exits
   instantly for both flavors, so no child ever takes wall-clock time; the block *logic* is
   identical to the working Linux `wait4`.)
-- **Z4b.3 — Native async-event surface (`object_subscribe`, §6) for SIGCHLD + SIGINT** · ◐ ·
+- **Z4b.3 — Native async-event surface (`object_subscribe`, §6) for SIGCHLD + SIGINT** · ✅ DONE ·
   the kernel already delivers these to native zsh — SIGCHLD as an rt_sigframe (Z1) and ^C as
   an EINTR at a blocking `device_read` (Z3/Z4a.6) — so native job-notify + interrupt already
-  *work*; this step is the explicit native subscription registration (`object_subscribe(obj,
-  events)`), a formalization of the already-functional delivery.  Deferred unless a concrete
-  need (e.g. `zsh/zselect` on object events) forces it.
-- **Z4b.4 — Native IPC message-passing (§8) behind coproc / `zsh/zselect`** · ◐ · zsh's coproc
+  *work*; this step adds the explicit native subscription registration, a formalization of the
+  already-functional delivery.  **`object_subscribe(events)` = `HOSQ_SUBSCRIBE`=17**, recording a
+  per-task event bitmask (`g_taskSubscriptions[]`, hoscall.d).  Verified live: a native task ran
+  `object_subscribe(SIGCHLD|SIGINT)` → `0` and the kernel logged `[obj-subscribe events=0x20004]`.
+- **Z4b.4 — Native IPC message-passing (§8) behind coproc / `zsh/zselect`** · ✅ DONE · zsh's coproc
   and `zsh/zselect` already move their bytes through `device_read`/`device_write` (Z4a.6 routes
-  all native read/write), so the *data* path is native today; a dedicated native endpoint
-  (`object_send`/`object_recv` over a §8 channel, replacing the pipe) is the fuller primitive —
-  tracked refinement.
+  all native read/write), so the *data* path is native today; this adds the explicit native
+  endpoint.  **`object_send`/`object_recv` = `HOSQ_SEND`=18 / `HOSQ_RECV`=19** over a channel fd
+  (the same verified VFS path as the device verbs).  Verified live: a native task created a pipe
+  and round-tripped 7 bytes — `object_send/recv over a channel -> sent 7, recv 7: "hos-ipc"`.
 - **Z4b.5 — Verify** · ✅ DONE · foreground *and* **background** job-wait work native (reap via
   `object_wait`, `[obj-wait]` confirmed, shell functional, Linux unregressed).  Closing the bg
   path took three fixes, all landed: (1) **`FD_NULL`** — `/dev/null` is now a real device (opens,
@@ -318,10 +320,21 @@ commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
 - **Z4c.2 — Environment passing on spawn** · ✅ DONE · native zsh's `spawn_process` forwards
   `envp` to `execveTask` (Z4a.7), so exported vars reach spawned children — verified
   `export FOO=z4cbar; printenv FOO` → `z4cbar`.
-- **Z4c.3 — Capability + namespace inheritance / hooks** · ◐ · a spawned child inherits its caps
-  and namespace via fork/exec today, and `id`/`ns` (Z4c.1) read them back; explicit native
-  cap-grant and namespace clone/enter on the §4 spawn manifest are **mutations** (deny-by-default
-  gated on the identity ceiling) — a tracked refinement, not done here.
+- **Z4c.3 — Capability + namespace inheritance / hooks** · ✅ DONE · a spawned child inherits its
+  caps and namespace via fork/exec today, and `id`/`ns` (Z4c.1) read them back; this adds the
+  explicit native **mutation** verbs, deny-by-default and **non-escalating by construction**:
+  - **`cap_grant(srcHandle, wantRights)` = `HOSQ_CAP_GRANT`=20** — derives a NEW handle in the
+    caller's cap table from one it already holds, attenuation-only: `newRights = want ∩
+    source.rights ∩ identity-ceiling`.  Cannot grant more than held; nothing left ⇒ EPERM.
+  - **`namespace_clone()` = `HOSQ_NS_CLONE`=21** — a private copy of the caller's namespace
+    (`nsClone`, fork semantics), recorded per-task (`g_taskOwnedNs[]`).
+  - **`namespace_enter(nsObjId)` = `HOSQ_NS_ENTER`=22** — switch to a namespace the caller OWNS
+    (created via clone); entering anything else is denied (would breach isolation).
+
+  Verified live (native `/hos-sh z4`): `cap_grant(h1, READ) -> new handle 35 (attenuated)`,
+  `namespace_clone() -> 1578`, `namespace_enter(1578) -> 0` (own clone), `namespace_enter(5820)
+  -> -1 EPERM` (not mine — gate holds); kernel logged `[cap-grant … rights=0x1]`, `[ns-clone]`,
+  `[ns-enter]` (and **no** `[ns-enter]` for the denied id).
 - **Z4c.4 — Real in-process zsh-module builtins** (overlaps Z9) · ◐ · the object commands as a
   zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
   Z4c.1 — a fuller-integration refinement.

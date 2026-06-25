@@ -17,8 +17,10 @@ module core.hoscall;
 import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
 import core.identity : g_identities, identityCount, identityById, NetPolicy;
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
-                       CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL;
-import core.namespace: g_namespaces;
+                       CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
+                       Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
+import core.namespace: g_namespaces, nsClone;   // Z4c.3
+import core.io       : klog, klog_hex;           // Z4b.3/Z4c.3 verb tracing
 import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
 import core.user     : userByObj, g_users;
@@ -59,7 +61,20 @@ enum : ulong {
     // Z4b.1 — Process-exit event wait (§6 object_wait specialised to child-exit = SIGCHLD).
     // Over wait4Task + the cooperative wait-block; handled in kernel_main.d (it can yield).
     HOSQ_WAIT       = 16,  // object_wait(rsi=pid, rdx=statusbuf, r10=options) -> pid / 0 / -errno
+    // Z4b.3 — §6 event subscription (formalizes the already-working SIGCHLD/SIGINT delivery).
+    HOSQ_SUBSCRIBE  = 17,  // object_subscribe(arg=events) -> 0
+    // Z4b.4 — §8 channel message-passing (the explicit send/recv over a channel fd).
+    HOSQ_SEND       = 18,  // object_send(arg=chan_fd, buf=src, buflen=n) -> bytes
+    HOSQ_RECV       = 19,  // object_recv(arg=chan_fd, buf=dst, buflen=n) -> bytes
+    // Z4c.3 — §7/§11 mutations: capability grant (attenuation-only) + namespace clone/enter.
+    HOSQ_CAP_GRANT  = 20,  // cap_grant(arg=srcHandle, buf=wantRights) -> newHandle / -errno
+    HOSQ_NS_CLONE   = 21,  // namespace_clone() -> nsObjId / -errno
+    HOSQ_NS_ENTER   = 22,  // namespace_enter(arg=nsObjId) -> 0 / -errno (owned namespaces only)
 }
+
+// Z4b.3 / Z4c.3 per-task state for the native mutation verbs.
+__gshared uint[MAX_TASKS] g_taskSubscriptions;   // §6 subscribed-event bitmask
+__gshared uint[MAX_TASKS] g_taskOwnedNs;         // last namespace this task cloned (ns_enter gate)
 
 // Z4a.5: native FS verbs.  object_open resolves the path through the object FS (the F0–F5
 // tree, namespace-gated) and returns a handle that, for a VFS-backed file, IS the backing
@@ -80,6 +95,71 @@ private long hosWrite(ulong h, ulong buf, ulong len)    @nogc nothrow { return l
 private long hosClose(ulong h)                          @nogc nothrow { return linux_sys_close(h); }
 private long hosLseek(ulong h, ulong off, ulong whence) @nogc nothrow { return linux_sys_lseek(h, cast(long)off, whence); }
 private long hosFstat(ulong h, ulong statbuf)           @nogc nothrow { return linux_sys_fstat(h, statbuf); }
+
+// Z4b.3 — §6 native event subscription.  SIGCHLD (child-exit) + SIGINT (^C) already deliver to
+// native tasks (rt_sigframe / EINTR at a blocking device_read); this records the explicit native
+// subscription so the surface is the native ABI's, not just an implicit Linux signal.  Per-task
+// bitmask — a formalization of already-functional delivery, not a gate on it.
+private long hosSubscribe(ulong events) @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    if (tid >= 0 && tid < MAX_TASKS) g_taskSubscriptions[tid] |= cast(uint)events;
+    static uint sn;
+    if ((sn++ & 0x3F) == 0) {
+        klog("[obj-subscribe tid="); klog_hex(cast(ulong)tid);
+        klog(" events="); klog_hex(events); klog("]\n");
+    }
+    return 0;
+}
+
+// Z4c.3 — §7 capability grant, ATTENUATION-ONLY.  Derive a NEW handle in the caller's cap table
+// from one it already holds, with rights that can only SHRINK: newRights = want ∩ source.rights ∩
+// identity-ceiling.  Cannot escalate by construction; deny-by-default (nothing left ⇒ EPERM).
+private long hosCapGrant(ulong srcHandle, ulong wantRights) @nogc nothrow {
+    auto src = capGet(cast(uint)srcHandle);
+    if (!capUsable(src)) return -1;                       // -EPERM: no such usable source cap
+    const int tid = cast(int)g_current_task_id;
+    auto e = (tid >= 0 && tid < MAX_TASKS) ? identityById(g_tasks[tid].identityObjId) : null;
+    const uint ceiling   = (e !is null) ? e.rightsCeiling : src.rights;
+    const uint newRights = cast(uint)wantRights & src.rights & ceiling;
+    if (newRights == 0) return -1;                        // attenuation left nothing → deny
+    uint h = CAP_INVALID;                                 // a free slot in the caller's active table
+    for (uint i = 1; i < CAP_MAX; ++i) {
+        auto c = capGet(i);
+        if (c !is null && c.objId == 0) { h = i; break; }
+    }
+    if (h == CAP_INVALID) return -24;                     // -EMFILE: table full
+    if (capInstall(h, src.objId, newRights, cast(uint)srcHandle) == CAP_INVALID) return -1;
+    klog("[cap-grant tid="); klog_hex(cast(ulong)tid);
+    klog(" src="); klog_hex(srcHandle); klog(" -> h="); klog_hex(cast(ulong)h);
+    klog(" rights="); klog_hex(cast(ulong)newRights); klog("]\n");
+    return cast(long)h;
+}
+
+// Z4c.3 — §11/§4 namespace_clone: a private copy of the caller's namespace (fork semantics).  The
+// caller owns the clone and may later enter it; recorded per-task so namespace_enter can only
+// re-enter a namespace the caller itself created (never another domain's).
+private long hosNsClone() @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return -1;
+    const uint cur = g_tasks[tid].namespaceObjId;
+    const uint nid = nsClone(cur);
+    if (nid == 0) return -1;
+    g_taskOwnedNs[tid] = nid;                             // gate for hosNsEnter
+    klog("[ns-clone tid="); klog_hex(cast(ulong)tid);
+    klog(" src="); klog_hex(cast(ulong)cur); klog(" -> "); klog_hex(cast(ulong)nid); klog("]\n");
+    return cast(long)nid;
+}
+
+// Z4c.3 — namespace_enter: switch the caller to a namespace it OWNS (created via namespace_clone).
+// Deny-by-default — entering an arbitrary/other-domain namespace would breach isolation.
+private long hosNsEnter(ulong nsObjId) @nogc nothrow {
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return -1;
+    if (nsObjId == 0 || cast(uint)nsObjId != g_taskOwnedNs[tid]) return -1;   // -EPERM: not yours
+    g_tasks[tid].namespaceObjId = cast(uint)nsObjId;
+    klog("[ns-enter tid="); klog_hex(cast(ulong)tid); klog(" ns="); klog_hex(nsObjId); klog("]\n");
+    return 0;
+}
 
 private immutable string[ObjType.Count] g_objTypeNames = [
     "Invalid", "File", "Process", "Thread", "MemRegion", "Vmo", "Directory",
@@ -471,6 +551,12 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_FSTAT: return hosFstat(arg, buf);           // arg=handle, buf=struct stat*
         case HOSQ_DEV_READ:  return hosRead(arg, buf, buflen);   // Z4a.6: terminal Device read
         case HOSQ_DEV_WRITE: return hosWrite(arg, buf, buflen);  // Z4a.6: terminal Device write
+        case HOSQ_SEND:      return hosWrite(arg, buf, buflen);  // Z4b.4: §8 channel send (over the fd)
+        case HOSQ_RECV:      return hosRead(arg, buf, buflen);   // Z4b.4: §8 channel recv
+        case HOSQ_SUBSCRIBE: return hosSubscribe(arg);           // Z4b.3: §6 event subscription
+        case HOSQ_CAP_GRANT: return hosCapGrant(arg, buf);       // Z4c.3: attenuating cap grant
+        case HOSQ_NS_CLONE:  return hosNsClone();                // Z4c.3: clone the caller's namespace
+        case HOSQ_NS_ENTER:  return hosNsEnter(arg);             // Z4c.3: enter an owned namespace
         default: break;
     }
 

@@ -24,6 +24,7 @@ extern(C) @nogc nothrow {
     int    strncmp(const(char)* a, const(char)* b, size_t n);
     char*  getcwd(char* buf, size_t size);
     int    chdir(const(char)* path);
+    int    pipe(int* fds);   // Z4b.4: a §8 channel for the object_send/recv self-test
     extern __gshared void* stdin;
     extern __gshared void* stdout;
 }
@@ -38,7 +39,14 @@ enum long HOSQ_WHOAMI     = 6;
 enum long HOSQ_OPEN       = 7;   // Z4a: object_open(path, rights) -> handle
 enum long HOSQ_READ       = 8;   // object_read(handle, buf, len)  -> bytes
 enum long HOSQ_CLOSE      = 10;  // object_close(handle)           -> 0
+enum long HOSQ_SUBSCRIBE  = 17;  // Z4b.3: object_subscribe(events) -> 0
+enum long HOSQ_SEND       = 18;  // Z4b.4: object_send(chan_fd, src, n) -> bytes
+enum long HOSQ_RECV       = 19;  // Z4b.4: object_recv(chan_fd, dst, n) -> bytes
+enum long HOSQ_CAP_GRANT  = 20;  // Z4c.3: cap_grant(srcHandle, wantRights) -> newHandle/-errno
+enum long HOSQ_NS_CLONE   = 21;  // Z4c.3: namespace_clone() -> nsObjId/-errno
+enum long HOSQ_NS_ENTER   = 22;  // Z4c.3: namespace_enter(nsObjId) -> 0/-errno
 enum long CAP_RIGHT_READ_V = 1;  // CAP_RIGHT_READ = bit 0
+enum long SIG_CHLD_BIT = 1 << 17, SIG_INT_BIT = 1 << 2;  // §6 event bits (SIGCHLD / SIGINT)
 
 __gshared char[8192] g_buf;
 __gshared char[128]  g_who;   // "user@namespace" (cached)
@@ -111,6 +119,40 @@ void catFile(const(char)* path) @nogc nothrow {
     syscall(HOS_SYS_QUERY, HOSQ_CLOSE, h, 0, 0);
 }
 
+// Z4b.3/Z4c.3 — exercise the native event + mutation verbs (object_subscribe, namespace_clone/
+// enter, cap_grant) from a native-personality task, printing each result.  A live proof that the
+// mutation surface works AND that the security gates hold (deny-by-default, attenuation-only).
+void z4test() @nogc nothrow {
+    // §6 event subscription (SIGCHLD + SIGINT) — formalizes the already-working delivery.
+    const long s = syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, SIG_CHLD_BIT | SIG_INT_BIT, 0, 0);
+    printf("subscribe(SIGCHLD|SIGINT) -> %ld\n", s);
+
+    // §8 channel message-passing — a self-pipe proves object_send/recv move bytes over a channel.
+    int[2] fds;
+    if (pipe(fds.ptr) == 0) {
+        const long w = syscall(HOS_SYS_QUERY, HOSQ_SEND, fds[1], cast(long)"hos-ipc".ptr, 7);
+        char[16] rb = 0;
+        const long r = syscall(HOS_SYS_QUERY, HOSQ_RECV, fds[0], cast(long)rb.ptr, 7);
+        printf("object_send/recv over a channel -> sent %ld, recv %ld: \"%s\"\n", w, r, rb.ptr);
+    }
+
+    // §11 namespace clone (a private copy of my namespace) + enter it; then prove the gate.
+    const long nid = syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0);
+    printf("namespace_clone() -> %ld\n", nid);
+    if (nid > 0) {
+        const long e1 = syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, nid, 0, 0);
+        printf("namespace_enter(%ld) -> %ld  (my clone: expect 0)\n", nid, e1);
+        const long e2 = syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, nid + 4242, 0, 0);
+        printf("namespace_enter(%ld) -> %ld  (not mine: expect -1 EPERM)\n", nid + 4242, e2);
+    }
+
+    // §7 capability grant — attenuation only.  Grant READ derived from handle 1; the kernel
+    // intersects with what I hold and my identity ceiling, so it can only shrink (or be denied).
+    const long g = syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, 1, CAP_RIGHT_READ_V, 0);
+    if (g >= 0) printf("cap_grant(h1, READ) -> new handle %ld (attenuated)\n", g);
+    else        printf("cap_grant(h1, READ) -> %ld (deny-by-default: no usable source cap)\n", g);
+}
+
 // Build "user@namespace" from the native whoami query (once).
 void loadWho() @nogc nothrow {
     const long n = syscall(HOS_SYS_QUERY, HOSQ_WHOAMI, 0, cast(long)g_who.ptr, cast(long)(g_who.length - 1));
@@ -147,6 +189,7 @@ int runCommand(char* cmd) @nogc nothrow {
     // Z6.1: print the kernel identity line (HOSQ_WHOAMI: "user@namespace [<rights ceiling>]").
     // Native zsh uses `/hos-sh whoami` to build a prompt that shows the full native identity.
     else if (strcmp(cmd, "whoami".ptr) == 0)  printf("%s\n", g_who.ptr);
+    else if (strcmp(cmd, "z4".ptr) == 0)      z4test();  // Z4b.3/Z4c.3 native verb self-test
     else printf("hos-sh: unknown command '%s' (try 'help')\n", cmd);
     return 1;
 }

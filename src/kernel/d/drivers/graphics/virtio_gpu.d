@@ -99,6 +99,7 @@ __gshared bool g_gpuVirgl = false;   // R2.1: device offers VIRTIO_GPU_F_VIRGL (
 __gshared bool g_gpuModern = false;  // R2.2: modern virtio-1.0 handshake completed (FEATURES_OK)
 __gshared ulong  g_gpuCommon = 0;    // R2.2: common-config virtual base (via HHDM)
 __gshared ushort g_gpuQueueSize = 0; // R2.2: control virtqueue size
+__gshared bool g_gpuQueueReady = false; // R2.2b: control virtqueue live (GET_CAPSET round-trip OK)
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -119,6 +120,7 @@ private void   volStoreB(ubyte* p, ubyte v) @nogc nothrow { *cast(shared ubyte*)
 private ushort volLoadW(ushort* p)         @nogc nothrow { return *cast(shared const ushort*)p; }
 private void   volStoreW(ushort* p, ushort v) @nogc nothrow { *cast(shared ushort*)p = v; }
 private void   volStoreQ(ulong* p, ulong v) @nogc nothrow { *cast(shared ulong*)p = v; }
+private void   memBarrier() @nogc nothrow { asm @nogc nothrow { mfence; } }
 
 // virtio-1.0 device-status bits + the common-config field offsets.
 private enum { VS_ACK = 1, VS_DRIVER = 2, VS_DRIVER_OK = 4, VS_FEATURES_OK = 8, VS_FAILED = 128 }
@@ -153,8 +155,9 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     if (!((cmdStatus >> 16) & 0x10)) { printLine("[virtio-gpu] R2.1: no PCI capability list"); return; }
     ubyte cap = cast(ubyte)(pciConfigRead32(pci.bus, pci.slot, pci.func, 0x34) & 0xFC);
 
-    // Walk the capability list for the virtio COMMON-config cap (vndr 0x09, cfg_type 1).
+    // Walk the capability list for the virtio COMMON-config (cfg_type 1) + NOTIFY (cfg_type 2) caps.
     uint commonBar = 0xFFFFFFFFu, commonOff = 0;
+    uint notifyBar = 0xFFFFFFFFu, notifyOff = 0, notifyMult = 0;
     int guard = 0;
     while (cap != 0 && guard++ < 48) {
         uint dw0 = pciConfigRead32(pci.bus, pci.slot, pci.func, cap);
@@ -165,6 +168,10 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
             uint dw1 = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 4)); // bar in low byte
             uint off = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 8)); // le32 offset
             if (cfgType == 1) { commonBar = dw1 & 0xFF; commonOff = off; }                 // COMMON_CFG=1
+            if (cfgType == 2) { // NOTIFY_CFG=2 ; struct virtio_pci_notify_cap adds notify_off_multiplier at cap+16
+                notifyBar = dw1 & 0xFF; notifyOff = off;
+                notifyMult = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 16));
+            }
         }
         cap = capNext;
     }
@@ -227,6 +234,80 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     printLine("[virtio-gpu] R2.2: num_queues / control-queue size:");
     printUnsigned(nq);
     printUnsigned(qsz);
+    if (qsz == 0 || qsz > 256) { printLine("[virtio-gpu] R2.2b: unexpected queue size -- abort"); return; }
+    if (notifyBar == 0xFFFFFFFFu) { printLine("[virtio-gpu] R2.2b: no NOTIFY capability -- abort"); return; }
+
+    // R2.2b — set up the control split-virtqueue with DMA-coherent rings, then a GET_CAPSET_INFO
+    // round-trip to prove the modern transport end-to-end.  The device DMAs PHYSICAL addresses, and
+    // there is no low identity map, so the rings MUST come from the physical allocator (a kernel
+    // static's virtual address is not its physical address); phys_to_virt() gives CPU access.
+    import memory.mm : alloc_phys_page;
+    ulong descPhys = alloc_phys_page();   // desc table: 256*16 = 4096 = one page
+    ulong availPhys = alloc_phys_page();
+    ulong usedPhys = alloc_phys_page();
+    ulong bufPhys = alloc_phys_page();     // request (0..32) + response (64..104)
+    auto desc  = cast(VirtqDesc*)(descPhys + hhdm_offset);   // phys_to_virt = + HHDM
+    auto avail = cast(VirtqAvail*)(availPhys + hhdm_offset);
+    auto used  = cast(VirtqUsed*)(usedPhys + hhdm_offset);
+    auto buf   = cast(ubyte*)(bufPhys + hhdm_offset);
+    foreach (i; 0 .. 4096) { (cast(ubyte*)desc)[i] = 0; (cast(ubyte*)avail)[i] = 0; (cast(ubyte*)used)[i] = 0; buf[i] = 0; }
+
+    // Program queue 0's ring addresses (64-bit fields as two 32-bit MMIO writes) and enable it.
+    volStoreW(cast(ushort*)(cc + CC_Q_SELECT), 0);
+    volStoreU(cast(uint*)(cc + CC_Q_DESC),       cast(uint)descPhys);
+    volStoreU(cast(uint*)(cc + CC_Q_DESC + 4),   cast(uint)(descPhys >> 32));
+    volStoreU(cast(uint*)(cc + CC_Q_DRIVER),     cast(uint)availPhys);
+    volStoreU(cast(uint*)(cc + CC_Q_DRIVER + 4), cast(uint)(availPhys >> 32));
+    volStoreU(cast(uint*)(cc + CC_Q_DEVICE),     cast(uint)usedPhys);
+    volStoreU(cast(uint*)(cc + CC_Q_DEVICE + 4), cast(uint)(usedPhys >> 32));
+    volStoreW(cast(ushort*)(cc + CC_Q_ENABLE), 1);
+    ushort qNotifyOff = volLoadW(cast(ushort*)(cc + CC_Q_NOTIFY_OFF));
+
+    // Resolve the NOTIFY BAR -> the per-queue notify register (write the vq index to kick).
+    uint nbarLo = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + notifyBar * 4));
+    ulong nbarBase = nbarLo & 0xFFFFFFF0u;
+    if ((nbarLo & 0x6) == 0x4) {
+        uint nbarHi = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + notifyBar * 4 + 4));
+        nbarBase |= (cast(ulong)nbarHi << 32);
+    }
+    ulong notifyAddr = nbarBase + notifyOff + cast(ulong)qNotifyOff * notifyMult + hhdm_offset;
+
+    // DRIVER_OK — the device is live.
+    volStoreB(pStatus, cast(ubyte)(VS_ACK | VS_DRIVER | VS_FEATURES_OK | VS_DRIVER_OK));
+
+    // Build a GET_CAPSET_INFO command (capset_index 0) in buf, response in buf+64.
+    enum VIRTIO_GPU_CMD_GET_CAPSET_INFO = 0x0108;
+    enum VIRTIO_GPU_RESP_OK_CAPSET_INFO = 0x1102;
+    *cast(uint*)(buf + 0)  = VIRTIO_GPU_CMD_GET_CAPSET_INFO; // ctrl_hdr.type
+    *cast(uint*)(buf + 24) = 0;                              // capset_index = 0
+    desc[0].addr = bufPhys;       desc[0].len = 32; desc[0].flags = VIRTQ_DESC_F_NEXT;  desc[0].next = 1;
+    desc[1].addr = bufPhys + 64;  desc[1].len = 40; desc[1].flags = VIRTQ_DESC_F_WRITE; desc[1].next = 0;
+    avail.ring[0] = 0;
+    volStoreW(&avail.idx, 1);
+    memBarrier();                                            // drain the store buffer to memory before the kick
+    volStoreW(cast(ushort*)notifyAddr, 0);                   // kick queue 0
+
+    // Wait for the device to post a used element (DMA is cache-coherent on x86).
+    int spin = 0;
+    while (volLoadW(&used.idx) == 0 && spin < 50_000_000) spin++;
+    if (volLoadW(&used.idx) == 0) { printLine("[virtio-gpu] R2.2b: GET_CAPSET_INFO TIMED OUT"); return; }
+    memBarrier();
+
+    uint respType = *cast(uint*)(buf + 64 + 0);
+    uint capsetId = *cast(uint*)(buf + 64 + 24);
+    uint maxVer   = *cast(uint*)(buf + 64 + 28);
+    uint maxSize  = *cast(uint*)(buf + 64 + 32);
+    printLine("[virtio-gpu] R2.2b: GET_CAPSET resp type / capset_id / max_ver / max_size:");
+    printHex(respType);
+    printUnsigned(capsetId);
+    printUnsigned(maxVer);
+    printUnsigned(maxSize);
+    if (respType == VIRTIO_GPU_RESP_OK_CAPSET_INFO) {
+        printLine("[virtio-gpu] R2.2b: VIRGL CAPSET QUERY OK -- modern virtqueue transport WORKS");
+        g_gpuQueueReady = true;
+    } else {
+        printLine("[virtio-gpu] R2.2b: unexpected response type from GET_CAPSET_INFO");
+    }
 }
 
 export void virtioGpuInit() @nogc nothrow {

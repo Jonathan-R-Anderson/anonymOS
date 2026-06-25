@@ -714,10 +714,22 @@ friendly goal) without bolting POSIX onto the object model.
   dropped, `"string"` atoms unquoted, nested grouping flattened (`src/util/hos-sh.d`
   `lfeNormalize`). Bare words still work for convenience. Verified: `(sys)`/`(ns)`/
   `(cd "/objects/identities")` run and the prompt tracks the path.
-- **L1 — vendor the `-sh` source · ☐ · E: 3.** Vendor the upstream `-sh` (LFE) project under
-  `/system/shell/-sh/` (cached, pinned), like zsh under `/system/shell/zsh/`. Decide the
-  runtime: a native LFE reader+evaluator in betterC D/Rust, OR LFE-on-BEAM if/when an Erlang
-  VM is ported. (The current D `hos-sh` is the bootstrap; `-sh` upstream supersedes it.)
+- **L1 — vendor the `-sh` source · ✅ DONE · E: 3.** Vendored the upstream `-sh` (LFE) project
+  cached + pinned under `deps/lfe-sh/`, the way `deps/zsh/` carries `zsh-5.9.tar.xz`; details in
+  [deps/lfe-sh/VENDOR.md].
+  - **L1.1 — vendor pinned source** · ✅ pinned `github.com/Jonathan-R-Anderson/-sh` at commit
+    `a44ee38b`; the source tree (91 `.d` + 16 `.lfe`, excluding the upstream prebuilt binary/.o/.git)
+    is a sha256-pinned tarball `deps/lfe-sh/lfe-sh-a44ee38bfa87.tar.gz`; `deps/lfe-sh/Makefile`
+    unpacks + checksum-verifies (`make`) and host-builds to validate (`make host-build`).
+    **Validated:** the vendored source compiles with `ldc2 1.36` + libreadline and evaluates LFE
+    (`(+ 3 4)` → `7`).
+  - **L1.2 — decide + document the runtime** · ✅ **native D evaluator, NOT LFE-on-BEAM** — upstream
+    `-sh` is *already* a D Lisp/LFE interpreter (`src/interpreter.d`, `evalString`, `ldc2`-built), so
+    it reuses the platform's compiler and avoids porting the whole Erlang VM; the betterC `hos-sh`
+    (L0 `lfeNormalize`) is the bootstrap that `-sh` supersedes from L2.  OS-build adaptations deferred
+    to L2 (an `ldc2` **musl** target + Phobos/druntime; **libreadline → OS PTY line input**; the
+    object-ABI forms wired to `HOS_SYS_QUERY` behind the native-personality gate; staged at
+    `/system/shell/-sh/`).  Full rationale in [deps/lfe-sh/VENDOR.md].
 - **L2 — evaluator + builtins as LFE functions · ☐ · E: 4 · deps: L1.** The object commands
   become LFE functions over the native ABI: `(objects)` → `object_enumerate`, `(cap-grant cap
   proc)` → `cap_grant`, `(ns-bind ns path obj rights)` → `namespace_bind`, `(spawn manifest)`

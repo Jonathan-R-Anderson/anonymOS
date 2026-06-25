@@ -405,7 +405,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
 
     // (d) CTX_ATTACH_RESOURCE(ctx 1, resource 1) -> inserts the typed resource into ctx 1's res_hash.
     gpuZeroReq(32);
-    gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
+    gpuPutU(0, 0x0202);          // VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE (0x0202, NOT 0x0206!)
     gpuPutU(16, 1);              // hdr.ctx_id = 1
     gpuPutU(24, 1);              // resource_id = 1
     uint a1 = gpuCtrl(32, 24);
@@ -413,7 +413,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     // (e) SUBMIT_3D (hdr.ctx_id = 1): a virgl stream that clears resource 1 RED.
     //   CREATE_OBJECT(SURFACE) wrapping res 1 -> SET_FRAMEBUFFER_STATE(cbuf=surface) -> CLEAR(red).
     gpuZeroReq(108);
-    gpuPutU(0, 0x0203);          // VIRTIO_GPU_CMD_SUBMIT_3D
+    gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_SUBMIT_3D (0x0207, NOT 0x0203 = CTX_DETACH!)
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
     gpuPutQ(8, 1);               // hdr.fence_id = 1
     gpuPutU(16, 1);              // hdr.ctx_id = 1
@@ -445,7 +445,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
 
     // (f) TRANSFER_FROM_HOST_3D (hdr.ctx_id = 1): copy the cleared texture into the guest backing.
     gpuZeroReq(72);
-    gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D
+    gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D (0x0206, NOT 0x0207 = SUBMIT!)
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
     gpuPutQ(8, 2);               // hdr.fence_id = 2
     gpuPutU(16, 1);              // hdr.ctx_id = 1 (owning context — NOT 0)

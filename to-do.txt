@@ -22,3 +22,5 @@ https://www.gnunet.org/en/index.html
 https://github.com/orhun/ratty
 https://github.com/Jonathan-R-Anderson/-sh
 https://github.com/Jonathan-R-Anderson/web3-kinetic-loader (as the splash page for booting the os and wallpaper)
+
+android apk support

@@ -137,6 +137,7 @@ private void   memBarrier() @nogc nothrow { asm @nogc nothrow { mfence; } }
 // command waits for its own completion before the next, so descriptors 0/1 are reused.
 private void gpuZeroReq(uint n) @nogc nothrow { foreach (i; 0 .. n) g_gpuBuf[i] = 0; }
 private void gpuPutU(uint off, uint v) @nogc nothrow { *cast(uint*)(g_gpuBuf + off) = v; }
+private void gpuPutQ(uint off, ulong v) @nogc nothrow { *cast(ulong*)(g_gpuBuf + off) = v; }
 private uint gpuCtrl(uint reqLen, uint respLen) @nogc nothrow {
     auto desc = g_gpuDesc; auto avail = g_gpuAvail; auto used = g_gpuUsed;
     foreach (i; 0 .. respLen) g_gpuBuf[2048 + i] = 0;
@@ -363,8 +364,8 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuPutU(28, 2);        // target = PIPE_TEXTURE_2D
     gpuPutU(32, 1);        // format = VIRGL_FORMAT_B8G8R8A8_UNORM
     gpuPutU(36, 2);        // bind = VIRGL_BIND_RENDER_TARGET
-    gpuPutU(40, 256);      // width
-    gpuPutU(44, 256);      // height
+    gpuPutU(40, 32);       // width  (32x32 so a single 4 KiB backing page covers the resource)
+    gpuPutU(44, 32);       // height
     gpuPutU(48, 1);        // depth
     gpuPutU(52, 1);        // array_size
     uint c2 = gpuCtrl(72, 24);
@@ -384,7 +385,76 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         g_gpu3dReady = true;
     } else {
         printLine("[virtio-gpu] R2.3: a 3D command was rejected by the device");
+        return;
     }
+
+    // R2.3b — render: attach a guest backing page, clear the resource RED via a virgl command
+    // stream, transfer the result back, and read pixel (0,0).  This proves the GPU actually rendered.
+    ulong backPhys = alloc_phys_page();
+    auto back = cast(uint*)(backPhys + hhdm_offset);
+    foreach (i; 0 .. 1024) back[i] = 0;   // 32*32 pixels
+
+    // (d) RESOURCE_ATTACH_BACKING(resource 1; one mem entry: backPhys, 4096 bytes).
+    gpuZeroReq(48);
+    gpuPutU(0, 0x0106);          // VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING
+    gpuPutU(24, 1);              // resource_id
+    gpuPutU(28, 1);              // nr_entries
+    gpuPutQ(32, backPhys);       // mem_entry.addr
+    gpuPutU(40, 4096);           // mem_entry.length
+    uint d1 = gpuCtrl(48, 24);
+
+    // (e) SUBMIT_3D: virgl stream = CREATE_OBJECT(SURFACE) + SET_FRAMEBUFFER_STATE + CLEAR(red).
+    gpuZeroReq(108);
+    gpuPutU(0, 0x0203);          // VIRTIO_GPU_CMD_SUBMIT_3D
+    gpuPutU(16, 1);              // hdr.ctx_id = 1
+    gpuPutU(24, 76);             // size of the command stream in bytes
+    enum uint S = 32;            // stream begins after hdr(24)+size(4)+padding(4)
+    // CREATE_OBJECT SURFACE: (len5 << 16) | (VIRGL_OBJECT_SURFACE=8 << 8) | VIRGL_CCMD_CREATE_OBJECT=1
+    gpuPutU(S +  0, (5 << 16) | (8 << 8) | 1);
+    gpuPutU(S +  4, 1);          // surface handle
+    gpuPutU(S +  8, 1);          // resource handle
+    gpuPutU(S + 12, 1);          // format = B8G8R8A8_UNORM
+    gpuPutU(S + 16, 0);          // texture level
+    gpuPutU(S + 20, 0);          // first|last layer
+    // SET_FRAMEBUFFER_STATE: (len3 << 16) | VIRGL_CCMD_SET_FRAMEBUFFER_STATE=5
+    gpuPutU(S + 24, (3 << 16) | 5);
+    gpuPutU(S + 28, 1);          // nr_cbufs
+    gpuPutU(S + 32, 0);          // zsurf handle
+    gpuPutU(S + 36, 1);          // cbuf[0] = surface handle 1
+    // CLEAR: (len8 << 16) | VIRGL_CCMD_CLEAR=7
+    gpuPutU(S + 40, (8 << 16) | 7);
+    gpuPutU(S + 44, 4);          // buffers = PIPE_CLEAR_COLOR0 (1<<2)
+    gpuPutU(S + 48, 0x3f800000); // color r = 1.0f
+    gpuPutU(S + 52, 0);          // g
+    gpuPutU(S + 56, 0);          // b
+    gpuPutU(S + 60, 0x3f800000); // a = 1.0f
+    gpuPutU(S + 64, 0);          // depth lo
+    gpuPutU(S + 68, 0);          // depth hi
+    gpuPutU(S + 72, 0);          // stencil
+    uint e1 = gpuCtrl(108, 24);
+
+    // (f) TRANSFER_FROM_HOST_3D(resource 1, box 0,0,0..32,32,1) -> the guest backing.
+    gpuZeroReq(72);
+    gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D
+    gpuPutU(16, 1);              // hdr.ctx_id = 1
+    gpuPutU(36, 32);             // box.w
+    gpuPutU(40, 32);             // box.h
+    gpuPutU(44, 1);              // box.d
+    gpuPutQ(48, 0);              // offset
+    gpuPutU(56, 1);              // resource_id
+    uint f1 = gpuCtrl(72, 24);
+
+    memBarrier();
+    uint px0 = back[0];
+    printLine("[virtio-gpu] R2.3b: ATTACH / SUBMIT / TRANSFER resp + pixel(0,0):");
+    printHex(d1);
+    printHex(e1);
+    printHex(f1);
+    printHex(px0);
+    if (px0 == 0xFFFF0000u)
+        printLine("[virtio-gpu] R2.3b: GPU CLEARED the resource RED -- virgl 3D rendering WORKS");
+    else
+        printLine("[virtio-gpu] R2.3b: readback did not match the clear colour");
 }
 
 export void virtioGpuInit() @nogc nothrow {

@@ -896,10 +896,16 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     `gpuCtrl()` control-queue helper (serial: reuse desc 0/1, wait per command) issued **`CTX_CREATE`
     (ctx 1) → `RESOURCE_CREATE_3D` (resource 1: 256×256 `B8G8R8A8`, bind RENDER_TARGET) →
     `CTX_ATTACH_RESOURCE`**. **Verified live:** all three returned `0x1100` (`OK_NODATA`) → *"3D
-    context + resource commands OK (virgl objects live on the GPU)"*. **Remaining (R2.3b):**
-    `RESOURCE_ATTACH_BACKING` + `SUBMIT_3D` of a minimal virgl command stream (create surface → set
-    framebuffer → clear to a colour) + `TRANSFER_FROM_HOST_3D` + read back the pixel to prove the GPU
-    actually rendered.
+    context + resource commands OK (virgl objects live on the GPU)"*.
+    - **R2.3b — render command path 🚧** · `RESOURCE_ATTACH_BACKING` (a 4 KiB guest page for a 32×32
+      resource) + `SUBMIT_3D` (a hand-encoded virgl stream: CREATE_OBJECT(SURFACE) → SET_FRAMEBUFFER →
+      CLEAR red) + `TRANSFER_FROM_HOST_3D` + pixel read-back. **Verified live:** all three commands
+      return `0x1100` (OK) — the full 3D command *path* works end-to-end. **Open:** the read-back
+      pixel is `0x00000000`, not red — `SUBMIT_3D` returns OK even for an invalid stream (virglrenderer
+      reports stream errors asynchronously), so the **virgl clear encoding needs verifying against
+      `virgl_protocol.h`/`virgl_hw.h`** (object/cmd codes, `PIPE_CLEAR_COLOR0`, possibly a fence for
+      submit→transfer ordering). The transport + command framing are correct; the command-stream bytes
+      need refinement to make the GPU actually paint the pixel.
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
     (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so

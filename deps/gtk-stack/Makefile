@@ -27,6 +27,10 @@ DLDIR         := $(SELF)/downloads
 BLDDIR        := $(SELF)/build
 HOST_PYTHON   := $(HOST_TOOLS_BIN)/python3
 HOST_PIP      := $(HOST_PYTHON) -m pip
+# PEP-668 (Arch, newer Debian/Fedora) marks the system python as externally
+# managed and refuses bare `pip install`. --break-system-packages is harmless on
+# older distros and required on those, so always pass it.
+HOST_PIP_INSTALL := $(HOST_PIP) install --break-system-packages
 HOST_PY_STAMP := $(HOST_TOOLS_ROOT)/.python-packaging.stamp
 HOST_BISON    := $(HOST_TOOLS_BIN)/bison
 HOST_MESON_VER:= 1.10.2
@@ -111,14 +115,14 @@ dirs:
 $(HOST_PY_STAMP): $(SELF)/Makefile
 	@echo "[host-python] Ensuring python packaging module..."
 	@mkdir -p $(HOST_TOOLS_ROOT)
-	@$(HOST_PYTHON) -c 'import packaging' >/dev/null 2>&1 || $(HOST_PIP) install packaging
+	@$(HOST_PYTHON) -c 'import packaging' >/dev/null 2>&1 || $(HOST_PIP_INSTALL) packaging
 	@if [ -x "$(HOST_TOOLS_BIN)/meson" ] && \
 	    $(HOST_PYTHON) "$(HOST_TOOLS_BIN)/meson" --version >/dev/null 2>&1; then \
 	    if ! head -n1 "$(HOST_TOOLS_BIN)/meson" | grep -qx '#!$(HOST_PYTHON)'; then \
 	        sed -i '1s|^#!.*|#!$(HOST_PYTHON)|' "$(HOST_TOOLS_BIN)/meson"; \
 	    fi; \
 	else \
-	    $(HOST_PIP) install --upgrade "meson==$(HOST_MESON_VER)"; \
+	    $(HOST_PIP_INSTALL) --upgrade "meson==$(HOST_MESON_VER)"; \
 	fi
 	@touch $@
 

@@ -545,13 +545,30 @@ the frameworks (no network at runtime) and wire them to the AnonymOS prompt data
   vendored).
 - *Deliverables 8/10/11 (theme/plugin/completion) realized as the familiar OMZ experience.*
 
-## Z10 — History (incl. secure) · ☐ · P: Med · E: 2 · deps: Z1
+## Z10 — History (incl. secure) · ◑ · P: Med · E: 2 · deps: Z1
 
 - Persistent shared history (`fc`, `Ctrl-R`). **Per identity / per namespace / per
   disposable** history files, encrypted when `shell.json` requests it (over the existing
   crypto: ChaCha20-Poly1305 in [`core/secipc.d`](../src/kernel/d/core/secipc.d)), with
   automatic expiration for disposable domains. History is shared across namespaces only when
   policy allows (a `namespace_bind` decision). *Deliverable 12–15 (the integration set).*
+
+**Sub-steps:**
+- **Z10.1 — per-domain history file + interactive history.** `HISTFILE` was never set, so zsh kept
+  history in RAM only.  `/etc/zshrc` now sets a **per-domain** `HISTFILE=~/.zsh_history.<domain>`
+  (sanitized `EPIN_DOMAIN`), so identities/namespaces never share command history.  `EXTENDED_HISTORY`
+  (timestamps), `INC_APPEND_HISTORY` (append-as-you-go), `SHARE_HISTORY` (live across concurrent
+  terminals of the same domain), and the dedup/blank flags; sizes from `shell.json` (Z5).  `Ctrl-R`
+  incremental search + `fc` work once `HISTFILE` is set.
+- **Z10.2 — disposable = ephemeral.** A domain with `EPIN_NET=disposable` unsets `HISTFILE` and
+  `SAVEHIST=0` — history is never written and dies with the shell (the policy's "automatic
+  expiration").
+- **Z10.3 — cross-reboot persistence + encryption (deferred, infra-gated).** Today `HISTFILE`
+  lives in the ramfs, so history is persistent + shared *within a boot*; surviving a reboot needs a
+  disk-backed home (object-FS **F4.3 writable storage**), and the `shell.json` *encrypted* option
+  needs a **crypto syscall** over `secipc.d`'s ChaCha20-Poly1305 (with per-identity keys).  The
+  cross-namespace `namespace_bind` sharing decision rides on the native ABI (Z4). All three are
+  tracked; the per-domain isolation + interactive history (the security-relevant + UX core) land now.
 
 ## Z11 — Login flow + default shell · ☐ · P: Med · E: 2 · deps: Z1, Z5
 

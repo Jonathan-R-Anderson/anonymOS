@@ -4092,6 +4092,27 @@ __hos_apply_shell_json() {
 __hos_apply_shell_json /etc/shell.json
 [[ -r "$HOME/.shell.json" ]] && __hos_apply_shell_json "$HOME/.shell.json"
 
+# --- Z10: history (per identity / namespace, disposable-ephemeral) ----------------------------
+# Each security domain gets its OWN history file, so command history never leaks between
+# identities/namespaces.  Disposable domains keep history in RAM only — it is never written and
+# dies with the shell (the "automatic expiration" the policy calls for).  Sizes + the shared/dedup
+# flags come from /etc/shell.json (Z5); this adds the file + the per-domain split + Ctrl-R/fc.
+setopt EXTENDED_HISTORY          # timestamp + duration per entry
+setopt INC_APPEND_HISTORY        # append each command as it runs (survives a crash / mid-session exit)
+setopt SHARE_HISTORY             # live-share across concurrent terminals of the SAME domain
+setopt HIST_IGNORE_DUPS HIST_IGNORE_SPACE HIST_REDUCE_BLANKS HIST_VERIFY
+: ${HISTSIZE:=100000}; : ${SAVEHIST:=100000}
+if [[ $EPIN_NET == disposable ]]; then
+  unset HISTFILE; SAVEHIST=0     # ephemeral: nothing persisted, gone when the shell exits
+else
+  __hos_dom=${EPIN_DOMAIN:-linux}; __hos_dom=${__hos_dom//[^A-Za-z0-9_-]/_}
+  HISTFILE=${HOME:-/root}/.zsh_history.${__hos_dom}
+  unset __hos_dom
+fi
+# NB: today HISTFILE lives in the ramfs, so history is persistent + shared WITHIN a boot; surviving
+# a reboot needs a disk-backed home (object-FS F4.3 writable storage), and the shell.json
+# "encrypted" option needs a crypto syscall over core/secipc.d's ChaCha20-Poly1305 — both tracked.
+
 # --- Z8: completion engine ---------------------------------------------------
 # zsh's function/completion tree is staged at the compiled-in default $fpath
 # (/system/shell/zsh/share/zsh/5.9/functions, unpacked at boot from zshfns.blob).  Bring up

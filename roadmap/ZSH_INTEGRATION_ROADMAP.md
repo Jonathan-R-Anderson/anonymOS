@@ -841,10 +841,24 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
   Linux ABI. OK"*.  (Key OS quirk handled: sockets come back non-blocking + the scheduler is
   cooperative, so the client `poll`s — like libwayland — instead of busy-reading.)  R1+ (Ratatui CPU
   terminal, then the GPU stack) build on this.
-- **R1 — CPU/Ratatui intermediate · E: 2 · deps: R0.** A CPU-rendered Ratatui terminal (the
-  ratatui ecosystem ratty builds on) on the software Wayland/SHM path the GUI clients use —
-  proves PTY + input + Unicode rendering in Rust without needing the GPU. A usable terminal
-  on the current stack; de-risks the ratty port.
+- **R1 — CPU/Ratatui intermediate · 🚧 IN PROGRESS · E: 2 · deps: R0.** A CPU-rendered terminal in
+  Rust on the software Wayland/SHM path the GUI clients use — proves PTY + input + glyph rendering in
+  Rust without needing the GPU. A usable terminal on the current stack; de-risks the ratty port.
+  Pure-std (no crates, like R0) so the build stays a single `rustc` invocation with zero dependency
+  risk on the OS's partial Linux ABI. Sub-steps:
+  - **R1.1 — Rust Wayland SHM window** · bind `wl_compositor`/`wl_shm`/`xdg_wm_base`/`wl_seat`; create
+    a surface + xdg-toplevel; an SHM buffer via `memfd_create`+`mmap`+`create_pool` (fd passed with
+    `sendmsg`/`SCM_RIGHTS`); render loop gated on `wl_buffer.release`.
+  - **R1.2 — PTY + shell host** · `open(/dev/ptmx)` → `TIOCSPTLCK`/`TIOCGPTN` → `/dev/pts/N`,
+    `TIOCSWINSZ`, `fork` → child `setsid`+`dup2`(slave→0/1/2)+`execve` zsh; parent reads the master.
+  - **R1.3 — VT parser + cell grid** · printable + BS/TAB/LF/CR/BEL + CSI (CUU/CUD/CUF/CUB/CUP, ED/EL,
+    SGR 16-colour) maintaining a `[ROWS][COLS]` grid of (glyph, fg, bg) with scroll.
+  - **R1.4 — 8×8 bitmap font render** · reuse `gui_font.h` (extracted to `term_font8x8.rs`), 2× scale,
+    fg/bg per cell + a block cursor.
+  - **R1.5 — keyboard input** · `wl_keyboard` → reuse `wl-term`'s evdev `kmap`/`kmap_shift` +
+    `special_key_seq` (arrows/Home/End) + ctrl/shift → write to the PTY master.
+  - **R1.6 — stage + verify** · boot module + desktop autostart; verify live that the Rust terminal
+    hosts zsh, renders its output, and accepts typed input.
 - **R2 — GPU stack · E: 5 · deps: R1.** ratty renders via `wgpu`/Vulkan/GL. The OS is
   software-Pixman only; this needs the GPU/Mesa work tracked under desktop responsiveness
   R8 (a real render node + EGL, the dmabuf import the Hyprland bring-up stalled on). The

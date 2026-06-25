@@ -134,6 +134,7 @@ RUSTC ?= $(HOME)/.cargo/bin/rustc
 RUST_TARGET := x86_64-unknown-linux-musl
 RUSTFLAGS_STATIC := --target $(RUST_TARGET) -C target-feature=+crt-static -C relocation-model=static -O
 HELLO_WL_BIN := build/hello-wl
+HOSTERM_BIN := build/hos-term
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
@@ -304,6 +305,10 @@ $(HELLO_WL_BIN): src/util/hello-wl.rs
 	@echo "==== Building hello-wl (R0: Rust->musl static AnonymOS Wayland client) ===="
 	$(RUSTC) --edition 2021 $(RUSTFLAGS_STATIC) $< -o $@
 
+$(HOSTERM_BIN): src/util/hos-term.rs src/util/term_font8x8.rs
+	@echo "==== Building hos-term (R1: Rust CPU/SHM Wayland terminal hosting zsh) ===="
+	$(RUSTC) --edition 2021 $(RUSTFLAGS_STATIC) $< -o $@
+
 # Z1: real upstream zsh (static musl). Built by deps/zsh/Makefile (Z0) from the
 # vendored, checksum-pinned tarballs; the committed binary makes the ISO build a no-op.
 $(ZSH_BIN):
@@ -402,6 +407,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	   printf '\n    module_path: boot():/hello-wl\n' >> cd/boot/limine/limine.conf && \
 	   echo "Included hello-wl (R0: Rust->musl Wayland validation)"; \
 	 else echo "Skipping hello-wl (R0: $(RUSTC) not found — rustup + 'rustup target add $(RUST_TARGET)')"; fi
+
+	@if [ -x "$(RUSTC)" ]; then \
+	   $(MAKE) --no-print-directory $(HOSTERM_BIN) && cp $(HOSTERM_BIN) cd/hos-term && \
+	   printf '\n    module_path: boot():/hos-term\n' >> cd/boot/limine/limine.conf && \
+	   echo "Included hos-term (R1: Rust CPU/SHM terminal)"; \
+	 else echo "Skipping hos-term (R1: $(RUSTC) not found)"; fi
 
 	@if [ -f $(GTK_HELLO_BIN) ]; then \
 		cp $(GTK_HELLO_BIN) cd/gtk-hello; \

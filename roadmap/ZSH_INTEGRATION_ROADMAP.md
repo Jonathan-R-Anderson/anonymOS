@@ -172,7 +172,14 @@ that gates the native ABI).
 - *Deliverable 7 (PTY/terminal).*  Remaining job-control items (`^Z`/`bg`/`fg`, process
   groups + `tcsetpgrp`) stay deferred per Z1.
 
-## Z4 — Native platform layer · ◐ IN PROGRESS · P: High · E: 5 · deps: Z1, Z2
+## Z4 — Native platform layer · ✅ DONE · P: High · E: 5 · deps: Z1, Z2
+
+**Complete.** Z4a (FS+TTY+process → interactive native prompt), Z4b (signals + IPC: object_wait
+/ object_subscribe / object_send/recv), and Z4c (env + the cap_grant/namespace_clone/enter
+mutation verbs + the in-process `zsh/anonymos` builtin module) all DONE and verified live.  Native
+zsh's filesystem, terminal, process spawn, child-wait, event subscription, channel IPC, and the
+object-model commands all flow through the native object ABI — and the new cap/namespace mutations
+are non-escalating by construction (attenuation-only grants; owned-only namespace entry).
 
 The big one: port zsh to native userspace via `platform/anonymos/`.
 
@@ -301,7 +308,7 @@ machinery — the same "re-surface, don't rewrite" pattern as Z4a.  Tracked sub-
   `echo X &` prints `X` cleanly (no `/dev/null` error, no nice warning), `wait` returns, both
   flavors; full Weston desktop renders and runs.
 
-### Z4c — env + cap + namespace + object hooks · ◐ · deps: Z4a
+### Z4c — env + cap + namespace + object hooks · ✅ DONE · deps: Z4a
 
 Give the native zsh prompt the distinctly-native surface — the kernel object model as
 commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
@@ -335,9 +342,18 @@ commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
   `namespace_clone() -> 1578`, `namespace_enter(1578) -> 0` (own clone), `namespace_enter(5820)
   -> -1 EPERM` (not mine — gate holds); kernel logged `[cap-grant … rights=0x1]`, `[ns-clone]`,
   `[ns-enter]` (and **no** `[ns-enter]` for the denied id).
-- **Z4c.4 — Real in-process zsh-module builtins** (overlaps Z9) · ◐ · the object commands as a
-  zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
-  Z4c.1 — a fuller-integration refinement.
+- **Z4c.4 — Real in-process zsh-module builtins** (overlaps Z9) · ✅ DONE · the object commands as
+  a zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
+  Z4c.1.  **`zsh/anonymos`** (`deps/zsh/anonymos.c` + `.mdd`, a standard dynamic zmodule modelled
+  on `example`) defines **obj/id/ns/svc/sys as native-ABI builtins** that issue `HOS_SYS_QUERY`
+  directly from the zsh process — no `/hos-sh` subprocess per command.  The Makefile drops the
+  module into `Src/Modules/` before `configure` (auto-detected → `anonymos.so`), it is staged as
+  a boot module by basename like every other zmodule, and the native zshrc `zmodload zsh/anonymos`
+  (falling back to the Z4c.1 helper functions if absent).  Safe by personality: the builtins call
+  the gated native ABI, so they only function inside native zsh (the N0 grant); a Linux-personality
+  zsh would get `-ENOSYS` and the builtin reports the ABI unavailable.  Verified live in a native
+  terminal: `whence -w obj id ns svc sys` → **all `builtin`** (not the fallback functions), and
+  `obj | head -4` prints the live object table in-process through a real builtin pipeline.
 
 ## Z5 — Configuration system · ✅ DONE · P: Med · E: 3 · deps: Z1
 

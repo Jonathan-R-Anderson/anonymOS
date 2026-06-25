@@ -61,9 +61,13 @@ $(NC_LIB): $(NC_TAR)
 #     EXTRA_LDFLAGS=-Wl,--export-dynamic.  Without it modules fail: "hashgetfn: not found".
 # The exe is NOT stripped (keep .dynsym so modules resolve the core symbols); modules are.
 ZMODDIR := $(CURDIR)/modules
-$(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c
+$(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c anonymos.c anonymos.mdd
 	echo "$(ZSH_SHA)  $(ZSH_TAR)" | sha256sum -c -
 	rm -rf zsh-$(ZSH_VER) && tar xf $(ZSH_TAR)
+	# Z4c.4: the AnonymOS native object-model module (obj/id/ns/svc/sys as in-process builtins
+	# calling HOS_SYS_QUERY).  Dropped into Src/Modules before configure, which auto-detects the
+	# .mdd and builds zsh/anonymos.so; staged as a boot module + zmodload'd by native zsh.
+	cp anonymos.c anonymos.mdd zsh-$(ZSH_VER)/Src/Modules/
 	# Z4a.3: the platform/anonymos/ host hooks (native-personality FS dispatch).  Built as
 	# libanon.a and linked into zsh via --wrap so zsh's open/read/write/close/lseek route
 	# through the native ABI when native (transparent for the Linux-personality default).

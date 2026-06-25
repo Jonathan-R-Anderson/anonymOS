@@ -4042,11 +4042,19 @@ alias gs='git status'
 # the native object shell on purpose — use 'command id' for the POSIX one.)
 if [[ "$EPIN_SHELL" == native ]]; then
   hos() { /hos-sh "$@" }
-  obj() { /hos-sh obj "$@" }
-  id()  { /hos-sh id  "$@" }
-  ns()  { /hos-sh ns  "$@" }
-  svc() { /hos-sh svc "$@" }
-  sys() { /hos-sh sys "$@" }
+  # Z4c.4: prefer the IN-PROCESS zsh module — obj/id/ns/svc/sys become native-ABI builtins that
+  # call HOS_SYS_QUERY directly from the zsh process (no /hos-sh subprocess per command).  zsh
+  # holds the N0 gate here (native personality), so the in-process syscall is granted.  If the
+  # module is absent, fall back to the Z4c.1 helper-spawning functions.
+  if zmodload zsh/anonymos 2>/dev/null; then
+    : # obj/id/ns/svc/sys now provided in-process by zsh/anonymos
+  else
+    obj() { /hos-sh obj "$@" }
+    id()  { /hos-sh id  "$@" }
+    ns()  { /hos-sh ns  "$@" }
+    svc() { /hos-sh svc "$@" }
+    sys() { /hos-sh sys "$@" }
+  fi
   # Z6.1: a native prompt from the kernel identity — "user@namespace [<full rights ceiling>]"
   # (e.g. ...exec admin) via HOSQ_WHOAMI, so the native shell's prompt visibly differs from the
   # Linux flavor's EPIN_*-derived one.  zsh can't issue the native syscall, so /hos-sh prints it.

@@ -1,0 +1,9 @@
+name=zsh/anonymos
+link=dynamic
+load=no
+
+# Z4c.4 — the native object-model commands as in-process zsh builtins (calling HOS_SYS_QUERY
+# directly), replacing the /hos-sh helper-spawn of Z4c.1.  Loaded only into native zsh.
+autofeatures="b:obj b:id b:ns b:svc b:sys"
+
+objects="anonymos.o"

@@ -245,15 +245,17 @@ no OpenGL/Mesa dependency, which crashes in this freestanding/musl environment.
   editing, tab completion, history, pipes, `^C`, job control. Termios line
   discipline + VT/CSI interpreter added so ZLE redraw works.
 - **Native-ABI zsh port (Z4)**: the same zsh, filesystem (`object_open`),
-  terminal I/O (`device_read`/`device_write`), and external-command spawn
-  (`spawn_process`) all flow through the **native object ABI** at a working
-  prompt. Z4a fully done; Z4b/Z4c largely done.
+  terminal I/O (`device_read`/`device_write`), external-command spawn
+  (`spawn_process`), child-wait, event subscription, the cap-grant/namespace
+  mutation verbs, and an in-process `zsh/anonymos` builtin module all flow
+  through the **native object ABI** at a working prompt. **Z4 fully done.**
 - **`shell.json` declarative config** (Z5): a pure-zsh translator
   (`__hos_apply_shell_json`) applies system → user → user-zshrc at startup. The
   **four-field prompt** `[domain] user [perms]:cwd` is live in every shell.
-- **`hos-sh`** (`src/util/hos-sh.d`) — the native object shell in D; drives the
-  kernel model via `syscall(0x4000, …)`. Reads LFE s-expression forms:
-  `(obj)`, `(id)`, `(ns)`, `(svc)`, `(whoami)`.
+- **`hos-sh`** (`src/util/hos-sh.d`) — the native object shell in D, the `-sh`
+  (LFE) bootstrap; drives the kernel model via `syscall(0x4000, …)`. **Evaluates**
+  LFE s-expressions to data (L2): object-ABI verbs are composable functions —
+  `(obj)`/`(ns)`/`(id)`, `(ns-enter (ns-clone))`, `(cap-grant h r)`, `(+ 1 (* 2 3))`.
 - **`esh`** — a from-scratch D Unix shell with ~94 applets (awk, ls, cp, grep,
   find, dd, …) and an LFE REPL.
 - **BusyBox 1.36.1** — 381 applets on a hardened FHS tmpfs, fully interactive
@@ -374,9 +376,26 @@ anonymOS is honest about its gaps (each roadmap names them):
   in-kernel services work but are not yet demoted (the "honestly rootless"
   finish line).
 - **ratty Rust/GPU terminal** — blocked on a Rust musl toolchain + GPU stack.
+- **Full LFE native shell `-sh`** ([`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md),
+  L-series) — the native-personality Lisp shell is up to **L2**: a `-betterC` D evaluator in
+  `hos-sh` where object-ABI verbs are *composable* LFE functions (`(ns-enter (ns-clone))`,
+  `(+ 1 (* 2 3))`). The **full** upstream `-sh` — the complete LFE language (tuples/maps,
+  `defun`/`let`, pattern matching, macros — **L3**) and the capability/namespace/identity forms
+  (**L4**) — is gated on **toolchain work**, because upstream `-sh` is *full-D* (Phobos/druntime)
+  while only `-betterC` D builds for the OS today:
+  - a **musl-targeted D runtime** — build `druntime` + Phobos + the LLVM unwinder (`libunwind`)
+    for the OS's musl target so `ldc2` can link a full-D **static** binary (today
+    `ldc2 -mtriple=x86_64-linux-musl` on a full-D program fails with `cannot find -lunwind`, and
+    no musl druntime/Phobos is present). This is the analogue of the musl **C** toolchain that
+    already builds zsh/busybox.
+  - a **`libreadline` replacement** — upstream `-sh` links readline for line editing; wire its
+    input to the OS PTY line discipline instead (the `hos-sh`/`fgets` path, or a vendored
+    linenoise), since the OS ships no readline.
+  Until that lands `-sh` runs on the betterC evaluator; **L5** (the Domain Manager's *native
+  (-sh/LFE)* shell option) can ship on that, but the full language + rich forms need the runtime
+  port. The vendored upstream source + this decision live in [`deps/lfe-sh/`](deps/lfe-sh/VENDOR.md).
 - **Disposable identities, brokers, signed identity policy** (Identity M3/M4);
-  **zsh theme/plugin/secure-history/login flow** (Z7–Z12); **desktop settings
-  app, animations, multi-window workspaces** (G18–G21).
+  **desktop settings app, animations, multi-window workspaces** (G18–G21).
 
 ---
 

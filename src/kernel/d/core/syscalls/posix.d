@@ -6798,9 +6798,35 @@ public long linux_sys_rt_sigprocmask(ulong how, ulong nset, ulong oldset, ulong 
 public long linux_sys_rt_sigreturn() { return 0; }
 public long linux_sys_sigaltstack(ulong ss, ulong old_ss) { return 0; }
 
-// --- Kill / tgkill (stubs) ---
-public long linux_sys_kill(ulong pid, ulong sig)            { return 0; }
-public long linux_sys_tgkill(ulong tgid, ulong tid, ulong sig) { return 0; }
+// --- Kill / tgkill ---
+// POSIX kill(pid, 0) is an *existence probe* (no signal sent): it must return -ESRCH once the
+// target process is gone.  The previous stub always returned 0, which broke zsh's command-
+// substitution wait: zsh's waitforpid() loop is `while (kill(pid,0) >= 0 || errno != ESRCH)
+// { signal_suspend(SIGCHLD,...); }` (jobs.c) — designed to exit when the reaped $() child makes
+// kill(pid,0) report ESRCH.  With kill always 0 the loop never terminated, so after every
+// FORKING command (a $() / external in a sub-context) zsh spun in waitforpid, never returned to
+// its main loop, never re-engaged ZLE, and left the terminal in cooked mode with no next prompt
+// — the "$() hang".  Report real liveness instead; delivery of an actual signal stays a
+// best-effort no-op for a live target (the kernel models signal delivery elsewhere), but a dead
+// target always yields ESRCH so probe loops can terminate.  A reaped task's slot is reset to
+// Task.init by releaseTask() (active=false), so taskIdFromLinuxPid(pid) resolves it as not alive.
+public long linux_sys_kill(ulong pid, ulong sig) {
+    // POSIX kill(pid, sig): for liveness probes (sig==0) and real signals alike we
+    // model existence by the task slot.  A reaped/dead pid MUST return -ESRCH — zsh's
+    // waitforpid() loop `while (kill(pid,0) >= 0 || errno != ESRCH)` relies on it to
+    // terminate after a $()/cmdsubst child is reaped (otherwise it spins forever in
+    // signal_suspend()).  NOTE: this requires zsh to be built WITHOUT BROKEN_KILL_ESRCH
+    // (see deps/zsh/Makefile zsh_cv_sys_killesrch=yes) so its ESRCH is the real 3, not
+    // the EINVAL fallback that a stale "kill always returns 0" probe once hardcoded.
+    const int target = taskIdFromLinuxPid(cast(int)cast(long)pid);
+    const bool alive = (target > 0 && target < MAX_TASKS &&
+                        g_tasks[target].active && !g_tasks[target].exited);
+    if (!alive) return cast(long)(-3);  // -ESRCH: no such (live) process
+    return 0;                           // alive: existence probe ok / signal no-op
+}
+public long linux_sys_tgkill(ulong tgid, ulong tid, ulong sig) {
+    return linux_sys_kill(tid, sig);    // thread-group kill: same liveness semantics
+}
 public long linux_sys_tkill(ulong tid, ulong sig)           { return 0; }
 public long linux_sys_membarrier(ulong cmd, ulong flags, ulong cpu) {
     enum int MEMBARRIER_CMD_QUERY = 0;

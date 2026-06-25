@@ -80,6 +80,7 @@ $(ZSH_BIN): $(ZSH_TAR) $(NC_LIB) anon.c
 	  zsh_cv_sys_dynamic_clash_ok=yes zsh_cv_sys_dynamic_execsyms=yes \
 	  zsh_cv_sys_dynamic_rtld_global=yes \
 	  zsh_cv_sys_dynamic_strip_exe=no zsh_cv_sys_dynamic_strip_lib=no \
+	  zsh_cv_sys_killesrch=yes \
 	  ./configure --prefix=/system/shell/zsh \
 	    --enable-dynamic --disable-dynamic-nss --without-tcsetpgrp
 	$(MAKE) -C zsh-$(ZSH_VER)

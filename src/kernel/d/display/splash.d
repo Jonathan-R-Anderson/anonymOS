@@ -132,7 +132,7 @@ private void stepParticles(ref Canvas canvas, uint w, uint h, uint progress255, 
     // integrate motion by elapsed time (fixed-point: pos += vel * dt / 1000)
     foreach (i; 0 .. active)
     {
-        ref Particle p = g_particles[i];
+        Particle* p = &g_particles[i];   // (not `ref` — only params/foreach vars may be ref in D)
         p.x += p.vx * cast(int) dtMs / 1000;
         p.y += p.vy * cast(int) dtMs / 1000;
         const int w256 = cast(int) w * 256;

@@ -381,13 +381,22 @@ in both current shells today**, and the same data feeds the zsh theme later:
   is routed through a temp file + the `read` builtin (no capture pipe).  Computed once; `%~`/`%#`
   update live.  A foretaste of the Z7 theme reading identity natively.
 
-> **KNOWN BUG (found during Z6.1) — command substitution `$(cmd)` hangs.** Capturing a spawned
-> child's output via a pipe — `X=$(whoami)` — wedges the shell in **both** flavors (the parent's
-> pipe read never sees EOF; the child runs and the kernel's pipe `close`/EOF logic looks correct on
-> inspection, so it needs live tracing of the pipe writer refcount through fork/exec/exit).  Plain
-> pipes between children (`a | b`), redirects (`> f`), and `$(<file)`/`read < f` all work, so the
-> Z6.1 prompt and the Z5 translator are unaffected.  This is **fundamental for Z7/Z8/Z9** (themes,
-> completion, plugins all use `$()`), so it should be fixed before them — tracked as the next item.
+> **RESOLVED (commit 54c370e77) — command substitution `$(cmd)` hang.** Capturing a forked
+> child's output — `X=$(whoami)` — wedged the shell after the child was reaped.  The original
+> "pipe never sees EOF" hypothesis was **wrong**: the pipe closed fine.  Live kernel syscall
+> tracing (caller-tid + return value on `kill`/`sigsuspend`) showed zsh spinning in
+> `waitforpid()` (jobs.c), whose loop `while (kill(pid,0) >= 0 || errno != ESRCH) signal_suspend(...)`
+> is meant to exit once the reaped child makes `kill(pid,0)` return ESRCH.  **Two-part root cause:**
+> (1) the kernel's `linux_sys_kill` was a stub returning 0 for *any* pid, so the probe never saw
+> ESRCH; (2) more subtly, when zsh was first cross-compiled against *that* stub, its configure
+> probe `zsh_cv_sys_killesrch` set `BROKEN_KILL_ESRCH=1`, hardcoding `#define ESRCH EINVAL` (22) —
+> so even after the kernel was fixed to return real `-ESRCH` (3), zsh compared `errno != 22` and
+> the guard `3 != 22` was always true → infinite `signal_suspend()`/`pause()` spin (~150k EINTR/s),
+> ZLE never re-engaged, terminal stuck cooked.  **Fix:** `linux_sys_kill` now reports real liveness
+> (`-ESRCH` for a reaped/dead pid; `syscalls/posix.d`), AND zsh is rebuilt without
+> `BROKEN_KILL_ESRCH` (`deps/zsh/Makefile zsh_cv_sys_killesrch=yes`) so its ESRCH is the real 3.
+> Verified live: `echo A=$(whoami) B=$(echo hi)` → `A=user B=hi`, pipes + external commands work,
+> fresh prompt.  **Z7/Z8/Z9 (themes/completion/plugins, all of which use `$()`) are now unblocked.**
 
 ## Z7 — Theme engine · ☐ · P: Med · E: 3 · deps: Z5, Z6
 

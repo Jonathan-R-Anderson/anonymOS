@@ -761,10 +761,22 @@ friendly goal) without bolting POSIX onto the object model.
   `(countdown 3)` → `done` (defuns persist across REPL lines).  **Remaining polish:** maps,
   `defmacro`/quasiquote, and list comprehensions (the advanced ~15%) — not required for the
   programmable-Lisp milestone.
-- **L4 — capability/namespace/identity-aware forms · ☐ · E: 3 · deps: L2.** First-class forms
-  for the security model: `(identity)`/`(identity-switch …)`, `(namespace …)`, `(caps)`/
+- **L4 — capability/namespace/identity-aware forms · ✅ DONE · E: 3 · deps: L2.** First-class
+  forms for the security model: `(identity)`/`(identity-switch …)`, `(namespace …)`, `(caps)`/
   `(cap-derive …)` — the same fields the prompt shows, manipulable as LFE. All gated by the
   native-personality gate (§3) and the identity ceiling — `-sh` never bypasses the managers.
+  - **L4.1 — read forms (data)** · `(identity)` → a `#(user namespace caps)` tuple parsed from the
+    kernel whoami; `(namespace)` → the namespace atom; `(caps)` → the rights as a list of atoms;
+    `(cap-derive src rights)` → an alias for the attenuating `cap_grant`.  Pattern-matchable LFE.
+  - **L4.2 — `(identity-switch <name>)`** · a new GATED kernel verb (`HOSQ_ID_SWITCH`):
+    de-escalation-only (target identity trust ≤ current — never escalate), relabel the task's
+    identity, and attenuate its capabilities to the new (lower) rights-ceiling so existing caps
+    can't retain rights the new identity forbids.  **Verified live:** `(identity)` → `#(user System (fs:rw net:nat ipc exec admin))`,
+    `(caps)` → `(fs:rw net:nat ipc exec admin)`; `(identity-switch Personal)` → `0` then `(identity)`
+    → `#(user Personal (fs:rw net:nat ipc exec))` (**`admin` dropped** by the cap attenuation, prompt
+    relabels to `user@Personal`); `(identity-switch System)` → `-1` (escalation back DENIED, trust
+    100 > 50, kernel logged one `[id-switch … trust=0x32]` only); `(case (identity) ((tuple u n c) n))`
+    → `Personal` (the security model is pattern-matchable LFE data).
 - **L5 — make `-sh` the native shell · ☐ · E: 2 · deps: L3.** The Domain Manager's per-domain
   Shell control offers **linux (zsh)** / **native (`-sh`/LFE)**; `wl-term` (then ratty)
   launches whichever on the PTY. The native shell's prompt already shows the four fields

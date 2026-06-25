@@ -45,6 +45,7 @@ enum long HOSQ_RECV       = 19;  // Z4b.4: object_recv(chan_fd, dst, n) -> bytes
 enum long HOSQ_CAP_GRANT  = 20;  // Z4c.3: cap_grant(srcHandle, wantRights) -> newHandle/-errno
 enum long HOSQ_NS_CLONE   = 21;  // Z4c.3: namespace_clone() -> nsObjId/-errno
 enum long HOSQ_NS_ENTER   = 22;  // Z4c.3: namespace_enter(nsObjId) -> 0/-errno
+enum long HOSQ_ID_SWITCH  = 23;  // L4.2: identity_switch(name) -> 0/-errno (de-escalation only)
 enum long CAP_RIGHT_READ_V = 1;  // CAP_RIGHT_READ = bit 0
 enum long SIG_CHLD_BIT = 1 << 17, SIG_INT_BIT = 1 << 2;  // §6 event bits (SIGCHLD / SIGINT)
 
@@ -73,6 +74,7 @@ void help() @nogc nothrow {
     printf("  lists    (car L) (cdr L) (cons h t) (length L) (++ a b)   tuples (element i T)\n");
     printf("  arith    (+ - * /)    compare (== /= < > >= =<)\n");
     printf("  objects  (obj) (id) (ns) (svc) (sys) (whoami)    (ns-clone) (ns-enter id) (cap-grant h r)\n");
+    printf("  security (identity)=>#(user ns caps)  (namespace)  (caps)  (cap-derive h r)  (identity-switch \"Name\")\n");
     printf("  shell    (cat \"/p\")  (cd \"/p\")  (print x)  (reset)  (exit)\n");
 }
 
@@ -256,6 +258,35 @@ const(char)* cstrCell(int c) @nogc nothrow {
 }
 int whoCell() @nogc nothrow { const int l=cast(int)strlen(g_who.ptr); return mkStr(internRange(g_who.ptr, l), l); }
 
+// L4.1 — the security model as LFE data.  The i-th element of a tuple (1-based).
+int tupleElem(int t, long ix) @nogc nothrow {
+    if (g_cells[t].t != CT.Tuple) return NIL;
+    int e=g_cells[t].a; long k=1;
+    while (e!=NIL && g_cells[e].t==CT.Cons) { if (k==ix) return g_cells[e].a; ++k; e=g_cells[e].d; }
+    return NIL;
+}
+// Parse the kernel whoami line "user@namespace [perms]" into a #(user namespace caps) tuple
+// (user/namespace atoms, caps a list of atoms).  Re-queried each call so it reflects (identity-switch).
+int buildIdentity() @nogc nothrow {
+    loadWho();
+    const(char)* w = g_who.ptr; const int len = cast(int)strlen(w);
+    int at=-1, br=-1, brEnd=-1;
+    for (int i=0;i<len;++i){ const char c=w[i]; if(c=='@'&&at<0) at=i; else if(c=='['&&br<0) br=i; else if(c==']') brEnd=i; }
+    const int uEnd=(at>=0)?at:len;
+    const int uAtom = mkAtom(internRange(w, uEnd), uEnd);
+    const int nsStart=(at>=0)?at+1:0; int nsEnd=nsStart;
+    while (nsEnd<len && w[nsEnd]!=' ' && w[nsEnd]!='[') ++nsEnd;
+    const int nsAtom = mkAtom(internRange(w+nsStart, nsEnd-nsStart), nsEnd-nsStart);
+    int caps=NIL, last=NIL;
+    if (br>=0 && brEnd>br) { int p=br+1;
+        while (p<brEnd) { while (p<brEnd && w[p]==' ') ++p; const int s=p; while (p<brEnd && w[p]!=' ') ++p;
+            if (p>s) { const int cc=mkCons(mkAtom(internRange(w+s,p-s), p-s), NIL);
+                if (caps==NIL) caps=cc; else g_cells[last].d=cc; last=cc; } } }
+    const int t = allocCell(CT.Tuple);
+    g_cells[t].a = mkCons(uAtom, mkCons(nsAtom, mkCons(caps, NIL))); g_cells[t].i = 3;
+    return t;
+}
+
 // ── evaluator ───────────────────────────────────────────────────────────────────────────────
 int eval(int nd, int env) @nogc nothrow {
     if (nd < 0) return NIL;
@@ -430,6 +461,13 @@ int evalList(int nd, int env) @nogc nothrow {
         if (symEqA(ho,hl,"ns-enter")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, asInt(eval(a0,env)), 0, 0));
         if (symEqA(ho,hl,"cap-grant")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, asInt(eval(a0,env)), asInt(eval(a1,env)), 0));
         if (symEqA(ho,hl,"subscribe")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, asInt(eval(a0,env)), 0, 0));
+
+        // L4 — the security model as first-class forms (the prompt's fields, manipulable as LFE)
+        if (symEqA(ho,hl,"identity"))  return buildIdentity();                       // #(user ns caps)
+        if (symEqA(ho,hl,"namespace")) return tupleElem(buildIdentity(), 2);         // my namespace atom
+        if (symEqA(ho,hl,"caps"))      return tupleElem(buildIdentity(), 3);         // my rights, a list of atoms
+        if (symEqA(ho,hl,"cap-derive")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, asInt(eval(a0,env)), asInt(eval(a1,env)), 0));
+        if (symEqA(ho,hl,"identity-switch")) return mkInt(syscall(HOS_SYS_QUERY, HOSQ_ID_SWITCH, 0, cast(long)cstrCell(eval(a0,env)), 0));
 
         // shell side-effects
         if (symEqA(ho,hl,"print")) { int ai=a0; while(ai>=0){ printCell(eval(ai,env)); printf("\n"); ai=g_nodes[ai].next; } fflush(stdout); return NIL; }

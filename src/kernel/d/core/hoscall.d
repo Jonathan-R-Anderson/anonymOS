@@ -15,7 +15,7 @@
 module core.hoscall;
 
 import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
-import core.identity : g_identities, identityCount, identityById, NetPolicy;
+import core.identity : g_identities, identityCount, identityById, identityByName, IdentityId, NetPolicy;  // +L4.2
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
@@ -70,6 +70,8 @@ enum : ulong {
     HOSQ_CAP_GRANT  = 20,  // cap_grant(arg=srcHandle, buf=wantRights) -> newHandle / -errno
     HOSQ_NS_CLONE   = 21,  // namespace_clone() -> nsObjId / -errno
     HOSQ_NS_ENTER   = 22,  // namespace_enter(arg=nsObjId) -> 0 / -errno (owned namespaces only)
+    // L4.2 — identity_switch(buf=name): de-escalation-only (target trust <= current) + cap attenuation.
+    HOSQ_ID_SWITCH  = 23,  // identity_switch(buf=name) -> 0 / -errno
 }
 
 // Z4b.3 / Z4c.3 per-task state for the native mutation verbs.
@@ -165,6 +167,30 @@ private long hosNsEnter(ulong nsObjId) @nogc nothrow {
         nsRecByObj(cast(uint)nsObjId) is null) return -1;
     g_tasks[tid].namespaceObjId = cast(uint)nsObjId;
     klog("[ns-enter tid="); klog_hex(cast(ulong)tid); klog(" ns="); klog_hex(nsObjId); klog("]\n");
+    return 0;
+}
+
+// L4.2 — identity_switch(name): relabel the calling task's identity domain.  DE-ESCALATION ONLY —
+// the target identity's trust must be <= the caller's current trust (you may drop privilege, never
+// gain it; an unknown name is denied).  On success the task's rights-ceiling drops to the target's,
+// and its capabilities are attenuated to that ceiling so no existing cap retains a right the new
+// identity forbids.  Like every native verb this is already behind the native-personality gate.
+private long hosIdSwitch(ulong namePtr) @nogc nothrow {
+    if (namePtr == 0) return -14;                              // -EFAULT
+    const int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return -1;
+    auto cur = identityById(g_tasks[tid].identityObjId);
+    if (cur is null) return -1;                                // -EPERM: no current identity
+    const IdentityId target = identityByName(cast(const(char)*)namePtr);
+    if (target == 0) return -2;                                // -ENOENT: no such identity
+    auto te = identityById(target);
+    if (te is null) return -2;
+    if (te.trust > cur.trust) return -1;                       // -EPERM: never escalate trust
+    g_tasks[tid].identityObjId = target;                       // relabel
+    const uint newCeiling = te.rightsCeiling;
+    for (uint h = 1; h < CAP_MAX; ++h) { auto c = capGet(h); if (c !is null && c.objId != 0) c.rights &= newCeiling; }
+    klog("[id-switch tid="); klog_hex(cast(ulong)tid); klog(" -> objId="); klog_hex(cast(ulong)target);
+    klog(" trust="); klog_hex(cast(ulong)te.trust); klog(" ceiling="); klog_hex(cast(ulong)newCeiling); klog("]\n");
     return 0;
 }
 
@@ -564,6 +590,7 @@ public long hosQuery(ulong op, ulong arg, ulong buf, ulong buflen) {
         case HOSQ_CAP_GRANT: return hosCapGrant(arg, buf);       // Z4c.3: attenuating cap grant
         case HOSQ_NS_CLONE:  return hosNsClone();                // Z4c.3: clone the caller's namespace
         case HOSQ_NS_ENTER:  return hosNsEnter(arg);             // Z4c.3: enter an owned namespace
+        case HOSQ_ID_SWITCH: return hosIdSwitch(buf);            // L4.2: gated identity de-escalation
         default: break;
     }
 

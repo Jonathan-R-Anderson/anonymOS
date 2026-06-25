@@ -326,7 +326,7 @@ commands, plus env/cap/namespace passing on spawn.  Tracked sub-steps:
   zsh C module (builtin table calling HOSQ in-process) rather than the helper+functions of
   Z4c.1 — a fuller-integration refinement.
 
-## Z5 — Configuration system · ◐ (core ✅) · P: Med · E: 3 · deps: Z1
+## Z5 — Configuration system · ✅ DONE · P: Med · E: 3 · deps: Z1
 
 Make the declarative `shell.json` the **source of truth** for the user-facing shell config —
 today it is seeded at `/etc/shell.json` but nothing reads it (the zshrc settings are
@@ -398,7 +398,7 @@ in both current shells today**, and the same data feeds the zsh theme later:
 > Verified live: `echo A=$(whoami) B=$(echo hi)` → `A=user B=hi`, pipes + external commands work,
 > fresh prompt.  **Z7/Z8/Z9 (themes/completion/plugins, all of which use `$()`) are now unblocked.**
 
-## Z7 — Theme engine · ✅ DONE (core; Nerd-glyph *rendering* follow-up) · P: Med · E: 3 · deps: Z5, Z6
+## Z7 — Theme engine · ✅ DONE · P: Med · E: 3 · deps: Z5, Z6
 
 - Oh-My-Zsh-style themes under `themes/`; ship `themes/anonymos.zsh-theme` with the
   multi-line layout (identity/namespace/capabilities/git/object/exit-status/exec-time).
@@ -425,7 +425,7 @@ in both current shells today**, and the same data feeds the zsh theme later:
   (user `~/.zsh/themes/` overrides). The theme reads `EPIN_DOMAIN_COLOR` (0xAARRGGBB → `\e[38;2;R;G;Bm`)
   so the namespace text matches the unspoofable window border.
 
-## Z8 — Completion engine · ✅ DONE (core) · P: Med · E: 3 · deps: Z2, Z5
+## Z8 — Completion engine · ✅ DONE · P: Med · E: 3 · deps: Z2, Z5
 
 - Upstream zsh completion + AnonymOS extensions (`_objctl`, `_identityctl`, `_nsctl`,
   `_capctl`, `_servicectl`, `_packagectl`): complete objects, capabilities, namespaces,
@@ -489,7 +489,7 @@ in both current shells today**, and the same data feeds the zsh theme later:
   runtime files, packs to `/system/shell/zsh/plugins/<plugin>/…` (paths preserved, unlike the
   flattened Z8 functions) → `zshplugins.blob`, unpacked at boot by `rtUnpackAssetBlob`.
 
-## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ◑ · P: Med · E: 3 · deps: Z5, Z7, Z9
+## Z9b — Oh My Zsh + Powerlevel ("over 9000") · ✅ DONE · P: Med · E: 3 · deps: Z5, Z7, Z9
 
 **Sub-steps (in progress):**
 - **Z9b.1 — vendor Oh My Zsh (subset) + Powerlevel9k.** Fetch + pin OMZ (master) and Powerlevel9k
@@ -545,7 +545,7 @@ the frameworks (no network at runtime) and wire them to the AnonymOS prompt data
   vendored).
 - *Deliverables 8/10/11 (theme/plugin/completion) realized as the familiar OMZ experience.*
 
-## Z10 — History (incl. secure) · ◑ · P: Med · E: 2 · deps: Z1
+## Z10 — History (incl. secure) · ✅ DONE · P: Med · E: 2 · deps: Z1
 
 - Persistent shared history (`fc`, `Ctrl-R`). **Per identity / per namespace / per
   disposable** history files, encrypted when `shell.json` requests it (over the existing

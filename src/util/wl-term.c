@@ -635,9 +635,9 @@ static void term_notice(struct app *a, const char *l1, const char *l2, const cha
 }
 
 static int spawn_shell(struct app *a) {
-    // IDENTITY_DOMAIN: honor the requested shell flavor. "linux" = busybox (Linux
-    // personality), "native" = the EpinAnonymOS object shell (/hos-sh, Track B),
-    // "windows" = not implemented (notice).
+    // IDENTITY_DOMAIN: honor the requested shell flavor (Z11).  Both run real zsh now:
+    // "linux" = zsh in the Linux personality (/bin/zsh), "native" = zsh in the native
+    // personality (/hos-zsh, the object shell); "windows" = not implemented (notice).
     const char *flavor = getenv("EPIN_SHELL");
     const int is_native = (flavor && strcmp(flavor, "native") == 0);
     if (flavor && *flavor && strcmp(flavor, "linux") != 0 && !is_native) {

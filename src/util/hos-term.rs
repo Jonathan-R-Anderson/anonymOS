@@ -105,7 +105,8 @@ struct Wl {
     next_id: u32,
     // bound singletons
     compositor: u32, shm: u32, wm_base: u32, seat: u32,
-    surface: u32, xdg_surface: u32, xdg_toplevel: u32, keyboard: u32,
+    surface: u32, xdg_surface: u32, xdg_toplevel: u32, keyboard: u32, pointer: u32,
+    ptr_x: i32, ptr_y: i32,
     // shm — double-buffered (one pool, two buffers) so we always have a free buffer to render
     // into while the compositor holds the other; the buffer.release event ping-pongs them.
     buffers: [u32; 2], maps: [*mut u8; 2], busy: [bool; 2],
@@ -150,9 +151,15 @@ fn bind_arg(name: u32, iface: &str, version: u32, new_id: u32) -> Vec<u8> {
 
 // ---- the terminal grid + VT parser -----------------------------------------------------------
 const COLS: usize = 80;
-const ROWS: usize = 24;
-const CELL: i32 = 16;      // 8x8 font scaled 2x
-const SCALE: i32 = 2;
+const ROWS: usize = 30;
+const SCALE_X: i32 = 1;            // 8x8 font at native width
+const SCALE_Y: i32 = 2;            // doubled height -> 8x16 cells (a normal terminal aspect)
+const CELL_W: i32 = 8 * SCALE_X;   // 8
+const CELL_H: i32 = 8 * SCALE_Y;   // 16  -> grid 640x480 (a clean 4:3 / 80x30 window)
+const TITLE_H: i32 = 26;           // client-side decoration titlebar height
+const TITLE_BG: u32 = 0xff_2a2f3a;
+const TITLE_FG: u32 = 0xff_f2f2f2;
+const CLOSE_BG: u32 = 0xff_c0392b;
 
 #[derive(Clone, Copy)]
 struct Cell { ch: u8, fg: u32, bg: u32 }
@@ -301,35 +308,66 @@ fn special_seq(code: u32) -> Option<&'static [u8]> {
 }
 
 // ---- the renderer: blit the grid into the SHM map -------------------------------------------
+fn fill_rect(px: &mut [u32], pitch: usize, height: i32, x0: i32, y0: i32, w: i32, h: i32, color: u32) {
+    for yy in y0..(y0 + h) {
+        if yy < 0 || yy >= height { continue; }
+        for xx in x0..(x0 + w) {
+            if xx < 0 || (xx as usize) >= pitch { continue; }
+            px[yy as usize * pitch + xx as usize] = color;
+        }
+    }
+}
+
+// Blit one 8x8 glyph at (x0,y0) scaled by (sx,sy). `fill_bg` paints the off pixels too (for the
+// terminal grid, where each cell owns its background); titlebar text leaves the bg as-is.
+fn blit_char(px: &mut [u32], pitch: usize, height: i32, x0: i32, y0: i32, ch: u8,
+             fg: u32, bg: u32, sx: i32, sy: i32, fill_bg: bool) {
+    let glyph = if ch >= 32 && ch <= 126 { FONT8X8[(ch - 32) as usize] } else { FONT8X8[0] };
+    for gy in 0..8i32 {
+        let row = glyph[gy as usize];
+        for gx in 0..8i32 {
+            // this font stores the leftmost pixel in bit 0 (LSB), so shift by gx (not 7-gx)
+            let on = (row >> gx) & 1 != 0;
+            if !on && !fill_bg { continue; }
+            let color = if on { fg } else { bg };
+            for syy in 0..sy {
+                for sxx in 0..sx {
+                    let xx = x0 + gx * sx + sxx;
+                    let yy = y0 + gy * sy + syy;
+                    if xx >= 0 && yy >= 0 && (xx as usize) < pitch && yy < height {
+                        px[yy as usize * pitch + xx as usize] = color;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn render(map: *mut u8, width: i32, height: i32, t: &Term) {
     if map.is_null() { return; }
     let pitch = width as usize;
     let px = unsafe { core::slice::from_raw_parts_mut(map as *mut u32, (width * height) as usize) };
+    // --- client-side titlebar (Weston has no server-side decorations) ---
+    fill_rect(px, pitch, height, 0, 0, width, TITLE_H, TITLE_BG);
+    let title = b"AnonymOS Terminal  (Rust / hos-term)";
+    let ty = (TITLE_H - 16) / 2;
+    for (i, &c) in title.iter().enumerate() {
+        blit_char(px, pitch, height, 6 + i as i32 * 8, ty, c, TITLE_FG, TITLE_BG, 1, 2, false);
+    }
+    // close button: a red square with an X at the top-right
+    let cb_x = width - TITLE_H;
+    fill_rect(px, pitch, height, cb_x, 0, TITLE_H, TITLE_H, CLOSE_BG);
+    blit_char(px, pitch, height, cb_x + (TITLE_H - 16) / 2, (TITLE_H - 16) / 2, b'x',
+              0xff_ffffff, CLOSE_BG, 2, 2, false);
+    // --- terminal grid, offset below the titlebar ---
     for ry in 0..ROWS {
         for rx in 0..COLS {
             let cell = t.grid[ry][rx];
             let cursor = rx == t.cx && ry == t.cy;
             let (fg, bg) = if cursor { (cell.bg, cell.fg) } else { (cell.fg, cell.bg) };
-            let glyph = if cell.ch >= 32 && cell.ch <= 126 { FONT8X8[(cell.ch - 32) as usize] } else { FONT8X8[0] };
-            let ox = rx as i32 * CELL;
-            let oy = ry as i32 * CELL;
-            for gy in 0..8i32 {
-                let row = glyph[gy as usize];
-                for gx in 0..8i32 {
-                    // this font stores the leftmost pixel in bit 0 (LSB), so shift by gx (not 7-gx)
-                    let on = (row >> gx) & 1 != 0;
-                    let color = if on { fg } else { bg };
-                    for sy in 0..SCALE {
-                        for sx in 0..SCALE {
-                            let xx = ox + gx * SCALE + sx;
-                            let yy = oy + gy * SCALE + sy;
-                            if xx >= 0 && yy >= 0 && (xx as usize) < pitch && yy < height {
-                                px[yy as usize * pitch + xx as usize] = color;
-                            }
-                        }
-                    }
-                }
-            }
+            let ox = rx as i32 * CELL_W;
+            let oy = TITLE_H + ry as i32 * CELL_H;
+            blit_char(px, pitch, height, ox, oy, cell.ch, fg, bg, SCALE_X, SCALE_Y, true);
         }
     }
 }
@@ -416,6 +454,34 @@ fn handle(wl: &mut Wl, t: &mut Term, obj: u32, opcode: u16, body: &[u8]) {
             let mut b = Vec::new(); put_u32(&mut b, wl.keyboard);
             wl.send(&msg(wl.seat, WL_SEAT_GET_KEYBOARD, &b));
         }
+        if caps & 1 != 0 && wl.pointer == 0 { // WL_SEAT_CAPABILITY_POINTER -> for the titlebar
+            wl.pointer = wl.alloc();
+            let mut b = Vec::new(); put_u32(&mut b, wl.pointer);
+            wl.send(&msg(wl.seat, 0, &b)); // wl_seat.get_pointer = req 0
+        }
+        return;
+    }
+    // wl_pointer: enter=0, leave=1, motion=2, button=3 — drive the titlebar (close + drag-move)
+    if obj == wl.pointer {
+        match opcode {
+            0 => { wl.ptr_x = (read_u32(body, 8) as i32) / 256; wl.ptr_y = (read_u32(body, 12) as i32) / 256; }
+            2 => { wl.ptr_x = (read_u32(body, 4) as i32) / 256; wl.ptr_y = (read_u32(body, 8) as i32) / 256; }
+            3 => {
+                let serial = read_u32(body, 0);
+                let btn = read_u32(body, 8);
+                let st = read_u32(body, 12);
+                if btn == 0x110 && st == 1 { // BTN_LEFT pressed
+                    if wl.ptr_y < TITLE_H && wl.ptr_x >= wl.width - TITLE_H {
+                        wl.closed = true;                 // close button
+                    } else if wl.ptr_y < TITLE_H {
+                        // drag-move: xdg_toplevel.move(seat, serial) = req 5
+                        let mut b = Vec::new(); put_u32(&mut b, wl.seat); put_u32(&mut b, serial);
+                        wl.send(&msg(wl.xdg_toplevel, 5, &b));
+                    }
+                }
+            }
+            _ => {}
+        }
         return;
     }
     // wl_keyboard.key(serial, time, key, state) = event 3
@@ -487,8 +553,11 @@ fn spawn_shell(width: i32, height: i32) -> i32 {
         let ws = WinSz { row: ROWS as u16, col: COLS as u16, xp: width as u16, yp: height as u16 };
         ioctl(m, 0x5414, &ws as *const _ as i64); // TIOCSWINSZ
 
-        // env + argv built BEFORE fork (no allocation in the child)
-        let path = cstr("/bin/zsh");
+        // env + argv built BEFORE fork (no allocation in the child).  Honor the domain's chosen
+        // Shell (EPIN_SHELL, set by the Domain Manager) exactly like wl-term: native -> /hos-zsh
+        // (zsh + LFE in the native personality), otherwise the confined Linux /bin/zsh.
+        let native = std::env::var("EPIN_SHELL").map(|v| v == "native").unwrap_or(false);
+        let path = cstr(if native { "/hos-zsh" } else { "/bin/zsh" });
         let arg0 = cstr("-zsh");
         let argv: [*const u8; 2] = [arg0.as_ptr(), core::ptr::null()];
         let mut envp_storage: Vec<Vec<u8>> = Vec::new();
@@ -512,6 +581,12 @@ fn spawn_shell(width: i32, height: i32) -> i32 {
             sys3(SYS_DUP2, slave as i64, 1, 0);
             sys3(SYS_DUP2, slave as i64, 2, 0);
             if slave > 2 { close(slave); }
+            // Close every inherited fd above stderr — the Wayland socket and the shm memfd in
+            // particular.  Otherwise the shell keeps a reference to the compositor connection, so
+            // when we exit the socket is NOT fully closed, Weston never sees peerClosed, and the
+            // window lingers on screen (the refcount-aware close-repaint trap).
+            let mut fd = 3;
+            while fd < 256 { close(fd); fd += 1; }
             sys6(SYS_EXECVE, path.as_ptr() as i64, argv.as_ptr() as i64, envp.as_ptr() as i64, 0, 0, 0);
             sys3(SYS_WRITE, 2, b"hos-term: execve failed\n".as_ptr() as i64, 24);
             sys3(60, 127, 0, 0); // exit
@@ -576,9 +651,10 @@ fn main() {
     let mut wl = Wl {
         sock, next_id: 2,
         compositor: 0, shm: 0, wm_base: 0, seat: 0,
-        surface: 0, xdg_surface: 0, xdg_toplevel: 0, keyboard: 0,
+        surface: 0, xdg_surface: 0, xdg_toplevel: 0, keyboard: 0, pointer: 0,
+        ptr_x: 0, ptr_y: 0,
         buffers: [0, 0], maps: [core::ptr::null_mut(); 2], busy: [false, false],
-        map_len: 0, width: (COLS as i32) * CELL, height: (ROWS as i32) * CELL,
+        map_len: 0, width: (COLS as i32) * CELL_W, height: TITLE_H + (ROWS as i32) * CELL_H,
         configured: false, closed: false,
         shift: false, ctrl: false, ptm: -1,
         rbuf: Vec::with_capacity(8192),
@@ -612,7 +688,7 @@ fn main() {
     wl.send(&msg(wl.surface, WL_SURFACE_COMMIT, &[]));
 
     make_buffer(&mut wl);
-    wl.ptm = spawn_shell(wl.width, wl.height);
+    wl.ptm = spawn_shell(wl.width, (ROWS as i32) * CELL_H); // grid pixels, excluding titlebar
     if wl.ptm < 0 { return; }
 
     unsafe { write(1, b"hos-term: up (Rust CPU/SHM terminal hosting zsh)\n"); }

@@ -64,7 +64,7 @@ enum {
     PILL_H  = 28,
     CTL_H   = 42,
     RY0     = HEADER_H + 54,   // first control row y
-    N_CTL   = 6,              // cyclable control rows
+    N_CTL   = 7,              // cyclable control rows (Memory…Shell + Terminal)
 };
 
 // --- option tables --------------------------------------------------------
@@ -92,6 +92,13 @@ enum { SH_LINUX, SH_WINDOWS, SH_NATIVE, SH_N };
 static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (zsh+LFE)"};
 static const char *SHELL_ENV[] = {"linux","windows","native"};
 
+// R1: which terminal *emulator* "Launch Terminal" runs — the C wl-term (default) or the Rust
+// hos-term (ratty-cpu).  Both host the chosen Shell (EPIN_SHELL); this picks the emulator, not the
+// shell.  (Replaces the SUPER+R keybind: the terminal is selected here, per the domain.)
+enum { TERM_WL, TERM_HOS, TERM_N };
+static const char *TERM_LBL[] = {"Default (wl-term)", "Rust (hos-term)"};
+static const char *TERM_BIN[] = {"/wl-term", "/hos-term"};
+
 struct domain {
     const char *name;
     uint32_t    color;   // 0xAARRGGBB — mirrors the kernel IdentityRec.color
@@ -113,6 +120,7 @@ struct dconf {
     int secure_ipc;          // 0/1
     int shell;
     int dev_cam, dev_mic, dev_usb;
+    int term;                // TERM_WL / TERM_HOS — the terminal emulator to launch
 };
 
 // Per-domain defaults (Qubes-like: higher trust = tighter, banking locked down).
@@ -262,7 +270,7 @@ static void draw_text(struct app *app, const char *text, int x, int y, int max_w
 // --- control model --------------------------------------------------------
 
 static const char *CTL_LABEL[N_CTL] = {
-    "Memory cap", "Disk access", "Network", "Clipboard", "Secure IPC", "Shell"
+    "Memory cap", "Disk access", "Network", "Clipboard", "Secure IPC", "Shell", "Terminal"
 };
 
 static void ctl_value(const struct dconf *c, int i, char *out, size_t n)
@@ -274,6 +282,7 @@ static void ctl_value(const struct dconf *c, int i, char *out, size_t n)
         case 3: snprintf(out, n, "%s", CLIP_LBL[c->clip]); break;
         case 4: snprintf(out, n, "%s", c->secure_ipc ? "Required" : "Optional"); break;
         case 5: snprintf(out, n, "%s", SHELL_LBL[c->shell]); break;
+        case 6: snprintf(out, n, "%s", TERM_LBL[c->term]); break;
         default: out[0] = 0;
     }
 }
@@ -287,19 +296,20 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
         case 3: c->clip = (c->clip + CLIP_N + dir) % CLIP_N; break;
         case 4: c->secure_ipc ^= 1; break;
         case 5: c->shell = (c->shell + SH_N + dir) % SH_N; break;
+        case 6: c->term  = (c->term  + TERM_N + dir) % TERM_N; break;
     }
 }
 
 // Geometry of the two launch buttons and three device chips (shared by draw + hit).
 static void launch_btn_rect(int idx, int *x, int *y, int *w, int *h)
 {
-    *y = RY0 + 7 * CTL_H + 8; *h = 38;
+    *y = RY0 + (N_CTL + 1) * CTL_H + 8; *h = 38;
     if (idx == 0) { *x = LABEL_X; *w = 200; }
     else          { *x = LABEL_X + 214; *w = 170; }
 }
 static void dev_chip_rect(int idx, int *x, int *y, int *w, int *h)
 {
-    *y = RY0 + 6 * CTL_H + (CTL_H - 26) / 2; *h = 26; *w = 78;
+    *y = RY0 + N_CTL * CTL_H + (CTL_H - 26) / 2; *h = 26; *w = 78;
     *x = PILL_X + idx * (78 + 8);
 }
 
@@ -373,6 +383,7 @@ static void draw_manager(struct app *app)
         // a little colored marker for Secure-IPC-required / shell-unavailable states
         if (i == 4 && c->secure_ipc) { cairo_set_source_rgb(cr, 0.30, 0.78, 0.45); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
         if (i == 5 && c->shell != SH_LINUX) { cairo_set_source_rgb(cr, 0.92, 0.55, 0.20); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
+        if (i == 6 && c->term  != TERM_WL)  { cairo_set_source_rgb(cr, 0.40, 0.62, 0.95); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
         // row separator
         cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);
         cairo_rectangle(cr, LABEL_X, ry + CTL_H - 1, app->width - LABEL_X - PAD, 1); cairo_fill(cr);
@@ -380,7 +391,7 @@ static void draw_manager(struct app *app)
 
     // Devices row: three toggle chips.
     {
-        int ry = RY0 + 6 * CTL_H;
+        int ry = RY0 + N_CTL * CTL_H;
         cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);
         cairo_rectangle(cr, LABEL_X, ry + CTL_H - 1, app->width - LABEL_X - PAD, 1); cairo_fill(cr);
         int on[3] = {c->dev_cam, c->dev_mic, c->dev_usb};
@@ -434,13 +445,13 @@ static void draw_manager(struct app *app)
         int ry = RY0 + i * CTL_H;
         draw_text(app, CTL_LABEL[i], LABEL_X, ry + (CTL_H - 14) / 2, 170, 14, 0xffb7c1d0u);
         char val[48]; ctl_value(cc, i, val, sizeof(val));
-        int vx = PILL_X + ((i == 4 && cc->secure_ipc) || (i == 5 && cc->shell != SH_LINUX) ? 24 : 14);
+        int vx = PILL_X + ((i == 4 && cc->secure_ipc) || (i == 5 && cc->shell != SH_LINUX) || (i == 6 && cc->term != TERM_WL) ? 24 : 14);
         draw_text(app, val, vx, ry + (CTL_H - 14) / 2, PILL_W - 28, 14, 0xfff2f5fau);
     }
 
     // Devices row text.
     {
-        int ry = RY0 + 6 * CTL_H;
+        int ry = RY0 + N_CTL * CTL_H;
         draw_text(app, "Devices", LABEL_X, ry + (CTL_H - 14) / 2, 170, 14, 0xffb7c1d0u);
         const char *names[3] = {"Camera", "Mic", "USB"};
         int on[3] = {cc->dev_cam, cc->dev_mic, cc->dev_usb};
@@ -587,7 +598,7 @@ static void handle_click(struct app *app)
     }
     // Device chips.
     {
-        int ry = RY0 + 6 * CTL_H;
+        int ry = RY0 + N_CTL * CTL_H;
         if (y >= ry && y < ry + CTL_H) {
             for (int k = 0; k < 3; k++) {
                 int bx, by, bw, bh; dev_chip_rect(k, &bx, &by, &bw, &bh);
@@ -605,7 +616,7 @@ static void handle_click(struct app *app)
     for (int b = 0; b < 2; b++) {
         int bx, by, bw, bh; launch_btn_rect(b, &bx, &by, &bw, &bh);
         if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
-            launch_app(app, b == 0 ? "/wl-term" : "/wl-files");
+            launch_app(app, b == 0 ? TERM_BIN[app->cfg[app->sel].term] : "/wl-files");
             redraw_commit(app, "launch");
             return;
         }
@@ -653,7 +664,7 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     // Up=103 Down=108 Enter=28 Esc=1.
     if (key == 108 && app->sel < N_DOMAINS - 1) { app->sel++; redraw_commit(app, "key"); }
     else if (key == 103 && app->sel > 0)        { app->sel--; redraw_commit(app, "key"); }
-    else if (key == 28)                         { launch_app(app, "/wl-term"); }
+    else if (key == 28)                         { launch_app(app, TERM_BIN[app->cfg[app->sel].term]); }
     else if (key == 1)                          { app->running = 0; }
 }
 static void kb_mods(void *d, struct wl_keyboard *k, uint32_t s, uint32_t dep, uint32_t la, uint32_t lo, uint32_t grp) { (void)d; (void)k; (void)s; (void)dep; (void)la; (void)lo; (void)grp; }

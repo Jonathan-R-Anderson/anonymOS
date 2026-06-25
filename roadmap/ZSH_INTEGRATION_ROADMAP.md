@@ -730,11 +730,23 @@ friendly goal) without bolting POSIX onto the object model.
     to L2 (an `ldc2` **musl** target + Phobos/druntime; **libreadline → OS PTY line input**; the
     object-ABI forms wired to `HOS_SYS_QUERY` behind the native-personality gate; staged at
     `/system/shell/-sh/`).  Full rationale in [deps/lfe-sh/VENDOR.md].
-- **L2 — evaluator + builtins as LFE functions · ☐ · E: 4 · deps: L1.** The object commands
-  become LFE functions over the native ABI: `(objects)` → `object_enumerate`, `(cap-grant cap
-  proc)` → `cap_grant`, `(ns-bind ns path obj rights)` → `namespace_bind`, `(spawn manifest)`
-  → `spawn_process`. Forms evaluate to data (lists/tuples) that further forms consume —
-  pipelines as composition, not text streams.
+- **L2 — evaluator + builtins as LFE functions · ✅ DONE · E: 4 · deps: L1.** The object commands
+  are LFE functions over the native ABI, and **forms evaluate to data that further forms consume**
+  (composition, not text streams).  `hos-sh` grew from the L0 form-*reader* (`lfeNormalize`) into a
+  real **evaluator** (`src/util/hos-sh.d`): an s-expression parses to an AST (a fixed betterC node
+  pool) and evaluates to a tagged value — `(obj)`/`(id)`/`(ns)`/`(svc)`/`(sys)`/`(whoami)` →
+  `HOS_SYS_QUERY` enumeration **as data**; `(ns-clone)`/`(ns-enter <id>)`/`(cap-grant <h> <r>)`/
+  `(subscribe <ev>)` → the Z4 native verbs returning the id/handle/status; `(+ - * /)` arithmetic;
+  `(cat …)`/`(cd …)`/`(print …)`/`(help)`/`(exit)`.  **Verified live:** `(ns-clone)` → `2193`,
+  `(cap-grant 1 1)` → `32`, `(obj)` → the object table, and the headline composition
+  **`(ns-enter (ns-clone))` → `0`** — the kernel logged `[ns-clone … -> 0x892]` then `[ns-enter
+  ns=0x892]`, the *same* id flowing from the inner form into the outer (arithmetic nesting
+  host-validated: `(+ (* 3 3) (* 4 4))` → `25`).
+  **Approach note:** the full upstream `-sh` (full-D Phobos + libreadline) can't yet build for the
+  OS — there is no musl-targeted D runtime (druntime/Phobos/libunwind), a separate toolchain port.
+  So L2 ports the upstream *evaluation model* into the betterC `hos-sh` that already runs natively,
+  gated, over `HOS_SYS_QUERY`; `(ns-bind …)` and `(spawn …)` (which need new kernel verbs) and the
+  full-upstream build are L3/L4 follow-ups.
 - **L3 — full LFE language · ☐ · E: 5 · deps: L2.** Atoms, lists, tuples, maps, `defun`/
   `lambda`, `let`, pattern matching, guards, list comprehensions, macros — the real LFE so
   the native shell is a programmable Lisp over the object model (scripts, functions, the

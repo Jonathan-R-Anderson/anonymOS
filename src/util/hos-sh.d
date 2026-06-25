@@ -63,44 +63,184 @@ void runQuery(long op, const(char)* header) @nogc nothrow {
 }
 
 void help() @nogc nothrow {
-    printf("native object forms (LFE / Lisp-flavored s-expressions; bare words also work):\n");
-    printf("  (obj)         list kernel objects by type (File, Process, Identity, ...)\n");
-    printf("  (id)          list identity domains (trust, rights ceiling, state)\n");
-    printf("  (ns)          list namespaces\n");
-    printf("  (svc)         list services and their state\n");
-    printf("  (sys)         system object summary\n");
-    printf("  (cat \"/path\") read a file through the NATIVE FS verbs (object_open/read)\n");
-    printf("  (cd \"/path\")  change the current path (prompt shows user@namespace:/path)\n");
-    printf("  (help)        this list\n");
-    printf("  (exit)        leave the native shell\n");
+    printf("LFE forms — evaluated to data; object-ABI verbs are functions, results compose:\n");
+    printf("  (obj) (id) (ns) (svc) (sys)   enumerate objects/identities/namespaces/services\n");
+    printf("  (whoami)                      the identity line, as data\n");
+    printf("  (ns-clone)                    clone my namespace -> new id (data)\n");
+    printf("  (ns-enter <id>)               enter an owned namespace -> 0/-errno\n");
+    printf("  (cap-grant <h> <rights>)      attenuating capability grant -> new handle\n");
+    printf("  (subscribe <events>)          §6 event subscription\n");
+    printf("  (+ - * /) e.g. (+ 1 (* 2 3))  arithmetic; args evaluate first, so forms NEST\n");
+    printf("  (ns-enter (ns-clone))         composition: clone yields the id enter consumes\n");
+    printf("  (cat \"/path\") (cd \"/path\")     read a file / change path (native FS verbs)\n");
+    printf("  (print x ...)  (help)  (exit)  print values / this list / leave\n");
 }
 
-// Minimal LFE (Lisp Flavored Erlang) reader: rewrite an s-expression `(head arg ...)`
-// into the bare "head arg ..." form the dispatcher already understands — outer parens
-// dropped, "string" atoms unquoted, nested grouping flattened.  The native AnonymOS
-// shell follows the LFE syntax/structure of the `-sh` project; this is the first step
-// (the object commands as LFE forms).  Bare words still work for convenience.
-__gshared char[512] g_lfe;
-char* lfeNormalize(char* s) @nogc nothrow {
-    const(char)* p = s + 1;             // caller guarantees s[0] == '('
-    size_t o = 0;
-    int depth = 1;
-    while (*p != 0 && o + 1 < g_lfe.length) {
-        const char c = *p;
-        if (c == '(') { ++depth; ++p; continue; }
-        if (c == ')') { if (--depth <= 0) break; ++p; continue; }
-        if (c == '"') {                 // unquote a string atom
-            ++p;
-            while (*p != 0 && *p != '"' && o + 1 < g_lfe.length) g_lfe[o++] = *p++;
-            if (*p == '"') ++p;
-            continue;
-        }
-        if (c == ' ' || c == '\t') { if (o > 0 && g_lfe[o-1] != ' ') g_lfe[o++] = ' '; ++p; continue; }
-        g_lfe[o++] = c; ++p;
+// ── L2: a real LFE (Lisp-Flavored Erlang) evaluator ─────────────────────────────────────────
+// L0 only *read* a form into the bare command; L2 *evaluates* it.  An s-expression parses to an
+// AST and evaluates to DATA (a number or text), so the object-ABI verbs are LFE functions whose
+// results further forms consume — composition, not text streams:
+//     (+ 1 (* 2 3))        => 7
+//     (ns-enter (ns-clone)) => 0           ; clone returns an id, enter consumes it
+//     (obj)                => the object table (as data)
+// Ported from the upstream `-sh` evaluation model (deps/lfe-sh, vendored in L1) into betterC: a
+// fixed node pool + value tags, no GC / exceptions.  Bare words still work for the zsh integration.
+
+enum SK : ubyte { Num, Sym, Str, List }
+struct Node { SK kind; int off; int len; long num; int head; int next; }
+__gshared Node[256] g_nodes;
+__gshared int g_nnodes;
+__gshared const(char)* g_src;   // the form text being parsed/evaluated
+__gshared int g_pos;
+__gshared int g_exitReq;        // (exit)/(quit) sets this
+
+enum VK : ubyte { Nil, Num, Str, Err }
+struct Val { VK kind; long num; const(char)* sp; int slen; }
+Val vnil() @nogc nothrow { Val v; v.kind=VK.Nil; v.num=0; v.sp=null; v.slen=0; return v; }
+Val vnum(long x) @nogc nothrow { Val v; v.kind=VK.Num; v.num=x; v.sp=null; v.slen=0; return v; }
+Val vstr(const(char)* s, int n) @nogc nothrow { Val v; v.kind=VK.Str; v.num=0; v.sp=s; v.slen=n; return v; }
+Val verr() @nogc nothrow { Val v; v.kind=VK.Err; v.num=0; v.sp=null; v.slen=0; return v; }
+
+int allocNode(SK k) @nogc nothrow {
+    if (g_nnodes >= cast(int)g_nodes.length) return -1;
+    const int n = g_nnodes++;
+    g_nodes[n].kind=k; g_nodes[n].off=0; g_nodes[n].len=0; g_nodes[n].num=0;
+    g_nodes[n].head=-1; g_nodes[n].next=-1;
+    return n;
+}
+bool isNum(const(char)* s, int n) @nogc nothrow {
+    if (n==0) return false;
+    int i=0; if (s[0]=='-') { if (n==1) return false; i=1; }
+    for (; i<n; ++i) if (s[i]<'0' || s[i]>'9') return false;
+    return true;
+}
+long toLong(const(char)* s, int n) @nogc nothrow {
+    int i=0; long sign=1; if (s[0]=='-') { sign=-1; i=1; }
+    long v=0; for (; i<n; ++i) v = v*10 + (s[i]-'0'); return v*sign;
+}
+bool symEq(const(char)* s, int n, string lit) @nogc nothrow {
+    if (n != cast(int)lit.length) return false;
+    for (int i=0; i<n; ++i) if (s[i] != lit[i]) return false;
+    return true;
+}
+
+void pskip() @nogc nothrow { while (g_src[g_pos]==' ' || g_src[g_pos]=='\t') ++g_pos; }
+int parseExpr() @nogc nothrow {
+    pskip();
+    const char c = g_src[g_pos];
+    if (c==0) return -1;
+    if (c=='(') { ++g_pos; return parseList(); }
+    if (c=='"') return parseStr();
+    return parseAtom();
+}
+int parseList() @nogc nothrow {
+    const int n = allocNode(SK.List); if (n<0) return -1;
+    int last=-1;
+    for (;;) {
+        pskip();
+        const char c=g_src[g_pos];
+        if (c==0) break;
+        if (c==')') { ++g_pos; break; }
+        const int ch=parseExpr(); if (ch<0) break;
+        if (last<0) g_nodes[n].head=ch; else g_nodes[last].next=ch;
+        last=ch;
     }
-    while (o > 0 && g_lfe[o-1] == ' ') --o;
-    g_lfe[o] = 0;
-    return g_lfe.ptr;
+    return n;
+}
+int parseStr() @nogc nothrow {
+    ++g_pos; const int start=g_pos;
+    while (g_src[g_pos]!=0 && g_src[g_pos]!='"') ++g_pos;
+    const int n=allocNode(SK.Str); if (n<0) return -1;
+    g_nodes[n].off=start; g_nodes[n].len=g_pos-start;
+    if (g_src[g_pos]=='"') ++g_pos;
+    return n;
+}
+int parseAtom() @nogc nothrow {
+    const int start=g_pos;
+    while (g_src[g_pos]!=0) { const char c=g_src[g_pos]; if (c==' '||c=='\t'||c=='('||c==')') break; ++g_pos; }
+    const int len=g_pos-start;
+    const bool num = isNum(g_src+start, len);
+    const int n=allocNode(num?SK.Num:SK.Sym); if (n<0) return -1;
+    g_nodes[n].off=start; g_nodes[n].len=len;
+    if (num) g_nodes[n].num=toLong(g_src+start, len);
+    return n;
+}
+
+// A null-terminated copy of a string Value (for chdir/open which need a C string).
+__gshared char[256] g_argbuf;
+const(char)* cstr(Val v) @nogc nothrow {
+    int n = (v.kind==VK.Str) ? v.slen : 0;
+    if (n > cast(int)g_argbuf.length-1) n = cast(int)g_argbuf.length-1;
+    for (int i=0; i<n; ++i) g_argbuf[i]=v.sp[i];
+    g_argbuf[n]=0; return g_argbuf.ptr;
+}
+// A native enumeration query returned AS DATA (its text), so a form can yield the object table.
+Val queryVal(long op) @nogc nothrow {
+    const long n = syscall(HOS_SYS_QUERY, op, 0, cast(long)g_buf.ptr, cast(long)(g_buf.length-1));
+    if (n <= 0) return vnil();
+    return vstr(g_buf.ptr, cast(int)n);
+}
+void printVal(Val v) @nogc nothrow {
+    final switch (v.kind) {
+        case VK.Nil: case VK.Err: break;
+        case VK.Num: printf("%ld\n", v.num); break;
+        case VK.Str:
+            if (v.slen>0) { fwrite(v.sp, 1, cast(size_t)v.slen, stdout);
+                if (v.sp[v.slen-1] != '\n') printf("\n"); fflush(stdout); }
+            break;
+    }
+}
+
+Val eval(int n) @nogc nothrow {
+    if (n<0) return vnil();
+    final switch (g_nodes[n].kind) {
+        case SK.Num:  return vnum(g_nodes[n].num);
+        case SK.Str:  return vstr(g_src+g_nodes[n].off, g_nodes[n].len);
+        case SK.Sym:  return vstr(g_src+g_nodes[n].off, g_nodes[n].len);  // bare symbol -> itself
+        case SK.List: return evalList(n);
+    }
+}
+Val evalList(int ln) @nogc nothrow {
+    const int head = g_nodes[ln].head;
+    if (head < 0) return vnil();                                  // ()
+    if (g_nodes[head].kind != SK.Sym) return eval(head);          // ((..)) -> evaluate the head form
+    const(char)* op = g_src + g_nodes[head].off;
+    const int ol = g_nodes[head].len;
+    const int a0 = g_nodes[head].next;                            // first argument node (-1 if none)
+
+    // arithmetic — args evaluate first, so nesting composes: (+ 1 (* 2 3)) -> 7
+    if (ol==1 && (op[0]=='+'||op[0]=='-'||op[0]=='*'||op[0]=='/')) {
+        int ai=a0; if (ai<0) return vnum(0);
+        long acc = eval(ai).num; ai=g_nodes[ai].next;
+        while (ai>=0) { const long v=eval(ai).num;
+            switch (op[0]) { case '+': acc+=v; break; case '-': acc-=v; break;
+                case '*': acc*=v; break; case '/': acc = v ? acc/v : 0; break; default: break; }
+            ai=g_nodes[ai].next; }
+        return vnum(acc);
+    }
+    // object-model enumeration forms -> the table AS DATA
+    if (symEq(op,ol,"objects")  || symEq(op,ol,"obj")) return queryVal(HOSQ_OBJECTS);
+    if (symEq(op,ol,"identities")|| symEq(op,ol,"id"))  return queryVal(HOSQ_IDENTITIES);
+    if (symEq(op,ol,"namespaces")|| symEq(op,ol,"ns"))  return queryVal(HOSQ_NAMESPACES);
+    if (symEq(op,ol,"services") || symEq(op,ol,"svc")) return queryVal(HOSQ_SERVICES);
+    if (symEq(op,ol,"sys"))    return queryVal(HOSQ_SYS);
+    if (symEq(op,ol,"whoami")) return vstr(g_who.ptr, cast(int)strlen(g_who.ptr));
+    // native mutation/event verbs -> their result AS DATA (handle / id / status), composable
+    if (symEq(op,ol,"ns-clone"))  return vnum(syscall(HOS_SYS_QUERY, HOSQ_NS_CLONE, 0, 0, 0));
+    if (symEq(op,ol,"ns-enter"))  return vnum(syscall(HOS_SYS_QUERY, HOSQ_NS_ENTER, eval(a0).num, 0, 0));
+    if (symEq(op,ol,"cap-grant")) { const long s=eval(a0).num;
+        const long r=(a0>=0) ? eval(g_nodes[a0].next).num : 0;
+        return vnum(syscall(HOS_SYS_QUERY, HOSQ_CAP_GRANT, s, r, 0)); }
+    if (symEq(op,ol,"subscribe")) return vnum(syscall(HOS_SYS_QUERY, HOSQ_SUBSCRIBE, eval(a0).num, 0, 0));
+    // shell builtins (side effects -> Nil)
+    if (symEq(op,ol,"cat")) { catFile(cstr(eval(a0))); return vnil(); }
+    if (symEq(op,ol,"cd"))  { const(char)* p=(a0>=0) ? cstr(eval(a0)) : "/".ptr;
+        if (chdir(p)!=0) printf("hos-sh: cd: %s: no such directory\n", p); return vnil(); }
+    if (symEq(op,ol,"print")||symEq(op,ol,"echo")) { int ai=a0; while (ai>=0) { printVal(eval(ai)); ai=g_nodes[ai].next; } return vnil(); }
+    if (symEq(op,ol,"help")) { help(); return vnil(); }
+    if (symEq(op,ol,"exit")||symEq(op,ol,"quit")) { g_exitReq=1; return vnil(); }
+    printf("hos-sh: unknown form '%.*s' (try (help))\n", ol, op);
+    return verr();
 }
 
 // Z4a.2: read a file through the NATIVE FS verbs (object_open/read/close) — never a Linux
@@ -166,11 +306,13 @@ int runCommand(char* cmd) @nogc nothrow {
     while (*cmd == ' ' || *cmd == '\t') ++cmd;
     if (*cmd == 0) return 1;
 
-    // LFE: an s-expression `(head arg ...)` is read into the bare command form.
+    // L2 — LFE evaluator: an s-expression parses to an AST and EVALUATES to data (a number or
+    // text); object-ABI verbs are functions whose results further forms consume.  Bare words
+    // (below) still drive the simple dispatch the zsh integration spawns (`/hos-sh obj`).
     if (*cmd == '(') {
-        cmd = lfeNormalize(cmd);
-        while (*cmd == ' ') ++cmd;
-        if (*cmd == 0) return 1;
+        g_src = cmd; g_pos = 0; g_nnodes = 0; g_exitReq = 0;
+        printVal(eval(parseExpr()));
+        return g_exitReq ? 0 : 1;
     }
 
     if      (strcmp(cmd, "exit".ptr) == 0 || strcmp(cmd, "quit".ptr) == 0) return 0;

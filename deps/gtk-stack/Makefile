@@ -139,7 +139,9 @@ $(HOST_BISON): $(DLDIR)/bison-$(HOST_BISON_VER).tar.xz | dirs
 	cd $(BLDDIR)/bison-$(HOST_BISON_VER) && \
 	    ./configure --prefix="$(HOST_TOOLS_ROOT)" && \
 	    $(MAKE) $(MAKE_BUILD_FLAGS) && \
-	    $(MAKE) $(MAKE_BUILD_FLAGS) install
+	    $(MAKE) $(MAKE_BUILD_FLAGS) install || $(MAKE) $(MAKE_BUILD_FLAGS) install-exec
+	@# 'install-exec' installs binaries only (no info pages) — fallback for hosts
+	@# where install-info fails (no texinfo, or a read-only info-dir).
 
 # ── Sysroot path relocation ───────────────────────────────────────────────────
 # The committed sysroot metadata (.la/.pc/.cmake) carries absolute paths from

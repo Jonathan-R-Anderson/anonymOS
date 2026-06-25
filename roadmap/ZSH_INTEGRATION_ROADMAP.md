@@ -892,8 +892,14 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     (`VIRTIO_GPU_RESP_OK_CAPSET_INFO`), **capset_id = 1 (VIRGL)** → *"VIRGL CAPSET QUERY OK -- modern
     virtqueue transport WORKS"*. (Traps: `mfence` before the kick so the rings reach memory; 32-bit
     halves for the 64-bit queue registers.) The 3D command path can now be built on this (R2.3).
-  - **R2.3 — 3D context + resources + SUBMIT_3D** · `CTX_CREATE`, `RESOURCE_CREATE_3D`,
-    `TRANSFER_*_3D`, `SUBMIT_3D` — the virgl command-stream path.
+  - **R2.3 — 3D context + resources + SUBMIT_3D · 🚧 3D object commands DONE** · a reusable
+    `gpuCtrl()` control-queue helper (serial: reuse desc 0/1, wait per command) issued **`CTX_CREATE`
+    (ctx 1) → `RESOURCE_CREATE_3D` (resource 1: 256×256 `B8G8R8A8`, bind RENDER_TARGET) →
+    `CTX_ATTACH_RESOURCE`**. **Verified live:** all three returned `0x1100` (`OK_NODATA`) → *"3D
+    context + resource commands OK (virgl objects live on the GPU)"*. **Remaining (R2.3b):**
+    `RESOURCE_ATTACH_BACKING` + `SUBMIT_3D` of a minimal virgl command stream (create surface → set
+    framebuffer → clear to a colour) + `TRANSFER_FROM_HOST_3D` + read back the pixel to prove the GPU
+    actually rendered.
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
     (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so

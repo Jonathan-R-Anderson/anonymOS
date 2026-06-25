@@ -100,6 +100,16 @@ __gshared bool g_gpuModern = false;  // R2.2: modern virtio-1.0 handshake comple
 __gshared ulong  g_gpuCommon = 0;    // R2.2: common-config virtual base (via HHDM)
 __gshared ushort g_gpuQueueSize = 0; // R2.2: control virtqueue size
 __gshared bool g_gpuQueueReady = false; // R2.2b: control virtqueue live (GET_CAPSET round-trip OK)
+// R2.3: control-queue state kept for issuing further commands (CTX_CREATE, RESOURCE_CREATE_3D, …).
+__gshared VirtqDesc*  g_gpuDesc;
+__gshared VirtqAvail* g_gpuAvail;
+__gshared VirtqUsed*  g_gpuUsed;
+__gshared ubyte*      g_gpuBuf;        // request at +0, response at +2048 (one DMA page)
+__gshared ulong       g_gpuBufPhys;
+__gshared ulong       g_gpuNotifyAddr;
+__gshared ushort      g_gpuQsz;
+__gshared ushort      g_gpuLastUsed;   // last-seen used.idx
+__gshared bool        g_gpu3dReady = false; // R2.3: 3D context + resource commands accepted
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -121,6 +131,29 @@ private ushort volLoadW(ushort* p)         @nogc nothrow { return *cast(shared c
 private void   volStoreW(ushort* p, ushort v) @nogc nothrow { *cast(shared ushort*)p = v; }
 private void   volStoreQ(ulong* p, ulong v) @nogc nothrow { *cast(shared ulong*)p = v; }
 private void   memBarrier() @nogc nothrow { asm @nogc nothrow { mfence; } }
+
+// R2.3 — issue one control-queue command (request in g_gpuBuf[0..reqLen], response written to
+// g_gpuBuf[2048..]).  Returns the response ctrl_hdr.type, or 0xFFFFFFFF on timeout.  Serial: each
+// command waits for its own completion before the next, so descriptors 0/1 are reused.
+private void gpuZeroReq(uint n) @nogc nothrow { foreach (i; 0 .. n) g_gpuBuf[i] = 0; }
+private void gpuPutU(uint off, uint v) @nogc nothrow { *cast(uint*)(g_gpuBuf + off) = v; }
+private uint gpuCtrl(uint reqLen, uint respLen) @nogc nothrow {
+    auto desc = g_gpuDesc; auto avail = g_gpuAvail; auto used = g_gpuUsed;
+    foreach (i; 0 .. respLen) g_gpuBuf[2048 + i] = 0;
+    desc[0].addr = g_gpuBufPhys;        desc[0].len = reqLen;  desc[0].flags = VIRTQ_DESC_F_NEXT;  desc[0].next = 1;
+    desc[1].addr = g_gpuBufPhys + 2048; desc[1].len = respLen; desc[1].flags = VIRTQ_DESC_F_WRITE; desc[1].next = 0;
+    ushort ai = volLoadW(&avail.idx);
+    avail.ring[ai % g_gpuQsz] = 0;
+    volStoreW(&avail.idx, cast(ushort)(ai + 1));
+    memBarrier();
+    volStoreW(cast(ushort*)g_gpuNotifyAddr, 0);
+    int spin = 0;
+    while (volLoadW(&used.idx) == g_gpuLastUsed && spin < 50_000_000) spin++;
+    if (volLoadW(&used.idx) == g_gpuLastUsed) return 0xFFFFFFFFu;
+    g_gpuLastUsed = volLoadW(&used.idx);
+    memBarrier();
+    return *cast(uint*)(g_gpuBuf + 2048);
+}
 
 // virtio-1.0 device-status bits + the common-config field offsets.
 private enum { VS_ACK = 1, VS_DRIVER = 2, VS_DRIVER_OK = 4, VS_FEATURES_OK = 8, VS_FAILED = 128 }
@@ -307,6 +340,50 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         g_gpuQueueReady = true;
     } else {
         printLine("[virtio-gpu] R2.2b: unexpected response type from GET_CAPSET_INFO");
+        return;
+    }
+
+    // R2.3 — exercise the virgl 3D command path over the now-live transport.  Keep the queue state
+    // for the gpuCtrl() helper, and pick up the used index where GET_CAPSET left it.
+    g_gpuDesc = desc; g_gpuAvail = avail; g_gpuUsed = used;
+    g_gpuBuf = buf; g_gpuBufPhys = bufPhys; g_gpuNotifyAddr = notifyAddr; g_gpuQsz = qsz;
+    g_gpuLastUsed = volLoadW(&used.idx);
+    if (!g_gpuVirgl) return;   // 3D commands only make sense when virgl is offered
+
+    enum VIRTIO_GPU_RESP_OK_NODATA = 0x1100;
+    // (a) CTX_CREATE: create virgl 3D context 1.
+    gpuZeroReq(96);
+    gpuPutU(0, 0x0200);    // hdr.type = VIRTIO_GPU_CMD_CTX_CREATE
+    gpuPutU(16, 1);        // hdr.ctx_id = 1 (the new context)
+    uint c1 = gpuCtrl(96, 24);
+    // (b) RESOURCE_CREATE_3D: a 256x256 BGRA render-target texture, resource 1.
+    gpuZeroReq(72);
+    gpuPutU(0, 0x0204);    // hdr.type = VIRTIO_GPU_CMD_RESOURCE_CREATE_3D
+    gpuPutU(24, 1);        // resource_id = 1
+    gpuPutU(28, 2);        // target = PIPE_TEXTURE_2D
+    gpuPutU(32, 1);        // format = VIRGL_FORMAT_B8G8R8A8_UNORM
+    gpuPutU(36, 2);        // bind = VIRGL_BIND_RENDER_TARGET
+    gpuPutU(40, 256);      // width
+    gpuPutU(44, 256);      // height
+    gpuPutU(48, 1);        // depth
+    gpuPutU(52, 1);        // array_size
+    uint c2 = gpuCtrl(72, 24);
+    // (c) CTX_ATTACH_RESOURCE: bind resource 1 to context 1.
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0206);    // hdr.type = VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
+    gpuPutU(16, 1);        // hdr.ctx_id = 1
+    gpuPutU(24, 1);        // resource_id = 1
+    uint c3 = gpuCtrl(32, 24);
+
+    printLine("[virtio-gpu] R2.3: CTX_CREATE / RESOURCE_CREATE_3D / CTX_ATTACH resp types:");
+    printHex(c1);
+    printHex(c2);
+    printHex(c3);
+    if (c1 == VIRTIO_GPU_RESP_OK_NODATA && c2 == VIRTIO_GPU_RESP_OK_NODATA && c3 == VIRTIO_GPU_RESP_OK_NODATA) {
+        printLine("[virtio-gpu] R2.3: 3D context + resource commands OK (virgl objects live on the GPU)");
+        g_gpu3dReady = true;
+    } else {
+        printLine("[virtio-gpu] R2.3: a 3D command was rejected by the device");
     }
 }
 

@@ -864,10 +864,31 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     `special_key_seq` (arrows/Home/End) + ctrl/shift → write to the PTY master.
   - **R1.6 — stage + verify** · boot module + desktop autostart; verify live that the Rust terminal
     hosts zsh, renders its output, and accepts typed input.
-- **R2 — GPU stack · E: 5 · deps: R1.** ratty renders via `wgpu`/Vulkan/GL. The OS is
-  software-Pixman only; this needs the GPU/Mesa work tracked under desktop responsiveness
-  R8 (a real render node + EGL, the dmabuf import the Hyprland bring-up stalled on). The
-  largest dependency and the reason ratty is later-stage.
+- **R2 — GPU stack · 🚧 IN PROGRESS · E: 5 · R: high · deps: R1.** ratty renders via `wgpu`/Vulkan/GL.
+  Today the OS is **software only**: `virtio_gpu.d` is a minimal *legacy* virtio-gpu driver that does
+  **2D scanout** (`RESOURCE_CREATE_2D`/`SET_SCANOUT`/`TRANSFER_2D`) and Weston composites on the CPU
+  (Pixman / `kms_swrast`). This is the same GPU stack tracked as R8 in `DESKTOP_RESPONSIVENESS_ROADMAP`
+  — the largest dependency, where the Hyprland bring-up stalled on the dmabuf import. Real
+  acceleration = QEMU `virtio-gpu-gl` (virgl) + a 3D-capable guest virtio-gpu driver + a Mesa virgl
+  driver + EGL/dmabuf in the compositor. The host here CAN offer it (`virtio-gpu-gl`, `egl-headless`,
+  `libvirglrenderer`, `/dev/dri/renderD128` all present). Multi-step sub-roadmap:
+  - **R2.1 — virtio-gpu-gl device + virgl detection ✅ DONE** · QEMU runs `virtio-gpu-gl-pci` with a
+    GL display (`-display egl-headless` headless / `gtk,gl=on` interactive); the kernel's
+    `virtioGpuDetectVirgl()` (called from `kernel_main` after `random_init`) finds the modern device
+    (`0x1AF4:0x1050`), **walks its PCI capability list to the MMIO common-config** (vendor cap 0x09,
+    cfg_type=COMMON; the legacy IO path can't reach a modern-only device), reads `device_feature`,
+    and tests `VIRTIO_GPU_F_VIRGL` (bit 0). **Verified live:** `low=0x30000003` (VIRGL + EDID +
+    ring-indirect/event-idx), `high=0x00000101` (VERSION_1) → *"[virtio-gpu] R2.1: VIRGL 3D capability
+    OFFERED -- GPU acceleration is reachable"*. The 3D path is reachable; foundation for R2.2+.
+  - **R2.2 — modern virtio 1.0 transport** · upgrade the legacy PIO/PFN driver to virtio-1.0 (PCI
+    capability config, `FEATURES_OK`, proper split virtqueues), then `GET_CAPSET_INFO`/`GET_CAPSET`
+    for the virgl capset (the protocol version Mesa needs).
+  - **R2.3 — 3D context + resources + SUBMIT_3D** · `CTX_CREATE`, `RESOURCE_CREATE_3D`,
+    `TRANSFER_*_3D`, `SUBMIT_3D` — the virgl command-stream path.
+  - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
+    (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
+  - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
+    compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`
   (live) or the native `Device` PTY object (§12), input via the Wayland seat, clipboard via
   OSC52, and the GPU backend from R2. Honour the unspoofable per-domain window border

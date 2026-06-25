@@ -37,7 +37,14 @@ exec qemu-system-x86_64 \
   -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
   -device ahci,id=ahci0 \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
-  -display gtk
+  -device virtio-gpu-gl-pci \
+  -display gtk,gl=on
+# R2 (GPU stack): the virtio-gpu-gl device + a GL-capable display (gtk,gl=on; headless uses
+# `-display egl-headless`) make QEMU offer virgl 3D (VIRTIO_GPU_F_VIRGL) via virglrenderer.  The
+# kernel detects it at boot (R2.1: "[virtio-gpu] R2.1: VIRGL 3D capability OFFERED").  The primary
+# scanout is still the firmware VGA framebuffer (software compositing); using the GPU for the
+# desktop/ratty is R2.2+ (modern virtio transport -> 3D command path -> Mesa virgl -> EGL/dmabuf).
+# If your host lacks GL/virglrenderer, drop the two lines above (back to plain `-display gtk`).
 # NOTE: the guest exposes only a RELATIVE PS/2 mouse (no USB/virtio tablet), so
 # QEMU must *grab* the host pointer to deliver motion + keystrokes. `show-cursor=on`
 # was suppressing that grab — you saw the host cursor float over a frozen guest

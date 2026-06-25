@@ -95,6 +95,7 @@ enum VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM = 1;
 
 __gshared VirtioDevice g_gpuDev;
 __gshared bool g_gpuAvailable = false;
+__gshared bool g_gpuVirgl = false;   // R2.1: device offers VIRTIO_GPU_F_VIRGL (3D acceleration)
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -106,6 +107,79 @@ __gshared ushort g_nextDescIdx = 0;
 // --------------------------------------------------------------------------
 // Driver Implementation
 // --------------------------------------------------------------------------
+
+// Volatile 32-bit MMIO accessors (shared cast = volatile in D), for the virtio common config.
+private uint  volLoadU(uint* p)         @nogc nothrow { return *cast(shared const uint*)p; }
+private void  volStoreU(uint* p, uint v) @nogc nothrow { *cast(shared uint*)p = v; }
+
+// R2.1 — modern (virtio-1.0) virgl 3D capability detection.
+//
+// virtio-gpu is a modern-only PCI device (0x1AF4:0x1050) with NO legacy IO BAR, so its feature
+// bits are NOT at an IO port — they live in an MMIO "common configuration" structure located by
+// walking the device's PCI capability list (vendor capability id 0x09, cfg_type=COMMON=1).  We map
+// that via the HHDM, select feature window 0, read device_feature, and test VIRTIO_GPU_F_VIRGL
+// (bit 0) — virgl 3D acceleration, which QEMU's virtio-gpu-gl offers only with a host GL context
+// (-display egl-headless / gtk,gl=on + virglrenderer).  Detection ONLY; the virtqueue + 3D command
+// path (GET_CAPSET / CTX_CREATE / SUBMIT_3D) is R2.2+.
+export void virtioGpuDetectVirgl() @nogc nothrow {
+    import drivers.pci : scanPCIDevices;
+    import core.globals : hhdm_offset;
+
+    auto devices = scanPCIDevices();
+    PCIDevice* pci = null;
+    foreach (ref dev; devices) {
+        if (dev.vendorId == VIRTIO_VENDOR_ID && dev.deviceId == VIRTIO_DEV_GPU) { pci = &dev; break; }
+    }
+    if (pci is null) { printLine("[virtio-gpu] R2.1: no virtio-gpu device (0x1AF4:0x1050) on the bus"); return; }
+    printLine("[virtio-gpu] R2.1: found modern virtio-gpu (0x1050)");
+
+    // PCI status word (high 16 of offset 0x04) bit 4 => capability list present; pointer at 0x34.
+    uint cmdStatus = pciConfigRead32(pci.bus, pci.slot, pci.func, 0x04);
+    if (!((cmdStatus >> 16) & 0x10)) { printLine("[virtio-gpu] R2.1: no PCI capability list"); return; }
+    ubyte cap = cast(ubyte)(pciConfigRead32(pci.bus, pci.slot, pci.func, 0x34) & 0xFC);
+
+    // Walk the capability list for the virtio COMMON-config cap (vndr 0x09, cfg_type 1).
+    uint commonBar = 0xFFFFFFFFu, commonOff = 0;
+    int guard = 0;
+    while (cap != 0 && guard++ < 48) {
+        uint dw0 = pciConfigRead32(pci.bus, pci.slot, pci.func, cap);
+        ubyte capId   = cast(ubyte)(dw0 & 0xFF);
+        ubyte capNext = cast(ubyte)((dw0 >> 8) & 0xFF);
+        ubyte cfgType = cast(ubyte)((dw0 >> 24) & 0xFF);
+        if (capId == 0x09) { // VIRTIO vendor capability (struct virtio_pci_cap)
+            uint dw1 = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 4)); // bar in low byte
+            uint off = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 8)); // le32 offset
+            if (cfgType == 1) { commonBar = dw1 & 0xFF; commonOff = off; }                 // COMMON_CFG=1
+        }
+        cap = capNext;
+    }
+    if (commonBar == 0xFFFFFFFFu) { printLine("[virtio-gpu] R2.1: no COMMON-config capability found"); return; }
+
+    // Resolve the BAR (handle a 64-bit memory BAR) -> physical base of the common config.
+    uint barLo = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + commonBar * 4));
+    ulong barBase = barLo & 0xFFFFFFF0u;
+    if ((barLo & 0x6) == 0x4) { // 64-bit BAR: high dword in the next slot
+        uint barHi = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + commonBar * 4 + 4));
+        barBase |= (cast(ulong)barHi << 32);
+    }
+    auto cfg = cast(uint*)(barBase + commonOff + hhdm_offset); // common config via the HHDM
+
+    // device_feature_select @ +0x00 (cfg[0]), device_feature @ +0x04 (cfg[1]).
+    volStoreU(&cfg[0], 0); uint featLo = volLoadU(&cfg[1]);
+    volStoreU(&cfg[0], 1); uint featHi = volLoadU(&cfg[1]);
+    printLine("[virtio-gpu] R2.1: device_feature low / high:");
+    printHex(featLo);
+    printHex(featHi);
+
+    enum VIRTIO_GPU_F_VIRGL = 0; // device feature bit 0
+    if (featLo & (1u << VIRTIO_GPU_F_VIRGL)) {
+        printLine("[virtio-gpu] R2.1: VIRGL 3D capability OFFERED -- GPU acceleration is reachable");
+        g_gpuVirgl = true;
+    } else {
+        printLine("[virtio-gpu] R2.1: VIRGL bit NOT set -- 2D scanout only");
+        g_gpuVirgl = false;
+    }
+}
 
 export void virtioGpuInit() @nogc nothrow {
     printLine("[virtio-gpu] Probing...");
@@ -140,7 +214,7 @@ export void virtioGpuInit() @nogc nothrow {
     // Reset
     virtioReset(&g_gpuDev);
     virtioSetStatus(&g_gpuDev, VIRTIO_STATUS_ACKNOWLEDGE | VIRTIO_STATUS_DRIVER);
-    
+
     // Setup Queue 0 (Control)
     outportw(cast(ushort)(g_gpuDev.ioBase + 14), 0); // Select Queue 0
     

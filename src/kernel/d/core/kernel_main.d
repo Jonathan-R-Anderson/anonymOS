@@ -2666,6 +2666,9 @@ void d_kernel_main() {
     const(char)* initExecName = "sh\0".ptr;
     bool initIsHyprland = false;
     random_init();
+    // R2.1 (GPU stack): probe the modern virtio-gpu for virgl 3D capability and log it — the
+    // foundation for GPU-accelerated compositing/ratty (R2.2+).  Safe no-op if absent.
+    { import drivers.graphics.virtio_gpu : virtioGpuDetectVirgl; virtioGpuDetectVirgl(); }
     // Phase 8: stand up Driver/Device objects for the synthetic /dev tree (and
     // wrap the block/NIC driver globals) before the init process opens /dev nodes.
     deviceRegistryInit();

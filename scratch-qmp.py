@@ -46,4 +46,12 @@ elif op=="type":
         k=CH.get(ch)
         if k is None: continue
         keys(f,list(k) if isinstance(k,tuple) else [k]); time.sleep(0.05)
+elif op=="drag":   # drag x1 y1 x2 y2 : press at (x1,y1), move to (x2,y2), release (for scrollbar thumb)
+    x1,y1,x2,y2=int(sys.argv[2]),int(sys.argv[3]),int(sys.argv[4]),int(sys.argv[5])
+    moveto(f,x1,y1); time.sleep(0.2)
+    cmd(f,"input-send-event",events=[{"type":"btn","data":{"button":"left","down":True}}]); time.sleep(0.12)
+    ax,ay=x2-x1,y2-y1; n=max(abs(ax),abs(ay))//8+1
+    for _ in range(n): rel(f,round(ax/n),round(ay/n)); time.sleep(0.02)
+    time.sleep(0.12)
+    cmd(f,"input-send-event",events=[{"type":"btn","data":{"button":"left","down":False}}]); print("dragged")
 s.close()

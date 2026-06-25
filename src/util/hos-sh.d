@@ -612,6 +612,17 @@ int runCommand(char* cmd) @nogc nothrow {
     return 1;
 }
 
+// LFE-in-zsh (the architecture fix): the SAME evaluator compiles as a library entry for the zsh
+// `anonymos` module (built with -d-version=LfeLib), so the native zsh evaluates LFE forms
+// IN-PROCESS via an `lfe` builtin — one shell (zsh) with LFE inside it, not a separate `-sh`.
+version(LfeLib) {
+    extern(C) void lfe_eval_line(const(char)* line) @nogc nothrow {
+        ensureInit();
+        g_src = line; g_pos = 0; g_exitReq = 0;
+        for (;;) { pskip(); if (g_src[g_pos] == 0) break; printResult(eval(parseExpr(), g_globalEnv)); }
+        if (g_resetReq) { g_inited = false; g_resetReq = 0; }
+    }
+} else {
 extern(C) int main(int argc, char** argv) @nogc nothrow {
     loadWho();
 
@@ -650,3 +661,4 @@ extern(C) int main(int argc, char** argv) @nogc nothrow {
     printf("bye\n");
     return 0;
 }
+}   // version(LfeLib) else

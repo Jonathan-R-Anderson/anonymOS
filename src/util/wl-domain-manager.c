@@ -86,9 +86,10 @@ static const char *CLIP_LBL[] = {"Deny","Ask","Same-domain","Down-trust"};
 static const char *CLIP_ENV[] = {"deny","ask","same","downtrust"};
 
 enum { SH_LINUX, SH_WINDOWS, SH_NATIVE, SH_N };
-// Z11/L5: the two personalities run two different shells — "Linux (zsh)" runs /bin/zsh (POSIX),
-// and "Native (-sh/LFE)" runs /hos-sh, the LFE (Lisp) shell over the object model (L2–L5).
-static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (-sh/LFE)"};
+// Z11/L5: ONE shell (zsh), two personalities — "Linux (zsh)" runs /bin/zsh (POSIX, confined), and
+// "Native (zsh+LFE)" runs /hos-zsh: the same zsh in the native personality with LFE embedded inside
+// it (in-process obj/id/ns object builtins + an `lfe` builtin for the full LFE evaluator, L2–L4).
+static const char *SHELL_LBL[] = {"Linux (zsh)","Windows (n/a)","Native (zsh+LFE)"};
 static const char *SHELL_ENV[] = {"linux","windows","native"};
 
 struct domain {

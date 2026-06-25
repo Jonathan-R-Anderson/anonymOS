@@ -4033,15 +4033,19 @@ alias sysinfo='cat /config/system.json'
 # git (works once git is installed):
 alias gs='git status'
 
-# --- Z4c: native object-shell commands (native flavor only) -------------------
-# The kernel object model as zsh commands.  Each spawns /hos-sh <verb>, the native
-# object shell, which self-gates to the native ABI by name — so the object/cap
-# surface is reachable from the zsh prompt without zsh itself holding the gate
-# (the Linux shell, where EPIN_SHELL != native, gets none of this).  'hos' is the
-# full dispatcher; obj/id/ns/svc/sys are shortcuts.  ('id' shadows coreutils id in
-# the native object shell on purpose — use 'command id' for the POSIX one.)
+# --- Z4c/L5: LFE inside zsh -- the native shell is ONE shell (zsh), not a separate -sh ---------
+# The native-personality zsh IS the native shell, with LFE embedded inside it (the Linux shell,
+# EPIN_SHELL != native, gets none of this and is confined to POSIX):
+#   * obj/id/ns/svc/sys  -- IN-PROCESS native-ABI builtins from the zsh/anonymos module (Z4c.4),
+#                           calling HOS_SYS_QUERY directly from the zsh process.
+#   * lfe ...             -- the FULL LFE language (defun/let/case/lists/tuples/pattern matching +
+#                           the object-ABI forms, L2-L4) -- the same evaluator as the obj/... builtins.
+#   * everything else     -- ordinary POSIX zsh.
+# So:  lfe (defun inc (n) (- n -1)) (inc 41)  => 42 ;  obj => the object table ;  ls => ls.
+# ('id' shadows coreutils id on purpose -- use 'command id' for the POSIX one.)
 if [[ "$EPIN_SHELL" == native ]]; then
   hos() { /hos-sh "$@" }
+  lfe() { /hos-sh "$@" }   # evaluate full LFE forms in the native shell (the L2-L4 evaluator)
   # Z4c.4: prefer the IN-PROCESS zsh module — obj/id/ns/svc/sys become native-ABI builtins that
   # call HOS_SYS_QUERY directly from the zsh process (no /hos-sh subprocess per command).  zsh
   # holds the N0 gate here (native personality), so the in-process syscall is granted.  If the

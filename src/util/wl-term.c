@@ -651,14 +651,16 @@ static int spawn_shell(struct app *a) {
         return 0;
     }
     // The shell binary depends on the flavor; the PTY plumbing + argv[0] are shared.
-    // The two personalities run two different shells (ZSH_INTEGRATION_ROADMAP "two shells"):
-    //  - Linux:  /bin/zsh  (Z1) — real upstream zsh, the POSIX Linux-personality login shell.
-    //  - Native: /hos-sh   (L5) — `-sh`, the LFE (Lisp) shell: a programmable Lisp over the object
-    //    model (L2–L4), a native-personality task (gated native by the trusted "hos-sh" image AND
-    //    the native-launch authorization this terminal holds — L5.2).  A Linux shell can NOT reach
-    //    it: exec'ing /hos-sh from /bin/zsh runs Linux-personality (HOS_SYS_QUERY -> ENOSYS).
-    const char *shell_path = is_native ? "/hos-sh" : "/bin/zsh";
-    char *const shell_arg0 = is_native ? "-sh" : "-zsh";
+    // BOTH personalities run zsh — ONE shell, two personalities (ZSH_INTEGRATION_ROADMAP):
+    //  - Linux:  /bin/zsh  (Z1) — real upstream zsh, the POSIX Linux-personality login shell,
+    //    confined to Linux (HOS_SYS_QUERY -> ENOSYS; the native-launch authorization is dropped
+    //    on this exec, L5.2).
+    //  - Native: /hos-zsh (Z4) — the SAME zsh launched into the native personality, with **LFE
+    //    embedded inside it**: the `zsh/anonymos` module gives in-process obj/id/ns/svc/sys object
+    //    builtins (Z4c.4) AND an `lfe` builtin running the full LFE evaluator (L2–L4) in-process.
+    //    So the native shell is zsh + LFE, not a separate shell.
+    const char *shell_path = is_native ? "/hos-zsh" : "/bin/zsh";
+    char *const shell_arg0 = "-zsh";
 
     int m = open("/dev/ptmx", O_RDWR | O_NONBLOCK);
     if (m < 0) { perror("G4TERM: open /dev/ptmx"); return -1; }

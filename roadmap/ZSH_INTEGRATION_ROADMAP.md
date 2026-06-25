@@ -892,24 +892,23 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     (`VIRTIO_GPU_RESP_OK_CAPSET_INFO`), **capset_id = 1 (VIRGL)** → *"VIRGL CAPSET QUERY OK -- modern
     virtqueue transport WORKS"*. (Traps: `mfence` before the kick so the rings reach memory; 32-bit
     halves for the 64-bit queue registers.) The 3D command path can now be built on this (R2.3).
-  - **R2.3 — 3D context + resources + SUBMIT_3D · 🚧 3D object commands DONE** · a reusable
-    `gpuCtrl()` control-queue helper (serial: reuse desc 0/1, wait per command) issued **`CTX_CREATE`
-    (ctx 1) → `RESOURCE_CREATE_3D` (resource 1: 256×256 `B8G8R8A8`, bind RENDER_TARGET) →
-    `CTX_ATTACH_RESOURCE`**. **Verified live:** all three returned `0x1100` (`OK_NODATA`) → *"3D
-    context + resource commands OK (virgl objects live on the GPU)"*.
-    - **R2.3b — render command path 🚧 (blocked on a deep virgl issue)** · `RESOURCE_ATTACH_BACKING`
-      (4 KiB page, 32×32 resource, bind RENDER_TARGET|SAMPLER_VIEW) + `SUBMIT_3D` (hand-encoded virgl
-      stream CREATE_OBJECT(SURFACE) → SET_FRAMEBUFFER → CLEAR red, with `VIRTIO_GPU_FLAG_FENCE`) +
-      `TRANSFER_FROM_HOST_3D` + pixel read-back. **Verified:** all commands return `0x1100`; the virgl
-      **encoding is byte-correct** — cross-checked against `virgl_protocol.h`/`virgl_hw.h` AND Mesa's
-      own `virgl_encode.c` (`VIRGL_CMD0`=cmd|obj<<8|len<<16; CREATE_OBJECT=1, SET_FRAMEBUFFER=5,
-      CLEAR=7, OBJECT_SURFACE=8, sizes 5/3/8; format B8G8R8A8=1, bind RT=2; clear flags
-      `PIPE_CLEAR_COLOR0`=4, colour=float bits; transfer `stride=0`=host-inferred). **Blocked:** all 4
-      read-back pixels stay `0x00000000` — virglrenderer accepts the stream (no decode errors) and the
-      fence completes, yet the clear is not reflected in the read-back, and `VIRGL_DEBUG=all` emits no
-      virglrenderer log at all. Needs a real virglrenderer trace or a captured-Mesa-stream comparison,
-      not more guessing. The transport + command framing (R2.1/R2.2/R2.3a) are solid; the open item is
-      purely "make virglrenderer's clear land in the read-back".
+  - **R2.3 — 3D context + resources + SUBMIT_3D · ✅ DONE** · a reusable `gpuCtrl()` control-queue
+    helper (serial: reuse desc 0/1, wait per command) issued **`CTX_CREATE` (ctx 1) →
+    `RESOURCE_CREATE_3D` (resource 1: 32×32 `B8G8R8A8`, bind RENDER_TARGET|SAMPLER_VIEW) →
+    `CTX_ATTACH_RESOURCE`**, all `0x1100` (`OK_NODATA`).
+    - **R2.3b — render command path ✅ DONE (commit 7ef4c51a4) — first real GPU accel** ·
+      `RESOURCE_ATTACH_BACKING` (4 KiB page) → `CTX_ATTACH_RESOURCE` (after create+backing) →
+      `SUBMIT_3D` (hand-encoded virgl stream `CREATE_OBJECT(SURFACE)` → `SET_FRAMEBUFFER_STATE` →
+      `CLEAR` red, `VIRTIO_GPU_FLAG_FENCE`) → `TRANSFER_FROM_HOST_3D` → pixel read-back, **all with
+      `hdr.ctx_id=1`**. ★ **Verified live: read-back = `0xFFFF0000` (RED)** at pixels [0,1,256,1023] —
+      *"GPU CLEARED the resource RED -- virgl 3D rendering WORKS"* — the host NVIDIA GPU (GL 4.6 via
+      `egl-headless`) actually rendered. **The long block was NOT the encoding** (byte-correct all
+      along vs `virgl_protocol.h`/`virgl_hw.h`/Mesa `virgl_encode.c`) **— it was three SWAPPED
+      virtio-gpu 3D command codes.** Correct (sequential from 0x0200): `CTX_ATTACH_RESOURCE=0x0202`,
+      `TRANSFER_TO_HOST_3D=0x0205`, `TRANSFER_FROM_HOST_3D=0x0206`, `SUBMIT_3D=0x0207`. Found with
+      **QEMU `--trace 'virtio_gpu_*'`** (showed `ctx_submit size 0` — my "transfer" decoded as a submit)
+      + **`VIRGL_LOG_LEVEL=debug VIRGL_LOG_FILE=`** (host virglrenderer log; `VIRGL_DEBUG`/`VREND_DEBUG`
+      alone don't set the log level). Desktop boot unaffected (virtio-gpu-gl is headless-test only).
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
     (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so

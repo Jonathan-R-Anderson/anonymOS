@@ -127,6 +127,13 @@ ANONYMOS_CONFIG_BIN := anonymos-config/build/anonymos-config
 WAYLAND_SYSROOT := deps/gtk-stack/sysroot
 WAYLAND_SCANNER ?= wayland-scanner
 MUSL_CC := deps/musl/install/bin/musl-clang
+
+# R0 — Rust->musl toolchain (the analogue of musl-clang for the Wayland clients; install via rustup
+# + `rustup target add x86_64-unknown-linux-musl`).  Builds NON-PIE static-musl AnonymOS binaries.
+RUSTC ?= $(HOME)/.cargo/bin/rustc
+RUST_TARGET := x86_64-unknown-linux-musl
+RUSTFLAGS_STATIC := --target $(RUST_TARGET) -C target-feature=+crt-static -C relocation-model=static -O
+HELLO_WL_BIN := build/hello-wl
 XDG_SHELL_XML := $(WAYLAND_SYSROOT)/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml
 XDG_SHELL_HEADER := build/xdg-shell-client-protocol.h
 XDG_SHELL_CODE := build/xdg-shell-protocol.c
@@ -292,6 +299,11 @@ $(HOS_SH_BIN): src/util/hos-sh.d
 	ldc2 -betterC -O2 -release -boundscheck=off -c src/util/hos-sh.d -of=build/hos-sh.o
 	$(MUSL_CC) -static -o $@ build/hos-sh.o
 
+# R0 — hello-wl: a "hello, Wayland" client in Rust, static-musl, validating the Rust toolchain.
+$(HELLO_WL_BIN): src/util/hello-wl.rs
+	@echo "==== Building hello-wl (R0: Rust->musl static AnonymOS Wayland client) ===="
+	$(RUSTC) --edition 2021 $(RUSTFLAGS_STATIC) $< -o $@
+
 # Z1: real upstream zsh (static musl). Built by deps/zsh/Makefile (Z0) from the
 # vendored, checksum-pinned tarballs; the committed binary makes the ISO build a no-op.
 $(ZSH_BIN):
@@ -384,6 +396,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI
 	cp $(WLFILES_BIN) cd/wl-files
 	printf '\n    module_path: boot():/wl-files\n' >> cd/boot/limine/limine.conf
 	@echo "Included wl-files (GUI G17)"
+
+	@if [ -x "$(RUSTC)" ]; then \
+	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \
+	   printf '\n    module_path: boot():/hello-wl\n' >> cd/boot/limine/limine.conf && \
+	   echo "Included hello-wl (R0: Rust->musl Wayland validation)"; \
+	 else echo "Skipping hello-wl (R0: $(RUSTC) not found — rustup + 'rustup target add $(RUST_TARGET)')"; fi
 
 	@if [ -f $(GTK_HELLO_BIN) ]; then \
 		cp $(GTK_HELLO_BIN) cd/gtk-hello; \

@@ -814,10 +814,17 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
 `wl-term`. This was Track C of `SHELL_AND_COMMANDS_ROADMAP.md`; gated on a Rust toolchain
 + a GPU stack the OS does not yet have (software Pixman only — see [[weston-perf-profiling]]).
 
-- **R0 — Rust musl toolchain · E: 3.** Stand up a Rust→musl cross-compiler producing static
-  AnonymOS binaries (the analogue of the `musl-clang` C toolchain that builds the Wayland
-  clients). Validate with a "hello, Wayland" Rust client over the live Linux ABI. **Hard
-  dependency for everything below — no Rust on the host today.**
+- **R0 — Rust musl toolchain · ✅ DONE · E: 3.** Stood up the Rust→musl cross-compiler — rustup
+  `rustc 1.96` + cargo + the `x86_64-unknown-linux-musl` target — producing **non-PIE static-musl**
+  AnonymOS binaries (matching the C clients), wired into the Makefile (`$(RUSTC)`, `RUSTFLAGS_STATIC`,
+  the `hello-wl` target + conditional boot-module staging — skipped cleanly if rustc is absent).
+  **Validated** with [src/util/hello-wl.rs], a pure-std (no-crate) "hello, Wayland" client: built
+  static-musl, staged as `/hello-wl`, run from a terminal on the OS it connects to the compositor's
+  socket over the live Linux ABI and **enumerates the full registry — 20 globals** (`wl_compositor`,
+  `wl_shm`, `wl_seat`, `xdg_wm_base`, `weston_desktop_shell`, …): *"Rust speaks Wayland over the live
+  Linux ABI. OK"*.  (Key OS quirk handled: sockets come back non-blocking + the scheduler is
+  cooperative, so the client `poll`s — like libwayland — instead of busy-reading.)  R1+ (Ratatui CPU
+  terminal, then the GPU stack) build on this.
 - **R1 — CPU/Ratatui intermediate · E: 2 · deps: R0.** A CPU-rendered Ratatui terminal (the
   ratatui ecosystem ratty builds on) on the software Wayland/SHM path the GUI clients use —
   proves PTY + input + Unicode rendering in Rust without needing the GPU. A usable terminal

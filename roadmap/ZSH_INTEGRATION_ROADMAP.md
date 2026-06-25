@@ -777,11 +777,21 @@ friendly goal) without bolting POSIX onto the object model.
     relabels to `user@Personal`); `(identity-switch System)` → `-1` (escalation back DENIED, trust
     100 > 50, kernel logged one `[id-switch … trust=0x32]` only); `(case (identity) ((tuple u n c) n))`
     → `Personal` (the security model is pattern-matchable LFE data).
-- **L5 — make `-sh` the native shell · ✅ DONE · E: 2 · deps: L3.** The Domain Manager's
-  per-domain Shell control offers **linux (zsh)** / **native (`-sh`/LFE)**; `wl-term` (then ratty)
-  launches whichever on the PTY. The native shell's prompt already shows the four fields (Z6).
-  - **L5.1 — wire `-sh` as the native shell** · `wl-term` launches `/hos-sh` (the LFE shell, L2–L4)
-    for `EPIN_SHELL=native` instead of native zsh; the DM Shell label becomes **"Native (-sh/LFE)"**.
+- **L5 — the native shell is zsh *with LFE inside it* · ✅ DONE (corrected) · E: 2 · deps: L3.** The
+  Domain Manager's per-domain Shell control offers **Linux (zsh)** / **Native (zsh+LFE)**; *both* run
+  zsh — ONE shell, two personalities — and `wl-term` (then ratty) launches whichever on the PTY. The
+  native shell's prompt already shows the four fields (Z6).
+  - **L5.1 — LFE embedded inside the native zsh** (corrected from "separate `-sh`") · `wl-term`
+    launches `/hos-zsh` — the SAME zsh in the *native* personality — for `EPIN_SHELL=native`, NOT a
+    separate `-sh`. Inside that native zsh, LFE is reachable three ways: `obj`/`id`/`ns`/`svc`/`sys`
+    are **in-process** native-ABI builtins (the `zsh/anonymos` module, Z4c.4, issuing
+    `HOS_SYS_QUERY` directly); `lfe '<form>'` evaluates the **full LFE language** (defun/let/case/
+    lists/tuples/pattern-matching + the object-ABI forms, L2–L4) via the *same* betterC evaluator as
+    the standalone `-sh`; and everything else is ordinary POSIX zsh. The DM Shell label is now
+    **"Native (zsh+LFE)"**. (`hos-sh.d` gained a `version(LfeLib)` switch: the one source compiles
+    either as the standalone `-sh` tool *or*, with `-d-version=LfeLib`, as `lfe.o` exporting
+    `lfe_eval_line` — the foundation for a future truly-in-process `lfe` *builtin* linked into the zsh
+    binary via `libanon.a`; today `lfe` reuses that evaluator through the shared object shell.)
   - **L5.2 — confine the Linux shell to Linux** (security, requested) · a Linux-personality shell
     must only run ordinary Linux programs + the Linux syscall surface — never the native object ABI,
     *even by exec'ing `/hos-sh`*.  The kernel already `ENOSYS`-gates direct `HOS_SYS_QUERY` from a
@@ -791,16 +801,22 @@ friendly goal) without bolting POSIX onto the object model.
     is **dropped when the Linux interactive shell (`/bin/zsh`) is exec'd** — so the Linux shell and
     everything it spawns can never reach the object ABI (running `/hos-sh` from it runs Linux-
     personality → `ENOSYS`).  The legit native launch (desktop → `wl-term` → `/hos-sh`) keeps the
-    authorization; a re-run `/wl-term` from a Linux shell inherits the dropped flag and cannot.  **Verified live:** the DM Shell control reads **"Native (-sh/LFE)"**; a native-domain
-    terminal launches `/hos-sh` and `(obj)` returns the live object table (the LFE shell over the
-    object model).  A **Linux-domain** terminal runs Linux fine (`echo hello-from-linux` → ok) but
-    `/hos-sh obj` / `/hos-sh sys` → `native query failed` (kernel `ENOSYS` ×3) — the Linux shell
-    cannot reach the object ABI.  **This closes the L-series (L0–L5): `-sh` is the native LFE shell,
-    cleanly isolated from the Linux zsh.**
+    authorization; a re-run `/wl-term` from a Linux shell inherits the dropped flag and cannot.
+    **Verified live (corrected build):** the DM Shell control reads **"Native (zsh+LFE)"** and the
+    panel status line reads `shell Native (zsh+LFE)`; a native-domain terminal is *zsh* — POSIX
+    `echo hi-from-native-zsh` works, `whence -w obj lfe echo` reports `obj: builtin`, `lfe: function`,
+    `echo: builtin` (all in the one shell) — with `obj` returning the live object table in-process,
+    `lfe '(- 43 1)'` → `42`, and `lfe '(defun inc (n) (- n 1)) (inc 43)'` → `inc` / `42` (the full LFE
+    language, inside zsh).  A **Linux-domain** terminal runs Linux fine (`echo hello-from-linux` → ok)
+    but `/hos-sh obj` / `/hos-sh sys` → `native query failed` (kernel `ENOSYS` ×3) — the Linux shell
+    cannot reach the object ABI.  **This closes the L-series (L0–L5): the native shell is zsh with LFE
+    embedded inside it, cleanly isolated from the Linux zsh.**
 
-> **Two shells, one terminal.** zsh and `-sh` are independent — zsh is POSIX for Linux
-> programs, `-sh` is LFE for the object model; the terminal (`wl-term`, later ratty) hosts
-> either. Neither blocks the other; both share the rich prompt and the customization config.
+> **One shell (zsh), LFE inside, two personalities.** The native shell is *not* a separate `-sh` —
+> it is zsh in the native personality with LFE embedded: in-process `obj`/`id`/`ns`/`svc`/`sys`
+> builtins + the `lfe` full-language evaluator, atop ordinary POSIX zsh. The Linux personality is the
+> same zsh, confined to POSIX. The terminal (`wl-term`, later ratty) hosts it; both share the rich
+> prompt and the customization config.
 
 ---
 

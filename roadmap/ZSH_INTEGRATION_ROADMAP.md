@@ -897,15 +897,19 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     (ctx 1) → `RESOURCE_CREATE_3D` (resource 1: 256×256 `B8G8R8A8`, bind RENDER_TARGET) →
     `CTX_ATTACH_RESOURCE`**. **Verified live:** all three returned `0x1100` (`OK_NODATA`) → *"3D
     context + resource commands OK (virgl objects live on the GPU)"*.
-    - **R2.3b — render command path 🚧** · `RESOURCE_ATTACH_BACKING` (a 4 KiB guest page for a 32×32
-      resource) + `SUBMIT_3D` (a hand-encoded virgl stream: CREATE_OBJECT(SURFACE) → SET_FRAMEBUFFER →
-      CLEAR red) + `TRANSFER_FROM_HOST_3D` + pixel read-back. **Verified live:** all three commands
-      return `0x1100` (OK) — the full 3D command *path* works end-to-end. **Open:** the read-back
-      pixel is `0x00000000`, not red — `SUBMIT_3D` returns OK even for an invalid stream (virglrenderer
-      reports stream errors asynchronously), so the **virgl clear encoding needs verifying against
-      `virgl_protocol.h`/`virgl_hw.h`** (object/cmd codes, `PIPE_CLEAR_COLOR0`, possibly a fence for
-      submit→transfer ordering). The transport + command framing are correct; the command-stream bytes
-      need refinement to make the GPU actually paint the pixel.
+    - **R2.3b — render command path 🚧 (blocked on a deep virgl issue)** · `RESOURCE_ATTACH_BACKING`
+      (4 KiB page, 32×32 resource, bind RENDER_TARGET|SAMPLER_VIEW) + `SUBMIT_3D` (hand-encoded virgl
+      stream CREATE_OBJECT(SURFACE) → SET_FRAMEBUFFER → CLEAR red, with `VIRTIO_GPU_FLAG_FENCE`) +
+      `TRANSFER_FROM_HOST_3D` + pixel read-back. **Verified:** all commands return `0x1100`; the virgl
+      **encoding is byte-correct** — cross-checked against `virgl_protocol.h`/`virgl_hw.h` AND Mesa's
+      own `virgl_encode.c` (`VIRGL_CMD0`=cmd|obj<<8|len<<16; CREATE_OBJECT=1, SET_FRAMEBUFFER=5,
+      CLEAR=7, OBJECT_SURFACE=8, sizes 5/3/8; format B8G8R8A8=1, bind RT=2; clear flags
+      `PIPE_CLEAR_COLOR0`=4, colour=float bits; transfer `stride=0`=host-inferred). **Blocked:** all 4
+      read-back pixels stay `0x00000000` — virglrenderer accepts the stream (no decode errors) and the
+      fence completes, yet the clear is not reflected in the read-back, and `VIRGL_DEBUG=all` emits no
+      virglrenderer log at all. Needs a real virglrenderer trace or a captured-Mesa-stream comparison,
+      not more guessing. The transport + command framing (R2.1/R2.2/R2.3a) are solid; the open item is
+      purely "make virglrenderer's clear land in the read-back".
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
     (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so

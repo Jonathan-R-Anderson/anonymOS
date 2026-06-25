@@ -363,7 +363,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuPutU(24, 1);        // resource_id = 1
     gpuPutU(28, 2);        // target = PIPE_TEXTURE_2D
     gpuPutU(32, 1);        // format = VIRGL_FORMAT_B8G8R8A8_UNORM
-    gpuPutU(36, 2);        // bind = VIRGL_BIND_RENDER_TARGET
+    gpuPutU(36, 2 | 8);    // bind = VIRGL_BIND_RENDER_TARGET | VIRGL_BIND_SAMPLER_VIEW
     gpuPutU(40, 32);       // width  (32x32 so a single 4 KiB backing page covers the resource)
     gpuPutU(44, 32);       // height
     gpuPutU(48, 1);        // depth
@@ -406,6 +406,8 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     // (e) SUBMIT_3D: virgl stream = CREATE_OBJECT(SURFACE) + SET_FRAMEBUFFER_STATE + CLEAR(red).
     gpuZeroReq(108);
     gpuPutU(0, 0x0203);          // VIRTIO_GPU_CMD_SUBMIT_3D
+    gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE (defer response until GL done)
+    gpuPutQ(8, 1);               // hdr.fence_id = 1
     gpuPutU(16, 1);              // hdr.ctx_id = 1
     gpuPutU(24, 76);             // size of the command stream in bytes
     enum uint S = 32;            // stream begins after hdr(24)+size(4)+padding(4)
@@ -446,11 +448,14 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
 
     memBarrier();
     uint px0 = back[0];
-    printLine("[virtio-gpu] R2.3b: ATTACH / SUBMIT / TRANSFER resp + pixel(0,0):");
+    printLine("[virtio-gpu] R2.3b: ATTACH / SUBMIT / TRANSFER resp + pixels[0,1,256,1023]:");
     printHex(d1);
     printHex(e1);
     printHex(f1);
-    printHex(px0);
+    printHex(back[0]);
+    printHex(back[1]);
+    printHex(back[256]);
+    printHex(back[1023]);
     if (px0 == 0xFFFF0000u)
         printLine("[virtio-gpu] R2.3b: GPU CLEARED the resource RED -- virgl 3D rendering WORKS");
     else

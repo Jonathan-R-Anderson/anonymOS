@@ -8,10 +8,20 @@ Designed by a multi-agent investigation (workflow `virgl-blob-design`); every lo
 was cross-checked against on-disk source (Mesa `mesa-23.3.5-epin`, virglrenderer 1.8.8,
 QEMU's `hw-display-virtio-gpu-gl.so`, the kernel).
 
-> **Progress (2026-06-26):** **B0 ✅ / B1 ✅ / B2 ✅.** QEMU 9.2.0 source-built to
-> `~/.local/qemu-virgl` (no sudo); the blob device realizes + the desktop still composites on virgl;
-> the guest cap-walks the 256 MiB host-visible window (bar=4, len=0x10000000) and negotiates
-> `F_RESOURCE_BLOB`. Run with `GPU=1 ./qemu-run.sh`. **Next: B3 (fence) / B4 (gpuCreateBlob+gpuMapBlob).**
+> **Progress (2026-06-26):** **B0–B6 ✅ + B8 ✅ — the kernel host-visible blob path is COMPLETE and
+> self-test-verified.** QEMU 9.2.0 source-built to `~/.local/qemu-virgl` (no sudo); blob device
+> realizes + desktop composites on virgl; guest cap-walks the 256 MiB window (bar=4) and negotiates
+> `F_RESOURCE_BLOB`; B3 monotonic fences; **B4 self-test PASSES** (`gpuCreateBlob`→`gpuMapBlob`→CPU
+> write/read round-trip through the window — KEY: bind=0 not VIRGL_BIND_CUSTOM, flags
+> PERSISTENT|COHERENT); B5 advertises blob params 3+4 (NOT 6 — CONTEXT_INIT regresses virgl→softpipe);
+> B6 ioctl 0x4a + RESOURCE_INFO blob_mem; B8 unmap-on-close (don't free BAR pages). Run `GPU=1 ./qemu-run.sh`.
+>
+> **B7 ⛔ BLOCKED on Mesa (not the kernel).** Mesa allocates a client's EGL window surface as a CLASSIC
+> render target, not a host-visible blob, so it never calls the 0x4a blob ioctl for the shared window
+> buffer → Weston's import still fails ("importing the supplied dmabufs failed"). The kernel blob path is
+> ready; achieving zero-copy window compositing needs **Mesa to allocate shared/scanout window buffers as
+> host-visible blobs** (a virgl-driver change — e.g. force PIPE_BIND_SHARED window resources down the
+> coherent-blob path). That's the remaining work, and it's Mesa-side.
 
 ## Why blob (the architectural finding that motivated this)
 

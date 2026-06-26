@@ -11,27 +11,56 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <gbm.h>
+#include <xf86drm.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 
-int main(void) {
-    // Force the virgl (virtio_gpu) HW driver instead of letting Mesa fall back to softpipe (CPU),
-    // and turn on loader debug so a virgl init failure is visible rather than silently masked.
-    setenv("MESA_LOADER_DRIVER_OVERRIDE", "virtio_gpu", 1);
+// Set the GPU driver-selection + debug env BEFORE main — priority 101 runs before Mesa's static-lib
+// constructors, so the loader actually reads them.  setenv() in main() is too late for env vars that
+// Mesa reads at library init (which is why the earlier in-main override silently did nothing).
+__attribute__((constructor(101)))
+static void force_gpu_env(void) {
+    // The kernel seeds LIBGL_ALWAYS_SOFTWARE=1 + GALLIUM_DRIVER=softpipe +
+    // MESA_LOADER_DRIVER_OVERRIDE=kms_swrast into EVERY program's env (the CPU/pixman desktop needs
+    // software Mesa).  Unset all three so this GL test uses the real virgl HW driver on the render
+    // node — otherwise Mesa is hard-forced to softpipe regardless of the device.  (Do NOT set
+    // MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu — gbm misreads it as a backend name; just let gbm's dri
+    // backend resolve the driver from drmGetVersion -> "virtio_gpu".)
+    unsetenv("LIBGL_ALWAYS_SOFTWARE");
+    unsetenv("GALLIUM_DRIVER");
+    unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
     setenv("LIBGL_DEBUG", "verbose", 1);
+    setenv("MESA_DEBUG", "1", 1);
+}
+
+int main(void) {
+    printf("[drm-gl-test] env: OVERRIDE=%s GALLIUM_DRIVER=%s LIBGL_ALWAYS_SOFTWARE=%s\n",
+           getenv("MESA_LOADER_DRIVER_OVERRIDE"), getenv("GALLIUM_DRIVER"),
+           getenv("LIBGL_ALWAYS_SOFTWARE"));
 
     int fd = open("/dev/dri/renderD128", O_RDWR);
     if (fd < 0) { printf("[drm-gl-test] open renderD128 failed\n"); return 1; }
 
-    struct gbm_device *gbm = gbm_create_device(fd);
-    if (!gbm) { printf("[drm-gl-test] gbm_create_device failed\n"); return 1; }
+    // Mesa's loader picks the DRI driver from drmGetVersion()->name; if it fails, gbm silently
+    // falls to software. Print exactly what the kernel reports for the render node.
+    drmVersionPtr ver = drmGetVersion(fd);
+    if (ver) {
+        printf("[drm-gl-test] drmGetVersion: name='%s' (name_len=%d) %d.%d\n",
+               ver->name ? ver->name : "(null)", ver->name_len,
+               ver->version_major, ver->version_minor);
+        drmFreeVersion(ver);
+    } else {
+        printf("[drm-gl-test] drmGetVersion FAILED -> loader can't find a HW driver -> softpipe\n");
+    }
 
+    // Use the SURFACELESS platform — gbm's render-node path does a per-driver backend lookup
+    // (virtio_gpu_gbm.so) that doesn't exist and falls to software; surfaceless loads the render
+    // node's DRI driver (virtio_gpu -> virgl) directly.
+    (void)fd;
     PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplay =
         (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
-    EGLDisplay dpy = getPlatformDisplay
-        ? getPlatformDisplay(EGL_PLATFORM_GBM_KHR, gbm, NULL)
-        : eglGetDisplay((EGLNativeDisplayType)gbm);
+    EGLDisplay dpy = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
 
     EGLint maj = 0, min = 0;
     if (!eglInitialize(dpy, &maj, &min)) {
@@ -41,7 +70,7 @@ int main(void) {
 
     eglBindAPI(EGL_OPENGL_ES_API);
     EGLint cfg_attrs[] = {
-        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,   // gbm offers window configs; we render surfaceless to an FBO
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,  // surfaceless: render to an FBO, no window surface
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
         EGL_NONE

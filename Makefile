@@ -172,7 +172,7 @@ $(DRM_GPU_TEST_BIN): src/util/drm-gpu-test.c
 $(DRM_GL_TEST_BIN): src/util/drm-gl-test.c
 	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
 	  echo "==== Building drm-gl-test (R2.4b GLES2-via-virgl test) ===="; \
-	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -o $@ $< \
+	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -Ideps/gtk-stack/sysroot/include/libdrm -o $@ $< \
 	    -Ldeps/gtk-stack/sysroot/lib -Wl,--start-group \
 	      -lEGL -lGLESv2 -lgbm -lglapi -ldrm -lexpat -lz -lffi \
 	      -lwayland-server -lwayland-client -lwayland-egl \

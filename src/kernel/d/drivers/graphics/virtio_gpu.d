@@ -568,6 +568,20 @@ export int gpuDrmTransferToHost(uint resId, uint x, uint y, uint z,
     return (gpuCtrl(72, 24) == 0x1100) ? 0 : -1;
 }
 
+// Fetch a host virgl capset blob (GET_CAPSET) into outBuf; returns bytes copied (0 = fail).
+// Mesa's virgl winsys parses this to learn the GL feature set / limits.
+export uint gpuDrmGetCapset(uint capsetId, uint capsetVer, ubyte* outBuf, uint maxLen) @nogc nothrow {
+    if (!g_gpu3dReady || outBuf is null) return 0;
+    if (maxLen > 1024) maxLen = 1024;          // response area headroom (g_gpuBuf is one page)
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0109);          // VIRTIO_GPU_CMD_GET_CAPSET
+    gpuPutU(24, capsetId);
+    gpuPutU(28, capsetVer);
+    if (gpuCtrl(32, 24 + maxLen) != 0x1103) return 0;   // VIRTIO_GPU_RESP_OK_CAPSET
+    foreach (i; 0 .. maxLen) outBuf[i] = g_gpuBuf[2048 + 24 + i];  // capset data follows the resp hdr
+    return maxLen;
+}
+
 export void virtioGpuInit() @nogc nothrow {
     printLine("[virtio-gpu] Probing...");
     

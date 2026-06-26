@@ -34,8 +34,11 @@ typedef __SIZE_TYPE__    size_t;
 #define DRM_IOCTL_VIRTGPU_RESOURCE_CREATE    0xC0386444UL  // drm_virtgpu_resource_create (56)
 #define DRM_IOCTL_VIRTGPU_TRANSFER_FROM_HOST 0xC02C6446UL  // (44)
 #define DRM_IOCTL_VIRTGPU_WAIT               0xC0086448UL  // drm_virtgpu_3d_wait (8)
+#define DRM_IOCTL_VIRTGPU_GET_CAPS           0xC0186449UL  // drm_virtgpu_get_caps (24)
 
 #define VIRTGPU_PARAM_3D_FEATURES 1
+
+struct drm_virtgpu_get_caps { uint32_t cap_set_id, cap_set_ver; uint64_t addr; uint32_t size, pad; };
 
 struct drm_virtgpu_getparam { uint64_t param; uint64_t value; };
 
@@ -103,7 +106,7 @@ static void die(const char *msg, long code) {
 }
 
 void _start(void) {
-    print("[drm-gpu-test] R2.4a: userspace virgl clear via /dev/dri/renderD128\n");
+    print("[drm-gpu-test] R2.4a/b: userspace virgl GET_CAPS + clear via /dev/dri/renderD128\n");
 
     int fd = (int)sc3(SYS_open, (long)"/dev/dri/renderD128", O_RDWR, 0);
     if (fd < 0) die("[drm-gpu-test] open renderD128 failed", fd);
@@ -114,6 +117,27 @@ void _start(void) {
         die("[drm-gpu-test] GETPARAM failed", -1);
     print("[drm-gpu-test] 3D_FEATURES="); print_int((long)gp.value); print("\n");
     if (gp.value != 1) die("[drm-gpu-test] no 3D features", (long)gp.value);
+
+    // 1b) GET_CAPS — fetch the host virgl capset (the blob Mesa parses for GL features).
+    //     Try VIRGL2 (capset 2) then fall back to VIRGL (capset 1).  caps[0] = max_version.
+    static uint32_t caps[256];
+    struct drm_virtgpu_get_caps gc;
+    int capset = 2;
+    memset(&gc, 0, sizeof(gc)); memset(caps, 0, sizeof(caps));
+    gc.cap_set_id = 2; gc.cap_set_ver = 2;
+    gc.addr = (uint64_t)(unsigned long)caps; gc.size = sizeof(caps);
+    sc3(SYS_ioctl, fd, (long)DRM_IOCTL_VIRTGPU_GET_CAPS, (long)&gc);
+    if (caps[0] == 0) {  // host may not offer VIRGL2; try VIRGL (capset 1)
+        capset = 1;
+        memset(&gc, 0, sizeof(gc)); memset(caps, 0, sizeof(caps));
+        gc.cap_set_id = 1; gc.cap_set_ver = 1;
+        gc.addr = (uint64_t)(unsigned long)caps; gc.size = sizeof(caps);
+        sc3(SYS_ioctl, fd, (long)DRM_IOCTL_VIRTGPU_GET_CAPS, (long)&gc);
+    }
+    print("[drm-gpu-test] GET_CAPS capset="); print_int(capset);
+    print(" max_version="); print_hex(caps[0]);
+    print(" caps[1]="); print_hex(caps[1]); print("\n");
+    if (caps[0] == 0) print("[drm-gpu-test] WARNING: empty capset (Mesa would have no GL caps)\n");
 
     // 2) RESOURCE_CREATE — 32x32 B8G8R8A8 render-target+sampleable texture.
     struct drm_virtgpu_resource_create rc; memset(&rc, 0, sizeof(rc));

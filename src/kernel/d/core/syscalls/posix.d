@@ -9898,6 +9898,8 @@ extern(C) int  gpuDrmCtxAttach(uint) @nogc nothrow;
 extern(C) int  gpuDrmSubmit3D(const(ubyte)*, uint) @nogc nothrow;
 extern(C) int  gpuDrmTransferFromHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
 extern(C) int  gpuDrmTransferToHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
+extern(C) uint gpuDrmGetCapset(uint, uint, ubyte*, uint) @nogc nothrow;
+private __gshared ubyte[1024] g_drmCapsScratch;
 
 private long handleVirtgpuIoctl(uint nr, ulong arg) {
     import core.globals : hhdm_offset;
@@ -9910,10 +9912,15 @@ private long handleVirtgpuIoctl(uint nr, ulong arg) {
         userWrite!ulong(arg + 8, val);
         return 0;
     }
-    case 0x49: { // DRM_VIRTGPU_GET_CAPS — R2.4a: empty caps (real virgl caps = R2.4b/Mesa)
-        ulong addr = userRead!ulong(arg + 8);
-        uint  size = userRead!uint(arg + 16);
-        if (addr != 0) foreach (i; 0 .. size) userWrite!ubyte(addr + i, 0);
+    case 0x49: { // DRM_VIRTGPU_GET_CAPS { cap_set_id; cap_set_ver; u64 addr; size; pad }
+        uint  capId  = userRead!uint(arg + 0);
+        uint  capVer = userRead!uint(arg + 4);
+        ulong addr   = userRead!ulong(arg + 8);
+        uint  size   = userRead!uint(arg + 16);
+        if (addr == 0 || size == 0) return 0;
+        uint want = (size > g_drmCapsScratch.length) ? cast(uint)g_drmCapsScratch.length : size;
+        uint got  = gpuDrmGetCapset(capId, capVer, g_drmCapsScratch.ptr, want);  // forward the host capset
+        foreach (i; 0 .. size) userWrite!ubyte(addr + i, (i < got) ? g_drmCapsScratch[i] : 0);
         return 0;
     }
     case 0x4b: // DRM_VIRTGPU_CONTEXT_INIT — virgl context 1 already exists; accept
@@ -9959,10 +9966,20 @@ private long handleVirtgpuIoctl(uint nr, ulong arg) {
         userWrite!ulong(arg + 0, g.phys);   // FD_DRM mmap maps offset==phys
         return 0;
     }
-    case 0x42: { // DRM_VIRTGPU_EXECBUFFER { flags; size; u64 command; ... }
-        uint size = userRead!uint(arg + 4);
-        ulong cmd = userRead!ulong(arg + 8);
+    case 0x42: { // DRM_VIRTGPU_EXECBUFFER { flags; size; u64 command; u64 bo_handles; num_bo_handles; ... }
+        uint  size      = userRead!uint(arg + 4);
+        ulong cmd       = userRead!ulong(arg + 8);
+        ulong boHandles = userRead!ulong(arg + 16);
+        uint  numBo     = userRead!uint(arg + 24);
         if (cmd == 0 || size == 0) return negErrno(EINVAL);
+        // Residency: ctx-attach every referenced bo's resource before the submit so the virgl
+        // command stream can resolve them (idempotent host-side; RESOURCE_CREATE already attaches).
+        if (boHandles != 0 && numBo > 0 && numBo <= 256) {
+            foreach (i; 0 .. numBo) {
+                auto g = drmGemGet(userRead!uint(boHandles + i * 4));
+                if (g !is null) gpuDrmCtxAttach(g.resId);
+            }
+        }
         return (gpuDrmSubmit3D(cast(const(ubyte)*)cmd, size) == 0) ? 0 : negErrno(EINVAL);
     }
     case 0x46:    // DRM_VIRTGPU_TRANSFER_FROM_HOST

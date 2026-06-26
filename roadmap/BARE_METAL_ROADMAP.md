@@ -85,9 +85,14 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
 3. **virt→phys** of an LKL buffer (no-IOMMU IOVA = phys) — → `.map_page` for DMA.
 4. **IRQ forward** (device IRQ → `lkl_trigger_irq`) — the ONLY hard one (EpinAnonymOS polls, no kernel IRQ
    handling, [[weston-perf-profiling]]); **deferred** — prove with a polled driver first.
-**Incremental:** L3a config+MMIO+virt→phys (the 3 easy caps) + the backend → L3b **LKL's `ahci` reads a
-sector POLLED** (QEMU AHCI first, then the real Intel SATA). L3c = IRQ forward (for drivers that need it).
-**Verify:** LKL's `ahci` driver reads a sector off the disk.
+**Incremental:**
+- **L3a ✅ DONE (commit ad1273c88): LKL ENUMERATES real PCI hardware via the backend.** Kernel syscall
+  `EPIN_SYS_LKL_PCI=0x4100` (config read/write/scan over `pciConfigRead32`/`scanPCIDevices`); `lkl-boot.c`
+  custom `lkl_dev_pci_ops` (`.add` scans, `.read`/`.write`→syscall) as `ops.pci_ops`, cmdline `lkl_pci=epin`.
+  Serial: `epin_pci: device 00:01.1 vendor/device=0x70108086` + `pci 0000:00:00.0:` (LKL read its BARs).
+- **L3b (next):** add op `MMIO-at-phys` + `virt→phys` to the 0x4100 syscall → `.resource_alloc`
+  (`register_iomem` forwards BAR MMIO) + `.map_page` (DMA) → **LKL's `ahci` reads a sector POLLED** (QEMU
+  AHCI first, then the real Intel SATA). L3c = IRQ forward.
 
 ## L4 — Bridge LKL's devices to EpinAnonymOS
 LKL has its own VFS/`/dev`. Reach its device nodes via the LKL syscall interface

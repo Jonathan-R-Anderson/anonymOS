@@ -79,6 +79,7 @@ kernel.elf: \
 BUSYBOX_BIN   := deps/busybox/busybox
 TEST_DRM_BIN  := build/test-drm
 DRM_GPU_TEST_BIN := build/drm-gpu-test
+DRM_GL_TEST_BIN  := build/drm-gl-test
 COMPOSITOR_BIN := build/compositor
 HELLO_GUI_BIN := build/hello-gui
 WLPROBE_BIN   := build/wl-probe
@@ -165,6 +166,18 @@ $(TEST_DRM_BIN): src/util/test-drm.c
 $(DRM_GPU_TEST_BIN): src/util/drm-gpu-test.c
 	@echo "==== Building drm-gpu-test (R2.4a userspace virgl render-node test) ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
+
+# R2.4b: a dynamic-musl GLES2 program that renders through Mesa's virgl driver.
+# Gated on the gtk-stack sysroot (libEGL.a etc.); skips cleanly if Mesa isn't built.
+$(DRM_GL_TEST_BIN): src/util/drm-gl-test.c
+	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
+	  echo "==== Building drm-gl-test (R2.4b GLES2-via-virgl test) ===="; \
+	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -o $@ $< \
+	    -Ldeps/gtk-stack/sysroot/lib -Wl,--start-group \
+	      -lEGL -lGLESv2 -lgbm -lglapi -ldrm -lexpat -lz -lffi \
+	      -lwayland-server -lwayland-client -lwayland-egl \
+	    -Wl,--end-group -lpthread -lm; \
+	else echo "drm-gl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
 
 $(COMPOSITOR_BIN): src/util/compositor.c
 	@echo "==== Building compositor ===="
@@ -331,7 +344,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -363,6 +376,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(COMPOSI
 
 	cp $(DRM_GPU_TEST_BIN) cd/drm-gpu-test
 	@echo "Included drm-gpu-test (R2.4a userspace virgl render-node test)"
+
+	@if [ -s $(DRM_GL_TEST_BIN) ]; then \
+		cp $(DRM_GL_TEST_BIN) cd/drm-gl-test; \
+		printf '\n    module_path: boot():/drm-gl-test\n' >> cd/boot/limine/limine.conf; \
+		echo "Included drm-gl-test (R2.4b Mesa virgl GLES2 test)"; \
+	fi
 
 	cp $(COMPOSITOR_BIN) cd/compositor
 	@echo "Included compositor"

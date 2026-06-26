@@ -1185,6 +1185,21 @@ private void maybeSpawnGpuTest() {
     spawnWaylandProgram("drm-gpu-test\0".ptr, "[r24]\0".ptr);
 }
 
+// R2.4b-step4 — after drm-gpu-test has run (longer delay avoids racing the shared GPU control
+// queue), launch drm-gl-test: a real GLES2 program that renders through Mesa's virgl driver + the
+// render node.  Dynamic musl (dlopens virtio_gpu_dri.so), so NOT in isFreestandingExecName.
+private __gshared bool g_glTestStarted = false;
+private __gshared int  g_glTestDelay   = 0;
+private void maybeSpawnGlTest() {
+    if (g_glTestStarted) return;
+    import drivers.graphics.virtio_gpu : g_gpuVirgl;
+    if (!g_gpuVirgl) return;
+    if (g_glTestDelay++ < 150) return;   // run well after drm-gpu-test has exited
+    g_glTestStarted = true;
+    klog("[r24] launching drm-gl-test (Mesa virgl GLES2)\n");
+    spawnWaylandProgram("drm-gl-test\0".ptr, "[r24gl]\0".ptr);
+}
+
 // ------------------------------------------------------------------
 // wait4
 // ------------------------------------------------------------------
@@ -2465,6 +2480,7 @@ private void kernelLoop() {
     while (true) {
         maybeSpawnWaylandClient();
         maybeSpawnGpuTest();   // R2.4a: userspace GPU test when virtio-gpu-gl is present
+        maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

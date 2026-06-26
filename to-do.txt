@@ -10,8 +10,6 @@ https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a0cd0e9-8
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b900c-4c1c-83ea-b830-3a0137c662cc (dynamically linked)
 
-https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b92a0-a1d8-83ea-b43b-22632cb2c59a (react os compatibility layer)
-
 make sure the kernel can handle multiple cores/multithreading/dynamic linking
 
 make sure it does hardware abstraction
@@ -19,9 +17,6 @@ make sure it does hardware abstraction
 control panel like with qubes os, different subsystems have colored borders to indicate profiles
 
 https://www.gnunet.org/en/index.html
-https://github.com/orhun/ratty
-https://github.com/Jonathan-R-Anderson/-sh
-https://github.com/Jonathan-R-Anderson/web3-kinetic-loader (as the splash page for booting the os and wallpaper)
 
 android apk support
 https://github.com/darlinghq/darling

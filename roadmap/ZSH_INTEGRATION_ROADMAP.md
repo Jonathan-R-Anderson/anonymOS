@@ -921,9 +921,14 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
       CREATE_SURFACE+SET_FRAMEBUFFER+CLEAR-red virgl stream, `TRANSFER_FROM_HOST`s, and reads back
       **`0xFFFF0000` → "RESULT: PASS"**. Launched at boot only when `virtio-gpu-gl` is present
       (`g_gpuVirgl`); the desktop device set is unaffected.
-    - **R2.4b — guest Mesa virgl driver (next)** · real `GET_CAPS` (forward the host virgl capset),
-      per-fd GEM tables, larger EXECBUFFER streams + bo_handle residency, blob resources; then point
-      Mesa's `virtio_gpu`/`virpipe` gallium driver at the node so GL/GLES apps get acceleration.
+    - **R2.4b — guest Mesa virgl driver (in progress)** ·
+      - **step1 ✅ DONE (commit 3bcfaeb91)** · real `GET_CAPS` — `gpuDrmGetCapset` forwards the host
+        `GET_CAPSET` (0x0109) blob to userspace; verified `drm-gpu-test` reads VIRGL2 capset
+        `max_version=2`, caps bits `0xf03727fe`. EXECBUFFER now ctx-attaches referenced `bo_handles`
+        (residency). Known limits: single global GEM table, EXECBUFFER streams capped at ~2 KB.
+      - **step2 (next)** · per-fd GEM tables, large EXECBUFFER streams (dedicated DMA submit buffer +
+        chained descriptor), blob resources; then build Mesa with the `virgl` gallium driver +
+        `virtio_gpu` winsys for the guest musl and point it at the node so GL/GLES apps accelerate.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`

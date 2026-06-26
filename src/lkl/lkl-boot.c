@@ -155,6 +155,7 @@ struct lkl_iomem_ops {
     int (*write)(void *data, int offset, void *value, int size);
 };
 extern void *register_iomem(void *data, int size, const struct lkl_iomem_ops *ops);
+extern int lkl_trigger_irq(int irq);   /* exported liblkl symbol — raises a Linux IRQ inside LKL */
 
 /* Every BAR MMIO routes here: data = the BAR's physical base, forward (phys+offset) to op3/op4. */
 static int g_mmio_log;  /* log the first handful so we can SEE the driver touch real registers */
@@ -220,7 +221,41 @@ static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr
 }
 static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)
 { (void)dev; (void)h; (void)sz; }
-static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq) { (void)dev; (void)irq; return 0; }  /* L3c */
+
+/* ---- L3c: IRQ forward (polled INTx -> lkl_trigger_irq) -------------------------
+ * LKL has no MSI/MSI-X, so the device uses a legacy INTx pin.  EpinAnonymOS has no
+ * kernel-mode interrupt delivery (it polls), so we mirror the model in userspace: a
+ * thread polls the device's PCI Status register (bit 3 = Interrupt Status, set while
+ * INTx is asserted) and raises the matching Linux IRQ inside LKL.  A periodic safety
+ * trigger guarantees forward progress even if the status read ever lies.
+ */
+static struct { long bdf; int irq; } g_irq;
+static void *epin_irq_thread(void *arg)
+{
+    (void)arg;
+    int idle = 0;
+    for (;;) {
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 250000 };   /* 250us poll */
+        nanosleep(&ts, NULL);
+        int sts = (int)epin_pci_call(0, g_irq.bdf, 0x06, 2, 0);    /* PCI Status (cfg 0x06) */
+        if ((sts & 0x08) || ++idle >= 16) {                        /* INTx asserted, or ~4ms net */
+            lkl_trigger_irq(g_irq.irq);
+            idle = 0;
+        }
+    }
+    return NULL;
+}
+static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq)
+{
+    struct epin_pci_dev *d = (struct epin_pci_dev *)dev;
+    g_irq.bdf = d->bdf;
+    g_irq.irq = irq;
+    pthread_t th;
+    pthread_create(&th, NULL, epin_irq_thread, NULL);
+    fprintf(stderr, ">>> epin_pci: irq_init irq=%d bdf=%lx (polled INTx -> lkl_trigger_irq)\n",
+            irq, d->bdf);
+    return 0;
+}
 
 static struct lkl_dev_pci_ops epin_pci_ops = {
     .add            = epin_pci_add,

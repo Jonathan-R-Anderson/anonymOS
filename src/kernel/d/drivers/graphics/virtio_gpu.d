@@ -476,6 +476,98 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         printLine("[virtio-gpu] R2.3b: readback did not match the clear colour");
 }
 
+// ==========================================================================
+// R2.4 — DRM render-node serving primitives.  These expose the modern virgl
+// transport (the same path the R2.3b self-test proved) to the kernel's
+// /dev/dri/renderD128 ioctl handler so userspace can drive the GPU.  All run on
+// virgl context 1 (created by virtioGpuDetectVirgl); DRM resource ids start at
+// 16 to avoid the self-test's resource 1.  Single-threaded: the control queue +
+// g_gpuBuf are shared, so callers must be serialized (the ioctl path is).
+// ==========================================================================
+__gshared uint g_drmNextRes = 16;
+
+export bool gpuDrm3dReady() @nogc nothrow { return g_gpu3dReady; }
+
+// Create a 3D resource on the host; returns its resource id (0 = fail).
+export uint gpuDrmCreateResource3D(uint target, uint format, uint bind,
+                                   uint width, uint height, uint depth,
+                                   uint arraySize) @nogc nothrow {
+    if (!g_gpu3dReady) return 0;
+    uint rid = g_drmNextRes++;
+    gpuZeroReq(72);
+    gpuPutU(0, 0x0204);          // VIRTIO_GPU_CMD_RESOURCE_CREATE_3D
+    gpuPutU(24, rid);
+    gpuPutU(28, target);         // PIPE_TEXTURE_2D=2
+    gpuPutU(32, format);         // B8G8R8A8_UNORM=1
+    gpuPutU(36, bind);           // RENDER_TARGET=2 | SAMPLER_VIEW=8
+    gpuPutU(40, width);
+    gpuPutU(44, height);
+    gpuPutU(48, depth ? depth : 1);
+    gpuPutU(52, arraySize ? arraySize : 1);
+    return (gpuCtrl(72, 24) == 0x1100) ? rid : 0;
+}
+
+// Attach a guest backing page to a resource (sets res->iov on the host).
+export int gpuDrmAttachBacking(uint resId, ulong phys, uint len) @nogc nothrow {
+    gpuZeroReq(48);
+    gpuPutU(0, 0x0106);          // VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING
+    gpuPutU(24, resId);
+    gpuPutU(28, 1);              // nr_entries
+    gpuPutQ(32, phys);           // mem_entry.addr
+    gpuPutU(40, len);            // mem_entry.length
+    return (gpuCtrl(48, 24) == 0x1100) ? 0 : -1;
+}
+
+// Bind a resource into virgl context 1's res_hash (required before SUBMIT/transfer).
+export int gpuDrmCtxAttach(uint resId) @nogc nothrow {
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0202);          // VIRTIO_GPU_CMD_CTX_ATTACH_RESOURCE
+    gpuPutU(16, 1);              // ctx_id = 1
+    gpuPutU(24, resId);
+    return (gpuCtrl(32, 24) == 0x1100) ? 0 : -1;
+}
+
+// Submit a virgl command stream (streamLen bytes) to context 1.
+export int gpuDrmSubmit3D(const(ubyte)* stream, uint streamLen) @nogc nothrow {
+    if (streamLen == 0 || streamLen > 2000) return -1;
+    gpuZeroReq(32 + streamLen);
+    gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_SUBMIT_3D
+    gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
+    gpuPutQ(8, 1);               // hdr.fence_id
+    gpuPutU(16, 1);              // hdr.ctx_id = 1
+    gpuPutU(24, streamLen);      // command-stream size in bytes
+    foreach (i; 0 .. streamLen) g_gpuBuf[32 + i] = stream[i];
+    return (gpuCtrl(32 + streamLen, 24) == 0x1100) ? 0 : -1;
+}
+
+// Read a host resource's pixels back into its attached guest backing.
+export int gpuDrmTransferFromHost(uint resId, uint x, uint y, uint z,
+                                  uint w, uint h, uint d, uint level,
+                                  uint offset, uint stride, uint layerStride) @nogc nothrow {
+    gpuZeroReq(72);
+    gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D
+    gpuPutU(4, 1); gpuPutQ(8, 2); gpuPutU(16, 1);   // FENCE, fence_id 2, ctx 1
+    gpuPutU(24, x); gpuPutU(28, y); gpuPutU(32, z);
+    gpuPutU(36, w); gpuPutU(40, h); gpuPutU(44, d);
+    gpuPutQ(48, cast(ulong)offset);
+    gpuPutU(56, resId); gpuPutU(60, level); gpuPutU(64, stride); gpuPutU(68, layerStride);
+    return (gpuCtrl(72, 24) == 0x1100) ? 0 : -1;
+}
+
+// Upload guest backing -> host resource (Mesa texture/buffer uploads).
+export int gpuDrmTransferToHost(uint resId, uint x, uint y, uint z,
+                                uint w, uint h, uint d, uint level,
+                                uint offset, uint stride, uint layerStride) @nogc nothrow {
+    gpuZeroReq(72);
+    gpuPutU(0, 0x0205);          // VIRTIO_GPU_CMD_TRANSFER_TO_HOST_3D
+    gpuPutU(4, 1); gpuPutQ(8, 4); gpuPutU(16, 1);   // FENCE, fence_id 4, ctx 1
+    gpuPutU(24, x); gpuPutU(28, y); gpuPutU(32, z);
+    gpuPutU(36, w); gpuPutU(40, h); gpuPutU(44, d);
+    gpuPutQ(48, cast(ulong)offset);
+    gpuPutU(56, resId); gpuPutU(60, level); gpuPutU(64, stride); gpuPutU(68, layerStride);
+    return (gpuCtrl(72, 24) == 0x1100) ? 0 : -1;
+}
+
 export void virtioGpuInit() @nogc nothrow {
     printLine("[virtio-gpu] Probing...");
     

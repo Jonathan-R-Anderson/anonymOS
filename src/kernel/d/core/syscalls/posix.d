@@ -9869,12 +9869,132 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
     return 0;
 }
 
+// ── R2.4 — virtio-gpu / virgl render-node ioctls (DRM_VIRTGPU_*, nr 0x41..0x4b) ──
+// A small GEM table maps per-open bo handles to host virgl resources; MAP returns
+// the backing's physical address (FD_DRM mmap maps offset==phys into user VA).
+// Backed by the modern virgl transport primitives in drivers/graphics/virtio_gpu.d
+// (the same path the R2.3b self-test proved).  Single GPU consumer for now.
+private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; }
+private __gshared DrmGem[64] g_drmGems;
+
+private uint drmGemAlloc(uint resId, ulong phys, uint size, uint stride) @nogc nothrow {
+    foreach (i; 0 .. g_drmGems.length) {
+        if (!g_drmGems[i].used) {
+            g_drmGems[i] = DrmGem(true, resId, phys, size, stride);
+            return cast(uint)(i + 1);   // handle 0 is invalid
+        }
+    }
+    return 0;
+}
+private DrmGem* drmGemGet(uint handle) @nogc nothrow {
+    if (handle == 0 || handle > g_drmGems.length || !g_drmGems[handle - 1].used) return null;
+    return &g_drmGems[handle - 1];
+}
+
+extern(C) bool gpuDrm3dReady() @nogc nothrow;
+extern(C) uint gpuDrmCreateResource3D(uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
+extern(C) int  gpuDrmAttachBacking(uint, ulong, uint) @nogc nothrow;
+extern(C) int  gpuDrmCtxAttach(uint) @nogc nothrow;
+extern(C) int  gpuDrmSubmit3D(const(ubyte)*, uint) @nogc nothrow;
+extern(C) int  gpuDrmTransferFromHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
+extern(C) int  gpuDrmTransferToHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
+
+private long handleVirtgpuIoctl(uint nr, ulong arg) {
+    import core.globals : hhdm_offset;
+    switch (nr) {
+    case 0x43: { // DRM_VIRTGPU_GETPARAM { u64 param; u64 value; }
+        ulong param = userRead!ulong(arg + 0);
+        ulong val = 0;
+        if (param == 1)      val = gpuDrm3dReady() ? 1 : 0;  // VIRTGPU_PARAM_3D_FEATURES
+        else if (param == 2) val = 1;                        // VIRTGPU_PARAM_CAPSET_QUERY_FIX
+        userWrite!ulong(arg + 8, val);
+        return 0;
+    }
+    case 0x49: { // DRM_VIRTGPU_GET_CAPS — R2.4a: empty caps (real virgl caps = R2.4b/Mesa)
+        ulong addr = userRead!ulong(arg + 8);
+        uint  size = userRead!uint(arg + 16);
+        if (addr != 0) foreach (i; 0 .. size) userWrite!ubyte(addr + i, 0);
+        return 0;
+    }
+    case 0x4b: // DRM_VIRTGPU_CONTEXT_INIT — virgl context 1 already exists; accept
+        return 0;
+    case 0x44: { // DRM_VIRTGPU_RESOURCE_CREATE
+        uint target = userRead!uint(arg + 0);
+        uint format = userRead!uint(arg + 4);
+        uint bind   = userRead!uint(arg + 8);
+        uint width  = userRead!uint(arg + 12);
+        uint height = userRead!uint(arg + 16);
+        uint depth  = userRead!uint(arg + 20);
+        uint arrsz  = userRead!uint(arg + 24);
+        uint rid = gpuDrmCreateResource3D(target, format, bind, width, height, depth, arrsz);
+        if (rid == 0) return negErrno(EINVAL);
+        uint stride = width * 4;                          // BGRA / 4 bytes per texel
+        uint size   = stride * (height ? height : 1);
+        uint pages  = (size + 4095) / 4096; if (pages == 0) pages = 1;
+        ulong phys  = alloc_phys_pages(pages);
+        if (phys == 0) return negErrno(ENOMEM);
+        auto bp = cast(uint*)(phys + hhdm_offset);        // zero the backing
+        foreach (i; 0 .. (pages * 4096) / 4) bp[i] = 0;
+        gpuDrmAttachBacking(rid, phys, pages * 4096);
+        gpuDrmCtxAttach(rid);
+        uint handle = drmGemAlloc(rid, phys, size, stride);
+        if (handle == 0) return negErrno(ENOMEM);
+        userWrite!uint(arg + 40, handle);   // bo_handle (returned)
+        userWrite!uint(arg + 44, rid);      // res_handle (returned)
+        userWrite!uint(arg + 48, size);     // size (returned)
+        userWrite!uint(arg + 52, stride);   // stride (returned)
+        return 0;
+    }
+    case 0x45: { // DRM_VIRTGPU_RESOURCE_INFO { bo_handle; res_handle(out); size(out); blob_mem(out) }
+        auto g = drmGemGet(userRead!uint(arg + 0));
+        if (g is null) return negErrno(EINVAL);
+        userWrite!uint(arg + 4, g.resId);
+        userWrite!uint(arg + 8, g.size);
+        userWrite!uint(arg + 12, 0);
+        return 0;
+    }
+    case 0x41: { // DRM_VIRTGPU_MAP { u64 offset(out); u32 handle; u32 pad }
+        auto g = drmGemGet(userRead!uint(arg + 8));
+        if (g is null) return negErrno(EINVAL);
+        userWrite!ulong(arg + 0, g.phys);   // FD_DRM mmap maps offset==phys
+        return 0;
+    }
+    case 0x42: { // DRM_VIRTGPU_EXECBUFFER { flags; size; u64 command; ... }
+        uint size = userRead!uint(arg + 4);
+        ulong cmd = userRead!ulong(arg + 8);
+        if (cmd == 0 || size == 0) return negErrno(EINVAL);
+        return (gpuDrmSubmit3D(cast(const(ubyte)*)cmd, size) == 0) ? 0 : negErrno(EINVAL);
+    }
+    case 0x46:    // DRM_VIRTGPU_TRANSFER_FROM_HOST
+    case 0x47: {  // DRM_VIRTGPU_TRANSFER_TO_HOST  (same struct layout)
+        auto g = drmGemGet(userRead!uint(arg + 0));
+        if (g is null) return negErrno(EINVAL);
+        uint bx = userRead!uint(arg + 4),  by = userRead!uint(arg + 8),  bz = userRead!uint(arg + 12);
+        uint bw = userRead!uint(arg + 16), bh = userRead!uint(arg + 20), bd = userRead!uint(arg + 24);
+        uint level  = userRead!uint(arg + 28), offset  = userRead!uint(arg + 32);
+        uint stride = userRead!uint(arg + 36), lstride = userRead!uint(arg + 40);
+        if (stride == 0) stride = g.stride;
+        int r = (nr == 0x46)
+            ? gpuDrmTransferFromHost(g.resId, bx, by, bz, bw, bh, bd, level, offset, stride, lstride)
+            : gpuDrmTransferToHost  (g.resId, bx, by, bz, bw, bh, bd, level, offset, stride, lstride);
+        return (r == 0) ? 0 : negErrno(EINVAL);
+    }
+    case 0x48: // DRM_VIRTGPU_WAIT — synchronous transport, already complete
+        return 0;
+    default:
+        return negErrno(EINVAL);
+    }
+}
+
 private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // NB: do NOT log per ioctl here — DRM_NR_HOS_PRESENT (0xf0) fires on every
     // frame, so a klog/console write per call floods the slow serial UART and,
     // under KVM, throttles the whole compositor (one VM-exit per byte).
     uint nr = request & 0xFF;
     if (arg == 0) return negErrno(EFAULT);
+
+    // R2.4: virtio-gpu / virgl render ioctls (DRM_COMMAND_BASE 0x40 + DRM_VIRTGPU_* 0x01..0x0b).
+    if (nr >= 0x41 && nr <= 0x4b) return handleVirtgpuIoctl(nr, arg);
 
     switch (nr) {
     case DRM_NR_VERSION: {

@@ -1169,6 +1169,22 @@ private void maybeSpawnWaylandClient() {
     spawnWaylandClients();
 }
 
+// R2.4a — when the virtio-gpu-gl device is present (the headless GPU-test config;
+// g_gpuVirgl is false on the normal desktop device set), launch the userspace
+// drm-gpu-test once, after a brief settle.  It drives /dev/dri/renderD128 through
+// the virtgpu DRM ioctls to clear a texture RED and prints PASS/FAIL to serial.
+private __gshared bool g_gpuTestStarted = false;
+private __gshared int  g_gpuTestDelay   = 0;
+private void maybeSpawnGpuTest() {
+    if (g_gpuTestStarted) return;
+    import drivers.graphics.virtio_gpu : g_gpuVirgl;
+    if (!g_gpuVirgl) return;
+    if (g_gpuTestDelay++ < 20) return;   // let early boot settle before the first exec
+    g_gpuTestStarted = true;
+    klog("[r24] virtio-gpu-gl present; launching drm-gpu-test\n");
+    spawnWaylandProgram("drm-gpu-test\0".ptr, "[r24]\0".ptr);
+}
+
 // ------------------------------------------------------------------
 // wait4
 // ------------------------------------------------------------------
@@ -1404,6 +1420,7 @@ private bool cstrEqK(const(char)* a, const(char)* b) {
 
 private bool isFreestandingExecName(const(char)* name) {
     return cstrEqK(name, "test-drm\0".ptr) ||
+           cstrEqK(name, "drm-gpu-test\0".ptr) ||
            cstrEqK(name, "compositor\0".ptr) ||
            cstrEqK(name, "hello-gui\0".ptr) ||
            cstrEqK(name, "wl-probe\0".ptr);
@@ -2447,6 +2464,7 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 private void kernelLoop() {
     while (true) {
         maybeSpawnWaylandClient();
+        maybeSpawnGpuTest();   // R2.4a: userspace GPU test when virtio-gpu-gl is present
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

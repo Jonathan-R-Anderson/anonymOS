@@ -527,17 +527,53 @@ export int gpuDrmCtxAttach(uint resId) @nogc nothrow {
     return (gpuCtrl(32, 24) == 0x1100) ? 0 : -1;
 }
 
-// Submit a virgl command stream (streamLen bytes) to context 1.
+// Dedicated DMA buffer for SUBMIT_3D command streams — Mesa's virgl command buffers are multi-KB,
+// far larger than the shared control buffer.  Allocated lazily on the first submit.
+__gshared ulong  g_gpuSubmitPhys = 0;
+__gshared ubyte* g_gpuSubmitBuf  = null;
+enum uint GPU_SUBMIT_MAX = 16 * 4096;   // 64 KiB
+
+// Issue a chained control command: header in g_gpuBuf[0..hdrLen) + a separate payload descriptor at
+// payloadPhys[0..payloadLen) -> response at g_gpuBuf[2048..].  Returns the response type
+// (0xFFFFFFFF on timeout).  Lets a SUBMIT_3D stream exceed the small control buffer.
+private uint gpuCtrlChained(uint hdrLen, ulong payloadPhys, uint payloadLen, uint respLen) @nogc nothrow {
+    auto desc = g_gpuDesc; auto avail = g_gpuAvail; auto used = g_gpuUsed;
+    foreach (i; 0 .. respLen) g_gpuBuf[2048 + i] = 0;
+    desc[0].addr = g_gpuBufPhys;        desc[0].len = hdrLen;     desc[0].flags = VIRTQ_DESC_F_NEXT;  desc[0].next = 1;
+    desc[1].addr = payloadPhys;         desc[1].len = payloadLen; desc[1].flags = VIRTQ_DESC_F_NEXT;  desc[1].next = 2;
+    desc[2].addr = g_gpuBufPhys + 2048; desc[2].len = respLen;    desc[2].flags = VIRTQ_DESC_F_WRITE; desc[2].next = 0;
+    ushort ai = volLoadW(&avail.idx);
+    avail.ring[ai % g_gpuQsz] = 0;
+    volStoreW(&avail.idx, cast(ushort)(ai + 1));
+    memBarrier();
+    volStoreW(cast(ushort*)g_gpuNotifyAddr, 0);
+    int spin = 0;
+    while (volLoadW(&used.idx) == g_gpuLastUsed && spin < 50_000_000) spin++;
+    if (volLoadW(&used.idx) == g_gpuLastUsed) return 0xFFFFFFFFu;
+    g_gpuLastUsed = volLoadW(&used.idx);
+    memBarrier();
+    return *cast(uint*)(g_gpuBuf + 2048);
+}
+
+// Submit a virgl command stream of any size (up to 64 KiB) to context 1.  The SUBMIT_3D header rides
+// the control buffer; the stream rides a dedicated DMA buffer chained after it.
 export int gpuDrmSubmit3D(const(ubyte)* stream, uint streamLen) @nogc nothrow {
-    if (streamLen == 0 || streamLen > 2000) return -1;
-    gpuZeroReq(32 + streamLen);
+    if (streamLen == 0 || streamLen > GPU_SUBMIT_MAX) return -1;
+    if (g_gpuSubmitBuf is null) {
+        import memory.mm : alloc_phys_pages;
+        import core.globals : hhdm_offset;
+        g_gpuSubmitPhys = alloc_phys_pages(GPU_SUBMIT_MAX / 4096);
+        if (g_gpuSubmitPhys == 0) return -1;
+        g_gpuSubmitBuf = cast(ubyte*)(g_gpuSubmitPhys + hhdm_offset);
+    }
+    gpuZeroReq(32);
     gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_SUBMIT_3D
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
     gpuPutQ(8, 1);               // hdr.fence_id
     gpuPutU(16, 1);              // hdr.ctx_id = 1
     gpuPutU(24, streamLen);      // command-stream size in bytes
-    foreach (i; 0 .. streamLen) g_gpuBuf[32 + i] = stream[i];
-    return (gpuCtrl(32 + streamLen, 24) == 0x1100) ? 0 : -1;
+    foreach (i; 0 .. streamLen) g_gpuSubmitBuf[i] = stream[i];
+    return (gpuCtrlChained(32, g_gpuSubmitPhys, streamLen, 24) == 0x1100) ? 0 : -1;
 }
 
 // Read a host resource's pixels back into its attached guest backing.

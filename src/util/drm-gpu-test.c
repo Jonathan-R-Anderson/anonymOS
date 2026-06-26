@@ -163,17 +163,21 @@ void _start(void) {
 
     // 4) EXECBUFFER — a virgl stream that clears the texture RED.
     //    CREATE_OBJECT(SURFACE) wrapping res -> SET_FRAMEBUFFER_STATE -> CLEAR(red).
-    uint32_t s[19]; int i = 0;
+    static uint32_t s[700]; int i = 0;
     s[i++] = (5u<<16)|(8u<<8)|1u;  // CREATE_OBJECT, OBJ_SURFACE=8, len 5
     s[i++] = 1;                    // surface handle (ctx-local virgl object)
     s[i++] = rc.res_handle;        // resource handle
     s[i++] = 1;                    // format B8G8R8A8_UNORM
     s[i++] = 0;                    // level
     s[i++] = 0;                    // first|last layer
-    s[i++] = (3u<<16)|5u;          // SET_FRAMEBUFFER_STATE, len 3
-    s[i++] = 1;                    // nr_cbufs
-    s[i++] = 0;                    // zsurf
-    s[i++] = 1;                    // cbuf[0] = surface handle 1
+    // Pad with repeated SET_FRAMEBUFFER_STATE (re-binds the same cbuf, harmless) to push the stream
+    // well past the old ~2KB control-buffer cap — proves the large chained-descriptor submit path.
+    for (int k = 0; k < 150; k++) {
+        s[i++] = (3u<<16)|5u;      // SET_FRAMEBUFFER_STATE, len 3
+        s[i++] = 1;                // nr_cbufs
+        s[i++] = 0;                // zsurf
+        s[i++] = 1;                // cbuf[0] = surface handle 1
+    }
     s[i++] = (8u<<16)|7u;          // CLEAR, len 8
     s[i++] = 4;                    // PIPE_CLEAR_COLOR0
     s[i++] = 0x3f800000u;          // r = 1.0f
@@ -183,8 +187,9 @@ void _start(void) {
     s[i++] = 0; s[i++] = 0;        // depth (double)
     s[i++] = 0;                    // stencil
     struct drm_virtgpu_execbuffer eb; memset(&eb, 0, sizeof(eb));
-    eb.size = (uint32_t)(i * 4);   // 76 bytes
+    eb.size = (uint32_t)(i * 4);   // ~2460 bytes (> old 2KB cap)
     eb.command = (uint64_t)(unsigned long)s;
+    print("[drm-gpu-test] EXECBUFFER stream size="); print_int(eb.size); print(" bytes\n");
     if (sc3(SYS_ioctl, fd, (long)DRM_IOCTL_VIRTGPU_EXECBUFFER, (long)&eb) != 0)
         die("[drm-gpu-test] EXECBUFFER failed", -1);
     print("[drm-gpu-test] submitted clear stream\n");

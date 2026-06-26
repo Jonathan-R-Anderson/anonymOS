@@ -2816,11 +2816,12 @@ private long fileObjClose(ObjHeader* oh) {
         if (mid >= 0 && mid < MEMFD_MAX && g_memfds[mid].inUse && g_memfds[mid].aliased) {
             if (g_memfds[mid].vmoObjId != 0 && objGet(g_memfds[mid].vmoObjId) !is null)
                 objRelease(g_memfds[mid].vmoObjId);
-            g_memfds[mid].inUse    = false;
-            g_memfds[mid].physBase = 0;
-            g_memfds[mid].size     = 0;
-            g_memfds[mid].vmoObjId = 0;
-            g_memfds[mid].aliased  = false;
+            g_memfds[mid].inUse      = false;
+            g_memfds[mid].physBase   = 0;
+            g_memfds[mid].size       = 0;
+            g_memfds[mid].vmoObjId   = 0;
+            g_memfds[mid].aliased    = false;
+            g_memfds[mid].vgemHandle = 0;  // R3: clear the virgl-alias mark on reuse
         }
     }
 
@@ -7930,6 +7931,9 @@ private struct MemFdRec {
     bool  aliased;   // true: physBase is borrowed (e.g. a GEM dumb buffer exported
                      // via PRIME); do NOT treat as owner, and reclaim the record on
                      // close so the swapchain's buffer cycle doesn't leak slots.
+    uint  vgemHandle; // R3: 0, or the originating virgl GEM handle (>=0x10000) when this
+                      // memfd is a PRIME alias of a virtgpu resource — so PRIME_FD_TO_HANDLE
+                      // can hand the importer back a g_drmGems handle (not a dumb one).
 }
 __gshared MemFdRec[MEMFD_MAX] g_memfds;
 
@@ -10263,6 +10267,41 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // pixels as the dumb buffer.
     case DRM_NR_PRIME_HANDLE_TO_FD: {
         uint handle = userRead!uint(arg + 0);
+
+        // R3: a virgl GEM (handle >= 0x10000) lives in g_drmGems, not the dumb GemBuf
+        // table.  Export it as an FD_MEMFD aliasing the virtgpu resource's backing pages
+        // and tag it with vgemHandle so the importer (Weston) recovers the *same*
+        // g_drmGems handle → RESOURCE_INFO → the device-global virgl resource it samples.
+        if (handle >= DRM_VGEM_BASE) {
+            DrmGem* g = drmGemGet(handle);
+            if (!g) return negErrno(EINVAL);
+
+            int vslot = -1;
+            foreach (i, ref m; g_memfds) { if (!m.inUse) { vslot = cast(int)i; break; } }
+            if (vslot < 0) return negErrno(ENOSPC);
+            int vnfd = -1;
+            for (int i = 3; i < 1024; ++i)
+                if (g_fdTable[i].type == FileType.FD_NONE) { vnfd = i; break; }
+            if (vnfd < 0) return negErrno(EMFILE);
+
+            g_memfds[vslot].inUse      = true;
+            g_memfds[vslot].physBase   = g.phys;
+            g_memfds[vslot].size       = g.size;
+            g_memfds[vslot].seals      = 0;
+            g_memfds[vslot].vmoObjId   = 0;       // virgl GEMs carry no VMO identity
+            g_memfds[vslot].aliased    = true;    // borrowed pages → reclaim on close
+            g_memfds[vslot].vgemHandle = handle;  // mark as a virgl PRIME alias
+
+            g_fdTable[vnfd].type     = FileType.FD_MEMFD;
+            g_fdTable[vnfd].flags    = 0;
+            g_fdTable[vnfd].offset   = 0;
+            g_fdTable[vnfd].backend  = cast(void*)cast(size_t)vslot;
+            g_fdTable[vnfd].fileSize = g.size;
+
+            userWrite!int(arg + 8, vnfd);
+            return 0;
+        }
+
         GemBuf* gem = findGem(handle);
         if (!gem) return negErrno(EINVAL);
 
@@ -10275,14 +10314,15 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             if (g_fdTable[i].type == FileType.FD_NONE) { nfd = i; break; }
         if (nfd < 0) return negErrno(EMFILE);
 
-        g_memfds[slot].inUse    = true;
-        g_memfds[slot].physBase = gem.physAddr;
-        g_memfds[slot].size     = gem.size;
-        g_memfds[slot].seals    = 0;
-        g_memfds[slot].vmoObjId = ensureGemVmo(gem);
+        g_memfds[slot].inUse      = true;
+        g_memfds[slot].physBase   = gem.physAddr;
+        g_memfds[slot].size       = gem.size;
+        g_memfds[slot].seals      = 0;
+        g_memfds[slot].vmoObjId   = ensureGemVmo(gem);
         if (g_memfds[slot].vmoObjId != 0)
             objRetain(g_memfds[slot].vmoObjId);
-        g_memfds[slot].aliased  = true;
+        g_memfds[slot].aliased    = true;
+        g_memfds[slot].vgemHandle = 0;   // dumb-buffer alias, not virgl
 
         g_fdTable[nfd].type     = FileType.FD_MEMFD;
         g_fdTable[nfd].flags    = 0;
@@ -10309,6 +10349,15 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         if (pf.type != FileType.FD_MEMFD) return negErrno(EINVAL);
         int mid = cast(int)cast(size_t)pf.backend;
         if (mid < 0 || mid >= MEMFD_MAX || !g_memfds[mid].inUse) return negErrno(EINVAL);
+
+        // R3: a virgl PRIME alias — hand back the originating g_drmGems handle so the
+        // importer's RESOURCE_INFO resolves to the same device-global virgl resource
+        // (the dumb-buffer physBase reverse-map below is only for KMS dumb buffers).
+        if (g_memfds[mid].vgemHandle != 0) {
+            userWrite!uint(arg + 0, g_memfds[mid].vgemHandle);
+            return 0;
+        }
+
         ulong phys = g_memfds[mid].physBase;
         uint handle = 0;
         foreach (ref gb; g_gemBufs) {

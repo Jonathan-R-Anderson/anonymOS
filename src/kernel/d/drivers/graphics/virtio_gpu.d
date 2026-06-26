@@ -110,6 +110,7 @@ __gshared ulong       g_gpuNotifyAddr;
 __gshared ushort      g_gpuQsz;
 __gshared ushort      g_gpuLastUsed;   // last-seen used.idx
 __gshared bool        g_gpu3dReady = false; // R2.3: 3D context + resource commands accepted
+__gshared bool        g_gpuCtrlBusy = false; // R3: serialize the shared control queue (Weston + GPU clients)
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -139,6 +140,11 @@ private void gpuZeroReq(uint n) @nogc nothrow { foreach (i; 0 .. n) g_gpuBuf[i] 
 private void gpuPutU(uint off, uint v) @nogc nothrow { *cast(uint*)(g_gpuBuf + off) = v; }
 private void gpuPutQ(uint off, ulong v) @nogc nothrow { *cast(ulong*)(g_gpuBuf + off) = v; }
 private uint gpuCtrl(uint reqLen, uint respLen) @nogc nothrow {
+    // R3: serialize the single shared control queue — once a GPU client also drives it,
+    // two tasks must not interleave the fixed descriptors / g_gpuBuf. Plain reentrancy
+    // guard, NOT cli/sti (disabling IRQs in the present/cursor syscall path deadlocks).
+    if (g_gpuCtrlBusy) return 0xFFFFFFFFu;
+    g_gpuCtrlBusy = true; scope(exit) g_gpuCtrlBusy = false;
     auto desc = g_gpuDesc; auto avail = g_gpuAvail; auto used = g_gpuUsed;
     foreach (i; 0 .. respLen) g_gpuBuf[2048 + i] = 0;
     desc[0].addr = g_gpuBufPhys;        desc[0].len = reqLen;  desc[0].flags = VIRTQ_DESC_F_NEXT;  desc[0].next = 1;
@@ -537,6 +543,8 @@ enum uint GPU_SUBMIT_MAX = 16 * 4096;   // 64 KiB
 // payloadPhys[0..payloadLen) -> response at g_gpuBuf[2048..].  Returns the response type
 // (0xFFFFFFFF on timeout).  Lets a SUBMIT_3D stream exceed the small control buffer.
 private uint gpuCtrlChained(uint hdrLen, ulong payloadPhys, uint payloadLen, uint respLen) @nogc nothrow {
+    if (g_gpuCtrlBusy) return 0xFFFFFFFFu;   // R3: serialize the shared control queue (see gpuCtrl)
+    g_gpuCtrlBusy = true; scope(exit) g_gpuCtrlBusy = false;
     auto desc = g_gpuDesc; auto avail = g_gpuAvail; auto used = g_gpuUsed;
     foreach (i; 0 .. respLen) g_gpuBuf[2048 + i] = 0;
     desc[0].addr = g_gpuBufPhys;        desc[0].len = hdrLen;     desc[0].flags = VIRTQ_DESC_F_NEXT;  desc[0].next = 1;

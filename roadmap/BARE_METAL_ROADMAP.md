@@ -134,8 +134,19 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
     L3a uses **I/O-space BARs (port I/O), not MMIO** — so it won't exercise `.resource_alloc`; pick a device
     with a MEMORY BAR. **Verify:** LKL's block driver reads a sector off its dedicated disk, POLLED.
   - **DMA contiguity caveat:** the device DMAs to guest-phys; LKL's buffers are EpinAnonymOS userspace
-    pages (possibly non-contiguous) — virtio's per-descriptor sg handles this; a single large contiguous
-    DMA (AHCI PRD) may need a contiguous allocation. L3c = IRQ forward (`lkl_trigger_irq`).
+    pages — but observed admin CQ/SQ got *consecutive* phys (0x2ec7000/0x2ec8000), so LKL RAM is roughly
+    contiguous. A single large contiguous DMA may still need a contiguous allocation.
+- **L3c ✅ IRQ forward DONE (polled INTx → `lkl_trigger_irq`; commit ca4afbb96).** LKL has no MSI/MSI-X
+  (`pci.c` only does `lkl_get_free_irq` + `irq_init`), so the device uses a legacy INTx pin. EpinAnonymOS
+  polls (no kernel-mode interrupt delivery), so `.irq_init` spawns a thread that polls the device's **PCI
+  Status register (cfg 0x06 bit 3 = Interrupt Status)** and raises the Linux IRQ via `lkl_trigger_irq`,
+  with a ~4ms periodic safety trigger. **RESULT: LKL's nvme admin Identify COMPLETES** (`nvme nvme0: 1/0/0
+  default/read/poll queues` + namespace identify + `Abort status: 0x0`) — a real Linux driver now
+  initializes a device AND completes admin commands through the bridge, where before it hung forever.
+  - **KNOWN REMAINING:** an I/O-queue READ (QID 1, opcode 0x2, 4096B) times out at ~30s. NOT an IRQ issue
+    (the safety trigger fires every ~4ms; the admin queue on the same INTx works) — the controller never
+    writes the I/O completion, so it's an I/O-queue submission/DMA issue. Next: log the I/O SQ/CQ +
+    data-buffer phys + the doorbell writes to find why the controller doesn't process the I/O command.
 
 ## L4 — Per-device LKL isolation (cap-gating) + bridge LKL's devices to EpinAnonymOS
 **Isolation (the "Device isolation" section above):** a privileged **device-manager** enumerates PCI,

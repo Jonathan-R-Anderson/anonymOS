@@ -10006,7 +10006,7 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 // the backing's physical address (FD_DRM mmap maps offset==phys into user VA).
 // Backed by the modern virgl transport primitives in drivers/graphics/virtio_gpu.d
 // (the same path the R2.3b self-test proved).  Single GPU consumer for now.
-private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; }
+private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; uint blobMem; ulong shmemOffset; }  // +B6: blobMem(0=classic,2=HOST3D), shmemOffset into the host-visible window
 private __gshared DrmGem[64] g_drmGems;
 // virtgpu GEM handles are based at 0x10000 so they never collide with the small KMS dumb-buffer
 // handles that share the DRM_IOCTL_GEM_CLOSE namespace.
@@ -10031,10 +10031,18 @@ private DrmGem* drmGemGet(uint handle) @nogc nothrow {
 private void drmGemFreeHandle(uint handle) @nogc nothrow {
     auto g = drmGemGet(handle);
     if (g is null) return;
-    gpuDrmResourceUnref(g.resId);
-    if (g.phys != 0) {
-        uint pages = (g.size + 4095) / 4096; if (pages == 0) pages = 1;
-        free_phys_pages(g.phys, pages);
+    if (g.blobMem != 0) {
+        // B8: a host-visible blob — its phys is the BAR window (NOT allocator RAM), so unmap it from
+        // the window and unref; do NOT free_phys_pages (would corrupt the physical allocator).
+        // (The window offset is not yet reclaimed — bump allocator only; fine for the 256MiB window.)
+        gpuUnmapBlob(g.resId);
+        gpuDrmResourceUnref(g.resId);
+    } else {
+        gpuDrmResourceUnref(g.resId);
+        if (g.phys != 0) {
+            uint pages = (g.size + 4095) / 4096; if (pages == 0) pages = 1;
+            free_phys_pages(g.phys, pages);
+        }
     }
     *g = DrmGem.init;   // used = false
 }
@@ -10048,6 +10056,10 @@ extern(C) int  gpuDrmTransferFromHost(uint, uint, uint, uint, uint, uint, uint, 
 extern(C) int  gpuDrmTransferToHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
 extern(C) uint gpuDrmGetCapset(uint, uint, ubyte*, uint) @nogc nothrow;
 extern(C) int  gpuDrmResourceUnref(uint) @nogc nothrow;
+extern(C) bool  gpuBlobEnabled() @nogc nothrow;                                          // B5
+extern(C) ulong gpuBlobWindowPhys() @nogc nothrow;                                       // B6
+extern(C) uint  gpuBlobCreateMapped(ulong, ulong, const(ubyte)*, uint, ulong*, uint*) @nogc nothrow;  // B6
+extern(C) int   gpuUnmapBlob(uint) @nogc nothrow;                                        // B8
 private __gshared ubyte[2048] g_drmCapsScratch;
 
 private long handleVirtgpuIoctl(uint nr, ulong arg) {
@@ -10063,6 +10075,10 @@ private long handleVirtgpuIoctl(uint nr, ulong arg) {
         ulong val = 0;
         if (param == 1)      val = gpuDrm3dReady() ? 1 : 0;  // VIRTGPU_PARAM_3D_FEATURES
         else if (param == 2) val = 1;                        // VIRTGPU_PARAM_CAPSET_QUERY_FIX
+        else if (param == 3) val = gpuBlobEnabled() ? 1 : 0; // B5: VIRTGPU_PARAM_RESOURCE_BLOB
+        else if (param == 4) val = gpuBlobEnabled() ? 1 : 0; // B5: VIRTGPU_PARAM_HOST_VISIBLE (flips Mesa supports_coherent)
+        // NB: do NOT advertise PARAM_CONTEXT_INIT(6) — it makes Mesa take the capset context-init path
+        // that our no-op CONTEXT_INIT doesn't fully set up, and the virgl screen falls back to softpipe.
         if (valuePtr != 0) userWrite!ulong(valuePtr, val);
         return 0;
     }
@@ -10106,12 +10122,36 @@ private long handleVirtgpuIoctl(uint nr, ulong arg) {
         userWrite!uint(arg + 52, stride);   // stride (returned)
         return 0;
     }
+    case 0x4a: { // DRM_VIRTGPU_RESOURCE_CREATE_BLOB (B6): a host-visible blob the client renders into and
+                 // shares cross-process with the compositor.  blob_mem@0, size@16(u64), cmd_size@28,
+                 // cmd@32(ptr), blob_id@40(u64); bo_handle@8 + res_handle@12 returned.
+        uint  blobMem = userRead!uint(arg + 0);
+        ulong size    = userRead!ulong(arg + 16);
+        uint  cmdSize = userRead!uint(arg + 28);
+        ulong cmdPtr  = userRead!ulong(arg + 32);
+        ulong blobId  = userRead!ulong(arg + 40);
+        if (blobMem != 0x2 || size == 0 || !gpuBlobEnabled()) return negErrno(EINVAL);  // HOST3D only
+        if (cmdSize == 0 || cmdSize > 256) return negErrno(EINVAL);
+        ubyte[256] cmdBuf;
+        foreach (i; 0 .. cmdSize) cmdBuf[i] = userRead!ubyte(cmdPtr + i);
+        ulong shmemOff; uint mapInfo;
+        uint resId = gpuBlobCreateMapped(blobId, size, cmdBuf.ptr, cmdSize, &shmemOff, &mapInfo);
+        if (resId == 0) return negErrno(EINVAL);
+        // The GEM's mmap offset is the blob's guest-phys in the host-visible window (FD_DRM maps phys).
+        uint bh = drmGemAlloc(resId, gpuBlobWindowPhys() + shmemOff, cast(uint)size, 0);
+        if (bh == 0) return negErrno(ENOMEM);
+        auto gb = drmGemGet(bh);
+        if (gb !is null) { gb.blobMem = blobMem; gb.shmemOffset = shmemOff; }
+        userWrite!uint(arg + 8,  bh);       // bo_handle (out)
+        userWrite!uint(arg + 12, resId);    // res_handle (out)
+        return 0;
+    }
     case 0x45: { // DRM_VIRTGPU_RESOURCE_INFO { bo_handle; res_handle(out); size(out); blob_mem(out) }
         auto g = drmGemGet(userRead!uint(arg + 0));
         if (g is null) return negErrno(EINVAL);
         userWrite!uint(arg + 4, g.resId);
         userWrite!uint(arg + 8, g.size);
-        userWrite!uint(arg + 12, 0);
+        userWrite!uint(arg + 12, g.blobMem);   // B6: !=0 -> the importer takes the blob (mappable) path
         return 0;
     }
     case 0x41: { // DRM_VIRTGPU_MAP { u64 offset(out); u32 handle; u32 pad }

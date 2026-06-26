@@ -113,6 +113,7 @@ __gshared bool        g_gpu3dReady = false; // R2.3: 3D context + resource comma
 __gshared bool        g_gpuCtrlBusy = false; // R3: serialize the shared control queue (Weston + GPU clients)
 __gshared bool        g_gpuBlob = false;     // B2: device offers VIRTIO_GPU_F_RESOURCE_BLOB (host-visible blobs)
 __gshared ulong       g_gpuShmBase = 0;      // B1: HHDM virt base of the host-visible SHM BAR window (0 = none)
+__gshared ulong       g_gpuShmPhys = 0;      // B6: guest-PHYSICAL base of the same window (for FD_DRM mmap)
 __gshared ulong       g_gpuShmLen = 0;       // B1: host-visible window length (the device's hostmem= size)
 __gshared uint g_resourceIdCounter = 1;
 __gshared ulong g_gpuFence = 0;              // B3: monotonic fence id (was hardcoded 1/2/4 -> host EBUSY)
@@ -252,6 +253,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         if ((sLo & 0x6) == 0x4)  // 64-bit BAR (the hostmem window is 64-bit prefetchable)
             sBase |= (cast(ulong)pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + shmBar * 4 + 4)) << 32);
         g_gpuShmBase = sBase + shmOff + hhdm_offset;
+        g_gpuShmPhys = sBase + shmOff;   // B6: guest-phys of the window (FD_DRM mmap maps offset==phys)
         g_gpuShmLen  = shmLen;
         printLine("[virtio-gpu] B1: host-visible SHM bar / off / len:");
         printUnsigned(shmBar); printHex(shmOff); printHex(shmLen);
@@ -580,6 +582,27 @@ export int gpuUnmapBlob(uint resId) @nogc nothrow {
     gpuPutU(16, 1);
     gpuPutU(24, resId);
     return (gpuCtrl(32, 24) == 0x1100) ? 0 : -1;
+}
+
+// B5/B6 accessors for the DRM ioctl layer (posix.d).
+export bool  gpuBlobEnabled() @nogc nothrow { return g_gpuBlob; }
+export ulong gpuBlobWindowPhys() @nogc nothrow { return g_gpuShmPhys; }
+
+// B6: allocate a resId then create + map a host-visible blob for a userspace client.  The `cmd` is the
+// client's PIPE_RESOURCE_CREATE stream (Mesa builds it).  Returns resId (0 = fail); on success
+// *shmemOff = the byte offset into the host-visible window, *mapInfo = the cache mode.
+export uint gpuBlobCreateMapped(ulong blobId, ulong size, const(ubyte)* cmd, uint cmdLen,
+                                ulong* shmemOff, uint* mapInfo) @nogc nothrow {
+    if (!g_gpuBlob || g_gpuShmBase == 0) return 0;
+    uint resId = g_drmNextRes++;
+    if (gpuCreateBlob(resId, blobId, size, cmd, cmdLen) != 0) return 0;
+    ulong off = gpuBlobAllocOffset(size);
+    if (off == ~cast(ulong)0) return 0;
+    uint mi = gpuMapBlob(resId, off);
+    if (mi == ~0u) return 0;
+    *shmemOff = off;
+    *mapInfo  = mi;
+    return resId;
 }
 
 // B4 self-test: a small linear (PIPE_BUFFER) mappable HOST3D blob -> map into the window -> CPU

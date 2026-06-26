@@ -1190,6 +1190,17 @@ private void maybeSpawnGpuTest() {
 // render node.  Dynamic musl (dlopens virtio_gpu_dri.so), so NOT in isFreestandingExecName.
 private __gshared bool g_glTestStarted = false;
 private __gshared int  g_glTestDelay   = 0;
+
+// L2: boot LKL (the Linux kernel as a library) once, a little after startup, output to serial.
+private __gshared bool g_lklTestStarted = false;
+private __gshared int  g_lklTestDelay   = 0;
+private void maybeSpawnLklTest() {
+    if (g_lklTestStarted) return;
+    if (g_lklTestDelay++ < 80) return;   // let the system settle first
+    g_lklTestStarted = true;
+    klog("[lkl] launching lkl-boot (boot the Linux kernel as a library inside EpinAnonymOS)\n");
+    spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
+}
 private void maybeSpawnGlTest() {
     if (g_glTestStarted) return;
     import drivers.graphics.virtio_gpu : g_gpuVirgl;
@@ -2483,6 +2494,9 @@ private void kernelLoop() {
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
         // maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
         // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
+        // maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS. Wiring works (binary launches as a
+        //                        // task); re-enable once lkl-boot is rebuilt with MUSL — the glibc
+        //                        // build stalls in glibc's startup (syscalls this musl-tuned OS lacks).
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

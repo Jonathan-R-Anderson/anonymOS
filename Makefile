@@ -190,6 +190,9 @@ $(GL_WL_TEST_BIN): src/util/gl-wl-test.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	    -Wl,--end-group -lpthread -lm; \
 	else echo "gl-wl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
 
+# L2: the LKL embedder (Linux kernel as a library). Prebuilt out-of-tree against ~/lkl-build
+# (see src/lkl/README.md); staged as a boot module only when present.
+LKL_BOOT_BIN := $(HOME)/lkl-build/lkl-boot-stripped
 GL_TERM_BIN := build/gl-term
 $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
@@ -417,6 +420,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 		cp $(GL_TERM_BIN) cd/gl-term; \
 		printf '\n    module_path: boot():/gl-term\n' >> cd/boot/limine/limine.conf; \
 		echo "Included gl-term (R3 GLES2 Wayland terminal)"; \
+	fi
+
+	@if [ -s $(LKL_BOOT_BIN) ]; then \
+		cp $(LKL_BOOT_BIN) cd/lkl-boot; \
+		printf '\n    module_path: boot():/lkl-boot\n' >> cd/boot/limine/limine.conf; \
+		echo "Included lkl-boot (L2: boot LKL — the Linux kernel as a library — on EpinAnonymOS)"; \
 	fi
 
 	cp $(COMPOSITOR_BIN) cd/compositor

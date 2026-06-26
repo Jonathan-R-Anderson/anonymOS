@@ -192,7 +192,7 @@ $(GL_WL_TEST_BIN): src/util/gl-wl-test.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 
 # L2: the LKL embedder (Linux kernel as a library). Prebuilt out-of-tree against ~/lkl-build
 # (see src/lkl/README.md); staged as a boot module only when present.
-LKL_BOOT_BIN := $(HOME)/lkl-build/lkl-boot-stripped
+LKL_BOOT_BIN := $(HOME)/lkl-build/lkl-boot-musl
 GL_TERM_BIN := build/gl-term
 $(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \

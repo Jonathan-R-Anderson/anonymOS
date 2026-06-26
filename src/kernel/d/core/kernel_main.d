@@ -2494,9 +2494,11 @@ private void kernelLoop() {
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
         // maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
         // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
-        // maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS. Wiring works (binary launches as a
-        //                        // task); re-enable once lkl-boot is rebuilt with MUSL — the glibc
-        //                        // build stalls in glibc's startup (syscalls this musl-tuned OS lacks).
+        // maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS. The musl binary LAUNCHES but spins on
+        //                        // ENOSYS 128 (rt_sigtimedwait) — LKL's POSIX-timer/signal clock isn't
+        //                        // supported here (timer_create=222 ENOSYS, rt_sigtimedwait a stub).
+        //                        // Re-enable after a custom LKL timer host-op (thread + clock_nanosleep
+        //                        // → lkl_trigger_irq), or after implementing POSIX timers + signals.
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

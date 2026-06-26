@@ -945,13 +945,19 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
         the mutter build's `libglapi → static_library` patch so libglapi stays SHARED; the app and the
         dlopened megadriver now both import `_glapi_tls_Dispatch` from `libglapi.so` (staged as a boot
         module). Desktop sanity-checked — weston still brings up on the shared-glapi megadriver.
-        **REMAINING (the actual GPU-acceleration step):** the GL screen is **softpipe (CPU)**, not virgl
-        (GPU) — Mesa's gbm-on-render-node path falls back to swrast (the virgl host context comes up,
-        `gl_version 46`, but the host **egl-headless can't export fence sync fds** → virgl's GLES
-        screen-create likely fails over to softpipe; `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` set in the
-        app didn't switch it). Getting virgl as the live GL renderer = env-at-launch (kernel-passed
-        `MESA_LOADER_DRIVER_OVERRIDE` + `LIBGL_DEBUG` to see the fallback) and resolving the fence-export
-        path (possibly a real-display QEMU config rather than `egl-headless`).
+        **REMAINING — softpipe vs virgl, thoroughly diagnosed (commit 0fa37faf4):** the GL screen is
+        **softpipe (CPU)**, not virgl (GPU). ★ PRIMARY CAUSE: the kernel seeds `LIBGL_ALWAYS_SOFTWARE=1`
+        + `GALLIUM_DRIVER=softpipe` + `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` into EVERY program's env
+        (`core/exports.d`) for the CPU desktop — so any GPU app is hard-forced to software unless it
+        unsets all three (drm-gl-test now does, via a priority-101 constructor; verified null). With them
+        unset, `drmGetVersion`="virtio_gpu" + the megadriver exports `__driDriverGetExtensions_virtio_gpu`
+        (both correct), but it's **still softpipe via BOTH gbm and surfaceless** → virgl's GLES
+        `createNewScreen` itself fails. Host log: `virgl_fence_set_fd: failed err=-16` — **egl-headless
+        can't export fence sync fds**, the likely blocker (the kernel's own R2.3b virgl path works
+        because it syncs via the used-ring, not fence fds). NEXT: a real-display QEMU `-display
+        gtk,gl=on`/`sdl,gl=on` (exports fence fds) or a fence-tolerant virgl path — a host/QEMU-env
+        issue, not OS code. (TRAP: do NOT set `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` — gbm misreads it
+        as a backend name; just unset the software-forcing vars.)
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 (revised: much higher) · deps: R2.** Build ratty for AnonymOS: PTY against

@@ -115,11 +115,15 @@ void _start(void) {
     if (fd < 0) die("[drm-gpu-test] open renderD128 failed", fd);
 
     // 1) GETPARAM(3D_FEATURES) — confirm the device offers virgl 3D.
-    struct drm_virtgpu_getparam gp = { VIRTGPU_PARAM_3D_FEATURES, 0 };
+    // NB: drm_virtgpu_getparam.value is a USERSPACE POINTER where the kernel writes
+    // the result (Linux uABI: copy_to_user(param->value, &val)), NOT a field to read
+    // back. (Mesa's virgl winsys uses the same convention.)
+    uint64_t feat = 0;
+    struct drm_virtgpu_getparam gp = { VIRTGPU_PARAM_3D_FEATURES, (uint64_t)(unsigned long)&feat };
     if (sc3(SYS_ioctl, fd, (long)DRM_IOCTL_VIRTGPU_GETPARAM, (long)&gp) != 0)
         die("[drm-gpu-test] GETPARAM failed", -1);
-    print("[drm-gpu-test] 3D_FEATURES="); print_int((long)gp.value); print("\n");
-    if (gp.value != 1) die("[drm-gpu-test] no 3D features", (long)gp.value);
+    print("[drm-gpu-test] 3D_FEATURES="); print_int((long)feat); print("\n");
+    if (feat != 1) die("[drm-gpu-test] no 3D features", (long)feat);
 
     // 1b) GET_CAPS — fetch the host virgl capset (the blob Mesa parses for GL features).
     //     Try VIRGL2 (capset 2) then fall back to VIRGL (capset 1).  caps[0] = max_version.

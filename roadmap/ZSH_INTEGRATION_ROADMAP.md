@@ -937,19 +937,21 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
         (`gallium-drivers=swrast,virgl`); the megadriver gains `virgl_create_screen` and the install
         produces `virtio_gpu_dri.so`, staged as a guest boot module. Desktop unaffected (virgl is
         additive; weston still brings up on the rebuilt megadriver).
-      - **step4b 🚧 WIP (commit 2ed634f07) — the GL→virgl stack INITIALIZES** · [drm-gl-test.c]
-        (../src/util/drm-gl-test.c), a dynamic-musl GLES2 program, links the full Mesa static stack and
-        runs through virgl: `gbm_create_device(renderD128)` → EGL gbm platform → **"EGL 1.4 vendor=Mesa
-        Project"** (the DRI loader dlopened `virtio_gpu_dri.so` by basename); config/context/
-        makeCurrent(surfaceless) all succeed; the host log shows **"gl_version 46 — core profile
-        enabled"** (the virgl host GL context came up). So Mesa→virgl→virtgpu-uABI→host-GPU all
-        initialize. **LAST BLOCKER — dual-glapi:** `glGetString` returns NULL because there is no shared
-        `libglapi.so` (deps/mutter/Makefile patches glapi+gles2 to `static_library`), so the app and the
-        dlopened megadriver each carry a separate `_glapi` dispatch table. The desktop dodges this with
-        weston's pixman/CPU renderer (no app-side GL). **Fix:** build glapi (+gles2) shared + stage
-        `libglapi.so`/`libGLESv2.so` as boot modules so the app + megadriver share one dispatch (Mesa
-        reconfig with desktop-load risk → its own step). (Known: host egl-headless can't export fence
-        fds — fine for the kernel's used-ring sync, but Mesa sync-fd paths may need attention.)
+      - **step4b 🚧 — Mesa GLES2 RENDERS in the guest; dual-glapi FIXED (commit dbe6a7a47)** ·
+        [drm-gl-test.c](../src/util/drm-gl-test.c), a dynamic-musl GLES2 program, links the full Mesa
+        static stack: `gbm_create_device(renderD128)` → EGL gbm → **"EGL 1.4 vendor=Mesa Project"**,
+        config/context/makeCurrent(surfaceless) OK, then `glClear`→`glReadPixels` = **RGBA ff0000ff
+        (RED)** — a real GLES2 program renders correctly. The **dual-glapi blocker is FIXED**: reverted
+        the mutter build's `libglapi → static_library` patch so libglapi stays SHARED; the app and the
+        dlopened megadriver now both import `_glapi_tls_Dispatch` from `libglapi.so` (staged as a boot
+        module). Desktop sanity-checked — weston still brings up on the shared-glapi megadriver.
+        **REMAINING (the actual GPU-acceleration step):** the GL screen is **softpipe (CPU)**, not virgl
+        (GPU) — Mesa's gbm-on-render-node path falls back to swrast (the virgl host context comes up,
+        `gl_version 46`, but the host **egl-headless can't export fence sync fds** → virgl's GLES
+        screen-create likely fails over to softpipe; `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` set in the
+        app didn't switch it). Getting virgl as the live GL renderer = env-at-launch (kernel-passed
+        `MESA_LOADER_DRIVER_OVERRIDE` + `LIBGL_DEBUG` to see the fallback) and resolving the fence-export
+        path (possibly a real-display QEMU config rather than `egl-headless`).
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`

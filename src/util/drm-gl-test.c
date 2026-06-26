@@ -9,12 +9,18 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <gbm.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GLES2/gl2.h>
 
 int main(void) {
+    // Force the virgl (virtio_gpu) HW driver instead of letting Mesa fall back to softpipe (CPU),
+    // and turn on loader debug so a virgl init failure is visible rather than silently masked.
+    setenv("MESA_LOADER_DRIVER_OVERRIDE", "virtio_gpu", 1);
+    setenv("LIBGL_DEBUG", "verbose", 1);
+
     int fd = open("/dev/dri/renderD128", O_RDWR);
     if (fd < 0) { printf("[drm-gl-test] open renderD128 failed\n"); return 1; }
 

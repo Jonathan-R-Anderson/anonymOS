@@ -479,6 +479,11 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 			cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/kms_swrast_dri.so; \
 			cp deps/gtk-stack/sysroot/lib/dri/kms_swrast_dri.so cd/swrast_dri.so; \
 			printf '\n    module_path: boot():/Hyprland\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/kms_swrast_dri.so\n    module_path: boot():/swrast_dri.so\n' >> cd/boot/limine/limine.conf; \
+			if [ -f deps/gtk-stack/sysroot/lib/libglapi.so ]; then \
+				cp deps/gtk-stack/sysroot/lib/libglapi.so cd/libglapi.so; \
+				printf '    module_path: boot():/libglapi.so\n' >> cd/boot/limine/limine.conf; \
+				echo "Included libglapi.so (shared GL dispatch — unifies app + DRI-driver glapi)"; \
+			fi; \
 			if [ -f deps/gtk-stack/sysroot/lib/dri/virtio_gpu_dri.so ]; then \
 				cp deps/gtk-stack/sysroot/lib/dri/virtio_gpu_dri.so cd/virtio_gpu_dri.so; \
 				printf '    module_path: boot():/virtio_gpu_dri.so\n' >> cd/boot/limine/limine.conf; \

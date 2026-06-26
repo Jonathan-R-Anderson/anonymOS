@@ -501,8 +501,9 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/gbm/meson.build
 	sed -i "/version : '1.0.0',/d" \
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/gbm/meson.build
-	sed -i "s/libglapi = shared_library(/libglapi = static_library(/" \
-	    $(BLDDIR)/mesa-$(MESA_VER)/src/mapi/shared-glapi/meson.build
+	# R2.4b: libglapi MUST stay shared (NOT static) so an app's GL entry points and the dlopened DRI
+	# driver share ONE _glapi dispatch table (the dual-glapi fix — otherwise app-side glGetString reads
+	# an empty table). Only drop the soversion so the guest loads libglapi.so by basename.
 	sed -i "/soversion : /d;/version : '0.0.0',/d" \
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/mapi/shared-glapi/meson.build
 	sed -i "s/libgles2 = shared_library(/libgles2 = static_library(/" \

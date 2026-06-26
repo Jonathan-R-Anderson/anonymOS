@@ -515,7 +515,7 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/egl/meson.build
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    $(MESON_SETUP) build \
-	        -Dgallium-drivers=swrast \
+	        -Dgallium-drivers=swrast,virgl \
 	        -Dvulkan-drivers= \
 	        -Dzstd=disabled \
 	        -Dllvm=disabled \

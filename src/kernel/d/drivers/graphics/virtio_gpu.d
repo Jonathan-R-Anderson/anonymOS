@@ -618,6 +618,19 @@ export uint gpuDrmGetCapset(uint capsetId, uint capsetVer, ubyte* outBuf, uint m
     return maxLen;
 }
 
+// Tear down a resource on the host: detach its guest backing, then unref it.  After this the guest
+// backing page is safe to free (the host no longer references the iov).
+export int gpuDrmResourceUnref(uint resId) @nogc nothrow {
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0107);          // VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING
+    gpuPutU(24, resId);
+    gpuCtrl(32, 24);
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0102);          // VIRTIO_GPU_CMD_RESOURCE_UNREF
+    gpuPutU(24, resId);
+    return (gpuCtrl(32, 24) == 0x1100) ? 0 : -1;
+}
+
 export void virtioGpuInit() @nogc nothrow {
     printLine("[virtio-gpu] Probing...");
     

@@ -9876,19 +9876,35 @@ private long drmPresentToFramebuffer(ulong arg) @nogc nothrow {
 // (the same path the R2.3b self-test proved).  Single GPU consumer for now.
 private struct DrmGem { bool used; uint resId; ulong phys; uint size; uint stride; }
 private __gshared DrmGem[64] g_drmGems;
+// virtgpu GEM handles are based at 0x10000 so they never collide with the small KMS dumb-buffer
+// handles that share the DRM_IOCTL_GEM_CLOSE namespace.
+private enum uint DRM_VGEM_BASE = 0x10000;
 
 private uint drmGemAlloc(uint resId, ulong phys, uint size, uint stride) @nogc nothrow {
     foreach (i; 0 .. g_drmGems.length) {
         if (!g_drmGems[i].used) {
             g_drmGems[i] = DrmGem(true, resId, phys, size, stride);
-            return cast(uint)(i + 1);   // handle 0 is invalid
+            return DRM_VGEM_BASE + cast(uint)i;
         }
     }
     return 0;
 }
 private DrmGem* drmGemGet(uint handle) @nogc nothrow {
-    if (handle == 0 || handle > g_drmGems.length || !g_drmGems[handle - 1].used) return null;
-    return &g_drmGems[handle - 1];
+    if (handle < DRM_VGEM_BASE) return null;
+    uint slot = handle - DRM_VGEM_BASE;
+    if (slot >= g_drmGems.length || !g_drmGems[slot].used) return null;
+    return &g_drmGems[slot];
+}
+// Free a virtgpu GEM: unref the host resource (detaches backing) then reclaim the guest backing page.
+private void drmGemFreeHandle(uint handle) @nogc nothrow {
+    auto g = drmGemGet(handle);
+    if (g is null) return;
+    gpuDrmResourceUnref(g.resId);
+    if (g.phys != 0) {
+        uint pages = (g.size + 4095) / 4096; if (pages == 0) pages = 1;
+        free_phys_pages(g.phys, pages);
+    }
+    *g = DrmGem.init;   // used = false
 }
 
 extern(C) bool gpuDrm3dReady() @nogc nothrow;
@@ -9899,6 +9915,7 @@ extern(C) int  gpuDrmSubmit3D(const(ubyte)*, uint) @nogc nothrow;
 extern(C) int  gpuDrmTransferFromHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
 extern(C) int  gpuDrmTransferToHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
 extern(C) uint gpuDrmGetCapset(uint, uint, ubyte*, uint) @nogc nothrow;
+extern(C) int  gpuDrmResourceUnref(uint) @nogc nothrow;
 private __gshared ubyte[1024] g_drmCapsScratch;
 
 private long handleVirtgpuIoctl(uint nr, ulong arg) {
@@ -10082,6 +10099,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
 
     case DRM_NR_GEM_CLOSE: {
         uint handle = userRead!uint(arg + 0);
+        if (handle >= DRM_VGEM_BASE) { drmGemFreeHandle(handle); return 0; }  // virtgpu GEM
         GemBuf* g = findGem(handle);
         if (g) {
             if (g.vmoObjId != 0 && objGet(g.vmoObjId) !is null)

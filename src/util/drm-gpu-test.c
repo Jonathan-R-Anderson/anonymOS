@@ -35,6 +35,9 @@ typedef __SIZE_TYPE__    size_t;
 #define DRM_IOCTL_VIRTGPU_TRANSFER_FROM_HOST 0xC02C6446UL  // (44)
 #define DRM_IOCTL_VIRTGPU_WAIT               0xC0086448UL  // drm_virtgpu_3d_wait (8)
 #define DRM_IOCTL_VIRTGPU_GET_CAPS           0xC0186449UL  // drm_virtgpu_get_caps (24)
+#define DRM_IOCTL_GEM_CLOSE                   0xC0086409UL  // drm_gem_close (8)
+
+struct drm_gem_close { uint32_t handle, pad; };
 
 #define VIRTGPU_PARAM_3D_FEATURES 1
 
@@ -217,6 +220,22 @@ void _start(void) {
         print("[drm-gpu-test] RESULT: PASS -- GPU rendered RED through /dev/dri/renderD128\n");
     else
         print("[drm-gpu-test] RESULT: FAIL -- readback not red\n");
+
+    // 8) Lifecycle: create + GEM_CLOSE 100 resources. Without resource freeing the 64-slot GEM table
+    //    (+ host resources + backing pages) would exhaust; with GEM_CLOSE freeing, slots are reused.
+    int made = 0, lifeok = 1;
+    for (int k = 0; k < 100; k++) {
+        struct drm_virtgpu_resource_create r2; memset(&r2, 0, sizeof(r2));
+        r2.target = 2; r2.format = 1; r2.bind = 2 | 8;
+        r2.width = 16; r2.height = 16; r2.depth = 1; r2.array_size = 1;
+        if (sc3(SYS_ioctl, fd, (long)DRM_IOCTL_VIRTGPU_RESOURCE_CREATE, (long)&r2) != 0) { lifeok = 0; break; }
+        made++;
+        struct drm_gem_close gcl; gcl.handle = r2.bo_handle; gcl.pad = 0;
+        sc3(SYS_ioctl, fd, (long)DRM_IOCTL_GEM_CLOSE, (long)&gcl);
+    }
+    print("[drm-gpu-test] lifecycle: "); print_int(made);
+    print(lifeok ? "/100 create+close OK (no GEM exhaustion)\n"
+                 : "/100 then RESOURCE_CREATE FAILED (resource leak)\n");
 
     sc3(SYS_close, fd, 0, 0);
     sc1(SYS_exit_group, 0);

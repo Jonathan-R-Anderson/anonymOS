@@ -115,6 +115,7 @@ __gshared bool        g_gpuBlob = false;     // B2: device offers VIRTIO_GPU_F_R
 __gshared ulong       g_gpuShmBase = 0;      // B1: HHDM virt base of the host-visible SHM BAR window (0 = none)
 __gshared ulong       g_gpuShmLen = 0;       // B1: host-visible window length (the device's hostmem= size)
 __gshared uint g_resourceIdCounter = 1;
+__gshared ulong g_gpuFence = 0;              // B3: monotonic fence id (was hardcoded 1/2/4 -> host EBUSY)
 
 // Ring buffers (Static for simplicity in this environment)
 __gshared VirtqDesc[256] g_desc;
@@ -142,6 +143,7 @@ private void   memBarrier() @nogc nothrow { asm @nogc nothrow { mfence; } }
 private void gpuZeroReq(uint n) @nogc nothrow { foreach (i; 0 .. n) g_gpuBuf[i] = 0; }
 private void gpuPutU(uint off, uint v) @nogc nothrow { *cast(uint*)(g_gpuBuf + off) = v; }
 private void gpuPutQ(uint off, ulong v) @nogc nothrow { *cast(ulong*)(g_gpuBuf + off) = v; }
+private ulong nextFence() @nogc nothrow { return ++g_gpuFence; }  // B3: a fresh fence id per submit
 private uint gpuCtrl(uint reqLen, uint respLen) @nogc nothrow {
     // R3: serialize the single shared control queue — once a GPU client also drives it,
     // two tasks must not interleave the fixed descriptors / g_gpuBuf. Plain reentrancy
@@ -461,7 +463,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuZeroReq(108);
     gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_SUBMIT_3D (0x0207, NOT 0x0203 = CTX_DETACH!)
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
-    gpuPutQ(8, 1);               // hdr.fence_id = 1
+    gpuPutQ(8, nextFence());     // hdr.fence_id (B3: monotonic)
     gpuPutU(16, 1);              // hdr.ctx_id = 1
     gpuPutU(24, 76);             // command-stream size in bytes (19 dwords)
     enum uint S = 32;            // stream begins after hdr(24)+size(4)+padding(4)
@@ -493,7 +495,7 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     gpuZeroReq(72);
     gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D (0x0206, NOT 0x0207 = SUBMIT!)
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
-    gpuPutQ(8, 2);               // hdr.fence_id = 2
+    gpuPutQ(8, nextFence());     // hdr.fence_id (B3: monotonic)
     gpuPutU(16, 1);              // hdr.ctx_id = 1 (owning context — NOT 0)
     gpuPutU(36, 32);             // box.w
     gpuPutU(40, 32);             // box.h
@@ -520,6 +522,102 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         printLine("[virtio-gpu] R2.3b: GPU CLEARED the resource RED -- virgl 3D rendering WORKS");
     else
         printLine("[virtio-gpu] R2.3b: readback did not match the clear colour");
+
+    gpuBlobSelfTest();   // B4: verify the host-visible blob create/map round-trip (no-op if !g_gpuBlob)
+}
+
+// ==========================================================================
+// B4 — host-visible blob transport (RESOURCE_CREATE_BLOB / MAP_BLOB / UNMAP_BLOB).
+// A HOST3D + USE_MAPPABLE blob wraps a host virgl resource (created by a
+// PIPE_RESOURCE_CREATE cmd keyed on blob_id) and is mapped into the host-visible
+// SHM BAR window, so the guest CPU and the compositor address the SAME host
+// storage — the zero-copy cross-process share the classic-resource alias couldn't do.
+// ==========================================================================
+__gshared ulong g_gpuShmNext = 0;   // B4: bump allocator over [0, g_gpuShmLen) for window offsets
+
+// Page-aligned offset in the host-visible window; ~0 = exhausted.
+ulong gpuBlobAllocOffset(ulong size) @nogc nothrow {
+    ulong aligned = (size + 0xFFF) & ~cast(ulong)0xFFF;
+    if (g_gpuShmNext + aligned > g_gpuShmLen) return ~cast(ulong)0;
+    ulong off = g_gpuShmNext;
+    g_gpuShmNext += aligned;
+    return off;
+}
+
+// Create a host-visible HOST3D blob: SUBMIT the PIPE_RESOURCE_CREATE cmd (correlating blob_id -> the
+// host pipe_resource) on ctx 1 FIRST, then RESOURCE_CREATE_BLOB.  Returns 0 on success.
+export int gpuCreateBlob(uint resId, ulong blobId, ulong size, const(ubyte)* cmd, uint cmdLen) @nogc nothrow {
+    if (!g_gpu3dReady) return -1;
+    if (cmdLen != 0 && gpuDrmSubmit3D(cmd, cmdLen) != 0) return -1;
+    gpuZeroReq(56);
+    gpuPutU(0, 0x010C);              // VIRTIO_GPU_CMD_RESOURCE_CREATE_BLOB
+    gpuPutU(16, 1);                  // hdr.ctx_id = 1
+    gpuPutU(24, resId);              // resource_id
+    gpuPutU(28, 0x2);                // blob_mem  = VIRTIO_GPU_BLOB_MEM_HOST3D
+    gpuPutU(32, 0x1);                // blob_flags = VIRTIO_GPU_BLOB_FLAG_USE_MAPPABLE
+    gpuPutU(36, 0);                  // nr_entries (HOST3D: no guest mem_entries)
+    gpuPutQ(40, blobId);             // blob_id
+    gpuPutQ(48, size);               // size
+    return (gpuCtrl(56, 24) == 0x1100) ? 0 : -1;   // VIRTIO_GPU_RESP_OK_NODATA
+}
+
+// Map a blob into the host-visible window at winOffset (guest-chosen).  Returns map_info cache mode
+// (1=CACHED, 3=WC) on success, ~0 on failure.
+export uint gpuMapBlob(uint resId, ulong winOffset) @nogc nothrow {
+    gpuZeroReq(40);
+    gpuPutU(0, 0x0208);              // VIRTIO_GPU_CMD_RESOURCE_MAP_BLOB
+    gpuPutU(16, 1);                  // hdr.ctx_id = 1
+    gpuPutU(24, resId);              // resource_id
+    gpuPutQ(32, winOffset);          // offset into the host-visible window
+    if (gpuCtrl(40, 32) != 0x1106) return ~0u;     // VIRTIO_GPU_RESP_OK_MAP_INFO
+    return *cast(uint*)(g_gpuBuf + 2048 + 24);      // resp_map_info.map_info at resp+24
+}
+
+// Unmap a blob from the host-visible window (lifecycle / B8).
+export int gpuUnmapBlob(uint resId) @nogc nothrow {
+    gpuZeroReq(32);
+    gpuPutU(0, 0x0209);              // VIRTIO_GPU_CMD_RESOURCE_UNMAP_BLOB
+    gpuPutU(16, 1);
+    gpuPutU(24, resId);
+    return (gpuCtrl(32, 24) == 0x1100) ? 0 : -1;
+}
+
+// B4 self-test: a small linear (PIPE_BUFFER) mappable HOST3D blob -> map into the window -> CPU
+// write/read round-trip.  Runs once at boot when the device exposes host-visible blobs.
+export void gpuBlobSelfTest() @nogc nothrow {
+    if (!g_gpuBlob || g_gpuShmBase == 0) { printLine("[virtio-gpu] B4: blob self-test skipped (no blob window)"); return; }
+    enum uint  RES = 0xB10B;
+    enum ulong BID = 0xB10B0001;
+    enum ulong SZ  = 0x1000;        // one page
+    uint[12] cmd;
+    cmd[0]  = 0x000B0030;           // VIRGL_CMD0(PIPE_RESOURCE_CREATE=48, obj 0, len 11)
+    cmd[1]  = 0;                    // target = PIPE_BUFFER (linear, host-mappable)
+    cmd[2]  = 64;                   // format = VIRGL_FORMAT_R8_UNORM
+    cmd[3]  = 0;                   // bind = 0 -> GL_ARRAY_BUFFER (real host buffer; CUSTOM = guest-only)
+    cmd[4]  = cast(uint)SZ;        // width  = byte size
+    cmd[5]  = 1;                   // height
+    cmd[6]  = 1;                   // depth
+    cmd[7]  = 1;                   // array_size
+    cmd[8]  = 0;                   // last_level
+    cmd[9]  = 0;                   // nr_samples
+    cmd[10] = (1 << 1) | (1 << 2); // flags = VIRGL_RESOURCE_FLAG_MAP_PERSISTENT|COHERENT (host-visible)
+    cmd[11] = cast(uint)BID;       // blob_id
+    if (gpuCreateBlob(RES, BID, SZ, cast(const(ubyte)*)cmd.ptr, 48) != 0) {
+        printLine("[virtio-gpu] B4: CREATE_BLOB FAILED"); return;
+    }
+    ulong off = gpuBlobAllocOffset(SZ);
+    if (off == ~cast(ulong)0) { printLine("[virtio-gpu] B4: window offset alloc FAILED"); return; }
+    uint mi = gpuMapBlob(RES, off);
+    if (mi == ~0u) { printLine("[virtio-gpu] B4: MAP_BLOB FAILED"); return; }
+    printLine("[virtio-gpu] B4: MAP_BLOB ok (map_info / window-offset):");
+    printUnsigned(mi); printHex(off);
+    uint* p = cast(uint*)(g_gpuShmBase + off);
+    p[0] = 0xDEADBEEFu; p[1] = 0xCAFEF00Du;
+    memBarrier();
+    if (p[0] == 0xDEADBEEFu && p[1] == 0xCAFEF00Du)
+        printLine("[virtio-gpu] B4: host-visible window CPU write/read round-trip PASS");
+    else
+        printLine("[virtio-gpu] B4: window round-trip FAIL (read-back mismatch)");
 }
 
 // ==========================================================================
@@ -617,7 +715,7 @@ export int gpuDrmSubmit3D(const(ubyte)* stream, uint streamLen) @nogc nothrow {
     gpuZeroReq(32);
     gpuPutU(0, 0x0207);          // VIRTIO_GPU_CMD_SUBMIT_3D
     gpuPutU(4, 1);               // hdr.flags = VIRTIO_GPU_FLAG_FENCE
-    gpuPutQ(8, 1);               // hdr.fence_id
+    gpuPutQ(8, nextFence());     // hdr.fence_id (B3: monotonic)
     gpuPutU(16, 1);              // hdr.ctx_id = 1
     gpuPutU(24, streamLen);      // command-stream size in bytes
     foreach (i; 0 .. streamLen) g_gpuSubmitBuf[i] = stream[i];
@@ -630,7 +728,7 @@ export int gpuDrmTransferFromHost(uint resId, uint x, uint y, uint z,
                                   uint offset, uint stride, uint layerStride) @nogc nothrow {
     gpuZeroReq(72);
     gpuPutU(0, 0x0206);          // VIRTIO_GPU_CMD_TRANSFER_FROM_HOST_3D
-    gpuPutU(4, 1); gpuPutQ(8, 2); gpuPutU(16, 1);   // FENCE, fence_id 2, ctx 1
+    gpuPutU(4, 1); gpuPutQ(8, nextFence()); gpuPutU(16, 1);   // FENCE, fence_id (B3), ctx 1
     gpuPutU(24, x); gpuPutU(28, y); gpuPutU(32, z);
     gpuPutU(36, w); gpuPutU(40, h); gpuPutU(44, d);
     gpuPutQ(48, cast(ulong)offset);
@@ -644,7 +742,7 @@ export int gpuDrmTransferToHost(uint resId, uint x, uint y, uint z,
                                 uint offset, uint stride, uint layerStride) @nogc nothrow {
     gpuZeroReq(72);
     gpuPutU(0, 0x0205);          // VIRTIO_GPU_CMD_TRANSFER_TO_HOST_3D
-    gpuPutU(4, 1); gpuPutQ(8, 4); gpuPutU(16, 1);   // FENCE, fence_id 4, ctx 1
+    gpuPutU(4, 1); gpuPutQ(8, nextFence()); gpuPutU(16, 1);   // FENCE, fence_id (B3), ctx 1
     gpuPutU(24, x); gpuPutU(28, y); gpuPutU(32, z);
     gpuPutU(36, w); gpuPutU(40, h); gpuPutU(44, d);
     gpuPutQ(48, cast(ulong)offset);

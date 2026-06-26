@@ -2305,6 +2305,40 @@ private void dispatchSyscall(int tid) {
         if ((isPoll || isEpoll) && ret != 0) g_pollBlocked[tid] = false;
     }
 
+    // nanosleep(35) / clock_nanosleep(230, RELATIVE): a REAL sleep. The libc wrapper in posix.d is a
+    // no-op (returns 0), so without this the caller never actually sleeps. Park the task for the
+    // requested duration, reusing the poll/epoll park + PIT-tick wake. (LKL's timer host-op relies on
+    // this so the Linux-kernel-as-a-library clock can advance — see src/lkl/.)
+    {
+        const bool isSleep = (rax == 35 || rax == 230);
+        // clock_nanosleep TIMER_ABSTIME (flags bit 0) is not supported here; our LKL timer uses
+        // relative nanosleep, which is all that's needed.
+        const bool absTime = (rax == 230) && (rsi & 1);
+        if (isSleep && ret == 0 && !absTime) {
+            const ulong reqPtr = (rax == 35) ? rdi : rdx;   // nanosleep req=rdi; clock_nanosleep req=rdx
+            if (reqPtr != 0) {
+                if (g_pollBlocked[tid]) {
+                    if (g_pollDeadline[tid] != 0 && pitMs() >= g_pollDeadline[tid]) {
+                        g_pollBlocked[tid] = false;
+                        task.regs[REG_RAX] = 0;             // slept long enough
+                        return;
+                    }
+                } else {
+                    const long sec  = *cast(long*)(reqPtr + 0);
+                    const long nsec = *cast(long*)(reqPtr + 8);
+                    const ulong ms  = cast(ulong)sec * 1000 + cast(ulong)nsec / 1_000_000;
+                    if (ms == 0) { task.regs[REG_RAX] = 0; return; }   // sub-ms: just return done
+                    g_pollBlocked[tid]  = true;
+                    g_pollDeadline[tid] = pitMs() + ms;
+                }
+                task.waiting = true;
+                task.regs[REG_RIP] -= 2;                    // re-run the sleep syscall on wake
+                scheduleNext();
+                return;
+            }
+        }
+    }
+
     // Wayland and other local-socket protocols use sendmsg() as an IPC handoff.
     // After a successful write, yield once so the peer can accept/read/reply
     // without relying on debug logging or timer timing for fairness.
@@ -2494,11 +2528,7 @@ private void kernelLoop() {
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
         // maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
         // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
-        // maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS. The musl binary LAUNCHES but spins on
-        //                        // ENOSYS 128 (rt_sigtimedwait) — LKL's POSIX-timer/signal clock isn't
-        //                        // supported here (timer_create=222 ENOSYS, rt_sigtimedwait a stub).
-        //                        // Re-enable after a custom LKL timer host-op (thread + clock_nanosleep
-        //                        // → lkl_trigger_irq), or after implementing POSIX timers + signals.
+        maybeSpawnLklTest();   // L2: boot LKL on EpinAnonymOS (musl + a thread-based timer host-op)
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

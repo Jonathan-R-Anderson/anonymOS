@@ -1002,12 +1002,24 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     surface on the Wayland platform, renders a GLES2 gradient triangle (vertex+fragment shaders), and
     `eglSwapBuffers` → Weston's virgl GL renderer composites it. **Screenshot-verified** (triangle window
     next to the Domain Manager). Launch-on-demand via SUPER+G. This is the client-side GL path a GLES2
-    terminal needs. **REMAINING for R3:** (1) get the client onto **virgl** instead of softpipe — Mesa's
-    EGL Wayland device negotiation (`wl_drm`/`zwp_linux_dmabuf` main_device) doesn't yet hand the client
-    the render device, and a virgl client also needs the single shared GPU control queue **serialised**
-    (softpipe currently sidesteps that contention); (2) the **terminal proper** — VT parser + glyph-atlas
-    GLES2 text rendering + `/dev/ptmx`/zsh + Wayland-seat input + the per-domain identity border (reuse
-    `hos-term`/`wl-term`'s VT engine + font).
+    terminal needs. **REMAINING for R3:** (1) get the client onto **virgl** instead of softpipe; (2) the
+    **terminal proper** — VT parser + glyph-atlas GLES2 text rendering + `/dev/ptmx`/zsh + Wayland-seat
+    input + the per-domain identity border (reuse `hos-term`/`wl-term`'s VT engine + font).
+  - **★ R3 virgl-client progress (commit c9f5ff339) — Weston now identifies its EGL render device.**
+    Traced (multi-agent) why GPU clients fell back to softpipe: Weston logged *"failed to query rendering
+    device from EGL"* → *"dmabuf support: no"*, so it never advertised a render device to clients. Fixed
+    the kernel sysfs so libdrm works: **`/dev/dri` is now getdents-enumerable** (it was a synthetic dir
+    never tagged → libdrm's `opendir("/dev/dri")+readdir` in BOTH `drmGetDevice2` and `drmGetDevices2`
+    saw zero nodes), plus a **PCI sysfs subtree** for the virtio-gpu (`/sys/dev/char/226:{0,128}/device/`
+    subsystem→`/sys/bus/pci`, uevent `PCI_SLOT_NAME`, vendor/device/…). And **reverted** the egldevice.c
+    `_eglFindDevice` software-head Mesa patch (now that drmGetDevice2 works it must match the real DRM
+    EGLDevice, not the software one). Weston now logs **"Using rendering device: /dev/dri/renderD128"**;
+    desktop still virgl, no regression. **STILL REMAINING (deep):** the EGL display lacks
+    `EGL_WL_bind_wayland_display` + `EGL_EXT_image_dma_buf_import` (the compositor↔client GPU-buffer-share
+    extensions → need the **virgl PRIME/dmabuf** path for virtgpu GEMs), so clients still get softpipe;
+    and the single shared unlocked `gpuCtrl` control queue must be **serialised** before a client renders
+    on virgl concurrently with Weston (a non-cli/sti lock). The softpipe GLES2 client still composites
+    fine meanwhile, so the **terminal can be built now** on that path.
 - **R4 — make ratty the terminal · E: 2 · deps: R3.** ratty launches `zsh` on a PTY and
   nothing else (Z3); the desktop's terminal keybinding + the Domain Manager "Launch Terminal"
   target ratty. Feature parity with `wl-term` (decorations, domain border, scrollback) plus

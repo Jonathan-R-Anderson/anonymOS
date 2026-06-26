@@ -25,6 +25,9 @@ https://github.com/Jonathan-R-Anderson/web3-kinetic-loader (as the splash page f
 
 android apk support
 https://github.com/darlinghq/darling
+https://github.com/wine-mirror/wine
+https://github.com/winegui/WineGUI
+
 
 https://github.com/sam0hack/Linux-Login-screens
 

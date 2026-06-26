@@ -921,7 +921,7 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
       CREATE_SURFACE+SET_FRAMEBUFFER+CLEAR-red virgl stream, `TRANSFER_FROM_HOST`s, and reads back
       **`0xFFFF0000` → "RESULT: PASS"**. Launched at boot only when `virtio-gpu-gl` is present
       (`g_gpuVirgl`); the desktop device set is unaffected.
-    - **R2.4b — guest Mesa virgl driver (in progress)** ·
+    - **R2.4b — guest Mesa virgl driver ✅ DONE (commit cc1274f5f) — full GPU acceleration** ·
       - **step1 ✅ DONE (commit 3bcfaeb91)** · real `GET_CAPS` — `gpuDrmGetCapset` forwards the host
         `GET_CAPSET` (0x0109) blob to userspace; verified `drm-gpu-test` reads VIRGL2 capset
         `max_version=2`, caps bits `0xf03727fe`. EXECBUFFER now ctx-attaches referenced `bo_handles`
@@ -937,27 +937,31 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
         (`gallium-drivers=swrast,virgl`); the megadriver gains `virgl_create_screen` and the install
         produces `virtio_gpu_dri.so`, staged as a guest boot module. Desktop unaffected (virgl is
         additive; weston still brings up on the rebuilt megadriver).
-      - **step4b 🚧 — Mesa GLES2 RENDERS in the guest; dual-glapi FIXED (commit dbe6a7a47)** ·
-        [drm-gl-test.c](../src/util/drm-gl-test.c), a dynamic-musl GLES2 program, links the full Mesa
-        static stack: `gbm_create_device(renderD128)` → EGL gbm → **"EGL 1.4 vendor=Mesa Project"**,
-        config/context/makeCurrent(surfaceless) OK, then `glClear`→`glReadPixels` = **RGBA ff0000ff
-        (RED)** — a real GLES2 program renders correctly. The **dual-glapi blocker is FIXED**: reverted
-        the mutter build's `libglapi → static_library` patch so libglapi stays SHARED; the app and the
-        dlopened megadriver now both import `_glapi_tls_Dispatch` from `libglapi.so` (staged as a boot
-        module). Desktop sanity-checked — weston still brings up on the shared-glapi megadriver.
-        **REMAINING — softpipe vs virgl, thoroughly diagnosed (commit 0fa37faf4):** the GL screen is
-        **softpipe (CPU)**, not virgl (GPU). ★ PRIMARY CAUSE: the kernel seeds `LIBGL_ALWAYS_SOFTWARE=1`
-        + `GALLIUM_DRIVER=softpipe` + `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` into EVERY program's env
-        (`core/exports.d`) for the CPU desktop — so any GPU app is hard-forced to software unless it
-        unsets all three (drm-gl-test now does, via a priority-101 constructor; verified null). With them
-        unset, `drmGetVersion`="virtio_gpu" + the megadriver exports `__driDriverGetExtensions_virtio_gpu`
-        (both correct), but it's **still softpipe via BOTH gbm and surfaceless** → virgl's GLES
-        `createNewScreen` itself fails. Host log: `virgl_fence_set_fd: failed err=-16` — **egl-headless
-        can't export fence sync fds**, the likely blocker (the kernel's own R2.3b virgl path works
-        because it syncs via the used-ring, not fence fds). NEXT: a real-display QEMU `-display
-        gtk,gl=on`/`sdl,gl=on` (exports fence fds) or a fence-tolerant virgl path — a host/QEMU-env
-        issue, not OS code. (TRAP: do NOT set `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` — gbm misreads it
-        as a backend name; just unset the software-forcing vars.)
+      - **step4b ✅ DONE — GL_RENDERER=virgl, GPU acceleration end-to-end (commit cc1274f5f)** ·
+        [drm-gl-test.c](../src/util/drm-gl-test.c) (dynamic-musl GLES2, gbm over `renderD128`) now reports
+        **`GL_RENDERER=virgl (NVIDIA GTX 1080)`, `GL_VERSION=OpenGL ES 3.2 Mesa 23.3.5`** and reads back a
+        real RED pixel: guest Mesa GLES2 → virgl gallium driver → kernel virtgpu DRM uABI → virglrenderer
+        → host GPU. The earlier *softpipe-not-virgl* diagnosis (egl-headless `virgl_fence_set_fd` fence-fd
+        export) was a **RED HERRING** — the real chain of blockers, each unblocking the next screen-create
+        / EGL-init stage:
+        - **kernel** (`core/syscalls/posix.d`, `drivers/graphics/virtio_gpu.d`): `DRM_IOCTL_VERSION` major
+          must be **0** (virgl winsys rejects `major != 0`); `VIRTGPU_GETPARAM` must write the result to
+          **`*value`** (value is a *userspace pointer* per the Linux uABI), not into the value field — Mesa
+          read garbage for `3D_FEATURES` and bailed to softpipe; `GET_CAPS` must return the **full 1376-B**
+          capset (was truncated at 1024 → `virgl_create_screen` choked); `renderD128` must `fstat()` as
+          **`makedev(226,128)`** (`minor>>6 == DRM_NODE_RENDER`), not minor 0 (card0 stays minor 0).
+        - **env**: drm-gl-test must unset a **fourth** software-forcing var the kernel seeds,
+          **`GBM_ALWAYS_SOFTWARE=1`** (forces gbm's `dri_screen_create_sw` → kms_swrast, never trying the
+          HW path) — in addition to `LIBGL_ALWAYS_SOFTWARE`/`GALLIUM_DRIVER`/`MESA_LOADER_DRIVER_OVERRIDE`.
+        - **Mesa** (`deps/mutter/patches/mesa-virgl-minimal-sysfs.patch`, wired into the mesa build): this
+          guest exposes **no `/sys` PCI tree**, so every `drmGetDevice2`/`drmGetDevices2` in EGL's gbm
+          render-device path fails (`MESA-LOADER: failed to retrieve device information` →
+          `DRI2: failed to get compatible render device`/`failed to setup EGLDevice`). Patch
+          `loader_is_device_render_capable()` + `_eglFindDevice()` to fall back to a **sysfs-free
+          fstat/minor node-type test** so eglInitialize reaches the already-created virgl screen instead
+          of `EGL_NOT_INITIALIZED`. (TRAP: `drmGetNodeTypeFromFd` is NOT sysfs-free — on Linux it stats
+          `/sys/dev/char/<m:n>/device/drm`; use a direct `fstat`+`minor` check. TRAP: do NOT set
+          `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` — gbm misreads it as a backend name.)
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 (revised: much higher) · deps: R2.** Build ratty for AnonymOS: PTY against

@@ -4976,7 +4976,7 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/weston.ini",
       "[core]\n" ~
       "backend=drm-backend.so\n" ~
-      "renderer=gl\n" ~
+      "renderer=pixman\n" ~   // safe default (no-GPU boots); the kernel passes --renderer=gl when g_gpuVirgl
       "shell=desktop-shell.so\n" ~
       "require-input=false\n" ~
       "idle-time=0\n" ~

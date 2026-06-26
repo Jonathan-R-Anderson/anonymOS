@@ -972,6 +972,14 @@ ulong linux_seed_initial_stack(
         isWestonGpu = wbg[0]=='w' && wbg[1]=='e' && wbg[2]=='s' && wbg[3]=='t' &&
                       wbg[4]=='o' && wbg[5]=='n' && wbg[6]==0;
     }
+    {
+        // Only let weston pick virgl when a virgl GPU is actually present. On the
+        // default (no-GPU) device set g_gpuVirgl is false → weston still gets the
+        // software vars below and its GL renderer runs on softpipe (no virgl, no
+        // missing-driver hang). [[gpu-virgl-r2]]
+        import drivers.graphics.virtio_gpu : g_gpuVirgl;
+        isWestonGpu = isWestonGpu && g_gpuVirgl;
+    }
     if (!isWestonGpu) {
     // Software rendering: no GPU, force Mesa's software gallium driver. Our
     // kms_swrast_dri.so was built -Dllvm=disabled, so the ONLY gallium sw driver
@@ -1037,6 +1045,7 @@ ulong linux_seed_initial_stack(
     ulong frameWords;
     ulong stupidFlagVirt = 0;
     ulong drmDeviceVirt  = 0;
+    ulong rendererVirt   = 0;
 
     if (isHyprland) {
         stupidFlagVirt =
@@ -1054,8 +1063,16 @@ ulong linux_seed_initial_stack(
                 stackVirtBase,
                 strCursor,
                 "--drm-device=card0\0".ptr);
-
-        frameWords = 1 + 2 + 1 + envc + 1 + 40;
+        {
+            // R2.5: drive Weston's GL renderer (virgl) only when a GPU is actually
+            // present; otherwise weston.ini's renderer=pixman stands so the default
+            // (no-GPU) desktop is byte-identical to before.
+            import drivers.graphics.virtio_gpu : g_gpuVirgl;
+            if (g_gpuVirgl)
+                rendererVirt = _copyKernelStrToStack(
+                    stackPhysVirt, stackVirtBase, strCursor, "--renderer=gl\0".ptr);
+        }
+        frameWords = 1 + 3 + 1 + envc + 1 + 40;
     } else {
         frameWords = 1 + 1 + 1 + envc + 1 + 40;
     }
@@ -1071,9 +1088,10 @@ ulong linux_seed_initial_stack(
         p[idx++] = stupidFlagVirt;
         p[idx++] = 0;
     } else if (isWeston) {
-        p[idx++] = 2;
+        p[idx++] = (rendererVirt != 0) ? 3 : 2;
         p[idx++] = execFnVirt;
         p[idx++] = drmDeviceVirt;
+        if (rendererVirt != 0) p[idx++] = rendererVirt;
         p[idx++] = 0;
     } else {
         p[idx++] = 1;

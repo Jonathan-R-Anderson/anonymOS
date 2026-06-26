@@ -954,10 +954,24 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
         path (possibly a real-display QEMU config rather than `egl-headless`).
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
-- **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`
-  (live) or the native `Device` PTY object (§12), input via the Wayland seat, clipboard via
-  OSC52, and the GPU backend from R2. Honour the unspoofable per-domain window border
-  (the identity color) the kernel/compositor already enforce.
+- **R3 — ratty port · E: 4 (revised: much higher) · deps: R2.** Build ratty for AnonymOS: PTY against
+  `/dev/ptmx` (live) or the native `Device` PTY object (§12), input via the Wayland seat, clipboard via
+  OSC52, and the GPU backend from R2. Honour the unspoofable per-domain window border (the identity
+  color) the kernel/compositor already enforce.
+  - **★ Feasibility probe (done):** [ratty](https://github.com/orhun/ratty) is NOT a lightweight
+    terminal — it is **"a GPU-rendered terminal with inline 3D graphics built on Bevy + Ratatui"**, so
+    it pulls in the **entire Bevy game engine** (`bevy_pbr`/`gltf`/`animation`/`ecs`/`render`, ~400+
+    crates) + `wgpu`(core/hal/types) + `naga` + `glow` + `winit`. **COMPILE = feasible:** `cargo build
+    --target x86_64-unknown-linux-musl` with `PKG_CONFIG_ALLOW_CROSS=1 PKG_CONFIG_SYSROOT_DIR=deps/
+    gtk-stack/sysroot PKG_CONFIG_LIBDIR=…/lib/pkgconfig` builds through wgpu/naga/glow/winit/bevy_* with
+    no hard musl blocker (the only `-sys` wall, `wayland-sys`, is resolved by that sysroot, which has
+    wayland/xkb/egl/gbm/udev/x11 `.pc`s). **RUN = NOT feasible on the OS now:** Bevy/wgpu need real GPU
+    acceleration (the OS is on **softpipe/CPU** — R2's virgl-as-renderer is unfinished; a 3D engine on
+    softpipe is unusable) AND a far more complete Linux ABI + a full `winit`/Wayland environment than the
+    OS provides. So ratty *links* but cannot *run* usefully until (1) R2 GPU acceleration (virgl) lands
+    and (2) the Linux ABI is substantially expanded. Realistic alternative for the R3 *spirit* (a
+    GPU/GL-rendered terminal hosting zsh): a small **GLES2 terminal** on the R2 Mesa GL stack, not the
+    Bevy behemoth. Until then `hos-term` (R1, CPU) remains the Rust terminal.
 - **R4 — make ratty the terminal · E: 2 · deps: R3.** ratty launches `zsh` on a PTY and
   nothing else (Z3); the desktop's terminal keybinding + the Domain Manager "Launch Terminal"
   target ratty. Feature parity with `wl-term` (decorations, domain border, scrollback) plus

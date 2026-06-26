@@ -929,10 +929,15 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
       - **step2 ✅ DONE (commit a62d00f86)** · large EXECBUFFER streams — `gpuDrmSubmit3D` uses a
         dedicated 64 KB DMA buffer + a 3-descriptor chain (`gpuCtrlChained`), lifting the ~2 KB cap so
         Mesa-sized command buffers fit; verified a 2460-byte padded stream renders red.
-      - **step3 (next)** · per-fd GEM tables + `RESOURCE_CREATE_BLOB`; then build Mesa with the `virgl`
-        gallium driver + `virtio_gpu` winsys for the guest musl and point it at the node so GL/GLES
-        apps accelerate. (Known: host egl-headless can't export fence fds — fine for the used-ring
-        sync the kernel uses, but Mesa sync-fd paths may need attention.)
+      - **step3 ✅ DONE (commit 7a54e4fcd)** · resource lifecycle — `DRM_IOCTL_GEM_CLOSE` frees a
+        virtgpu GEM (`gpuDrmResourceUnref` = DETACH_BACKING + UNREF, then `free_phys_pages` the
+        backing); handles based at `0x10000` to avoid KMS-dumb collision. Verified 100 create+close
+        with no GEM/resource exhaustion. The clear path still renders red.
+      - **step4 — guest Mesa virgl build (next, the big lift)** · build Mesa with the `virgl` gallium
+        driver + `virtio_gpu` winsys for the guest musl and point it at the node so GL/GLES apps
+        accelerate. The remaining uABI gaps (per-fd GEM tables, `RESOURCE_CREATE_BLOB`, sync-fds) are
+        best driven by what real Mesa actually calls. (Known: host egl-headless can't export fence
+        fds — fine for the kernel's used-ring sync, but Mesa sync-fd paths may need attention.)
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`

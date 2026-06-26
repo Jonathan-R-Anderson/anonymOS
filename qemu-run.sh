@@ -16,6 +16,27 @@ else
   echo "[qemu-run] /dev/kvm unavailable — using slow TCG emulation (expect a sluggish desktop)"
 fi
 
+# QEMU binary: prefer the locally-built virgl-capable QEMU >= 9.1 (~/.local/qemu-virgl), which is
+# REQUIRED for the GPU/blob path — the Ubuntu repo only ships 8.2.2, which refuses virgl+blob
+# ("blobs and virgl are not compatible (yet)").  Built from source, no sudo.  Falls back to system.
+QEMU_BIN="${QEMU_BIN:-$HOME/.local/qemu-virgl/bin/qemu-system-x86_64}"
+[ -x "$QEMU_BIN" ] || QEMU_BIN="qemu-system-x86_64"
+echo "[qemu-run] using $("$QEMU_BIN" --version | head -1)"
+
+# GPU=1 selects the HEADLESS virgl path with host-visible blob memory enabled (the GPU desktop +
+# GPU clients); GPU unset = the interactive gtk software desktop.  egl-headless has no window, so
+# observe the GPU desktop via serial.log + QMP screendumps (qmp.sock).
+if [ "${GPU:-0}" = "1" ]; then
+  MEM="${MEM:-1024}"
+  GFX=(-vga std -device virtio-gpu-gl-pci,blob=true,hostmem=256M
+       -display egl-headless,rendernode=/dev/dri/renderD128
+       -qmp unix:qmp.sock,server,nowait)
+  echo "[qemu-run] GPU=1: headless virgl + host-visible blob (read serial.log; QMP at qmp.sock)"
+else
+  MEM="${MEM:-512}"
+  GFX=(-display gtk)
+fi
+
 # A5/F4 persistence: a 32 MiB raw SATA disk on an AHCI controller backs the object
 # store across reboots (created on first run; kept out of git via .gitignore).
 DISK_IMG="hos-disk.img"
@@ -24,11 +45,11 @@ if [ ! -f "$DISK_IMG" ]; then
   echo "[qemu-run] created $DISK_IMG (32M) for persistent object store"
 fi
 
-exec qemu-system-x86_64 \
+exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
   -serial file:serial.log \
-  -m 512 \
+  -m "$MEM" \
   -no-reboot \
   -no-shutdown \
   -d int,cpu_reset,guest_errors \
@@ -37,7 +58,7 @@ exec qemu-system-x86_64 \
   -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
   -device ahci,id=ahci0 \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
-  -display gtk
+  "${GFX[@]}"
 # R2 (GPU stack) is OFF by default: `gtk,gl=on` + a virtio-gpu-gl device gives a BLACK SCREEN on
 # many hosts (the GL display path doesn't present the firmware-VGA framebuffer the desktop renders
 # to).  To exercise the kernel's virgl path, run HEADLESS instead and read serial.log:

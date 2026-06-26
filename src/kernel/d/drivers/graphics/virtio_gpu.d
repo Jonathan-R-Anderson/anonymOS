@@ -111,6 +111,9 @@ __gshared ushort      g_gpuQsz;
 __gshared ushort      g_gpuLastUsed;   // last-seen used.idx
 __gshared bool        g_gpu3dReady = false; // R2.3: 3D context + resource commands accepted
 __gshared bool        g_gpuCtrlBusy = false; // R3: serialize the shared control queue (Weston + GPU clients)
+__gshared bool        g_gpuBlob = false;     // B2: device offers VIRTIO_GPU_F_RESOURCE_BLOB (host-visible blobs)
+__gshared ulong       g_gpuShmBase = 0;      // B1: HHDM virt base of the host-visible SHM BAR window (0 = none)
+__gshared ulong       g_gpuShmLen = 0;       // B1: host-visible window length (the device's hostmem= size)
 __gshared uint g_resourceIdCounter = 1;
 
 // Ring buffers (Static for simplicity in this environment)
@@ -195,9 +198,11 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     if (!((cmdStatus >> 16) & 0x10)) { printLine("[virtio-gpu] R2.1: no PCI capability list"); return; }
     ubyte cap = cast(ubyte)(pciConfigRead32(pci.bus, pci.slot, pci.func, 0x34) & 0xFC);
 
-    // Walk the capability list for the virtio COMMON-config (cfg_type 1) + NOTIFY (cfg_type 2) caps.
+    // Walk the capability list for the virtio COMMON-config (cfg_type 1), NOTIFY (cfg_type 2), and
+    // SHARED_MEMORY (cfg_type 8 — B1, the host-visible blob window) caps.
     uint commonBar = 0xFFFFFFFFu, commonOff = 0;
     uint notifyBar = 0xFFFFFFFFu, notifyOff = 0, notifyMult = 0;
+    uint shmBar = 0xFFFFFFFFu; ulong shmOff = 0, shmLen = 0;   // B1: VIRTIO_GPU_SHM_ID_HOST_VISIBLE
     int guard = 0;
     while (cap != 0 && guard++ < 48) {
         uint dw0 = pciConfigRead32(pci.bus, pci.slot, pci.func, cap);
@@ -211,6 +216,17 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
             if (cfgType == 2) { // NOTIFY_CFG=2 ; struct virtio_pci_notify_cap adds notify_off_multiplier at cap+16
                 notifyBar = dw1 & 0xFF; notifyOff = off;
                 notifyMult = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 16));
+            }
+            if (cfgType == 8) { // SHARED_MEMORY_CFG ; struct virtio_pci_cap64: id@cap+5, 64-bit off/len
+                ubyte shmId = cast(ubyte)((dw1 >> 8) & 0xFF);   // id is the byte after bar
+                if (shmId == 1) {                               // VIRTIO_GPU_SHM_ID_HOST_VISIBLE
+                    shmBar = dw1 & 0xFF;
+                    uint lenLo = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 12));
+                    uint offHi = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 16));
+                    uint lenHi = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(cap + 20));
+                    shmOff = cast(ulong)off  | (cast(ulong)offHi << 32);
+                    shmLen = cast(ulong)lenLo | (cast(ulong)lenHi << 32);
+                }
             }
         }
         cap = capNext;
@@ -226,6 +242,20 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
     }
     ulong cc = barBase + commonOff + hhdm_offset; // common config via the HHDM
     g_gpuCommon = cc;                              // kept for R2.2b (the virtqueue + GET_CAPSET)
+
+    // B1: resolve the host-visible SHM BAR window (host-visible blob memory; cfg_type 8 / HOST_VISIBLE).
+    if (shmBar != 0xFFFFFFFFu) {
+        uint sLo = pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + shmBar * 4));
+        ulong sBase = sLo & 0xFFFFFFF0u;
+        if ((sLo & 0x6) == 0x4)  // 64-bit BAR (the hostmem window is 64-bit prefetchable)
+            sBase |= (cast(ulong)pciConfigRead32(pci.bus, pci.slot, pci.func, cast(ubyte)(0x10 + shmBar * 4 + 4)) << 32);
+        g_gpuShmBase = sBase + shmOff + hhdm_offset;
+        g_gpuShmLen  = shmLen;
+        printLine("[virtio-gpu] B1: host-visible SHM bar / off / len:");
+        printUnsigned(shmBar); printHex(shmOff); printHex(shmLen);
+    } else {
+        printLine("[virtio-gpu] B1: no host-visible SHM cap (device blob/hostmem not enabled)");
+    }
     auto pStatus  = cast(ubyte*)(cc + CC_STATUS);
     auto pFeatSel = cast(uint*)(cc + CC_DEV_FEAT_SEL);
     auto pFeat    = cast(uint*)(cc + CC_DEV_FEAT);
@@ -252,9 +282,19 @@ export void virtioGpuDetectVirgl() @nogc nothrow {
         g_gpuVirgl = false;
     }
 
-    // R2.2 — negotiate: accept VIRGL (if offered) in the low word + VIRTIO_F_VERSION_1 (bit 32,
-    // = bit 0 of the high word) which is mandatory for a modern device.
-    volStoreU(pDrvSel, 0); volStoreU(pDrvFeat, g_gpuVirgl ? (1u << VIRTIO_GPU_F_VIRGL) : 0u);
+    // R2.2 / B2 — negotiate: accept VIRGL + (when offered) RESOURCE_BLOB(bit 3) and CONTEXT_INIT(bit 4)
+    // in the low word, plus VIRTIO_F_VERSION_1 (bit 32 = bit 0 of the high word, mandatory for modern).
+    enum VIRTIO_GPU_F_RESOURCE_BLOB = 3;
+    enum VIRTIO_GPU_F_CONTEXT_INIT  = 4;
+    uint drvLo = g_gpuVirgl ? (1u << VIRTIO_GPU_F_VIRGL) : 0u;
+    if (featLo & (1u << VIRTIO_GPU_F_RESOURCE_BLOB)) {
+        drvLo |= (1u << VIRTIO_GPU_F_RESOURCE_BLOB);
+        g_gpuBlob = true;
+        printLine("[virtio-gpu] B2: VIRTIO_GPU_F_RESOURCE_BLOB offered + acked (host-visible blobs)");
+    }
+    if (featLo & (1u << VIRTIO_GPU_F_CONTEXT_INIT))
+        drvLo |= (1u << VIRTIO_GPU_F_CONTEXT_INIT);
+    volStoreU(pDrvSel, 0); volStoreU(pDrvFeat, drvLo);
     volStoreU(pDrvSel, 1); volStoreU(pDrvFeat, 1u);          // VIRTIO_F_VERSION_1
     volStoreB(pStatus, cast(ubyte)(VS_ACK | VS_DRIVER | VS_FEATURES_OK));
     ubyte st = volLoadB(pStatus);

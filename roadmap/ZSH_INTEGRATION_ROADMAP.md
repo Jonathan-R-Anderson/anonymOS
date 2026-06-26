@@ -911,6 +911,19 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
       alone don't set the log level). Desktop boot unaffected (virtio-gpu-gl is headless-test only).
   - **R2.4 — render node + Mesa virgl** · expose `/dev/dri/renderD128`; ship the guest Mesa virgl
     (`virtio_gpu`/`virpipe`) driver so GL/GLES programs get GPU acceleration.
+    - **R2.4a — virtgpu DRM render-node uABI ✅ DONE (commit 4fcb08a12) — first userspace GPU accel** ·
+      `handleVirtgpuIoctl` in posix.d implements the `DRM_IOCTL_VIRTGPU_*` family (GETPARAM,
+      RESOURCE_CREATE, MAP, EXECBUFFER, TRANSFER_FROM/TO_HOST, WAIT, CONTEXT_INIT, GET_CAPS-stub)
+      behind the existing `FD_DRM` dispatch (nr 0x41–0x4b), backed by new modern-transport primitives
+      in virtio_gpu.d + a small GEM-handle table; `MAP` returns the backing phys so `FD_DRM` mmap maps
+      it into user VA. A freestanding userspace program [drm-gpu-test.c](../src/util/drm-gpu-test.c)
+      opens `/dev/dri/renderD128`, creates a 32×32 BGRA RT, mmaps it, `EXECBUFFER`s a
+      CREATE_SURFACE+SET_FRAMEBUFFER+CLEAR-red virgl stream, `TRANSFER_FROM_HOST`s, and reads back
+      **`0xFFFF0000` → "RESULT: PASS"**. Launched at boot only when `virtio-gpu-gl` is present
+      (`g_gpuVirgl`); the desktop device set is unaffected.
+    - **R2.4b — guest Mesa virgl driver (next)** · real `GET_CAPS` (forward the host virgl capset),
+      per-fd GEM tables, larger EXECBUFFER streams + bo_handle residency, blob resources; then point
+      Mesa's `virtio_gpu`/`virpipe` gallium driver at the node so GL/GLES apps get acceleration.
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`

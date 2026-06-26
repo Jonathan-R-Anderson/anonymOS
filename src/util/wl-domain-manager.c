@@ -95,9 +95,9 @@ static const char *SHELL_ENV[] = {"linux","windows","native"};
 // R1: which terminal *emulator* "Launch Terminal" runs — the C wl-term (default) or the Rust
 // hos-term (ratty-cpu).  Both host the chosen Shell (EPIN_SHELL); this picks the emulator, not the
 // shell.  (Replaces the SUPER+R keybind: the terminal is selected here, per the domain.)
-enum { TERM_WL, TERM_HOS, TERM_N };
-static const char *TERM_LBL[] = {"Default (wl-term)", "Rust (hos-term)"};
-static const char *TERM_BIN[] = {"/wl-term", "/hos-term"};
+enum { TERM_WL, TERM_HOS, TERM_GL, TERM_N };
+static const char *TERM_LBL[] = {"Default (wl-term)", "Rust (hos-term)", "GL (gl-term)"};
+static const char *TERM_BIN[] = {"/wl-term", "/hos-term", "/gl-term"};
 
 struct domain {
     const char *name;

@@ -11,8 +11,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <pthread.h>
 #include <time.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 /* ---- thread-based timer host-op (no POSIX timers, no signals) ------------------- */
 struct hosttimer {
@@ -97,6 +100,70 @@ static void ht_timer_free(void *_t)
     free(t);
 }
 
+/* ---- L3a: custom LKL PCI backend over EpinAnonymOS's native PCI -----------------
+ * No VFIO/IOMMU. PCI config r/w goes through the EPIN_SYS_LKL_PCI custom syscall; the
+ * backend's .add scans for a device. BAR/DMA/IRQ are stubbed here (L3b/L3c).
+ */
+#define EPIN_SYS_LKL_PCI 0x4100
+static inline long epin_pci_call(long op, long bdf, long off, long size, long val)
+{
+    return syscall(EPIN_SYS_LKL_PCI, op, bdf, off, size, val);
+}
+
+struct epin_pci_dev { long bdf; };
+static struct epin_pci_dev g_epin_pci;
+
+static struct lkl_pci_dev *epin_pci_add(const char *name, void *kernel_ram, unsigned long ram_size)
+{
+    (void)name; (void)kernel_ram; (void)ram_size;
+    long bdf = epin_pci_call(2, 0, 0, 0, 0);     /* scan for the first non-bridge device */
+    if (bdf < 0) {
+        fprintf(stderr, ">>> epin_pci: no PCI device found\n");
+        return NULL;
+    }
+    g_epin_pci.bdf = bdf;
+    fprintf(stderr, ">>> epin_pci: device %02lx:%02lx.%lx, vendor/device=0x%08lx\n",
+            (bdf >> 16) & 0xff, (bdf >> 8) & 0xff, bdf & 0xff,
+            epin_pci_call(0, bdf, 0, 4, 0));
+    return (struct lkl_pci_dev *)&g_epin_pci;
+}
+static void epin_pci_remove(struct lkl_pci_dev *dev) { (void)dev; }
+static int epin_pci_read(struct lkl_pci_dev *dev, int where, int size, void *val)
+{
+    struct epin_pci_dev *d = (struct epin_pci_dev *)dev;
+    long v = epin_pci_call(0, d->bdf, where, size, 0);
+    if (size == 1)      *(uint8_t  *)val = (uint8_t)v;
+    else if (size == 2) *(uint16_t *)val = (uint16_t)v;
+    else                *(uint32_t *)val = (uint32_t)v;
+    return size;
+}
+static int epin_pci_write(struct lkl_pci_dev *dev, int where, int size, void *val)
+{
+    struct epin_pci_dev *d = (struct epin_pci_dev *)dev;
+    uint32_t v = (size == 1) ? *(uint8_t *)val : (size == 2) ? *(uint16_t *)val : *(uint32_t *)val;
+    epin_pci_call(1, d->bdf, where, size, v);
+    return size;
+}
+/* L3b/L3c stubs: */
+static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, int idx)
+{ (void)dev; (void)sz; (void)idx; return NULL; }
+static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr, unsigned long sz)
+{ (void)dev; (void)sz; return (unsigned long long)(uintptr_t)vaddr; }   /* identity IOVA (no IOMMU) */
+static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)
+{ (void)dev; (void)h; (void)sz; }
+static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq) { (void)dev; (void)irq; return 0; }
+
+static struct lkl_dev_pci_ops epin_pci_ops = {
+    .add            = epin_pci_add,
+    .remove         = epin_pci_remove,
+    .irq_init       = epin_pci_irq_init,
+    .read           = epin_pci_read,
+    .write          = epin_pci_write,
+    .resource_alloc = epin_pci_resource_alloc,
+    .map_page       = epin_pci_map_page,
+    .unmap_page     = epin_pci_unmap_page,
+};
+
 /* lkl_init keeps the pointer, so the ops must outlive it -> file scope. */
 static struct lkl_host_operations ops;
 
@@ -108,12 +175,14 @@ int main(int argc, char **argv)
     ops.timer_alloc       = ht_timer_alloc;   /* ...and swap the clock for our thread timer */
     ops.timer_set_oneshot = ht_timer_set_oneshot;
     ops.timer_free        = ht_timer_free;
+    ops.pci_ops           = &epin_pci_ops;    /* L3a: our native-PCI backend */
 
     if ((ret = lkl_init(&ops)) < 0) {
         fprintf(stderr, "lkl_init failed: %ld\n", ret);
         return 1;
     }
-    ret = lkl_start_kernel("mem=32M loglevel=8");
+    /* lkl_pci=epin -> the kernel calls epin_pci_ops.add("epin") + scans bus 0 via .read */
+    ret = lkl_start_kernel("mem=32M loglevel=8 lkl_pci=epin");
     if (ret < 0) {
         fprintf(stderr, "lkl_start_kernel failed: %ld\n", ret);
         return 1;

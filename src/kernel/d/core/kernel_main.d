@@ -2355,6 +2355,8 @@ private void dispatchSyscall(int tid) {
 // Dispatch to the large posix.d table
 private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
                                    ulong d, ulong e, ulong f) {
+    if (n == 0x4100) return linux_sys_epin_lkl_pci(a, b, c, d, e);  // L3a: LKL PCI bridge (custom)
+
     long capPrecheck = linuxSyscallCapPrecheck(n, a, b, c, d, e, f);
     if (capPrecheck < 0) return capPrecheck;
 

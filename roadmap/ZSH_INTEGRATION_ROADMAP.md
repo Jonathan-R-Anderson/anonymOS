@@ -962,8 +962,23 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
           of `EGL_NOT_INITIALIZED`. (TRAP: `drmGetNodeTypeFromFd` is NOT sysfs-free — on Linux it stats
           `/sys/dev/char/<m:n>/device/drm`; use a direct `fstat`+`minor` check. TRAP: do NOT set
           `MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu` — gbm misreads it as a backend name.)
-  - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
-    compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
+  - **R2.5 — EGL + dmabuf compositor ✅ DONE (commit ebd2a549e) — the desktop composites on the GPU** ·
+    Weston now renders through its **OpenGL-ES renderer on virgl** (`GL renderer: virgl, NVIDIA GTX
+    1080`) instead of Pixman/softpipe — compositing has left the CPU. Verified by screenshot: the full
+    Domain Manager desktop composites + scans out correctly. Pieces: (1) rebuilt Weston
+    `-Drenderer-gl=true` → `gl-renderer.so` (staged as a boot module + in `WESTON_MODULE_MAP`),
+    `weston.ini renderer=gl`; (2) the kernel does NOT seed the four software-forcing env vars
+    (`LIBGL_ALWAYS_SOFTWARE`/`GALLIUM_DRIVER=softpipe`/`GBM_ALWAYS_SOFTWARE`/`MESA_LOADER_DRIVER_OVERRIDE=kms_swrast`)
+    for the `weston` binary, so it picks virgl (every other program stays on software Mesa);
+    (3) the Mesa render-device fallback is broadened to accept ANY DRM node (major 226), so **card0**
+    (the primary node the gl-renderer uses, not just the renderD128 render node) is render-capable —
+    which also removes the NULL `queryCompatibleRenderOnlyDeviceFd` call the `GBM_ALWAYS_SOFTWARE`
+    workaround existed to dodge; (4) **scanout bridge** in the kernel: `drmAddFb` accepts virtgpu GEMs
+    (the GL scanout bo is a virgl resource, not a CPU dumb buffer) and `drmPresentFb` does
+    `TRANSFER_FROM_HOST` (host GPU → guest backing) before the scanout memcpy — fixes "failed to create
+    kms fb: Invalid argument". `zwp_linux_dmabuf` is compiled into gl-renderer; clients still use SHM
+    (uploaded as GL textures) — **full dmabuf client buffers + a host SET_SCANOUT present (no per-frame
+    transfer) are the remaining optimizations**. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 (revised: much higher) · deps: R2.** Build ratty for AnonymOS: PTY against
   `/dev/ptmx` (live) or the native `Device` PTY object (§12), input via the Wayland seat, clipboard via
   OSC52, and the GPU backend from R2. Honour the unspoofable per-domain window border (the identity

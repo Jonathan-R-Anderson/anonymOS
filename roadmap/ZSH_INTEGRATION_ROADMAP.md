@@ -926,9 +926,13 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
         `GET_CAPSET` (0x0109) blob to userspace; verified `drm-gpu-test` reads VIRGL2 capset
         `max_version=2`, caps bits `0xf03727fe`. EXECBUFFER now ctx-attaches referenced `bo_handles`
         (residency). Known limits: single global GEM table, EXECBUFFER streams capped at ~2 KB.
-      - **step2 (next)** · per-fd GEM tables, large EXECBUFFER streams (dedicated DMA submit buffer +
-        chained descriptor), blob resources; then build Mesa with the `virgl` gallium driver +
-        `virtio_gpu` winsys for the guest musl and point it at the node so GL/GLES apps accelerate.
+      - **step2 ✅ DONE (commit a62d00f86)** · large EXECBUFFER streams — `gpuDrmSubmit3D` uses a
+        dedicated 64 KB DMA buffer + a 3-descriptor chain (`gpuCtrlChained`), lifting the ~2 KB cap so
+        Mesa-sized command buffers fit; verified a 2460-byte padded stream renders red.
+      - **step3 (next)** · per-fd GEM tables + `RESOURCE_CREATE_BLOB`; then build Mesa with the `virgl`
+        gallium driver + `virtio_gpu` winsys for the guest musl and point it at the node so GL/GLES
+        apps accelerate. (Known: host egl-headless can't export fence fds — fine for the used-ring
+        sync the kernel uses, but Mesa sync-fd paths may need attention.)
   - **R2.5 — EGL + dmabuf compositor** · Weston's GL renderer + `zwp_linux_dmabuf` import, so
     compositing leaves the CPU. Unblocks the GPU-accelerated ratty (R3).
 - **R3 — ratty port · E: 4 · deps: R2.** Build ratty for AnonymOS: PTY against `/dev/ptmx`

@@ -20,6 +20,29 @@ EMBED LKL** (chosen over minimal-native-drivers and Linux-underneath).
    kernel as a library *inside* EpinAnonymOS and reusing Linux's driver tree. This is the device track,
    layered on top of the working software desktop.
 
+## Device isolation — one LKL per device, capability-gated (REQUIRED, user 2026-06-26)
+**Each LKL-driven peripheral runs in its OWN LKL instance** — a separate EpinAnonymOS process/sandbox, one
+per device (or device class: a usb-lkl, a gpu-lkl, a net-lkl, …). **An LKL instance sees and touches ONLY
+the device(s) explicitly granted to it via the AnonymOS capability system; by default it sees NO devices
+at all.** So a compromised or buggy driver (e.g. the USB stack) cannot reach the GPU, the disk, or the NIC
+— strong per-driver isolation, matching EpinAnonymOS's capability-based security.
+
+Concretely:
+- A **device capability** names one PCI device (its bdf) + the BAR ranges (and later the IRQ line) it is
+  allowed to touch. A privileged **device-manager** enumerates PCI, mints one device-cap per device, and
+  hands each cap to the LKL instance that should drive it — per the user's policy. This grant is the *only*
+  way an LKL gets a device.
+- The **`0x4100` PCI-bridge syscall is CAP-GATED**: every op checks the calling task's cap table holds a
+  device-cap for the target, else `-EPERM`. `op2` (scan) returns ONLY the caller's granted device(s), never
+  the whole bus; `op0/op1` (config) and `op3/op4` (MMIO) only succeed for a granted device's bdf / inside
+  its granted BAR ranges; `op5` (virt→phys) acts on the caller's own memory so it's unrestricted.
+- Builds on the existing cap system (per-task `capTabId`, the cap graph + attenuation from the object-FS /
+  native-ABI work — see [[shell-track-a]] for `cap_grant`); the device-cap is a new capability/object type.
+- **Status:** the L3a/b bridge is currently **UN-gated** — a deliberate bring-up shortcut (one LKL, scans
+  the whole bus). **Cap-gating + per-device LKL spawning is a required phase before any untrusted driver
+  runs** — it slots in at **L4** (the device-manager mints device-caps and spawns one cap-scoped LKL per
+  peripheral; the bridge enforces the caps).
+
 ## What LKL is, and the honest scope
 LKL = the Linux kernel compiled as a library (`liblkl.a`) with a host-operations interface
 (`struct lkl_host_operations`: memory, threads, timers, console, IRQs). Its **standard** use is
@@ -108,10 +131,16 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
     pages (possibly non-contiguous) — virtio's per-descriptor sg handles this; a single large contiguous
     DMA (AHCI PRD) may need a contiguous allocation. L3c = IRQ forward (`lkl_trigger_irq`).
 
-## L4 — Bridge LKL's devices to EpinAnonymOS
-LKL has its own VFS/`/dev`. Reach its device nodes via the LKL syscall interface
-(`lkl_sys_open`/`read`/`write`/`ioctl`) and surface them as EpinAnonymOS devices, so the existing
-userspace + desktop use them unchanged. **Verify:** an EpinAnonymOS `/dev/*` backed by an LKL device.
+## L4 — Per-device LKL isolation (cap-gating) + bridge LKL's devices to EpinAnonymOS
+**Isolation (the "Device isolation" section above):** a privileged **device-manager** enumerates PCI,
+mints one **device-cap** per device, and spawns **one LKL instance per peripheral**, each holding only its
+own device-cap. Make the `0x4100` bridge **cap-gated**: `op2`/config/MMIO check the caller's cap table for
+a device-cap matching the target (else `-EPERM`), so an LKL sees only its granted device — never the bus.
+The grant is explicit (the user's policy, via the cap system — [[shell-track-a]] `cap_grant`).
+**Bridge:** each LKL has its own VFS/`/dev`; reach its device nodes via `lkl_sys_open`/`read`/`write`/
+`ioctl` and surface them as EpinAnonymOS devices, so the existing userspace + desktop use them unchanged.
+**Verify:** two LKL instances each see only their own device; an EpinAnonymOS `/dev/*` backed by an LKL
+device.
 
 ## L5 — USB HID via LKL (the usable-desktop unlock)
 LKL's `xhci_hcd` + `usbhid` drive the real USB keyboard/mouse → bridge LKL's `/dev/input/event*` to

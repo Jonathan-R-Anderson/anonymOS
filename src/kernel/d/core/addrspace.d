@@ -57,6 +57,25 @@ public bool userPageMapped(int taskId, ulong va) {
     return pte !is null && (*pte & PTE_PRESENT) != 0;
 }
 
+// L3b: translate a userspace virtual address in task `taskId` to its physical address — the LKL PCI
+// backend's .map_page uses this as the no-IOMMU DMA IOVA so a device can DMA into LKL's buffers.
+// Returns 0 if `va` is not backed by a present 4K page.
+public ulong userVirtToPhys(int taskId, ulong va) {
+    if (taskId < 0 || taskId >= MAX_TASKS) return 0;
+    auto pte = leafPTEPtr(g_tasks[taskId].pml4Phys, va & ~0xFFFUL);
+    if (pte is null || !(*pte & PTE_PRESENT)) return 0;
+    return (*pte & PTE_ADDR_MASK) | (va & 0xFFF);
+}
+
+// Same, but for the CURRENTLY-active address space (the calling task during a syscall) — no task id
+// needed.  Used by the L3b LKL PCI bridge syscall to translate a caller's DMA buffer to a phys IOVA.
+public ulong activeVirtToPhys(ulong va) {
+    const ulong pml4 = x64ReadCR3() & PTE_ADDR_MASK;
+    auto pte = leafPTEPtr(pml4, va & ~0xFFFUL);
+    if (pte is null || !(*pte & PTE_PRESENT)) return 0;
+    return (*pte & PTE_ADDR_MASK) | (va & 0xFFF);
+}
+
 // Walk PML4 entries 0..255 (user space) and deep-copy every mapped page
 // from srcPml4Phys into dstPml4Phys.  Called during fork.
 void walkAndCopyUserPages(ulong srcPml4, ulong dstPml4, Task* dstTask = null) {

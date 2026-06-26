@@ -7700,6 +7700,8 @@ public long linux_sys_clock_getres(ulong clk, ulong res) {
 //         pick a device without the bdf being known up front), or -1 if none.
 public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, ulong val) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32, scanPCIDevices;
+    import core.globals : hhdm_offset;
+    import core.addrspace : activeVirtToPhys;
     const ubyte bus  = cast(ubyte)((bdf >> 16) & 0xFF);
     const ubyte slot = cast(ubyte)((bdf >> 8)  & 0xFF);
     const ubyte func = cast(ubyte)( bdf        & 0xFF);
@@ -7722,15 +7724,38 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             pciConfigWrite32(bus, slot, func, al, dw);
             return 0;
         }
-        case 2: {                                   // scan for the first non-bridge device
+        case 2: {                                   // scan: off = wanted class (base<<8|sub), 0 = any non-bridge
             auto devs = scanPCIDevices();
             foreach (ref d; devs) {
-                const uint cls = pciConfigRead32(d.bus, d.slot, d.func, 8) >> 24; // base class
-                if (cls != 0x06)                    // 0x06 = bridge (host/PCI-PCI)
+                const uint clsReg = pciConfigRead32(d.bus, d.slot, d.func, 8);
+                const uint base   = (clsReg >> 24) & 0xFF;
+                const uint sub    = (clsReg >> 16) & 0xFF;
+                if (off != 0) {
+                    if (((base << 8) | sub) == cast(uint)off)
+                        return (cast(long)d.bus << 16) | (cast(long)d.slot << 8) | d.func;
+                } else if (base != 0x06) {           // 0x06 = bridge
                     return (cast(long)d.bus << 16) | (cast(long)d.slot << 8) | d.func;
+                }
             }
             return -1;
         }
+        case 3: {                                   // MMIO read at phys: bdf = phys addr, size = 1/2/4/8
+            const ulong va = bdf + hhdm_offset;     // device BARs are reachable through the HHDM
+            if (size == 1) return *cast(shared const ubyte*)va;
+            if (size == 2) return *cast(shared const ushort*)va;
+            if (size == 8) return cast(long)*cast(shared const ulong*)va;
+            return *cast(shared const uint*)va;
+        }
+        case 4: {                                   // MMIO write at phys: bdf = phys, size, val
+            const ulong va = bdf + hhdm_offset;
+            if      (size == 1) *cast(shared ubyte*)va  = cast(ubyte)val;
+            else if (size == 2) *cast(shared ushort*)va = cast(ushort)val;
+            else if (size == 8) *cast(shared ulong*)va  = val;
+            else                *cast(shared uint*)va   = cast(uint)val;
+            return 0;
+        }
+        case 5:                                     // virt->phys: bdf = a userspace virtual addr (DMA IOVA)
+            return cast(long)activeVirtToPhys(bdf);
         default: return negErrno(EINVAL);
     }
 }

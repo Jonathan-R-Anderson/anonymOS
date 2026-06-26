@@ -9068,6 +9068,7 @@ private enum uint DRM_FORMAT_ARGB8888 = 0x34325241; // 'AR24'
 // DRM capability IDs
 private enum ulong DRM_CAP_DUMB_BUFFER          = 0x1;
 private enum ulong DRM_CAP_DUMB_PREFERRED_DEPTH = 0x3;
+private enum ulong DRM_CAP_PRIME                = 0x5;   // R3: dma-buf import/export capability
 private enum ulong DRM_CAP_TIMESTAMP_MONOTONIC  = 0x6;
 private enum ulong DRM_CAP_CURSOR_WIDTH         = 0x8;
 private enum ulong DRM_CAP_CURSOR_HEIGHT        = 0x9;
@@ -10210,6 +10211,11 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         switch (cap) {
         case DRM_CAP_DUMB_BUFFER:          val = 1;  break;
         case DRM_CAP_DUMB_PREFERRED_DEPTH: val = 32; break;
+        // R3: advertise dma-buf import|export. Mesa's virgl reads this as
+        // PIPE_CAP_DMABUF → wires createImageFromDmaBufs → the EGL display
+        // advertises EGL_EXT_image_dma_buf_import → Weston enables dmabuf → GPU
+        // Wayland clients (gl-term/gl-wl-test) render on virgl, not softpipe.
+        case DRM_CAP_PRIME:                val = 0x3; break;  // IMPORT(1)|EXPORT(2)
         case DRM_CAP_TIMESTAMP_MONOTONIC:  val = 1;  break;
         case DRM_CAP_CURSOR_WIDTH:         val = 64; break;
         case DRM_CAP_CURSOR_HEIGHT:        val = 64; break;

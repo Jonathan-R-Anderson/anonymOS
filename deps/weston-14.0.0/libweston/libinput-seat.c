@@ -342,18 +342,52 @@ udev_input_init(struct udev_input *input, struct weston_compositor *c,
 		struct udev *udev, const char *seat_id,
 		udev_configure_device_t configure_device)
 {
+	enum libinput_log_priority priority = LIBINPUT_LOG_PRIORITY_INFO;
+	const char *log_priority = NULL;
+
 	memset(input, 0, sizeof *input);
 
 	input->compositor = c;
 	input->configure_device = configure_device;
 
-	/* Sessionless input: anonymOS delivers keyboard/pointer events
-	 * directly from the kernel (EV_ABS pointer, kernel cursor
-	 * overlay), so weston's libinput/evdev path is unused.  Fail
-	 * soft here so the compositor comes up without input devices
-	 * rather than aborting the whole backend. */
-	weston_log("Sessionless input active (forced); kernel delivers input directly\n");
-	return 0;
+	/* anonymOS: drive the libinput/evdev path so weston actually reads the
+	 * kernel's /dev/input/event* devices (EV_ABS pointer + buttons).  The kernel
+	 * still draws the cursor overlay.  Fail SOFT on any libinput error (return 0,
+	 * not -1) so the compositor still comes up — that soft-fail is why this was
+	 * once stubbed out entirely, which left weston with no input at all. */
+	log_priority = getenv("WESTON_LIBINPUT_LOG_PRIORITY");
+
+	input->libinput = libinput_udev_create_context(&libinput_interface,
+						       input, udev);
+	if (!input->libinput) {
+		weston_log("libinput: create_context failed; no input devices\n");
+		return 0;
+	}
+
+	libinput_log_set_handler(input->libinput, &libinput_log_func);
+
+	if (log_priority) {
+		if (strcmp(log_priority, "debug") == 0) {
+			priority = LIBINPUT_LOG_PRIORITY_DEBUG;
+		} else if (strcmp(log_priority, "info") == 0) {
+			priority = LIBINPUT_LOG_PRIORITY_INFO;
+		} else if (strcmp(log_priority, "error") == 0) {
+			priority = LIBINPUT_LOG_PRIORITY_ERROR;
+		}
+	}
+
+	libinput_log_set_priority(input->libinput, priority);
+
+	if (libinput_udev_assign_seat(input->libinput, seat_id) != 0) {
+		libinput_unref(input->libinput);
+		input->libinput = NULL;
+		weston_log("libinput: assign_seat failed; no input devices\n");
+		return 0;
+	}
+
+	process_events(input);
+
+	return udev_input_enable(input);
 }
 
 void

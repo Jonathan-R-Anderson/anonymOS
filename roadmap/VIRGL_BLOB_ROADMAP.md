@@ -8,6 +8,11 @@ Designed by a multi-agent investigation (workflow `virgl-blob-design`); every lo
 was cross-checked against on-disk source (Mesa `mesa-23.3.5-epin`, virglrenderer 1.8.8,
 QEMU's `hw-display-virtio-gpu-gl.so`, the kernel).
 
+> **Progress (2026-06-26):** **B0 ✅ / B1 ✅ / B2 ✅.** QEMU 9.2.0 source-built to
+> `~/.local/qemu-virgl` (no sudo); the blob device realizes + the desktop still composites on virgl;
+> the guest cap-walks the 256 MiB host-visible window (bar=4, len=0x10000000) and negotiates
+> `F_RESOURCE_BLOB`. Run with `GPU=1 ./qemu-run.sh`. **Next: B3 (fence) / B4 (gpuCreateBlob+gpuMapBlob).**
+
 ## Why blob (the architectural finding that motivated this)
 
 The prior attempt (R3 M1–M3, committed) got a client to **render** on virgl

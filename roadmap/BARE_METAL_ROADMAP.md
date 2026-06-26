@@ -37,10 +37,14 @@ comes up on the 1080 (VBE) → the software desktop renders; AHCI finds the SATA
 establishes the baseline + flushes real-HW boot quirks (memory map, ACPI, framebuffer mode). **Input
 won't work yet** (no PS/2; that's the LKL track). The user runs this; report back.
 
-## L1 — Build LKL (`liblkl.a`) — the feasibility gate  *(in progress)*
-Clone `github.com/lkl/linux`, `make -C tools/lkl`. Deps: flex + bison + elfutils (no-sudo via conda).
-**Verify:** `liblkl.a` builds; a host smoke test (`lkl_start_kernel` → boots → mounts a tmpfs) runs.
-Proves the LKL toolchain works in this environment.
+## L1 — Build LKL (`liblkl.a`) — the feasibility gate  ✅ **DONE (2026-06-26)**
+Cloned `github.com/lkl/linux`, `make -C tools/lkl` (deps flex+bison+elfutils, no-sudo via conda env
+`lkl`). Built `liblkl.a` (351 MB) + `liblkl.so` + headers (`~/lkl-build/linux/tools/lkl/`). **Verified:
+`./tests/boot` boots `Linux version 6.12.0+` inside the library** (irqs/timers/memory/console/`Run
+/init`), and the `lkl_sys_*` interface works (`getpid()=1`, `creat()=0`) — the call-in path EpinAnonymOS
+will use. **★ De-risk: L3 has a defined interface.** LKL ships `lkl_pci_ops` (config rd/wr, MMIO, IRQ,
+DMA-map) and **`lib/vfio_pci.c` is a working reference implementation** (Linux VFIO uABI) — so L3 is
+"implement `lkl_pci_ops` for EpinAnonymOS," not an open research problem. `lkl_pci` core probes already.
 
 ## L2 — LKL host ops + boot inside EpinAnonymOS
 Implement `struct lkl_host_operations` against kernel primitives: memory (from the phys allocator),
@@ -48,8 +52,10 @@ threads/sched (EpinAnonymOS tasks), timers, console (→ `klog`), panic, mutex/s
 the kernel (or a privileged component), call `lkl_start_kernel`. **Verify:** the Linux kernel boot log
 appears on serial — "Linux version …" from inside EpinAnonymOS.
 
-## L3 — The hardware bridge (the hard, research-grade core)
-Give LKL real hardware access, one capability at a time, proven on the SIMPLEST device first (AHCI):
+## L3 — The hardware bridge: implement `lkl_pci_ops` for EpinAnonymOS (the core)
+**The seam is concrete** (L1 finding): implement LKL's `lkl_pci_ops` backend — `lib/vfio_pci.c` is the
+reference (it does this over Linux VFIO; we do it directly over EpinAnonymOS's PCI/MMIO/IRQ/DMA). Give
+LKL real hardware access, one capability at a time, proven on the SIMPLEST device first (AHCI):
 - **PCI:** an LKL PCI host bridge that forwards config-space + BAR reads/writes to EpinAnonymOS's PCI
   (we already enumerate PCI for virtio-gpu).
 - **MMIO:** map the device BARs into LKL's address space (ioremap → EpinAnonymOS page mapping).

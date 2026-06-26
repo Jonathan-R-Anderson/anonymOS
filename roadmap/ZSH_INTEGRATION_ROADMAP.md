@@ -997,6 +997,17 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     and (2) the Linux ABI is substantially expanded. Realistic alternative for the R3 *spirit* (a
     GPU/GL-rendered terminal hosting zsh): a small **GLES2 terminal** on the R2 Mesa GL stack, not the
     Bevy behemoth. Until then `hos-term` (R1, CPU) remains the Rust terminal.
+  - **★ R3 foundation ✅ DONE (commit ade36f586) — a GLES2 Wayland client renders on the GPU desktop.**
+    [gl-wl-test.c](../src/util/gl-wl-test.c): a minimal EGL/GLES2 Wayland client makes an EGL **window**
+    surface on the Wayland platform, renders a GLES2 gradient triangle (vertex+fragment shaders), and
+    `eglSwapBuffers` → Weston's virgl GL renderer composites it. **Screenshot-verified** (triangle window
+    next to the Domain Manager). Launch-on-demand via SUPER+G. This is the client-side GL path a GLES2
+    terminal needs. **REMAINING for R3:** (1) get the client onto **virgl** instead of softpipe — Mesa's
+    EGL Wayland device negotiation (`wl_drm`/`zwp_linux_dmabuf` main_device) doesn't yet hand the client
+    the render device, and a virgl client also needs the single shared GPU control queue **serialised**
+    (softpipe currently sidesteps that contention); (2) the **terminal proper** — VT parser + glyph-atlas
+    GLES2 text rendering + `/dev/ptmx`/zsh + Wayland-seat input + the per-domain identity border (reuse
+    `hos-term`/`wl-term`'s VT engine + font).
 - **R4 — make ratty the terminal · E: 2 · deps: R3.** ratty launches `zsh` on a PTY and
   nothing else (Z3); the desktop's terminal keybinding + the Domain Manager "Launch Terminal"
   target ratty. Feature parity with `wl-term` (decorations, domain border, scrollback) plus

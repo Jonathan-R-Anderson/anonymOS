@@ -68,17 +68,26 @@ hardware via a kernel `/dev/vfio` (LKL's existing `vfio_pci` backend → L3).
   reveal the Linux-syscall gaps in the personality that LKL needs — fill those (the real L2 work is making
   EpinAnonymOS's Linux ABI complete enough to host LKL, not writing host-ops).
 
-## L3 — The hardware bridge: implement `lkl_pci_ops` for EpinAnonymOS (the core)
-**The seam is concrete** (L1 finding): implement LKL's `lkl_pci_ops` backend — `lib/vfio_pci.c` is the
-reference (it does this over Linux VFIO; we do it directly over EpinAnonymOS's PCI/MMIO/IRQ/DMA). Give
-LKL real hardware access, one capability at a time, proven on the SIMPLEST device first (AHCI):
-- **PCI:** an LKL PCI host bridge that forwards config-space + BAR reads/writes to EpinAnonymOS's PCI
-  (we already enumerate PCI for virtio-gpu).
-- **MMIO:** map the device BARs into LKL's address space (ioremap → EpinAnonymOS page mapping).
-- **Interrupts:** route the device's IRQ (MSI/IOAPIC) into `lkl_trigger_irq` — needs real interrupt
-  handling (the OS currently polls; this is the piece that may force proper IRQ support, [[weston-perf-profiling]]).
-- **DMA:** LKL's DMA allocations must be physically contiguous + device-reachable (identity region or IOMMU).
-**Verify:** LKL's `ahci` driver reads a sector off the real SATA disk (or QEMU AHCI first).
+## L3 — The hardware bridge: a CUSTOM `lkl_dev_pci_ops` backend (the core)  *(scoped 2026-06-26)*
+**Decision: a custom backend, NOT VFIO.** LKL's PCI backend contract is the small `struct
+lkl_dev_pci_ops` (lib/vfio_pci.c): `.add` / `.remove` / `.read`,`.write` (PCI **config** space) /
+`.resource_alloc` (BAR) / `.map_page`,`.unmap_page` (DMA) / `.irq_init`. vfio_pci.c implements it over
+Linux VFIO; we write our OWN backend (in lkl-boot.c, alongside the timer host-op) over EpinAnonymOS's
+native PCI — no VFIO uABI, no IOMMU.
+**★ Key simplifier (L3 scoping finding):** BAR access does NOT need an mmap. `.resource_alloc` calls
+LKL's `register_iomem(addr, size, ops)` (lib/iomem.c) — the LKL kernel routes every BAR MMIO read/write
+through the backend's iomem `.read`/`.write`. So the backend just *forwards* each MMIO to EpinAnonymOS
+(which does the real MMIO to the BAR phys). And many drivers (AHCI) run **POLLED — no IRQ** — so the hard
+IRQ piece is deferrable.
+Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small custom device/syscall):
+1. **PCI config r/w** (by bus/dev/func+offset) — the kernel already has `pciConfigRead32`. → `.read`/`.write`.
+2. **MMIO r/w at a phys addr** — for BAR access via the iomem-forward. → `.resource_alloc` iomem ops.
+3. **virt→phys** of an LKL buffer (no-IOMMU IOVA = phys) — → `.map_page` for DMA.
+4. **IRQ forward** (device IRQ → `lkl_trigger_irq`) — the ONLY hard one (EpinAnonymOS polls, no kernel IRQ
+   handling, [[weston-perf-profiling]]); **deferred** — prove with a polled driver first.
+**Incremental:** L3a config+MMIO+virt→phys (the 3 easy caps) + the backend → L3b **LKL's `ahci` reads a
+sector POLLED** (QEMU AHCI first, then the real Intel SATA). L3c = IRQ forward (for drivers that need it).
+**Verify:** LKL's `ahci` driver reads a sector off the disk.
 
 ## L4 — Bridge LKL's devices to EpinAnonymOS
 LKL has its own VFS/`/dev`. Reach its device nodes via the LKL syscall interface

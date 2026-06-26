@@ -90,9 +90,23 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
   `EPIN_SYS_LKL_PCI=0x4100` (config read/write/scan over `pciConfigRead32`/`scanPCIDevices`); `lkl-boot.c`
   custom `lkl_dev_pci_ops` (`.add` scans, `.read`/`.write`→syscall) as `ops.pci_ops`, cmdline `lkl_pci=epin`.
   Serial: `epin_pci: device 00:01.1 vendor/device=0x70108086` + `pci 0000:00:00.0:` (LKL read its BARs).
-- **L3b (next):** add op `MMIO-at-phys` + `virt→phys` to the 0x4100 syscall → `.resource_alloc`
-  (`register_iomem` forwards BAR MMIO) + `.map_page` (DMA) → **LKL's `ahci` reads a sector POLLED** (QEMU
-  AHCI first, then the real Intel SATA). L3c = IRQ forward.
+- **L3b (next):** the MMIO + DMA capabilities.
+  - **Kernel (0x4100 syscall):** add op3 = MMIO read at phys (`*(volatile uintN*)(phys + hhdm_offset)`),
+    op4 = MMIO write at phys, op5 = virt→phys (walk the calling task's page table — needed for DMA).
+  - **Backend (`lkl-boot.c`):** `.resource_alloc(dev, size, idx)` reads BAR[idx] from config → the BAR phys,
+    then `register_iomem((void*)bar_phys, size, &epin_iomem_ops)` where `epin_iomem_ops.read/.write` forward
+    `(bar_phys + offset)` to op3/op4 — **no BAR mmap** (the iomem layer routes every MMIO through these).
+    `.map_page(vaddr, size)` → op5 (virt→phys) = the IOVA (no-IOMMU).
+  - **★ Device decision (the gotcha):** LKL's driver must NOT share a controller with an EpinAnonymOS
+    driver — LKL's `ahci` would HBA-reset the shared AHCI and break the OS's disk. So give LKL a
+    CONFLICT-FREE device EpinAnonymOS doesn't drive: a **2nd `-device ahci,id=ahci1` + its own disk**, or a
+    **`virtio-blk-pci`** (LKL has virtio_blk+virtio_pci; needs the virtqueue in DMA mem via op5). Make op2
+    (scan) target it (by class+index, or skip the OS's controller). Also note: the IDE at 00:01.1 found in
+    L3a uses **I/O-space BARs (port I/O), not MMIO** — so it won't exercise `.resource_alloc`; pick a device
+    with a MEMORY BAR. **Verify:** LKL's block driver reads a sector off its dedicated disk, POLLED.
+  - **DMA contiguity caveat:** the device DMAs to guest-phys; LKL's buffers are EpinAnonymOS userspace
+    pages (possibly non-contiguous) — virtio's per-descriptor sg handles this; a single large contiguous
+    DMA (AHCI PRD) may need a contiguous allocation. L3c = IRQ forward (`lkl_trigger_irq`).
 
 ## L4 — Bridge LKL's devices to EpinAnonymOS
 LKL has its own VFS/`/dev`. Reach its device nodes via the LKL syscall interface

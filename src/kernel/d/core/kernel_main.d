@@ -2479,8 +2479,10 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 private void kernelLoop() {
     while (true) {
         maybeSpawnWaylandClient();
-        maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
-        maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
+        // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
+        // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
+        // maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
+        // maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

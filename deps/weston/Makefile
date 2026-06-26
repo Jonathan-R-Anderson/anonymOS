@@ -248,7 +248,7 @@ $(STAMP_DIR)/weston-built: $(WESTON_SRC)/meson.build | $(STAMP_DIR)/libdrm-built
 		-Dbackend-wayland=false \
 		-Dbackend-x11=false \
 		-Dbackend-default=drm \
-		-Drenderer-gl=false \
+		-Drenderer-gl=true \
 		-Dxwayland=false \
 		-Dsystemd=false \
 		-Dremoting=false \

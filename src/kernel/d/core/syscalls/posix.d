@@ -4976,7 +4976,7 @@ private immutable VFEntry[] g_vfs = [
     { "/etc/weston.ini",
       "[core]\n" ~
       "backend=drm-backend.so\n" ~
-      "renderer=pixman\n" ~
+      "renderer=gl\n" ~
       "shell=desktop-shell.so\n" ~
       "require-input=false\n" ~
       "idle-time=0\n" ~
@@ -9001,6 +9001,9 @@ private struct DrmFb {
     uint   format;     // bpp (legacy ADDFB) or fourcc (ADDFB2) — informational
     ulong  physAddr;   // physical base of the backing GEM buffer
     ulong  size;
+    uint   resId;      // 0 = CPU dumb buffer; non-zero = virtgpu resource (Weston GL
+                       // renderer) whose pixels live on the host GPU → transfer-from-host
+                       // into the guest backing before scanout.
 }
 private enum DRMFB_MAX = 16;
 __gshared DrmFb[DRMFB_MAX] g_drmFbs;
@@ -9015,20 +9018,32 @@ private DrmFb* findDrmFb(uint fbId) @nogc nothrow {
 
 // Bind a GEM buffer (by handle) to a fresh fb_id. Returns the new id, or 0.
 private uint drmAddFb(uint handle, uint width, uint height, uint pitch, uint format) @nogc nothrow {
+    ulong phys; uint gw, gh, gpitch; ulong gsize; uint resId = 0;
     GemBuf* gem = findGem(handle);
-    if (gem is null) return 0;
+    if (gem !is null) {
+        phys = gem.physAddr; gw = gem.width; gh = gem.height; gpitch = gem.pitch; gsize = gem.size;
+    } else {
+        // Weston's GL renderer: the scanout buffer is a virtgpu resource (GPU-rendered),
+        // not a CPU dumb GEM. Bind its backing + remember the resId so present() can
+        // transfer the host-rendered pixels into that backing.
+        auto vg = drmGemGet(handle);
+        if (vg is null) return 0;
+        phys = vg.phys; gw = width; gh = height; gpitch = vg.stride ? vg.stride : pitch;
+        gsize = vg.size; resId = vg.resId;
+    }
     int slot = -1;
     foreach (i, ref fb; g_drmFbs) { if (!fb.inUse) { slot = cast(int)i; break; } }
     if (slot < 0) return 0;
     uint id = g_nextFbId++;
     g_drmFbs[slot].inUse    = true;
     g_drmFbs[slot].fbId     = id;
-    g_drmFbs[slot].width    = width  ? width  : gem.width;
-    g_drmFbs[slot].height   = height ? height : gem.height;
-    g_drmFbs[slot].pitch    = pitch  ? pitch  : gem.pitch;
+    g_drmFbs[slot].width    = width  ? width  : gw;
+    g_drmFbs[slot].height   = height ? height : gh;
+    g_drmFbs[slot].pitch    = pitch  ? pitch  : gpitch;
     g_drmFbs[slot].format   = format;
-    g_drmFbs[slot].physAddr = gem.physAddr;
-    g_drmFbs[slot].size     = gem.size;
+    g_drmFbs[slot].physAddr = phys;
+    g_drmFbs[slot].size     = gsize;
+    g_drmFbs[slot].resId    = resId;
     return id;
 }
 
@@ -9181,6 +9196,13 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
         return negErrno(ENODEV);
     DrmFb* fb = findDrmFb(fbId);
     if (fb is null || fb.physAddr == 0 || fb.pitch == 0) return negErrno(EINVAL);
+
+    // Weston GL renderer: the frame was rendered on the host GPU (virgl); pull it into
+    // the guest backing before the scanout copy (our present is a guest-side memcpy, so
+    // the GPU result must be transferred host->guest first).
+    if (fb.resId != 0)
+        gpuDrmTransferFromHost(fb.resId, 0, 0, 0, fb.width, fb.height, 1,
+                               0, 0, fb.pitch, fb.pitch * fb.height);
 
     const uint copyW = fb.width  < g_fb.width  ? fb.width  : cast(uint)g_fb.width;
     const uint copyH = fb.height < g_fb.height ? fb.height : cast(uint)g_fb.height;

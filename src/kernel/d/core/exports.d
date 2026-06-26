@@ -961,6 +961,18 @@ ulong linux_seed_initial_stack(
     // so it can open /dev/dri/card0 and pass the fd back via SCM_RIGHTS.
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "SEATD_VTBOUND=0\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    // R2.5: the weston binary uses the GL renderer on the GPU (virgl) — do NOT
+    // force software Mesa on it. Every OTHER program still gets the software
+    // gallium driver (the desktop's SHM clients render on the CPU). Match weston
+    // by exact basename (its children re-run this seeder under their own names).
+    bool isWestonGpu = false;
+    if (execName !is null) {
+        const(char)* wbg = execName;
+        for (const(char)* q = execName; *q != 0; ++q) if (*q == '/') wbg = q + 1;
+        isWestonGpu = wbg[0]=='w' && wbg[1]=='e' && wbg[2]=='s' && wbg[3]=='t' &&
+                      wbg[4]=='o' && wbg[5]=='n' && wbg[6]==0;
+    }
+    if (!isWestonGpu) {
     // Software rendering: no GPU, force Mesa's software gallium driver. Our
     // kms_swrast_dri.so was built -Dllvm=disabled, so the ONLY gallium sw driver
     // it contains is softpipe (NOT llvmpipe) — selecting llvmpipe makes screen
@@ -975,11 +987,13 @@ ulong linux_seed_initial_stack(
     // loader_is_device_render_capable(card0)==false (dumb KMS node, no render node)
     // → it calls gbm_dri->mesa->queryCompatibleRenderOnlyDeviceFd, which is NULL →
     // call-through-NULL (rip=0). GBM_ALWAYS_SOFTWARE=1 takes the sw branch and
-    // skips that block entirely.
+    // skips that block entirely. (weston now AVOIDS this: the broadened
+    // loader_is_device_render_capable returns true for card0 → no NULL call.)
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "GBM_ALWAYS_SOFTWARE=1\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor, "MESA_LOADER_DRIVER_OVERRIDE=kms_swrast\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
+    }
     // NB: AQ_TRACE=1 and EGL_LOG_LEVEL=debug were bring-up debug aids. They make
     // aquamarine log a per-frame scheduleFrame trace and Mesa log every EGL call
     // to stdout → the slow serial UART, which under KVM throttles the compositor
@@ -1000,7 +1014,7 @@ ulong linux_seed_initial_stack(
     // (The .so backends would also resolve by basename via findBootModuleLib, but the
     // non-.so helper clients would not — so map them explicitly.)
     envVirt = _copyKernelStrToStack(stackPhysVirt, stackVirtBase, strCursor,
-        "WESTON_MODULE_MAP=drm-backend.so=/drm-backend.so;desktop-shell.so=/desktop-shell.so;weston-desktop-shell=/weston-desktop-shell;weston-keyboard=/weston-keyboard;weston-terminal=/weston-terminal\0".ptr);
+        "WESTON_MODULE_MAP=drm-backend.so=/drm-backend.so;gl-renderer.so=/gl-renderer.so;desktop-shell.so=/desktop-shell.so;weston-desktop-shell=/weston-desktop-shell;weston-keyboard=/weston-keyboard;weston-terminal=/weston-terminal\0".ptr);
     if (envVirt != 0) envVirts[envc++] = envVirt;
     bool isHyprland =
     execName !is null &&

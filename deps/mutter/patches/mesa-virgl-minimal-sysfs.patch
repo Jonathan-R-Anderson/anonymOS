@@ -1,6 +1,6 @@
 --- a/src/loader/loader.c
 +++ b/src/loader/loader.c
-@@ -198,8 +198,19 @@
+@@ -198,8 +198,21 @@
     drmDevicePtr dev_ptr;
     bool ret;
  
@@ -8,16 +8,18 @@
 -      return false;
 +   if (drmGetDevice2(fd, 0, &dev_ptr) != 0) {
 +      /* EpinAnonymOS: minimal guests expose no /sys PCI tree, so drmGetDevice2
-+       * (sysfs parse) fails even for a good render node — and drmGetNodeTypeFromFd
-+       * is no help, it stats /sys/dev/char/<maj>:<min>/device/drm which is equally
-+       * absent.  Fall back to a truly sysfs-free test: the fd's st_rdev minor.
-+       * DRM render nodes are minor>=128 (minor>>6 == DRM_NODE_RENDER); the kernel
-+       * reports renderD128 as makedev(226,128).  Without this the EGL gbm path's
-+       * get_fd_render_gpu_drm() wrongly searches for a "compatible render device"
-+       * and fails -> eglInitialize EGL_NOT_INITIALIZED. */
++       * (sysfs parse) fails even for a good GPU — and drmGetNodeTypeFromFd is no
++       * help, it stats /sys/dev/char/<maj>:<min>/device/drm which is equally
++       * absent.  Fall back to a truly sysfs-free test: any DRM char device
++       * (major 226) is render-capable here, because our sole GPU (virtio-gpu) can
++       * render on BOTH its primary node (card0, for Weston's gl-renderer scanout)
++       * and its render node (renderD128, for offscreen GL clients).  Without this
++       * the EGL gbm path's get_fd_render_gpu_drm() wrongly searches for a
++       * "compatible render device" (and on the primary node calls a NULL
++       * queryCompatibleRenderOnlyDeviceFd) -> eglInitialize EGL_NOT_INITIALIZED. */
 +      struct stat sb;
 +      return fstat(fd, &sb) == 0 && S_ISCHR(sb.st_mode) &&
-+             ((int)(minor(sb.st_rdev) >> 6) == DRM_NODE_RENDER);
++             (major(sb.st_rdev) == 226);   /* DRM_MAJOR */
 +   }
  
     ret = (dev_ptr->available_nodes & (1 << DRM_NODE_RENDER));

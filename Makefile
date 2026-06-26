@@ -552,11 +552,17 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 		cp $(WESTON_BUILD)/libweston/libweston-14.so.0.0.0    cd/libweston-14.so.0; \
 		cp $(WESTON_BUILD)/libweston/backend-drm/drm-backend.so cd/drm-backend.so; \
 		cp $(WESTON_BUILD)/desktop-shell/desktop-shell.so       cd/desktop-shell.so; \
+		if [ -f $(WESTON_BUILD)/libweston/renderer-gl/gl-renderer.so ]; then \
+			cp $(WESTON_BUILD)/libweston/renderer-gl/gl-renderer.so cd/gl-renderer.so; \
+		fi; \
 		cp $(WESTON_BUILD)/clients/weston-desktop-shell         cd/weston-desktop-shell; \
 		cp $(WESTON_BUILD)/clients/weston-keyboard              cd/weston-keyboard; \
 		cp $(WLDOMAINMGR_BIN)                                   cd/wl-domain-manager; \
 		cp src/desktop.conf                                     cd/desktop.conf; \
 		printf '\n    module_path: boot():/weston\n    module_path: boot():/ld-musl-x86_64.so.1\n    module_path: boot():/libexec_weston.so.0\n    module_path: boot():/libweston-14.so.0\n    module_path: boot():/drm-backend.so\n    module_path: boot():/desktop-shell.so\n    module_path: boot():/weston-desktop-shell\n    module_path: boot():/weston-keyboard\n    module_path: boot():/wl-domain-manager\n    module_path: boot():/desktop.conf\n' >> cd/boot/limine/limine.conf; \
+		if [ -f cd/gl-renderer.so ]; then \
+			printf '    module_path: boot():/gl-renderer.so\n' >> cd/boot/limine/limine.conf; \
+		fi; \
 		if [ -f $(WESTON_BUILD)/clients/weston-terminal ]; then \
 			cp $(WESTON_BUILD)/clients/weston-terminal cd/weston-terminal; \
 			printf '    module_path: boot():/weston-terminal\n' >> cd/boot/limine/limine.conf; \

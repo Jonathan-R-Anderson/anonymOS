@@ -514,6 +514,12 @@ $(STAMPS)/mesa.done: $(STAMPS)/libdrm.done $(STAMPS)/wl-proto.done $(HOST_FLEX) 
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/egl/meson.build
 	sed -i "/vs_module_defs : egl_def/d;/version : egl_lib_version,/d;/soversion : egl_lib_soversion,/d" \
 	    $(BLDDIR)/mesa-$(MESA_VER)/src/egl/meson.build
+	# R2.4b: virgl on a minimal guest (no /sys PCI tree). Patch EGL render-device
+	# detection (loader_is_device_render_capable + _eglFindDevice) to fall back to a
+	# sysfs-free fstat/minor node-type test, so eglInitialize reaches the virgl screen
+	# (GL_RENDERER=virgl) instead of failing EGL_NOT_INITIALIZED on the gbm platform.
+	cd $(BLDDIR)/mesa-$(MESA_VER) && \
+	    patch -p1 < $(SELF)/patches/mesa-virgl-minimal-sysfs.patch
 	cd $(BLDDIR)/mesa-$(MESA_VER) && \
 	    $(MESON_SETUP) build \
 	        -Dgallium-drivers=swrast,virgl \

@@ -2409,7 +2409,11 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].type    = FileType.FD_DRM;
         g_fdTable[fd].flags   = flags;
         g_fdTable[fd].offset  = 0;
-        g_fdTable[fd].backend = null;
+        // backend!=null marks the *render* node so stat() reports minor 128
+        // (DRM_NODE_RENDER); card0 keeps backend=null -> minor 0 (DRM_NODE_PRIMARY).
+        // Mesa's EGL gbm init only skips the "compatible render device" search when
+        // drmGetNodeTypeFromFd(fd) == DRM_NODE_RENDER (i.e. minor>>6 == 2).
+        g_fdTable[fd].backend = cstrEq(path, "/dev/dri/renderD128") ? cast(void*)1 : null;
         g_fdTable[fd].fileSize = 0;
         deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
@@ -2919,15 +2923,19 @@ private long fileObjStat(ObjHeader* oh, ulong _statBuf) {
             *cast(uint*)(_statBuf + 28) = userCurrentUid();
             *cast(uint*)(_statBuf + 32) = userCurrentGid();
         } else if (f.type == FileType.FD_DRM) {
-            // Report the DRM device as a character device with the DRM major
-            // (226) and minor 0 (= card0, a "primary" node).  libdrm's
-            // drmGetNodeTypeFromFd checks S_ISCHR + the encoded rdev, which
-            // Aquamarine's dumb-buffer allocator requires.
+            // Report the DRM device as a character device with the DRM major (226).
+            // card0 = minor 0 (a "primary" node); renderD128 = minor 128 (a "render"
+            // node).  libdrm's drmGetNodeTypeFromFd checks S_ISCHR + the encoded rdev
+            // (minor>>6: 0=primary, 2=render) — Aquamarine's dumb-buffer allocator
+            // wants the primary node, and Mesa's EGL gbm init only uses a render node
+            // directly (skipping the failing "compatible render device" search) when
+            // it sees minor>=128 here.
             clearLinuxStat(_statBuf);
             *cast(uint*)(_statBuf + 24) = 0x2000 | 0x01B6;     // S_IFCHR | 0666
             *cast(uint*)(_statBuf + 28) = userCurrentUid();
             *cast(uint*)(_statBuf + 32) = userCurrentGid();
-            *cast(ulong*)(_statBuf + 40) = 0xE200;             // st_rdev = makedev(226, 0)
+            *cast(ulong*)(_statBuf + 40) =
+                (f.backend !is null) ? 0xE280 : 0xE200;        // makedev(226,128) : makedev(226,0)
         } else if (f.type == FileType.FD_INPUT_EVENT) {
             // Char device, input major 13, minor 64 (event0) / 65 (event1).
             // libinput's evdev_device_have_same_syspath fstat()s the fd and maps
@@ -9916,17 +9924,22 @@ extern(C) int  gpuDrmTransferFromHost(uint, uint, uint, uint, uint, uint, uint, 
 extern(C) int  gpuDrmTransferToHost(uint, uint, uint, uint, uint, uint, uint, uint, uint, uint, uint) @nogc nothrow;
 extern(C) uint gpuDrmGetCapset(uint, uint, ubyte*, uint) @nogc nothrow;
 extern(C) int  gpuDrmResourceUnref(uint) @nogc nothrow;
-private __gshared ubyte[1024] g_drmCapsScratch;
+private __gshared ubyte[2048] g_drmCapsScratch;
 
 private long handleVirtgpuIoctl(uint nr, ulong arg) {
     import core.globals : hhdm_offset;
     switch (nr) {
-    case 0x43: { // DRM_VIRTGPU_GETPARAM { u64 param; u64 value; }
-        ulong param = userRead!ulong(arg + 0);
+    case 0x43: { // DRM_VIRTGPU_GETPARAM { u64 param; u64 value }
+        // NB: `value` is a USERSPACE POINTER where the result is written (Linux virtio_gpu copies the
+        // result to *value via copy_to_user) — NOT a field to write the result into. Mesa's virgl
+        // winsys sets value=&local and reads back *value; writing the value field instead leaves it
+        // reading garbage for 3D_FEATURES -> the screen-create gate fails -> softpipe fallback.
+        ulong param    = userRead!ulong(arg + 0);
+        ulong valuePtr = userRead!ulong(arg + 8);
         ulong val = 0;
         if (param == 1)      val = gpuDrm3dReady() ? 1 : 0;  // VIRTGPU_PARAM_3D_FEATURES
         else if (param == 2) val = 1;                        // VIRTGPU_PARAM_CAPSET_QUERY_FIX
-        userWrite!ulong(arg + 8, val);
+        if (valuePtr != 0) userWrite!ulong(valuePtr, val);
         return 0;
     }
     case 0x49: { // DRM_VIRTGPU_GET_CAPS { cap_set_id; cap_set_ver; u64 addr; size; pad }
@@ -10032,8 +10045,9 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
 
     switch (nr) {
     case DRM_NR_VERSION: {
-        userWrite!int(arg + 0, 1);
-        userWrite!int(arg + 4, 0);
+        userWrite!int(arg + 0, 0);   // version_major MUST be 0 — Mesa's virgl winsys rejects major != 0
+                                     // (virgl_drm_get_version -> -EINVAL -> screen-create NULL -> softpipe)
+        userWrite!int(arg + 4, 0);   // version_minor 0 = legacy busy-poll fences (our uABI has no fence-fd export)
         userWrite!int(arg + 8, 0);
 
         ulong nameLen = userRead!ulong(arg + 16);

@@ -2479,8 +2479,8 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 private void kernelLoop() {
     while (true) {
         maybeSpawnWaylandClient();
-        maybeSpawnGpuTest();   // R2.4a: userspace GPU test when virtio-gpu-gl is present
-        maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test
+        maybeSpawnGpuTest();   // R2.3: in-kernel virtio-gpu 3D clear (red pixel readback)
+        maybeSpawnGlTest();    // R2.4b: Mesa virgl GLES2 test — GL_RENDERER=virgl end-to-end
         maybeSpawnIdle();   // ensure the scheduler's idle task exists
 
         int tid = cast(int)g_current_task_id;

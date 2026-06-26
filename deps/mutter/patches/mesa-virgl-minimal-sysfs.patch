@@ -1,0 +1,42 @@
+--- a/src/loader/loader.c
++++ b/src/loader/loader.c
+@@ -198,8 +198,19 @@
+    drmDevicePtr dev_ptr;
+    bool ret;
+ 
+-   if (drmGetDevice2(fd, 0, &dev_ptr) != 0)
+-      return false;
++   if (drmGetDevice2(fd, 0, &dev_ptr) != 0) {
++      /* EpinAnonymOS: minimal guests expose no /sys PCI tree, so drmGetDevice2
++       * (sysfs parse) fails even for a good render node — and drmGetNodeTypeFromFd
++       * is no help, it stats /sys/dev/char/<maj>:<min>/device/drm which is equally
++       * absent.  Fall back to a truly sysfs-free test: the fd's st_rdev minor.
++       * DRM render nodes are minor>=128 (minor>>6 == DRM_NODE_RENDER); the kernel
++       * reports renderD128 as makedev(226,128).  Without this the EGL gbm path's
++       * get_fd_render_gpu_drm() wrongly searches for a "compatible render device"
++       * and fails -> eglInitialize EGL_NOT_INITIALIZED. */
++      struct stat sb;
++      return fstat(fd, &sb) == 0 && S_ISCHR(sb.st_mode) &&
++             ((int)(minor(sb.st_rdev) >> 6) == DRM_NODE_RENDER);
++   }
+ 
+    ret = (dev_ptr->available_nodes & (1 << DRM_NODE_RENDER));
+ 
+--- a/src/egl/main/egldevice.c
++++ b/src/egl/main/egldevice.c
+@@ -176,8 +176,13 @@
+    drmDevicePtr device;
+ 
+    if (drmGetDevice2(fd, 0, &device) != 0) {
+-      dev = NULL;
+-      goto out;
++      /* EpinAnonymOS: no /sys DRM tree to enumerate/match the HW device.  The
++       * render screen is already the HW (virgl) screen, so return the (non-NULL)
++       * software _EGLDevice head instead of failing — disp->Device only backs
++       * EGL_EXT_device queries, not rendering, and GL_RENDERER still comes from
++       * the virgl screen.  Without this, dri2_setup_device() fails ->
++       * eglInitialize EGL_NOT_INITIALIZED. */
++      goto out;   /* dev still == _eglGlobal.DeviceList (software head) */
+    }
+ 
+    while (dev->Next) {

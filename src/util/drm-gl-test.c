@@ -30,8 +30,7 @@ static void force_gpu_env(void) {
     unsetenv("LIBGL_ALWAYS_SOFTWARE");
     unsetenv("GALLIUM_DRIVER");
     unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
-    setenv("LIBGL_DEBUG", "verbose", 1);
-    setenv("MESA_DEBUG", "1", 1);
+    unsetenv("GBM_ALWAYS_SOFTWARE");   // THE one that forces gbm's sw path (dri_screen_create_sw) — must clear it
 }
 
 int main(void) {
@@ -54,13 +53,13 @@ int main(void) {
         printf("[drm-gl-test] drmGetVersion FAILED -> loader can't find a HW driver -> softpipe\n");
     }
 
-    // Use the SURFACELESS platform — gbm's render-node path does a per-driver backend lookup
-    // (virtio_gpu_gbm.so) that doesn't exist and falls to software; surfaceless loads the render
-    // node's DRI driver (virtio_gpu -> virgl) directly.
-    (void)fd;
+    struct gbm_device *gbm = gbm_create_device(fd);
+    if (!gbm) { printf("[drm-gl-test] gbm_create_device failed\n"); return 1; }
     PFNEGLGETPLATFORMDISPLAYEXTPROC getPlatformDisplay =
         (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
-    EGLDisplay dpy = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+    EGLDisplay dpy = getPlatformDisplay
+        ? getPlatformDisplay(EGL_PLATFORM_GBM_KHR, gbm, NULL)
+        : eglGetDisplay((EGLNativeDisplayType)gbm);
 
     EGLint maj = 0, min = 0;
     if (!eglInitialize(dpy, &maj, &min)) {
@@ -70,7 +69,7 @@ int main(void) {
 
     eglBindAPI(EGL_OPENGL_ES_API);
     EGLint cfg_attrs[] = {
-        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,  // surfaceless: render to an FBO, no window surface
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,   // gbm window configs; we render surfaceless to an FBO
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
         EGL_NONE

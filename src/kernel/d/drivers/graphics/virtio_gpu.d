@@ -608,7 +608,7 @@ export int gpuDrmTransferToHost(uint resId, uint x, uint y, uint z,
 // Mesa's virgl winsys parses this to learn the GL feature set / limits.
 export uint gpuDrmGetCapset(uint capsetId, uint capsetVer, ubyte* outBuf, uint maxLen) @nogc nothrow {
     if (!g_gpu3dReady || outBuf is null) return 0;
-    if (maxLen > 1024) maxLen = 1024;          // response area headroom (g_gpuBuf is one page)
+    if (maxLen > 1900) maxLen = 1900;          // response area headroom (g_gpuBuf is one page; resp @+2048)
     gpuZeroReq(32);
     gpuPutU(0, 0x0109);          // VIRTIO_GPU_CMD_GET_CAPSET
     gpuPutU(24, capsetId);

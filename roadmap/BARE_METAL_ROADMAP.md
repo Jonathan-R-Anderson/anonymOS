@@ -46,7 +46,14 @@ will use. **★ De-risk: L3 has a defined interface.** LKL ships `lkl_pci_ops` (
 DMA-map) and **`lib/vfio_pci.c` is a working reference implementation** (Linux VFIO uABI) — so L3 is
 "implement `lkl_pci_ops` for EpinAnonymOS," not an open research problem. `lkl_pci` core probes already.
 
-## L2 — Boot LKL inside EpinAnonymOS  *(embedder ✅ on host; on-target run = next)*
+## L2 — Boot LKL inside EpinAnonymOS  ✅ **DONE (2026-06-26, commit 06d115387)**
+**The Linux kernel (6.12) boots inside EpinAnonymOS:** serial shows `Linux version 6.12.0+ …musl`,
+`LKL up inside EpinAnonymOS. getpid()=1`, `lkl_sys_openat=0`, `LKL halted cleanly`. Built musl (musl-gcc
+cross, `lkl.h` +`<sys/types.h>`, non-PIE static). Two fixes beyond the embedder: a **custom timer host-op**
+(thread that sleeps + calls the kernel timer cb, replacing LKL's POSIX-timer/`rt_sigtimedwait` clock), and
+a **real `nanosleep` in the kernel** (it was a no-op; now parks the task via the poll/epoll park + PIT-tick
+wake — benefits every program). Details below + in `src/lkl/`.
+
 **Approach (decided in L2): userspace LKL**, not in-kernel. LKL's default POSIX host-ops
 (`lib/posix-host.c`) use ordinary Linux syscalls (mmap, clone/futex for pthreads, clock_gettime) — which
 EpinAnonymOS's Linux personality already provides (it runs threaded musl: Weston/Mesa). So **no custom

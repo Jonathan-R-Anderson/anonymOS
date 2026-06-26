@@ -370,12 +370,31 @@ anonymOS is honest about its gaps (each roadmap names them):
   — IRQs caught only in userspace; the scheduler is **cooperative** (no
   preemption), single-core, polled. This blocks true `hlt`-idle, SMP, and
   preemption.
-- **GPU compositing** — Weston composites every pixel on CPU (Pixman); virtio-gpu
-  + Mesa (R8) pending.
+- **GPU acceleration — kernel path done; guest GL renders, but on the CPU not yet
+  the GPU** ([`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) R2).
+  What works: the kernel drives the virtio-gpu **virgl** 3D pipeline end-to-end and
+  renders on the *host* GPU (context → 3D resource → `SUBMIT_3D` clear →
+  `TRANSFER_FROM_HOST` readback = red), exposed to userspace through a
+  `/dev/dri/renderD128` **virtgpu DRM ioctl uABI** (GETPARAM/GET_CAPS/RESOURCE_CREATE/
+  MAP/EXECBUFFER/TRANSFER/WAIT/GEM_CLOSE); **Mesa is built with the virgl driver** and
+  a real **GLES2 program renders in the guest** (`glClear`→`glReadPixels` = red — the
+  *dual-glapi* blocker is fixed by shipping a shared `libglapi.so`). **What is NOT
+  finished:** guest GL apps currently run on **softpipe (CPU)**, not virgl (GPU) —
+  Mesa's gbm-on-render-node path falls back to swrast because the host's `egl-headless`
+  display **can't export fence sync fds**, so virgl's GLES screen-create fails over to
+  softpipe. Finishing GPU acceleration needs (a) the Mesa driver override
+  (`MESA_LOADER_DRIVER_OVERRIDE=virtio_gpu`) passed at process *launch* via the kernel's
+  `envp` (an in-app `setenv` is read too late), and (b) a working fence-export path —
+  likely a real-display QEMU config (`-display gtk,gl=on`/`sdl,gl=on`) instead of
+  `egl-headless`. Weston itself still composites on CPU (Pixman) until then.
 - **Userspace relocation** of Wayland/DRM/fs into user-space servers — the
   in-kernel services work but are not yet demoted (the "honestly rootless"
   finish line).
-- **ratty Rust/GPU terminal** — blocked on a Rust musl toolchain + GPU stack.
+- **ratty Rust/GPU terminal** (R3) — the GPU stack now renders guest GL (on softpipe
+  until virgl-as-renderer lands, above); the CPU intermediate `hos-term` ships today.
+  Porting upstream [ratty](https://github.com/orhun/ratty) needs a Rust **crate**
+  toolchain (cargo + crates.io for `wgpu`/winit/etc., beyond R0's single-`rustc`
+  no-crates build) and its `wgpu` GLES backend wired to the guest Mesa GL above.
 - **Full LFE native shell `-sh`** ([`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md),
   L-series) — the native-personality Lisp shell is up to **L2**: a `-betterC` D evaluator in
   `hos-sh` where object-ABI verbs are *composable* LFE functions (`(ns-enter (ns-clone))`,

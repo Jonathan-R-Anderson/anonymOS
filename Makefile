@@ -190,6 +190,19 @@ $(GL_WL_TEST_BIN): src/util/gl-wl-test.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	    -Wl,--end-group -lpthread -lm; \
 	else echo "gl-wl-test: skipped (gtk-stack sysroot not built)"; touch $@; fi
 
+GL_TERM_BIN := build/gl-term
+$(GL_TERM_BIN): src/util/gl-term.c src/util/gui_font.h $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@if [ -f deps/gtk-stack/sysroot/lib/libEGL.a ]; then \
+	  echo "==== Building gl-term (R3 GLES2 Wayland terminal) ===="; \
+	  $(MUSL_CC) -O2 -Ideps/gtk-stack/sysroot/include -Ideps/gtk-stack/sysroot/include/freetype2 -Ibuild -Isrc/util \
+	    -o $@ src/util/gl-term.c $(XDG_SHELL_CODE) \
+	    -Ldeps/gtk-stack/sysroot/lib -Wl,--start-group \
+	      -lEGL -lGLESv2 -lgbm -lglapi -ldrm -lexpat -lz -lffi \
+	      -lwayland-server -lwayland-client -lwayland-egl \
+	      -lfreetype -lpng16 -lbz2 \
+	    -Wl,--end-group -lpthread -lm; \
+	else echo "gl-term: skipped (gtk-stack sysroot not built)"; touch $@; fi
+
 $(COMPOSITOR_BIN): src/util/compositor.c
 	@echo "==== Building compositor ===="
 	gcc $(FREESTANDING_CFLAGS) -o $@ $<
@@ -355,7 +368,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -398,6 +411,12 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 		cp $(GL_WL_TEST_BIN) cd/gl-wl-test; \
 		printf '\n    module_path: boot():/gl-wl-test\n' >> cd/boot/limine/limine.conf; \
 		echo "Included gl-wl-test (R3 EGL/GLES2 Wayland client)"; \
+	fi
+
+	@if [ -s $(GL_TERM_BIN) ]; then \
+		cp $(GL_TERM_BIN) cd/gl-term; \
+		printf '\n    module_path: boot():/gl-term\n' >> cd/boot/limine/limine.conf; \
+		echo "Included gl-term (R3 GLES2 Wayland terminal)"; \
 	fi
 
 	cp $(COMPOSITOR_BIN) cd/compositor

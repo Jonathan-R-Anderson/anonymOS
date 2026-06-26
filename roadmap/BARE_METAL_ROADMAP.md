@@ -46,11 +46,20 @@ will use. **★ De-risk: L3 has a defined interface.** LKL ships `lkl_pci_ops` (
 DMA-map) and **`lib/vfio_pci.c` is a working reference implementation** (Linux VFIO uABI) — so L3 is
 "implement `lkl_pci_ops` for EpinAnonymOS," not an open research problem. `lkl_pci` core probes already.
 
-## L2 — LKL host ops + boot inside EpinAnonymOS
-Implement `struct lkl_host_operations` against kernel primitives: memory (from the phys allocator),
-threads/sched (EpinAnonymOS tasks), timers, console (→ `klog`), panic, mutex/sem. Link `liblkl.a` into
-the kernel (or a privileged component), call `lkl_start_kernel`. **Verify:** the Linux kernel boot log
-appears on serial — "Linux version …" from inside EpinAnonymOS.
+## L2 — Boot LKL inside EpinAnonymOS  *(embedder ✅ on host; on-target run = next)*
+**Approach (decided in L2): userspace LKL**, not in-kernel. LKL's default POSIX host-ops
+(`lib/posix-host.c`) use ordinary Linux syscalls (mmap, clone/futex for pthreads, clock_gettime) — which
+EpinAnonymOS's Linux personality already provides (it runs threaded musl: Weston/Mesa). So **no custom
+`lkl_host_operations` are needed** — run an LKL binary on the Linux personality, and later give it
+hardware via a kernel `/dev/vfio` (LKL's existing `vfio_pci` backend → L3).
+- **Embedder ✅ (`src/lkl/lkl-boot.c`):** `lkl_init(&lkl_host_ops)` → `lkl_start_kernel("mem=32M …")` →
+  `lkl_sys_*`. **Validated on the host** (boots `Linux version 6.12.0+`, `getpid()=1`,
+  `lkl_sys_openat`/`write` work). Built **static** with `-Wl,--whole-archive liblkl.a`; **stripped = 13 MB**
+  (from 147 MB) — stageable on EpinAnonymOS.
+- **Next (on-target):** stage the 13 MB static binary on EpinAnonymOS (boot module or grow the AHCI disk),
+  run it, capture how far LKL boots. **Verify:** "Linux version …" on the *EpinAnonymOS* serial. Failures
+  reveal the Linux-syscall gaps in the personality that LKL needs — fill those (the real L2 work is making
+  EpinAnonymOS's Linux ABI complete enough to host LKL, not writing host-ops).
 
 ## L3 — The hardware bridge: implement `lkl_pci_ops` for EpinAnonymOS (the core)
 **The seam is concrete** (L1 finding): implement LKL's `lkl_pci_ops` backend — `lib/vfio_pci.c` is the

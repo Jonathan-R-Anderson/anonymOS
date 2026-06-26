@@ -1002,9 +1002,20 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     surface on the Wayland platform, renders a GLES2 gradient triangle (vertex+fragment shaders), and
     `eglSwapBuffers` → Weston's virgl GL renderer composites it. **Screenshot-verified** (triangle window
     next to the Domain Manager). Launch-on-demand via SUPER+G. This is the client-side GL path a GLES2
-    terminal needs. **REMAINING for R3:** (1) get the client onto **virgl** instead of softpipe; (2) the
-    **terminal proper** — VT parser + glyph-atlas GLES2 text rendering + `/dev/ptmx`/zsh + Wayland-seat
-    input + the per-domain identity border (reuse `hos-term`/`wl-term`'s VT engine + font).
+    terminal needs.
+  - **★ R3 TERMINAL ✅ DONE (commit e955365a1) — `gl-term`, a GLES2 terminal hosting zsh.**
+    [gl-term.c](../src/util/gl-term.c) is `wl-term`'s full engine (FreeType grid render + CSI/VT parser +
+    scrollback + CSD titlebar + per-domain identity border + kernel PTY `/dev/ptmx` + fork/exec the shell
+    + `wl_keyboard` input) with the **wl_shm present swapped for GLES2**: it renders the grid into the CPU
+    framebuffer `a->pixels` as before, then uploads it as a `GL_RGBA` texture and draws a fullscreen quad
+    to an EGL **window** surface (`eglSwapBuffers`), so the client runs the real GL pipeline + Weston's GL
+    renderer composites it (fragment shader swizzles `.bgr` since `a->pixels` is XRGB8888). **Verified
+    end-to-end** (screenshot + serial): the "EpinAnonymOS Terminal" window shows the zsh prompt with
+    antialiased coloured text + syntax highlighting; typing `echo glterm_ok` runs in the shell and renders
+    the output. `GL renderer=softpipe` for now (the virgl-client dmabuf path below is still pending) — so
+    the text rendering is CPU via the GL pipeline, but the architecture is the true-GPU foundation.
+    Launch-on-demand via SUPER+L. **REMAINING for R3:** get the client onto **virgl** instead of softpipe
+    (the virgl-client progress below).
   - **★ R3 virgl-client progress (commit c9f5ff339) — Weston now identifies its EGL render device.**
     Traced (multi-agent) why GPU clients fell back to softpipe: Weston logged *"failed to query rendering
     device from EGL"* → *"dmabuf support: no"*, so it never advertised a render device to clients. Fixed

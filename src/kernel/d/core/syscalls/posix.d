@@ -2228,6 +2228,8 @@ private int sysfsParse(const(char)* path, out const(char)* comp, out size_t comp
 
 // ── A4: dynamic /proc/<pid> for ps/top ───────────────────────────────────────
 private enum ulong SYNTHDIR_PROC = 0x9120C400;
+private enum ulong SYNTHDIR_DRMDIR = 0xD12D2300;  // R3: /sys/dev/char/226:*/device/drm (lists card0+renderD128)
+private enum ulong SYNTHDIR_DEVDRI = 0xD12D2400;  // R3: /dev/dri (lists card0+renderD128 char nodes for libdrm)
 __gshared char[1024] g_procBuf;     // synthesised content (sequential open→read use)
 
 // Parse "/proc/<digits>[/<sub>]". Returns the pid (>0) and the component after it
@@ -2627,6 +2629,14 @@ public int sys_open(const(char)* path, int flags) {
         // Tag /sys/dev/char so getdents64 can enumerate the char-device entries
         // libudev-zero scans there to discover input (and DRM) devices.
         if (cstrEq(path, "/sys/dev/char")) g_fdTable[fd].fileSize = SYNTHDIR_DEVCHAR;
+        // R3: tag the virtio-gpu .../device/drm dir so getdents lists card0+renderD128
+        // (libdrm scandirs it to set available_nodes = PRIMARY|RENDER).
+        if (cstrEq(path, "/sys/dev/char/226:0/device/drm") ||
+            cstrEq(path, "/sys/dev/char/226:128/device/drm")) g_fdTable[fd].fileSize = SYNTHDIR_DRMDIR;
+        // R3: tag /dev/dri so getdents lists card0+renderD128 — libdrm's
+        // opendir("/dev/dri")+readdir loop (BOTH drmGetDevice2 and drmGetDevices2)
+        // needs these entries to call process_device() and build the device list.
+        if (cstrEq(path, "/dev/dri")) g_fdTable[fd].fileSize = SYNTHDIR_DEVDRI;
         // Tag /proc so getdents64 enumerates the live process pids (ps/top).
         if (cstrEq(path, "/proc")) g_fdTable[fd].fileSize = SYNTHDIR_PROC;
         // F1: tag /objects/<kind> so getdents64 enumerates its live objects.
@@ -5250,6 +5260,33 @@ private immutable VFEntry[] g_vfs = [
     { "/sys/class/drm/card0/enabled",          "enabled\n"    },
     { "/sys/class/drm/card0/dpms",             "On\n"         },
     { "/sys/class/drm/card0/modes",            ""             },
+    // R3: PCI device info for the virtio-gpu (0000:00:04.0, 1af4:1050) under BOTH
+    // its DRM nodes' .../device/ dirs, so libdrm's drmProcessPciDevice() reads a
+    // valid drmDevice → drmGetDevice2 succeeds → a real EGL render device → Weston
+    // advertises zwp_linux_dmabuf → GPU Wayland clients render on virgl. card0
+    // (226:0) is what Weston probes; renderD128 (226:128) is for GL clients.
+    { "/sys/dev/char/226:0/device/uevent",
+      "DRIVER=virtio_gpu\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\n" ~
+      "PCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:04.0\n" ~
+      "MODALIAS=pci:v00001AF4d00001050sv00001AF4sd00001100bc03sc00i00\n" },
+    { "/sys/dev/char/226:0/device/vendor",           "0x1af4\n" },
+    { "/sys/dev/char/226:0/device/device",           "0x1050\n" },
+    { "/sys/dev/char/226:0/device/subsystem_vendor", "0x1af4\n" },
+    { "/sys/dev/char/226:0/device/subsystem_device", "0x1100\n" },
+    { "/sys/dev/char/226:0/device/revision",         "0x01\n"   },
+    { "/sys/dev/char/226:128/device/uevent",
+      "DRIVER=virtio_gpu\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\n" ~
+      "PCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:04.0\n" ~
+      "MODALIAS=pci:v00001AF4d00001050sv00001AF4sd00001100bc03sc00i00\n" },
+    { "/sys/dev/char/226:128/device/vendor",           "0x1af4\n" },
+    { "/sys/dev/char/226:128/device/device",           "0x1050\n" },
+    { "/sys/dev/char/226:128/device/subsystem_vendor", "0x1af4\n" },
+    { "/sys/dev/char/226:128/device/subsystem_device", "0x1100\n" },
+    { "/sys/dev/char/226:128/device/revision",         "0x01\n"   },
+    { "/sys/dev/char/226:128/uevent",
+      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_render_minor\n" },
+    { "/sys/class/drm/renderD128/uevent",
+      "MAJOR=226\nMINOR=128\nDEVNAME=dri/renderD128\nDEVTYPE=drm_render_minor\n" },
     { "/sys/class/drm/card0-HDMI-A-1/status",  "connected\n"  },
     { "/sys/class/drm/card0-HDMI-A-1/enabled", "enabled\n"    },
     { "/sys/class/net/lo/address",             "00:00:00:00:00:00\n" },
@@ -5605,6 +5642,21 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
            cstrEq(path, "/sys/class/input/event1") ||  // mouse
            cstrEq(path, "/sys/dev/char/226:0/device") ||
            cstrEq(path, "/sys/dev/char/226:0/device/drm") ||
+           // R3: a PCI-flavoured sysfs subtree for the virtio-gpu so libdrm's
+           // drmGetDevice2() succeeds → Mesa reports a real EGL render device →
+           // Weston enables zwp_linux_dmabuf → GPU clients (gl-wl-test, a GLES2
+           // terminal) get the virgl device instead of falling back to softpipe.
+           // drmProcessPciDevice scans .../device/drm/ for card%d + renderD%d to set
+           // available_nodes (both nodes belong to the one PCI function 0000:00:04.0).
+           cstrEq(path, "/sys/dev/char/226:0/device/drm/card0") ||
+           cstrEq(path, "/sys/dev/char/226:0/device/drm/renderD128") ||
+           cstrEq(path, "/sys/dev/char/226:128") ||
+           cstrEq(path, "/sys/dev/char/226:128/device") ||
+           cstrEq(path, "/sys/dev/char/226:128/device/drm") ||
+           cstrEq(path, "/sys/dev/char/226:128/device/drm/card0") ||
+           cstrEq(path, "/sys/dev/char/226:128/device/drm/renderD128") ||
+           cstrEq(path, "/sys/class/drm/renderD128") ||
+           cstrEq(path, "/sys/bus/pci") ||
            // libseat / seatd
            cstrEq(path, "/run/seatd") ||
            isVirtualDirectoryPath(path);
@@ -5634,6 +5686,15 @@ private bool getSyntheticReadlinkTarget(const(char)* path, out string target) {
     if (cstrEq(path, "/sys/class/input/event0/subsystem") ||
         cstrEq(path, "/sys/class/input/event1/subsystem")) {
         target = "/sys/class/input";
+        return true;
+    }
+    // R3: the virtio-gpu DRM nodes' .../device/subsystem must resolve to a path
+    // whose basename is "pci" — libdrm's get_subsystem_type() reads it and takes
+    // the (simpler) drmProcessPciDevice path. Without it drmGetDevice2() fails and
+    // Mesa can't expose an EGL render device (→ no dmabuf, GPU clients go softpipe).
+    if (cstrEq(path, "/sys/dev/char/226:0/device/subsystem") ||
+        cstrEq(path, "/sys/dev/char/226:128/device/subsystem")) {
+        target = "/sys/bus/pci";
         return true;
     }
 
@@ -7297,6 +7358,7 @@ private struct linux_dirent64 {
     ubyte  d_type;
     // char d_name[] follows immediately
 }
+private enum DT_CHR = 2;
 private enum DT_DIR = 4;
 private enum DT_REG = 8;
 private enum DT_LNK = 10;
@@ -7329,7 +7391,7 @@ private bool writeDirent64(ubyte* buf, size_t bufSz, size_t* off, ulong ino, lon
 private enum ulong SYNTHDIR_DEVCHAR = 0x0DE7C400;
 
 // The char-device entries we expose under /sys/dev/char (name + d_ino).
-private static immutable string[3] g_devCharEntries = ["226:0", "13:64", "13:65"];
+private static immutable string[4] g_devCharEntries = ["226:0", "226:128", "13:64", "13:65"];
 
 public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
     initFdTable();
@@ -7489,6 +7551,41 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
             if (f.offset <= logical) {
                 if (!writeDirent64(buf, count, &written, logical + 3, cast(long)logical + 1,
                                    DT_DIR, e.ptr, e.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
+    // R3: /dev/dri enumeration — the DRM char nodes libdrm readdirs then stat()s
+    // (drmGetDevice2 + drmGetDevices2 both opendir("/dev/dri")). Without this the
+    // device list stays empty → no EGL render device → Weston disables dmabuf.
+    if (f.fileSize == SYNTHDIR_DEVDRI) {
+        static immutable string[2] driNodes = ["card0", "renderD128"];
+        ulong logical = 2;
+        foreach (nm; driNodes) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 70000,
+                                   cast(long)logical + 1, DT_CHR, nm.ptr, cast(size_t)nm.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        return cast(long)written;
+    }
+
+    // R3: /sys/dev/char/226:*/device/drm enumeration — the PCI device's DRM nodes;
+    // libdrm scandirs this dir to set available_nodes (card0=PRIMARY, renderD128=RENDER).
+    if (f.fileSize == SYNTHDIR_DRMDIR) {
+        static immutable string[2] drmNodes = ["card0", "renderD128"];
+        ulong logical = 2;
+        foreach (nm; drmNodes) {
+            if (f.offset <= logical) {
+                if (!writeDirent64(buf, count, &written, logical + 61440,
+                                   cast(long)logical + 1, DT_DIR, nm.ptr, cast(size_t)nm.length))
                     return cast(long)written;
                 f.offset = logical + 1;
             }

@@ -24,21 +24,3 @@
  
     ret = (dev_ptr->available_nodes & (1 << DRM_NODE_RENDER));
  
---- a/src/egl/main/egldevice.c
-+++ b/src/egl/main/egldevice.c
-@@ -176,8 +176,13 @@
-    drmDevicePtr device;
- 
-    if (drmGetDevice2(fd, 0, &device) != 0) {
--      dev = NULL;
--      goto out;
-+      /* EpinAnonymOS: no /sys DRM tree to enumerate/match the HW device.  The
-+       * render screen is already the HW (virgl) screen, so return the (non-NULL)
-+       * software _EGLDevice head instead of failing — disp->Device only backs
-+       * EGL_EXT_device queries, not rendering, and GL_RENDERER still comes from
-+       * the virgl screen.  Without this, dri2_setup_device() fails ->
-+       * eglInitialize EGL_NOT_INITIALIZED. */
-+      goto out;   /* dev still == _eglGlobal.DeviceList (software head) */
-    }
- 
-    while (dev->Next) {

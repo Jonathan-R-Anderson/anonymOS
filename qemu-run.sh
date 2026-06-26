@@ -45,6 +45,17 @@ if [ ! -f "$DISK_IMG" ]; then
   echo "[qemu-run] created $DISK_IMG (32M) for persistent object store"
 fi
 
+# L3b LKL bring-up: a conflict-free NVMe device for LKL to drive (EpinAnonymOS uses AHCI and
+# ignores NVMe).  Opt-in via LKL_NVME=1 so the normal desktop boot is unchanged.
+NVME=()
+if [ "${LKL_NVME:-0}" = "1" ]; then
+  NVME_IMG="${NVME_IMG:-$HOME/lkl-build/lkl-nvme.img}"
+  [ -f "$NVME_IMG" ] || truncate -s 16M "$NVME_IMG"
+  NVME=( -drive file="$NVME_IMG",if=none,id=lklnvme,format=raw
+         -device nvme,drive=lklnvme,serial=lkl-nvme-0 )
+  echo "[qemu-run] LKL_NVME=1: attaching NVMe $NVME_IMG for the LKL driver"
+fi
+
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
@@ -58,6 +69,7 @@ exec "$QEMU_BIN" \
   -drive file="$DISK_IMG",if=none,id=hosdisk,format=raw \
   -device ahci,id=ahci0 \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
+  "${NVME[@]}" \
   "${GFX[@]}"
 # R2 (GPU stack) is OFF by default: `gtk,gl=on` + a virtio-gpu-gl device gives a BLACK SCREEN on
 # many hosts (the GL display path doesn't present the firmware-VGA framebuffer the desktop renders

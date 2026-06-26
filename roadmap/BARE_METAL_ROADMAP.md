@@ -113,13 +113,19 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
   `EPIN_SYS_LKL_PCI=0x4100` (config read/write/scan over `pciConfigRead32`/`scanPCIDevices`); `lkl-boot.c`
   custom `lkl_dev_pci_ops` (`.add` scans, `.read`/`.write`→syscall) as `ops.pci_ops`, cmdline `lkl_pci=epin`.
   Serial: `epin_pci: device 00:01.1 vendor/device=0x70108086` + `pci 0000:00:00.0:` (LKL read its BARs).
-- **L3b (next):** the MMIO + DMA capabilities.
-  - **Kernel (0x4100 syscall):** add op3 = MMIO read at phys (`*(volatile uintN*)(phys + hhdm_offset)`),
-    op4 = MMIO write at phys, op5 = virt→phys (walk the calling task's page table — needed for DMA).
+- **L3b ✅ DONE — a real Linux driver does MMIO+DMA through the bridge.** LKL's NVMe driver fully
+  initializes the controller via EpinAnonymOS. Serial-verified register trace: reads **CAP=0x0f0107ff** +
+  **VS=0x10400 (NVMe 1.4.0)** (op3 MMIO read), DMA-maps the admin CQ/SQ (`map_page → phys 0x2ec7000 /
+  0x2ec8000`, op5 virt→phys), writes **ASQ/ACQ** = those phys addrs + **AQA**, then **CC.EN=1** to enable
+  the controller (op4 MMIO write) — zero QEMU guest-errors (the BAR accesses are valid). The probe then
+  waits on the Identify *completion* = an IRQ → **L3c**. NVMe = the conflict-free device (LKL has `nvme`;
+  EpinAnonymOS uses AHCI). Run: `LKL_NVME=1 ./qemu-run.sh` (or a direct headless `-device nvme`).
+  - **Kernel (0x4100 syscall):** op3 = MMIO read at phys (`*(shared*)(phys + hhdm_offset)`),
+    op4 = MMIO write at phys, op5 = virt→phys (`addrspace.activeVirtToPhys`, the calling task's page table).
   - **Backend (`lkl-boot.c`):** `.resource_alloc(dev, size, idx)` reads BAR[idx] from config → the BAR phys,
     then `register_iomem((void*)bar_phys, size, &epin_iomem_ops)` where `epin_iomem_ops.read/.write` forward
     `(bar_phys + offset)` to op3/op4 — **no BAR mmap** (the iomem layer routes every MMIO through these).
-    `.map_page(vaddr, size)` → op5 (virt→phys) = the IOVA (no-IOMMU).
+    `.map_page(vaddr, size)` → op5 (virt→phys) = the IOVA (no-IOMMU). `.add` scans by class (op2, 0x0108).
   - **★ Device decision (the gotcha):** LKL's driver must NOT share a controller with an EpinAnonymOS
     driver — LKL's `ahci` would HBA-reset the shared AHCI and break the OS's disk. So give LKL a
     CONFLICT-FREE device EpinAnonymOS doesn't drive: a **2nd `-device ahci,id=ahci1` + its own disk**, or a

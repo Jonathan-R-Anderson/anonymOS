@@ -116,7 +116,9 @@ static struct epin_pci_dev g_epin_pci;
 static struct lkl_pci_dev *epin_pci_add(const char *name, void *kernel_ram, unsigned long ram_size)
 {
     (void)name; (void)kernel_ram; (void)ram_size;
-    long bdf = epin_pci_call(2, 0, 0, 0, 0);     /* scan for the first non-bridge device */
+    long bdf = epin_pci_call(2, 0, 0x0108, 0, 0); /* prefer NVMe (class 0x0108) — conflict-free */
+    if (bdf < 0)
+        bdf = epin_pci_call(2, 0, 0, 0, 0);      /* else first non-bridge device */
     if (bdf < 0) {
         fprintf(stderr, ">>> epin_pci: no PCI device found\n");
         return NULL;
@@ -144,14 +146,81 @@ static int epin_pci_write(struct lkl_pci_dev *dev, int where, int size, void *va
     epin_pci_call(1, d->bdf, where, size, v);
     return size;
 }
-/* L3b/L3c stubs: */
+/* ---- L3b: BAR MMIO + DMA through the 0x4100 syscall (no mmap, no IOMMU) ---------
+ * register_iomem is an exported liblkl symbol but lives in the internal lib/iomem.h
+ * (off our -I include/ path), so declare it + its ops struct here.
+ */
+struct lkl_iomem_ops {
+    int (*read)(void *data, int offset, void *res, int size);
+    int (*write)(void *data, int offset, void *value, int size);
+};
+extern void *register_iomem(void *data, int size, const struct lkl_iomem_ops *ops);
+
+/* Every BAR MMIO routes here: data = the BAR's physical base, forward (phys+offset) to op3/op4. */
+static int g_mmio_log;  /* log the first handful so we can SEE the driver touch real registers */
+static int epin_iomem_read(void *data, int offset, void *res, int size)
+{
+    long phys = (long)(uintptr_t)data + offset;
+    long v = epin_pci_call(3, phys, 0, size, 0);            /* op3 = MMIO read at phys */
+    if (size == 1)      *(uint8_t  *)res = (uint8_t)v;
+    else if (size == 2) *(uint16_t *)res = (uint16_t)v;
+    else if (size == 8) *(uint64_t *)res = (uint64_t)v;
+    else                *(uint32_t *)res = (uint32_t)v;
+    if (g_mmio_log < 20)
+        fprintf(stderr, ">>> epin_mmio RD  off=0x%02x sz=%d -> 0x%lx\n", offset, size, v), g_mmio_log++;
+    return 0;
+}
+static int epin_iomem_write(void *data, int offset, void *value, int size)
+{
+    long phys = (long)(uintptr_t)data + offset;
+    uint64_t v = (size == 1) ? *(uint8_t *)value : (size == 2) ? *(uint16_t *)value :
+                 (size == 8) ? *(uint64_t *)value : *(uint32_t *)value;
+    epin_pci_call(4, phys, 0, size, (long)v);               /* op4 = MMIO write at phys */
+    if (g_mmio_log < 20)
+        fprintf(stderr, ">>> epin_mmio WR  off=0x%02x sz=%d <- 0x%llx\n", offset, size,
+                (unsigned long long)v), g_mmio_log++;
+    return 0;
+}
+static const struct lkl_iomem_ops epin_iomem_ops = {
+    .read = epin_iomem_read, .write = epin_iomem_write,
+};
+
+/* .resource_alloc(idx): read BAR[idx] from config -> the firmware-assigned phys, then hand LKL an
+ * iomem token over it.  LKL stores the token as the resource start; driver MMIO routes via the ops. */
 static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, int idx)
-{ (void)dev; (void)sz; (void)idx; return NULL; }
+{
+    struct epin_pci_dev *d = (struct epin_pci_dev *)dev;
+    const int off = 0x10 + idx * 4;
+    uint32_t lo = (uint32_t)epin_pci_call(0, d->bdf, off, 4, 0);
+    unsigned long long bar_phys;
+    if ((lo & 0x1) == 0 && (lo & 0x6) == 0x4) {            /* 64-bit memory BAR */
+        uint32_t hi = (uint32_t)epin_pci_call(0, d->bdf, off + 4, 4, 0);
+        bar_phys = ((unsigned long long)hi << 32) | (lo & ~0xFUL);
+    } else {                                               /* 32-bit memory BAR */
+        bar_phys = (lo & ~0xFUL);
+    }
+    if (!bar_phys)
+        return NULL;
+    fprintf(stderr, ">>> epin_pci: BAR%d phys=0x%llx size=0x%lx\n", idx, bar_phys, sz);
+    return register_iomem((void *)(uintptr_t)bar_phys, (int)sz, &epin_iomem_ops);
+}
+
+/* .map_page: translate an LKL buffer's virtual addr -> a phys IOVA the device can DMA to (op5). */
 static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr, unsigned long sz)
-{ (void)dev; (void)sz; return (unsigned long long)(uintptr_t)vaddr; }   /* identity IOVA (no IOMMU) */
+{
+    (void)dev; (void)sz;
+    long phys = epin_pci_call(5, (long)(uintptr_t)vaddr, 0, 0, 0);   /* op5 = virt->phys */
+    if (phys <= 0) {
+        fprintf(stderr, ">>> epin_pci: map_page(%p) FAILED (not mapped)\n", vaddr);
+        return 0;
+    }
+    if (g_mmio_log < 24)
+        fprintf(stderr, ">>> epin_dma  map_page(%p) -> phys 0x%lx\n", vaddr, phys), g_mmio_log++;
+    return (unsigned long long)phys;
+}
 static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)
 { (void)dev; (void)h; (void)sz; }
-static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq) { (void)dev; (void)irq; return 0; }
+static int epin_pci_irq_init(struct lkl_pci_dev *dev, int irq) { (void)dev; (void)irq; return 0; }  /* L3c */
 
 static struct lkl_dev_pci_ops epin_pci_ops = {
     .add            = epin_pci_add,

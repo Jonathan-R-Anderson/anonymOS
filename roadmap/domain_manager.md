@@ -544,6 +544,21 @@ also deferred to DM6/DM9 — DM1 needs only the create path.
 
 ★ **The critical requirement.** Each domain sees only its granted paths; default-deny.
 
+**Status — DM2.1 (the enforcement primitive) DONE + boot-verified.** `core/namespace.d`: `NsBinding`
+gained a `denied` flag; the resolver was split into `nsResolveCheck` (logic + `out denied`) with
+`nsResolveWithRights`/`nsResolve` delegating to it (so the 11 existing callers are untouched);
+`nsAllocRestricted()` creates a namespace with **no `/` binding** (the deny-by-default substrate);
+`nsBindDeny()` adds a deny binding that overrides a shorter allow on a longest-prefix match; `NS_BIND_MAX`
+16→32. Enforcement wired at `namespaceCheckOpen` (posix.d): it now calls `nsResolveCheck` and returns
+**EACCES for an explicit deny, ENOENT for an unbound path** (both deny; the existing rights check already
+gives EACCES on insufficient rights). ★ Key confirmation from reading the code: `namespaceCheckOpen`
+already treats a 0 resolve as deny (ENOENT), so simply omitting the `/` binding genuinely enforces
+deny-by-default — no new gate. Verified: `[ns] restricted selftest PASS (deny-by-default + ro-rights +
+deny-override)` — a restricted ns denies an unbound path, a read-only allow grants READ-not-WRITE, and a
+deny binding overrides a shorter allow. No regression. *Remaining DM2:* DM2.2 `domainBuildNamespace`
+(compile a domain's fs policy → restricted ns), DM2.3 explicit `filesystemAccess` schema/TLV → DomainRec
+policy, DM2.4 `Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET`, and the domain-bound enforcement test.
+
 - `core/namespace.d`: add a `denied` flag to `NsBinding`; make `nsResolveWithRights`
   (`namespace.d:174`) return EACCES on a longest-prefix match to a denied binding even when
   a shorter allow-binding exists. Raise `NS_BIND_MAX` 16→64, `NS_PATH_MAX` 64→128.

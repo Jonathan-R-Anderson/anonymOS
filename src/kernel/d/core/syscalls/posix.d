@@ -29,7 +29,7 @@ import core.cap : Capability, CAP_INVALID,
                   capTableCloneNarrowing, requireCap, requireCapIn;
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
-import core.namespace : nsResolveWithRights; // Phase 9/IR-P2: namespace object caps
+import core.namespace : nsResolveWithRights, nsResolveCheck; // Phase 9/IR-P2 + DM2 (deny vs not-found)
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject; // Phase 10 / IR-P3 User objects
@@ -1999,8 +1999,11 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     objEnsureNamespace(tid);
     const(char)* rest;
     uint rights;
-    uint target = nsResolveWithRights(g_tasks[tid].namespaceObjId, path, rest, rights);
-    if (target == 0) return negErrno(ENOENT);
+    bool denied;
+    uint target = nsResolveCheck(g_tasks[tid].namespaceObjId, path, rest, rights, denied);
+    // DM2: an explicit deny binding → EACCES; an unbound path in a restricted namespace
+    // (no "/" mount) → ENOENT.  Both deny; the distinction is for the errno/audit.
+    if (target == 0) return negErrno(denied ? EACCES : ENOENT);
     uint need = openRightsForFlags(flags);
     if ((rights & need) != need) return negErrno(EACCES);
     return 0;

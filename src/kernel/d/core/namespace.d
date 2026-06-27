@@ -20,16 +20,19 @@ module core.namespace;
 
 import core.io; // klog / klog_hex
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
+import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2 (restricted-view selftest)
 
 extern (C) @nogc nothrow:
 
 enum int NS_MAX       = 64;   // live Namespace objects
-enum int NS_BIND_MAX  = 16;   // mount bindings per namespace
+enum int NS_BIND_MAX  = 32;   // mount bindings per namespace (DM2: real per-domain fs policies)
 enum int NS_PATH_MAX  = 64;   // mount-point path length
 
 struct NsBinding {
     bool   inUse;
-    uint   targetObjId;       // object this mount point resolves to
+    bool   denied;            // DOMAIN_MANAGER DM2: a deny binding — a longest-prefix match here
+                              // denies access (EACCES) even if a shorter allow-binding would match
+    uint   targetObjId;       // object this mount point resolves to (0 for a deny binding)
     uint   rights;            // capability rights granted at this mount
     uint   pathLen;
     char[NS_PATH_MAX] path;   // mount point, e.g. "/" or "/dev"
@@ -105,6 +108,25 @@ public uint nsAlloc() {
     return 0;
 }
 
+// DOMAIN_MANAGER DM2: create a fresh namespace WITHOUT the "/" → rtfs-root binding.
+// This is the deny-by-default substrate: with no "/" mount, any path that isn't covered
+// by an explicit allow-binding resolves to nothing → namespaceCheckOpen denies it.
+public uint nsAllocRestricted() {
+    foreach (ref ns; g_namespaces) {
+        if (ns.inUse) continue;
+        uint id = objAlloc(ObjType.Namespace, cast(void*)&ns);
+        if (id == 0) return 0;
+        ns = NamespaceRec.init;
+        ns.inUse = true;
+        ns.objId = id;
+        // deliberately NO bindRoot() — restricted view
+        ++g_nsAllocTotal;
+        ++g_nsLive;
+        return id;
+    }
+    return 0;
+}
+
 // Clone an existing namespace's bindings into a new one (fork semantics: the
 // child can later rebind without affecting the parent).  A missing/invalid
 // source yields a fresh root-only namespace.
@@ -151,8 +173,37 @@ public bool nsBind(uint nsObjId, const(char)* path, uint targetObjId, uint right
     }
     if (free is null) return false;
     free.inUse = true;
+    free.denied = false;          // DM2: an allow binding (clears any prior deny on this slot)
     free.targetObjId = targetObjId;
     free.rights = rights;
+    free.pathLen = len;
+    foreach (i; 0 .. len) free.path[i] = path[i];
+    ++g_nsBindTotal;
+    return true;
+}
+
+// DOMAIN_MANAGER DM2: add a DENY binding at `path`.  A longest-prefix match here denies
+// access (EACCES) even if a shorter allow-binding would otherwise grant it — this is how a
+// domain carves a hole (e.g. deny "/Shared/Private") inside an allowed subtree.
+public bool nsBindDeny(uint nsObjId, const(char)* path) {
+    auto ns = nsRecByObj(nsObjId);
+    uint len = nsStrLen(path);
+    if (ns is null || len == 0 || len > NS_PATH_MAX) return false;
+    NsBinding* free = null;
+    foreach (ref b; ns.binds) {
+        if (b.inUse && b.pathLen == len) {
+            bool same = true;
+            foreach (i; 0 .. len) if (b.path[i] != path[i]) { same = false; break; }
+            if (same) { free = &b; break; }
+        }
+        if (!b.inUse && free is null) free = &b;
+    }
+    if (free is null) return false;
+    *free = NsBinding.init;
+    free.inUse = true;
+    free.denied = true;
+    free.targetObjId = 0;
+    free.rights = 0;
     free.pathLen = len;
     foreach (i; 0 .. len) free.path[i] = path[i];
     ++g_nsBindTotal;
@@ -171,10 +222,14 @@ private bool bindMatches(ref const(NsBinding) b, const(char)* path, uint plen) {
 // the path suffix relative to that mount (kept absolute for the "/" mount so the
 // existing rtfs/synthetic resolver in posix.d can consume it unchanged).  Returns
 // 0 if the namespace is unknown or nothing matches.
-public uint nsResolveWithRights(uint nsObjId, const(char)* path,
-                                out const(char)* outRest, out uint outRights) {
+// DOMAIN_MANAGER DM2: the full resolver — also reports whether the longest match is an
+// explicit DENY binding (so the caller can return EACCES vs ENOENT).  A namespace with no
+// "/" binding (a restricted domain) returns 0 for any unbound path = deny-by-default.
+public uint nsResolveCheck(uint nsObjId, const(char)* path, out const(char)* outRest,
+                           out uint outRights, out bool outDenied) {
     outRest = path;
     outRights = 0;
+    outDenied = false;
     auto ns = nsRecByObj(nsObjId);
     if (ns is null || path is null || path[0] != '/') return 0;
     ++g_nsResolveTotal;
@@ -185,7 +240,12 @@ public uint nsResolveWithRights(uint nsObjId, const(char)* path,
         if (!bindMatches(b, path, plen)) continue;
         if (best is null || b.pathLen > best.pathLen) best = &b;
     }
-    if (best is null) return 0;
+    if (best is null) return 0;              // no binding → deny-by-default (ENOENT)
+    if (best.denied) {                       // explicit deny overrides any shorter allow → EACCES
+        outDenied = true;
+        outRest = path;
+        return 0;
+    }
     outRights = best.rights;
     if (best.pathLen == 1) {                 // "/" mount: keep the whole path
         outRest = path;
@@ -197,9 +257,15 @@ public uint nsResolveWithRights(uint nsObjId, const(char)* path,
     return best.targetObjId;
 }
 
+public uint nsResolveWithRights(uint nsObjId, const(char)* path,
+                                out const(char)* outRest, out uint outRights) {
+    bool denied;
+    return nsResolveCheck(nsObjId, path, outRest, outRights, denied);
+}
+
 public uint nsResolve(uint nsObjId, const(char)* path, out const(char)* outRest) {
-    uint rights;
-    return nsResolveWithRights(nsObjId, path, outRest, rights);
+    uint rights; bool denied;
+    return nsResolveCheck(nsObjId, path, outRest, rights, denied);
 }
 
 // ORG P4.3 — namespace validation: count bindings whose target object is no
@@ -210,8 +276,8 @@ public uint nsValidateBindings() {
     foreach (ref ns; g_namespaces) {
         if (!ns.inUse) continue;
         foreach (ref b; ns.binds)
-            if (b.inUse && (b.targetObjId == 0 || objGet(b.targetObjId) is null))
-                ++dangling;
+            if (b.inUse && !b.denied && (b.targetObjId == 0 || objGet(b.targetObjId) is null))
+                ++dangling;   // DM2: deny bindings legitimately have no target — not dangling
     }
     return dangling;
 }
@@ -258,6 +324,42 @@ public void nsSelfTest() {
 
     nsRelease(a);
     nsRelease(b);
+}
+
+// DOMAIN_MANAGER DM2 boot proof: a restricted namespace (no "/" binding) enforces
+// deny-by-default; an allow binding grants exactly its rights; a deny binding overrides a
+// shorter allow.  Mirrors what namespaceCheckOpen does on a domain-bound open().
+__gshared bool g_nsRestrictedSelfTested = false;
+public void nsRestrictedSelfTest() {
+    if (g_nsRestrictedSelfTested) return;
+    g_nsRestrictedSelfTested = true;
+
+    const uint r = nsAllocRestricted();
+    if (r == 0) { klog("[ns] restricted selftest FAIL: alloc\n"); return; }
+    const uint home = nsRootDir();   // any live Directory object as a stand-in mount target
+
+    bool ok = true;
+    ok = ok && nsBind(r, "/home/x\0".ptr, home, CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_STAT);
+    ok = ok && nsBind(r, "/sys\0".ptr,    home, CAP_RIGHT_READ | CAP_RIGHT_STAT);
+    ok = ok && nsBindDeny(r, "/sys/secret\0".ptr);
+
+    const(char)* rest; uint rights; bool denied;
+    // (1) allowed read-write path resolves, with the WRITE right, not denied
+    const uint t1 = nsResolveCheck(r, "/home/x/file\0".ptr, rest, rights, denied);
+    ok = ok && (t1 == home) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
+    // (2) an unbound path → deny-by-default: target 0, NOT flagged denied (caller → ENOENT)
+    const uint t2 = nsResolveCheck(r, "/etc/shadow\0".ptr, rest, rights, denied);
+    ok = ok && (t2 == 0) && !denied;
+    // (3) a read-only allow grants READ but NOT WRITE (open-for-write would EACCES)
+    const uint t3 = nsResolveCheck(r, "/sys/public\0".ptr, rest, rights, denied);
+    ok = ok && (t3 == home) && ((rights & CAP_RIGHT_READ) != 0) && ((rights & CAP_RIGHT_WRITE) == 0) && !denied;
+    // (4) an explicit deny overrides the shorter /sys allow → target 0, flagged denied (caller → EACCES)
+    const uint t4 = nsResolveCheck(r, "/sys/secret/key\0".ptr, rest, rights, denied);
+    ok = ok && (t4 == 0) && denied;
+
+    nsRelease(r);
+    if (ok) klog("[ns] restricted selftest PASS (deny-by-default + ro-rights + deny-override)\n");
+    else    klog("[ns] restricted selftest FAIL: behaviour\n");
 }
 
 public void nsStats() {

@@ -41,6 +41,7 @@ import core.untyped : untypedRootInit, untypedCreateProcess, untypedSelfTest,
 import core.ipc : ipcSelfTest, ipcStats; // Phase 7: IPC router proof
 import core.device : deviceRegistryInit, deviceSelfTest, deviceStats; // Phase 8
 import core.namespace : nsSelfTest, nsStats, nsClone; // Phase 9: per-process namespaces
+import core.namespace : nsRestrictedSelfTest;          // DOMAIN_MANAGER DM2: deny-by-default proof
 import core.user : userRegistryInit, userSelfTest, userStats, userDefaultObjId,
                   userSetActiveSubject, USER_RIGHT_LOGIN, USER_RIGHT_SPAWN; // Phase 10 / IR-P3
 import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 typed admin caps
@@ -2860,6 +2861,7 @@ void d_kernel_main() {
     idnsInitRoots();             // §4 private object-root Directory per identity
     domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
+    nsRestrictedSelfTest();      // DOMAIN_MANAGER DM2: one-shot proof deny-by-default restricted namespace (deterministic at boot)
     idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     idwinInit();                 // §6 install winRegister identity-stamp hook (unspoofable borders)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);

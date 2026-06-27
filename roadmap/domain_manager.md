@@ -828,10 +828,22 @@ running domains get a green state dot. `core/hoscall.d` added the bound identity
 `/config/domains.json` for the GUI accents. Verified in-VM: `DOMAINMGR: loaded 11 domains from
 /config/domains.json (declarative): System[domain] … DevTemplate[template] DevSandbox[domain]
 BankVault[domain] PersistProbe[domain]` — the manifest-declared domains + the template + the persisted probe
-all appear, parsed with their type; the GUI window renders (980×600). *Remaining DM10:* live updates
-(`HOSQ_DOMAIN_SUBSCRIBE`), the action panels (Create/Clone/Snapshot/Commit/Start/Stop wired to the
-`HOSQ_DOMAIN_*` verbs), the `Filesystem` RuntimeView panel (read `/objects/domains/<name>/filesystem`), the
-appearance/startup/template-browser/marketplace tabs.
+all appear, parsed with their type; the GUI window renders (980×600).
+
+**Status — DM10.2 (Filesystem RuntimeView panel) DONE + verified.** The right panel now has a *Restricted
+Filesystem (RuntimeView)* column: on domain selection the GUI reads `/objects/domains/<name>/filesystem`
+(the DM2.4 resolved, deny-by-default fs policy) into `app->fs_view` and renders it line-by-line, colour-coded
+(`rw`→green, `ro`→amber, `deny`→red, comments dim). So the GUI surfaces each domain's manifest-driven
+restricted-FS view live. To give *every* domain a policy (not just the manifest ones), `core/domain.d`
+`domainBuildAllNamespaces()` eagerly builds a restricted ns for each non-template domain at boot (idempotent
+— skips domains that already have one from configboot's `TAG_FS_POLICY`), wired in after the domain proofs.
+Window widened to 1180px for the column. Verified in-VM: `DOMAINMGR: RuntimeView for System = 237 bytes, 5
+binding lines` — the GUI reads a real, non-empty policy (System's default-deny ns); DevSandbox shows its 6
+manifest bindings (`ro /System/Templates`, `rw /Domains/DevSandbox/Home`, `deny /Shared/Projects/secrets`, …).
+
+*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE`), the action panels (Create/Clone/Snapshot/Commit/
+Start/Stop wired to the `HOSQ_DOMAIN_*` verbs — needs the native verb surface or a Linux-side control-write
+path since the GUI is a Linux-personality client), the appearance/startup/template-browser/marketplace tabs.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

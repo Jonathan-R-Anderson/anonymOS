@@ -46,7 +46,7 @@
 extern char **environ;
 
 enum {
-    DEFAULT_WIDTH  = 980,
+    DEFAULT_WIDTH  = 1180,   // DM10.2: wider, for the Filesystem RuntimeView column
     DEFAULT_HEIGHT = 600,
     HEADER_H       = 70,
     LIST_W         = 300,     // left domain list width
@@ -179,6 +179,7 @@ struct app {
     struct dconf cfg[MAX_DOMS];    // per-domain launch settings (mutable)
     struct gdomain doms[MAX_DOMS]; // DM10: the domains, read from the declarative config
     int n_doms;                    // number loaded
+    char fs_view[1280];            // DM10.2: the selected domain's restricted-FS RuntimeView
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -419,6 +420,30 @@ static const char *dom_templ_name(struct app *app, unsigned templObjId)
     return "?";
 }
 
+// DM10.2: read the selected domain's restricted-FS view (the DM2 RuntimeView) from
+// /objects/domains/<name>/filesystem — the resolved, deny-by-default fs policy.
+static void refresh_fs_view(struct app *app)
+{
+    app->fs_view[0] = 0;
+    if (app->sel < 0 || app->sel >= app->n_doms) return;
+    char path[96];
+    snprintf(path, sizeof(path), "/objects/domains/%s/filesystem", app->doms[app->sel].name);
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { snprintf(app->fs_view, sizeof(app->fs_view), "(no restricted view)"); return; }
+    ssize_t n = read(fd, app->fs_view, sizeof(app->fs_view) - 1);
+    close(fd);
+    app->fs_view[n > 0 ? n : 0] = 0;
+    if (n <= 0) snprintf(app->fs_view, sizeof(app->fs_view), "(empty)");
+    int binds = 0;
+    for (const char *s = app->fs_view; *s; ) {
+        if (strncmp(s, "rw", 2) == 0 || strncmp(s, "ro", 2) == 0 || strncmp(s, "deny", 4) == 0) binds++;
+        while (*s && *s != '\n') s++;
+        if (*s) s++;
+    }
+    printf("DOMAINMGR: RuntimeView for %s = %zd bytes, %d binding lines\n",
+           app->doms[app->sel].name, n, binds); fflush(stdout);
+}
+
 static void draw_manager(struct app *app)
 {
     cairo_surface_t *surface = cairo_image_surface_create_for_data(
@@ -581,6 +606,31 @@ static void draw_manager(struct app *app)
         draw_text(app, lbl, x + 18, y + 12, w - 24, 14, col);
     }
 
+    // DM10.2: the Restricted Filesystem (RuntimeView) column — the selected domain's resolved,
+    // deny-by-default fs policy (DM2), read from /objects/domains/<name>/filesystem.
+    {
+        int fx = PILL_X + PILL_W + 30;        // right of the control pills
+        int fy = RY0 - 30;
+        draw_text(app, "Restricted Filesystem  (RuntimeView)", fx, fy, 400, 14, 0xffd6deeau);
+        fy += 22;
+        const char *s = app->fs_view;
+        int line = 0;
+        while (*s && line < 22) {
+            char ln[96]; int i = 0;
+            while (*s && *s != '\n' && i < (int)sizeof(ln) - 1) ln[i++] = *s++;
+            ln[i] = 0;
+            if (*s == '\n') s++;
+            uint32_t col = 0xffaab3c2u;
+            if (ln[0] == '#')                       col = 0xff6b7686u;  // comments dim
+            else if (strncmp(ln, "deny", 4) == 0)   col = 0xffe08a8au;  // deny  -> red
+            else if (strncmp(ln, "rw", 2) == 0)     col = 0xff9fe0a8u;  // rw    -> green
+            else if (strncmp(ln, "ro", 2) == 0)     col = 0xffd8d09au;  // ro    -> amber
+            else if (strncmp(ln, "defaultPolicy", 13) == 0) col = 0xffd6deeau;
+            draw_text(app, ln, fx, fy + line * 16, 410, 13, col);
+            line++;
+        }
+    }
+
     // Footer: the DECLARATIVE attributes of the selected domain (DM0-DM6, from system.json).
     char foot[256];
     snprintf(foot, sizeof(foot),
@@ -688,6 +738,7 @@ static void handle_click(struct app *app)
             int r = (int)((y - top) / ROW_H);
             if (r >= 0 && r < app->n_doms && r != app->sel) {
                 app->sel = r;
+                refresh_fs_view(app);   // DM10.2: load the new domain's RuntimeView
                 redraw_commit(app, "select domain");
             }
         }
@@ -771,8 +822,8 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     struct app *app = data; (void)k; (void)serial; (void)time;
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
     // Up=103 Down=108 Enter=28 Esc=1.
-    if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; redraw_commit(app, "key"); }
-    else if (key == 103 && app->sel > 0)        { app->sel--; redraw_commit(app, "key"); }
+    if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; refresh_fs_view(app); redraw_commit(app, "key"); }
+    else if (key == 103 && app->sel > 0)        { app->sel--; refresh_fs_view(app); redraw_commit(app, "key"); }
     else if (key == 28)                         { launch_app(app, TERM_BIN[app->cfg[app->sel].term]); }
     else if (key == 1)                          { app->running = 0; }
 }
@@ -880,6 +931,7 @@ int main(void)
     // DM10: load the domains from the declarative config (/config/domains.json), generated by the
     // kernel from system.json — the GUI now reflects DM0-DM6 instead of a hardcoded list.
     load_domains(&app);
+    refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView
 
     signal(SIGCHLD, SIG_IGN);   // auto-reap launched apps (no zombies)
 

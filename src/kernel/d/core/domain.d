@@ -252,6 +252,15 @@ public uint domainBuildNamespace(uint domObjId) {
     return ns;
 }
 
+// DM2/DM10: ensure every (non-template) domain has a restricted namespace, so the GUI's
+// Filesystem RuntimeView shows a real policy for each.  Idempotent: skips domains that already
+// have one (e.g. the manifest-policy domains built by configboot's TAG_FS_POLICY).
+public void domainBuildAllNamespaces() {
+    foreach (ref e; g_domains)
+        if (e.inUse && e.nsObjId == 0 && !e.isTemplate)
+            domainBuildNamespace(e.objId);
+}
+
 // DOMAIN_MANAGER DM2 boot proof: build a real domain's restricted namespace and resolve several
 // paths through it exactly as namespaceCheckOpen would, asserting the policy holds.
 __gshared bool g_domNsProofDone = false;

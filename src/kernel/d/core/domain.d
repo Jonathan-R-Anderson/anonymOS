@@ -17,6 +17,9 @@ module core.domain;
 
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
 import core.identity : identityById, identityByName;
+import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
+                        nsResolveCheck, nsRelease;     // DOMAIN_MANAGER DM2
+import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
 import core.io : klog, klog_hex;
 
 extern (C) @nogc nothrow:
@@ -198,6 +201,70 @@ public void domainSelfTest() {
 
     if (ok) klog("[domain] selftest PASS\n");
     else    klog("[domain] selftest FAIL\n");
+}
+
+// DOMAIN_MANAGER DM2: build the domain's RESTRICTED namespace from a default-deny policy.
+// The domain sees ONLY: /Domains/<name>/Home (rw), /tmp (rw), /Shared (ro) — with /Shared/Private
+// and /System explicitly denied, and EVERYTHING ELSE deny-by-default (no "/" binding).  DM2.3 will
+// override this default from the manifest's filesystemAccess.  Stores + returns the nsObjId.
+public uint domainBuildNamespace(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null) return 0;
+    const uint ns = nsAllocRestricted();
+    if (ns == 0) return 0;
+    const uint root = nsRootDir();   // a live Directory object = the allow-binding target (the gate only
+                                     // needs target!=0 + rights; the rtfs resolver handles the real file)
+    const uint RW = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_STAT;
+    const uint RO = CAP_RIGHT_READ | CAP_RIGHT_STAT;
+
+    // /Domains/<name>/Home (rw) — the domain's private home
+    char[64] home = void;
+    size_t hp = 0;
+    immutable string pre = "/Domains/";
+    foreach (c; pre) home[hp++] = c;
+    foreach (i; 0 .. d.nameLen) if (hp < home.length - 8) home[hp++] = d.name[i];
+    immutable string suf = "/Home";
+    foreach (c; suf) home[hp++] = c;
+    home[hp] = 0;
+    nsBind(ns, home.ptr, root, RW);
+
+    nsBind(ns, "/tmp\0".ptr,    root, RW);
+    nsBind(ns, "/Shared\0".ptr, root, RO);
+    nsBindDeny(ns, "/Shared/Private\0".ptr);   // a hole inside the allowed /Shared (deny-override)
+    nsBindDeny(ns, "/System\0".ptr);           // explicit deny (also covered by deny-by-default)
+
+    d.nsObjId = ns;
+    return ns;
+}
+
+// DOMAIN_MANAGER DM2 boot proof: build a real domain's restricted namespace and resolve several
+// paths through it exactly as namespaceCheckOpen would, asserting the policy holds.
+__gshared bool g_domNsProofDone = false;
+public void domainNsProof() {
+    if (g_domNsProofDone) return;
+    g_domNsProofDone = true;
+    const uint dev = domainByName("Development\0".ptr);
+    const uint ns = domainBuildNamespace(dev);
+    if (ns == 0) { klog("[domain] ns proof FAIL: build\n"); return; }
+    const(char)* rest; uint rights; bool denied;
+    bool ok = true;
+    // (1) the domain's own home — allowed, with WRITE
+    const uint t1 = nsResolveCheck(ns, "/Domains/Development/Home/notes\0".ptr, rest, rights, denied);
+    ok = ok && (t1 != 0) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
+    // (2) an unbound path — deny-by-default (no "/" mount)
+    const uint t2 = nsResolveCheck(ns, "/etc/passwd\0".ptr, rest, rights, denied);
+    ok = ok && (t2 == 0) && !denied;
+    // (3) /Shared — allowed read-only (READ, not WRITE)
+    const uint t3 = nsResolveCheck(ns, "/Shared/readme\0".ptr, rest, rights, denied);
+    ok = ok && (t3 != 0) && ((rights & CAP_RIGHT_WRITE) == 0) && !denied;
+    // (4) /Shared/Private — denied, overriding the /Shared allow
+    const uint t4 = nsResolveCheck(ns, "/Shared/Private/secret\0".ptr, rest, rights, denied);
+    ok = ok && (t4 == 0) && denied;
+    // (5) /System — denied
+    const uint t5 = nsResolveCheck(ns, "/System/Kernel\0".ptr, rest, rights, denied);
+    ok = ok && (t5 == 0) && denied;
+    if (ok) klog("[domain] ns proof PASS: Development restricted view (home rw, /Shared ro, Private+/System+unbound denied)\n");
+    else    klog("[domain] ns proof FAIL: behaviour\n");
 }
 
 public void domainStats() {

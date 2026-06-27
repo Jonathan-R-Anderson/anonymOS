@@ -555,9 +555,18 @@ gives EACCES on insufficient rights). ★ Key confirmation from reading the code
 already treats a 0 resolve as deny (ENOENT), so simply omitting the `/` binding genuinely enforces
 deny-by-default — no new gate. Verified: `[ns] restricted selftest PASS (deny-by-default + ro-rights +
 deny-override)` — a restricted ns denies an unbound path, a read-only allow grants READ-not-WRITE, and a
-deny binding overrides a shorter allow. No regression. *Remaining DM2:* DM2.2 `domainBuildNamespace`
-(compile a domain's fs policy → restricted ns), DM2.3 explicit `filesystemAccess` schema/TLV → DomainRec
-policy, DM2.4 `Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET`, and the domain-bound enforcement test.
+deny binding overrides a shorter allow. No regression.
+
+**DM2.2 (domains get a restricted view) DONE + verified.** `core/domain.d` `domainBuildNamespace(domObjId)`:
+`nsAllocRestricted()` + binds a default-deny policy — `/Domains/<name>/Home` (rw), `/tmp` (rw), `/Shared`
+(ro), deny `/Shared/Private` + `/System` — and stores the `nsObjId` on the `DomainRec`. The allow-binding
+target is the rtfs-root Directory object (the gate only needs `target!=0` + rights; the backing rtfs
+resolver handles the real file since `namespaceCheckOpen` returns 0=proceed — it does NOT redirect via
+`outRest`). Verified: `[domain] ns proof PASS: Development restricted view` — building Development's real
+ns + resolving 5 paths (home rw allowed, `/Shared` ro, `/Shared/Private`+`/System` denied, unbound
+`/etc/passwd` deny-by-default). *Remaining DM2:* DM2.3 (explicit `filesystemAccess` schema/TLV → override
+the default from the manifest), DM2.4 (`Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET`), and the live
+domain-bound enforcement test (a real task with `Task.namespaceObjId` = the domain ns — the DM2/DM3 boundary).
 
 - `core/namespace.d`: add a `denied` flag to `NsBinding`; make `nsResolveWithRights`
   (`namespace.d:174`) return EACCES on a longest-prefix match to a denied binding even when

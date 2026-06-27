@@ -66,6 +66,7 @@ import core.identity : identityInitDefaults, identityInitLaunchRules, identityBy
                        identitySelfTest, idprocSelfTest, identityStats, identityNamePrint,
                        identityById; // IDENTITY_DOMAIN P2/P3 (+ F4.2 launch cap-gate)
 import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_MANAGER DM0
+import core.domain : domainNsProof;   // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -2862,6 +2863,7 @@ void d_kernel_main() {
     domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
     nsRestrictedSelfTest();      // DOMAIN_MANAGER DM2: one-shot proof deny-by-default restricted namespace (deterministic at boot)
+    domainNsProof();             // DOMAIN_MANAGER DM2.2: build a real domain's restricted ns + prove its policy
     idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     idwinInit();                 // §6 install winRegister identity-stamp hook (unspoofable borders)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);

@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 DONE + verified
+## Status (2026-06-27): S0 + S1 + S2 DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -63,14 +63,23 @@ brings every AP online**, with no hardcoded count:
   and parks (`cli; hlt`). The BSP waits (bounded) for all APs, then logs the tally. Runs early (while limine's
   page tables are active, so the APs share the BSP's address space for their memory-trivial idle).
 - **`qemu-run.sh` gained an `SMP=N` knob** (default 1) so any core count is testable from one binary.
-- **Verified in-VM:** `SMP=4` → `[smp] 4 CPUs discovered (bsp lapic=0)` + `[smp] 3 of 3 APs online + parked`,
-  0 boot exceptions, the desktop boots normally on the BSP. `SMP=1` (default) → `1 CPU discovered, 0 APs`,
-  desktop boots — **degrades gracefully to N==1.**
+- **S2 (per-CPU state):** `struct PerCpu` (`selfPtr`@0 / `cpuIndex` / `lapicId` / `currentTask` / `idleTask` /
+  `schedCursor`) and `g_percpu[MAX_CPUS]` — **one area per discovered CPU, sized to the runtime N.**
+  `smpBringup` lays them out before releasing the APs; each AP then sets its **`IA32_GS_BASE`** to its area
+  and verifies `%gs`-addressing round-trips (`readGsBase()` → `selfPtr`/`cpuIndex` match). `thisCpu()` /
+  `thisCpuTask()` accessors; the BSP's `currentTask` is the **shim** that mirrors the global
+  `g_current_task_id` (S3 makes the per-CPU field authoritative + adds swapgs). ★ KEY SAFETY: `IA32_GS_BASE`
+  is the *same* MSR `arch_prctl(ARCH_SET_GS)` writes, so it is UNSAFE in the live syscall path without
+  swapgs (userspace can clobber it) — S2 sets+verifies GS only on the **parked APs** (which never run
+  userspace) and addresses the BSP's area **by index**; the swapgs live-path migration is S3.
+- **Verified in-VM:** `SMP=4` → `4 CPUs discovered` + `3 of 3 APs online; 3 with GS-addressed per-CPU state
+  verified; bsp idx=0` + `BSP per-CPU area OK (currentTask shim seeded)`, 0 faults, desktop boots on the BSP.
+  `SMP=1` (default) → `1 CPU, 0 APs`, BSP per-CPU OK, desktop boots — **degrades gracefully.**
 
-**Next (S2 → S3):** per-CPU state (a `GS`-based per-CPU area replacing the global `g_current_task_id`) then a
-Big Kernel Lock — the point at which an AP can run a *task* (the desktop on CPU0, an LKL on CPU1) in parallel.
-Today the APs are parked (`cli; hlt`); they do no work yet. The AP entry deliberately does NOT load a per-CPU
-GDT/IDT/TSS or switch CR3 yet — that is S2; an idle `hlt` loop needs none of it and stays safe.
+**Next (S3):** the **Big Kernel Lock** + making the per-CPU `currentTask` authoritative behind **swapgs** —
+the point an AP can run a *task* (the desktop on CPU0, an LKL on CPU1) in parallel. Today the APs are parked
+(`cli; hlt`) with valid per-CPU areas but no scheduler entry; they still load no per-CPU GDT/IDT/TSS or switch
+CR3 (S3), which an idle `hlt` loop does not need.
 
 ## Phases
 
@@ -81,7 +90,7 @@ GDT/IDT/TSS or switch CR3 yet — that is S2; an idle `hlt` loop needs none of i
   point + stack — no manual INIT-SIPI trampoline needed, a big simplification vs raw bare metal). Each AP:
   enter the kernel, load a per-CPU GDT/IDT/TSS, switch to the kernel CR3, init its local APIC, enter a
   per-CPU idle loop. **Verify:** each AP prints "CPU N online" and idles; the BSP keeps running the desktop.
-- **S2 — Per-CPU state.** A per-CPU area addressed via `GS` (`swapgs` on kernel entry): `currentTask`,
+- **S2 — Per-CPU state.** ✅ *(per-CPU areas sized to runtime N; GS-addressing verified on every AP; BSP shim — see Status; swapgs live-path migration deferred to S3).* A per-CPU area addressed via `GS` (`swapgs` on kernel entry): `currentTask`,
   `idleTask`, local-APIC id, scheduler cursor, a per-CPU scratch stack — **one entry per discovered CPU,
   sized to the runtime N (allocated for the live count; never a fixed 8).** Replace the global
   `g_current_task_id` with the per-CPU current task (keep a shim during migration).

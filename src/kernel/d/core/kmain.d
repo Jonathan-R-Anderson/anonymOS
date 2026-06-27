@@ -82,28 +82,86 @@ align(8) __gshared ulong[2] limine_requests_end = [0xadc0e0531bb10d03, 0x9572709
 
 // SMP_ROADMAP: dynamic core count — discovered at runtime, NEVER hardcoded.  MAX_CPUS is a
 // generous compile-time ceiling; the live count comes from limine.  S1 brings every AP online
-// to a parked idle loop; S2+ give them per-CPU state, a BKL, and real work.
+// to a parked idle loop; S2 gives each a per-CPU area (S3+ a BKL + real work).
 enum uint MAX_CPUS = 256;
 public __gshared uint  g_smpCpuCount = 1;            // total CPUs (incl. BSP); 1 until discovered
+public __gshared uint  g_bspCpuIndex = 0;            // which per-CPU slot is the BSP
 public __gshared ubyte[MAX_CPUS] g_cpuOnline;        // [i] = 1 once AP i reports in (i = per-CPU index)
+public __gshared ubyte[MAX_CPUS] g_cpuPercpuOk;      // [i] = 1 once AP i verified its GS-addressed area
+
+extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
+
+// SMP_ROADMAP S2: per-CPU state.  One area per discovered CPU, sized to the runtime N (NEVER a fixed
+// 8).  `selfPtr` sits at offset 0 so `%gs:0` reads it once the GS base points here — the production
+// fast path (S3, behind swapgs).  Today the kernel scheduler still uses the global g_current_task_id;
+// `currentTask` is the per-CPU mirror it migrates onto in S3.
+struct PerCpu {
+    PerCpu* selfPtr;        // offset 0: %gs:0 ⟹ &g_percpu[thisCpu]
+    uint    cpuIndex;
+    uint    lapicId;
+    ulong   currentTask;    // per-CPU current task (shim today; authoritative in S3)
+    ulong   idleTask;
+    uint    schedCursor;    // per-CPU scheduler run cursor (S4)
+    bool    alive;
+}
+public __gshared PerCpu[MAX_CPUS] g_percpu;
+
+// IA32_GS_BASE (0xC0000101): same MSR arch_prctl(ARCH_SET_GS) writes — so it is UNSAFE to rely on in
+// the live syscall path without swapgs (userspace can clobber it).  S2 sets+verifies it only on the
+// parked APs (which never run userspace); the BSP addresses its area by index until S3 adds swapgs.
+private void setGsBase(void* p) {
+    const ulong base = cast(ulong)p;
+    asm @nogc nothrow { mov RCX, 0xC0000101; mov RAX, base; mov RDX, base; shr RDX, 32; wrmsr; }
+}
+private void* readGsBase() {
+    ulong val;
+    asm @nogc nothrow { mov RCX, 0xC0000101; rdmsr; shl RDX, 32; or RAX, RDX; mov val, RAX; }
+    return cast(void*)val;
+}
+
+// S2 accessors (the migration shim).  BSP-only until S3 makes the per-CPU field authoritative.
+public PerCpu* thisCpu()    { return &g_percpu[g_bspCpuIndex]; }
+public ulong   thisCpuTask(){ return g_percpu[g_bspCpuIndex].currentTask; }
 
 // The AP entry point.  Limine parks each AP spinning on its goto_address; when the BSP writes this
-// pointer, the AP jumps here (its own limine_smp_info* in RDI).  S1 = report online, then park.
+// pointer the AP jumps here (its own limine_smp_info* in RDI).  S1: report online.  S2: point this
+// AP's GS base at its per-CPU area and verify `%gs`-addressing round-trips, then park.
 extern(C) void apEntry(limine_smp_info* info) {
     const uint idx = cast(uint)info.extra_argument;  // the per-CPU index the BSP stashed
-    if (idx < MAX_CPUS) g_cpuOnline[idx] = 1;
-    __asm("cli", "");                                // S1: park (no per-CPU IDT/scheduler yet)
+    if (idx < MAX_CPUS) {
+        setGsBase(&g_percpu[idx]);                   // S2: this CPU's per-CPU area, GS-addressed
+        auto self = cast(PerCpu*)readGsBase();       // read it back (no swapgs needed — AP never runs user)
+        if (self is &g_percpu[idx] && self.cpuIndex == idx && self.selfPtr is &g_percpu[idx])
+            g_cpuPercpuOk[idx] = 1;                  // GS-addressed per-CPU area verified
+        g_percpu[idx].alive = true;
+        g_cpuOnline[idx] = 1;
+    }
+    __asm("cli", "");                                // park (no per-CPU IDT/scheduler yet — S3+)
     for (;;) __asm("hlt", "");
 }
 
-// Discover the live CPU count and bring every AP online (S0 + S1).  Runs early, while limine's page
-// tables are still active, so the APs share the BSP's address space for their (memory-trivial) idle.
+// Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs
+// early, while limine's page tables are still active, so the APs share the BSP's address space.
 void smpBringup() {
     auto resp = smp_req.response;
     if (resp is null) { klog("[smp] no SMP response — single-core boot\n"); return; }
     g_smpCpuCount = cast(uint)resp.cpu_count;
     klog("[smp] "); klog_hex(resp.cpu_count); klog(" CPUs discovered (bsp lapic=");
     klog_hex(resp.bsp_lapic_id); klog(")\n");
+
+    // S2: lay out one per-CPU area per discovered CPU, BEFORE releasing the APs (they read it on entry).
+    foreach (i; 0 .. resp.cpu_count) {
+        if (i >= MAX_CPUS) break;
+        g_percpu[i] = PerCpu.init;
+        g_percpu[i].selfPtr  = &g_percpu[i];
+        g_percpu[i].cpuIndex = cast(uint)i;
+        g_percpu[i].lapicId  = resp.cpus[i].lapic_id;
+        if (resp.cpus[i].lapic_id == resp.bsp_lapic_id) g_bspCpuIndex = cast(uint)i;
+    }
+    if (g_bspCpuIndex < MAX_CPUS) {
+        g_percpu[g_bspCpuIndex].alive = true;
+        g_percpu[g_bspCpuIndex].currentTask = g_current_task_id;   // shim: mirror the global (0 this early)
+    }
 
     uint apCount = 0;
     foreach (i; 0 .. resp.cpu_count) {
@@ -122,8 +180,14 @@ void smpBringup() {
         foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_cpuOnline[i]) ++online;
         __asm("pause", "");
     }
-    klog("[smp] "); klog_hex(online); klog(" of "); klog_hex(apCount);
-    klog(" APs online + parked (BKL/scheduler = S2+)\n");
+    uint pcok = 0;
+    foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_cpuPercpuOk[i]) ++pcok;
+    klog("[smp] "); klog_hex(online); klog(" of "); klog_hex(apCount); klog(" APs online; ");
+    klog_hex(pcok); klog(" with GS-addressed per-CPU state verified; bsp idx="); klog_hex(g_bspCpuIndex); klog("\n");
+    // BSP self-check (index-addressed; its GS stays free for userspace until S3 swapgs)
+    if (g_bspCpuIndex < MAX_CPUS && thisCpu().cpuIndex == g_bspCpuIndex
+        && thisCpuTask() == g_current_task_id)
+        klog("[smp] BSP per-CPU area OK (currentTask shim seeded)\n");
 }
 
 extern __gshared ulong hhdm_offset;

@@ -2,7 +2,7 @@ You are working on my custom OS / BusyBox-based userland.
 
 Expand the current minimal BusyBox-style environment into a much more Linux-like embedded userland with a coherent Unix security model, standard account files, login sessions, permissions, ownership, service accounts, init integration, and common administrative tools.
 
-The goal is not to clone GNU/Linux or systemd. The goal is to make the OS feel like a real small Linux system while staying compact, auditable, portable, and suitable for an embedded/custom OS.
+The goal is not to clone GNU/Linux or systemd. The goal is to make the OS feel like a real small Linux system while staying compact, auditable, portable, and suitable for an embedded/custom OS. you should not be able to tell that this isn't really a full linux system from inside of the linux (busybox) shell. 
 
 Core principles:
 

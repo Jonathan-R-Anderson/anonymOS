@@ -142,7 +142,7 @@ struct app {
     int                   ptm;     // PTY master fd
     int                   shift, ctrl;
 
-    char                  grid[ROWS][COLS];
+    uint32_t              grid[ROWS][COLS];  // R5: Unicode codepoint per cell (was char — UTF-8/Nerd glyphs)
     uint32_t              fgc[ROWS][COLS];   // Z7.1: per-cell foreground (ARGB)
     uint32_t              bgc[ROWS][COLS];   // Z7.1: per-cell background (0 = default COL_BG)
     uint32_t              pen_fg, pen_bg;    // current SGR pen
@@ -151,7 +151,7 @@ struct app {
     int                   dirty;
 
     // Scrollback ring (oldest at logical 0). When full, sb_head is the oldest physical slot.
-    char                  sb_ch[SB_CAP][COLS];
+    uint32_t              sb_ch[SB_CAP][COLS];   // R5: Unicode codepoints (was char)
     uint32_t              sb_fg[SB_CAP][COLS];
     uint32_t              sb_bg[SB_CAP][COLS];
     int                   sb_head;        // index where the next evicted line is written
@@ -164,13 +164,38 @@ struct app {
     int                   esc;      // ANSI escape state machine
     char                  csi[24];  // accumulated CSI parameter/intermediate bytes
     int                   csi_len;
+    uint32_t              utf_cp;   // R5: UTF-8 decode accumulator
+    int                   utf_left; // R5: remaining continuation bytes of the current codepoint
+    int                   mouse_mode;    // R5: 0 off, else 1000/1002/1003 (DECSET tracking level)
+    int                   mouse_sgr;     // R5: ?1006 SGR mouse encoding
+    int                   mouse_btn;     // R5: button held (for drag-motion reports); -1 = none
+    int                   bracket_paste; // R5: ?2004 bracketed paste
+    int                   cursor_vis;    // R5: ?25 DECTCEM cursor visible (default 1)
+    char                  osc[4096];     // R5: accumulated OSC string (52 clipboard / 8 hyperlink)
+    int                   osc_len;
+    int                   osc_active;    // R5: 1 while capturing an OSC string (vs a DCS/etc. body)
+    uint32_t              cur_link;      // R5: active OSC-8 hyperlink id (0 = none)
+    // R5: clipboard (wl_data_device) — OSC 52 set + Ctrl+Shift+V paste
+    struct wl_data_device_manager *ddm;
+    struct wl_data_device         *ddev;
+    struct wl_data_source         *clip_src;   // our outgoing source (the OSC-52 text)
+    char                  clip_text[8192];      // text we currently offer
+    int                   clip_len;
+    struct wl_data_offer  *sel_offer;          // the current incoming selection (for paste)
+    uint32_t              kbd_serial;          // latest keyboard event serial (for set_selection)
+    // R5: OSC 8 hyperlinks — a small URI ring + a per-cell link id (live grid; links scroll off)
+    char                  links[32][256];
+    int                   link_count;
+    uint32_t              link[ROWS][COLS];    // 0 = no link, else 1-based index into links[]
 
     char                  mirror[256];
     int                   mirror_len;
 
     FT_Library            ft;
     FT_Face               face;
+    FT_Face               face2;        // R5: Nerd-symbols fallback face (PUA/powerline glyphs)
     unsigned char        *font_data;
+    unsigned char        *font2_data;
     size_t                font_size;
     int                   font_ready;
 };
@@ -191,6 +216,8 @@ static int env_int(const char *name, int def, int min, int max) {
 }
 
 static void init_layout(struct app *a) {
+    a->cursor_vis = 1;            // R5: cursor visible until a program hides it (?25l)
+    a->mouse_btn  = -1;           // R5: no pointer button held
     a->scale = env_int("HOS_DISPLAY_SCALE", 1, 1, 2);
     a->font_px = BASE_FONT_PX * a->scale;
     a->cell_w = BASE_CELL_W * a->scale;
@@ -266,6 +293,14 @@ static int init_freetype(struct app *a) {
             printf("G9FONT: loaded %s (%zu bytes), font_px=%d cell=%dx%d window=%dx%d -- G9 FONT\n",
                    path, size, a->font_px, a->cell_w, a->cell_h, a->width, a->height);
             fflush(stdout);
+            // R5: load the Nerd-symbols fallback face (best-effort) for PUA/powerline icon glyphs.
+            unsigned char *sd = NULL; size_t ssz = 0;
+            if (load_file("/usr/share/fonts/noto/SymbolsNerdFont.ttf", &sd, &ssz) == 0 &&
+                FT_New_Memory_Face(a->ft, sd, (FT_Long)ssz, 0, &a->face2) == 0) {
+                FT_Set_Pixel_Sizes(a->face2, 0, (FT_UInt)a->font_px);
+                a->font2_data = sd;
+                printf("G9FONT: loaded Nerd symbols fallback (%zu bytes)\n", ssz); fflush(stdout);
+            } else { free(sd); a->face2 = NULL; }
             return 0;
         }
 
@@ -292,11 +327,15 @@ static uint32_t blend_over(uint32_t dst, uint32_t src, unsigned int alpha) {
     return 0xff000000u | (r << 16) | (g << 8) | b;
 }
 
-static void render_ft_glyph(struct app *a, int x, int y, unsigned char ch, uint32_t fg) {
-    if (!a->font_ready || ch < 0x20 || ch >= 0x7f) return;
-    if (FT_Load_Char(a->face, (FT_ULong)ch, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL) != 0)
+static void render_ft_glyph(struct app *a, int x, int y, uint32_t cp, uint32_t fg) {
+    if (!a->font_ready || cp < 0x20 || cp == 0x7f) return;   // R5: allow >= 0x80 (Unicode/Nerd glyphs)
+    FT_Face f = a->face;
+    if (a->face2 && cp >= 0x80 && FT_Get_Char_Index(a->face, (FT_ULong)cp) == 0
+                 && FT_Get_Char_Index(a->face2, (FT_ULong)cp) != 0)
+        f = a->face2;                                        // R5: Nerd/PUA glyph from the symbols font
+    if (FT_Load_Char(f, (FT_ULong)cp, FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL) != 0)
         return;
-    FT_GlyphSlot g = a->face->glyph;
+    FT_GlyphSlot g = f->glyph;
     FT_Bitmap *bm = &g->bitmap;
     int gx = x + g->bitmap_left;
     int gy = y + a->baseline - g->bitmap_top;
@@ -407,6 +446,7 @@ static void grid_clear(struct app *a) {
             a->grid[r][c] = ' ';
             a->fgc[r][c] = COL_FG;
             a->bgc[r][c] = 0;
+            a->link[r][c] = 0;
         }
     a->cur_r = a->cur_c = 0;
     a->pen_fg = COL_FG; a->pen_bg = 0; a->pen_rev = 0;
@@ -415,7 +455,7 @@ static void grid_clear(struct app *a) {
 static void grid_scroll(struct app *a) {
     // Push the row about to be discarded (row 0) into the scrollback ring.
     int slot = a->sb_head;
-    memcpy(a->sb_ch[slot], a->grid[0], COLS);
+    memcpy(a->sb_ch[slot], a->grid[0], sizeof(a->grid[0]));   // R5: COLS codepoints (uint32_t)
     memcpy(a->sb_fg[slot], a->fgc[0],  COLS * sizeof(uint32_t));
     memcpy(a->sb_bg[slot], a->bgc[0],  COLS * sizeof(uint32_t));
     a->sb_head = (a->sb_head + 1) % SB_CAP;
@@ -423,14 +463,16 @@ static void grid_scroll(struct app *a) {
     // Keep a scrolled-up view stable: the virtual sequence grew one line at the bottom.
     if (a->view_offset > 0 && a->view_offset < a->sb_count) a->view_offset++;
     for (int r = 0; r < ROWS - 1; r++) {
-        memcpy(a->grid[r], a->grid[r + 1], COLS);
+        memcpy(a->grid[r], a->grid[r + 1], sizeof(a->grid[0]));   // R5: codepoints (uint32_t)
         memcpy(a->fgc[r],  a->fgc[r + 1],  COLS * sizeof(uint32_t));
         memcpy(a->bgc[r],  a->bgc[r + 1],  COLS * sizeof(uint32_t));
+        memcpy(a->link[r], a->link[r + 1], sizeof(a->link[0]));   // R5: OSC-8 link ids
     }
     for (int c = 0; c < COLS; c++) {
         a->grid[ROWS - 1][c] = ' ';
         a->fgc[ROWS - 1][c] = COL_FG;
         a->bgc[ROWS - 1][c] = 0;
+        a->link[ROWS - 1][c] = 0;
     }
 }
 
@@ -440,7 +482,7 @@ static void clamp_view(struct app *a) {
 }
 // Resolve screen row sr (0..ROWS-1) to a source: 1 + ring pointers if from scrollback, else 0 +
 // *live_r (a live-grid row).  Virtual sequence: [ring 0..sb_count) then [live grid 0..ROWS).
-static int view_src(struct app *a, int sr, char **ch, uint32_t **fg, uint32_t **bg, int *live_r) {
+static int view_src(struct app *a, int sr, uint32_t **ch, uint32_t **fg, uint32_t **bg, int *live_r) {
     int src_i = (a->sb_count - a->view_offset) + sr;   // view_offset<=sb_count -> src_i>=0
     if (src_i < a->sb_count) {
         int slot = (a->sb_count == SB_CAP) ? (a->sb_head + src_i) % SB_CAP : src_i; // full: head=oldest
@@ -488,7 +530,7 @@ static void grid_newline(struct app *a) {
 // Blank cell (r,c): space with the default colours (used by the erase ops so a
 // cleared cell drops any colour it carried).
 static inline void cell_blank(struct app *a, int r, int c) {
-    a->grid[r][c] = ' '; a->fgc[r][c] = COL_FG; a->bgc[r][c] = 0;
+    a->grid[r][c] = ' '; a->fgc[r][c] = COL_FG; a->bgc[r][c] = 0; a->link[r][c] = 0;
 }
 
 static void vt_exec_csi(struct app *a, char final) {
@@ -503,6 +545,7 @@ static void vt_exec_csi(struct app *a, char final) {
     int p0 = params[0];                           // absent => -1 (matches the original semantics)
     int p1 = (np >= 2) ? params[1] : -1;
     int n = (p0 > 0) ? p0 : 1;
+    int priv = (a->csi_len > 0 && a->csi[0] == '?');   // R5: DECSET/DECRST private modes
     switch (final) {
         case 'C': a->cur_c += n; if (a->cur_c >= COLS) a->cur_c = COLS - 1; break;        // cursor right
         case 'D': a->cur_c -= n; if (a->cur_c < 0) a->cur_c = 0; break;                   // cursor left
@@ -567,18 +610,127 @@ static void vt_exec_csi(struct app *a, char final) {
             }
             break;
         }
-        default: break;                                                                  // l/h (modes), … ignored
+        case 'h': case 'l': {                                                            // R5: DECSET/DECRST
+            int set = (final == 'h');
+            if (priv) for (int i = 0; i < np; i++) switch (params[i]) {
+                case 25:   a->cursor_vis = set; break;                                    // cursor visibility
+                case 1000: case 1002: case 1003:                                         // mouse tracking level
+                    a->mouse_mode = set ? params[i] : 0; break;
+                case 1006: a->mouse_sgr = set; break;                                     // SGR mouse encoding
+                case 2004: a->bracket_paste = set; break;                                 // bracketed paste
+                default: break;
+            }
+            break;
+        }
+        default: break;                                                                  // other modes ignored
     }
 }
 
 // Feed one byte of shell output through a tiny VT interpreter.
+// R5: write a decoded codepoint at the cursor, stamp the SGR pen (reverse swaps fg/bg), advance.
+static void put_cp(struct app *a, uint32_t cp) {
+    a->grid[a->cur_r][a->cur_c] = cp;
+    a->fgc[a->cur_r][a->cur_c] = a->pen_rev ? (a->pen_bg ? a->pen_bg : COL_BG) : a->pen_fg;
+    a->bgc[a->cur_r][a->cur_c] = a->pen_rev ? a->pen_fg : a->pen_bg;
+    a->link[a->cur_r][a->cur_c] = a->cur_link;   // R5: OSC-8 hyperlink id for this cell
+    if (++a->cur_c >= COLS) grid_newline(a);
+}
+
+// ── R5: clipboard (OSC 52) over wl_data_device ───────────────────────────────
+static int b64_val(int c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+}
+static int b64_decode(const char *in, int inlen, char *out, int outcap) {
+    int acc = 0, bits = 0, n = 0;
+    for (int i = 0; i < inlen; i++) {
+        int v = b64_val((unsigned char)in[i]);
+        if (v < 0) continue;                                   // skip '=' / whitespace
+        acc = (acc << 6) | v; bits += 6;
+        if (bits >= 8) { bits -= 8; if (n < outcap) out[n++] = (char)((acc >> bits) & 0xff); }
+    }
+    return n;
+}
+static void clip_src_send(void *data, struct wl_data_source *src, const char *mime, int32_t fd) {
+    (void)src; (void)mime; struct app *a = data;
+    if (a->clip_len > 0) { ssize_t w = write(fd, a->clip_text, (size_t)a->clip_len); (void)w; }
+    close(fd);
+}
+static void clip_src_cancelled(void *data, struct wl_data_source *src) {
+    struct app *a = data;
+    if (a->clip_src == src) a->clip_src = NULL;
+    wl_data_source_destroy(src);
+}
+static void clip_src_target(void *d, struct wl_data_source *s, const char *m) { (void)d;(void)s;(void)m; }
+static void clip_src_dnd_drop(void *d, struct wl_data_source *s) { (void)d;(void)s; }
+static void clip_src_dnd_fin(void *d, struct wl_data_source *s)  { (void)d;(void)s; }
+static void clip_src_action(void *d, struct wl_data_source *s, uint32_t a) { (void)d;(void)s;(void)a; }
+static const struct wl_data_source_listener clip_src_listener = {
+    .target = clip_src_target, .send = clip_src_send, .cancelled = clip_src_cancelled,
+    .dnd_drop_performed = clip_src_dnd_drop, .dnd_finished = clip_src_dnd_fin, .action = clip_src_action,
+};
+// Offer a->clip_text to the system clipboard (OSC 52 "set").
+static void clipboard_set(struct app *a) {
+    if (!a->ddm || !a->ddev) return;
+    if (a->clip_src) { wl_data_source_destroy(a->clip_src); a->clip_src = NULL; }
+    a->clip_src = wl_data_device_manager_create_data_source(a->ddm);
+    wl_data_source_add_listener(a->clip_src, &clip_src_listener, a);
+    wl_data_source_offer(a->clip_src, "text/plain;charset=utf-8");
+    wl_data_source_offer(a->clip_src, "text/plain");
+    wl_data_source_offer(a->clip_src, "UTF8_STRING");
+    wl_data_device_set_selection(a->ddev, a->clip_src, a->kbd_serial);
+    printf("G4TERM: OSC52 set clipboard (%d bytes)\n", a->clip_len); fflush(stdout);
+}
+static void osc8_set(struct app *a, const char *body);   // R5-hyperlinks (defined below)
+// Parse a completed OSC string (a->osc, a->osc_len).
+static void osc_dispatch(struct app *a) {
+    if (!a->osc_active) return;
+    a->osc_active = 0;
+    a->osc[a->osc_len] = 0;
+    char *s = a->osc;
+    if (strncmp(s, "52;", 3) == 0) {                            // OSC 52 ; Pc ; <base64|?>
+        char *semi = strchr(s + 3, ';');
+        if (semi && semi[1] && semi[1] != '?') {               // set (ignore the '?' query form)
+            a->clip_len = b64_decode(semi + 1, (int)strlen(semi + 1),
+                                     a->clip_text, (int)sizeof(a->clip_text));
+            clipboard_set(a);
+        }
+    } else if (strncmp(s, "8;", 2) == 0) {                      // OSC 8 — hyperlink
+        osc8_set(a, s + 2);
+    }
+    // OSC 0/1/2 (window title) etc. ignored — the titlebar already shows the domain.
+}
+
+// R5: OSC 8 — intern a URI (dedup) -> a 1-based link id (0 = none / ring full).
+static uint32_t osc8_intern(struct app *a, const char *uri) {
+    for (int i = 0; i < a->link_count; i++)
+        if (strcmp(a->links[i], uri) == 0) return (uint32_t)(i + 1);
+    int cap = (int)(sizeof(a->links) / sizeof(a->links[0]));
+    if (a->link_count < cap) {
+        snprintf(a->links[a->link_count], sizeof(a->links[0]), "%s", uri);
+        return (uint32_t)(++a->link_count);
+    }
+    return 0;
+}
+static void osc8_set(struct app *a, const char *body) {        // body = "params;URI" (or "params;" to end)
+    const char *uri = strchr(body, ';');
+    if (!uri) { a->cur_link = 0; return; }
+    uri++;
+    a->cur_link = (*uri) ? osc8_intern(a, uri) : 0;
+}
+
 static void vt_byte(struct app *a, unsigned char b) {
     if (a->esc == 1) {
         if (b == '[') { a->esc = 2; a->csi_len = 0; return; }                  // CSI
         // OSC (set title etc., ESC ]) and the DCS/SOS/PM/APC string families are terminated by
         // BEL or ST (ESC \).  Consume them silently — programs like Oh My Zsh / vim emit OSC
         // title sequences constantly, and without this the payload leaks onto the screen.
-        if (b == ']' || b == 'P' || b == 'X' || b == '^' || b == '_') { a->esc = 3; return; }
+        if (b == ']') { a->esc = 3; a->osc_len = 0; a->osc_active = 1; return; }   // OSC -> capture (R5)
+        if (b == 'P' || b == 'X' || b == '^' || b == '_') { a->esc = 3; a->osc_active = 0; return; } // DCS/etc -> swallow
         a->esc = 0; return;                                                    // other 2-byte escapes: ignore
     }
     if (a->esc == 2) {
@@ -587,11 +739,16 @@ static void vt_byte(struct app *a, unsigned char b) {
         return;
     }
     if (a->esc == 3) {                                                         // inside OSC/string
-        if (b == 0x07) { a->esc = 0; return; }                                 // BEL terminates
+        if (b == 0x07) { osc_dispatch(a); a->esc = 0; return; }                // BEL terminates (R5: dispatch OSC)
         if (b == 0x1b) { a->esc = 4; return; }                                 // maybe ST (ESC \)
-        return;                                                                // discard the body
+        if (a->osc_active && a->osc_len < (int)sizeof(a->osc) - 1)             // R5: capture the OSC body
+            a->osc[a->osc_len++] = (char)b;
+        return;
     }
-    if (a->esc == 4) { a->esc = 0; return; }                                   // ST terminator — done
+    if (a->esc == 4) {                                                         // ST terminator
+        if (b == '\\') osc_dispatch(a);                                        // R5: ESC \ ends the OSC
+        a->esc = 0; return;
+    }
     switch (b) {
         case 0x1b: a->esc = 1; return;
         case '\r': a->cur_c = 0; return;
@@ -601,12 +758,21 @@ static void vt_byte(struct app *a, unsigned char b) {
         case 0x07: return; // bell
         default: break;
     }
-    if (b < 0x20 || b >= 0x7f) return;
-    a->grid[a->cur_r][a->cur_c] = (char)b;
-    // Z7.1: stamp the current colour pen onto the cell; reverse video swaps fg/bg.
-    a->fgc[a->cur_r][a->cur_c] = a->pen_rev ? (a->pen_bg ? a->pen_bg : COL_BG) : a->pen_fg;
-    a->bgc[a->cur_r][a->cur_c] = a->pen_rev ? a->pen_fg : a->pen_bg;
-    if (++a->cur_c >= COLS) grid_newline(a);
+    // R5: UTF-8 decode -> Unicode codepoint -> cell (replaces the old ASCII-only path).
+    if (a->utf_left > 0) {
+        if ((b & 0xC0) == 0x80) {                        // continuation byte
+            a->utf_cp = (a->utf_cp << 6) | (b & 0x3Fu);
+            if (--a->utf_left == 0) put_cp(a, a->utf_cp);
+            return;
+        }
+        a->utf_left = 0;                                 // malformed -> drop, reprocess b below
+    }
+    if (b < 0x20 || b == 0x7f) return;                   // control / DEL
+    if (b < 0x80) { put_cp(a, b); return; }              // ASCII
+    if      ((b & 0xE0) == 0xC0) { a->utf_cp = b & 0x1Fu; a->utf_left = 1; }   // 2-byte lead
+    else if ((b & 0xF0) == 0xE0) { a->utf_cp = b & 0x0Fu; a->utf_left = 2; }   // 3-byte
+    else if ((b & 0xF8) == 0xF0) { a->utf_cp = b & 0x07u; a->utf_left = 3; }   // 4-byte
+    // else: invalid lead byte -> drop
 }
 
 static void render(struct app *a) {
@@ -615,9 +781,9 @@ static void render(struct app *a) {
     gf_fill(a->pixels, a->width, a->width, a->height, 0, 0, a->width, a->height, COL_BG);
     const int content_w = a->width - SCROLLBAR_W * a->scale;  // glyphs stop before the scrollbar strip
     for (int r = 0; r < ROWS; r++) {
-        char *rch; uint32_t *rfg, *rbg; int live_r;          // scrollback-aware row source
+        uint32_t *rch; uint32_t *rfg, *rbg; int live_r;      // scrollback-aware row source
         int from_ring = view_src(a, r, &rch, &rfg, &rbg, &live_r);
-        char     *gch = from_ring ? rch : a->grid[live_r];
+        uint32_t *gch = from_ring ? rch : a->grid[live_r];
         uint32_t *gfg = from_ring ? rfg : a->fgc[live_r];
         uint32_t *gbg = from_ring ? rbg : a->bgc[live_r];
         for (int c = 0; c < COLS; c++) {
@@ -627,31 +793,35 @@ static void render(struct app *a) {
             uint32_t bg = gbg[c];
             if (bg)                                          // Z7.1: per-cell background block
                 gf_fill(a->pixels, a->width, a->width, a->height, x, y, a->cell_w, a->cell_h, bg);
-            char ch = gch[c];
-            if (ch != ' ') {
+            uint32_t ch = gch[c];
+            if (ch != ' ' && ch != 0) {
                 uint32_t fg = gfg[c];                        // Z7.1: per-cell foreground
                 if (a->font_ready)
-                    render_ft_glyph(a, x, y, (unsigned char)ch, fg);
-                else
+                    render_ft_glyph(a, x, y, ch, fg);
+                else if (ch < 0x7f)                          // 8x8 fallback is ASCII-only
                     gf_glyph(a->pixels, a->width, a->width, a->height,
-                             x, y + (a->cell_h - 8) / 2, ch, fg, -1);
+                             x, y + (a->cell_h - 8) / 2, (char)ch, fg, -1);
             }
+            if (!from_ring && a->link[live_r][c])             // R5: underline OSC-8 hyperlinks
+                gf_fill(a->pixels, a->width, a->width, a->height,
+                        x, y + a->cell_h - 2 * a->scale, a->cell_w, a->scale, gfg[c]);
         }
     }
-    // cursor block — only when following the live bottom (hidden while viewing scrollback)
-    if (a->view_offset == 0) {
+    // cursor block — only when following the live bottom (hidden while viewing scrollback), and not
+    // hidden by the program (R5: ?25l DECTCEM).
+    if (a->view_offset == 0 && a->cursor_vis) {
         gf_fill(a->pixels, a->width, a->width, a->height,
                 a->cur_c * a->cell_w, top + a->cur_r * a->cell_h,
                 a->cell_w, a->cell_h, COL_CURSOR);
-        char cc = a->grid[a->cur_r][a->cur_c];
-        if (cc != ' ') {
+        uint32_t cc = a->grid[a->cur_r][a->cur_c];
+        if (cc != ' ' && cc != 0) {
             int x = a->cur_c * a->cell_w;
             int y = top + a->cur_r * a->cell_h;
             if (a->font_ready)
-                render_ft_glyph(a, x, y, (unsigned char)cc, COL_BG);
-            else
+                render_ft_glyph(a, x, y, cc, COL_BG);
+            else if (cc < 0x7f)
                 gf_glyph(a->pixels, a->width, a->width, a->height,
-                         x, y + (a->cell_h - 8) / 2, cc, COL_BG, -1);
+                         x, y + (a->cell_h - 8) / 2, (char)cc, COL_BG, -1);
         }
     }
     draw_scrollbar(a);   // scrollback bar (drawn before the domain border so the border stays intact)
@@ -982,6 +1152,7 @@ static void key_to_pty(struct app *a, uint32_t code) {
     printf("G4KEY: code=%u -> 0x%02x\n", code, (unsigned char)c); fflush(stdout);
 }
 
+static void clipboard_paste(struct app *a);   // R5: defined with the data-device handlers below
 static void kb_keymap(void *d, struct wl_keyboard *k, uint32_t fmt, int32_t fd, uint32_t sz)
 { (void)d; (void)k; (void)fmt; (void)sz; if (fd >= 0) close(fd); }
 static void kb_enter(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surface *sf, struct wl_array *ks)
@@ -996,12 +1167,15 @@ static void kb_leave(void *d, struct wl_keyboard *k, uint32_t s, struct wl_surfa
 static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t time,
                    uint32_t code, uint32_t state)
 {
-    (void)k; (void)serial; (void)time;
+    (void)k; (void)time;
     struct app *a = data;
+    a->kbd_serial = serial;                                   // R5: for set_selection
     int down = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
     if (code == 42 || code == 54) { a->shift = down; return; } // L/R shift
     if (code == 29 || code == 97) { a->ctrl = down; return; }  // L/R ctrl
     if (!down) return;
+    // R5: Ctrl+Shift+V or Shift+Insert -> paste the clipboard (bracketed if the program asked).
+    if ((a->ctrl && a->shift && code == 47) || (a->shift && code == 110)) { clipboard_paste(a); return; }
     // Shift+PageUp / Shift+PageDown = local scrollback scroll, NOT sent to the PTY.
     if (a->shift && code == 104) { a->view_offset += ROWS; clamp_view(a); a->dirty = 1; return; }
     if (a->shift && code == 109) { a->view_offset -= ROWS; clamp_view(a); a->dirty = 1; return; }
@@ -1020,6 +1194,34 @@ static const struct wl_keyboard_listener keyboard_listener = {
 };
 
 // ── pointer (for the titlebar: drag-to-move + the min/max/close buttons) ──────
+// R5: is (px,py) over the terminal grid (below the titlebar, before the scrollbar strip, inside the border)?
+static int in_grid(struct app *a, double px, double py) {
+    int border = g_has_domain ? 4 * a->scale : 0;
+    return py >= a->deco_h && py < a->height - border &&
+           px >= border && px < a->width - SCROLLBAR_W * a->scale;
+}
+// R5: report a mouse event to the program when it has enabled mouse tracking.  cb = button code
+// (0/1/2 = left/middle/right, 64/65 = wheel up/down) optionally | 0x20 for motion; release: SGR uses
+// 'm', legacy reports button 3.  Encodes SGR (?1006) or legacy X10.
+static void mouse_report(struct app *a, int cb, double px, double py, int release) {
+    if (!a->mouse_mode) return;
+    int col = (int)(px / a->cell_w) + 1;
+    int row = (int)((py - a->deco_h) / a->cell_h) + 1;
+    if (col < 1) col = 1;
+    if (row < 1) row = 1;
+    unsigned char seq[40]; int len;
+    if (a->mouse_sgr)
+        len = snprintf((char *)seq, sizeof seq, "\x1b[<%d;%d;%d%c", cb, col, row, release ? 'm' : 'M');
+    else {
+        int b = (release ? 3 : cb) + 32;
+        seq[0] = 0x1b; seq[1] = '['; seq[2] = 'M';
+        seq[3] = (unsigned char)(b > 255 ? 255 : b);
+        seq[4] = (unsigned char)(col + 32 > 255 ? 255 : col + 32);
+        seq[5] = (unsigned char)(row + 32 > 255 ? 255 : row + 32);
+        len = 6;
+    }
+    if (a->ptm >= 0 && len > 0) write(a->ptm, seq, (size_t)len);
+}
 static void ptr_enter(void *d, struct wl_pointer *p, uint32_t serial,
                       struct wl_surface *s, wl_fixed_t sx, wl_fixed_t sy) {
     (void)p; (void)s; struct app *a = d;
@@ -1030,6 +1232,11 @@ static void ptr_leave(void *d, struct wl_pointer *p, uint32_t serial, struct wl_
 static void ptr_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t sx, wl_fixed_t sy) {
     (void)p; (void)t; struct app *a = d;
     a->px = wl_fixed_to_double(sx); a->py = wl_fixed_to_double(sy);
+    // R5: drag-motion reporting (?1002/?1003) while a button is held over the grid.
+    if (a->mouse_mode >= 1002 && a->mouse_btn >= 0 && in_grid(a, a->px, a->py)) {
+        mouse_report(a, a->mouse_btn | 0x20, a->px, a->py, 0);
+        return;
+    }
     if (a->sb_dragging) {
         int tx, ty, tw, th, thy, thh;
         if (!scrollbar_geom(a, &tx, &ty, &tw, &th, &thy, &thh)) return;
@@ -1044,8 +1251,17 @@ static void ptr_motion(void *d, struct wl_pointer *p, uint32_t t, wl_fixed_t sx,
 static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t t,
                        uint32_t button, uint32_t state) {
     (void)p; (void)t; struct app *a = d;
-    if (button != BTN_LEFT_CODE) return;
-    if (state == WL_POINTER_BUTTON_STATE_RELEASED) { a->sb_dragging = 0; return; }
+    int cb = (button == BTN_LEFT_CODE) ? 0 : (button == 0x112) ? 1 : (button == 0x111) ? 2 : -1;
+    if (cb < 0) return;
+    int press = (state == WL_POINTER_BUTTON_STATE_PRESSED);
+    // R5: mouse reporting — over the grid, hand the event to the program (titlebar/scrollbar stay local).
+    if (a->mouse_mode && in_grid(a, a->px, a->py)) {
+        mouse_report(a, cb, a->px, a->py, !press);
+        a->mouse_btn = press ? cb : -1;
+        return;
+    }
+    if (cb != 0) return;                         // local handling (titlebar/scrollbar) is left-button only
+    if (!press) { a->sb_dragging = 0; return; }
     a->ptr_serial = serial;
     // Scrollbar first (it lives below the titlebar at the right edge — disjoint from deco_hit).
     int tx, ty, tw, th, thy, thh;
@@ -1059,6 +1275,20 @@ static void ptr_button(void *d, struct wl_pointer *p, uint32_t serial, uint32_t 
             a->view_offset -= ROWS; clamp_view(a); a->dirty = 1;
         }
         return;
+    }
+    // R5: OSC-8 hyperlink click -> copy the URI to the clipboard (there is no browser to "open" it).
+    if (a->view_offset == 0 && in_grid(a, a->px, a->py)) {
+        int col = (int)(a->px / a->cell_w), row = (int)((a->py - a->deco_h) / a->cell_h);
+        if (row >= 0 && row < ROWS && col >= 0 && col < COLS && a->link[row][col]) {
+            uint32_t id = a->link[row][col];
+            if (id >= 1 && id <= (uint32_t)a->link_count) {
+                snprintf(a->clip_text, sizeof a->clip_text, "%s", a->links[id - 1]);
+                a->clip_len = (int)strlen(a->clip_text);
+                clipboard_set(a);
+                printf("G4TERM: hyperlink click -> copied %s\n", a->links[id - 1]); fflush(stdout);
+            }
+            return;
+        }
     }
     switch (deco_hit(a, a->px, a->py)) {
         case 1: xdg_toplevel_move(a->toplevel, a->seat, serial); break;   // drag the titlebar
@@ -1075,6 +1305,10 @@ static void ptr_axis(void *d, struct wl_pointer *p, uint32_t t, uint32_t axis, w
     (void)p; (void)t; struct app *a = d;
     if (axis != 0) return;                       // 0 = vertical scroll
     double dv = wl_fixed_to_double(v);           // >0 = scroll down (toward live)
+    if (a->mouse_mode && in_grid(a, a->px, a->py)) {   // R5: wheel -> program (64 up / 65 down)
+        mouse_report(a, dv > 0 ? 65 : 64, a->px, a->py, 0);
+        return;
+    }
     a->view_offset += (dv > 0) ? -3 : 3;         // 3 lines per notch (wheel is a bonus; QMP can't send it)
     clamp_view(a); a->dirty = 1;
 }
@@ -1090,6 +1324,56 @@ static const struct wl_pointer_listener pointer_listener = {
     .axis_stop = ptr_axis_stop, .axis_discrete = ptr_axis_discrete,
 };
 
+// ── R5: clipboard data-device (paste side) ───────────────────────────────────
+static void doffer_offer(void *d, struct wl_data_offer *o, const char *m) { (void)d;(void)o;(void)m; }
+static void doffer_src_actions(void *d, struct wl_data_offer *o, uint32_t a) { (void)d;(void)o;(void)a; }
+static void doffer_action(void *d, struct wl_data_offer *o, uint32_t a) { (void)d;(void)o;(void)a; }
+static const struct wl_data_offer_listener doffer_listener = {
+    .offer = doffer_offer, .source_actions = doffer_src_actions, .action = doffer_action,
+};
+static void ddev_data_offer(void *d, struct wl_data_device *dd, struct wl_data_offer *o) {
+    (void)d; (void)dd; wl_data_offer_add_listener(o, &doffer_listener, NULL);
+}
+static void ddev_selection(void *d, struct wl_data_device *dd, struct wl_data_offer *o) {
+    (void)dd; ((struct app *)d)->sel_offer = o;          // current clipboard offer (NULL = cleared)
+}
+static void ddev_enter(void *d, struct wl_data_device *dd, uint32_t s, struct wl_surface *sf,
+                       wl_fixed_t x, wl_fixed_t y, struct wl_data_offer *o)
+{ (void)d;(void)dd;(void)s;(void)sf;(void)x;(void)y;(void)o; }
+static void ddev_leave(void *d, struct wl_data_device *dd) { (void)d;(void)dd; }
+static void ddev_motion(void *d, struct wl_data_device *dd, uint32_t t, wl_fixed_t x, wl_fixed_t y)
+{ (void)d;(void)dd;(void)t;(void)x;(void)y; }
+static void ddev_drop(void *d, struct wl_data_device *dd) { (void)d;(void)dd; }
+static const struct wl_data_device_listener ddev_listener = {
+    .data_offer = ddev_data_offer, .enter = ddev_enter, .leave = ddev_leave,
+    .motion = ddev_motion, .drop = ddev_drop, .selection = ddev_selection,
+};
+static void clipboard_init(struct app *a) {              // bind the data-device once ddm + seat both exist
+    if (a->ddev || !a->ddm || !a->seat) return;
+    a->ddev = wl_data_device_manager_get_data_device(a->ddm, a->seat);
+    wl_data_device_add_listener(a->ddev, &ddev_listener, a);
+}
+// R5: paste the current clipboard selection into the PTY (bracketed if the program asked, ?2004).
+static void clipboard_paste(struct app *a) {
+    if (!a->sel_offer || a->ptm < 0) return;
+    int fds[2];
+    if (pipe(fds) != 0) return;
+    wl_data_offer_receive(a->sel_offer, "text/plain;charset=utf-8", fds[1]);
+    close(fds[1]);
+    wl_display_flush(a->display);
+    fcntl(fds[0], F_SETFL, O_NONBLOCK);
+    if (a->bracket_paste) write(a->ptm, "\x1b[200~", 6);
+    char buf[4096];
+    for (int tries = 0; tries < 200; tries++) {          // bounded — never hang the event loop
+        ssize_t r = read(fds[0], buf, sizeof buf);
+        if (r > 0)       write(a->ptm, buf, (size_t)r);
+        else if (r == 0) break;                          // EOF — done
+        else             wl_display_roundtrip(a->display); // EAGAIN — let the source write, then retry
+    }
+    if (a->bracket_paste) write(a->ptm, "\x1b[201~", 6);
+    close(fds[0]);
+}
+
 static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
     struct app *a = data;
     if ((caps & WL_SEAT_CAPABILITY_POINTER) && !a->pointer) {
@@ -1102,6 +1386,7 @@ static void seat_caps(void *data, struct wl_seat *seat, uint32_t caps) {
         wl_keyboard_add_listener(a->keyboard, &keyboard_listener, a);
         log_line("G4TERM: wl_seat has keyboard; subscribed");
     }
+    clipboard_init(a);   // R5: bind the data-device (clipboard) once the seat is available
 }
 static void seat_name(void *d, struct wl_seat *s, const char *n) { (void)d; (void)s; (void)n; }
 static const struct wl_seat_listener seat_listener = { .capabilities = seat_caps, .name = seat_name };
@@ -1147,6 +1432,9 @@ static void registry_global(void *data, struct wl_registry *reg, uint32_t name,
     } else if (strcmp(iface, wl_seat_interface.name) == 0) {
         a->seat = wl_registry_bind(reg, name, &wl_seat_interface, version < 5 ? version : 5);
         wl_seat_add_listener(a->seat, &seat_listener, a);
+    } else if (strcmp(iface, wl_data_device_manager_interface.name) == 0) {   // R5: clipboard
+        a->ddm = wl_registry_bind(reg, name, &wl_data_device_manager_interface, version < 3 ? version : 3);
+        clipboard_init(a);
     }
 }
 static void registry_global_remove(void *d, struct wl_registry *r, uint32_t n) { (void)d; (void)r; (void)n; }

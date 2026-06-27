@@ -383,7 +383,7 @@ static void draw_manager(struct app *app)
         // a little colored marker for Secure-IPC-required / shell-unavailable states
         if (i == 4 && c->secure_ipc) { cairo_set_source_rgb(cr, 0.30, 0.78, 0.45); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
         if (i == 5 && c->shell != SH_LINUX) { cairo_set_source_rgb(cr, 0.92, 0.55, 0.20); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
-        if (i == 6 && c->term  != TERM_WL)  { cairo_set_source_rgb(cr, 0.40, 0.62, 0.95); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
+        if (i == 6 && c->term  != TERM_GL)  { cairo_set_source_rgb(cr, 0.40, 0.62, 0.95); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
         // row separator
         cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);
         cairo_rectangle(cr, LABEL_X, ry + CTL_H - 1, app->width - LABEL_X - PAD, 1); cairo_fill(cr);
@@ -445,7 +445,7 @@ static void draw_manager(struct app *app)
         int ry = RY0 + i * CTL_H;
         draw_text(app, CTL_LABEL[i], LABEL_X, ry + (CTL_H - 14) / 2, 170, 14, 0xffb7c1d0u);
         char val[48]; ctl_value(cc, i, val, sizeof(val));
-        int vx = PILL_X + ((i == 4 && cc->secure_ipc) || (i == 5 && cc->shell != SH_LINUX) || (i == 6 && cc->term != TERM_WL) ? 24 : 14);
+        int vx = PILL_X + ((i == 4 && cc->secure_ipc) || (i == 5 && cc->shell != SH_LINUX) || (i == 6 && cc->term != TERM_GL) ? 24 : 14);
         draw_text(app, val, vx, ry + (CTL_H - 14) / 2, PILL_W - 28, 14, 0xfff2f5fau);
     }
 
@@ -763,7 +763,10 @@ int main(void)
     memset(&app, 0, sizeof(app));
     app.running = 1;
     app.sel = 0;
-    for (int i = 0; i < N_DOMAINS; i++) app.cfg[i] = DEFAULTS[i];
+    // R4: the GLES2 terminal (gl-term) is the default terminal — the "ratty" realization of R3
+    // (the Bevy-based ratty itself can't run on the OS).  The per-domain dropdown still offers
+    // wl-term / hos-term.
+    for (int i = 0; i < N_DOMAINS; i++) { app.cfg[i] = DEFAULTS[i]; app.cfg[i].term = TERM_GL; }
 
     signal(SIGCHLD, SIG_IGN);   // auto-reap launched apps (no zombies)
 

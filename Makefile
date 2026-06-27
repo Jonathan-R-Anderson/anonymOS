@@ -266,6 +266,10 @@ build-font-assets:
 	cp "$(FONT_SRC_DIR)/NotoSans-Bold.ttf" $(ASSET_SRC_DIR)/fonts/noto/
 	cp "$(FONT_SRC_DIR)/NotoSansMono-Regular.ttf" $(ASSET_SRC_DIR)/fonts/noto/
 	cp "$(FONT_SRC_DIR)/NotoSansMono-Bold.ttf" $(ASSET_SRC_DIR)/fonts/noto/
+	@if [ -f deps/fonts/SymbolsNerdFontMono-Regular.ttf ]; then \
+		cp deps/fonts/SymbolsNerdFontMono-Regular.ttf $(ASSET_SRC_DIR)/fonts/noto/SymbolsNerdFont.ttf; \
+		echo "R5: staged SymbolsNerdFont (Nerd/powerline glyph fallback for gl-term)"; \
+	fi
 	@if [ -f "$(FONT_LICENSE_FILE)" ]; then \
 		cp "$(FONT_LICENSE_FILE)" $(ASSET_SRC_DIR)/fonts/noto/LICENSE.OFL-1.1.txt; \
 	else \

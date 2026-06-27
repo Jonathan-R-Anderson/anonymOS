@@ -1031,12 +1031,34 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
     and the single shared unlocked `gpuCtrl` control queue must be **serialised** before a client renders
     on virgl concurrently with Weston (a non-cli/sti lock). The softpipe GLES2 client still composites
     fine meanwhile, so the **terminal can be built now** on that path.
-- **R4 — make ratty the terminal · E: 2 · deps: R3.** ratty launches `zsh` on a PTY and
-  nothing else (Z3); the desktop's terminal keybinding + the Domain Manager "Launch Terminal"
-  target ratty. Feature parity with `wl-term` (decorations, domain border, scrollback) plus
-  ratty's extras (tabs, true-color, ligatures, GPU scrolling, Kitty-graphics/Sixel later).
-- **R5 — advanced terminal features · E: 3.** 24-bit color, Nerd-Font glyphs (shared with
-  Z9b), bracketed paste, OSC52 clipboard, hyperlinks, mouse, Kitty graphics + Sixel (future).
+- **R4 — make ratty the terminal · ✅ DONE · E: 2 · deps: R3.** `gl-term` (the GLES2 realization
+  of "ratty"; the actual Bevy-based ratty can't run on the OS) is now the **default terminal**: the
+  Domain Manager seeds every domain's terminal to `TERM_GL` (`gl-term`), so "Launch Terminal" and the
+  desktop keybinding spawn it. It hosts `zsh` on a PTY and nothing else (Z3) with full `wl-term` parity
+  (CSD decorations, the unspoofable domain border, scrollback); the dropdown still offers wl-term/hos-term.
+  **Verified live (`roadmap/assets/r5-gl-term.png`):** SUPER+L → `G4TERM: spawned shell pid=13 on
+  /dev/pts/0`, `GL renderer=virgl (NVIDIA GTX 1080)`, the colored zsh prompt renders.
+  ★ A blocker had to be fixed first — *the ratty shell wouldn't launch* because the desktop's GPU=1 boot
+  **aborted QEMU** (`KVM_SET_USER_MEMORY_REGION failed`): the L6 LKL auto-launch grabbed EpinOS's own
+  **virtio-gpu** (which is PCI class 0x0380 under GPU=1) and corrupted its host-visible blob region.
+  Fixed: the LKL launch is now gated on a real LKL device being present, and `findDeviceByClass` skips
+  virtio (vendor 0x1AF4) so the LKL can never be handed EpinOS's GPU.
+- **R5 — advanced terminal features · ✅ DONE · E: 3.** All in `gl-term` (`src/util/gl-term.c`), verified
+  it launches + hosts zsh with no regression from the (invasive) grid change:
+  - **24-bit color** — already (Z7.1 SGR `38;2;R;G;B` truecolor).
+  - **UTF-8 / Unicode** — the cell grid widened `char`→`uint32_t` codepoints; a UTF-8 decoder in the VT
+    input; FreeType renders any codepoint (box-drawing, powerline-via-Unicode, etc.).
+  - **Nerd-Font glyphs** — vendored `NerdFontsSymbolsOnly` (`deps/fonts/SymbolsNerdFontMono…`, staged in
+    `fonts.blob`); loaded as a **fallback FT_Face** that `render_ft_glyph` uses for any PUA/icon glyph the
+    primary font lacks (verified: `G9FONT: loaded Nerd symbols fallback`).
+  - **Mouse reporting** — DECSET `?1000/?1002/?1003` (+`?1006` SGR, `?25`, `?2004`); `wl_pointer`
+    button/drag/wheel encoded to the PTY (SGR or legacy X10), grid-only (titlebar/scrollbar stay local).
+  - **Bracketed paste + OSC 52 clipboard** — `wl_data_device`: OSC 52 sets the system clipboard (base64
+    → `wl_data_source`); Ctrl+Shift+V / Shift+Insert paste (`wl_data_offer` receive), wrapped in
+    `ESC[200~/201~` when `?2004` is set.
+  - **OSC 8 hyperlinks** — parsed, a per-cell link id + a URI ring, underline-rendered, click-to-copy
+    (no browser to "open" them, so a click copies the URI to the clipboard).
+  - *Kitty graphics + Sixel remain "future" per the roadmap.*
 
 **Ordering / honesty:** R0→R1 are achievable on today's software stack and give a working
 Rust terminal early; R2 (GPU) is the gating blocker and shares the desktop-GPU effort, so

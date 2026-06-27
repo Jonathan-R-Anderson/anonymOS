@@ -1036,13 +1036,21 @@ PTY + rendering" split this roadmap mandates (Z3). It supersedes/augments the cu
   Domain Manager seeds every domain's terminal to `TERM_GL` (`gl-term`), so "Launch Terminal" and the
   desktop keybinding spawn it. It hosts `zsh` on a PTY and nothing else (Z3) with full `wl-term` parity
   (CSD decorations, the unspoofable domain border, scrollback); the dropdown still offers wl-term/hos-term.
-  **Verified live (`roadmap/assets/r5-gl-term.png`):** SUPER+L → `G4TERM: spawned shell pid=13 on
-  /dev/pts/0`, `GL renderer=virgl (NVIDIA GTX 1080)`, the colored zsh prompt renders.
-  ★ A blocker had to be fixed first — *the ratty shell wouldn't launch* because the desktop's GPU=1 boot
-  **aborted QEMU** (`KVM_SET_USER_MEMORY_REGION failed`): the L6 LKL auto-launch grabbed EpinOS's own
-  **virtio-gpu** (which is PCI class 0x0380 under GPU=1) and corrupted its host-visible blob region.
-  Fixed: the LKL launch is now gated on a real LKL device being present, and `findDeviceByClass` skips
-  virtio (vendor 0x1AF4) so the LKL can never be handed EpinOS's GPU.
+  **Verified live (`roadmap/assets/r5-gl-term.png` GPU, `…-software.png` software):** SUPER+L →
+  `G4TERM: spawned shell pid=13 on /dev/pts/0`, the colored zsh prompt renders.
+  ★ **Software fallback (so it launches on EVERY desktop, not just the GPU one).** gl-term is a GLES2/EGL
+  client, so on the **software (Pixman/gtk) desktop** — the default interactive boot — it couldn't create
+  a GL surface and exited → "Launch Terminal → nothing". Fixed by giving it a **wl_shm software present**
+  (double-buffered, the wl-term pattern): it already renders into a CPU buffer, so when there's no GL it
+  presents that via wl_shm instead of exiting. On GL it shows `GL renderer=virgl (NVIDIA GTX 1080)`; with
+  no GL it logs `software (wl_shm) present mode` and still hosts zsh (both verified). `HOS_TERM_SW=1` forces
+  software. Also: `qemu-run.sh GPU=1` is now an **interactive** gtk/gl=on window (not headless); `HEADLESS=1`
+  keeps the windowless egl-headless mode for automated runs.
+  ★ A second blocker — *the GPU desktop itself wouldn't come up* — was fixed too: the GPU=1 boot **aborted
+  QEMU** (`KVM_SET_USER_MEMORY_REGION failed`) because the L6 LKL auto-launch grabbed EpinOS's own
+  **virtio-gpu** (PCI class 0x0380 under GPU=1) and corrupted its host-visible blob region. The LKL launch
+  is now gated on a real LKL device, and `findDeviceByClass` skips virtio (0x1AF4) so the LKL can never be
+  handed EpinOS's GPU.
 - **R5 — advanced terminal features · ✅ DONE · E: 3.** All in `gl-term` (`src/util/gl-term.c`), verified
   it launches + hosts zsh with no regression from the (invasive) grid change:
   - **24-bit color** — already (Z7.1 SGR `38;2;R;G;B` truecolor).

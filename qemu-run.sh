@@ -23,15 +23,22 @@ QEMU_BIN="${QEMU_BIN:-$HOME/.local/qemu-virgl/bin/qemu-system-x86_64}"
 [ -x "$QEMU_BIN" ] || QEMU_BIN="qemu-system-x86_64"
 echo "[qemu-run] using $("$QEMU_BIN" --version | head -1)"
 
-# GPU=1 selects the HEADLESS virgl path with host-visible blob memory enabled (the GPU desktop +
-# GPU clients); GPU unset = the interactive gtk software desktop.  egl-headless has no window, so
-# observe the GPU desktop via serial.log + QMP screendumps (qmp.sock).
+# GPU=1 = the virgl GPU desktop in an INTERACTIVE window (gtk + gl=on) -- you can actually see + use it.
+# Set HEADLESS=1 alongside GPU=1 to run it windowless (egl-headless + QMP) for automated/remote testing.
+# GPU unset = the interactive gtk software (Pixman) desktop.
 if [ "${GPU:-0}" = "1" ]; then
   MEM="${MEM:-1024}"
-  GFX=(-vga std -device virtio-gpu-gl-pci,blob=true,hostmem=256M
-       -display egl-headless,rendernode=/dev/dri/renderD128
-       -qmp unix:qmp.sock,server,nowait)
-  echo "[qemu-run] GPU=1: headless virgl + host-visible blob (read serial.log; QMP at qmp.sock)"
+  if [ "${HEADLESS:-0}" = "1" ]; then
+    GFX=(-vga std -device virtio-gpu-gl-pci,blob=true,hostmem=256M
+         -display egl-headless,rendernode=/dev/dri/renderD128
+         -qmp unix:qmp.sock,server,nowait)
+    echo "[qemu-run] GPU=1 HEADLESS=1: egl-headless virgl (no window; read serial.log; QMP at qmp.sock)"
+  else
+    GFX=(-vga std -device virtio-gpu-gl-pci,blob=true,hostmem=256M
+         -display gtk,gl=on
+         -qmp unix:qmp.sock,server,nowait)
+    echo "[qemu-run] GPU=1: interactive virgl desktop (gtk window, gl=on)"
+  fi
 else
   MEM="${MEM:-512}"
   GFX=(-display gtk)

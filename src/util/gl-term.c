@@ -130,6 +130,14 @@ struct app {
     EGLSurface            egl_surf;
     GLuint                gl_prog, gl_tex;
     GLint                 gl_a_pos, gl_a_uv, gl_u_tex;
+    // Software (wl_shm) present fallback — used when there is no GL renderer (e.g. the Pixman/gtk
+    // software desktop, where the EGL/GL surface can't be created/composited).  Double-buffered.
+    int                   sw_mode;
+    int                   stride;
+    struct wl_buffer     *bufs[2];
+    uint32_t             *bufpx[2];
+    int                   buf_busy[2];
+    int                   cur_buf;
     int                   width, height;
     int                   cell_w, cell_h;
     int                   font_px, baseline;
@@ -837,7 +845,66 @@ static void render(struct app *a) {
     draw_deco(a);
 }
 
+// ── Software (wl_shm) present fallback ────────────────────────────────────────
+static void sw_buf_release(void *data, struct wl_buffer *buf) {
+    struct app *a = data;
+    if (a->bufs[0] == buf) a->buf_busy[0] = 0;
+    else if (a->bufs[1] == buf) a->buf_busy[1] = 0;
+}
+static const struct wl_buffer_listener sw_buf_listener = { .release = sw_buf_release };
+
+// Set up a double-buffered wl_shm surface (used when there is no GL renderer).
+static int create_sw_surface(struct app *a) {
+    if (!a->shm) { printf("G4TERM: no wl_shm -- cannot software-present\n"); return -1; }
+    if (a->pixels) { free(a->pixels); a->pixels = NULL; }      // drop any GL malloc from create_gl_surface
+    a->stride = a->width * 4;
+    size_t bufsz = (size_t)a->stride * (size_t)a->height;
+    size_t total = bufsz * 2;
+    int fd = create_memfd("gl-term-sw");
+    if (fd < 0 || ftruncate(fd, (off_t)total) < 0) { perror("G4TERM: sw memfd"); if (fd >= 0) close(fd); return -1; }
+    void *map = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED) { perror("G4TERM: sw mmap"); close(fd); return -1; }
+    struct wl_shm_pool *pool = wl_shm_create_pool(a->shm, fd, (int32_t)total);
+    for (int i = 0; i < 2; i++) {
+        a->bufpx[i] = (uint32_t *)((char *)map + (size_t)i * bufsz);
+        a->bufs[i]  = wl_shm_pool_create_buffer(pool, (int32_t)((size_t)i * bufsz),
+                                                a->width, a->height, a->stride, WL_SHM_FORMAT_XRGB8888);
+        wl_buffer_add_listener(a->bufs[i], &sw_buf_listener, a);
+        a->buf_busy[i] = 0;
+    }
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    a->cur_buf = 0;
+    a->pixels  = a->bufpx[0];
+    a->sw_mode = 1;
+    printf("G4TERM: no GL -- software (wl_shm) present mode (%dx%d)\n", a->width, a->height); fflush(stdout);
+    return 0;
+}
+static void commit_sw(struct app *a) {
+    int b = a->buf_busy[a->cur_buf] ? (a->cur_buf ^ 1) : a->cur_buf;
+    if (a->buf_busy[b]) return;                 // both buffers in flight -- skip (compositor releases one)
+    a->cur_buf = b;
+    a->pixels  = a->bufpx[b];                   // FreeType renders straight into the shm buffer
+    render(a);
+    if (a->post_map_frame_armed && !a->frame_cb) {
+        a->frame_cb = wl_surface_frame(a->surface);
+        wl_callback_add_listener(a->frame_cb, &frame_listener, a);
+    }
+    wl_surface_attach(a->surface, a->bufs[b], 0, 0);
+    wl_surface_damage_buffer(a->surface, 0, 0, a->width, a->height);
+    wl_surface_commit(a->surface);
+    a->buf_busy[b] = 1;
+    wl_display_flush(a->display);
+    a->dirty = 0;
+    if (a->post_map_frame_done) {
+        a->post_map_frame_done = 0;
+        printf("G9FRAME: committed post-map terminal redraw %dx%d (sw) -- G9 REDRAW\n", a->width, a->height);
+        fflush(stdout);
+    }
+}
+
 static void commit(struct app *a) {
+    if (a->sw_mode) { commit_sw(a); return; }   // no GL -> software present
     render(a);
     if (a->post_map_frame_armed && !a->frame_cb) {
         a->frame_cb = wl_surface_frame(a->surface);
@@ -1399,7 +1466,14 @@ static void xdg_surface_configure(void *data, struct xdg_surface *surface, uint3
     struct app *a = data;
     xdg_surface_ack_configure(surface, serial);
     if (a->committed) return;
-    if (create_gl_surface(a) < 0) { a->running = 0; return; }
+    // Prefer GL; fall back to a wl_shm software present when there is no GL renderer (the Pixman/gtk
+    // software desktop), so the terminal still launches.  HOS_TERM_SW=1 forces software.
+    int gl_ok = 0;
+    if (!getenv("HOS_TERM_SW")) gl_ok = (create_gl_surface(a) == 0);
+    if (!gl_ok) {
+        printf("G4TERM: GL surface unavailable -- falling back to software (wl_shm)\n"); fflush(stdout);
+        if (create_sw_surface(a) < 0) { a->running = 0; return; }
+    }
     grid_clear(a);
     a->post_map_frame_armed = 1;
     commit(a);

@@ -463,6 +463,14 @@ governs what is reloaded: `full` = manifest + overlay + home; `home-only` = mani
 Make a domain a real kernel object before anything else depends on it. No persistence, no
 restriction yet — just the object, the registry, and a browsable tree.
 
+**Status — DM0.a + DM0.c DONE + boot-verified** (commit pending): `core/domain.d` (`DomainRec`,
+`g_domains[32]`, `domainCreate`/`domainById`/`domainByName`/`domainCount`/`domainInitDefaults`),
+`ObjType.Domain`/`Template`/`Overlay`/`Snapshot`, the 7-domain boot seed (one per identity), and the
+`/config/domains.json` view. Serial proof: `[domain] selftest PASS` (create/lookup/dup-reject/
+unknown-identity-reject/freeze) + the JSON renders all 7 domains (objId 63-69) each linked to its
+identity, `state:"Defined"`, `persist:"ephemeral"`. *Remaining:* DM0.b (`HOSQ_DOMAIN_LIST` verb,
+naturally paired with its DM10 GUI consumer) and DM0.d (`/objects/domains/<name>/` synthetic tree).
+
 - Add `ObjType.Domain`/`Template`/`Overlay`/`Snapshot` to `core/objmgr.d` (`objmgr.d:22-54`)
   + `g_objTypeNames` (`hoscall.d:197`).
 - New `core/domain.d`: `DomainRec` (§1), `g_domains[32]`, `domainCreate(name, identityObjId,

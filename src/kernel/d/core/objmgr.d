@@ -50,6 +50,10 @@ enum ObjType : uint {
     SecCert,            // SECURE_IPC §4.1: identity cert object
     SecDescriptor,      // SECURE_IPC §4.1: broker session-descriptor object
     Identity,           // IDENTITY_DOMAIN §1: a security-domain / identity object
+    Domain,             // DOMAIN_MANAGER DM0: a reusable OS-environment object (references an Identity)
+    Template,           // DOMAIN_MANAGER DM6: an immutable domain template
+    Overlay,            // DOMAIN_MANAGER DM6: a domain's writable overlay layer
+    Snapshot,           // DOMAIN_MANAGER DM6: a domain/overlay snapshot
     Count
 }
 

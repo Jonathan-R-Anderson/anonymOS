@@ -16,6 +16,8 @@ module core.hoscall;
 
 import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
 import core.identity : g_identities, identityCount, identityById, identityByName, IdentityId, NetPolicy;  // +L4.2
+import core.domain   : g_domains, DomainState, domainStateName, domainCount,
+                       PERSIST_EPHEMERAL, PERSIST_HOME_ONLY, PERSIST_FULL;  // DOMAIN_MANAGER DM0
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
@@ -200,6 +202,7 @@ private immutable string[ObjType.Count] g_objTypeNames = [
     "Capability", "Endpoint", "LinuxProcess", "LinuxVFS", "LinuxSyscall",
     "LinuxELFLoader", "LinuxDeviceAdapter", "Untyped", "Admin", "StoreObject",
     "Generation", "SecChannel", "SecSession", "SecCert", "SecDescriptor", "Identity",
+    "Domain", "Template", "Overlay", "Snapshot",
 ];
 
 // Minimal text builder over the user buffer (no allocation, bounds-checked).
@@ -437,10 +440,11 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // system's configuration as data generated from (and, later, applied back to) the
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
-enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4;
+enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
+         CFG_DOMAINS = 5;
 
-private immutable string[4] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json"];
+private immutable string[5] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -462,6 +466,19 @@ private void jstr(ref UB b, const(char)* s, size_t n) {
     put(b, '"');
     foreach (i; 0 .. n) { const char c = s[i]; if (c == '"' || c == '\\') put(b, '\\'); put(b, c); }
     put(b, '"');
+}
+
+// Write a NUL-terminated C string into the buffer (e.g. a domainStateName()).
+private void litz(ref UB b, const(char)* s) {
+    if (s is null) return;
+    for (size_t i = 0; s[i] != 0; ++i) put(b, s[i]);
+}
+
+// "ephemeral" | "home-only" | "full" for a domain's persistMode.
+private void persistName(ref UB b, ubyte m) {
+    if (m == PERSIST_FULL)           lit(b, "full");
+    else if (m == PERSIST_HOME_ONLY) lit(b, "home-only");
+    else                             lit(b, "ephemeral");
 }
 
 // Render /config/<id>.json into buf; returns length or negative errno.
@@ -527,8 +544,44 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             lit(b, "\n]\n");
             return cast(long)b.len;
         }
+        case CFG_DOMAINS: {
+            // DOMAIN_MANAGER DM0: the live domain registry as declarative JSON.
+            lit(b, "[\n"); bool first = true;
+            foreach (ref e; g_domains) if (e.inUse) {
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");      jstr(b, e.name.ptr, e.nameLen);
+                lit(b, ", \"objId\": ");       num(b, e.objId);
+                lit(b, ", \"identity\": ");
+                auto idr = identityById(e.identityObjId);
+                if (idr !is null) jstr(b, idr.name.ptr, idr.nameLen); else lit(b, "null");
+                lit(b, ", \"template\": ");    num(b, e.templateObjId);
+                lit(b, ", \"state\": \"");     litz(b, domainStateName(e.state)); put(b, '"');
+                lit(b, ", \"persist\": \"");   persistName(b, e.persistMode); put(b, '"');
+                lit(b, ", \"policyEpoch\": "); num(b, e.policyEpoch);
+                lit(b, " }");
+            }
+            lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
         default: return -2; // ENOENT
     }
+}
+
+// DOMAIN_MANAGER DM0: one-shot boot proof that /config/domains.json renders the
+// seeded registry (headless verification — no shell needed).  Mirrors the
+// selftest philosophy; runs once.
+__gshared char[2048] g_domDumpBuf;
+__gshared bool       g_domDumped = false;
+public void configDomainsDump() {
+    if (g_domDumped) return;
+    g_domDumped = true;
+    const long n = configfsRender(CFG_DOMAINS, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    if (n < 0) { klog("[domain] /config/domains.json render FAIL\n"); return; }
+    g_domDumpBuf[cast(size_t)n] = 0;
+    klog("[domain] /config/domains.json (");
+    klog_hex(cast(ulong)domainCount());
+    klog(" domains):\n");
+    klog(g_domDumpBuf.ptr);
 }
 
 // ── /system immutable base views (OBJECT_FILESYSTEM_ROADMAP F3) ───────────────

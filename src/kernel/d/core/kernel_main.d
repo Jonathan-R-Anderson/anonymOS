@@ -4,6 +4,7 @@ module core.kernel_main;
 
 import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
+import core.hoscall : configDomainsDump;   // DOMAIN_MANAGER DM0: one-shot /config/domains.json boot proof
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -63,6 +64,7 @@ import core.window : windowRegistryInit, windowSelfTest, windowStats; // Phase 1
 import core.identity : identityInitDefaults, identityInitLaunchRules, identityByName,
                        identitySelfTest, idprocSelfTest, identityStats, identityNamePrint,
                        identityById; // IDENTITY_DOMAIN P2/P3 (+ F4.2 launch cap-gate)
+import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_MANAGER DM0
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -1795,6 +1797,7 @@ private void dispatchSyscall(int tid) {
             serviceStats();
             windowStats();
             identityStats(); // IDENTITY_DOMAIN P2: identity count / created / frozen
+            domainStats();   // DOMAIN_MANAGER DM0: domain count / created / frozen / objects
             idnsStats();     // IDENTITY_DOMAIN P4: ns clones / shares / roots
             idipcStats();    // IDENTITY_DOMAIN P5: gate checks / allow / deny
             idwinStats();    // IDENTITY_DOMAIN P6: windows stamped / hook installed
@@ -2855,6 +2858,9 @@ void d_kernel_main() {
     identityInitDefaults();
     identityInitLaunchRules();   // §3 compiled-in transition rules (after the identities exist)
     idnsInitRoots();             // §4 private object-root Directory per identity
+    domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
+    domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
+    configDomainsDump();         // DOMAIN_MANAGER DM0: one-shot proof /config/domains.json renders the seeded domains
     idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     idwinInit();                 // §6 install winRegister identity-stamp hook (unspoofable borders)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);

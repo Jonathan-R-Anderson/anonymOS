@@ -205,10 +205,20 @@ blocks forever). **Tested + ruled out:** the poller frequency (250µs vs 1ms cha
 hang persisted) — so it is not a simple tunable. **Robust fix needs reliable interrupt delivery, not
 polling:** either (a) the EpinAnonymOS *kernel* poll-loop detects the device INTx and reliably wakes the
 LKL (vs a userspace poller thread that races + competes for CPU), or (b) **SMP** so the IRQ thread and the
-enumeration thread each get a real core (the lost-wakeup window shrinks drastically) — see `SMP_ROADMAP.md`.
-The earlier "stall, not starvation" call was too strong: CPU contention IS a real factor (more LKL CPU →
-more progress), layered on top of the race. **NEXT:** move INTx detection into the kernel poll-loop (a
-kernel-side wake of the LKL's IRQ FD/futex) to kill the userspace race, OR pursue SMP first.
+enumeration thread each get a real core — see `SMP_ROADMAP.md`.
+
+**★ KERNEL-SIDE INTx WAKE DONE (commit 4b44fdc5f) — and it RULES OUT the IRQ mechanism.** Implemented (a):
+`0x4100` op6 PARKs the LKL IRQ thread in the kernel (reusing the poll park + wakePollers PIT-tick re-check)
+until `deviceIntxAsserted(grantedBdf)`; the LKL thread blocks on op6 + fires `lkl_trigger_irq` — no
+userspace busy-poll. **VERIFIED WORKING: intx=971 tmo=29 live** (~97% real INTx detections). **But the
+enumeration still wedges identically** (~t=2.5s, no `New USB device found`). So with 971 interrupts
+correctly delivered, the IRQ-delivery mechanism is **conclusively NOT the blocker** — the bug is **inside
+the LKL's xHCI event-ring / completion handling** (host posts `xfer_success len 18` + asserts INTx → kernel
+delivers it → the handler runs → but the descriptor-read completion never advances enumeration: a
+lost-wakeup or bad-data issue in LKL itself). **NEXT:** dig into the LKL side — enable xHCI/USB dynamic-debug
+(`CONFIG_DYNAMIC_DEBUG` + `dyndbg`) to watch the event-ring dequeue + the URB completion, or compare the
+descriptor bytes the guest reads vs what the host DMA'd (a coherency/`op5` check). Kernel-side INTx wake is
+kept regardless — it's the right model for per-device LKLs + SMP.
 
 ## L6 — GPU via LKL (the research frontier)
 LKL's `nouveau` drives the GTX 1080: real PCI BARs + MSI + large DMA + **display scanout / mode-setting**

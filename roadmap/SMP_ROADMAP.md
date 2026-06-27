@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 + S2 DONE + verified
+## Status (2026-06-27): S0 + S1 + S2 + S3 (lock primitive) DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -72,14 +72,24 @@ brings every AP online**, with no hardcoded count:
   is the *same* MSR `arch_prctl(ARCH_SET_GS)` writes, so it is UNSAFE in the live syscall path without
   swapgs (userspace can clobber it) — S2 sets+verifies GS only on the **parked APs** (which never run
   userspace) and addresses the BSP's area **by index**; the swapgs live-path migration is S3.
-- **Verified in-VM:** `SMP=4` → `4 CPUs discovered` + `3 of 3 APs online; 3 with GS-addressed per-CPU state
-  verified; bsp idx=0` + `BSP per-CPU area OK (currentTask shim seeded)`, 0 faults, desktop boots on the BSP.
-  `SMP=1` (default) → `1 CPU, 0 APs`, BSP per-CPU OK, desktop boots — **degrades gracefully.**
+- **S3 (Big Kernel Lock — the lock primitive, proven cross-core):** a correct test-and-set spinlock
+  (`bklAcquire`/`bklRelease`; `xchg` with a memory operand is atomic on x86, no LOCK prefix). Proven by the
+  **first real concurrent kernel code in the OS:** the BSP + every AP each increment a shared `g_bklCounter`
+  100 000 times *only under the BKL*; a correct lock loses no updates → the counter must equal N × 100 000.
+  ★ The live-entry-path wiring (taking the BKL in the syscall/IRQ/fault prologue) is deliberately deferred to
+  **S4** — with the APs parked and running NO kernel code, wrapping the entry path serializes nothing and only
+  adds prologue risk; so S3 here delivers the *load-bearing correctness* (a lock that actually mutually-excludes
+  the real cores), and S4 wires it in once APs run tasks.
+- **Verified in-VM:** `SMP=4` → `4 CPUs discovered` + `3 of 3 APs online; 3 GS-addressed per-CPU verified` +
+  `BSP per-CPU area OK` + **`BKL: counter=0x61a80 expected=0x61a80 PASS (cross-core mutual exclusion across all
+  cores)`** (0x61a80 = 4×100 000 — zero lost updates across 4 cores), 0 faults, desktop boots. `SMP=1` →
+  `counter=0x186a0` (1×100 000) PASS, desktop boots — **degrades gracefully.**
 
-**Next (S3):** the **Big Kernel Lock** + making the per-CPU `currentTask` authoritative behind **swapgs** —
-the point an AP can run a *task* (the desktop on CPU0, an LKL on CPU1) in parallel. Today the APs are parked
-(`cli; hlt`) with valid per-CPU areas but no scheduler entry; they still load no per-CPU GDT/IDT/TSS or switch
-CR3 (S3), which an idle `hlt` loop does not need.
+**Next (S4 + the BKL wire-in):** make the per-CPU `currentTask` authoritative behind **swapgs**, give each AP a
+per-CPU GDT/IDT/TSS + a scheduler entry so it can pull a task and `iret` to userspace, and take the proven BKL
+at every kernel entry/exit. That is the point an AP runs a *real task* (the desktop on CPU0, an LKL on CPU1) in
+parallel — the bare-metal-vision payoff. Today the APs are parked (`cli; hlt`) with valid per-CPU areas + a
+proven lock, but no scheduler entry.
 
 ## Phases
 
@@ -94,7 +104,7 @@ CR3 (S3), which an idle `hlt` loop does not need.
   `idleTask`, local-APIC id, scheduler cursor, a per-CPU scratch stack — **one entry per discovered CPU,
   sized to the runtime N (allocated for the live count; never a fixed 8).** Replace the global
   `g_current_task_id` with the per-CPU current task (keep a shim during migration).
-- **S3 — Big Kernel Lock.** One spinlock at every kernel entry (syscall/IRQ/fault prologue), released at
+- **S3 — Big Kernel Lock.** ◑ *(the lock PRIMITIVE is done + proven cross-core — `bklAcquire`/`bklRelease`, 4×100k increments, zero lost updates; the entry-path wire-in is deferred to S4 when APs run kernel code — see Status).* One spinlock at every kernel entry (syscall/IRQ/fault prologue), released at
   exit (incl. before returning to userspace and around `scheduleNext`). Correct-but-serial kernel,
   **parallel userspace**. **Verify:** an LKL on CPU1 and the desktop on CPU0 both make full-speed progress
   at the same time (the L5 boot-contention disappears).

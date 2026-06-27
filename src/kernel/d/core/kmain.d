@@ -123,6 +123,30 @@ private void* readGsBase() {
 public PerCpu* thisCpu()    { return &g_percpu[g_bspCpuIndex]; }
 public ulong   thisCpuTask(){ return g_percpu[g_bspCpuIndex].currentTask; }
 
+// SMP_ROADMAP S3: the Big Kernel Lock.  A correct cross-core test-and-set spinlock (xchg with a
+// memory operand is atomic on x86 — no LOCK prefix needed).  This is the primitive a serial-but-
+// correct kernel takes at every entry; wiring it into the syscall/IRQ/fault prologue lands with S4
+// (when APs actually run kernel code + contend) — doing it now, with APs parked, would add entry-
+// path risk and serialize nothing.  Here it is implemented and PROVEN to serialize across the live
+// cores.
+public __gshared uint  g_bkl = 0;            // 0 = free, 1 = held
+enum uint BKL_PROOF_ITERS = 100_000;
+public __gshared ulong g_bklCounter = 0;     // mutated ONLY under the BKL (the mutual-exclusion proof)
+public __gshared ubyte[MAX_CPUS] g_cpuBklDone;
+
+private uint bklTryHold(uint* p) {           // returns the PREVIOUS value: 0 = we acquired
+    uint old = void;
+    asm @nogc nothrow { mov RDX, p; mov EAX, 1; xchg [RDX], EAX; mov old, EAX; }
+    return old;
+}
+public void bklAcquire(uint* p) { while (bklTryHold(p) != 0) __asm("pause", ""); }
+public void bklRelease(uint* p) { asm @nogc nothrow { mov RDX, p; xor EAX, EAX; mov [RDX], EAX; } }
+
+// Each caller hammers a shared counter under the BKL; a correct lock yields exactly its share.
+private void bklProofRun() {
+    foreach (r; 0 .. BKL_PROOF_ITERS) { bklAcquire(&g_bkl); ++g_bklCounter; bklRelease(&g_bkl); }
+}
+
 // The AP entry point.  Limine parks each AP spinning on its goto_address; when the BSP writes this
 // pointer the AP jumps here (its own limine_smp_info* in RDI).  S1: report online.  S2: point this
 // AP's GS base at its per-CPU area and verify `%gs`-addressing round-trips, then park.
@@ -135,8 +159,10 @@ extern(C) void apEntry(limine_smp_info* info) {
             g_cpuPercpuOk[idx] = 1;                  // GS-addressed per-CPU area verified
         g_percpu[idx].alive = true;
         g_cpuOnline[idx] = 1;
+        bklProofRun();                               // S3: contend on the BKL with the BSP + other APs
+        g_cpuBklDone[idx] = 1;
     }
-    __asm("cli", "");                                // park (no per-CPU IDT/scheduler yet — S3+)
+    __asm("cli", "");                                // park (no per-CPU IDT/scheduler yet — S4+)
     for (;;) __asm("hlt", "");
 }
 
@@ -188,6 +214,20 @@ void smpBringup() {
     if (g_bspCpuIndex < MAX_CPUS && thisCpu().cpuIndex == g_bspCpuIndex
         && thisCpuTask() == g_current_task_id)
         klog("[smp] BSP per-CPU area OK (currentTask shim seeded)\n");
+
+    // S3: the BKL — the BSP contends concurrently with the (already-released) APs, then verifies the
+    // shared counter == N × ITERS.  A correct lock loses no updates; a race or broken lock undercounts.
+    bklProofRun();
+    uint bklDone = 0;
+    for (uint spin = 0; spin < 500_000_000u && bklDone < apCount; ++spin) {
+        bklDone = 0;
+        foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_cpuBklDone[i]) ++bklDone;
+        __asm("pause", "");
+    }
+    const ulong bklExpect = cast(ulong)g_smpCpuCount * BKL_PROOF_ITERS;
+    klog("[smp] BKL: counter="); klog_hex(g_bklCounter); klog(" expected="); klog_hex(bklExpect);
+    klog((g_bklCounter == bklExpect) ? " PASS (cross-core mutual exclusion across all cores)\n"
+                                     : " FAIL (lost updates → broken lock / race)\n");
 }
 
 extern __gshared ulong hhdm_offset;

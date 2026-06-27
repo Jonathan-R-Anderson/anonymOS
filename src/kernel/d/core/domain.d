@@ -20,6 +20,8 @@ import core.identity : identityById, identityByName;
 import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
                         nsResolveCheck, nsRelease;     // DOMAIN_MANAGER DM2
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
+import core.objstore : objstoreMounted, objstoreInstallDomain,
+                       objstoreDomainAt, objstoreDomainCount;     // DOMAIN_MANAGER DM5
 import core.io : klog, klog_hex;
 
 extern (C) @nogc nothrow:
@@ -394,6 +396,44 @@ public void domainLifecycleProof() {
 
     if (ok) klog("[domain] lifecycle proof PASS: clone/start/pause/resume/shutdown/rename/delete + bad transitions rejected\n");
     else    klog("[domain] lifecycle proof FAIL\n");
+}
+
+// DOMAIN_MANAGER DM5: recreate persisted domains from the on-disk store.  Run AFTER the
+// identities + the seed/manifest domains exist (so identity links resolve + names dedup).
+// The domain DEFINITION survives reboot; the writable overlay+home reload is DM6.
+public void domainRehydrateFromDisk() {
+    if (!objstoreMounted()) return;
+    uint n = 0;
+    foreach (i; 0 .. 32) {
+        const(char)* nm; const(char)* idn; uint persist;
+        if (!objstoreDomainAt(i, nm, idn, persist)) continue;
+        if (domainByName(nm) != 0) continue;          // already present (seed/manifest)
+        const uint idobj = (idn[0] != 0) ? identityByName(idn) : 0;
+        const uint id = domainCreate(nm, idobj, 0);
+        auto d = domainById(id);
+        if (d !is null) { d.persistMode = cast(ubyte)persist; ++n; }
+    }
+    if (n != 0) { klog("[domain] rehydrated "); klog_hex(cast(ulong)n); klog(" domain(s) from disk\n"); }
+}
+
+// DOMAIN_MANAGER DM5 boot proof (2-boot): boot 1 creates + persists "PersistProbe"; on a
+// reboot of the SAME disk it is rehydrated (by domainRehydrateFromDisk, before this runs) → PASS.
+__gshared bool g_domPersistProofDone = false;
+public void domainPersistProof() {
+    if (g_domPersistProofDone) return;
+    g_domPersistProofDone = true;
+    if (!objstoreMounted()) { klog("[domain] persist proof SKIP (no disk)\n"); return; }
+    if (domainByName("PersistProbe\0".ptr) != 0) {
+        klog("[domain] persist proof PASS: PersistProbe rehydrated from disk across reboot\n");
+        return;
+    }
+    const uint id = domainCreate("PersistProbe\0".ptr, identityByName("Personal\0".ptr), 0);
+    if (id == 0) { klog("[domain] persist proof FAIL: create\n"); return; }
+    auto d = domainById(id);
+    if (d !is null) d.persistMode = PERSIST_FULL;
+    const bool ok = objstoreInstallDomain("PersistProbe", "Personal", "", PERSIST_FULL);
+    klog(ok ? "[domain] persist proof: PersistProbe created + persisted to disk (boot 1 -- reboot to verify)\n"
+            : "[domain] persist proof FAIL: objstoreInstallDomain\n");
 }
 
 public void domainStats() {

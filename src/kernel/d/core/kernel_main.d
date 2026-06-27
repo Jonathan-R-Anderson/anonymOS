@@ -69,6 +69,7 @@ import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_
 import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
 import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
+import core.domain : domainRehydrateFromDisk, domainPersistProof; // DOMAIN_MANAGER DM5: on-disk persistence
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -2883,6 +2884,7 @@ void d_kernel_main() {
     // — so a declared config, not hardcoded init, constructs running state.  Safe
     // fallthrough: a missing/tampered manifest logs + continues to hardcoded init.
     configBootApply();
+    domainRehydrateFromDisk();   // DOMAIN_MANAGER DM5: recreate persisted domains (after seed+manifest; dedup by name)
     // DOMAIN_MANAGER DM0.d/DM1: run the domain VIEW proofs AFTER the manifest applies, so they
     // reflect the final registry (DM0 seed + any DM1 manifest-declared domains).
     configDomainsDump();         // /config/domains.json render (now includes manifest domains)
@@ -2892,6 +2894,7 @@ void d_kernel_main() {
     domFsViewDump();             // DOMAIN_MANAGER DM2.4: dump DevSandbox's RuntimeView (/objects/domains/<name>/filesystem)
     domainEnterProof();          // DOMAIN_MANAGER DM3: bind a task into a domain → its opens are enforced against the domain ns
     domainLifecycleProof();      // DOMAIN_MANAGER DM4: clone/start/pause/resume/shutdown/rename/delete state machine
+    domainPersistProof();        // DOMAIN_MANAGER DM5: 2-boot persistence probe (boot1 persists, boot2 rehydrates)
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

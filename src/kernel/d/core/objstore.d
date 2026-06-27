@@ -38,9 +38,25 @@ struct ObjSuper {
     uint    appCount;
     ulong   bootCount;
     ulong   nextFreeLba;
-    ubyte[SECTOR - 32] _pad;
+    uint    domainCount;        // DOMAIN_MANAGER DM5: persisted domains in the domain directory
+    ubyte[SECTOR - 36] _pad;
 }
 static assert(ObjSuper.sizeof == SECTOR);
+
+// DOMAIN_MANAGER DM5: persisted domain directory (LBA 33..48 — 16 sectors, between the app
+// directory at 1..32 and the blob region at 64).  Each DomainEntry persists a domain's
+// DEFINITION (name / identity / template / persist mode); the writable overlay+home blobs are DM6.
+enum ulong DOM_DIR_LBA      = 33;
+enum uint  DOM_MAX_PERSIST  = 32;
+struct DomainEntry {
+    uint    inUse;
+    uint    nameLen;     char[64] name;
+    uint    identityLen; char[32] identity;     // the identity name the domain binds to
+    uint    templateLen; char[32] template_;    // the template name (DM6; "" = none)
+    uint    persistMode;                        // 0=ephemeral 1=home-only 2=full
+    ubyte[256 - 148] _pad;
+}
+static assert(DomainEntry.sizeof == 256);
 
 struct ObjAppEntry {
     uint    inUse;
@@ -61,6 +77,7 @@ static assert(ObjAppEntry.sizeof == 256);
 __gshared bool        g_mounted = false;
 __gshared ObjSuper    g_super;
 __gshared ObjAppEntry[MAX_APPS] g_apps;
+__gshared DomainEntry[DOM_MAX_PERSIST] g_domEntries;   // DOMAIN_MANAGER DM5
 __gshared ubyte[STAGE_BYTES] g_stage;     // scratch for blob read/write
 
 public bool objstoreMounted() { return g_mounted; }
@@ -77,8 +94,10 @@ private bool magicOk() {
 // Persist the superblock (LBA 0) and the directory (LBA 1..32).
 private bool flushMeta() {
     if (!diskWriteSectors(0, 1, &g_super)) return false;
-    // directory: MAX_APPS*256 bytes = 16 KiB = 32 sectors
-    return diskWriteSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
+    // app directory: MAX_APPS*256 bytes = 16 KiB = 32 sectors
+    if (!diskWriteSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr)) return false;
+    // DM5 domain directory: DOM_MAX_PERSIST*256 = 8 KiB = 16 sectors
+    return diskWriteSectors(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
 }
 
 // Allocate a blob region of `len` bytes; returns its LBA (0 on failure).
@@ -159,6 +178,49 @@ public bool objstoreStorageWrite(int appIdx, const(void)* data, uint len) {
     if (!writeBlob(g_apps[appIdx].storageLba, data, len)) return false;
     g_apps[appIdx].storageLen = len;
     return flushMeta();
+}
+
+// ── DOMAIN_MANAGER DM5: persist + rehydrate domain definitions ────────────────
+// Persist a domain's definition (name / identity / template / persist mode).  Idempotent
+// on name: replaces an existing entry of the same name.  Returns false if the table is full.
+public bool objstoreInstallDomain(const(char)[] name, const(char)[] identity,
+                                  const(char)[] template_, ubyte persist) {
+    if (!g_mounted) return false;
+    int slot = -1;
+    // replace a same-named entry, else take a free slot
+    foreach (i; 0 .. cast(int)DOM_MAX_PERSIST) {
+        if (g_domEntries[i].inUse && g_domEntries[i].nameLen == name.length) {
+            bool eq = true;
+            foreach (j; 0 .. cast(int)name.length) if (g_domEntries[i].name[j] != name[j]) { eq = false; break; }
+            if (eq) { slot = i; break; }
+        }
+    }
+    if (slot < 0) foreach (i; 0 .. cast(int)DOM_MAX_PERSIST) if (!g_domEntries[i].inUse) { slot = i; break; }
+    if (slot < 0) return false;
+    const bool isNew = !g_domEntries[slot].inUse;
+
+    DomainEntry e;
+    memset(&e, 0, DomainEntry.sizeof);
+    e.inUse = 1;
+    setStr(e.name.ptr, e.nameLen, name, 64);
+    setStr(e.identity.ptr, e.identityLen, identity, 32);
+    setStr(e.template_.ptr, e.templateLen, template_, 32);
+    e.persistMode = persist;
+    g_domEntries[slot] = e;
+    if (isNew) g_super.domainCount++;
+    return flushMeta();
+}
+
+public uint objstoreDomainCount() { return g_mounted ? g_super.domainCount : 0; }
+
+// The i-th persisted domain (for rehydration). `name`/`identity` are NUL-terminated (the
+// fixed buffers are zero-padded).  Returns false past the last in-use entry.
+public bool objstoreDomainAt(int i, out const(char)* name, out const(char)* identity, out uint persist) {
+    if (!g_mounted || i < 0 || i >= cast(int)DOM_MAX_PERSIST || !g_domEntries[i].inUse) return false;
+    name     = g_domEntries[i].name.ptr;
+    identity = g_domEntries[i].identity.ptr;
+    persist  = g_domEntries[i].persistMode;
+    return true;
 }
 
 // Directory accessors for the /objects/apps FS views.
@@ -242,16 +304,26 @@ public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0
         klog("[objstore] formatting new object store\n");
         memset(&g_super, 0, ObjSuper.sizeof);
         foreach (i; 0 .. 8) g_super.magic[i] = OBJ_MAGIC[i];
-        g_super.version_ = 1;
+        g_super.version_ = 2;                  // DM5: v2 adds the domain directory
         g_super.appCount = 0;
         g_super.bootCount = 0;
+        g_super.domainCount = 0;
         g_super.nextFreeLba = BLOB_LBA_BASE;
         memset(g_apps.ptr, 0, MAX_APPS * ObjAppEntry.sizeof);
+        memset(g_domEntries.ptr, 0, DOM_MAX_PERSIST * DomainEntry.sizeof);   // DM5
         flushMeta();
         seedSampleApp(sampleExec, sampleExecLen);
     } else {
-        // load the directory
+        // load the app directory
         diskReadSectors(DIR_LBA, sectorsFor(MAX_APPS * ObjAppEntry.sizeof), g_apps.ptr);
+        // DM5: load the domain directory (v2+); an old v1 disk has none → start empty
+        if (g_super.version_ >= 2 && g_super.domainCount <= DOM_MAX_PERSIST) {
+            diskReadSectors(DOM_DIR_LBA, sectorsFor(DOM_MAX_PERSIST * DomainEntry.sizeof), g_domEntries.ptr);
+        } else {
+            memset(g_domEntries.ptr, 0, DOM_MAX_PERSIST * DomainEntry.sizeof);
+            g_super.domainCount = 0;
+            g_super.version_ = 2;
+        }
     }
 
     g_super.bootCount++;

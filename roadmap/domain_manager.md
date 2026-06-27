@@ -679,6 +679,21 @@ persist policy) lands with DM6's overlay.
 Domains + the choice to persist full segment / home-only / fresh (Deliverable 13 + the
 brief's perpetuation requirement).
 
+**Status — DM5 persistence CORE DONE + 2-boot verified.** `core/objstore.d`: a **domain directory** region
+(LBA 33–48, `DomainEntry` 256B × 32) added to the AHCI object store; superblock gained `domainCount` +
+bumped to v2 (an old v1 disk is handled gracefully — empty domain dir). `objstoreInstallDomain(name,
+identity, template, persist)` persists a domain's DEFINITION (name/identity/template/persistMode);
+`objstoreDomainAt`/`objstoreDomainCount` read it back; `flushMeta`/`objstoreMount` write/load the domain dir
+alongside the app dir. `core/domain.d` `domainRehydrateFromDisk()` (run after the seed+manifest domains, so
+identity links resolve + names dedup) recreates the persisted domains. Verified with the **F4 two-boot
+method** (same `hos-disk.img`, separate QEMU processes — the boot-counter 1→2 proves it): boot 1
+`[domain] persist proof: PersistProbe created + persisted to disk`; boot 2 `[domain] rehydrated 1 domain(s)
+from disk` + `[domain] persist proof PASS: PersistProbe rehydrated from disk across reboot`. *Remaining DM5:*
+honoring `persistMode` differences (full vs home-only vs ephemeral) governs the **overlay+home** blob
+reload — which needs the overlay (DM6); persisting the full `filesystemAccess` policy (re-derived from the
+manifest for now); `maxStorage`→`DomainEntry.storageCap` quota. The domain DEFINITION persistence (the core)
+is done.
+
 - `core/objstore.d`: `DomainEntry` directory region (LBA33-63), `objstoreInstallDomain`/
   `objstoreLoadDomain`/`objstoreOverlayWrite` (mirror `objstoreInstallApp`/`LoadExec`/
   `StorageWrite`). Mount-time rehydration in `kernel_main.d:2845`.

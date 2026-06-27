@@ -785,6 +785,21 @@ Runtime install of native apps into a domain (Deliverable 8, the feasible-now pa
   Development; another domain cannot launch it (cap/ns denied); `domain packages Development`
   lists it; survives reboot (DM5); a package exceeding the domain ceiling → EPERM + audit.
 
+**Status — DM7 (software repository + package-manager infrastructure) DONE + verified.** New `core/pkgrepo.d`
+is the repository + package manager: a seeded catalog of 6 signed packages (`PkgRepoEntry` name/version/sizeKb/
+`requiredCaps`), per-domain install tracking (a bitmask over the catalog keyed by domain objId), and the
+operations `pkgRepoInstall`/`pkgRepoRemove`/`pkgInstalledMask` plus name-keyed `pkgInstallByName`/`pkgRemoveByName`.
+The install is **cap-gated, deny-by-default**: a package's `requiredCaps` must be ⊆ the target domain's identity
+rights-ceiling, else `PKG_ERR_CEILING` (the brief's "package exceeding the domain ceiling → EPERM"); on success it
+also persists best-effort as an identity-scoped `objstoreInstallApp` entry (cap-gated on launch, DM5). Exposed two
+ways: the declarative read view `/config/packages.json` (`CFG_PACKAGES` — repository catalog + per-domain installs)
+and the control verbs `install <domain> <pkg>` / `uninstall <domain> <pkg>` wired into `domainControlWrite` (so the
+Domain Manager's `/config/domain.action` drives it). Verified in-VM (`pkgRepoSelfTest`): `repository seeded (6
+packages)`; `hello` (user caps) installs into Development; `system-monitor` (needs `ADMIN_INSPECT`) is **DENIED in
+Banking** (user ceiling) but **installs in System** (full ceiling); remove clears the bit; `repo proof PASS`;
+`/config/packages.json render OK (731 bytes)`. (Per the request, NO template-browser GUI — this is the
+repo/package-manager substrate.) Follow-ups: an `autoInstallOnCreate` hook + a signed-package `crypto.d` check.
+
 ## DM8 — Permissions & policy enforcement (devices/net/clip/IPC/quota) · P: Med · E: 3 · R: med · deps: DM3
 
 Wire the manifest's permission knobs to real gates (Deliverable 14, full list).
@@ -799,6 +814,18 @@ Wire the manifest's permission knobs to real gates (Deliverable 14, full list).
 - *Verify:* a `usb:false` domain → opening `/dev/input/event*` EACCES; a `gpu:false` domain
   → `gl-term` falls back to sw (DRM open denied); a `networkPolicy:none` domain → connect()
   EACCES; `clipboard:deny` blocks cross-domain paste; audit ring records each.
+
+**Status — DM8 (device-class enforcement) DONE + verified.** The manifest/identity device policy now has real
+teeth at the FD-open path. `identity.d` defines the §7 device-class bits (`DEVCLASS_INPUT`/`GPU`/`CAMERA`/`MIC`/
+`AUDIO`/`USB`) and `identityDeviceAllowed(id, class)`; `mkBootIdentity` now seeds `allowedDevices` per identity
+(System/Development = all; Personal = all peripherals; Work = no camera/mic; **Banking/Untrusted/Disposable =
+input+gpu only**, locked down). In `posix.d`, `devClassForPath` maps a `/dev` node to its class and
+`deviceClassGate` is wired into the `open()` path: a task whose identity has the class bit clear is denied
+**EACCES** before the device fd is created; a task with no identity (the kernel/compositor) is unrestricted, so the
+desktop is unaffected. Verified in-VM (`domDeviceProof`, drives the real gate as a Banking-identity task): input +
+gpu allowed, **camera + usb EACCES** — `device proof PASS`; 0 boot exceptions and the desktop still loads (input
+intact). Network/clipboard/IPC enforcement and a `/dev/video`-style camera node are the remaining DM8 surfaces;
+the device-class mechanism + gate generalize to them.
 
 ## DM9 — Template inheritance + least-privilege merge · P: Med · E: 4 · R: med · deps: DM1, DM6
 

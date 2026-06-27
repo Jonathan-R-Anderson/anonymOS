@@ -31,6 +31,9 @@ import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC route
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolveWithRights, nsResolveCheck; // Phase 9/IR-P2 + DM2 (deny vs not-found)
 import core.domain : domainControlWrite;                    // DM10.3: /config/domain.action control-write executor
+import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
+                       DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
+                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject; // Phase 10 / IR-P3 User objects
@@ -2020,6 +2023,65 @@ private int namespaceCheckOpen(const(char)* path, int flags) {
     return 0;
 }
 
+// DM8 §7: map a /dev path to its brokered device class (0 = not a brokered device node).
+private uint devClassForPath(const(char)* path) {
+    if (cstrEqPrefix(path, "/dev/input/event")) return DEVCLASS_INPUT;
+    if (cstrEqPrefix(path, "/dev/dri/"))         return DEVCLASS_GPU;
+    if (cstrEqPrefix(path, "/dev/video"))        return DEVCLASS_CAMERA;
+    if (cstrEqPrefix(path, "/dev/bus/usb/"))     return DEVCLASS_USB;
+    if (cstrEqPrefix(path, "/dev/snd/"))         return DEVCLASS_AUDIO;
+    return 0;
+}
+
+// DM8: gate a device open against the calling task's identity device policy (§7).  A task with
+// no identity (identityObjId==0, e.g. the kernel/compositor before any domain bind) is
+// unrestricted; a known identity with the class bit clear is denied (EACCES).  Wired into the
+// open() path so a `usb:false`/`gpu:false`/etc. domain physically cannot open that device node.
+private int deviceClassGate(const(char)* path) {
+    const uint cls = devClassForPath(path);
+    if (cls == 0) return 0;                       // not a brokered device → no gate
+    int tid = cast(int)g_current_task_id;
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint idObj = g_tasks[tid].identityObjId;
+    if (idObj == 0) return 0;                     // no identity → unrestricted (kernel/desktop)
+    if (!identityDeviceAllowed(idObj, cls)) return negErrno(EACCES);
+    return 0;
+}
+
+// DM8 boot proof: a Banking-identity task is allowed input+gpu but DENIED camera+usb, enforced
+// through the real deviceClassGate (the exact gate the open() path calls).  Leaves no state.
+__gshared bool g_domDeviceProofDone = false;
+public void domDeviceProof() {
+    if (g_domDeviceProofDone) return;
+    g_domDeviceProofDone = true;
+    const uint bank = identityByName("Banking\0".ptr);
+    bool ok = (bank != 0);
+    // §7 policy bits + path→class mapping
+    ok = ok && identityDeviceAllowed(bank, DEVCLASS_INPUT) && identityDeviceAllowed(bank, DEVCLASS_GPU);
+    ok = ok && !identityDeviceAllowed(bank, DEVCLASS_CAMERA) && !identityDeviceAllowed(bank, DEVCLASS_USB);
+    ok = ok && (devClassForPath("/dev/input/event0\0".ptr) == DEVCLASS_INPUT);
+    ok = ok && (devClassForPath("/dev/dri/card0\0".ptr) == DEVCLASS_GPU);
+    ok = ok && (devClassForPath("/dev/video0\0".ptr) == DEVCLASS_CAMERA);
+    ok = ok && (devClassForPath("/etc/passwd\0".ptr) == 0);
+    // end-to-end: run a spare task slot AS Banking and gate its device opens
+    int tid = -1;
+    for (int i = MAX_TASKS - 1; i > 0; --i) if (!g_tasks[i].active) { tid = i; break; }
+    if (bank != 0 && tid > 0) {
+        const uint savedId  = g_tasks[tid].identityObjId;
+        const savedCur = g_current_task_id;
+        g_tasks[tid].identityObjId = bank;
+        g_current_task_id = cast(typeof(g_current_task_id))tid;
+        ok = ok && (deviceClassGate("/dev/input/event0\0".ptr) == 0);            // input allowed
+        ok = ok && (deviceClassGate("/dev/dri/card0\0".ptr) == 0);               // gpu allowed
+        ok = ok && (deviceClassGate("/dev/video0\0".ptr) == negErrno(EACCES));   // camera DENIED
+        ok = ok && (deviceClassGate("/dev/bus/usb/001/002\0".ptr) == negErrno(EACCES)); // usb DENIED
+        g_current_task_id = savedCur;
+        g_tasks[tid].identityObjId = savedId;
+    } else ok = false;
+    klog(ok ? "[domain] device proof PASS (Banking: input+gpu allowed, camera+usb EACCES via deviceClassGate)\n"
+            : "[domain] device proof FAIL\n");
+}
+
 // True if `path` exactly names an entry in the virtual-file table (g_vfs).
 private bool pathIsExactVfsFile(const(char)* path) @nogc nothrow {
     foreach (ref vfe; g_vfs)
@@ -2437,6 +2499,10 @@ public int sys_open(const(char)* path, int flags) {
         deviceNoteOpen(path);
         return publishActiveFdReturn(fd);
     }
+
+    // DM8 §7: enforce the calling task's identity device policy on brokered device nodes
+    // (input/gpu/camera/mic/audio/usb) — a domain that denies a class cannot open its node.
+    { const int dg = deviceClassGate(path); if (dg < 0) return dg; }
 
     // /dev/dri/card0, /dev/dri/renderD128 → DRM/KMS device
     if (cstrEq(path, "/dev/dri/card0") || cstrEq(path, "/dev/dri/renderD128")) {

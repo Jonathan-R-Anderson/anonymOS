@@ -75,6 +75,28 @@ struct IdentityRec {
     ulong         policyEpoch;   // bumped by each signed policy transaction (§9)
 }
 
+// --- §7 brokered device classes (the bits in IdentityRec.allowedDevices) ------
+// DOMAIN_MANAGER DM8: a domain's identity may only open device nodes whose class bit is set.
+// allowedDevices == 0 ⟹ no brokered devices (deny-by-default); all seeded identities set it.
+enum uint DEVCLASS_INPUT  = 1u << 0;   // /dev/input/event* (keyboard/mouse)
+enum uint DEVCLASS_GPU    = 1u << 1;   // /dev/dri/* (DRM/KMS)
+enum uint DEVCLASS_CAMERA = 1u << 2;   // /dev/video*
+enum uint DEVCLASS_MIC    = 1u << 3;   // /dev/snd/* capture
+enum uint DEVCLASS_AUDIO  = 1u << 4;   // /dev/snd/* playback
+enum uint DEVCLASS_USB    = 1u << 5;   // /dev/bus/usb/*
+enum uint DEVCLASS_ALL    = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_CAMERA |
+                            DEVCLASS_MIC | DEVCLASS_AUDIO | DEVCLASS_USB;
+
+// DM8: true iff the identity may open the given device class.  An unknown identity fails OPEN
+// (returns true) — only a *known* identity with the bit clear denies, so non-identity kernel
+// paths are never blocked.
+public bool identityDeviceAllowed(IdentityId idObj, uint devClass) {
+    if (idObj == 0 || devClass == 0) return true;
+    auto r = identityById(idObj);
+    if (r is null) return true;
+    return (r.allowedDevices & devClass) == devClass;
+}
+
 // --- per-identity allow-lists (deny-by-default; small fixed tables) ----------
 // 0 brokerSvcObjId = direct allow; non-zero = the brokered service the pair routes through.
 struct IpcPairRule { bool inUse; IdentityId from, to; uint brokerSvcObjId; }
@@ -192,11 +214,15 @@ public void identityFreeze() { g_idFrozen = true; }      // registry immutable
 // record, then activate (immutable).
 private void mkBootIdentity(const(char)* name, IdentityColor color, ubyte trust,
                             uint ceiling, NetPolicy net, ClipPolicy clip, uint gui,
-                            bool disposable) {
+                            bool disposable, uint allowedDevices) {
     const NamespaceId ns = nsAlloc();
     const IdentityId id = identityCreate(name, color, trust, ceiling, ns, net, clip, gui);
     auto r = identityById(id);
-    if (r !is null) { r.disposable = disposable; identityActivate(id); }
+    if (r !is null) {
+        r.disposable = disposable;
+        r.allowedDevices = allowedDevices;    // DM8: §7 device policy (set before activation)
+        identityActivate(id);
+    }
 }
 
 // Compiled-in default identities (the declarative policy file is Phase 9).  Colors
@@ -210,13 +236,18 @@ public void identityInitDefaults() {
     enum uint GUI_BASE  = cast(uint)(GuiPolicy.BorderAlways | GuiPolicy.TitleLabel);
     enum uint GUI_WORK  = GUI_BASE | cast(uint)GuiPolicy.NoScreenshotAcrossId;
     enum uint GUI_BANK  = GUI_WORK | cast(uint)GuiPolicy.NoGlobalGrab;
-    mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false);
-    mkBootIdentity("Personal\0".ptr,   0xFF2E7D32, TRUST_PERSONAL,   CEIL_USER, NetPolicy.NAT,        ClipPolicy.AskApproval,       GUI_BASE, false);
-    mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false);
-    mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false);
-    mkBootIdentity("Development\0".ptr,0xFF6A1B9A, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false);
-    mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false);
-    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true);
+    // DM8 §7 device policy: all get INPUT+GPU (a window needs both); higher trust adds peripherals.
+    enum uint DEV_FULL = DEVCLASS_ALL;
+    enum uint DEV_HOME = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_CAMERA | DEVCLASS_MIC | DEVCLASS_USB;
+    enum uint DEV_WORK = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO | DEVCLASS_USB;   // no camera/mic
+    enum uint DEV_LOCK = DEVCLASS_INPUT | DEVCLASS_GPU;                                    // no cam/mic/usb/audio
+    mkBootIdentity("System\0".ptr,     0xFF808080, TRUST_SYSTEM,     CEIL_FULL, NetPolicy.NAT,        ClipPolicy.AllowDownTrust,    GUI_BASE, false, DEV_FULL);
+    mkBootIdentity("Personal\0".ptr,   0xFF2E7D32, TRUST_PERSONAL,   CEIL_USER, NetPolicy.NAT,        ClipPolicy.AskApproval,       GUI_BASE, false, DEV_HOME);
+    mkBootIdentity("Work\0".ptr,       0xFF1565C0, TRUST_WORK,       CEIL_USER, NetPolicy.VPN,        ClipPolicy.AllowSameIdentity, GUI_WORK, false, DEV_WORK);
+    mkBootIdentity("Banking\0".ptr,    0xFFFFD600, TRUST_BANKING,    CEIL_USER, NetPolicy.VPN,        ClipPolicy.Deny,              GUI_BANK, false, DEV_LOCK);
+    mkBootIdentity("Development\0".ptr,0xFF6A1B9A, TRUST_DEV,        CEIL_USER, NetPolicy.LocalOnly,  ClipPolicy.AskApproval,       GUI_BASE, false, DEV_FULL);
+    mkBootIdentity("Untrusted\0".ptr,  0xFFB71C1C, TRUST_UNTRUSTED,  CEIL_USER, NetPolicy.Tor,        ClipPolicy.Deny,              GUI_BASE, false, DEV_LOCK);
+    mkBootIdentity("Disposable\0".ptr, 0xFFFF6D00, TRUST_DISPOSABLE, CEIL_USER, NetPolicy.Disposable, ClipPolicy.Deny,              GUI_BASE, true,  DEV_LOCK);
 }
 
 // One-shot boot proof (roadmap §2 outcome): create/lookup/validate; duplicate name,

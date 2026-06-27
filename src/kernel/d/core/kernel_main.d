@@ -5,6 +5,7 @@ module core.kernel_main;
 import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
 import core.hoscall : configDomainsDump, domObjViewDump, domFsViewDump;   // DOMAIN_MANAGER DM0/DM2.4 boot proofs
+import core.hoscall : configPackagesDump;                                 // DOMAIN_MANAGER DM7 packages view proof
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -70,6 +71,7 @@ import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain res
 import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
 import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager per-domain ns for the GUI Filesystem view
 import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
+import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
 import core.domain : domainRehydrateFromDisk, domainPersistProof; // DOMAIN_MANAGER DM5: on-disk persistence
 import core.domain : domainTemplateProof;  // DOMAIN_MANAGER DM6: immutable templates proof
@@ -2904,6 +2906,9 @@ void d_kernel_main() {
     domainOverlayWriteProof();   // DOMAIN_MANAGER DM6.2 data plane: a domain-bound task's file create lands in its overlay
     domainBuildAllNamespaces();  // DOMAIN_MANAGER DM10.2: give every domain a restricted ns so the GUI's Filesystem RuntimeView shows a policy for each
     domainControlProof();        // DOMAIN_MANAGER DM10.3: drive a domain through its lifecycle via parsed control strings (the action-panel executor)
+    domDeviceProof();            // DOMAIN_MANAGER DM8: §7 device-class enforcement (deviceClassGate)
+    pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
+    configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

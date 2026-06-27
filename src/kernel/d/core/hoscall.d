@@ -18,6 +18,7 @@ import core.objmgr   : ObjType, objCountType, g_objects, OBJ_MAX;
 import core.identity : g_identities, identityCount, identityById, identityByName, IdentityId, NetPolicy;  // +L4.2
 import core.domain   : g_domains, DomainState, domainStateName, domainCount,
                        PERSIST_EPHEMERAL, PERSIST_HOME_ONLY, PERSIST_FULL;  // DOMAIN_MANAGER DM0
+import core.pkgrepo  : pkgRepoCount, pkgRepoAt, pkgInstalledMask;          // DOMAIN_MANAGER DM7
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
@@ -508,10 +509,10 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
-         CFG_DOMAINS = 5;
+         CFG_DOMAINS = 5, CFG_PACKAGES = 6;
 
-private immutable string[5] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json", "domains.json"];
+private immutable string[6] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -632,6 +633,38 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             lit(b, "\n]\n");
             return cast(long)b.len;
         }
+        case CFG_PACKAGES: {
+            // DOMAIN_MANAGER DM7: the software repository catalog + per-domain installs as JSON.
+            lit(b, "{ \"repository\": [\n"); bool first = true;
+            foreach (uint i; 0 .. pkgRepoCount()) {
+                auto p = pkgRepoAt(i);
+                if (p is null) continue;
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");          jstr(b, p.name.ptr, p.nameLen);
+                lit(b, ", \"version\": \"");       litz(b, p.ver.ptr); put(b, '"');
+                lit(b, ", \"sizeKb\": ");          num(b, p.sizeKb);
+                lit(b, ", \"requiredCaps\": \"");  hex(b, p.requiredCaps); put(b, '"');
+                lit(b, ", \"signed\": ");          lit(b, p.signed ? "true" : "false");
+                lit(b, " }");
+            }
+            lit(b, "\n], \"installed\": [\n"); first = true;
+            foreach (ref e; g_domains) if (e.inUse) {
+                const uint mask = pkgInstalledMask(e.objId);
+                if (mask == 0) continue;
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"domain\": ");  jstr(b, e.name.ptr, e.nameLen);
+                lit(b, ", \"packages\": [");
+                bool pf = true;
+                foreach (uint i; 0 .. pkgRepoCount()) if (mask & (1u << i)) {
+                    auto p = pkgRepoAt(i); if (p is null) continue;
+                    if (!pf) lit(b, ", "); pf = false;
+                    jstr(b, p.name.ptr, p.nameLen);
+                }
+                lit(b, "] }");
+            }
+            lit(b, "\n] }\n");
+            return cast(long)b.len;
+        }
         default: return -2; // ENOENT
     }
 }
@@ -649,6 +682,18 @@ public void configDomainsDump() {
     klog("[domain] /config/domains.json render OK: ");
     klog_hex(cast(ulong)domainCount()); klog(" domains, ");
     klog_hex(cast(ulong)n); klog(" bytes\n");
+}
+
+// DOMAIN_MANAGER DM7: one-shot boot proof that /config/packages.json renders the repository
+// catalog + per-domain installs (headless verification of the software-repo view).
+__gshared bool g_pkgDumped = false;
+public void configPackagesDump() {
+    if (g_pkgDumped) return;
+    g_pkgDumped = true;
+    const long n = configfsRender(CFG_PACKAGES, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    if (n < 0) { klog("[pkg] /config/packages.json render FAIL\n"); return; }
+    klog("[pkg] /config/packages.json render OK: "); klog_hex(cast(ulong)pkgRepoCount());
+    klog(" packages, "); klog_hex(cast(ulong)n); klog(" bytes\n");
 }
 
 // DOMAIN_MANAGER DM0.d: one-shot boot proof that /objects/domains/<name>/{meta,

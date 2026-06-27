@@ -25,6 +25,7 @@ import core.objstore : objstoreMounted, objstoreInstallDomain,
 import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCommit,
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
+import core.pkgrepo : pkgInstallByName, pkgRemoveByName;   // DOMAIN_MANAGER DM7: package manager verbs
 
 extern (C) @nogc nothrow:
 
@@ -84,6 +85,7 @@ private bool domNameEq(ref const(DomainRec) e, const(char)* name) {
 private void domCopyName(ref DomainRec e, const(char)* name) {
     const int n = domCstrLen(name);
     foreach (i; 0 .. n) e.name[i] = name[i];
+    if (n < DOM_NAME_MAX) e.name[n] = 0;   // always NUL-terminate (renamed/rehydrated records)
     e.nameLen = cast(uint)n;
 }
 
@@ -303,6 +305,9 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "snapshot")) ok = (id != 0) && (domainSnapshot(id) != 0);
     else if (verbEq(verb.ptr, "commit"))   ok = (id != 0) && (domainCommit(id)   != 0);
     else if (verbEq(verb.ptr, "clone"))    ok = (id != 0) && (arg[0] != 0) && (domainClone(id, arg.ptr) != 0);
+    // DM7: package manager verbs — "install <domain> <pkg>" / "uninstall <domain> <pkg>"
+    else if (verbEq(verb.ptr, "install"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgInstallByName(name.ptr, arg.ptr) == 0);
+    else if (verbEq(verb.ptr, "uninstall")) ok = (name[0] != 0) && (arg[0] != 0) && (pkgRemoveByName(name.ptr, arg.ptr) == 0);
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;

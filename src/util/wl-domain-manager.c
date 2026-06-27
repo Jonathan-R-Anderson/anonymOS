@@ -662,6 +662,25 @@ static void domain_action_arg(struct app *app, const char *verb, const char *arg
     refresh_fs_view(app);
 }
 
+// Toolbar New (from-scratch Create) / Import (instantiate from the selected as a template).  The
+// dialog's editbuf is the NEW domain's name; from_template=1 references the selected domain.
+static void domain_create_new(struct app *app, int from_template)
+{
+    if (app->editlen == 0 || app->sel < 0 || app->sel >= app->n_doms) return;
+    char cmd[160];
+    if (from_template) snprintf(cmd, sizeof(cmd), "fromtpl %s %s", app->editbuf, app->doms[app->sel].name);
+    else               snprintf(cmd, sizeof(cmd), "create %s %s",  app->editbuf, app->doms[app->sel].identity);
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) { printf("DOMAINMGR: create open FAILED\n"); fflush(stdout); return; }
+    ssize_t w = write(fd, cmd, strlen(cmd));
+    close(fd);
+    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
+    load_domains(app); load_packages(app); load_templates(app);
+    for (int i = 0; i < app->n_doms; i++)
+        if (strcmp(app->doms[i].name, app->editbuf) == 0) { app->sel = i; break; }
+    refresh_fs_view(app);
+}
+
 // DM10.3: one-shot self-test that proves the control-write path end-to-end (open -> write ->
 // kernel domainControlWrite) without a side effect — "ping" is a no-op verb.
 static void domain_ctl_selftest(struct app *app)
@@ -1034,6 +1053,8 @@ static void draw_manager(struct app *app)
         const char *head = app->edit_mode==0 ? "Clone domain - new name:" :
                            app->edit_mode==1 ? "Grant READ-ONLY filesystem path:" :
                            app->edit_mode==3 ? "DENY filesystem path:" :
+                           app->edit_mode==4 ? "Create new domain - name:" :
+                           app->edit_mode==5 ? "Instantiate from template - new name:" :
                                                "Grant READ-WRITE filesystem path:";
         char h2[96]; snprintf(h2,sizeof(h2),"%s  (domain %s)", head, sd->name);
         draw_text(app, h2, dx+20, dy+20, dw-40, 14, 0xfff0f3f8u);
@@ -1138,12 +1159,17 @@ static void handle_click(struct app *app)
     if (y >= HEADER_H && y < BODY_Y) {
         for (int i = 0; i < N_TOOL; i++) { int bx,by,bw,bh; toolbar_btn_rect(i,&bx,&by,&bw,&bh);
             if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
-                if (i == 0 || i == 1) {             // New / Clone → name dialog (clones the selected base)
-                    snprintf(app->editbuf, sizeof(app->editbuf), "%.18s-%s", app->doms[app->sel].name, i==0?"new":"clone");
+                if (i == 0) {                        // + New → from-scratch Create dialog
+                    app->editbuf[0] = 0; app->editlen = 0; app->edit_mode = 4; app->editing = 1;
+                } else if (i == 1) {                 // Clone → clone the selected domain
+                    snprintf(app->editbuf, sizeof(app->editbuf), "%.18s-clone", app->doms[app->sel].name);
                     app->editlen = (int)strlen(app->editbuf); app->edit_mode = 0; app->editing = 1;
-                    redraw_commit(app, "new/clone");
+                } else if (i == 2) {                 // Import → instantiate from the selected template
+                    snprintf(app->editbuf, sizeof(app->editbuf), "%.16s-instance", app->doms[app->sel].name);
+                    app->editlen = (int)strlen(app->editbuf); app->edit_mode = 5; app->editing = 1;
                 }
-                return;                              // Import / Marketplace: planned
+                redraw_commit(app, "toolbar");
+                return;                              // Marketplace: out of scope (P2P needs a network stack)
             }
         }
         return;
@@ -1247,7 +1273,9 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
         if (key == 1)        { app->editing = 0; }                         // Esc → cancel
         else if (key == 28)  {                                              // Enter → apply
             app->editing = 0;
-            if (app->edit_mode == 0) domain_action_clone(app);              // clone a domain
+            if (app->edit_mode == 0)      domain_action_clone(app);         // clone a domain
+            else if (app->edit_mode == 4) domain_create_new(app, 0);        // from-scratch Create
+            else if (app->edit_mode == 5) domain_create_new(app, 1);        // instantiate from template
             else if (app->editbuf[0] == '/') {                              // grant/deny a filesystem path
                 const char *v = app->edit_mode==1 ? "fsro" : app->edit_mode==3 ? "fsdeny" : "fsrw";
                 domain_action_arg(app, v, app->editbuf);

@@ -452,6 +452,10 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "pkgmgr"))    ok = (id != 0) && domainSetPkgMgr(id, pkgMgrByName(arg.ptr));
     else if (verbEq(verb.ptr, "profile"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgApplyProfile(name.ptr, arg.ptr) >= 1);
     else if (verbEq(verb.ptr, "export"))    ok = (id != 0) && (templatePublish(id) == 0);   // DM12: publish as a signed template
+    // GUI toolbar: from-scratch Create + instantiate-from-template (Import)
+    else if (verbEq(verb.ptr, "create"))    ok = (name[0] != 0) && (domainCreate(name.ptr, identityByName(arg.ptr), 0) != 0);
+    else if (verbEq(verb.ptr, "fromtpl"))   { const uint tp = domainByName(arg.ptr);
+                                              ok = (name[0] != 0) && (tp != 0) && (domainCreate(name.ptr, domainById(tp).identityObjId, tp) != 0); }
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;
@@ -485,7 +489,12 @@ public void domainControlProof() {
     ok = ok && domainControlWrite("devon Development gpu".ptr, 21)  &&  domainDeviceAllowed(devDom, DEVCLASS_GPU);
     ok = ok && domainControlWrite("fsrw Development /host/projects".ptr, 31);     // grant a real path rw
     ok = ok && domainControlWrite("fsdeny Development /host/projects/key".ptr, 37); // deny a sub-path
-    klog(ok ? "[domain] control proof PASS (lifecycle/clone + devon/devoff + fsrw/fsdeny via parse+exec; unknown denied)\n"
+    // GUI toolbar: from-scratch create + instantiate-from-template (both clean up after)
+    ok = ok && domainControlWrite("create CtlNew Personal".ptr, 22) && (domainByName("CtlNew\0".ptr) != 0);
+    ok = ok && domainControlWrite("fromtpl CtlInst DevTemplate".ptr, 27) && (domainByName("CtlInst\0".ptr) != 0);
+    { const uint a = domainByName("CtlNew\0".ptr);  if (a) domainDelete(a); }
+    { const uint c = domainByName("CtlInst\0".ptr); if (c) domainDelete(c); }
+    klog(ok ? "[domain] control proof PASS (lifecycle/clone/create/fromtpl + devon/devoff + fsrw/fsdeny via parse+exec; unknown denied)\n"
             : "[domain] control proof FAIL\n");
 }
 

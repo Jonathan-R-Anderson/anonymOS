@@ -957,6 +957,16 @@ each click reuses an already-proven control verb.
 *Remaining DM10:* Import/Marketplace are placeholders; a from-scratch Create (vs clone-based New) and the
 network/clipboard runtime gates (DM8 follow-up) round it out.
 
+**Status — DM10.8 (toolbar completed: from-scratch Create + Import-from-template) DONE + verified.** The
+toolbar verbs are now functional, not placeholders: **+ New** opens an empty name dialog → `create <name>
+<identity>` → a fresh domain (inherits the selected domain's identity); **Clone** → `clone` (DM10.5);
+**Import** → `fromtpl <name> <template>` → a domain that references the selected (template) domain via
+`templateObjId` (so it inherits the DM9 least-privilege chain); **Marketplace** stays an explicit out-of-scope
+stub (P2P needs a network stack). New `domain.d` control verbs `create`/`fromtpl` wrap `domainCreate`. Verified
+in-VM: `[domain] control proof PASS (lifecycle/clone/create/fromtpl + devon/devoff + fsrw/fsdeny via
+parse+exec)` (the proof creates `CtlNew` from scratch + `CtlInst` from `DevTemplate`, then deletes both); the
+GUI renders 1180×680 and the click→verb path reuses the proven `/config/domain.action` channel.
+
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a
   `HOSQ_DOMAIN_LIST` read; subscribe via `HOSQ_DOMAIN_SUBSCRIBE=48` (reuse the

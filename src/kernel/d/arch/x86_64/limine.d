@@ -161,6 +161,34 @@ align(8) struct limine_paging_mode_request {
     uint64_t flags;
 }
 
+// SMP / multiprocessor (SMP_ROADMAP S0/S1).  Limine enumerates the CPUs and parks each AP
+// spinning on its `goto_address`; the BSP writes an entry pointer there to launch the AP — no
+// manual INIT-SIPI trampoline needed.  The CPU count is read at runtime (NEVER hardcoded).
+enum LIMINE_SMP_REQUEST = [LIMINE_COMMON_MAGIC_0, LIMINE_COMMON_MAGIC_1, 0x95a67b819a1b857e, 0xa0b61b723b6a73e0];
+
+align(8) struct limine_smp_info {
+    uint32_t processor_id;
+    uint32_t lapic_id;
+    uint64_t reserved;
+    void*    goto_address;    // AP spins until the BSP writes its entry pointer here
+    uint64_t extra_argument;  // free for kernel use (we stash the per-CPU index)
+}
+
+align(8) struct limine_smp_response {
+    uint64_t revision;
+    uint32_t flags;           // bit 0: x2APIC enabled
+    uint32_t bsp_lapic_id;
+    uint64_t cpu_count;       // total CPUs incl. the BSP — the runtime N
+    limine_smp_info** cpus;
+}
+
+align(8) struct limine_smp_request {
+    uint64_t id0, id1, id2, id3;
+    uint64_t revision;
+    limine_smp_response* response;
+    uint64_t flags;           // bit 0: request x2APIC
+}
+
 // Framebuffer
 enum LIMINE_FRAMEBUFFER_REQUEST = [LIMINE_COMMON_MAGIC_0, LIMINE_COMMON_MAGIC_1, 0x9d5827dcd881dd75, 0xa3148604f6fab11b];
 

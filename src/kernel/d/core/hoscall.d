@@ -231,7 +231,7 @@ private void hex(ref UB b, ulong v) {
 // Each /objects/<kind> lists its live objects (one file per object); cat'ing the
 // object file renders its metadata.  The kinds map onto the kernel's own tables.
 enum int OBJFS_NONE = 0, OBJFS_IDENTITIES = 1, OBJFS_SERVICES = 2,
-         OBJFS_NAMESPACES = 3, OBJFS_USERS = 4;
+         OBJFS_NAMESPACES = 3, OBJFS_USERS = 4, OBJFS_DOMAINS = 5;  // DOMAIN_MANAGER DM0
 
 private bool nameEq(const(char)* a, size_t alen, const(char)[] lit_) {
     if (alen != lit_.length) return false;
@@ -245,6 +245,7 @@ public int objfsKindId(const(char)* name, size_t len) {
     if (nameEq(name, len, "services"))   return OBJFS_SERVICES;
     if (nameEq(name, len, "namespaces")) return OBJFS_NAMESPACES;
     if (nameEq(name, len, "users"))      return OBJFS_USERS;
+    if (nameEq(name, len, "domains"))    return OBJFS_DOMAINS;   // DOMAIN_MANAGER DM0
     return OBJFS_NONE;
 }
 
@@ -278,6 +279,12 @@ public int objfsEnum(int kind, int logical, char* nameBuf, size_t cap) {
                     UB b; b.p = nameBuf; b.cap = cap; b.len = 0; num(b, ns.objId);
                     return cast(int)b.len;
                 }
+                ++n;
+            }
+            return -1;
+        case OBJFS_DOMAINS:   // DOMAIN_MANAGER DM0
+            foreach (ref e; g_domains) if (e.inUse) {
+                if (n == logical) { size_t l = e.nameLen < cap ? e.nameLen : cap; foreach (i; 0 .. l) nameBuf[i] = e.name[i]; return cast(int)l; }
                 ++n;
             }
             return -1;
@@ -377,6 +384,28 @@ public long objfsField(int kind, const(char)* objName, size_t objLen, int field,
                 }
             }
             return -2;
+        case OBJFS_DOMAINS:   // DOMAIN_MANAGER DM0
+            foreach (ref e; g_domains) if (e.inUse && nameEq(objName, objLen, e.name[0 .. e.nameLen])) {
+                if (field == OBJF_CAPS) {
+                    // a domain's authority ceiling is inherited from its identity
+                    lit(b, "# capability ceiling of domain "); foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                    auto idr = identityById(e.identityObjId);
+                    if (idr !is null) {
+                        lit(b, " (inherited from identity "); foreach (i; 0 .. idr.nameLen) put(b, idr.name[i]); lit(b, ")\n");
+                        capDecode(b, idr.rightsCeiling);
+                    } else { lit(b, " (no identity)\n"); capDecode(b, 0); }
+                } else { // relationships — the domain's object-graph edges
+                    lit(b, "domain=");      foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                    lit(b, "\nidentity=");  num(b, e.identityObjId);
+                    lit(b, "\ntemplate=");  num(b, e.templateObjId);
+                    lit(b, "\nnamespace="); num(b, e.nsObjId);
+                    lit(b, "\noverlay=");   num(b, e.overlayObjId);
+                    lit(b, "\nstate=");     litz(b, domainStateName(e.state));
+                    put(b, '\n');
+                }
+                return cast(long)b.len;
+            }
+            return -2;
         default: return -2;
     }
 }
@@ -429,6 +458,22 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
                     lit(b, "type=Namespace\nobjId="); num(b, ns.objId); put(b, '\n');
                     return cast(long)b.len;
                 }
+            }
+            return -2;
+        case OBJFS_DOMAINS:   // DOMAIN_MANAGER DM0
+            foreach (ref e; g_domains) if (e.inUse && nameEq(objName, objLen, e.name[0 .. e.nameLen])) {
+                lit(b, "type=Domain\nname=");  foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
+                lit(b, "\nobjId=");        num(b, e.objId);
+                lit(b, "\nidentity=");
+                auto idr = identityById(e.identityObjId);
+                if (idr !is null) foreach (i; 0 .. idr.nameLen) put(b, idr.name[i]); else lit(b, "(none)");
+                lit(b, "\nidentityObjId="); num(b, e.identityObjId);
+                lit(b, "\ntemplate=");     num(b, e.templateObjId);
+                lit(b, "\nstate=");        litz(b, domainStateName(e.state));
+                lit(b, "\npersist=");      persistName(b, e.persistMode);
+                lit(b, "\npolicyEpoch=");  num(b, e.policyEpoch);
+                put(b, '\n');
+                return cast(long)b.len;
             }
             return -2;
         default: return -2;
@@ -577,11 +622,28 @@ public void configDomainsDump() {
     g_domDumped = true;
     const long n = configfsRender(CFG_DOMAINS, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
     if (n < 0) { klog("[domain] /config/domains.json render FAIL\n"); return; }
-    g_domDumpBuf[cast(size_t)n] = 0;
-    klog("[domain] /config/domains.json (");
-    klog_hex(cast(ulong)domainCount());
-    klog(" domains):\n");
-    klog(g_domDumpBuf.ptr);
+    klog("[domain] /config/domains.json render OK: ");
+    klog_hex(cast(ulong)domainCount()); klog(" domains, ");
+    klog_hex(cast(ulong)n); klog(" bytes\n");
+}
+
+// DOMAIN_MANAGER DM0.d: one-shot boot proof that /objects/domains/<name>/{meta,
+// relationships,capabilities} render (headless — exercises the same renderers the
+// sys_open/getdents path calls).  Runs once at boot init.
+__gshared bool g_domViewDumped = false;
+public void domObjViewDump() {
+    if (g_domViewDumped) return;
+    g_domViewDumped = true;
+    char[32] nm = void; int cnt = 0;
+    for (int i = 0; ; ++i) { const int l = objfsEnum(OBJFS_DOMAINS, i, nm.ptr, nm.length); if (l < 0) break; ++cnt; }
+    const long m = objfsRead(OBJFS_DOMAINS, "Development\0".ptr, 11, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    const long r = objfsField(OBJFS_DOMAINS, "Development\0".ptr, 11, OBJF_RELS, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    const long c = objfsField(OBJFS_DOMAINS, "Banking\0".ptr, 7, OBJF_CAPS, g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    klog("[domain] /objects/domains view OK: ");
+    klog_hex(cast(ulong)cnt); klog(" entries; meta=");
+    klog_hex(cast(ulong)(m > 0 ? m : 0)); klog("B rels=");
+    klog_hex(cast(ulong)(r > 0 ? r : 0)); klog("B caps=");
+    klog_hex(cast(ulong)(c > 0 ? c : 0)); klog("B\n");
 }
 
 // ── /system immutable base views (OBJECT_FILESYSTEM_ROADMAP F3) ───────────────

@@ -2055,6 +2055,24 @@ private int objfsParseDeep(const(char)* path, out const(char)* obj, out size_t o
     return kid;                                    // /objects/<kind>/<obj>/<field>
 }
 
+// DOMAIN_MANAGER DM0.d: one-shot end-to-end proof of the /objects/domains READ path —
+// the exact parse+render the open/read syscalls run (see the dispatch ~line 2520).
+// Proves objfsParseDeep routes "domains" + objfsField renders it; headless (no shell).
+__gshared bool g_domReadProofDone = false;
+public void domReadPathProof() {
+    if (g_domReadProofDone) return;
+    g_domReadProofDone = true;
+    const(char)* obj; size_t objLen; int field;
+    const int kind = objfsParseDeep("/objects/domains/Development/meta\0".ptr, obj, objLen, field);
+    long n = -1;
+    if (kind == 5 /*OBJFS_DOMAINS*/ && field == 1 /*meta*/)
+        n = objfsField(kind, obj, objLen, field, g_procBuf.ptr, g_procBuf.length - 1);
+    klog("[domain] read-path /objects/domains/Development/meta: kind=");
+    klog_hex(cast(ulong)kind); klog(" field="); klog_hex(cast(ulong)field);
+    if (n > 0) { klog(" -> OK "); klog_hex(cast(ulong)n); klog(" bytes\n"); }
+    else klog(" -> FAIL\n");
+}
+
 // ── F4: /objects/apps persisted app objects (on the SATA object store) ─────────
 private enum ulong SYNTHDIR_APPS     = 0x0A99D100;   // /objects/apps dir
 private enum ulong SYNTHDIR_APP_BASE = 0x0A99D200;   // + appIdx => /objects/apps/<app> dir
@@ -7614,7 +7632,7 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         // F1: /objects also lists the synthetic object kinds alongside its RT children.
         // F4 adds the persisted "apps" collection (DT_DIR) + the "store" info file.
         if (dirIdx == g_objectsDirIdx) {
-            static immutable string[5] kinds = ["identities", "services", "namespaces", "users", "apps"];
+            static immutable string[6] kinds = ["identities", "services", "namespaces", "users", "domains", "apps"];
             foreach (k; kinds) {
                 if (f.offset <= logical) {
                     if (!writeDirent64(buf, count, &written, logical + 16384,

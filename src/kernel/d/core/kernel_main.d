@@ -4,7 +4,7 @@ module core.kernel_main;
 
 import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
-import core.hoscall : configDomainsDump;   // DOMAIN_MANAGER DM0: one-shot /config/domains.json boot proof
+import core.hoscall : configDomainsDump, domObjViewDump;   // DOMAIN_MANAGER DM0: /config + /objects/domains boot proofs
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -2861,6 +2861,8 @@ void d_kernel_main() {
     domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
     configDomainsDump();         // DOMAIN_MANAGER DM0: one-shot proof /config/domains.json renders the seeded domains
+    domObjViewDump();            // DOMAIN_MANAGER DM0.d: one-shot proof /objects/domains/<name>/{meta,relationships,capabilities}
+    domReadPathProof();          // DOMAIN_MANAGER DM0.d: one-shot end-to-end proof of the /objects/domains read path (parse+render)
     idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     idwinInit();                 // §6 install winRegister identity-stamp hook (unspoofable borders)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);

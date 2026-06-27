@@ -463,13 +463,22 @@ governs what is reloaded: `full` = manifest + overlay + home; `home-only` = mani
 Make a domain a real kernel object before anything else depends on it. No persistence, no
 restriction yet — just the object, the registry, and a browsable tree.
 
-**Status — DM0.a + DM0.c DONE + boot-verified** (commit pending): `core/domain.d` (`DomainRec`,
+**Status — DM0.a + DM0.c + DM0.d DONE + boot-verified.** `core/domain.d` (`DomainRec`,
 `g_domains[32]`, `domainCreate`/`domainById`/`domainByName`/`domainCount`/`domainInitDefaults`),
-`ObjType.Domain`/`Template`/`Overlay`/`Snapshot`, the 7-domain boot seed (one per identity), and the
-`/config/domains.json` view. Serial proof: `[domain] selftest PASS` (create/lookup/dup-reject/
-unknown-identity-reject/freeze) + the JSON renders all 7 domains (objId 63-69) each linked to its
-identity, `state:"Defined"`, `persist:"ephemeral"`. *Remaining:* DM0.b (`HOSQ_DOMAIN_LIST` verb,
-naturally paired with its DM10 GUI consumer) and DM0.d (`/objects/domains/<name>/` synthetic tree).
+`ObjType.Domain`/`Template`/`Overlay`/`Snapshot`, the 7-domain boot seed (one per identity), the
+`/config/domains.json` view, AND the `/objects/domains/<name>/{meta,capabilities,relationships}`
+synthetic tree. ★ Implementation insight: the `/objects/<kind>/<obj>/<field>` resolution
+(`objfsParseDeep` + the `SYNTHDIR_OBJ_*` getdents handlers) is **fully generic**, so domains became
+just a new `OBJFS_DOMAINS` kind in `core/hoscall.d` (`objfsKindId`/`objfsEnum`/`objfsRead`/`objfsField`)
++ `"domains"` in the posix.d `kinds[]` list — NOT a separate `domfsParseDeep`/`SYNTHDIR_DOM_*` machine
+(that was the draft's guess; the simpler path is correct). The richer nested `Filesystem/{AllowedPaths,…}`
+sub-tree the brief shows lands with DM2 (when the FS policy exists). Serial proofs: `[domain] selftest
+PASS`; `/config/domains.json render OK: 7 domains`; `/objects/domains view OK: 7 entries; meta/rels/caps
+render`; `read-path /objects/domains/Development/meta: kind=5 field=1 -> OK 133 bytes` (the exact parse+
+render `cat` runs). `capabilities` correctly shows each domain's inherited identity ceiling (Banking =
+`0x503ff`, no admin caps). *Remaining DM0 piece:* DM0.b (native `HOSQ_DOMAIN_LIST` verb) is deferred to
+its first consumer (DM4 CLI / DM10 GUI) — the data is already exposed Linux-side via `/config/domains.json`
++ `/objects/domains/`, which the (Linux-personality) GUI reads without going native.
 
 - Add `ObjType.Domain`/`Template`/`Overlay`/`Snapshot` to `core/objmgr.d` (`objmgr.d:22-54`)
   + `g_objTypeNames` (`hoscall.d:197`).

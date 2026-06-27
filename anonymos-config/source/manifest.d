@@ -49,6 +49,7 @@ enum Tag : ubyte
     genSet         = 5,   // payload: u32 genNumber             → genSetActive (selects boot generation)
     identityFreeze = 6,   // payload: (none)                    → identityFreeze
     svcStartAll    = 7,   // payload: (none)                    → serviceStartAll (applied after all svcDep)
+    domainCreate   = 8,   // payload: name\0 identity\0 template\0 u8 persist  → domainCreate (DOMAIN_MANAGER DM1)
 }
 
 // The trusted key MUST match src/kernel/d/core/crypto.d g_trustedKey exactly.
@@ -127,12 +128,14 @@ public ubyte[] buildManifest(in CompiledGraph g, in JSONValue doc)
 {
     auto nsRecs = manifestNamespaces(g);
     auto idRecs = manifestIdentities(g);
+    auto domRecs = manifestDomains(g);      // DOMAIN_MANAGER DM1
     auto svcRegRecs = manifestServiceRegs(g, doc);
     auto svcDepRecs = manifestServiceDeps(g, doc);
     uint count = 0;
     count += countRecords(nsRecs);
     count += countRecords(idRecs);
     if (idRecs.length) count += 1;          // identityFreeze
+    count += countRecords(domRecs);         // DOMAIN_MANAGER DM1
     count += countRecords(svcRegRecs);
     count += countRecords(svcDepRecs);
     count += 1;                              // svcStartAll
@@ -145,6 +148,7 @@ public ubyte[] buildManifest(in CompiledGraph g, in JSONValue doc)
     b.buf ~= nsRecs;
     b.buf ~= idRecs;
     if (idRecs.length) b.putRecord(Tag.identityFreeze, null);
+    b.buf ~= domRecs;                       // DOMAIN_MANAGER DM1 (after identities exist + freeze)
     b.buf ~= svcRegRecs;
     b.buf ~= svcDepRecs;
     b.putRecord(Tag.svcStartAll, null);
@@ -201,6 +205,35 @@ private ubyte[] manifestIdentities(in CompiledGraph g)
         }
         else putU32Raw(p, 0);
         b.putRecord(Tag.identityCreate, p);
+    }
+    return b.buf;
+}
+
+private ubyte persistMode(string s)
+{
+    if (s == "full") return 2;
+    if (s == "home-only") return 1;
+    return 0; // ephemeral (default)
+}
+
+// DOMAIN_MANAGER DM1: emit one domainCreate record per declared domain.
+private ubyte[] manifestDomains(in CompiledGraph g)
+{
+    ManifestBuilder b;
+    foreach (name, rec; g.domainTable)
+    {
+        // payload: name\0 identity\0 template\0 u8 persist
+        ubyte[] p;
+        foreach (c; name) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        // identity name ("" → same-named identity, resolved kernel-side)
+        string idn = rec.identity.length ? rec.identity : name;
+        foreach (c; idn) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        foreach (c; rec.template_) p ~= cast(ubyte) c;
+        p ~= cast(ubyte) 0;
+        p ~= persistMode(rec.persist);
+        b.putRecord(Tag.domainCreate, p);
     }
     return b.buf;
 }

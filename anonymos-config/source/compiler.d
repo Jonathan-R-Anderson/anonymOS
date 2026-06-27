@@ -109,6 +109,17 @@ struct NamespaceRecFields
     bool isolated;
 }
 
+// DOMAIN_MANAGER DM1: a domain references an identity (security domain) + optionally a
+// template; the richer manifest fields are validated/accepted but compiled in later milestones.
+struct DomainRecFields
+{
+    string name;
+    string type_;       // "domain" | "template" (default "domain")
+    string identity;    // the identity name this domain binds to ("" → same-named identity)
+    string template_;   // parent template name (DM6); "" = none
+    string persist;     // "ephemeral" | "home-only" | "full" (default "ephemeral")
+}
+
 struct BootStep
 {
     string phase; // "trusted" | "object-tree" | "services"
@@ -126,6 +137,7 @@ struct CompiledGraph
     CapEntry[string] capabilityManifest;
     IpcRule[] ipcRules;
     IdentityRecFields[string] identityTable;
+    DomainRecFields[string] domainTable;          // DOMAIN_MANAGER DM1
     NamespaceRecFields[string] namespaceTable;
     string configHash;                  // sha256(canonical_json)[:16] — set by caller
     LiveClass[string] liveReconfig;     // section → live/reboot
@@ -167,6 +179,7 @@ bool compile(const ref JSONValue doc, ref CompiledGraph g, ref CompileError[] er
 
     // Phase 5/7/9: materialize tables + ipc rules.
     g.identityTable = buildIdentityTable(doc);
+    g.domainTable = buildDomainTable(doc);        // DOMAIN_MANAGER DM1
     g.namespaceTable = buildNamespaceTable(doc);
     g.ipcRules = buildIpcRules(doc, tables, errors);
 
@@ -753,6 +766,26 @@ IdentityRecFields[string] buildIdentityTable(const ref JSONValue doc)
                         foreach (d; dev.array) if (d.type == JSONType.string) r.devices ~= d.str;
                 if (auto dp = "disposable" in e.object) r.disposable = dp.boolean;
                 if (auto tpl = "template" in e.object) r.template_ = tpl.str;
+                if (r.name.length) tab[r.name] = r;
+            }
+    return tab;
+}
+
+// DOMAIN_MANAGER DM1: lower the domains[] section into a name→DomainRecFields table.
+DomainRecFields[string] buildDomainTable(const ref JSONValue doc)
+{
+    DomainRecFields[string] tab;
+    if (auto a = "domains" in doc.object)
+        if (a.type == JSONType.array)
+            foreach (e; a.array)
+            {
+                if (e.type != JSONType.object) continue;
+                DomainRecFields r;
+                if (auto n = "name" in e.object) r.name = n.str;
+                if (auto t = "type" in e.object) r.type_ = t.str;
+                if (auto id = "identity" in e.object) r.identity = id.str;
+                if (auto tpl = "template" in e.object) r.template_ = tpl.str;
+                if (auto ps = "persist" in e.object) r.persist = ps.str;
                 if (r.name.length) tab[r.name] = r;
             }
     return tab;

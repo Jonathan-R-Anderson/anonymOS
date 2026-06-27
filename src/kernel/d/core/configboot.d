@@ -34,6 +34,7 @@ import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : cryptoVerify;
 import core.namespace : nsAlloc;
 import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy;
+import core.domain   : domainCreate, domainByName, domainById;   // DOMAIN_MANAGER DM1
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
 import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
@@ -69,6 +70,7 @@ private enum ubyte TAG_NS_ALLOC       = 4;
 private enum ubyte TAG_GEN_SET        = 5;
 private enum ubyte TAG_IDENTITY_FREEZE = 6;
 private enum ubyte TAG_SVC_START_ALL  = 7;
+private enum ubyte TAG_DOMAIN_CREATE  = 8;   // DOMAIN_MANAGER DM1
 
 private enum MANIFEST_HEADER_SIZE = 16;
 private enum MANIFEST_HMAC_SIZE   = 32;
@@ -76,6 +78,7 @@ private enum MANIFEST_HMAC_SIZE   = 32;
 // Counters for the serial report.
 __gshared ulong g_cfgNsApplied;
 __gshared ulong g_cfgIdApplied;
+__gshared ulong g_cfgDomApplied;   // DOMAIN_MANAGER DM1
 __gshared ulong g_cfgSvcApplied;
 __gshared ulong g_cfgSvcDeps;
 __gshared bool  g_cfgApplied;     // a verified manifest was applied this boot
@@ -150,6 +153,8 @@ public bool configBootApply() {
     klog(" services, ");
     klog_hex(g_cfgIdApplied);
     klog(" identities, ");
+    klog_hex(g_cfgDomApplied);
+    klog(" domains, ");
     klog_hex(g_cfgNsApplied);
     klog(" namespaces, gen=");
     klog_hex(genActive());
@@ -224,6 +229,38 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
     }
     case TAG_IDENTITY_FREEZE: {
         identityFreeze();
+        break;
+    }
+    case TAG_DOMAIN_CREATE: {
+        // payload: name\0 identity\0 template\0 u8 persist  → domainCreate
+        size_t off = 0;
+        const(char)* name    = readCStr(payload, len, off);
+        const(char)* idName  = readCStr(payload, len, off);
+        const(char)* tplName = readCStr(payload, len, off);   // DM6 (template resolution); ignored now
+        if (name is null || idName is null || tplName is null) break;
+        if (off >= len) break;
+        const ubyte persist = payload[off];
+        // resolve the identity this domain binds to (0 = none / not found)
+        const uint identityObjId = (idName[0] != 0) ? identityByName(idName) : 0;
+        // idempotent: a domain of this name may already exist (the DM0 compiled-in seed) —
+        // re-assert the manifest's persist policy rather than fail, like the identity case.
+        const uint existing = domainByName(name);
+        if (existing != 0) {
+            auto r = domainById(existing);
+            if (r !is null) r.persistMode = persist;
+            ++g_cfgDomApplied;
+            klog("[configboot] domain "); klog(name); klog(" exists (persist re-asserted)\n");
+            break;
+        }
+        const uint id = domainCreate(name, identityObjId, 0);
+        if (id != 0) {
+            auto r = domainById(id);
+            if (r !is null) r.persistMode = persist;
+            ++g_cfgDomApplied;
+            klog("[configboot] domain "); klog(name); klog(" created -> identity ");
+            klog(idName[0] != 0 ? idName : "(none)".ptr);
+            klog(" persist="); klog_hex(persist); klog("\n");
+        }
         break;
     }
     case TAG_SVC_REG: {

@@ -506,6 +506,23 @@ its first consumer (DM4 CLI / DM10 GUI) — the data is already exposed Linux-si
 A domain is described by JSON (Deliverable 3), compiled host-side, applied to the kernel
 through the existing parser-free TLV bridge.
 
+**Status — DM1 DONE + verified (host-side + in-VM).** A JSON `domains[]` section now flows all the
+way to a kernel domain object: `anonymos-config/source/schema.d` (a `domains[]` section — name/type/
+identity/template/persist explicit + the richer fields free-form pending their milestones) → `compiler.d`
+(`DomainRecFields` + `domainTable` + `buildDomainTable`) → `manifest.d` (`Tag.domainCreate=8` + the
+`name\0 identity\0 template\0 u8 persist` HMAC-signed TLV record) → `core/configboot.d` (`TAG_DOMAIN_CREATE`
+applyOne case → `domainCreate`, idempotent re-assert of the DM0 seed, sets `persistMode`). Verified:
+host `anonymos-config check examples/system.json` → OK (validates `domains[]`); `emit-manifest` → a
+309-byte signed blob whose TLV carries `DevSandbox`→`Personal` + `BankVault`→`Banking`. In-VM boot:
+`[configboot] domain DevSandbox created -> identity Personal persist=0x2`, `BankVault ... persist=0x1`;
+`config: applied … 2 domains`; the views grow to `9 domains` (7 DM0 seed + 2 manifest). The domain VIEW
+boot proofs were moved to run *after* `configBootApply` so they reflect the manifest-applied registry.
+*Scope note:* a domain inherits its identity's **already-validated** ceiling (identityCreate enforces
+`⊆ universe`), so the roadmap's "ceiling ⊄ parent → reject" escalation check is a **domain-level**
+least-privilege merge that belongs to **DM9** (template inheritance), not DM1; the identity-level check
+already exists. `templates[]` + object-graph/reference-resolution wiring (`assignIds`/`objKindToType`)
+also deferred to DM6/DM9 — DM1 needs only the create path.
+
 - `anonymos-config/source/schema.d`: add `domains[]` + `templates[]` to `documentSchema()`
   with every field of §2 (mirror the `identities[]` block `schema.d:194-207`).
 - `compiler.d`: `buildDomainTable()` + lower into `CompiledGraph` (`compiler.d:120`); reuse

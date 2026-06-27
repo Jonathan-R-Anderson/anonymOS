@@ -205,6 +205,31 @@ SchemaNode documentSchema()
         p["template"] = str(false, RefKind.identity);
         top["identities"] = arr(obj(p));
     }
+    // domains (DOMAIN_MANAGER §2): reusable OS-environment objects referencing an identity.
+    // DM1 validates + compiles the core fields (name/type/identity/template/persist); the richer
+    // fields are accepted free-form now and gain explicit schemas + compilation in later milestones
+    // (filesystemAccess → DM2, packages → DM7, …).
+    {
+        SchemaNode[string] p;
+        p["name"] = str(true);
+        p["type"] = enumN(["domain", "template"]);
+        p["identity"] = str(false, RefKind.identity);   // the security identity this domain binds to
+        p["template"] = str(false, RefKind.identity);   // parent template (DM6); identity-ref for now
+        p["persist"] = enumN(["ephemeral", "home-only", "full"]);
+        p["packages"] = arr(str());
+        p["applications"] = arr(str());
+        p["services"] = arr(str(false, RefKind.service));
+        p["startupPrograms"] = arr(str());
+        p["environment"] = freeNode();
+        p["defaults"] = freeNode();
+        p["filesystemAccess"] = freeNode();             // DM2 gives this an explicit nested schema
+        p["networkPolicy"] = freeNode();
+        p["permissions"] = freeNode();
+        p["appearance"] = freeNode();
+        p["policies"] = freeNode();
+        p["linux"] = freeNode();
+        top["domains"] = arr(obj(p));
+    }
     // namespaces (§5/§7): object-tree roots
     {
         SchemaNode[string] p;

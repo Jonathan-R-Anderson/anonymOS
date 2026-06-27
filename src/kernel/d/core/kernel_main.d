@@ -2860,9 +2860,6 @@ void d_kernel_main() {
     idnsInitRoots();             // §4 private object-root Directory per identity
     domainInitDefaults();        // DOMAIN_MANAGER DM0: 7 RAM domains, one per identity (after they exist)
     domainSelfTest();            // DOMAIN_MANAGER DM0: one-shot proof create/lookup/dup/unknown-id/freeze (deterministic at boot)
-    configDomainsDump();         // DOMAIN_MANAGER DM0: one-shot proof /config/domains.json renders the seeded domains
-    domObjViewDump();            // DOMAIN_MANAGER DM0.d: one-shot proof /objects/domains/<name>/{meta,relationships,capabilities}
-    domReadPathProof();          // DOMAIN_MANAGER DM0.d: one-shot end-to-end proof of the /objects/domains read path (parse+render)
     idipcInit();                 // §5 install cross-identity IPC gate + default brokered pairs
     idwinInit();                 // §6 install winRegister identity-stamp hook (unspoofable borders)
     g_tasks[0].identityObjId = identityByName("System\0".ptr);
@@ -2880,6 +2877,11 @@ void d_kernel_main() {
     // — so a declared config, not hardcoded init, constructs running state.  Safe
     // fallthrough: a missing/tampered manifest logs + continues to hardcoded init.
     configBootApply();
+    // DOMAIN_MANAGER DM0.d/DM1: run the domain VIEW proofs AFTER the manifest applies, so they
+    // reflect the final registry (DM0 seed + any DM1 manifest-declared domains).
+    configDomainsDump();         // /config/domains.json render (now includes manifest domains)
+    domObjViewDump();            // /objects/domains/<name>/{meta,relationships,capabilities}
+    domReadPathProof();          // end-to-end /objects/domains read path (parse+render)
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

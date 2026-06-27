@@ -28,6 +28,11 @@
       "rightsCeiling": "fs-ro",   "namespace": "bank-ns",   "net": "vpn",
       "clip": "deny", "gui": ["borderAlways","noScreenshotAcrossId"] }
   ],
+  "domains": [
+    { "name": "DevSandbox", "type": "domain", "identity": "Personal", "persist": "full",
+      "packages": ["git","clang"], "applications": ["terminal","editor"] },
+    { "name": "BankVault",  "type": "domain", "identity": "Banking",  "persist": "home-only" }
+  ],
   "namespaces": [
     { "name": "system-ns", "root": "$root", "isolated": true },
     { "name": "user-ns",   "root": "$root", "inherits": "system-ns" },

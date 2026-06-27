@@ -731,11 +731,20 @@ base + bumps the domain epoch). ★ The security invariant is **proven** by cont
 a new base Generation whose parent is the old one, and the OLD base + any snapshot are byte-for-byte
 unchanged. Verified: `[overlay] selftest PASS (write/snapshot/discard/restore/commit; commit never mutates
 the base)` (asserts new-base parent = old base, old base count unchanged, snapshot immutable across a discard)
-+ the lifecycle proof now checks `domainStart` creates an overlay. *Remaining DM6 (the DATA plane):* hook
-actual `rtCreate` file writes into `overlayWrite` (copy-up at the rtfs level, mirroring `addrspace.d`
-page-CoW) so a domain's real file edits land in its overlay; `inspect diff` (compare StoreObject digests);
-`validate before commit`; the `HOSQ_DOMAIN_*` verb exposure; persist the overlay blobs (DM5 persistMode
-reload); the template catalog (Developer/Gaming/…) as seeded manifests.
++ the lifecycle proof now checks `domainStart` creates an overlay.
+
+**Status — DM6.2 data-plane copy-up DONE + verified.** A domain-bound task's real file writes now land in
+its overlay. `core/task.d` `Task.domainObjId` (the domain a task is bound into; set by `domainBindTaskNs`) +
+`domainRecordWrite(tid, path, len)` (records the file into the bound domain's overlay via `overlayWrite`).
+`posix.d` `rtCreate` calls it on every `RT_REG` create — a no-op for normal (non-domain) tasks (just a field
+read), so the hot path is untouched. Verified: `[domain] overlay-write proof PASS: domain-bound writes
+captured in the overlay (copy-up)` (a throwaway clone started → an overlay; a spare task bound into it; two
+simulated `rtCreate`s land 2 entries in the overlay). No regression (boot's many file creates are unaffected).
+When DM3's real launch-into-domain lands, a domain's actual file edits flow into its overlay automatically.
+*Remaining DM6 (refinements):* the layered READ resolver (overlay shadows the template — reads fall back to
+the lower layer); `inspect diff` (StoreObject digests); `validate before commit`; the `HOSQ_DOMAIN_*` verb
+exposure; persist the overlay blobs (DM5 persistMode reload); the template catalog (Developer/Gaming/…) as
+seeded manifests. **The overlay control plane + the copy-up data-plane hook are DONE; DM6's core is in place.**
 
 - `ObjType.Template` objects under `/objects/templates/<name>/`, persisted like domains
   (immutable: a frozen Generation + frozen `IdentityRec`).

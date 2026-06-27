@@ -2899,6 +2899,7 @@ void d_kernel_main() {
     domainPersistProof();        // DOMAIN_MANAGER DM5: 2-boot persistence probe (boot1 persists, boot2 rehydrates)
     domainTemplateProof();       // DOMAIN_MANAGER DM6: immutable template + domain→template reference
     overlaySelfTest();           // DOMAIN_MANAGER DM6.2: writable overlay (CoW) — snapshot/discard/commit over the real store
+    domainOverlayWriteProof();   // DOMAIN_MANAGER DM6.2 data plane: a domain-bound task's file create lands in its overlay
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

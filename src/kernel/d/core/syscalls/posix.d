@@ -13,7 +13,7 @@ import core.stdc.string : memcpy;
 import core.task : g_tasks, MAX_TASKS, linuxPidForTask, linuxTidForTask,
                    objEnsureNamespace, taskIdFromLinuxPid,
                    g_taskPgid, g_taskSigCustom, deliverSignalToGroup, g_taskExecName,
-                   g_sigHandler, g_sigRestorer;
+                   g_sigHandler, g_sigRestorer, domainRecordWrite;   // DOMAIN_MANAGER DM6.2
 import core.objmgr : ObjType, ObjHeader, objAlloc, objRetain, objRelease, objGet,
                      g_objOps, g_objOpsDispatch; // Phase 2/5 object mgr
 import core.cap : Capability, CAP_INVALID,
@@ -3657,6 +3657,9 @@ private int rtCreate(int parent, const(char)* name, size_t len, ubyte kind,
     g_rt[idx].dataPhys = 0;
     g_rt[idx].size     = 0;
     g_rt[idx].cap      = 0;
+    // DOMAIN_MANAGER DM6.2 data plane: if the creating task is bound into a domain, copy the new
+    // file up into the domain's writable overlay.  No-op for normal (non-domain) tasks.
+    if (kind == RT_REG) domainRecordWrite(cast(int)g_current_task_id, name, len);
     return idx;
 }
 

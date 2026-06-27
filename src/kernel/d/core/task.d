@@ -6,7 +6,9 @@ import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
 import core.namespace : nsAlloc, nsClone, nsRelease, nsResolveCheck; // Phase 9 + DOMAIN_MANAGER DM3
-import core.domain : domainById, domainByName;                       // DOMAIN_MANAGER DM3
+import core.domain : domainById, domainByName,
+                     domainClone, domainStart, domainDelete;         // DOMAIN_MANAGER DM3/DM6.2
+import core.overlay : overlayWrite, overlayChangeCount;             // DOMAIN_MANAGER DM6.2 data plane
 import core.identity : identityCanTransition, identityByName;        // DOMAIN_MANAGER DM3
 import core.untyped : untypedDestroy; // IMMUTABLE_ROOTLESS §1.4: task memory budget
 import core.cap : CAP_RIGHT_RETYPE; // rights on Process -> Untyped authority edges
@@ -153,6 +155,10 @@ struct Task {
     // the System identity to task 0.  Authority is still the capability — this is
     // only a label, never an ambient "current identity" privilege check.
     uint identityObjId;
+    // DOMAIN_MANAGER DM6.2: the Domain (ObjType.Domain) this task is bound INTO (0 = none).
+    // Set by domainBindTaskNs; the rtCreate copy-up hook records this task's file writes into
+    // the domain's writable overlay.
+    uint domainObjId;
 }
 
 __gshared Task[MAX_TASKS] g_tasks;
@@ -339,7 +345,44 @@ public uint domainBindTaskNs(int tid, uint domObjId) {
     if (ns == 0) return 0;
     g_tasks[tid].namespaceObjId = ns;
     if (d.identityObjId != 0) g_tasks[tid].identityObjId = d.identityObjId;
+    g_tasks[tid].domainObjId = domObjId;   // DM6.2: the rtCreate copy-up hook uses this
     return ns;
+}
+
+// DOMAIN_MANAGER DM6.2 data plane: a copy-up hook called from rtCreate.  If task `tid` is bound
+// into a domain, the file it just created is recorded in that domain's writable overlay (so the
+// domain's real writes are captured, and snapshot/commit fold them in).  No-op for normal tasks.
+public void domainRecordWrite(int tid, const(char)* path, size_t len) {
+    if (tid < 0 || tid >= MAX_TASKS) return;
+    const uint dom = g_tasks[tid].domainObjId;
+    if (dom == 0 || len == 0) return;
+    overlayWrite(dom, cast(const(ubyte)*)path, cast(uint)len);
+}
+
+// DOMAIN_MANAGER DM6.2 boot proof: a domain-bound task's file create lands in the domain overlay.
+__gshared bool g_domOvlWriteProofDone = false;
+public void domainOverlayWriteProof() {
+    if (g_domOvlWriteProofDone) return;
+    g_domOvlWriteProofDone = true;
+    const uint dev = domainByName("DevSandbox\0".ptr);
+    if (dev == 0) { klog("[domain] overlay-write proof SKIP (no DevSandbox)\n"); return; }
+    const uint probe = domainClone(dev, "WriteProbe\0".ptr);   // a throwaway domain
+    if (probe == 0 || !domainStart(probe)) { klog("[domain] overlay-write proof SKIP (clone/start)\n"); return; }
+    // bind a spare task slot into the probe domain
+    int tid = -1;
+    for (int i = MAX_TASKS - 1; i > 0; --i) if (!g_tasks[i].active) { tid = i; break; }
+    if (tid < 0) { domainDelete(probe); klog("[domain] overlay-write proof SKIP (no spare task)\n"); return; }
+    const uint savedDom = g_tasks[tid].domainObjId;
+    g_tasks[tid].domainObjId = probe;                          // simulate a domain-bound task
+    const uint before = overlayChangeCount(probe);
+    domainRecordWrite(tid, "/tmp/edit\0".ptr, 9);             // simulate the rtCreate copy-up
+    domainRecordWrite(tid, "/home/x\0".ptr, 7);
+    const uint after = overlayChangeCount(probe);
+    g_tasks[tid].domainObjId = savedDom;                       // restore the spare slot
+    const bool ok = (after == before + 2);
+    domainDelete(probe);
+    if (ok) klog("[domain] overlay-write proof PASS: domain-bound writes captured in the overlay (copy-up)\n");
+    else    klog("[domain] overlay-write proof FAIL\n");
 }
 
 // DOMAIN_MANAGER DM3: launch a task INTO a domain.  Authorizes the launcher→domain-identity

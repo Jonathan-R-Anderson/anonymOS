@@ -210,15 +210,27 @@ enumeration thread each get a real core — see `SMP_ROADMAP.md`.
 **★ KERNEL-SIDE INTx WAKE DONE (commit 4b44fdc5f) — and it RULES OUT the IRQ mechanism.** Implemented (a):
 `0x4100` op6 PARKs the LKL IRQ thread in the kernel (reusing the poll park + wakePollers PIT-tick re-check)
 until `deviceIntxAsserted(grantedBdf)`; the LKL thread blocks on op6 + fires `lkl_trigger_irq` — no
-userspace busy-poll. **VERIFIED WORKING: intx=971 tmo=29 live** (~97% real INTx detections). **But the
-enumeration still wedges identically** (~t=2.5s, no `New USB device found`). So with 971 interrupts
-correctly delivered, the IRQ-delivery mechanism is **conclusively NOT the blocker** — the bug is **inside
-the LKL's xHCI event-ring / completion handling** (host posts `xfer_success len 18` + asserts INTx → kernel
-delivers it → the handler runs → but the descriptor-read completion never advances enumeration: a
-lost-wakeup or bad-data issue in LKL itself). **NEXT:** dig into the LKL side — enable xHCI/USB dynamic-debug
-(`CONFIG_DYNAMIC_DEBUG` + `dyndbg`) to watch the event-ring dequeue + the URB completion, or compare the
-descriptor bytes the guest reads vs what the host DMA'd (a coherency/`op5` check). Kernel-side INTx wake is
-kept regardless — it's the right model for per-device LKLs + SMP.
+userspace busy-poll. **VERIFIED WORKING: intx=971 tmo=29 live** (~97% real INTx detections). Kept — the
+right model for per-device LKLs + SMP.
+
+**★★ ROOT CAUSE of the "stall" (found via LKL `CONFIG_DYNAMIC_DEBUG`+dyndbg) — it was NOT the IRQ mechanism
+and NOT inside LKL's xHCI:** `lkl-boot` called `lkl_sys_halt()` right after `lkl_start_kernel`, while USB
+enumeration runs ASYNCHRONOUSLY in the kernel's hub work-thread → the kernel REBOOTED mid-enumeration
+(`reboot: Restarting system` at ~t=3s) every run. The intermediate steps are `dev_dbg` (invisible without
+dyndbg) so it only LOOKED stuck; dyndbg showed it reading descriptors+strings + registering the devices,
+then getting rebooted. **FIX (commit c3dd8ff97): main() stays RESIDENT (no halt) — also the correct design
+(a USB-driver LKL must live as long as it serves input).** → LKL's xHCI+usbhid **FULLY enumerate the kbd+
+mouse** and create `/dev/input/event0/1` (`input: QEMU USB Keyboard/Mouse`).
+
+**★★★ L5 INPUT BRIDGE ✅ DONE + VERIFIED END-TO-END (commit 8bab6afe4): live USB keystrokes reach the OS.**
+`0x4100` op7 = inject an evdev event → `input_enqueue(g_kbd_ring/g_mouse_ring)` (cap-gated to a granted LKL
+driver). lkl-boot spawns two reader threads that mknod+open the LKL's `/dev/input/event0` (kbd)+`event1`
+(mouse) and `lkl_sys_read` the 24-byte `input_event` → op7. **VERIFIED: QMP `send-key h/e/l/l/o` → usb-kbd →
+LKL → op7 → kernel log `[lkl-input] inject kbd EV_KEY KEY_H/E/L` (codes 35/18/38 = exactly the keys sent).**
+So the FULL USB-input data path — xHCI + USB core + HID + evdev, ALL LKL, ALL through the proven EpinAnonymOS
+bridge — delivers real keystrokes into the OS's input rings (which Weston reads). **On the USB-only target
+box this is THE input path. L5 DONE.** Polish remaining: input is slow (the LKL is CPU-starved on one core →
+`SMP_ROADMAP.md`); full keymap/scancode coverage.
 
 ## L6 — GPU via LKL (the research frontier)
 LKL's `nouveau` drives the GTX 1080: real PCI BARs + MSI + large DMA + **display scanout / mode-setting**

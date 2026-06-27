@@ -73,6 +73,7 @@ import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager p
 import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
 import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM11: distro/pkgMgr + /linux proof
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
+import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
 import core.domain : domainRehydrateFromDisk, domainPersistProof; // DOMAIN_MANAGER DM5: on-disk persistence
 import core.domain : domainTemplateProof;  // DOMAIN_MANAGER DM6: immutable templates proof
@@ -2911,6 +2912,7 @@ void d_kernel_main() {
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
+    templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

@@ -157,6 +157,10 @@ struct gdomain {
 #define MAX_PKGS 16
 struct gpkg { char name[32]; char ver[12]; int sizeKb; unsigned reqCaps; };
 
+// DM12: an installed signed template, parsed from /config/templates.json (Appearance tab).
+#define MAX_TMPL 8
+struct gtemplate { char name[32]; char publisher[24]; char ver[16]; };
+
 struct app {
     struct wl_display *display;
     struct wl_registry *registry;
@@ -197,6 +201,8 @@ struct app {
     struct gpkg pkgs[MAX_PKGS];    // DM10.7: the repository catalog (/config/packages.json)
     int  n_pkgs;
     unsigned pkg_mask[MAX_DOMS];   // per-domain installed bitmask over the catalog
+    struct gtemplate templates[MAX_TMPL];  // DM12: the local signed-template registry
+    int  n_templates;
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -390,6 +396,9 @@ static void profile_btn_rect(int idx, int *x, int *y, int *w, int *h) {
 static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Packages install/remove pills
     *y = TAB_Y + 104 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
 }
+static void export_btn_rect(int *x, int *y, int *w, int *h) {   // DM12 Appearance-tab Export button
+    *x = LABEL_X; *y = TAB_Y + 100; *w = 240; *h = 28;
+}
 
 // DM10.5: evdev keycode → lowercase ASCII (US QWERTY) for the clone-name text field.  The DM gets
 // raw evdev codes from wl_keyboard (it ignores the xkb keymap), so we map the printable subset.
@@ -535,6 +544,33 @@ static void load_packages(struct app *app)
     printf("DOMAINMGR: loaded %d packages from /config/packages.json\n", app->n_pkgs); fflush(stdout);
 }
 
+// DM12: load the local signed-template registry (/config/templates.json) for the Appearance tab.
+static void load_templates(struct app *app)
+{
+    app->n_templates = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/templates.json", &buf, &sz) < 0 || sz == 0) return;
+    char *json = malloc(sz + 1);
+    if (!json) { free(buf); return; }
+    memcpy(json, buf, sz); json[sz] = 0; free(buf);
+    const char *p = json;
+    while (app->n_templates < MAX_TMPL) {
+        const char *nm = strstr(p, "\"name\"");
+        if (!nm) break;
+        const char *e = strstr(nm + 6, "\"name\"");
+        if (!e) e = json + sz;
+        struct gtemplate *g = &app->templates[app->n_templates];
+        memset(g, 0, sizeof(*g));
+        j_field(nm, e, "name", g->name, sizeof(g->name));
+        j_field(nm, e, "publisher", g->publisher, sizeof(g->publisher));
+        j_field(nm, e, "version", g->ver, sizeof(g->ver));
+        if (g->name[0]) app->n_templates++;
+        p = e;
+    }
+    free(json);
+    printf("DOMAINMGR: loaded %d templates from /config/templates.json\n", app->n_templates); fflush(stdout);
+}
+
 // Resolve a template objId to its domain name (for display).
 static const char *dom_templ_name(struct app *app, unsigned templObjId)
 {
@@ -621,6 +657,7 @@ static void domain_action_arg(struct app *app, const char *verb, const char *arg
     int keep = app->sel;
     load_domains(app);
     load_packages(app);
+    load_templates(app);
     if (keep < app->n_doms) app->sel = keep;
     refresh_fs_view(app);
 }
@@ -663,6 +700,7 @@ static void live_refresh(struct app *app)
     int keep = app->sel;
     load_domains(app);
     load_packages(app);
+    load_templates(app);
     if (keep < app->n_doms) app->sel = keep;
     refresh_fs_view(app);
     redraw_commit(app, "live update");
@@ -841,14 +879,30 @@ static void tab_startup(struct app *app, cairo_t *cr) {
 
 static void tab_appearance(struct app *app, cairo_t *cr) {
     struct gdomain *sd = &app->doms[app->sel];
-    if (cr) { cairo_argb(cr,sd->color); rounded_rect(cr,LABEL_X+220,TAB_Y+10,64,30,6); cairo_fill(cr); }
-    else {
+    if (cr) {
+        cairo_argb(cr,sd->color); rounded_rect(cr,LABEL_X+220,TAB_Y+10,64,30,6); cairo_fill(cr);
+        int x,y,w,h; export_btn_rect(&x,&y,&w,&h);                       // DM12 Export
+        cairo_set_source_rgb(cr,0.22,0.34,0.30); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
+    } else {
         draw_text(app,"Border color",LABEL_X,TAB_Y+18,200,14,0xffb7c1d0u);
         char c[16]; snprintf(c,sizeof(c),"#%06X",sd->color & 0xffffff);
         draw_text(app,c,LABEL_X+300,TAB_Y+18,120,14,0xfff2f5fau);
         draw_text(app,"Wallpaper",LABEL_X,TAB_Y+58,200,14,0xffb7c1d0u);
         draw_text(app,"(domain default)",LABEL_X+220,TAB_Y+58,200,14,0xff97a1b0u);
-        draw_text(app,"Export \xe2\x96\xb8 signed .hosdt bundle   (planned)",LABEL_X,TAB_Y+102,420,12,0xff6b7686u);
+        // DM12: export this domain as a signed template + the local template registry
+        int x,y,w,h; export_btn_rect(&x,&y,&w,&h);
+        draw_text(app,"Export as signed .hosdt template",x+10,y+7,w-14,12,0xffe8edf5u);
+        draw_text(app,"Installed signed templates (HMAC-verified, publisher-trusted):",
+                  LABEL_X, TAB_Y+142, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        for (int i = 0; i < app->n_templates; i++) {
+            struct gtemplate *t = &app->templates[i];
+            char ln[96]; snprintf(ln,sizeof(ln),"%s  v%s   publisher: %s", t->name, t->ver[0]?t->ver:"?", t->publisher);
+            draw_text(app, ln, LABEL_X+10, TAB_Y+166+i*20, app->width-LABEL_X-PAD-10, 13, 0xfff2f5fau);
+        }
+        if (app->n_templates == 0)
+            draw_text(app,"(none yet — click Export to publish this domain)",LABEL_X+10,TAB_Y+166,420,13,0xff8d97a6u);
+        draw_text(app,"Marketplace / I2P P2P sharing: out of scope (needs a network stack)",
+                  LABEL_X, app->height-FOOTER_H-40, 560, 11, 0xff5b6675u);
     }
 }
 
@@ -1143,6 +1197,10 @@ static void handle_click(struct app *app)
             if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
                 int on = (app->doms[app->sel].devices & DEV_BIT[i]) != 0;
                 domain_action_arg(app, on ? "devoff" : "devon", DEV_CLASS[i]); return; } }
+    } else if (app->tab == 6) {                     // Appearance: Export as a signed template (DM12)
+        int bx,by,bw,bh; export_btn_rect(&bx,&by,&bw,&bh);
+        if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+            domain_action(app, "export"); load_templates(app); redraw_commit(app, "export"); return; }
     }
 }
 
@@ -1316,6 +1374,7 @@ int main(void)
     // kernel from system.json — the GUI now reflects DM0-DM6 instead of a hardcoded list.
     load_domains(&app);
     load_packages(&app);             // DM10.7: the software repository (Packages tab)
+    load_templates(&app);            // DM12: the local signed-template registry (Appearance tab)
     app.last_hash = domains_hash();  // DM10.6: baseline for live-update change detection
     refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView
     domain_ctl_selftest(&app); // DM10.3: prove the control-write path (ping) at startup

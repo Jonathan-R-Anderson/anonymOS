@@ -21,6 +21,7 @@ import core.domain   : g_domains, DomainState, domainStateName, domainCount,
 import core.pkgrepo  : pkgRepoCount, pkgRepoAt, pkgInstalledMask;          // DOMAIN_MANAGER DM7
 import core.domain   : domainDeviceMask;                                  // DOMAIN_MANAGER DM10.7
 import core.domain   : domainDistro, domainPkgMgr, distroName, pkgMgrName; // DOMAIN_MANAGER DM11
+import core.template_bundle : templateCount, templateAt;                  // DOMAIN_MANAGER DM12
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
@@ -511,10 +512,10 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
-         CFG_DOMAINS = 5, CFG_PACKAGES = 6;
+         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7;
 
-private immutable string[6] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json"];
+private immutable string[7] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -530,6 +531,8 @@ public int configfsEnum(int logical, char* nameBuf, size_t cap) {
     foreach (i; 0 .. l) nameBuf[i] = s[i];
     return cast(int)l;
 }
+
+private size_t tCstrLen(const(char)* s) { size_t n = 0; while (s[n] != 0) ++n; return n; }  // DM12
 
 // JSON string literal (minimal escaping — kernel object names are controlled).
 private void jstr(ref UB b, const(char)* s, size_t n) {
@@ -668,6 +671,24 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 lit(b, "] }");
             }
             lit(b, "\n] }\n");
+            return cast(long)b.len;
+        }
+        case CFG_TEMPLATES: {
+            // DOMAIN_MANAGER DM12: the local signed-template registry as declarative JSON.
+            lit(b, "[\n"); bool first = true;
+            foreach (uint i; 0 .. templateCount()) {
+                auto t = templateAt(i);
+                if (t is null) continue;
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"name\": ");        jstr(b, t.name.ptr, tCstrLen(t.name.ptr));
+                lit(b, ", \"publisher\": ");     jstr(b, t.publisher.ptr, tCstrLen(t.publisher.ptr));
+                lit(b, ", \"version\": \"");     num(b, (t.ver>>16)&0xff); put(b,'.'); num(b,(t.ver>>8)&0xff); put(b,'.'); num(b,t.ver&0xff); put(b,'"');
+                lit(b, ", \"policyEpoch\": ");   num(b, t.policyEpoch);
+                lit(b, ", \"generation\": ");    num(b, t.genObjId);
+                lit(b, ", \"bundleHash\": \"");  hex(b, t.bundleHash); put(b,'"');
+                lit(b, " }");
+            }
+            lit(b, "\n]\n");
             return cast(long)b.len;
         }
         default: return -2; // ENOENT

@@ -28,6 +28,7 @@ import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCom
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
 import core.pkgrepo : pkgInstallByName, pkgRemoveByName, pkgApplyProfile;   // DOMAIN_MANAGER DM7/DM11
+import core.template_bundle : templatePublish;                             // DOMAIN_MANAGER DM12: export verb
 
 extern (C) @nogc nothrow:
 
@@ -430,6 +431,7 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "distro"))    ok = (id != 0) && domainSetDistro(id, distroByName(arg.ptr));
     else if (verbEq(verb.ptr, "pkgmgr"))    ok = (id != 0) && domainSetPkgMgr(id, pkgMgrByName(arg.ptr));
     else if (verbEq(verb.ptr, "profile"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgApplyProfile(name.ptr, arg.ptr) >= 1);
+    else if (verbEq(verb.ptr, "export"))    ok = (id != 0) && (templatePublish(id) == 0);   // DM12: publish as a signed template
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;

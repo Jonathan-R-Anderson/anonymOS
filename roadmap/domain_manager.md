@@ -1791,6 +1791,22 @@ DM12 is complete when:
 * dependency resolution works before install
 * offline install still works without P2P access
 
+**Status — DM12 (offline signed `.hosdt` template bundles) DONE + verified; the I2P/Kademlia P2P marketplace
+is the documented honest out-of-scope limit.** New `core/template_bundle.d`: a `.hosdt` bundle is a self-
+describing, **HMAC-signed** (`crypto.d`) snapshot of a Template Domain's policy (name/identity/device-mask/
+distro+pkgMgr/persist/version/publisher). `bundleExport`/`bundleImport` + a local registry (`g_templates`,
+`/config/templates.json`, ObjType.Template objects) + a publisher-trust table + `templateRollback`. Import is
+deny-by-default: a **tampered/unsigned** bundle → rejected (bad HMAC); an **untrusted/blocked publisher** →
+rejected (unless quarantine); a **policyEpoch downgrade** → rejected; each accepted import → a new content-
+addressed **Generation** (`store.d`) for rollback. Exposed via the `export` control verb (publish a domain as
+a signed template) + the Domain Manager **Appearance tab Export button + the live template registry list**
+(parses `/config/templates.json`). Verified in-VM (HEADLESS=1 GPU=1, 0 boot exceptions): `[tpl] bundle proof
+PASS (export/sign → verify+install; tamper→HMAC reject; untrusted→block→trust→install; rollback)`; GUI `loaded
+1 templates`. ★ HONEST LIMITS (as §8–17 are aspirational for a from-scratch microkernel): the I2P SAM
+transport, Kademlia DHT, peer discovery, and P2P download all need a TCP/IP stack + an I2P router that don't
+exist here (sockets are AF_UNIX only) — the offline export/import/sign/verify/trust/Generations/rollback half
+is real; the marketplace object model (`/objects/marketplace/*`) + per-publisher PKI (currently the single
+crypto.d system key) are the follow-up. This completes the DM0–DM12 roadmap's feasible-now surface.
 
 ---
 

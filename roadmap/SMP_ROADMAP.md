@@ -50,12 +50,34 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
+## Status (2026-06-27): S0 + S1 DONE + verified
+
+The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
+brings every AP online**, with no hardcoded count:
+- **S0 (dynamic discovery):** the limine **SMP request** (`arch/x86_64/limine.d` `limine_smp_request/response/
+  info`, declared in `core/kmain.d` between the limine request markers); `smpBringup()` reads
+  `response.cpu_count` + `bsp_lapic_id` at runtime. `MAX_CPUS=256` is a compile-time ceiling; the live count
+  comes from limine. **No magic 8.**
+- **S1 (AP bringup):** for every AP (`lapic_id != bsp_lapic_id`) the BSP stashes a per-CPU index in
+  `extra_argument` and writes `apEntry` to its `goto_address`; the AP jumps there, marks `g_cpuOnline[idx]`,
+  and parks (`cli; hlt`). The BSP waits (bounded) for all APs, then logs the tally. Runs early (while limine's
+  page tables are active, so the APs share the BSP's address space for their memory-trivial idle).
+- **`qemu-run.sh` gained an `SMP=N` knob** (default 1) so any core count is testable from one binary.
+- **Verified in-VM:** `SMP=4` → `[smp] 4 CPUs discovered (bsp lapic=0)` + `[smp] 3 of 3 APs online + parked`,
+  0 boot exceptions, the desktop boots normally on the BSP. `SMP=1` (default) → `1 CPU discovered, 0 APs`,
+  desktop boots — **degrades gracefully to N==1.**
+
+**Next (S2 → S3):** per-CPU state (a `GS`-based per-CPU area replacing the global `g_current_task_id`) then a
+Big Kernel Lock — the point at which an AP can run a *task* (the desktop on CPU0, an LKL on CPU1) in parallel.
+Today the APs are parked (`cli; hlt`); they do no work yet. The AP entry deliberately does NOT load a per-CPU
+GDT/IDT/TSS or switch CR3 yet — that is S2; an idle `hlt` loop needs none of it and stays safe.
+
 ## Phases
 
-- **S0 — Survey + design (no code).** Inventory every `__gshared` mutable structure reachable from a
+- **S0 — Survey + design (no code).** ✅ *(limine SMP request + runtime discovery — see Status above).* Inventory every `__gshared` mutable structure reachable from a
   syscall/fault (the list above). Decide BKL-first (yes). Decide the per-CPU representation (a per-CPU area
   via `GS`-base). Define the AP idle loop. Add the limine SMP request.
-- **S1 — AP bringup.** Use limine's **SMP boot protocol** (it enumerates CPUs and hands each AP an entry
+- **S1 — AP bringup.** ✅ *(every AP online + parked; verified `SMP=4` → 3 APs, `SMP=1` degrades — see Status).* Use limine's **SMP boot protocol** (it enumerates CPUs and hands each AP an entry
   point + stack — no manual INIT-SIPI trampoline needed, a big simplification vs raw bare metal). Each AP:
   enter the kernel, load a per-CPU GDT/IDT/TSS, switch to the kernel CR3, init its local APIC, enter a
   per-CPU idle loop. **Verify:** each AP prints "CPU N online" and idles; the BSP keeps running the desktop.

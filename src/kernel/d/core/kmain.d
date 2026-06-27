@@ -67,9 +67,64 @@ align(8) __gshared limine_terminal_request terminal_req = {
     callback: null
 };
 
+// SMP / multiprocessor (SMP_ROADMAP S0/S1): ask limine to enumerate + park the APs.
+@(section(".limine_reqs"))
+align(8) __gshared limine_smp_request smp_req = {
+    id0: LIMINE_COMMON_MAGIC_0, id1: LIMINE_COMMON_MAGIC_1, id2: 0x95a67b819a1b857e, id3: 0xa0b61b723b6a73e0,
+    revision: 0,
+    response: null,
+    flags: 0   // no x2APIC request for now
+};
+
 // End Marker
 @(section(".limine_reqs"))
 align(8) __gshared ulong[2] limine_requests_end = [0xadc0e0531bb10d03, 0x9572709f31764c62];
+
+// SMP_ROADMAP: dynamic core count — discovered at runtime, NEVER hardcoded.  MAX_CPUS is a
+// generous compile-time ceiling; the live count comes from limine.  S1 brings every AP online
+// to a parked idle loop; S2+ give them per-CPU state, a BKL, and real work.
+enum uint MAX_CPUS = 256;
+public __gshared uint  g_smpCpuCount = 1;            // total CPUs (incl. BSP); 1 until discovered
+public __gshared ubyte[MAX_CPUS] g_cpuOnline;        // [i] = 1 once AP i reports in (i = per-CPU index)
+
+// The AP entry point.  Limine parks each AP spinning on its goto_address; when the BSP writes this
+// pointer, the AP jumps here (its own limine_smp_info* in RDI).  S1 = report online, then park.
+extern(C) void apEntry(limine_smp_info* info) {
+    const uint idx = cast(uint)info.extra_argument;  // the per-CPU index the BSP stashed
+    if (idx < MAX_CPUS) g_cpuOnline[idx] = 1;
+    __asm("cli", "");                                // S1: park (no per-CPU IDT/scheduler yet)
+    for (;;) __asm("hlt", "");
+}
+
+// Discover the live CPU count and bring every AP online (S0 + S1).  Runs early, while limine's page
+// tables are still active, so the APs share the BSP's address space for their (memory-trivial) idle.
+void smpBringup() {
+    auto resp = smp_req.response;
+    if (resp is null) { klog("[smp] no SMP response — single-core boot\n"); return; }
+    g_smpCpuCount = cast(uint)resp.cpu_count;
+    klog("[smp] "); klog_hex(resp.cpu_count); klog(" CPUs discovered (bsp lapic=");
+    klog_hex(resp.bsp_lapic_id); klog(")\n");
+
+    uint apCount = 0;
+    foreach (i; 0 .. resp.cpu_count) {
+        if (i >= MAX_CPUS) break;
+        auto cpu = resp.cpus[i];
+        if (cpu.lapic_id == resp.bsp_lapic_id) continue;   // the BSP is already running
+        cpu.extra_argument = i;                            // stash the per-CPU index (read before goto)
+        cpu.goto_address   = cast(void*)&apEntry;          // release the AP (it spins until non-null)
+        ++apCount;
+    }
+
+    // Bounded wait for the APs to report in (they were already started by limine, just parked).
+    uint online = 0;
+    for (uint spin = 0; spin < 50_000_000u && online < apCount; ++spin) {
+        online = 0;
+        foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_cpuOnline[i]) ++online;
+        __asm("pause", "");
+    }
+    klog("[smp] "); klog_hex(online); klog(" of "); klog_hex(apCount);
+    klog(" APs online + parked (BKL/scheduler = S2+)\n");
+}
 
 extern __gshared ulong hhdm_offset;
 
@@ -92,6 +147,8 @@ void initializeKernelCore() {
         hhdm_offset = hhdm_req.response.offset;
         klog("HHDM Offset: "); klog_hex(hhdm_offset); klog("\n");
     }
+
+    smpBringup();   // SMP_ROADMAP S0/S1: discover the live core count + park every AP online
 }
 
 void _start() {

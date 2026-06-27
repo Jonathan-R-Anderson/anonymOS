@@ -86,6 +86,7 @@ exec "$QEMU_BIN" \
   -cdrom hos.iso \
   -serial file:serial.log \
   -m "$MEM" \
+  -smp "${SMP:-1}" \
   -no-reboot \
   -no-shutdown \
   -d int,cpu_reset,guest_errors \

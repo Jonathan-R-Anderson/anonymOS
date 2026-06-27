@@ -192,13 +192,23 @@ env = conda `lkl` (flex/bison) + the musl cross. **★ BRING-UP ✅ (commit cce1
 runs through the bridge** — serial: `xhci_hcd 0000:00:00.0: xHCI Host Controller` + `new USB bus registered`
 (USB 2.0 + 3.0) + `usbcore: registered new interface driver usbhid` + BOTH devices detected (`usb 1-1`
 kbd, `usb 1-2` mouse) — same config/MMIO/DMA/IRQ + L4 cap-gate as NVMe (granted xHCI; bdf 0 DENIED).
-**★ KNOWN STALL (diagnosed): enumeration stops after `new device number` — no descriptor read.** The L5
-isolation test (an IRQ-poller real-time heartbeat) PROVED it's **a stall, not CPU starvation**: the LKL ran
-135 000 polls free-running on an idle core at boot-end, yet enumeration made zero further progress. So the
-USB control-transfer completion never arrives (same family as the NVMe I/O-dispatch quirk — a secondary
-transfer ring not getting driven), NOT a bridge defect and NOT fixable by more cores. **NEXT:** instrument
-the xHCI transfer rings / event ring / EP doorbells to find why the control IN (GET_DESCRIPTOR) doesn't
-complete. (CPU contention *is* real early in boot → see `SMP_ROADMAP.md`, but it is not the blocker here.)
+**★ KNOWN ISSUE (deeply diagnosed): enumeration never reaches `New USB device found`.** QEMU `--trace
+'usb_xhci_*'` is decisive — **the host xHCI COMPLETES the transfers**: `usb_xhci_xfer_success … len 18`
+(the full 18-byte device descriptor) with **zero error/stall completion codes**. So config/MMIO/DMA/IRQ all
+work end-to-end and the controller does real USB — it is **NOT a bridge defect or a dead controller**. The
+failure is on the **guest completion side and it is NON-DETERMINISTIC**: across runs the LKL hangs at
+*different* points (max LKL-time t≈1.5s / 3s / 8s; sometimes both devices are detected, sometimes neither),
+and once wedged it makes no progress for hundreds of wall-seconds. That variance is the signature of a
+**lost-wakeup RACE in the polled-INTx completion path** (the host posts a completion, but the guest's
+`wait_for_completion` races my IRQ-poller's `lkl_trigger_irq`, dropping the wakeup → the enumeration thread
+blocks forever). **Tested + ruled out:** the poller frequency (250µs vs 1ms changed nothing / the early
+hang persisted) — so it is not a simple tunable. **Robust fix needs reliable interrupt delivery, not
+polling:** either (a) the EpinAnonymOS *kernel* poll-loop detects the device INTx and reliably wakes the
+LKL (vs a userspace poller thread that races + competes for CPU), or (b) **SMP** so the IRQ thread and the
+enumeration thread each get a real core (the lost-wakeup window shrinks drastically) — see `SMP_ROADMAP.md`.
+The earlier "stall, not starvation" call was too strong: CPU contention IS a real factor (more LKL CPU →
+more progress), layered on top of the race. **NEXT:** move INTx detection into the kernel poll-loop (a
+kernel-side wake of the LKL's IRQ FD/futex) to kill the userspace race, OR pursue SMP first.
 
 ## L6 — GPU via LKL (the research frontier)
 LKL's `nouveau` drives the GTX 1080: real PCI BARs + MSI + large DMA + **display scanout / mode-setting**

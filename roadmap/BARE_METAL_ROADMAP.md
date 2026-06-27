@@ -271,13 +271,28 @@ walk changes) and **risks the proven NOMMU L3/L5**. So L6 is its own phase:
     ★ TRAP fixed: `register_iomem`'s free-slot search was `!ops`, but a direct region also has `ops==NULL`
     (marked by `host_va`) — so the register BAR collided with the framebuffer's slot/token → `readw(mmio+0x500)`
     read garbage → `[drm] *ERROR* ID mismatch`. Fix: free slot needs `!ops && !host_va`.
-- **L6.2 (next) — pixels from the LKL GPU on screen.** After card0 is created the LKL kernel's `kernel_init`
-  runs `/init` (no userspace init present) and faults, so `lkl_start_kernel` never returns and lkl-boot's
-  resident loop is unreached. Plan: have **lkl-boot itself be an in-LKL KMS client** — open `/dev/dri/card0`,
-  `DRM_IOCTL_MODE_CREATE_DUMB` + map + `ADDFB` + `SETCRTC`, draw a test pattern to the (direct-mapped) VRAM so
-  it scans out to the QEMU bochs-display — and keep it resident (suppress/replace the doomed `/init`).
-**Honest status:** L6.0 (MMU) + **L6.1 (a real Linux GPU DRM driver creating card0 through the cap-gated
-bridge, framebuffer direct-mapped) are DONE + verified.** L6.2 (pixels on screen) is in progress. L6 remains
+- **L6.2 ✅ DONE — pixels from the LKL GPU are ON SCREEN.** `lkl-boot` runs an in-LKL KMS client
+  (`epin_kms_draw`): opens `/dev/dri/card0`, `SET_MASTER` → `GETRESOURCES` (1 crtc, 1 connector) →
+  `GETCONNECTOR` (mode **1280×800**) → `CREATE_DUMB` + `ADDFB` → `SETCRTC` (modeset, scanout enabled), then
+  paints a color-bar test pattern. **VERIFIED by QMP screendump of the bochs-display: it changed from
+  640×480 / 2 colors (blank) to 1280×800 / 8 colors (the bars)** — the resolution change proves the LKL's
+  bochs-drm did the modeset; the colors prove it's scanning out (`roadmap/assets/l6.2-lkl-gpu-pattern.png`).
+  Two non-obvious fixes were needed:
+  - ★ **The "/init crash" was really an op8 STACK COLLISION.** op8 mapped the 16MB framebuffer at
+    `g_nextMmapAddr` = `0x700000000000`, which is exactly where the lkl-boot **main-thread stack** lives
+    (`rsp ~0x7000000ff450`, ~1MB in) → the 16MB mapping overwrote the boot thread's return frame → `rip=0`
+    fault right after `lkl_start_kernel`, so the resident loop was never reached. GPU-specific because only
+    op8 maps something that large. Fix: op8 now uses a dedicated high BAR-VA bump (`g_lklBarNextVA` = `0x7E…`,
+    clear of the stack `0x70…` and the LKL thread stacks `0x74…`). With that, `lkl_start_kernel` returns and
+    the LKL is fully **resident**.
+  - ★ **Under CONFIG_MMU a host thread can't read an LKL-`mmap`'d buffer.** `MAP_DUMB`+`mmap` of the dumb
+    buffer returned `0x100000` (an LKL-address-space VA), unreachable from the host kms thread → a write
+    faulted. Fix: paint straight into the **host-visible VRAM** (the op8 mapping, recorded as `g_vram_base`);
+    the scanned-out dumb buffer lives in that VRAM, so filling it makes the pattern appear.
+**Honest status:** L6.0 (MMU) + L6.1 (bochs-drm creates card0) + **L6.2 (the LKL GPU sets a mode and scans a
+test pattern to the display) are ALL DONE + screenshot-verified** — an entire Linux GPU/DRM/KMS stack driving
+a display through EpinAnonymOS's capability-gated bridge. Next: a real compositor on the LKL card0 (Weston),
+and the bare-metal path (nouveau on the GTX 1080 — bochs-display was the QEMU proxy). L6 remains
 fundamentally **bare-metal** for the real path (nouveau needs the GTX 1080; bochs-display is the L6.1 proxy).
 
 ## Sequencing

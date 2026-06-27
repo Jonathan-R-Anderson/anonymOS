@@ -7800,6 +7800,10 @@ public bool deviceIntxAsserted(uint bdf) {
     return (status & 0x08) != 0;   // bit 3 = Interrupt Status
 }
 
+// L6.1: bump allocator for op8 device-BAR mappings — a dedicated high VA range, deliberately clear of
+// the LKL process's stack (0x70..) and thread stacks (0x74..).  See op8 for why this can't be g_nextMmapAddr.
+private __gshared ulong g_lklBarNextVA = 0x7E0000000000UL;
+
 public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, ulong val) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32, scanPCIDevices;
     import core.globals : hhdm_offset;
@@ -7881,7 +7885,7 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             // op3/op4); mapping it straight in makes the driver's TTM blits plain memcpys.  bdf = BAR phys
             // base, size = BAR length.  Same cap gate as op3/op4 — the WHOLE range must be a granted BAR.
             import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER, PTE_CD;
-            import core.syscalls.mmap : g_nextMmapAddr, alloc_phys_page_wrapper;
+            import core.syscalls.mmap : alloc_phys_page_wrapper;
             if (size == 0) return negErrno(EINVAL);
             const ulong barPhys = bdf & ~0xFFFUL;
             const ulong endPhys = (bdf + size - 1) | 0xFFFUL;
@@ -7889,8 +7893,13 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             if (barLen > (256UL << 20)) return negErrno(EINVAL);              // sanity: <= 256MB
             if (!taskHasMmioCap(tid, barPhys) || !taskHasMmioCap(tid, endPhys))
                 return negErrno(EPERM);                                       // L4: not (entirely) your device
-            const ulong vbase = g_nextMmapAddr;
-            g_nextMmapAddr += barLen;
+            // ★ Map BARs in a DEDICATED high VA range — NOT g_nextMmapAddr (0x700000000000), which is
+            // where the LKL process's main-thread STACK lives (rsp ~0x7000000ff450).  A 16MB framebuffer
+            // mapped there overwrote the boot thread's stack -> rip=0 crash after lkl_start_kernel.  This
+            // range (0x7E..) is clear of the stack (0x70..), the LKL thread stacks (0x74..), and the
+            // normal mmap bump, with room below the 0x800000000000 user-canonical ceiling.
+            const ulong vbase = g_lklBarNextVA;
+            g_lklBarNextVA += (barLen + 0x1FFFFFUL) & ~0x1FFFFFUL;            // 2MB-rounded bump (gap between BARs)
             const ulong mapFlags = PTE_PRESENT | PTE_RW | PTE_USER | PTE_CD;  // device MMIO: uncached
             for (ulong o = 0; o < barLen; o += 4096)                          // map runs in the caller's CR3
                 map_page_hhdm(barPhys + o, vbase + o, mapFlags, &alloc_phys_page_wrapper);

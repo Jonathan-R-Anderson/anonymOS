@@ -201,6 +201,7 @@ extern int lkl_trigger_irq(int irq);   /* exported liblkl symbol — raises a Li
 
 /* Every BAR MMIO routes here: data = the BAR's physical base, forward (phys+offset) to op3/op4. */
 static int g_mmio_log, g_db, g_mp;  /* log the first handful so we can SEE the driver touch real registers */
+static unsigned long g_vram_base = 0, g_vram_size = 0;  /* L6.2: host-visible GPU VRAM mapping (op8) */
 static int epin_iomem_read(void *data, int offset, void *res, int size)
 {
     long phys = (long)(uintptr_t)data + offset;
@@ -261,8 +262,11 @@ static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, 
             void *tok = register_iomem_direct((void *)(uintptr_t)va, (int)sz);
             fprintf(stderr, ">>> epin_pci: BAR%d DIRECT phys=0x%llx -> va=0x%lx tok=%p\n",
                     idx, bar_phys, va, tok);
-            if (tok)
+            if (tok) {
+                g_vram_base = (unsigned long)va;   /* L6.2: VRAM host-VA for direct pixel writes */
+                g_vram_size = (unsigned long)sz;
                 return tok;
+            }
             fprintf(stderr, ">>> epin_pci: BAR%d register_iomem_direct full — routed fallback\n", idx);
         } else {
             fprintf(stderr, ">>> epin_pci: BAR%d op8 FAILED (%ld) — routed fallback\n", idx, va);
@@ -370,6 +374,125 @@ static void *epin_input_reader(void *arg)
 static struct epin_in_reader g_kbdReader = { "/dev/input/event0", (13 << 8) | 64, 1 };
 static struct epin_in_reader g_mseReader = { "/dev/input/event1", (13 << 8) | 65, 0 };
 
+/* ---- L6.2: in-LKL KMS client — draw a test pattern to /dev/dri/card0 (DRM dumb buffer + modeset),
+ * so the LKL's bochs-drm scans it out to the bochs-display.  Proof that pixels from the LKL GPU reach
+ * the screen.  DRM uapi structs are self-contained (the lkl include path lacks drm/drm_mode.h). */
+struct drm_mode_card_res {
+    uint64_t fb_id_ptr, crtc_id_ptr, connector_id_ptr, encoder_id_ptr;
+    uint32_t count_fbs, count_crtcs, count_connectors, count_encoders;
+    uint32_t min_width, max_width, min_height, max_height;
+};
+struct drm_mode_modeinfo {
+    uint32_t clock;
+    uint16_t hdisplay, hsync_start, hsync_end, htotal, hskew;
+    uint16_t vdisplay, vsync_start, vsync_end, vtotal, vscan;
+    uint32_t vrefresh, flags, type;
+    char name[32];
+};
+struct drm_mode_get_connector {
+    uint64_t encoders_ptr, modes_ptr, props_ptr, prop_values_ptr;
+    uint32_t count_modes, count_props, count_encoders;
+    uint32_t encoder_id, connector_id, connector_type, connector_type_id;
+    uint32_t connection, mm_width, mm_height, subpixel;
+    uint32_t pad;
+};
+struct drm_mode_create_dumb { uint32_t height, width, bpp, flags, handle, pitch; uint64_t size; };
+struct drm_mode_fb_cmd { uint32_t fb_id, width, height, pitch, bpp, depth, handle; };
+struct drm_mode_map_dumb { uint32_t handle, pad; uint64_t offset; };
+struct drm_mode_crtc {
+    uint64_t set_connectors_ptr;
+    uint32_t count_connectors, crtc_id, fb_id, x, y, gamma_size, mode_valid;
+    struct drm_mode_modeinfo mode;
+};
+#define DRM_IOCTL_SET_MASTER         0x641eUL
+#define DRM_IOCTL_MODE_GETRESOURCES  0xc04064a0UL
+#define DRM_IOCTL_MODE_GETCONNECTOR  0xc05064a7UL
+#define DRM_IOCTL_MODE_CREATE_DUMB   0xc02064b2UL
+#define DRM_IOCTL_MODE_ADDFB         0xc01c64aeUL
+#define DRM_IOCTL_MODE_MAP_DUMB      0xc01064b3UL
+#define DRM_IOCTL_MODE_SETCRTC       0xc06864a2UL
+
+static void *epin_kms_draw(void *arg)
+{
+    (void)arg;
+    long fd = -1;
+    lkl_sys_mkdir("/dev", 0755);
+    lkl_sys_mkdir("/dev/dri", 0755);
+    lkl_sys_mknod("/dev/dri/card0", 020000 | 0666, (226L << 8) | 0);
+    for (int i = 0; i < 300; i++) {
+        fd = lkl_sys_openat(LKL_AT_FDCWD, "/dev/dri/card0", 2 /*O_RDWR*/, 0);
+        if (fd >= 0) break;
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 100000000 };
+        nanosleep(&ts, NULL);
+    }
+    if (fd < 0) { fprintf(stderr, ">>> kms: card0 open FAILED\n"); return NULL; }
+    fprintf(stderr, ">>> kms: card0 fd=%ld\n", fd);
+    lkl_sys_ioctl(fd, DRM_IOCTL_SET_MASTER, 0);
+
+    struct drm_mode_card_res res; memset(&res, 0, sizeof(res));
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, (long)(uintptr_t)&res) < 0) { fprintf(stderr,">>> kms: getres1 fail\n"); return NULL; }
+    uint32_t crtcs[8] = {0}, conns[8] = {0};
+    uint32_t nc = res.count_crtcs > 8 ? 8 : res.count_crtcs;
+    uint32_t nk = res.count_connectors > 8 ? 8 : res.count_connectors;
+    /* re-zero so count_fbs/count_encoders are 0 -> the kernel won't write those id arrays to our
+     * NULL fb_id_ptr/encoder_id_ptr (that null write crashed drm_mode_getresources). */
+    memset(&res, 0, sizeof(res));
+    res.crtc_id_ptr = (uint64_t)(uintptr_t)crtcs;
+    res.connector_id_ptr = (uint64_t)(uintptr_t)conns;
+    res.count_crtcs = nc;
+    res.count_connectors = nk;
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_GETRESOURCES, (long)(uintptr_t)&res) < 0) { fprintf(stderr,">>> kms: getres2 fail\n"); return NULL; }
+    fprintf(stderr, ">>> kms: crtcs=%u connectors=%u\n", res.count_crtcs, res.count_connectors);
+    if (res.count_crtcs < 1 || res.count_connectors < 1) return NULL;
+
+    struct drm_mode_get_connector conn; memset(&conn, 0, sizeof(conn));
+    conn.connector_id = conns[0];
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, (long)(uintptr_t)&conn) < 0) { fprintf(stderr,">>> kms: getconn1 fail\n"); return NULL; }
+    struct drm_mode_modeinfo modes[32];
+    conn.modes_ptr = (uint64_t)(uintptr_t)modes;
+    conn.encoders_ptr = 0; conn.props_ptr = 0; conn.prop_values_ptr = 0;
+    conn.count_props = 0; conn.count_encoders = 0;
+    if (conn.count_modes > 32) conn.count_modes = 32;
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_GETCONNECTOR, (long)(uintptr_t)&conn) < 0) { fprintf(stderr,">>> kms: getconn2 fail\n"); return NULL; }
+    if (conn.count_modes < 1) { fprintf(stderr, ">>> kms: no modes\n"); return NULL; }
+    struct drm_mode_modeinfo *m = &modes[0];
+    fprintf(stderr, ">>> kms: mode %ux%u \"%s\"\n", m->hdisplay, m->vdisplay, m->name);
+
+    struct drm_mode_create_dumb cd; memset(&cd, 0, sizeof(cd));
+    cd.width = m->hdisplay; cd.height = m->vdisplay; cd.bpp = 32;
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_CREATE_DUMB, (long)(uintptr_t)&cd) < 0) { fprintf(stderr,">>> kms: create_dumb fail\n"); return NULL; }
+
+    struct drm_mode_fb_cmd fbc; memset(&fbc, 0, sizeof(fbc));
+    fbc.width = m->hdisplay; fbc.height = m->vdisplay; fbc.pitch = cd.pitch;
+    fbc.bpp = 32; fbc.depth = 24; fbc.handle = cd.handle;
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_ADDFB, (long)(uintptr_t)&fbc) < 0) { fprintf(stderr,">>> kms: addfb fail\n"); return NULL; }
+
+    /* NB: MAP_DUMB + mmap of the dumb buffer does NOT work for a host thread under CONFIG_MMU — the LKL
+     * maps it in the LKL's own address space, which the host thread (different page tables) can't reach
+     * (mmap returned 0x100000 and a write to it faulted).  Instead: modeset the dumb buffer, then paint
+     * the pattern straight into the host-visible VRAM (the op8 mapping g_vram_base).  The scanned-out
+     * buffer lives somewhere in that VRAM, so filling all of it makes the pattern appear on screen. */
+    struct drm_mode_crtc crtc; memset(&crtc, 0, sizeof(crtc));
+    crtc.crtc_id = crtcs[0];
+    crtc.fb_id = fbc.fb_id;
+    crtc.set_connectors_ptr = (uint64_t)(uintptr_t)conns;
+    crtc.count_connectors = 1;
+    crtc.mode = *m;
+    crtc.mode_valid = 1;
+    if (lkl_sys_ioctl(fd, DRM_IOCTL_MODE_SETCRTC, (long)(uintptr_t)&crtc) < 0) { fprintf(stderr,">>> kms: SETCRTC fail\n"); return NULL; }
+    fprintf(stderr, ">>> kms: SETCRTC ok (mode %ux%u, scanout enabled)\n", m->hdisplay, m->vdisplay);
+
+    if (!g_vram_base) { fprintf(stderr, ">>> kms: no op8 VRAM base recorded\n"); return NULL; }
+    static const uint32_t pal[8] = {0xffffff,0xffff00,0x00ffff,0x00ff00,0xff00ff,0xff0000,0x0000ff,0x101010};
+    volatile uint32_t *vram = (volatile uint32_t *)g_vram_base;
+    unsigned long npix = g_vram_size / 4;
+    uint32_t roww = m->hdisplay ? m->hdisplay : 1280;
+    for (unsigned long i = 0; i < npix; i++)
+        vram[i] = pal[((i % roww) * 8) / roww];
+    fprintf(stderr, ">>> kms: filled %lu px of VRAM with color bars -> LKL GPU pattern on the bochs-display\n", npix);
+    return NULL;
+}
+
 int main(int argc, char **argv)
 {
     long ret;
@@ -417,6 +540,10 @@ int main(int argc, char **argv)
     pthread_t tkbd, tmse;
     pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);
     pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
+
+    /* L6.2: draw a test pattern to the LKL's own /dev/dri/card0 so its bochs-drm scans it out. */
+    pthread_t tkms;
+    pthread_create(&tkms, NULL, epin_kms_draw, NULL);
 
     fprintf(stderr, ">>> LKL staying resident: USB HID -> input bridge running.\n");
     for (;;) {

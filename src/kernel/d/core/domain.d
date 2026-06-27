@@ -22,6 +22,8 @@ import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
 import core.objstore : objstoreMounted, objstoreInstallDomain,
                        objstoreDomainAt, objstoreDomainCount;     // DOMAIN_MANAGER DM5
+import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCommit,
+                      overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
 
 extern (C) @nogc nothrow:
@@ -323,9 +325,21 @@ public void domFsManifestProof() {
 public bool domainStart(uint domObjId) {
     auto d = domainById(domObjId);
     if (d is null || d.state != DomainState.Defined) return false;
-    if (d.nsObjId == 0) domainBuildNamespace(domObjId);   // DM2 restricted view
+    if (d.nsObjId == 0) domainBuildNamespace(domObjId);          // DM2 restricted view
+    if (d.overlayObjId == 0) d.overlayObjId = overlayCreate(domObjId, 0); // DM6.2 writable overlay
     d.state = DomainState.Running; d.running = true; d.paused = false;
     return true;
+}
+
+// DM6.2 — domain-level overlay ops (the kernel side of HOSQ_DOMAIN_{SNAPSHOT,RESTORE,COMMIT,DISCARD}).
+public uint domainSnapshot(uint domObjId)              { return overlaySnapshot(domObjId); }
+public bool domainRestore(uint domObjId, uint snapGen) { return overlayRestore(domObjId, snapGen); }
+public void domainDiscard(uint domObjId)               { overlayDiscard(domObjId); }
+// Commit folds the overlay into a NEW base version (never mutating the old) and bumps the domain epoch.
+public uint domainCommit(uint domObjId) {
+    const uint newBase = overlayCommit(domObjId);
+    if (newBase != 0) { auto d = domainById(domObjId); if (d !is null) ++d.policyEpoch; }
+    return newBase;
 }
 public bool domainShutdown(uint domObjId) {
     auto d = domainById(domObjId);
@@ -375,6 +389,7 @@ public bool domainDelete(uint domObjId) {
     auto d = domainById(domObjId);
     if (d is null) return false;
     if (d.nsObjId != 0) { nsRelease(d.nsObjId); d.nsObjId = 0; }
+    overlayDestroy(domObjId);   // DM6.2: release the writable overlay
     objRelease(d.objId);
     *d = DomainRec.init;
     return true;
@@ -394,7 +409,8 @@ public void domainLifecycleProof() {
     ok = ok && (clone != 0) && (cr !is null) && (cr.identityObjId == dr.identityObjId)
             && (cr.state == DomainState.Defined);
     // state machine
-    ok = ok && domainStart(clone)   && (domainById(clone).state == DomainState.Running);
+    ok = ok && domainStart(clone)   && (domainById(clone).state == DomainState.Running)
+            && (domainById(clone).overlayObjId != 0);                // DM6.2: start creates a writable overlay
     ok = ok && !domainStart(clone);                                  // not from Running
     ok = ok && domainPause(clone)   && (domainById(clone).state == DomainState.Paused);
     ok = ok && !domainResume(dev);                                   // dev is Defined → can't resume

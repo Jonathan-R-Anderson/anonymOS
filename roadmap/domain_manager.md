@@ -719,13 +719,23 @@ byte → `domainSetTemplate`, and resolves the `template` name → `templateObjI
 `/config/domains.json` + `/objects/domains/<name>/meta` views show `type`. `examples/system.json` got a
 `DevTemplate` that `DevSandbox` references. Verified: `[configboot] template DevTemplate created`;
 `[configboot] domain DevSandbox created -> identity Personal template DevTemplate`; `[domain] template proof
-PASS: DevTemplate immutable template + DevSandbox references it` (rename refused). No regression. *Remaining
-DM6 (the deeper half — the writable overlay):* `ObjType.Overlay` per running domain = a CoW writable layer
-over the immutable template (the roadmap §5 design: a per-domain rtfs subtree with copy-up at `rtCreate`,
-mirroring `addrspace.d` page-CoW + `core/store.d` Generations), with `HOSQ_DOMAIN_{SNAPSHOT,RESTORE,COMMIT,
-DISCARD}` (commit folds the overlay into a NEW template version, never mutating the existing one) +
-`inspect diff` + `validate before commit`. This unlocks DM5's persistMode-driven overlay+home reload. The
-template catalog (Developer/Gaming/Research/… as manifests) seeds alongside it.
+PASS: DevTemplate immutable template + DevSandbox references it` (rename refused). No regression.
+
+**Status — DM6.2 (the writable overlay CONTROL plane) DONE + verified.** New `core/overlay.d`: an
+`ObjType.Overlay` per running domain, a **real content-addressed** CoW layer over the immutable base —
+copy-up writes are `storePut` StoreObjects, snapshots/commits are `core/store.d` `genCreate` Generations
+(parented for lineage). `overlayCreate`/`overlayWrite`(copy-up)/`overlaySnapshot`/`overlayRestore`/
+`overlayDiscard`/`overlayCommit`; `domainStart` creates the overlay; `domain.d` `domainSnapshot/Restore/
+Discard/Commit` (the kernel side of `HOSQ_DOMAIN_{SNAPSHOT,RESTORE,COMMIT,DISCARD}`; commit folds into a NEW
+base + bumps the domain epoch). ★ The security invariant is **proven** by content-addressing: commit creates
+a new base Generation whose parent is the old one, and the OLD base + any snapshot are byte-for-byte
+unchanged. Verified: `[overlay] selftest PASS (write/snapshot/discard/restore/commit; commit never mutates
+the base)` (asserts new-base parent = old base, old base count unchanged, snapshot immutable across a discard)
++ the lifecycle proof now checks `domainStart` creates an overlay. *Remaining DM6 (the DATA plane):* hook
+actual `rtCreate` file writes into `overlayWrite` (copy-up at the rtfs level, mirroring `addrspace.d`
+page-CoW) so a domain's real file edits land in its overlay; `inspect diff` (compare StoreObject digests);
+`validate before commit`; the `HOSQ_DOMAIN_*` verb exposure; persist the overlay blobs (DM5 persistMode
+reload); the template catalog (Developer/Gaming/…) as seeded manifests.
 
 - `ObjType.Template` objects under `/objects/templates/<name>/`, persisted like domains
   (immutable: a frozen Generation + frozen `IdentityRec`).

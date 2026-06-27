@@ -7711,6 +7711,7 @@ struct DeviceCap {
     ulong[6] barEnd;         // base + size - 1
 }
 __gshared DeviceCap[MAX_TASKS] g_taskDevCap;
+__gshared ulong g_lklInjLog = 0;   // L5 input bridge: log the first few injected events (verification)
 
 private int devCapLeader(int tid) {
     if (tid < 0 || tid >= MAX_TASKS) return -1;
@@ -7863,6 +7864,17 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
         }
         case 5:                                     // virt->phys: bdf = a userspace virtual addr (DMA IOVA)
             return cast(long)activeVirtToPhys(bdf);   // caller's OWN memory — no device cap needed
+        case 7:                                     // L5 input bridge: inject an evdev event into the OS
+            // bdf=isKeyboard, off=type, size=code, val=value.  Only a granted LKL driver (e.g. the USB
+            // LKL holding the xHCI cap) may inject input — a plain task cannot synthesise keystrokes.
+            if (taskGrantedBdf(tid) == 0xFFFFFFFFu) return negErrno(EPERM);
+            if (g_lklInjLog < 24) {
+                klog("[lkl-input] inject "); klog(bdf != 0 ? "kbd".ptr : "mouse".ptr);
+                klog(" type="); klog_dec(off); klog(" code="); klog_dec(size);
+                klog(" val="); klog_dec(val); klog("\n"); ++g_lklInjLog;
+            }
+            input_enqueue(bdf != 0, cast(ushort)off, cast(ushort)size, cast(int)val);
+            return 0;
         default: return negErrno(EINVAL);
     }
 }

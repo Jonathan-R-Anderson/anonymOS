@@ -277,6 +277,39 @@ static struct lkl_dev_pci_ops epin_pci_ops = {
 /* lkl_init keeps the pointer, so the ops must outlive it -> file scope. */
 static struct lkl_host_operations ops;
 
+/* ---- L5 input bridge: LKL evdev (/dev/input/event*) -> EpinAnonymOS input rings ----
+ * usbhid creates the LKL's input nodes after USB enumeration; we mknod them (no devtmpfs in
+ * this LKL), wait for them to open, then read evdev input_event records and inject each into
+ * the OS via op7 (-> input_enqueue).  event0 = keyboard (isKbd=1), event1 = mouse (isKbd=0).
+ * input_event is the same 24-byte struct on both sides, so type/code/value pass straight through. */
+#define EPIN_INPUT_INJECT 7
+struct epin_in_ev { long sec, usec; unsigned short type, code; int value; }; /* 24B == kernel input_event */
+struct epin_in_reader { const char *path; long dev; long isKbd; };
+static void *epin_input_reader(void *arg)
+{
+    struct epin_in_reader *r = arg;
+    lkl_sys_mknod(r->path, 020000 | 0666, r->dev);        /* S_IFCHR|rw — create the evdev node */
+    long fd;
+    while ((fd = lkl_sys_openat(LKL_AT_FDCWD, r->path, 0 /*O_RDONLY*/, 0)) < 0) {
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 200000000 };  /* 200ms: wait for usbhid to register */
+        nanosleep(&ts, NULL);
+    }
+    fprintf(stderr, ">>> epin_input: bridging %s -> %s ring\n", r->path, r->isKbd ? "kbd" : "mouse");
+    struct epin_in_ev ev;
+    for (;;) {
+        long n = lkl_sys_read(fd, (char *)&ev, sizeof(ev));   /* blocks until an evdev event */
+        if (n == (long)sizeof(ev))
+            epin_pci_call(EPIN_INPUT_INJECT, r->isKbd, ev.type, ev.code, ev.value);
+        else if (n < 0) {
+            struct timespec ts = { .tv_sec = 0, .tv_nsec = 20000000 };
+            nanosleep(&ts, NULL);
+        }
+    }
+    return NULL;
+}
+static struct epin_in_reader g_kbdReader = { "/dev/input/event0", (13 << 8) | 64, 1 };
+static struct epin_in_reader g_mseReader = { "/dev/input/event1", (13 << 8) | 65, 0 };
+
 int main(int argc, char **argv)
 {
     long ret;
@@ -316,7 +349,14 @@ int main(int argc, char **argv)
      * before usbhid bound + /dev/input/event* appeared — THAT was the "stall".  Keep the LKL
      * resident so the keyboard/mouse fully enumerate; the input bridge (read /dev/input/event*
      * -> EpinAnonymOS input rings) lands here next. */
-    fprintf(stderr, ">>> LKL staying resident for USB enumeration + input...\n");
+    /* L5 input bridge: read the LKL's USB keyboard + mouse evdev nodes -> EpinAnonymOS input rings. */
+    lkl_sys_mkdir("/dev", 0755);
+    lkl_sys_mkdir("/dev/input", 0755);
+    pthread_t tkbd, tmse;
+    pthread_create(&tkbd, NULL, epin_input_reader, &g_kbdReader);
+    pthread_create(&tmse, NULL, epin_input_reader, &g_mseReader);
+
+    fprintf(stderr, ">>> LKL staying resident: USB HID -> input bridge running.\n");
     for (;;) {
         struct timespec ts = { .tv_sec = 1, .tv_nsec = 0 };
         nanosleep(&ts, NULL);

@@ -840,6 +840,19 @@ merge (Deliverable 7).
   are the union and whose fs-access is the intersection; a child adding a `readWrite` path the
   parent denies → rejected; a child *removing* network access → accepted.
 
+**Status — DM9 (template inheritance + least-privilege merge) DONE + verified (runtime kernel core).** A domain
+inherits along its `templateObjId` chain (DM6's `Base ← Dev ← Leaf`). `core/domain.d`: `domainEffectiveDevices`
+computes the **INTERSECTION** of every link's device mask (a child can only narrow); `domainDeviceEscalates`
+flags a child that DECLARES access its parent chain denies; and the device gate now enforces the *effective*
+(merged) mask — `domainDeviceAllowed` uses `domainEffectiveDevices`, so a domain physically cannot exceed its
+template even if its own mask is wider. Verified in-VM (`domInheritProof`, builds a 3-level chain then tears it
+down): `[domain] inherit proof PASS (least-privilege merge: effective=intersection; narrow OK, escalation
+denied+detected)`; DM8's device proof still passes (template-less domains are unchanged — their effective mask
+*is* their own). The build-time counterpart — `anonymos-config`/`compiler.d` resolving the `extends` chain,
+storing overrides only, and rejecting escalation at `anonymos-config build` (reusing `detectNamedCycles` +
+`checkCapabilities`) — is the host-tool follow-up; the same intersection/escalation rule generalizes from the
+device mask to fs/net/cap categories.
+
 ## DM10 — GUI Domain Manager (live, full panels) · P: Med · E: 4 · R: med · deps: DM4, DM2
 
 Expand `cd/wl-domain-manager` into the brief's full GUI (Deliverable 10), updating live.

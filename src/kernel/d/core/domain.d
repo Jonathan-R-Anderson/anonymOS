@@ -328,11 +328,31 @@ public void domainBuildAllNamespaces() {
 
 // DM10.7 — per-domain §7 device policy (the GUI Permissions/peripherals tab).  The mask is seeded
 // from the identity at create and then GUI-toggled per domain.  Unseeded ⟹ unrestricted (safety).
+// DM9: least-privilege merge — the EFFECTIVE device mask is the INTERSECTION of the domain's own
+// mask and every template it inherits from (the templateObjId chain).  A child can only narrow.
+public uint domainEffectiveDevices(uint domObjId) {
+    uint mask = 0xFFFFFFFFu;
+    uint cur = domObjId; int guard = 0;
+    while (cur != 0 && guard++ < 16) {
+        auto d = domainById(cur);
+        if (d is null) break;
+        if (d.devInit) mask &= d.allowedDevices;     // intersect this link's policy
+        cur = d.templateObjId;                       // walk up the inheritance chain
+    }
+    return mask;
+}
+// DM9: true if the domain DECLARES device access its template chain denies (an escalation).
+public bool domainDeviceEscalates(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null || d.templateObjId == 0) return false;
+    const uint parent = domainEffectiveDevices(d.templateObjId);
+    return (d.allowedDevices & ~parent) != 0;        // a bit the parent chain lacks
+}
 public bool domainDeviceAllowed(uint domObjId, uint devClass) {
     auto d = domainById(domObjId);
     if (d is null || devClass == 0) return true;
     if (!d.devInit) return true;
-    return (d.allowedDevices & devClass) == devClass;
+    return (domainEffectiveDevices(domObjId) & devClass) == devClass;   // DM9: enforce the merged chain
 }
 public uint domainDeviceMask(uint domObjId) { auto d = domainById(domObjId); return d is null ? 0 : d.allowedDevices; }
 public bool domainSetDevice(uint domObjId, uint devClass, bool on) {
@@ -489,6 +509,38 @@ public void domDistroProof() {
     ok = ok && domainSetDistro(dev, DISTRO_NIX) && (domainPkgMgr(dev) == PKGMGR_NIX);
     klog(ok ? "[domain] distro proof PASS (busybox -> /linux RO; switch to nix re-roots + pkgMgr follows)\n"
             : "[domain] distro proof FAIL\n");
+}
+
+// DM9 boot proof: a 3-level template chain (Base ← Dev ← Leaf).  The effective device mask is the
+// intersection along the chain; a child can NARROW (accepted) but DECLARING access the parent
+// denies is an escalation (detected + still denied by the merge).  Leaves no domains behind.
+__gshared bool g_inheritProofDone = false;
+public void domInheritProof() {
+    if (g_inheritProofDone) return;
+    g_inheritProofDone = true;
+    const uint pid = identityByName("Personal\0".ptr);
+    if (pid == 0) { klog("[domain] inherit proof SKIP (no Personal)\n"); return; }
+    const uint baseId = domainCreate("InhBase\0".ptr, pid, 0);
+    const uint devId  = domainCreate("InhDev\0".ptr,  pid, baseId);   // extends Base
+    const uint leafId = domainCreate("InhLeaf\0".ptr, pid, devId);    // extends Dev
+    bool ok = (baseId != 0) && (devId != 0) && (leafId != 0);
+    if (ok) {
+        domainById(baseId).allowedDevices = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO;
+        domainById(devId).allowedDevices  = DEVCLASS_INPUT | DEVCLASS_GPU;            // narrows (drops AUDIO)
+        domainById(leafId).allowedDevices = DEVCLASS_INPUT | DEVCLASS_GPU;
+        ok = ok && (domainEffectiveDevices(leafId) == (DEVCLASS_INPUT | DEVCLASS_GPU)); // = intersection
+        ok = ok && !domainDeviceEscalates(devId) && !domainDeviceEscalates(leafId);     // narrowing is fine
+        // a child that DECLARES AUDIO (its parent dropped it) → escalation, and the merge still denies it
+        domainById(leafId).allowedDevices = DEVCLASS_INPUT | DEVCLASS_GPU | DEVCLASS_AUDIO;
+        ok = ok && domainDeviceEscalates(leafId);
+        ok = ok && ((domainEffectiveDevices(leafId) & DEVCLASS_AUDIO) == 0);
+        ok = ok && !domainDeviceAllowed(leafId, DEVCLASS_AUDIO);                         // enforced at the gate
+    }
+    if (leafId) domainDelete(leafId);
+    if (devId)  domainDelete(devId);
+    if (baseId) domainDelete(baseId);
+    klog(ok ? "[domain] inherit proof PASS (least-privilege merge: effective=intersection; narrow OK, escalation denied+detected)\n"
+            : "[domain] inherit proof FAIL\n");
 }
 
 // DOMAIN_MANAGER DM2 boot proof: build a real domain's restricted namespace and resolve several

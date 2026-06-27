@@ -72,6 +72,7 @@ import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-bui
 import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager per-domain ns for the GUI Filesystem view
 import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
 import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM11: distro/pkgMgr + /linux proof
+import core.domain : domInheritProof;                       // DOMAIN_MANAGER DM9: inheritance least-privilege merge
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2913,6 +2914,7 @@ void d_kernel_main() {
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
     domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback
+    domInheritProof();           // DOMAIN_MANAGER DM9: template inheritance least-privilege merge
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

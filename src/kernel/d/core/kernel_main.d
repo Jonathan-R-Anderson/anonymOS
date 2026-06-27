@@ -2889,6 +2889,7 @@ void d_kernel_main() {
     domReadPathProof();          // end-to-end /objects/domains read path (parse+render)
     domFsManifestProof();        // DOMAIN_MANAGER DM2.3: DevSandbox's ns reflects its manifest filesystemAccess
     domFsViewDump();             // DOMAIN_MANAGER DM2.4: dump DevSandbox's RuntimeView (/objects/domains/<name>/filesystem)
+    domainEnterProof();          // DOMAIN_MANAGER DM3: bind a task into a domain → its opens are enforced against the domain ns
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

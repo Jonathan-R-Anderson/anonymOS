@@ -613,6 +613,21 @@ default-deny restricted filesystem visibility) is declarative end-to-end + enfor
 
 Replace the cosmetic `EPIN_*`-only launch with kernel-enforced placement (Deliverable 14).
 
+**Status — DM3 kernel core DONE + verified.** `core/task.d` `domainBindTaskNs(tid, domObjId)` gives a task
+a PRIVATE clone of the domain's restricted ns (`nsClone(domain.nsObjId)`) + the domain's identity — so its
+absolute opens are enforced against the domain policy (`namespaceCheckOpen` reads
+`g_tasks[tid].namespaceObjId`). `domainEnterTask(childTid, domObjId, launcherIdentity, launcherCapTab)`
+wraps it with the `identityCanTransition` gate (needs `CAP_RIGHT_ADMIN_IDENTITY` + a compiled launch rule —
+deny-by-default; the gate itself is proven by `idprocSelfTest`). Verified: `[domain] enter proof PASS: task
+bound to DevSandbox restricted ns + identity Personal (opens enforced)` — a spare task slot bound into
+DevSandbox resolves `/etc/passwd`→deny, `/Domains/DevSandbox/Home`→allow, and carries identity Personal.
+This is the mechanism that makes isolation REAL. *Remaining DM3 (the user-visible integration):* the
+`HOSQ_DOMAIN_SPAWN=45` verb (the trusted launcher's native entry point) + making `cd/wl-domain-manager` a
+native-personality launcher that calls it instead of bare `fork`+`setenv`+`execve` (`wl-domain-manager.c`),
+so a real terminal launched into "Banking" gets EACCES on `/Domains/Work/Home` — the live interactive test.
+`EPIN_*` env stays as the UX/border display, now backed by real enforcement. (Cap-table clamping to the
+ceiling = DM8.)
+
 - `HOSQ_DOMAIN_SPAWN=45`: a §4-style `spawn-into-domain` — load the image (reusing
   `execveTask` `kernel_main.d:750` + the F4.2 cap-gate), set the child's `Task.identityObjId`,
   attach `domainBuildNamespace`'s namespace as `Task.namespaceObjId`, seed caps via

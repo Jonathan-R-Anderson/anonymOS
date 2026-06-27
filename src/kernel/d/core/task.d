@@ -5,7 +5,9 @@ import core.globals;
 import memory.mm;
 import core.objmgr : ObjType, objAlloc, objRetain, objRelease, objGet,
                      objBeginSweep, objMark, objSweepType; // Phase 3/4
-import core.namespace : nsAlloc, nsClone, nsRelease; // Phase 9: per-process namespace
+import core.namespace : nsAlloc, nsClone, nsRelease, nsResolveCheck; // Phase 9 + DOMAIN_MANAGER DM3
+import core.domain : domainById, domainByName;                       // DOMAIN_MANAGER DM3
+import core.identity : identityCanTransition, identityByName;        // DOMAIN_MANAGER DM3
 import core.untyped : untypedDestroy; // IMMUTABLE_ROOTLESS §1.4: task memory budget
 import core.cap : CAP_RIGHT_RETYPE; // rights on Process -> Untyped authority edges
 import core.linuxobj : linuxProcEnsure, linuxProcSweep; // Phase 12: Linux pid-view wrapper
@@ -323,6 +325,64 @@ public void objCloneNamespace(int childTid, int parentTid) {
     if (childTid < 0 || childTid >= MAX_TASKS ||
         parentTid < 0 || parentTid >= MAX_TASKS) return;
     g_tasks[childTid].namespaceObjId = nsClone(g_tasks[parentTid].namespaceObjId);
+}
+
+// DOMAIN_MANAGER DM3: the raw bind — give a task a PRIVATE clone of the domain's restricted
+// namespace + the domain's identity, so its absolute opens are enforced against that domain's
+// filesystem policy (namespaceCheckOpen reads g_tasks[tid].namespaceObjId).  No authorization
+// here (the gated entry point is domainEnterTask).  Returns the new ns objId, or 0.
+public uint domainBindTaskNs(int tid, uint domObjId) {
+    if (tid < 0 || tid >= MAX_TASKS) return 0;
+    auto d = domainById(domObjId);
+    if (d is null || d.nsObjId == 0) return 0;
+    const uint ns = nsClone(d.nsObjId);          // private clone (a later rebind won't touch the template)
+    if (ns == 0) return 0;
+    g_tasks[tid].namespaceObjId = ns;
+    if (d.identityObjId != 0) g_tasks[tid].identityObjId = d.identityObjId;
+    return ns;
+}
+
+// DOMAIN_MANAGER DM3: launch a task INTO a domain.  Authorizes the launcher→domain-identity
+// transition through identityCanTransition (needs CAP_RIGHT_ADMIN_IDENTITY in the launcher's cap
+// table + a compiled launch rule), then binds the task's namespace + identity.  This is what the
+// trusted launcher (HOSQ_DOMAIN_SPAWN) calls instead of a bare fork+execve; deny-by-default.
+public bool domainEnterTask(int childTid, uint domObjId, uint launcherIdentity, int launcherCapTab) {
+    auto d = domainById(domObjId);
+    if (d is null || d.identityObjId == 0) return false;
+    if (!identityCanTransition(launcherIdentity, d.identityObjId, launcherCapTab)) return false;
+    return domainBindTaskNs(childTid, domObjId) != 0;
+}
+
+// DOMAIN_MANAGER DM3 boot proof: bind a spare task slot into DevSandbox and verify the task now
+// resolves against the domain's restricted ns (its opens are denied/allowed per the domain policy)
+// + carries the domain's identity.  The transition gate itself is proven by idprocSelfTest.
+__gshared bool g_domEnterProofDone = false;
+public void domainEnterProof() {
+    if (g_domEnterProofDone) return;
+    g_domEnterProofDone = true;
+    const uint dev = domainByName("DevSandbox\0".ptr);
+    if (dev == 0) { klog("[domain] enter proof SKIP (no DevSandbox)\n"); return; }
+    int tid = -1;
+    for (int i = MAX_TASKS - 1; i > 0; --i) if (!g_tasks[i].active) { tid = i; break; }
+    if (tid < 0) { klog("[domain] enter proof SKIP (no spare task slot)\n"); return; }
+    const uint savedNs = g_tasks[tid].namespaceObjId;
+    const uint savedId = g_tasks[tid].identityObjId;
+
+    const uint ns = domainBindTaskNs(tid, dev);
+    bool ok = (ns != 0) && (g_tasks[tid].namespaceObjId == ns);
+    ok = ok && (g_tasks[tid].identityObjId == identityByName("Personal\0".ptr)); // DevSandbox → Personal
+    const(char)* rest; uint rights; bool denied;
+    // an unbound path through the bound task's ns → deny-by-default (a real open() would ENOENT)
+    ok = ok && (nsResolveCheck(g_tasks[tid].namespaceObjId, "/etc/passwd\0".ptr, rest, rights, denied) == 0);
+    // the domain's own home → allowed
+    ok = ok && (nsResolveCheck(g_tasks[tid].namespaceObjId, "/Domains/DevSandbox/Home/x\0".ptr, rest, rights, denied) != 0);
+
+    if (ns != 0) nsRelease(ns);
+    g_tasks[tid].namespaceObjId = savedNs;   // restore the spare slot
+    g_tasks[tid].identityObjId  = savedId;
+
+    if (ok) klog("[domain] enter proof PASS: task bound to DevSandbox restricted ns + identity Personal (opens enforced)\n");
+    else    klog("[domain] enter proof FAIL\n");
 }
 
 // Release this task's namespace unless another active task still shares it

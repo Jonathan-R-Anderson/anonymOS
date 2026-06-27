@@ -876,8 +876,21 @@ control executor's 3-token parse works — `[domain] control: clone DevSandbox -
 loads 11, not 12). The clone reuses the already-proven write path (DM10.4 ping) + the now-proven clone verb;
 the text-entry UX is the user's to confirm on the desktop.
 
-*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE` instead of poll-on-action), a from-scratch Create
-(vs Clone) flow, and the appearance/startup/template-browser/marketplace tabs.
+**Status — DM10.6 (live updates) DONE + verified.** The panel now refreshes when a domain changes underneath
+it — from ANY actor, not just a local button. The blocking `wl_display_dispatch` loop became a
+`poll()`-with-1s-timeout loop (the correct `prepare_read`/`read_events`/`cancel_read` pattern); on timeout
+`live_refresh()` FNV-hashes `/config/domains.json` and, only if it changed, reloads the list + redraws
+(skipped while the clone dialog is open). Since `/config/domains.json` re-renders the live `g_domains` table,
+this needs NO kernel change and catches external changes within ~1s. Verified in-VM two ways: (1) with the
+opt-in `$HOS_DM_LIVETEST` self-test (forks an external actor that start/stops a domain a few seconds in), the
+GUI logged `live update — /config/domains.json changed` for each change; (2) gated/idle, **0 spurious
+updates** (stable hash) and the GUI still loads + renders responsively. The self-test is off by default (no
+per-boot side effect). A true push (`HOSQ_DOMAIN_SUBSCRIBE`) would need the GUI to go native; the 1s poll is
+the pragmatic Linux-client fit.
+
+*Remaining DM10:* a from-scratch Create (vs Clone) flow, and the appearance/startup/template-browser/
+marketplace tabs — all optional polish. The functional manager (declarative list + FS view + lifecycle +
+clone + live updates) is complete.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

@@ -16,6 +16,12 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+#include <sys/mman.h>
+#include <errno.h>
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
+extern int memfd_create(const char *name, unsigned int flags);  /* musl: declared only under _GNU_SOURCE */
 
 /* ---- thread-based timer host-op (no POSIX timers, no signals) ------------------- */
 struct hosttimer {
@@ -98,6 +104,37 @@ static void ht_timer_free(void *_t)
     pthread_mutex_unlock(&t->m);
     pthread_join(t->th, NULL);
     free(t);
+}
+
+/* ---- L6.0: LKL MMU memory host-op (memfd, not shm_open) ------------------------
+ * LKL's MMU backs "physical" memory with a host shm object that it mmaps at kernel
+ * virtual addresses (so the kernel-virtual DMA buffers are real host pages -> the
+ * bridge's op5 virt->phys still works).  The default posix-host uses shm_open (POSIX
+ * /dev/shm), which EpinAnonymOS lacks -- so back it with a memfd, which it supports. */
+static int g_lkl_memfd = -1;
+static void epin_shmem_init(unsigned long size)
+{
+    g_lkl_memfd = memfd_create("lkl_phys_mem", 0);
+    if (g_lkl_memfd < 0 || ftruncate(g_lkl_memfd, (off_t)size) != 0) {
+        fprintf(stderr, ">>> epin_shmem_init FAILED (memfd=%d size=%lu)\n", g_lkl_memfd, size);
+        abort();
+    }
+    fprintf(stderr, ">>> epin_shmem_init: LKL MMU phys-mem = memfd %d, %lu bytes\n", g_lkl_memfd, size);
+}
+static void *epin_shmem_mmap(void *addr, unsigned long pg_off, unsigned long size, enum lkl_prot prot)
+{
+    int p = 0;
+    if (prot & LKL_PROT_READ)  p |= PROT_READ;
+    if (prot & LKL_PROT_WRITE) p |= PROT_WRITE;
+    if (prot & LKL_PROT_EXEC)  p |= PROT_EXEC;
+    /* MAP_FIXED (overwrite), NOT MAP_FIXED_NOREPLACE: LKL remaps pages (the addr can already be
+     * mapped) and EpinAnonymOS rejects NOREPLACE on a taken addr -> BUG_ON(res != va).  MAP_FIXED
+     * handles both fresh maps and remaps. */
+    void *ret = mmap(addr, size, p, MAP_SHARED | MAP_FIXED, g_lkl_memfd, (off_t)pg_off);
+    if (ret != addr)
+        fprintf(stderr, ">>> epin_shmem_mmap: req %p got %p sz %lu off %lu errno %d\n",
+                addr, ret, size, pg_off, errno);
+    return (ret == MAP_FAILED) ? NULL : ret;
 }
 
 /* ---- L3a: custom LKL PCI backend over EpinAnonymOS's native PCI -----------------
@@ -298,7 +335,9 @@ static void *epin_input_reader(void *arg)
     struct epin_in_ev ev;
     for (;;) {
         long n = lkl_sys_read(fd, (char *)&ev, sizeof(ev));   /* blocks until an evdev event */
-        if (n == (long)sizeof(ev))
+        /* L5 polish: forward EV_SYN(0)/EV_KEY(1)/EV_REL(2)/EV_ABS(3) only; drop EV_MSC(4) scancodes
+         * (the compositor ignores them) so the 128-entry rings aren't pressured by redundant events. */
+        if (n == (long)sizeof(ev) && ev.type != 4)
             epin_pci_call(EPIN_INPUT_INJECT, r->isKbd, ev.type, ev.code, ev.value);
         else if (n < 0) {
             struct timespec ts = { .tv_sec = 0, .tv_nsec = 20000000 };
@@ -325,6 +364,8 @@ int main(int argc, char **argv)
     ops.timer_set_oneshot = ht_timer_set_oneshot;
     ops.timer_free        = ht_timer_free;
     ops.pci_ops           = &epin_pci_ops;    /* L3a: our native-PCI backend */
+    ops.shmem_init        = epin_shmem_init;  /* L6.0: LKL MMU phys-mem via memfd (no shm_open) */
+    ops.shmem_mmap        = epin_shmem_mmap;
 
     if ((ret = lkl_init(&ops)) < 0) {
         fprintf(stderr, "lkl_init failed: %ld\n", ret);

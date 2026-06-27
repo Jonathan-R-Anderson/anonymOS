@@ -158,7 +158,7 @@ extern void *register_iomem(void *data, int size, const struct lkl_iomem_ops *op
 extern int lkl_trigger_irq(int irq);   /* exported liblkl symbol — raises a Linux IRQ inside LKL */
 
 /* Every BAR MMIO routes here: data = the BAR's physical base, forward (phys+offset) to op3/op4. */
-static int g_mmio_log;  /* log the first handful so we can SEE the driver touch real registers */
+static int g_mmio_log, g_db, g_mp;  /* log the first handful so we can SEE the driver touch real registers */
 static int epin_iomem_read(void *data, int offset, void *res, int size)
 {
     long phys = (long)(uintptr_t)data + offset;
@@ -177,9 +177,14 @@ static int epin_iomem_write(void *data, int offset, void *value, int size)
     uint64_t v = (size == 1) ? *(uint8_t *)value : (size == 2) ? *(uint16_t *)value :
                  (size == 8) ? *(uint64_t *)value : *(uint32_t *)value;
     epin_pci_call(4, phys, 0, size, (long)v);               /* op4 = MMIO write at phys */
-    if (g_mmio_log < 20)
+    if (offset >= 0x1000) {                                  /* NVMe doorbells: 0x1000 admin SQ, 0x1004 admin
+                                                             CQ, 0x1008 IO-SQ(qid1), 0x100c IO-CQ(qid1) */
+        if (g_db < 60) { fprintf(stderr, ">>> epin_DB    off=0x%03x <- 0x%llx\n", offset,
+                                 (unsigned long long)v); g_db++; }
+    } else if (g_mmio_log < 20) {
         fprintf(stderr, ">>> epin_mmio WR  off=0x%02x sz=%d <- 0x%llx\n", offset, size,
-                (unsigned long long)v), g_mmio_log++;
+                (unsigned long long)v); g_mmio_log++;
+    }
     return 0;
 }
 static const struct lkl_iomem_ops epin_iomem_ops = {
@@ -215,8 +220,8 @@ static unsigned long long epin_pci_map_page(struct lkl_pci_dev *dev, void *vaddr
         fprintf(stderr, ">>> epin_pci: map_page(%p) FAILED (not mapped)\n", vaddr);
         return 0;
     }
-    if (g_mmio_log < 24)
-        fprintf(stderr, ">>> epin_dma  map_page(%p) -> phys 0x%lx\n", vaddr, phys), g_mmio_log++;
+    if (g_mp < 60)
+        fprintf(stderr, ">>> epin_dma  map_page(%p) -> phys 0x%lx\n", vaddr, phys), g_mp++;
     return (unsigned long long)phys;
 }
 static void epin_pci_unmap_page(struct lkl_pci_dev *dev, unsigned long long h, unsigned long sz)

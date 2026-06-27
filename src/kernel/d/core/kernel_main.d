@@ -69,6 +69,7 @@ import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_
 import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
 import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
 import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager per-domain ns for the GUI Filesystem view
+import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
 import core.domain : domainRehydrateFromDisk, domainPersistProof; // DOMAIN_MANAGER DM5: on-disk persistence
 import core.domain : domainTemplateProof;  // DOMAIN_MANAGER DM6: immutable templates proof
@@ -2902,6 +2903,7 @@ void d_kernel_main() {
     overlaySelfTest();           // DOMAIN_MANAGER DM6.2: writable overlay (CoW) — snapshot/discard/commit over the real store
     domainOverlayWriteProof();   // DOMAIN_MANAGER DM6.2 data plane: a domain-bound task's file create lands in its overlay
     domainBuildAllNamespaces();  // DOMAIN_MANAGER DM10.2: give every domain a restricted ns so the GUI's Filesystem RuntimeView shows a policy for each
+    domainControlProof();        // DOMAIN_MANAGER DM10.3: drive a domain through its lifecycle via parsed control strings (the action-panel executor)
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

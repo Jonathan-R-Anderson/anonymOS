@@ -841,9 +841,21 @@ Window widened to 1180px for the column. Verified in-VM: `DOMAINMGR: RuntimeView
 binding lines` — the GUI reads a real, non-empty policy (System's default-deny ns); DevSandbox shows its 6
 manifest bindings (`ro /System/Templates`, `rw /Domains/DevSandbox/Home`, `deny /Shared/Projects/secrets`, …).
 
-*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE`), the action panels (Create/Clone/Snapshot/Commit/
-Start/Stop wired to the `HOSQ_DOMAIN_*` verbs — needs the native verb surface or a Linux-side control-write
-path since the GUI is a Linux-personality client), the appearance/startup/template-browser/marketplace tabs.
+**Status — DM10.3 (action executor CORE) DONE + verified.** The reusable primitive behind the action panels:
+`core/domain.d domainControlWrite(cmd, len)` parses a `"verb name [arg]"` command and invokes the matching
+lifecycle/overlay op (`start`/`stop`/`pause`/`resume`/`snapshot`/`commit`/`clone`, plus `ping` for a no-op
+path self-test). NON-ESCALATING by construction — every verb is an existing capability-gated op on a NAMED,
+already-declared domain; an unknown verb or unknown domain is a no-op (deny-by-default). Both wiring paths
+(a Linux-side control-write file, or the native `HOSQ_DOMAIN_*` verbs) call this one executor. Verified
+in-VM (`domainControlProof`, drives DevSandbox purely through parsed strings, leaves it Defined): `[domain]
+control: ping/start/pause/resume/snapshot/stop → OK; unknown verb 'frobnicate'; start Nonexistent → FAIL;
+control proof PASS`. ★ TRAP: a D module-global without `__gshared` is THREAD-LOCAL → compiles to an `%fs:0x0`
+TLS read → page-faults in the kernel (no TLS); every kernel module global must be `__gshared`.
+
+*Remaining DM10:* wire `domainControlWrite` to a write path — either a writable `/config/domain.action`
+synthetic file (needs an fd/object-model write-op for the new fd type) or a native `HOSQ_DOMAIN_CTL` verb —
+then the GUI action buttons (Start/Stop/Snapshot/Commit/Clone) + live updates (`HOSQ_DOMAIN_SUBSCRIBE`) +
+the appearance/startup/template-browser/marketplace tabs.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

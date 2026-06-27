@@ -261,6 +261,75 @@ public void domainBuildAllNamespaces() {
             domainBuildNamespace(e.objId);
 }
 
+// DM10.3 — the control-write EXECUTOR.  Parses a "verb name [arg]" command (the action panels
+// will write this to a control path; the native HOSQ_DOMAIN_* verbs can call it too) and invokes
+// the matching lifecycle/overlay op.  NON-ESCALATING by construction: every verb is an existing
+// capability-gated operation on a NAMED, already-declared domain — an unknown verb or an unknown
+// domain is a no-op (deny-by-default).  Returns true on a recognized + successful command.
+private bool verbEq(const(char)* v, string lit) {
+    size_t i = 0;
+    for (; i < lit.length; ++i) if (v[i] != lit[i]) return false;
+    return v[i] == 0;   // exact match (the buffer is NUL-padded)
+}
+public bool domainControlWrite(const(char)* cmd, size_t len) {
+    if (cmd is null || len == 0) return false;
+    char[160] buf = void;
+    const size_t n = len < buf.length - 1 ? len : buf.length - 1;
+    foreach (i; 0 .. n) buf[i] = cmd[i];
+    buf[n] = 0;
+    // tokenize into verb / name / arg over whitespace
+    char[16]           verb = 0;
+    char[DOM_NAME_MAX] name = 0;
+    char[DOM_NAME_MAX] arg  = 0;
+    size_t pos = 0, tok = 0, vi = 0;
+    while (pos < n) {
+        const char c = buf[pos];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            if (vi > 0) { ++tok; vi = 0; if (tok > 2) break; }
+            ++pos; continue;
+        }
+        if      (tok == 0) { if (vi < verb.length - 1) verb[vi++] = c; }
+        else if (tok == 1) { if (vi < name.length - 1) name[vi++] = c; }
+        else               { if (vi < arg.length  - 1) arg [vi++] = c; }
+        ++pos;
+    }
+    const uint id = domainByName(name.ptr);
+    bool ok = false;
+    if      (verbEq(verb.ptr, "ping"))     ok = true;                                      // path self-test, no side effect
+    else if (verbEq(verb.ptr, "start"))    ok = (id != 0) && domainStart(id);
+    else if (verbEq(verb.ptr, "stop"))     ok = (id != 0) && domainShutdown(id);
+    else if (verbEq(verb.ptr, "pause"))    ok = (id != 0) && domainPause(id);
+    else if (verbEq(verb.ptr, "resume"))   ok = (id != 0) && domainResume(id);
+    else if (verbEq(verb.ptr, "snapshot")) ok = (id != 0) && (domainSnapshot(id) != 0);
+    else if (verbEq(verb.ptr, "commit"))   ok = (id != 0) && (domainCommit(id)   != 0);
+    else if (verbEq(verb.ptr, "clone"))    ok = (id != 0) && (arg[0] != 0) && (domainClone(id, arg.ptr) != 0);
+    else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
+    klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
+    return ok;
+}
+
+// DM10.3 boot proof: drive a domain through its lifecycle purely via parsed control strings —
+// the same entry point the action panels / HOSQ verbs use — and assert the state transitions +
+// deny-by-default for an unknown verb and an unknown domain.  Leaves the domain Defined (clean).
+private __gshared bool g_domCtlProofDone = false;
+public void domainControlProof() {
+    if (g_domCtlProofDone) return;
+    g_domCtlProofDone = true;
+    const uint id = domainByName("DevSandbox\0".ptr);
+    if (id == 0) { klog("[domain] control proof SKIP (no DevSandbox)\n"); return; }
+    auto d = domainById(id);
+    bool ok = domainControlWrite("ping DevSandbox".ptr, 15);
+    ok = ok && domainControlWrite("start DevSandbox".ptr, 16)   && (d.state == DomainState.Running);
+    ok = ok && domainControlWrite("pause DevSandbox".ptr, 16)   && (d.state == DomainState.Paused);
+    ok = ok && domainControlWrite("resume DevSandbox".ptr, 17)  && (d.state == DomainState.Running);
+    ok = ok &&  domainControlWrite("snapshot DevSandbox".ptr, 19);             // overlay exists after start
+    ok = ok && domainControlWrite("stop DevSandbox".ptr, 15)    && (d.state == DomainState.Defined);
+    ok = ok && !domainControlWrite("frobnicate DevSandbox".ptr, 21);          // unknown verb → denied
+    ok = ok && !domainControlWrite("start Nonexistent".ptr, 17);              // unknown domain → denied
+    klog(ok ? "[domain] control proof PASS (ping/start/pause/resume/snapshot/stop via parse+exec; unknown verb+domain denied)\n"
+            : "[domain] control proof FAIL\n");
+}
+
 // DOMAIN_MANAGER DM2 boot proof: build a real domain's restricted namespace and resolve several
 // paths through it exactly as namespaceCheckOpen would, asserting the policy holds.
 __gshared bool g_domNsProofDone = false;

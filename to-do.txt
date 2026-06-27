@@ -24,3 +24,6 @@ https://github.com/sam0hack/Linux-Login-screens
 
 
 https://github.com/thumpersecure/palm-tree for generating network traffic to obfuscate behaviors
+
+
+https://github.com/tmylla/Awesome-LLM4Cybersecurity

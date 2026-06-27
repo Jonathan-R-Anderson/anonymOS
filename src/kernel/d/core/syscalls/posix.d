@@ -7783,6 +7783,22 @@ public uint findDeviceByClass(uint cls) {
     return 0xFFFFFFFF;
 }
 
+// L5 kernel-side INTx wake: the bdf the task's PROCESS was granted, or 0xFFFFFFFF if none.
+public uint taskGrantedBdf(int tid) {
+    const int p = devCapLeader(tid);
+    return (p >= 0 && g_taskDevCap[p].valid) ? g_taskDevCap[p].bdf : 0xFFFFFFFFu;
+}
+// L5 kernel-side INTx wake: is the device's PCI Status "Interrupt Status" bit set (a level-triggered
+// INTx is asserted while the device has an unacked interrupt)?  Status is the high half of cfg 0x04.
+public bool deviceIntxAsserted(uint bdf) {
+    import drivers.pci : pciConfigRead32;
+    const ubyte bus  = cast(ubyte)((bdf >> 16) & 0xFF);
+    const ubyte slot = cast(ubyte)((bdf >> 8)  & 0xFF);
+    const ubyte func = cast(ubyte)( bdf        & 0xFF);
+    const uint status = (pciConfigRead32(bus, slot, func, 0x04) >> 16) & 0xFFFF;
+    return (status & 0x08) != 0;   // bit 3 = Interrupt Status
+}
+
 public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, ulong val) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32, scanPCIDevices;
     import core.globals : hhdm_offset;

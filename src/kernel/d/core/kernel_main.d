@@ -2318,6 +2318,38 @@ private void dispatchSyscall(int tid) {
         if ((isPoll || isEpoll) && ret != 0) g_pollBlocked[tid] = false;
     }
 
+    // L5 kernel-side INTx wake (op6 of the 0x4100 LKL PCI bridge): PARK the LKL's IRQ thread until its
+    // granted device's INTx asserts, instead of a userspace 250us busy-poll that competed for CPU with
+    // (and raced) the LKL's enumeration thread.  wakePollers() re-runs this every PIT tick (<=1ms) to
+    // re-check; we return 0 on INTx or a 50ms safety timeout, then the LKL fires lkl_trigger_irq + re-blocks.
+    if (rax == 0x4100 && rdi == 6) {
+        const uint gbdf = taskGrantedBdf(tid);
+        if (gbdf == 0xFFFFFFFFu) {                 // no device cap → -EPERM (LKL always holds its grant)
+            g_pollBlocked[tid] = false;
+            task.regs[REG_RAX] = cast(ulong)(-1);
+            return;
+        }
+        if (deviceIntxAsserted(gbdf)) {            // interrupt pending → wake the LKL now
+            g_pollBlocked[tid] = false;
+            task.regs[REG_RAX] = 1;                // 1 = woken by a real INTx (vs 0 = safety timeout)
+            return;
+        }
+        if (g_pollBlocked[tid]) {
+            if (g_pollDeadline[tid] != 0 && pitMs() >= g_pollDeadline[tid]) {
+                g_pollBlocked[tid] = false;
+                task.regs[REG_RAX] = 0;            // 50ms safety timeout → return (LKL re-blocks)
+                return;
+            }
+        } else {
+            g_pollBlocked[tid]  = true;
+            g_pollDeadline[tid] = pitMs() + 50;
+        }
+        task.waiting = true;                       // park (NOT a busy spin); re-checked next PIT tick
+        task.regs[REG_RIP] -= 2;
+        scheduleNext();
+        return;
+    }
+
     // nanosleep(35) / clock_nanosleep(230, RELATIVE): a REAL sleep. The libc wrapper in posix.d is a
     // no-op (returns 0), so without this the caller never actually sleeps. Park the task for the
     // requested duration, reusing the poll/epoll park + PIT-tick wake. (LKL's timer host-op relies on

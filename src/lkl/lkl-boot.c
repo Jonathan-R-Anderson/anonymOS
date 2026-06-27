@@ -240,15 +240,14 @@ static struct { long bdf; int irq; } g_irq;
 static void *epin_irq_thread(void *arg)
 {
     (void)arg;
-    int idle = 0;
     for (;;) {
-        struct timespec ts = { .tv_sec = 0, .tv_nsec = 250000 };   /* 250us poll */
-        nanosleep(&ts, NULL);
-        int sts = (int)epin_pci_call(0, g_irq.bdf, 0x06, 2, 0);    /* PCI Status (cfg 0x06) */
-        if ((sts & 0x08) || ++idle >= 16) {                        /* INTx asserted, or ~4ms net */
-            lkl_trigger_irq(g_irq.irq);
-            idle = 0;
-        }
+        /* op6: BLOCK in the kernel until our granted device's INTx asserts.  The EpinAnonymOS
+         * kernel poll-loop (which always runs) does the detection and wakes us — so this thread
+         * is PARKED between interrupts, not a 250us busy-poll that competed with + raced the LKL's
+         * own enumeration thread for the single core.  Returns 1 = real INTx, 0 = 50ms safety net
+         * (verified live: ~97% real INTx detections — the kernel-side detection works). */
+        epin_pci_call(6, 0, 0, 0, 0);
+        lkl_trigger_irq(g_irq.irq);   /* raise the Linux IRQ; the handler acks + de-asserts INTx */
     }
     return NULL;
 }

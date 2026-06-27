@@ -648,6 +648,19 @@ ceiling = DM8.)
 Create/Delete/Clone/Rename/Start/Shutdown/Pause/Resume/Reset (Deliverable 4) as verbs +
 the `DomainState` machine (§4).
 
+**Status — DM4 lifecycle CORE DONE + verified** (the kernel side of the verbs; the registry/state ops that
+don't need spawning). `core/domain.d`: the `DomainState` machine — `domainStart` (Defined→Running, builds
+the DM2 restricted ns), `domainShutdown` (Running/Paused→Defined), `domainPause` (Running→Paused),
+`domainResume` (Paused→Running); plus `domainClone` (copy identity/template/persist into a new Defined
+domain), `domainRename` (unique-name checked), `domainDelete` (releases the ns + the object + frees the
+slot). Deny-by-default: a bad transition returns false. Verified: `[domain] lifecycle proof PASS:
+clone/start/pause/resume/shutdown/rename/delete + bad transitions rejected` (a throwaway clone of Development
+driven through the full cycle; `start` on a Running domain + `resume` on a Defined domain both rejected). No
+regression. *Remaining DM4:* `Start`'s actual launch-into-domain (runs `startupPrograms` via DM3's
+`HOSQ_DOMAIN_SPAWN`) + exposing all of these as `HOSQ_DOMAIN_*` verbs / `domain` CLI builtins (the ABI
+layer, paired with the DM10 GUI / native-shell consumer like DM0.b). The `Reset` op (wipe overlay+home per
+persist policy) lands with DM6's overlay.
+
 - `core/domain.d`: the `DomainState` enum + transition table; `HOSQ_DOMAIN_{CREATE,DELETE,
   CLONE,RENAME,START,SHUTDOWN,PAUSE,RESUME,RESET}` (25-32, 35). Start = build ns + identity +
   run `startupPrograms` via `HOSQ_DOMAIN_SPAWN` — **the overlay is ephemeral at this milestone**

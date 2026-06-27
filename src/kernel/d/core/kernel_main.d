@@ -68,6 +68,7 @@ import core.identity : identityInitDefaults, identityInitLaunchRules, identityBy
 import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_MANAGER DM0
 import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
 import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
+import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -2890,6 +2891,7 @@ void d_kernel_main() {
     domFsManifestProof();        // DOMAIN_MANAGER DM2.3: DevSandbox's ns reflects its manifest filesystemAccess
     domFsViewDump();             // DOMAIN_MANAGER DM2.4: dump DevSandbox's RuntimeView (/objects/domains/<name>/filesystem)
     domainEnterProof();          // DOMAIN_MANAGER DM3: bind a task into a domain → its opens are enforced against the domain ns
+    domainLifecycleProof();      // DOMAIN_MANAGER DM4: clone/start/pause/resume/shutdown/rename/delete state machine
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

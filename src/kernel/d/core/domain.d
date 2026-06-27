@@ -298,6 +298,104 @@ public void domFsManifestProof() {
     else    klog("[domain] fs manifest proof FAIL\n");
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DOMAIN_MANAGER DM4 — lifecycle state machine + operations (the §4 state machine).
+// Registry/state operations (no task spawning — Start's actual launch-into-domain is
+// DM3's HOSQ_DOMAIN_SPAWN); these are the verbs' kernel side.  Deny-by-default; a bad
+// transition returns false.  States: Defined ⇄ Running ⇄ Paused; Delete from any.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Defined → Running.  Ensures the domain has a restricted ns (DM2); the actual app
+// launch into it is DM3 (domainEnterTask via HOSQ_DOMAIN_SPAWN, run from here later).
+public bool domainStart(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null || d.state != DomainState.Defined) return false;
+    if (d.nsObjId == 0) domainBuildNamespace(domObjId);   // DM2 restricted view
+    d.state = DomainState.Running; d.running = true; d.paused = false;
+    return true;
+}
+public bool domainShutdown(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null || (d.state != DomainState.Running && d.state != DomainState.Paused)) return false;
+    d.state = DomainState.Defined; d.running = false; d.paused = false;
+    return true;
+}
+public bool domainPause(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null || d.state != DomainState.Running) return false;
+    d.state = DomainState.Paused; d.paused = true;
+    return true;
+}
+public bool domainResume(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d is null || d.state != DomainState.Paused) return false;
+    d.state = DomainState.Running; d.paused = false;
+    return true;
+}
+
+// Clone a domain's config (identity / template / persist) into a NEW Defined domain.
+// The clone's restricted ns is (re)built lazily on Start.  Returns the new objId, or 0.
+public uint domainClone(uint srcObjId, const(char)* newName) {
+    auto s = domainById(srcObjId);
+    if (s is null) return 0;
+    const uint id = domainCreate(newName, s.identityObjId, s.templateObjId);
+    if (id == 0) return 0;
+    auto n = domainById(id);
+    if (n !is null) n.persistMode = s.persistMode;
+    return id;
+}
+
+public bool domainRename(uint domObjId, const(char)* newName) {
+    if (g_domFrozen) return false;
+    auto d = domainById(domObjId);
+    if (d is null) return false;
+    const int nl = domCstrLen(newName);
+    if (nl == 0 || nl >= DOM_NAME_MAX) return false;
+    if (domainByName(newName) != 0) return false;     // unique name
+    domCopyName(*d, newName);
+    return true;
+}
+
+// Delete a domain: release its restricted namespace + the object, free the registry slot.
+public bool domainDelete(uint domObjId) {
+    if (g_domFrozen) return false;
+    auto d = domainById(domObjId);
+    if (d is null) return false;
+    if (d.nsObjId != 0) { nsRelease(d.nsObjId); d.nsObjId = 0; }
+    objRelease(d.objId);
+    *d = DomainRec.init;
+    return true;
+}
+
+// DM4 boot proof: exercise the full lifecycle on a throwaway clone.
+__gshared bool g_domLifecycleProofDone = false;
+public void domainLifecycleProof() {
+    if (g_domLifecycleProofDone) return;
+    g_domLifecycleProofDone = true;
+    const uint dev = domainByName("Development\0".ptr);
+    auto dr = domainById(dev);
+    bool ok = (dev != 0) && (dr !is null);
+
+    const uint clone = domainClone(dev, "Dev2Test\0".ptr);
+    auto cr = domainById(clone);
+    ok = ok && (clone != 0) && (cr !is null) && (cr.identityObjId == dr.identityObjId)
+            && (cr.state == DomainState.Defined);
+    // state machine
+    ok = ok && domainStart(clone)   && (domainById(clone).state == DomainState.Running);
+    ok = ok && !domainStart(clone);                                  // not from Running
+    ok = ok && domainPause(clone)   && (domainById(clone).state == DomainState.Paused);
+    ok = ok && !domainResume(dev);                                   // dev is Defined → can't resume
+    ok = ok && domainResume(clone)  && (domainById(clone).state == DomainState.Running);
+    ok = ok && domainShutdown(clone)&& (domainById(clone).state == DomainState.Defined);
+    // rename + delete
+    ok = ok && domainRename(clone, "Dev3Test\0".ptr)
+            && (domainByName("Dev3Test\0".ptr) == clone) && (domainByName("Dev2Test\0".ptr) == 0);
+    ok = ok && domainDelete(clone) && (domainByName("Dev3Test\0".ptr) == 0);
+
+    if (ok) klog("[domain] lifecycle proof PASS: clone/start/pause/resume/shutdown/rename/delete + bad transitions rejected\n");
+    else    klog("[domain] lifecycle proof FAIL\n");
+}
+
 public void domainStats() {
     klog("[domain] count=");  klog_hex(cast(ulong)domainCount());
     klog(" created=");        klog_hex(g_domCreateTotal);

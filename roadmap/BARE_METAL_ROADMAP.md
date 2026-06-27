@@ -184,8 +184,21 @@ EpinAnonymOS's input rings (`g_kbd_ring`/`g_mouse_ring`). **Develop/verify in QE
 `~/lkl-build/linux/.config` → `make -C tools/lkl olddefconfig` + rebuild, ~10 min), then relink lkl-boot.
 After that the bring-up mirrors NVMe: point `.add` at the xHCI class (0x0c0330), let LKL's `xhci_hcd`
 probe it through the proven bridge (config/MMIO/DMA/IRQ all work), enumerate `usb-kbd`, then read
-`/dev/input/event*` via `lkl_sys_read` and feed `g_kbd_ring`/`g_mouse_ring`. **Risk:** USB transfers use
-URBs (not blk-mq) so the NVMe I/O-dispatch quirk likely won't recur, but xHCI-in-LKL is untested.
+`/dev/input/event*` via `lkl_sys_read` and feed `g_kbd_ring`/`g_mouse_ring`.
+
+**★ STEP-0 ✅ DONE (commit cce199384): liblkl.a rebuilt with the USB stack** (added the 5 CONFIGs to
+`arch/lkl/configs/defconfig`; `xhci_hcd_init`/`usb_init`/`usbhid`/`evdev_connect` now in liblkl.a). Build
+env = conda `lkl` (flex/bison) + the musl cross. **★ BRING-UP ✅ (commit cce199384): LKL's xHCI/USB stack
+runs through the bridge** — serial: `xhci_hcd 0000:00:00.0: xHCI Host Controller` + `new USB bus registered`
+(USB 2.0 + 3.0) + `usbcore: registered new interface driver usbhid` + BOTH devices detected (`usb 1-1`
+kbd, `usb 1-2` mouse) — same config/MMIO/DMA/IRQ + L4 cap-gate as NVMe (granted xHCI; bdf 0 DENIED).
+**★ KNOWN STALL (diagnosed): enumeration stops after `new device number` — no descriptor read.** The L5
+isolation test (an IRQ-poller real-time heartbeat) PROVED it's **a stall, not CPU starvation**: the LKL ran
+135 000 polls free-running on an idle core at boot-end, yet enumeration made zero further progress. So the
+USB control-transfer completion never arrives (same family as the NVMe I/O-dispatch quirk — a secondary
+transfer ring not getting driven), NOT a bridge defect and NOT fixable by more cores. **NEXT:** instrument
+the xHCI transfer rings / event ring / EP doorbells to find why the control IN (GET_DESCRIPTOR) doesn't
+complete. (CPU contention *is* real early in boot → see `SMP_ROADMAP.md`, but it is not the blocker here.)
 
 ## L6 — GPU via LKL (the research frontier)
 LKL's `nouveau` drives the GTX 1080: real PCI BARs + MSI + large DMA + **display scanout / mode-setting**

@@ -47,25 +47,25 @@
 extern char **environ;
 
 enum {
-    DEFAULT_WIDTH  = 1180,   // DM10.2: wider, for the Filesystem RuntimeView column
-    DEFAULT_HEIGHT = 600,
-    HEADER_H       = 70,
-    LIST_W         = 300,     // left domain list width
-    ROW_H          = 44,      // list row height
-    FOOTER_H       = 32,
+    DEFAULT_WIDTH  = 1180,
+    DEFAULT_HEIGHT = 680,     // DM10.7: taller, for the tabbed panels
+    HEADER_H       = 56,      // title bar
+    LIST_W         = 240,     // left domain list width
+    ROW_H          = 40,      // list row height
+    FOOTER_H       = 30,
     PAD            = 20,
 };
 
-// Right control-panel geometry.
+// DM10.7: tabbed-layout geometry (toolbar of verbs → split panes → tabbed right panel).
 enum {
-    RP_X    = LIST_W,
-    LABEL_X = RP_X + 26,
-    PILL_X  = RP_X + 196,
-    PILL_W  = 250,
-    PILL_H  = 28,
-    CTL_H   = 42,
-    RY0     = HEADER_H + 54,   // first control row y
-    N_CTL   = 7,              // cyclable control rows (Memory…Shell + Terminal)
+    TOOLBAR_H = 38,
+    BODY_Y    = HEADER_H + TOOLBAR_H,           // split panes start here
+    RP_X      = LIST_W,
+    LABEL_X   = RP_X + 24,
+    DOMHDR_H  = 36,                             // domain name + status row (right pane)
+    TABBAR_H  = 32,
+    TAB_Y     = BODY_Y + DOMHDR_H + TABBAR_H,   // tab content start
+    N_TABS    = 7,
 };
 
 // --- option tables --------------------------------------------------------
@@ -148,7 +148,12 @@ struct gdomain {
     char     state[16];       // "Defined" | "Running" | ...
     unsigned objId;           // this domain's object id
     unsigned templObjId;      // the referenced template's object id (0 = none)
+    unsigned devices;         // DM10.7: §7 peripheral device mask (Permissions tab)
 };
+
+// DM10.7: a repository package, parsed from /config/packages.json (Packages tab).
+#define MAX_PKGS 16
+struct gpkg { char name[32]; char ver[12]; int sizeKb; unsigned reqCaps; };
 
 struct app {
     struct wl_display *display;
@@ -181,10 +186,15 @@ struct app {
     struct gdomain doms[MAX_DOMS]; // DM10: the domains, read from the declarative config
     int n_doms;                    // number loaded
     char fs_view[1280];            // DM10.2: the selected domain's restricted-FS RuntimeView
-    int  editing;                  // DM10.5: clone-name text-input dialog is open
-    char editbuf[24];              // the typed new-domain name (DOM_NAME_MAX)
+    int  editing;                  // DM10.5: text-input dialog is open
+    char editbuf[96];              // the typed value (domain name OR a filesystem path)
     int  editlen;
+    int  edit_mode;                // DM10.7: 0=clone-name, 1=fs ro, 2=fs rw, 3=fs deny
     unsigned last_hash;            // DM10.6: FNV hash of /config/domains.json — detect external changes
+    int  tab;                      // DM10.7: active right-pane tab (0..N_TABS-1)
+    struct gpkg pkgs[MAX_PKGS];    // DM10.7: the repository catalog (/config/packages.json)
+    int  n_pkgs;
+    unsigned pkg_mask[MAX_DOMS];   // per-domain installed bitmask over the catalog
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -292,7 +302,7 @@ static void draw_text(struct app *app, const char *text, int x, int y, int max_w
 
 // --- control model --------------------------------------------------------
 
-static const char *CTL_LABEL[N_CTL] = {
+static const char *CTL_LABEL[7] = {
     "Memory cap", "Disk access", "Network", "Clipboard", "Secure IPC", "Shell", "Terminal"
 };
 
@@ -323,27 +333,49 @@ static void ctl_cycle(struct dconf *c, int i, int dir)
     }
 }
 
-// Geometry of the two launch buttons and three device chips (shared by draw + hit).
-static void launch_btn_rect(int idx, int *x, int *y, int *w, int *h)
-{
-    *y = RY0 + (N_CTL + 1) * CTL_H + 8; *h = 38;
-    if (idx == 0) { *x = LABEL_X; *w = 200; }
-    else          { *x = LABEL_X + 214; *w = 170; }
+// ── DM10.7 tabbed-layout labels + geometry (shared by the draw + click passes) ──────────────
+#define N_TOOL 4
+static const char *TOOL_LABEL[N_TOOL] = { "+ New", "Clone", "Import", "Marketplace" };
+static const char *TAB_LABEL[N_TABS]  = { "Overview","Filesystem","Packages","Network","Permissions","Startup","Appearance" };
+enum { TAB_W = (DEFAULT_WIDTH - LIST_W) / N_TABS };   // fixed tab column width
+
+#define N_LIFE 6
+static const char *LIFE_LABEL[N_LIFE] = { "Start","Stop","Pause","Resume","Snapshot","Commit" };
+static const char *LIFE_VERB [N_LIFE] = { "start","stop","pause","resume","snapshot","commit" };
+
+#define N_DEV 6
+static const char    *DEV_LABEL[N_DEV] = { "Keyboard / Mouse","GPU","Camera","Microphone","Audio","USB" };
+static const char    *DEV_CLASS[N_DEV] = { "input","gpu","camera","mic","audio","usb" };
+static const unsigned DEV_BIT  [N_DEV] = { 1u<<0, 1u<<1, 1u<<2, 1u<<3, 1u<<4, 1u<<5 };
+
+#define N_FSBTN 4
+static const char *FSBTN_LABEL[N_FSBTN] = { "+ Allow ro", "+ Allow rw", "+ Deny", "+ Mount" };
+static const int   FSBTN_MODE [N_FSBTN] = { 1, 2, 3, 2 };   // edit_mode for the path dialog (Mount == rw)
+
+static void toolbar_btn_rect(int idx, int *x, int *y, int *w, int *h) {
+    static const int wd[N_TOOL] = { 74, 70, 74, 110 };
+    *y = HEADER_H + 6; *h = TOOLBAR_H - 12;
+    int cx = PAD;
+    for (int i = 0; i < idx; i++) cx += wd[i] + 8;
+    *x = cx; *w = wd[idx];
 }
-static void dev_chip_rect(int idx, int *x, int *y, int *w, int *h)
-{
-    *y = RY0 + N_CTL * CTL_H + (CTL_H - 26) / 2; *h = 26; *w = 78;
-    *x = PILL_X + idx * (78 + 8);
+static void tab_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = BODY_Y + DOMHDR_H; *h = TABBAR_H; *x = RP_X + idx * TAB_W; *w = TAB_W;
 }
-// DM10.3/10.5: the lifecycle action buttons (Start / Stop / Snapshot / Commit / Clone), one row
-// below launch.  Clone (idx 4) opens the text-input dialog instead of acting immediately.
-#define N_ACTION 5
-static const char *ACTION_LABEL[N_ACTION] = { "Start", "Stop", "Snapshot", "Commit", "Clone" };
-static const char *ACTION_VERB [N_ACTION] = { "start", "stop", "snapshot", "commit", "clone" };
-static void action_btn_rect(int idx, int *x, int *y, int *w, int *h)
-{
-    *y = RY0 + (N_CTL + 1) * CTL_H + 8 + 48; *h = 30; *w = 84;
-    *x = LABEL_X + idx * (84 + 6);
+static void delete_btn_rect(struct app *app, int *x, int *y, int *w, int *h) {
+    *x = PAD; *w = LIST_W - 2 * PAD; *h = 26; *y = app->height - FOOTER_H - 32;
+}
+static void life_btn_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 196; *h = 30; *w = 92; *x = LABEL_X + idx * (92 + 6);
+}
+static void fs_btn_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 12; *h = 26; *w = 100; *x = LABEL_X + idx * (100 + 6);
+}
+static void dev_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Permissions device toggle pills
+    *y = TAB_Y + 24 + idx * 42; *h = 30; *w = 70; *x = LABEL_X + 240;
+}
+static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Packages install/remove pills
+    *y = TAB_Y + 24 + idx * 34; *h = 26; *w = 92; *x = LABEL_X + 320;
 }
 
 // DM10.5: evdev keycode → lowercase ASCII (US QWERTY) for the clone-name text field.  The DM gets
@@ -353,6 +385,7 @@ static const char EVDEV_CHAR[128] = {
     [16]='q',[17]='w',[18]='e',[19]='r',[20]='t',[21]='y',[22]='u',[23]='i',[24]='o',[25]='p',
     [30]='a',[31]='s',[32]='d',[33]='f',[34]='g',[35]='h',[36]='j',[37]='k',[38]='l',
     [44]='z',[45]='x',[46]='c',[47]='v',[48]='b',[49]='n',[50]='m',
+    [52]='.',[53]='/',[57]=' ',   // for filesystem paths
 };
 
 // --- drawing --------------------------------------------------------------
@@ -425,14 +458,66 @@ static void load_domains(struct app *app)
         if (j_field(nm, objEnd, "template", num, sizeof(num))) g->templObjId = (unsigned)strtoul(num, NULL, 10);
         if (j_field(nm, objEnd, "color", num, sizeof(num)))    g->color = (uint32_t)strtoul(num, NULL, 16);
         else g->color = 0xFF808080u;
+        if (j_field(nm, objEnd, "devices", num, sizeof(num)))  g->devices = (unsigned)strtoul(num, NULL, 16);
         if (g->name[0]) app->n_doms++;
         p = objEnd;
     }
     free(json);
     if (app->n_doms == 0) { load_domains_fallback(app); return; }
     printf("DOMAINMGR: loaded %d domains from /config/domains.json (declarative):", app->n_doms);
-    for (int i = 0; i < app->n_doms; i++) printf(" %s[%s]", app->doms[i].name, app->doms[i].type);
+    for (int i = 0; i < app->n_doms; i++) printf(" %s[%s dev=0x%x]", app->doms[i].name, app->doms[i].type, app->doms[i].devices);
     printf("\n"); fflush(stdout);
+}
+
+// DM10.7: load the software repository (/config/packages.json) — the catalog into pkgs[] and the
+// per-domain installed set into pkg_mask[].  Used by the Packages tab.
+static void load_packages(struct app *app)
+{
+    app->n_pkgs = 0;
+    for (int i = 0; i < MAX_DOMS; i++) app->pkg_mask[i] = 0;
+    unsigned char *buf; size_t sz;
+    if (load_file("/config/packages.json", &buf, &sz) < 0 || sz == 0) return;
+    char *json = malloc(sz + 1);
+    if (!json) { free(buf); return; }
+    memcpy(json, buf, sz); json[sz] = 0; free(buf);
+
+    const char *inst = strstr(json, "\"installed\"");
+    const char *p = strstr(json, "\"repository\"");
+    if (!p) p = json;
+    while (app->n_pkgs < MAX_PKGS) {
+        const char *nm = strstr(p, "\"name\"");
+        if (!nm || (inst && nm > inst)) break;            // catalog entries only
+        const char *e = strstr(nm + 6, "\"name\"");
+        if (!e || (inst && e > inst)) e = inst ? inst : (json + sz);
+        struct gpkg *g = &app->pkgs[app->n_pkgs];
+        memset(g, 0, sizeof(*g));
+        j_field(nm, e, "name", g->name, sizeof(g->name));
+        j_field(nm, e, "version", g->ver, sizeof(g->ver));
+        char num[16];
+        if (j_field(nm, e, "sizeKb", num, sizeof(num)))       g->sizeKb  = atoi(num);
+        if (j_field(nm, e, "requiredCaps", num, sizeof(num))) g->reqCaps = (unsigned)strtoul(num, NULL, 16);
+        if (g->name[0]) app->n_pkgs++;
+        p = e;
+    }
+    // installed: for each {domain, packages:[…]}, set the bit for every catalog pkg name present.
+    for (const char *q = inst; q; ) {
+        const char *dn = strstr(q, "\"domain\"");
+        if (!dn) break;
+        const char *dEnd = strstr(dn + 8, "\"domain\"");
+        if (!dEnd) dEnd = json + sz;
+        char dname[32]; j_field(dn, dEnd, "domain", dname, sizeof(dname));
+        int di = -1;
+        for (int i = 0; i < app->n_doms; i++) if (strcmp(app->doms[i].name, dname) == 0) { di = i; break; }
+        if (di >= 0)
+            for (int pi = 0; pi < app->n_pkgs; pi++) {
+                char pat[40]; snprintf(pat, sizeof(pat), "\"%s\"", app->pkgs[pi].name);
+                const char *hit = strstr(dn, pat);
+                if (hit && hit < dEnd && hit > dn + 8) app->pkg_mask[di] |= (1u << pi);
+            }
+        q = dEnd;
+    }
+    free(json);
+    printf("DOMAINMGR: loaded %d packages from /config/packages.json\n", app->n_pkgs); fflush(stdout);
 }
 
 // Resolve a template objId to its domain name (for display).
@@ -499,9 +584,29 @@ static void domain_action_clone(struct app *app)
     close(fd);
     printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
     load_domains(app);                       // the clone is a NEW domain — re-read the full list
+    load_packages(app);                      // domain indices shifted → re-read installs
     // select the freshly-created clone if present
     for (int i = 0; i < app->n_doms; i++)
         if (strcmp(app->doms[i].name, app->editbuf) == 0) { app->sel = i; break; }
+    refresh_fs_view(app);
+}
+
+// DM10.7: send a 3-token "verb <domain> <arg>" command (devon/devoff, install/uninstall,
+// fsro/fsrw/fsdeny) then re-read declarative state + packages so the tabs reflect the result.
+static void domain_action_arg(struct app *app, const char *verb, const char *arg)
+{
+    if (app->sel < 0 || app->sel >= app->n_doms) return;
+    char cmd[160];
+    int len = snprintf(cmd, sizeof(cmd), "%s %s %s", verb, app->doms[app->sel].name, arg);
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) { printf("DOMAINMGR: action open FAILED\n"); fflush(stdout); return; }
+    ssize_t w = write(fd, cmd, len);
+    close(fd);
+    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
+    int keep = app->sel;
+    load_domains(app);
+    load_packages(app);
+    if (keep < app->n_doms) app->sel = keep;
     refresh_fs_view(app);
 }
 
@@ -542,6 +647,7 @@ static void live_refresh(struct app *app)
     app->last_hash = h;
     int keep = app->sel;
     load_domains(app);
+    load_packages(app);
     if (keep < app->n_doms) app->sel = keep;
     refresh_fs_view(app);
     redraw_commit(app, "live update");
@@ -568,253 +674,292 @@ static void domain_livetest_spawn(struct app *app)
     _exit(0);
 }
 
+// ── DM10.7 tab panels.  Each renders BOTH passes: cr != NULL = cairo shapes, cr == NULL = text. ──
+#define N_OVPILL 4
+static const char *OV_LABEL[N_OVPILL] = { "Shell", "Terminal", "Memory", "Network" };
+static const int   OV_CTL  [N_OVPILL] = { 5, 6, 0, 2 };   // index into the cfg control set
+static void ov_pill_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 64 + idx * 30; *h = 26; *w = 220; *x = LABEL_X + 130;
+}
+
+static void tab_overview(struct app *app, cairo_t *cr) {
+    struct gdomain *sd = &app->doms[app->sel];
+    struct dconf *cc = &app->cfg[app->sel];
+    const char *st = sd->state; int running = (st[0]=='R'), paused = (st[0]=='P');
+    if (cr) {
+        for (int i = 0; i < N_OVPILL; i++) {
+            int x,y,w,h; ov_pill_rect(i,&x,&y,&w,&h);
+            cairo_set_source_rgb(cr, 0.157,0.184,0.224); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr);
+        }
+        for (int a = 0; a < N_LIFE; a++) {
+            int x,y,w,h; life_btn_rect(a,&x,&y,&w,&h);
+            int en = (a==0) ? (!running && !paused) : (a==3) ? paused : (running||paused);
+            if (a==0 && en)      cairo_set_source_rgb(cr,0.20,0.52,0.34);
+            else if (a==1 && en) cairo_set_source_rgb(cr,0.52,0.26,0.26);
+            else if (en)         cairo_set_source_rgb(cr,0.22,0.30,0.42);
+            else                 cairo_set_source_rgb(cr,0.16,0.18,0.22);
+            rounded_rect(cr,x,y,w,h,7); cairo_fill(cr);
+        }
+    } else {
+        int lx = LABEL_X, ry = TAB_Y + 6; char b[96];
+        draw_text(app,"Template",lx,ry,120,14,0xffb7c1d0u);
+        snprintf(b,sizeof(b),"%s%s",dom_templ_name(app,sd->templObjId),sd->templObjId?"  (immutable)":"");
+        draw_text(app,b,lx+130,ry,360,14,0xfff2f5fau); ry+=22;
+        draw_text(app,"Persist",lx,ry,120,14,0xffb7c1d0u);
+        draw_text(app,sd->persist,lx+130,ry,140,14,0xfff2f5fau);
+        draw_text(app,"Identity",lx+300,ry,80,14,0xffb7c1d0u);
+        draw_text(app,sd->identity,lx+380,ry,150,14,0xfff2f5fau); ry+=22;
+        draw_text(app,"State",lx,ry,120,14,0xffb7c1d0u);
+        draw_text(app,sd->state,lx+130,ry,150,14, running?0xff7fe0a0u:0xffd6deeau);
+        for (int i = 0; i < N_OVPILL; i++) {
+            int x,y,w,h; ov_pill_rect(i,&x,&y,&w,&h);
+            draw_text(app,OV_LABEL[i],lx,y+6,120,13,0xffb7c1d0u);
+            char val[48]; ctl_value(cc,OV_CTL[i],val,sizeof(val));
+            draw_text(app,val,x+10,y+6,w-16,13,0xfff2f5fau);
+        }
+        draw_text(app,"Lifecycle",LABEL_X,TAB_Y+178,120,12,0xff8b94a3u);
+        for (int a = 0; a < N_LIFE; a++) { int x,y,w,h; life_btn_rect(a,&x,&y,&w,&h);
+            draw_text(app,LIFE_LABEL[a],x+8,y+9,w-12,13,0xffe8edf5u); }
+    }
+}
+
+static void tab_filesystem(struct app *app, cairo_t *cr) {
+    if (cr) {
+        for (int i = 0; i < N_FSBTN; i++) { int x,y,w,h; fs_btn_rect(i,&x,&y,&w,&h);
+            if (i==2) cairo_set_source_rgb(cr,0.44,0.24,0.24); else cairo_set_source_rgb(cr,0.22,0.34,0.30);
+            rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+    } else {
+        for (int i = 0; i < N_FSBTN; i++) { int x,y,w,h; fs_btn_rect(i,&x,&y,&w,&h);
+            draw_text(app,FSBTN_LABEL[i],x+8,y+7,w-12,12,0xffe8edf5u); }
+        draw_text(app,"Resolved policy (RuntimeView) — grant a REAL path with +Allow/+Mount, restrict with +Deny:",
+                  LABEL_X, TAB_Y+48, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        const char *s = app->fs_view; int line = 0, fy = TAB_Y + 70;
+        while (*s && line < 24) {
+            char ln[96]; int i = 0; while (*s && *s!='\n' && i<95) ln[i++]=*s++; ln[i]=0; if (*s=='\n') s++;
+            uint32_t col = 0xffaab3c2u;
+            if (ln[0]=='#') col=0xff6b7686u;
+            else if (!strncmp(ln,"deny",4)) col=0xffe08a8au;
+            else if (!strncmp(ln,"rw",2))   col=0xff9fe0a8u;
+            else if (!strncmp(ln,"ro",2))   col=0xffd8d09au;
+            else if (!strncmp(ln,"defaultPolicy",13)) col=0xffd6deeau;
+            draw_text(app,ln,LABEL_X,fy+line*15,app->width-LABEL_X-PAD,12,col); line++;
+        }
+    }
+}
+
+static void tab_packages(struct app *app, cairo_t *cr) {
+    unsigned mask = app->pkg_mask[app->sel];
+    if (cr) {
+        for (int i = 0; i < app->n_pkgs; i++) { int x,y,w,h; pkg_row_rect(i,&x,&y,&w,&h);
+            int inst = (mask>>i)&1;
+            if (inst) cairo_set_source_rgb(cr,0.46,0.26,0.26); else cairo_set_source_rgb(cr,0.22,0.30,0.42);
+            rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+    } else {
+        draw_text(app,"Software repository (/config/packages.json) — install is cap-gated to the domain ceiling:",
+                  LABEL_X, TAB_Y+6, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        for (int i = 0; i < app->n_pkgs; i++) {
+            int x,y,w,h; pkg_row_rect(i,&x,&y,&w,&h);
+            struct gpkg *p = &app->pkgs[i];
+            char nm[64]; snprintf(nm,sizeof(nm),"%s  %s",p->name,p->ver);
+            draw_text(app,nm,LABEL_X,y+6,210,13,0xfff2f5fau);
+            char sz[24]; snprintf(sz,sizeof(sz),"%d KB",p->sizeKb);
+            draw_text(app,sz,LABEL_X+220,y+6,90,12,0xff97a1b0u);
+            draw_text(app, ((mask>>i)&1)?"Remove":"Install", x+12, y+5, w-16, 12, 0xffe8edf5u);
+        }
+        if (app->n_pkgs == 0) draw_text(app,"(repository empty)",LABEL_X,TAB_Y+34,200,13,0xff8d97a6u);
+    }
+}
+
+static void tab_network(struct app *app, cairo_t *cr) {
+    struct dconf *cc = &app->cfg[app->sel];
+    if (!cr) {
+        int ry = TAB_Y + 12; char v[48];
+        draw_text(app,"Network policy",LABEL_X,ry,200,14,0xffb7c1d0u);
+        ctl_value(cc,2,v,sizeof(v)); draw_text(app,v,LABEL_X+200,ry,220,14,0xfff2f5fau); ry+=28;
+        draw_text(app,"Clipboard",LABEL_X,ry,200,14,0xffb7c1d0u);
+        ctl_value(cc,3,v,sizeof(v)); draw_text(app,v,LABEL_X+200,ry,220,14,0xfff2f5fau); ry+=28;
+        draw_text(app,"Secure IPC",LABEL_X,ry,200,14,0xffb7c1d0u);
+        draw_text(app,cc->secure_ipc?"required":"optional",LABEL_X+200,ry,200,14,0xfff2f5fau);
+        draw_text(app,"network / clipboard runtime enforcement is the next DM8 surface",LABEL_X,ry+44,560,12,0xff6b7686u);
+    }
+}
+
+static void tab_permissions(struct app *app, cairo_t *cr) {
+    unsigned dev = app->doms[app->sel].devices;
+    if (cr) {
+        for (int i = 0; i < N_DEV; i++) { int x,y,w,h; dev_row_rect(i,&x,&y,&w,&h);
+            int on = (dev & DEV_BIT[i]) != 0;
+            if (on) cairo_set_source_rgb(cr,0.20,0.50,0.34); else cairo_set_source_rgb(cr,0.40,0.20,0.20);
+            rounded_rect(cr,x,y,w,h,h/2); cairo_fill(cr);
+            cairo_set_source_rgb(cr,0.95,0.97,1.0);
+            cairo_arc(cr, on?(x+w-h/2):(x+h/2), y+h/2.0, h/2-3, 0, 6.2832); cairo_fill(cr); }
+    } else {
+        draw_text(app,"Peripheral devices — toggle a class to grant/deny this domain; enforced at open():",
+                  LABEL_X, TAB_Y+6, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        for (int i = 0; i < N_DEV; i++) { int x,y,w,h; dev_row_rect(i,&x,&y,&w,&h);
+            int on = (dev & DEV_BIT[i]) != 0;
+            draw_text(app,DEV_LABEL[i],LABEL_X,y+8,230,14,0xffd6deeau);
+            draw_text(app, on?"allowed":"denied", x+w+12, y+8, 90,13, on?0xff7fe0a0u:0xffe08a8au); }
+    }
+}
+
+static void tab_startup(struct app *app, cairo_t *cr) {
+    if (!cr) {
+        draw_text(app,"Startup applications launched when this domain starts:",LABEL_X,TAB_Y+12,520,13,0xff8b94a3u);
+        draw_text(app,"\xe2\x80\xa2  Terminal  (gl-term)",LABEL_X+10,TAB_Y+42,320,13,0xfff2f5fau);
+        draw_text(app,"[ + Add startup app ]   (planned)",LABEL_X,TAB_Y+78,360,12,0xff6b7686u);
+    }
+}
+
+static void tab_appearance(struct app *app, cairo_t *cr) {
+    struct gdomain *sd = &app->doms[app->sel];
+    if (cr) { cairo_argb(cr,sd->color); rounded_rect(cr,LABEL_X+220,TAB_Y+10,64,30,6); cairo_fill(cr); }
+    else {
+        draw_text(app,"Border color",LABEL_X,TAB_Y+18,200,14,0xffb7c1d0u);
+        char c[16]; snprintf(c,sizeof(c),"#%06X",sd->color & 0xffffff);
+        draw_text(app,c,LABEL_X+300,TAB_Y+18,120,14,0xfff2f5fau);
+        draw_text(app,"Wallpaper",LABEL_X,TAB_Y+58,200,14,0xffb7c1d0u);
+        draw_text(app,"(domain default)",LABEL_X+220,TAB_Y+58,200,14,0xff97a1b0u);
+        draw_text(app,"Export \xe2\x96\xb8 signed .hosdt bundle   (planned)",LABEL_X,TAB_Y+102,420,12,0xff6b7686u);
+    }
+}
+
+static void draw_tab(struct app *app, cairo_t *cr) {
+    switch (app->tab) {
+        case 0: tab_overview(app,cr);    break;
+        case 1: tab_filesystem(app,cr);  break;
+        case 2: tab_packages(app,cr);    break;
+        case 3: tab_network(app,cr);     break;
+        case 4: tab_permissions(app,cr); break;
+        case 5: tab_startup(app,cr);     break;
+        case 6: tab_appearance(app,cr);  break;
+    }
+}
+
 static void draw_manager(struct app *app)
 {
     cairo_surface_t *surface = cairo_image_surface_create_for_data(
         (unsigned char *)app->pixels, CAIRO_FORMAT_RGB24, app->width, app->height, app->stride);
     cairo_t *cr = cairo_create(surface);
+    struct gdomain *sd = &app->doms[app->sel];
+    int rpw = app->width - RP_X;   // right-pane width
 
-    // Backdrop + panes.
+    // Backdrop + left list pane.
     cairo_set_source_rgb(cr, 0.118, 0.137, 0.165); cairo_paint(cr);
-    cairo_set_source_rgb(cr, 0.102, 0.118, 0.145);                 // left list pane
-    cairo_rectangle(cr, 0, HEADER_H, LIST_W, app->height - HEADER_H); cairo_fill(cr);
+    cairo_set_source_rgb(cr, 0.102, 0.118, 0.145);
+    cairo_rectangle(cr, 0, BODY_Y, LIST_W, app->height - BODY_Y); cairo_fill(cr);
 
-    // Header band.
+    // Header band + crest.
     cairo_set_source_rgb(cr, 0.086, 0.102, 0.125);
     cairo_rectangle(cr, 0, 0, app->width, HEADER_H); cairo_fill(cr);
-    { // shield crest
-        double sx = PAD + 12, sy = 18, sw = 26, sh = 32;
-        cairo_set_source_rgb(cr, 0.36, 0.62, 0.96);
-        cairo_move_to(cr, sx, sy); cairo_line_to(cr, sx + sw, sy);
-        cairo_line_to(cr, sx + sw, sy + sh * 0.55);
-        cairo_curve_to(cr, sx + sw, sy + sh, sx + sw / 2, sy + sh, sx + sw / 2, sy + sh);
-        cairo_curve_to(cr, sx + sw / 2, sy + sh, sx, sy + sh, sx, sy + sh * 0.55);
-        cairo_close_path(cr); cairo_fill(cr);
-        cairo_set_source_rgb(cr, 0.93, 0.96, 1.0); cairo_set_line_width(cr, 2.0);
-        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-        cairo_move_to(cr, sx + sw * 0.30, sy + sh * 0.42);
-        cairo_line_to(cr, sx + sw * 0.46, sy + sh * 0.60);
-        cairo_line_to(cr, sx + sw * 0.74, sy + sh * 0.26); cairo_stroke(cr);
-    }
-    cairo_set_source_rgb(cr, 0.22, 0.27, 0.33);
-    cairo_rectangle(cr, 0, HEADER_H - 1, app->width, 1); cairo_fill(cr);
-    cairo_rectangle(cr, LIST_W, HEADER_H, 1, app->height - HEADER_H); cairo_fill(cr); // pane divider
+    { double sx = PAD, sy = 14, sw = 22, sh = 28;
+      cairo_set_source_rgb(cr, 0.36, 0.62, 0.96);
+      cairo_move_to(cr, sx, sy); cairo_line_to(cr, sx + sw, sy);
+      cairo_line_to(cr, sx + sw, sy + sh * 0.55);
+      cairo_curve_to(cr, sx + sw, sy + sh, sx + sw/2, sy + sh, sx + sw/2, sy + sh);
+      cairo_curve_to(cr, sx + sw/2, sy + sh, sx, sy + sh, sx, sy + sh * 0.55);
+      cairo_close_path(cr); cairo_fill(cr); }
 
-    // Left: domain list rows (DM10: from the declarative config).
+    // Toolbar band + verb buttons.
+    cairo_set_source_rgb(cr, 0.078, 0.094, 0.118);
+    cairo_rectangle(cr, 0, HEADER_H, app->width, TOOLBAR_H); cairo_fill(cr);
+    for (int i = 0; i < N_TOOL; i++) { int x,y,w,h; toolbar_btn_rect(i,&x,&y,&w,&h);
+        cairo_set_source_rgb(cr, 0.18, 0.22, 0.28); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+    cairo_set_source_rgb(cr, 0.22, 0.27, 0.33);
+    cairo_rectangle(cr, 0, BODY_Y - 1, app->width, 1); cairo_fill(cr);
+    cairo_rectangle(cr, LIST_W, BODY_Y, 1, app->height - BODY_Y); cairo_fill(cr);
+
+    // Domain list (status dots) + Delete.
     for (int i = 0; i < app->n_doms; i++) {
         struct gdomain *d = &app->doms[i];
-        int ry = HEADER_H + 6 + i * ROW_H;
+        int ry = BODY_Y + 4 + i * ROW_H;
         if (i == app->sel) {
-            cairo_set_source_rgb(cr, 0.16, 0.20, 0.27);
-            cairo_rectangle(cr, 0, ry, LIST_W, ROW_H); cairo_fill(cr);
-            cairo_argb(cr, d->color);
-            cairo_rectangle(cr, 0, ry, 4, ROW_H); cairo_fill(cr);
+            cairo_set_source_rgb(cr, 0.16, 0.20, 0.27); cairo_rectangle(cr, 0, ry, LIST_W, ROW_H); cairo_fill(cr);
+            cairo_argb(cr, d->color); cairo_rectangle(cr, 0, ry, 4, ROW_H); cairo_fill(cr);
         }
-        double cy = ry + ROW_H / 2.0;
-        // template = hollow diamond, domain = filled rounded swatch
-        int isTpl = (d->type[0] == 't');
-        cairo_argb(cr, d->color);
-        if (isTpl) {
-            cairo_move_to(cr, PAD + 9, cy - 9); cairo_line_to(cr, PAD + 18, cy);
-            cairo_line_to(cr, PAD + 9, cy + 9); cairo_line_to(cr, PAD, cy); cairo_close_path(cr);
-            cairo_set_line_width(cr, 1.8); cairo_stroke(cr);
-        } else {
-            rounded_rect(cr, PAD, cy - 9, 18, 18, 5); cairo_fill(cr);
-            cairo_set_source_rgba(cr, 1, 1, 1, 0.18);
-            rounded_rect(cr, PAD, cy - 9, 18, 18, 5); cairo_set_line_width(cr, 1.0); cairo_stroke(cr);
-        }
-        // a live-state dot: green = Running, amber = Paused
-        if (d->state[0] == 'R' || d->state[0] == 'P') {
-            if (d->state[0] == 'R') cairo_set_source_rgb(cr, 0.30, 0.78, 0.45);
-            else                    cairo_set_source_rgb(cr, 0.92, 0.66, 0.20);
-            cairo_arc(cr, PAD + 158, cy, 4, 0, 6.2832); cairo_fill(cr);
-        }
+        double cy = ry + ROW_H / 2.0; int isTpl = (d->type[0] == 't'); cairo_argb(cr, d->color);
+        if (isTpl) { cairo_move_to(cr, PAD+8, cy-8); cairo_line_to(cr, PAD+16, cy);
+            cairo_line_to(cr, PAD+8, cy+8); cairo_line_to(cr, PAD, cy); cairo_close_path(cr);
+            cairo_set_line_width(cr,1.8); cairo_stroke(cr); }
+        else { rounded_rect(cr, PAD, cy-8, 16, 16, 5); cairo_fill(cr); }
+        int run = (d->state[0]=='R'), pau = (d->state[0]=='P');
+        if (run)      cairo_set_source_rgb(cr, 0.30,0.78,0.45);
+        else if (pau) cairo_set_source_rgb(cr, 0.92,0.66,0.20);
+        else          cairo_set_source_rgb(cr, 0.34,0.40,0.48);
+        cairo_arc(cr, LIST_W-18, cy, 4, 0, 6.2832);
+        if (run||pau) cairo_fill(cr); else { cairo_set_line_width(cr,1.5); cairo_stroke(cr); }
     }
+    { int x,y,w,h; delete_btn_rect(app,&x,&y,&w,&h);
+      cairo_set_source_rgb(cr, 0.30,0.18,0.18); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
 
-    // Right: control panel for the selected domain.
-    struct dconf *c = &app->cfg[app->sel];
-    cairo_argb(cr, app->doms[app->sel].color);           // domain accent dot by panel title
-    rounded_rect(cr, LABEL_X, HEADER_H + 18, 14, 14, 4); cairo_fill(cr);
+    // Right pane: domain header (color swatch + status dot) + tab bar.
+    cairo_argb(cr, sd->color); rounded_rect(cr, LABEL_X, BODY_Y+11, 14, 14, 4); cairo_fill(cr);
+    if (sd->state[0]=='R') cairo_set_source_rgb(cr,0.30,0.78,0.45); else cairo_set_source_rgb(cr,0.5,0.55,0.62);
+    cairo_arc(cr, app->width - 150, BODY_Y+18, 5, 0, 6.2832); cairo_fill(cr);
+    cairo_set_source_rgb(cr, 0.078, 0.094, 0.118);
+    cairo_rectangle(cr, RP_X, BODY_Y+DOMHDR_H, rpw, TABBAR_H); cairo_fill(cr);
+    for (int i = 0; i < N_TABS; i++) { int x,y,w,h; tab_rect(i,&x,&y,&w,&h);
+        if (i == app->tab) { cairo_set_source_rgb(cr,0.16,0.20,0.27); cairo_rectangle(cr,x,y,w,h); cairo_fill(cr);
+            cairo_argb(cr, sd->color); cairo_rectangle(cr,x,y+h-3,w,3); cairo_fill(cr); } }
 
-    for (int i = 0; i < N_CTL; i++) {
-        int ry = RY0 + i * CTL_H;
-        // pill background
-        cairo_set_source_rgb(cr, 0.157, 0.184, 0.224);
-        rounded_rect(cr, PILL_X, ry + (CTL_H - PILL_H) / 2, PILL_W, PILL_H, 7); cairo_fill(cr);
-        // a little colored marker for Secure-IPC-required / shell-unavailable states
-        if (i == 4 && c->secure_ipc) { cairo_set_source_rgb(cr, 0.30, 0.78, 0.45); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
-        if (i == 5 && c->shell != SH_LINUX) { cairo_set_source_rgb(cr, 0.92, 0.55, 0.20); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
-        if (i == 6 && c->term  != TERM_GL)  { cairo_set_source_rgb(cr, 0.40, 0.62, 0.95); rounded_rect(cr, PILL_X + 8, ry + CTL_H/2 - 4, 8, 8, 2); cairo_fill(cr); }
-        // row separator
-        cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);
-        cairo_rectangle(cr, LABEL_X, ry + CTL_H - 1, app->width - LABEL_X - PAD, 1); cairo_fill(cr);
-    }
+    draw_tab(app, cr);   // active tab graphics
 
-    // Devices row: three toggle chips.
-    {
-        int ry = RY0 + N_CTL * CTL_H;
-        cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);
-        cairo_rectangle(cr, LABEL_X, ry + CTL_H - 1, app->width - LABEL_X - PAD, 1); cairo_fill(cr);
-        int on[3] = {c->dev_cam, c->dev_mic, c->dev_usb};
-        for (int k = 0; k < 3; k++) {
-            int x, y, w, h; dev_chip_rect(k, &x, &y, &w, &h);
-            if (on[k]) cairo_set_source_rgb(cr, 0.20, 0.46, 0.34);
-            else       cairo_set_source_rgb(cr, 0.157, 0.184, 0.224);
-            rounded_rect(cr, x, y, w, h, 7); cairo_fill(cr);
-        }
-    }
-
-    // Launch buttons.
-    for (int b = 0; b < 2; b++) {
-        int x, y, w, h; launch_btn_rect(b, &x, &y, &w, &h);
-        if (b == 0) cairo_argb(cr, app->doms[app->sel].color);
-        else        cairo_set_source_rgb(cr, 0.20, 0.24, 0.30);
-        rounded_rect(cr, x, y, w, h, 9); cairo_fill(cr);
-    }
-
-    // DM10.3: lifecycle action buttons (Start / Stop / Snapshot / Commit) — tinted by state.
-    {
-        const char *st = app->doms[app->sel].state;
-        int running = (st[0] == 'R'), paused = (st[0] == 'P');
-        for (int a = 0; a < N_ACTION; a++) {
-            int x, y, w, h; action_btn_rect(a, &x, &y, &w, &h);
-            // enabled-state hint: Start only when stopped; Stop/Snapshot/Commit when running/paused
-            int enabled = (a == 0) ? (!running && !paused) : (running || paused);
-            if (a == 0 && enabled)      cairo_set_source_rgb(cr, 0.20, 0.52, 0.34);  // Start green
-            else if (a == 1 && enabled) cairo_set_source_rgb(cr, 0.52, 0.26, 0.26);  // Stop red
-            else if (enabled)           cairo_set_source_rgb(cr, 0.22, 0.30, 0.42);  // Snap/Commit blue
-            else                        cairo_set_source_rgb(cr, 0.16, 0.18, 0.22);  // disabled
-            rounded_rect(cr, x, y, w, h, 7); cairo_fill(cr);
-        }
-    }
-
-    // Footer band.
+    // Status bar.
     cairo_set_source_rgb(cr, 0.086, 0.102, 0.125);
     cairo_rectangle(cr, 0, app->height - FOOTER_H, app->width, FOOTER_H); cairo_fill(cr);
     cairo_set_source_rgb(cr, 0.22, 0.27, 0.33);
     cairo_rectangle(cr, 0, app->height - FOOTER_H, app->width, 1); cairo_fill(cr);
 
-    // DM10.5: the Clone-name dialog (modal box) — drawn last so it overlays everything.
+    // Text-input dialog (clone name OR a filesystem path).
     if (app->editing) {
-        int dw = 440, dh = 130, dx = (app->width - dw) / 2, dy = (app->height - dh) / 2;
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.45);                 // dim backdrop
-        cairo_rectangle(cr, 0, 0, app->width, app->height); cairo_fill(cr);
-        cairo_set_source_rgb(cr, 0.16, 0.19, 0.24);              // dialog body
-        rounded_rect(cr, dx, dy, dw, dh, 12); cairo_fill(cr);
-        cairo_argb(cr, app->doms[app->sel].color);              // accent strip
-        rounded_rect(cr, dx, dy, dw, 5, 12); cairo_fill(cr);
-        cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);             // text field
-        rounded_rect(cr, dx + 20, dy + 56, dw - 40, 34, 7); cairo_fill(cr);
-        cairo_set_source_rgb(cr, 0.30, 0.40, 0.55);
-        rounded_rect(cr, dx + 20, dy + 56, dw - 40, 34, 7); cairo_set_line_width(cr, 1.5); cairo_stroke(cr);
+        int dw = 460, dh = 130, dx = (app->width-dw)/2, dy = (app->height-dh)/2;
+        cairo_set_source_rgba(cr, 0,0,0, 0.45); cairo_rectangle(cr, 0,0, app->width, app->height); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.16,0.19,0.24); rounded_rect(cr, dx,dy,dw,dh, 12); cairo_fill(cr);
+        cairo_argb(cr, sd->color); rounded_rect(cr, dx,dy,dw,5, 12); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.10,0.12,0.15); rounded_rect(cr, dx+20,dy+56,dw-40,34, 7); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.30,0.40,0.55); rounded_rect(cr, dx+20,dy+56,dw-40,34, 7);
+        cairo_set_line_width(cr, 1.5); cairo_stroke(cr);
     }
 
-    cairo_destroy(cr);
-    cairo_surface_flush(surface);
-    cairo_surface_destroy(surface);
+    cairo_destroy(cr); cairo_surface_flush(surface); cairo_surface_destroy(surface);
 
-    // --- text pass ---
-    draw_text(app, "Domain Manager", PAD + 52, 14, 360, 22, 0xfff2f5fau);
-    draw_text(app, "from /config/domains.json (declarative)  -  diamond = template, green dot = running",
-              PAD + 52, 44, app->width - 80, 12, 0xff8b94a3u);
+    // ── text pass ──
+    draw_text(app, "Domain Manager", PAD + 40, 14, 300, 18, 0xfff2f5fau);
+    for (int i = 0; i < N_TOOL; i++) { int x,y,w,h; toolbar_btn_rect(i,&x,&y,&w,&h);
+        draw_text(app, TOOL_LABEL[i], x+8, y+7, w-12, 12, 0xffd6deeau); }
+    for (int i = 0; i < app->n_doms; i++) { struct gdomain *d = &app->doms[i];
+        int ry = BODY_Y + 4 + i * ROW_H; uint32_t nc = 0xff000000u | (d->color & 0xffffff);
+        draw_text(app, d->name, PAD+26, ry + (ROW_H-13)/2, 150, 13, nc); }
+    { int x,y,w,h; delete_btn_rect(app,&x,&y,&w,&h);
+      draw_text(app, "Delete domain", x+14, y+7, w-16, 12, 0xffe0a8a8u); }
 
-    for (int i = 0; i < app->n_doms; i++) {
-        struct gdomain *d = &app->doms[i];
-        int ry = HEADER_H + 6 + i * ROW_H;
-        uint32_t nameCol = 0xff000000u | (d->color & 0x00ffffffu);
-        draw_text(app, d->name, PAD + 30, ry + (ROW_H - 16) / 2 - 5, 140, 14, nameCol);
-        draw_text(app, d->identity, PAD + 30, ry + (ROW_H - 16) / 2 + 9, 120, 10, 0xff8d97a6u);
-    }
+    // Domain header + tabs.
+    draw_text(app, sd->name, LABEL_X+22, BODY_Y+11, 300, 16, 0xfff0f3f8u);
+    { char hs[64]; snprintf(hs,sizeof(hs),"%s   %s", sd->state, sd->type);
+      draw_text(app, hs, app->width-140, BODY_Y+12, 130, 13, (sd->state[0]=='R')?0xff7fe0a0u:0xff9aa4b3u); }
+    for (int i = 0; i < N_TABS; i++) { int x,y,w,h; tab_rect(i,&x,&y,&w,&h);
+        draw_text(app, TAB_LABEL[i], x+10, y+9, w-12, 13, (i==app->tab)?0xfff2f5fau:0xff8d97a6u); }
 
-    // Panel title (DM10: the selected declarative domain) + controls text.
-    struct gdomain *sd = &app->doms[app->sel];
-    char title[96];
-    snprintf(title, sizeof(title), "%s  -  %s", sd->name, sd->type);
-    draw_text(app, title, LABEL_X + 22, HEADER_H + 16, 360, 17, 0xfff0f3f8u);
+    draw_tab(app, NULL);   // active tab text
 
-    struct dconf *cc = &app->cfg[app->sel];
-    for (int i = 0; i < N_CTL; i++) {
-        int ry = RY0 + i * CTL_H;
-        draw_text(app, CTL_LABEL[i], LABEL_X, ry + (CTL_H - 14) / 2, 170, 14, 0xffb7c1d0u);
-        char val[48]; ctl_value(cc, i, val, sizeof(val));
-        int vx = PILL_X + ((i == 4 && cc->secure_ipc) || (i == 5 && cc->shell != SH_LINUX) || (i == 6 && cc->term != TERM_GL) ? 24 : 14);
-        draw_text(app, val, vx, ry + (CTL_H - 14) / 2, PILL_W - 28, 14, 0xfff2f5fau);
-    }
+    { char foot[256];
+      snprintf(foot, sizeof(foot), "%s  -  identity %s  -  %s  -  devices 0x%X  -  %d packages in repo",
+               sd->name, sd->identity, sd->state, sd->devices, app->n_pkgs);
+      draw_text(app, foot, PAD, app->height - FOOTER_H + 8, app->width - 2*PAD, 12, 0xff9aa4b3u); }
 
-    // Devices row text.
-    {
-        int ry = RY0 + N_CTL * CTL_H;
-        draw_text(app, "Devices", LABEL_X, ry + (CTL_H - 14) / 2, 170, 14, 0xffb7c1d0u);
-        const char *names[3] = {"Camera", "Mic", "USB"};
-        int on[3] = {cc->dev_cam, cc->dev_mic, cc->dev_usb};
-        for (int k = 0; k < 3; k++) {
-            int x, y, w, h; dev_chip_rect(k, &x, &y, &w, &h);
-            draw_text(app, names[k], x + 10, y + 6, w - 14, 12, on[k] ? 0xffeafff0u : 0xff8d97a6u);
-        }
-    }
-
-    // Buttons text.
-    for (int b = 0; b < 2; b++) {
-        int x, y, w, h; launch_btn_rect(b, &x, &y, &w, &h);
-        const char *lbl = (b == 0) ? "Launch Terminal" : "Launch Files";
-        uint32_t col = (b == 0) ? 0xff10141au : 0xffe8edf5u;
-        draw_text(app, lbl, x + 18, y + 12, w - 24, 14, col);
-    }
-
-    // DM10.3: action button labels.
-    draw_text(app, "Lifecycle", LABEL_X, RY0 + (N_CTL + 1) * CTL_H + 8 + 30, 120, 12, 0xff8b94a3u);
-    for (int a = 0; a < N_ACTION; a++) {
-        int x, y, w, h; action_btn_rect(a, &x, &y, &w, &h);
-        draw_text(app, ACTION_LABEL[a], x + 12, y + 9, w - 16, 13, 0xffe8edf5u);
-    }
-
-    // DM10.2: the Restricted Filesystem (RuntimeView) column — the selected domain's resolved,
-    // deny-by-default fs policy (DM2), read from /objects/domains/<name>/filesystem.
-    {
-        int fx = PILL_X + PILL_W + 30;        // right of the control pills
-        int fy = RY0 - 30;
-        draw_text(app, "Restricted Filesystem  (RuntimeView)", fx, fy, 400, 14, 0xffd6deeau);
-        fy += 22;
-        const char *s = app->fs_view;
-        int line = 0;
-        while (*s && line < 22) {
-            char ln[96]; int i = 0;
-            while (*s && *s != '\n' && i < (int)sizeof(ln) - 1) ln[i++] = *s++;
-            ln[i] = 0;
-            if (*s == '\n') s++;
-            uint32_t col = 0xffaab3c2u;
-            if (ln[0] == '#')                       col = 0xff6b7686u;  // comments dim
-            else if (strncmp(ln, "deny", 4) == 0)   col = 0xffe08a8au;  // deny  -> red
-            else if (strncmp(ln, "rw", 2) == 0)     col = 0xff9fe0a8u;  // rw    -> green
-            else if (strncmp(ln, "ro", 2) == 0)     col = 0xffd8d09au;  // ro    -> amber
-            else if (strncmp(ln, "defaultPolicy", 13) == 0) col = 0xffd6deeau;
-            draw_text(app, ln, fx, fy + line * 16, 410, 13, col);
-            line++;
-        }
-    }
-
-    // Footer: the DECLARATIVE attributes of the selected domain (DM0-DM6, from system.json).
-    char foot[256];
-    snprintf(foot, sizeof(foot),
-             "type %s   |   identity %s   |   template %s   |   persist %s   |   state %s   |   shell %s",
-             sd->type, sd->identity, dom_templ_name(app, sd->templObjId), sd->persist, sd->state,
-             SHELL_LBL[cc->shell]);
-    draw_text(app, foot, PAD, app->height - FOOTER_H + 9, app->width - 2 * PAD, 12, 0xff9aa4b3u);
-
-    // DM10.5: the Clone-name dialog text (over the modal box drawn in the cairo pass).
     if (app->editing) {
-        int dw = 440, dh = 130, dx = (app->width - dw) / 2, dy = (app->height - dh) / 2;
-        char head[80];
-        snprintf(head, sizeof(head), "Clone \"%s\" as a new domain", sd->name);
-        draw_text(app, head, dx + 20, dy + 20, dw - 40, 15, 0xfff0f3f8u);
-        char field[40];
-        snprintf(field, sizeof(field), "%s_", app->editbuf);   // trailing _ = caret
-        draw_text(app, field, dx + 30, dy + 64, dw - 60, 16, 0xfff2f5fau);
-        draw_text(app, "Type a name  -  Enter = create,  Esc = cancel",
-                  dx + 20, dy + 100, dw - 40, 12, 0xff8b94a3u);
+        int dw = 460, dh = 130, dx = (app->width-dw)/2, dy = (app->height-dh)/2;
+        const char *head = app->edit_mode==0 ? "Clone domain - new name:" :
+                           app->edit_mode==1 ? "Grant READ-ONLY filesystem path:" :
+                           app->edit_mode==3 ? "DENY filesystem path:" :
+                                               "Grant READ-WRITE filesystem path:";
+        char h2[96]; snprintf(h2,sizeof(h2),"%s  (domain %s)", head, sd->name);
+        draw_text(app, h2, dx+20, dy+20, dw-40, 14, 0xfff0f3f8u);
+        char field[100]; snprintf(field,sizeof(field),"%s_", app->editbuf);
+        draw_text(app, field, dx+30, dy+64, dw-60, 16, 0xfff2f5fau);
+        draw_text(app, "Enter = apply,  Esc = cancel", dx+20, dy+100, dw-40, 12, 0xff8b94a3u);
     }
 
-    // window-control buttons (minimize / maximize / close) at the top-right.
     wl_deco_draw(app->pixels, app->width, app->width, app->height, 0xffd0d6e0u);
 }
 
@@ -905,71 +1050,67 @@ static void launch_app(struct app *app, const char *exe)
 static void handle_click(struct app *app)
 {
     double x = app->pointer_x, y = app->pointer_y;
+    if (app->editing) return;                       // the dialog is modal (keyboard-driven)
 
-    // Left list: select a domain.
-    if (x < RP_X) {
-        int top = HEADER_H + 6;
-        if (y >= top && y < top + app->n_doms * ROW_H) {
-            int r = (int)((y - top) / ROW_H);
-            if (r >= 0 && r < app->n_doms && r != app->sel) {
-                app->sel = r;
-                refresh_fs_view(app);   // DM10.2: load the new domain's RuntimeView
-                redraw_commit(app, "select domain");
+    // Toolbar verbs (+New / Clone / Import / Marketplace).
+    if (y >= HEADER_H && y < BODY_Y) {
+        for (int i = 0; i < N_TOOL; i++) { int bx,by,bw,bh; toolbar_btn_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+                if (i == 0 || i == 1) {             // New / Clone → name dialog (clones the selected base)
+                    snprintf(app->editbuf, sizeof(app->editbuf), "%.18s-%s", app->doms[app->sel].name, i==0?"new":"clone");
+                    app->editlen = (int)strlen(app->editbuf); app->edit_mode = 0; app->editing = 1;
+                    redraw_commit(app, "new/clone");
+                }
+                return;                              // Import / Marketplace: planned
             }
         }
         return;
     }
 
-    struct dconf *c = &app->cfg[app->sel];
+    // Left pane: Delete + domain selection.
+    if (x < RP_X) {
+        int dx,dy,dw,dh; delete_btn_rect(app,&dx,&dy,&dw,&dh);
+        if (x>=dx && x<=dx+dw && y>=dy && y<=dy+dh) { domain_action(app, "delete"); redraw_commit(app,"delete"); return; }
+        int top = BODY_Y + 4;
+        if (y >= top && y < top + app->n_doms * ROW_H) {
+            int r = (int)((y - top) / ROW_H);
+            if (r >= 0 && r < app->n_doms && r != app->sel) {
+                app->sel = r; refresh_fs_view(app); redraw_commit(app, "select domain");
+            }
+        }
+        return;
+    }
 
-    // Cyclable control rows.
-    for (int i = 0; i < N_CTL; i++) {
-        int ry = RY0 + i * CTL_H;
-        if (y >= ry && y < ry + CTL_H && x >= LABEL_X) {
-            ctl_cycle(c, i, 1);
-            redraw_commit(app, "set control");
-            return;
-        }
-    }
-    // Device chips.
-    {
-        int ry = RY0 + N_CTL * CTL_H;
-        if (y >= ry && y < ry + CTL_H) {
-            for (int k = 0; k < 3; k++) {
-                int bx, by, bw, bh; dev_chip_rect(k, &bx, &by, &bw, &bh);
-                if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
-                    if (k == 0) c->dev_cam ^= 1;
-                    else if (k == 1) c->dev_mic ^= 1;
-                    else c->dev_usb ^= 1;
-                    redraw_commit(app, "toggle device");
-                    return;
-                }
-            }
-        }
-    }
-    // Launch buttons.
-    for (int b = 0; b < 2; b++) {
-        int bx, by, bw, bh; launch_btn_rect(b, &bx, &by, &bw, &bh);
-        if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
-            launch_app(app, b == 0 ? TERM_BIN[app->cfg[app->sel].term] : "/wl-files");
-            redraw_commit(app, "launch");
-            return;
-        }
-    }
-    // DM10.3/10.5: lifecycle action buttons.  Clone opens the name dialog; the rest act at once.
-    for (int a = 0; a < N_ACTION; a++) {
-        int bx, by, bw, bh; action_btn_rect(a, &bx, &by, &bw, &bh);
-        if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
-            if (a == 4) {   // Clone → open the text dialog, pre-filled with "<src>-clone"
-                snprintf(app->editbuf, sizeof(app->editbuf), "%.16s-clone", app->doms[app->sel].name);
-                app->editlen = strlen(app->editbuf);
-                app->editing = 1;
-            } else {
-                domain_action(app, ACTION_VERB[a]);
-            }
-            redraw_commit(app, "domain action");
-            return;
-        }
+    // Tab bar.
+    { int by = BODY_Y + DOMHDR_H;
+      if (y >= by && y < by + TABBAR_H) {
+          for (int i = 0; i < N_TABS; i++) { int bx,ty,bw,bh; tab_rect(i,&bx,&ty,&bw,&bh);
+              if (x>=bx && x<bx+bw) { app->tab = i; redraw_commit(app, "tab"); return; } }
+          return;
+      } }
+
+    // Active-tab content.
+    if (app->tab == 0) {                            // Overview: cfg pills + lifecycle
+        for (int i = 0; i < N_OVPILL; i++) { int bx,by,bw,bh; ov_pill_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { ctl_cycle(&app->cfg[app->sel], OV_CTL[i], 1); redraw_commit(app,"cfg"); return; } }
+        for (int a = 0; a < N_LIFE; a++) { int bx,by,bw,bh; life_btn_rect(a,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { domain_action(app, LIFE_VERB[a]); return; } }
+    } else if (app->tab == 1) {                     // Filesystem: +Allow ro/rw / +Deny / +Mount → path dialog
+        for (int i = 0; i < N_FSBTN; i++) { int bx,by,bw,bh; fs_btn_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+                app->edit_mode = FSBTN_MODE[i];
+                snprintf(app->editbuf, sizeof(app->editbuf), "/"); app->editlen = 1; app->editing = 1;
+                redraw_commit(app, "fs add"); return; } }
+    } else if (app->tab == 2) {                     // Packages: install / uninstall
+        for (int i = 0; i < app->n_pkgs; i++) { int bx,by,bw,bh; pkg_row_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
+                int inst = (app->pkg_mask[app->sel] >> i) & 1;
+                domain_action_arg(app, inst ? "uninstall" : "install", app->pkgs[i].name); return; } }
+    } else if (app->tab == 4) {                     // Permissions: device toggles
+        for (int i = 0; i < N_DEV; i++) { int bx,by,bw,bh; dev_row_rect(i,&bx,&by,&bw,&bh);
+            if (y>=by-4 && y<=by+bh+4 && x>=LABEL_X) {
+                int on = (app->doms[app->sel].devices & DEV_BIT[i]) != 0;
+                domain_action_arg(app, on ? "devoff" : "devon", DEV_CLASS[i]); return; } }
     }
 }
 
@@ -1014,7 +1155,14 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
     // DM10.5: the clone-name text-input dialog captures the keyboard while open.
     if (app->editing) {
         if (key == 1)        { app->editing = 0; }                         // Esc → cancel
-        else if (key == 28)  { app->editing = 0; domain_action_clone(app); } // Enter → commit clone
+        else if (key == 28)  {                                              // Enter → apply
+            app->editing = 0;
+            if (app->edit_mode == 0) domain_action_clone(app);              // clone a domain
+            else if (app->editbuf[0] == '/') {                              // grant/deny a filesystem path
+                const char *v = app->edit_mode==1 ? "fsro" : app->edit_mode==3 ? "fsdeny" : "fsrw";
+                domain_action_arg(app, v, app->editbuf);
+            }
+        }
         else if (key == 14)  { if (app->editlen > 0) app->editbuf[--app->editlen] = 0; } // Backspace
         else {
             char c = (key < 128) ? EVDEV_CHAR[key] : 0;
@@ -1135,6 +1283,7 @@ int main(void)
     // DM10: load the domains from the declarative config (/config/domains.json), generated by the
     // kernel from system.json — the GUI now reflects DM0-DM6 instead of a hardcoded list.
     load_domains(&app);
+    load_packages(&app);             // DM10.7: the software repository (Packages tab)
     app.last_hash = domains_hash();  // DM10.6: baseline for live-update change detection
     refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView
     domain_ctl_selftest(&app); // DM10.3: prove the control-write path (ping) at startup

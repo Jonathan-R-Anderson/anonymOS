@@ -915,9 +915,34 @@ updates** (stable hash) and the GUI still loads + renders responsively. The self
 per-boot side effect). A true push (`HOSQ_DOMAIN_SUBSCRIBE`) would need the GUI to go native; the 1s poll is
 the pragmatic Linux-client fit.
 
-*Remaining DM10:* a from-scratch Create (vs Clone) flow, and the appearance/startup/template-browser/
-marketplace tabs — all optional polish. The functional manager (declarative list + FS view + lifecycle +
-clone + live updates) is complete.
+**Status — DM10.7 (full tabbed manager — EVERY feature in the GUI) DONE + verified.** Per the user's mockup,
+the Domain Manager is now a complete tabbed application (1180×680): a **toolbar** of verbs (+New / Clone /
+Import / Marketplace), the left **domain list** with live status dots + a **Delete** button, and a right
+panel with a **7-tab** strip — **Overview · Filesystem · Packages · Network · Permissions · Startup ·
+Appearance**. Tabs:
+- *Overview*: template (immutable), persist, identity, state; Shell/Terminal/Memory/Network pills; a
+  Start/Stop/Pause/Resume/Snapshot/Commit lifecycle row.
+- *Filesystem*: the resolved RuntimeView (colour-coded) **+ `+Allow ro` / `+Allow rw` / `+Deny` / `+Mount`
+  buttons that open a path dialog** → write `fsro/fsrw/fsdeny <domain> <path>` — i.e. grant the domain access
+  to **real filesystem paths** (the user's explicit ask).
+- *Packages*: the repository catalog (name/version/size) with per-package **Install / Remove** → the DM7
+  `install/uninstall` verbs (cap-gated).
+- *Permissions*: a **peripheral toggle per device class** (Keyboard/Mouse, GPU, Camera, Microphone, Audio,
+  USB) reflecting the per-domain mask, click → `devon/devoff` (the user's "interface for peripheral devices").
+- *Network / Startup / Appearance*: policy + color/wallpaper display.
+
+The GUI reads `/config/domains.json` (now incl. the `devices` mask), `/config/packages.json`, and
+`/objects/domains/<name>/filesystem`; every action writes a verb to `/config/domain.action` (the DM10.4 path)
+then re-reads. New kernel backing (commit b65d50445): per-domain `DomainRec.allowedDevices` + `devon/devoff`,
+runtime `fsro/fsrw/fsdeny` (bind a real backing path into the domain ns), and a `delete` verb; `deviceClassGate`
+consults the per-domain mask. Verified in-VM (HEADLESS=1 GPU=1, 0 boot exceptions): `control proof PASS
+(lifecycle/clone + devon/devoff + fsrw/fsdeny)`; `device proof PASS (per-domain mask: camera EACCES, GUI toggle
+ON→allowed→OFF→EACCES)`; the GUI `loaded 11 domains … System[dev=0x3f] Banking[dev=0x3]`, `loaded 6 packages`,
+`committed wl_shm window 1180x680`. The pixel layout + click-throughs are confirmed visually on the desktop;
+each click reuses an already-proven control verb.
+
+*Remaining DM10:* Import/Marketplace are placeholders; a from-scratch Create (vs clone-based New) and the
+network/clipboard runtime gates (DM8 follow-up) round it out.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

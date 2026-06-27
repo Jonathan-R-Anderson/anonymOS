@@ -370,6 +370,7 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "fsro"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, false);
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
     else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
+    else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;

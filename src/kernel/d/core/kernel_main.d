@@ -1200,6 +1200,17 @@ private void maybeSpawnLklTest() {
     g_lklTestStarted = true;
     klog("[lkl] launching lkl-boot (boot the Linux kernel as a library inside EpinAnonymOS)\n");
     spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
+    // L4 isolation (the user's requirement): grant the just-spawned lkl-boot a capability for ONLY the
+    // NVMe device.  The 0x4100 bridge is default-deny, so without this grant it would see NO hardware at
+    // all; with it, it sees NVMe and is denied (-EPERM) any scan/config/MMIO of every other device.
+    const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
+    const uint nvmeBdf = findDeviceByClass(0x0108);    // NVMe = class 0x01 (storage) / sub 0x08 (NVM)
+    if (lklTid > 0 && nvmeBdf != 0xFFFFFFFF) {
+        grantDeviceCap(lklTid, nvmeBdf);
+        klog("[lkl] L4: granted lkl-boot a device-cap for NVMe ONLY (bdf="); klog_hex(nvmeBdf); klog(")\n");
+    } else {
+        klog("[lkl] L4: no NVMe to grant — lkl-boot will see NO device (default-deny)\n");
+    }
 }
 private void maybeSpawnGlTest() {
     if (g_glTestStarted) return;

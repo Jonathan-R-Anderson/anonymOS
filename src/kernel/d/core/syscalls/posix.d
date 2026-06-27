@@ -7698,6 +7698,91 @@ public long linux_sys_clock_getres(ulong clk, ulong res) {
 //   op 1: config WRITE (size 1/2/4 at `off`, `val`) -> 0
 //   op 2: SCAN — return the bdf of the first non-host-bridge PCI device (so the backend's .add can
 //         pick a device without the bdf being known up front), or -1 if none.
+// ---- L4: per-device capability gating for the LKL hardware bridge -----------------
+// Each PROCESS may hold a capability for one PCI device (the "one LKL per device" isolation
+// model the user requires): the 0x4100 bridge below denies any scan/config/MMIO for a device
+// the caller was not explicitly granted, so an LKL driver sees ONLY its own hardware and can
+// never reach (or even enumerate) another device.  Keyed on the process leader so all of an
+// LKL's threads (its timer + IRQ-poller pthreads) share the one grant.
+struct DeviceCap {
+    bool     valid;
+    uint     bdf;            // (bus<<16)|(slot<<8)|func
+    ulong[6] barBase;        // BAR physical base (0 = unused)
+    ulong[6] barEnd;         // base + size - 1
+}
+__gshared DeviceCap[MAX_TASKS] g_taskDevCap;
+
+private int devCapLeader(int tid) {
+    if (tid < 0 || tid >= MAX_TASKS) return -1;
+    const int p = g_tasks[tid].processLeaderTid;
+    return (p >= 0 && p < MAX_TASKS) ? p : tid;
+}
+public bool taskHasDevCap(int tid, uint bdf) {
+    const int p = devCapLeader(tid);
+    return p >= 0 && g_taskDevCap[p].valid && g_taskDevCap[p].bdf == bdf;
+}
+public bool taskHasMmioCap(int tid, ulong phys) {
+    const int p = devCapLeader(tid);
+    if (p < 0 || !g_taskDevCap[p].valid) return false;
+    auto c = &g_taskDevCap[p];
+    foreach (i; 0 .. 6)
+        if (c.barBase[i] != 0 && phys >= c.barBase[i] && phys <= c.barEnd[i])
+            return true;
+    return false;
+}
+// Grant PROCESS-leader task `tid` a capability for device `bdf` (records bdf + sizes its MMIO BARs).
+// Privileged: only the kernel / a device-manager calls this — it is NOT reachable through the 0x4100 ABI.
+public void grantDeviceCap(int tid, uint bdf) {
+    import drivers.pci : pciConfigRead32, pciConfigWrite32;
+    const int p = devCapLeader(tid);
+    if (p < 0) return;
+    auto c = &g_taskDevCap[p];
+    *c = DeviceCap.init;
+    c.valid = true;
+    c.bdf   = bdf;
+    const ubyte bus  = cast(ubyte)((bdf >> 16) & 0xFF);
+    const ubyte slot = cast(ubyte)((bdf >> 8)  & 0xFF);
+    const ubyte func = cast(ubyte)( bdf        & 0xFF);
+    int i = 0;
+    while (i < 6) {
+        const ubyte o = cast(ubyte)(0x10 + i*4);
+        const uint orig = pciConfigRead32(bus, slot, func, o);
+        if (orig == 0 || (orig & 0x1)) { i++; continue; }      // empty or I/O-space BAR (we gate MMIO only)
+        const bool is64 = ((orig & 0x6) == 0x4);
+        pciConfigWrite32(bus, slot, func, o, 0xFFFFFFFF);
+        const uint maskLo = pciConfigRead32(bus, slot, func, o);
+        pciConfigWrite32(bus, slot, func, o, orig);            // restore the firmware-assigned BAR
+        ulong base = orig & 0xFFFFFFF0UL;
+        ulong size;
+        if (is64) {
+            const ubyte oh = cast(ubyte)(o + 4);
+            const uint origHi = pciConfigRead32(bus, slot, func, oh);
+            pciConfigWrite32(bus, slot, func, oh, 0xFFFFFFFF);
+            const uint maskHi = pciConfigRead32(bus, slot, func, oh);
+            pciConfigWrite32(bus, slot, func, oh, origHi);      // restore
+            base |= (cast(ulong)origHi << 32);
+            const ulong mask = (cast(ulong)maskHi << 32) | (maskLo & 0xFFFFFFF0U);
+            size = (~mask) + 1;
+        } else {
+            const uint mask = maskLo & 0xFFFFFFF0U;
+            size = cast(ulong)(cast(uint)(~mask) + 1);
+        }
+        if (size != 0 && base != 0) { c.barBase[i] = base; c.barEnd[i] = base + size - 1; }
+        i += is64 ? 2 : 1;
+    }
+}
+// Find the first device matching class (base<<8|sub) — for the bootstrap grant. 0xFFFFFFFF = none.
+public uint findDeviceByClass(uint cls) {
+    import drivers.pci : pciConfigRead32, scanPCIDevices;
+    auto devs = scanPCIDevices();
+    foreach (ref d; devs) {
+        const uint clsReg = pciConfigRead32(d.bus, d.slot, d.func, 8);
+        if (((((clsReg >> 24) & 0xFF) << 8) | ((clsReg >> 16) & 0xFF)) == cls)
+            return (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
+    }
+    return 0xFFFFFFFF;
+}
+
 public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, ulong val) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32, scanPCIDevices;
     import core.globals : hhdm_offset;
@@ -7705,8 +7790,10 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
     const ubyte bus  = cast(ubyte)((bdf >> 16) & 0xFF);
     const ubyte slot = cast(ubyte)((bdf >> 8)  & 0xFF);
     const ubyte func = cast(ubyte)( bdf        & 0xFF);
+    const int  tid   = cast(int)g_current_task_id;   // L4: the calling LKL's task (resolved to its process)
     switch (op) {
         case 0: {                                   // config read
+            if (!taskHasDevCap(tid, cast(uint)bdf)) return negErrno(EPERM);   // L4: not your device
             const uint dw = pciConfigRead32(bus, slot, func, cast(ubyte)(off & 0xFC));
             const uint sh = cast(uint)((off & 3) * 8);
             const uint v  = dw >> sh;
@@ -7715,6 +7802,7 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             return cast(long)cast(uint)v;
         }
         case 1: {                                   // config write (read-modify-write for sub-dword)
+            if (!taskHasDevCap(tid, cast(uint)bdf)) return negErrno(EPERM);   // L4
             const ubyte al = cast(ubyte)(off & 0xFC);
             uint dw = pciConfigRead32(bus, slot, func, al);
             const uint sh = cast(uint)((off & 3) * 8);
@@ -7727,19 +7815,21 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
         case 2: {                                   // scan: off = wanted class (base<<8|sub), 0 = any non-bridge
             auto devs = scanPCIDevices();
             foreach (ref d; devs) {
+                const uint thisBdf = (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
+                if (!taskHasDevCap(tid, thisBdf)) continue;     // L4: only granted devices are even visible
                 const uint clsReg = pciConfigRead32(d.bus, d.slot, d.func, 8);
                 const uint base   = (clsReg >> 24) & 0xFF;
                 const uint sub    = (clsReg >> 16) & 0xFF;
                 if (off != 0) {
-                    if (((base << 8) | sub) == cast(uint)off)
-                        return (cast(long)d.bus << 16) | (cast(long)d.slot << 8) | d.func;
+                    if (((base << 8) | sub) == cast(uint)off) return cast(long)thisBdf;
                 } else if (base != 0x06) {           // 0x06 = bridge
-                    return (cast(long)d.bus << 16) | (cast(long)d.slot << 8) | d.func;
+                    return cast(long)thisBdf;
                 }
             }
             return -1;
         }
         case 3: {                                   // MMIO read at phys: bdf = phys addr, size = 1/2/4/8
+            if (!taskHasMmioCap(tid, bdf)) return negErrno(EPERM);   // L4: phys not in your device's BARs
             const ulong va = bdf + hhdm_offset;     // device BARs are reachable through the HHDM
             if (size == 1) return *cast(shared const ubyte*)va;
             if (size == 2) return *cast(shared const ushort*)va;
@@ -7747,6 +7837,7 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             return *cast(shared const uint*)va;
         }
         case 4: {                                   // MMIO write at phys: bdf = phys, size, val
+            if (!taskHasMmioCap(tid, bdf)) return negErrno(EPERM);   // L4
             const ulong va = bdf + hhdm_offset;
             if      (size == 1) *cast(shared ubyte*)va  = cast(ubyte)val;
             else if (size == 2) *cast(shared ushort*)va = cast(ushort)val;
@@ -7755,7 +7846,7 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             return 0;
         }
         case 5:                                     // virt->phys: bdf = a userspace virtual addr (DMA IOVA)
-            return cast(long)activeVirtToPhys(bdf);
+            return cast(long)activeVirtToPhys(bdf);   // caller's OWN memory — no device cap needed
         default: return negErrno(EINVAL);
     }
 }

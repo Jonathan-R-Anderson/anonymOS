@@ -280,6 +280,12 @@ int main(int argc, char **argv)
 {
     long ret;
 
+    /* L4 isolation demo: we were granted a cap for ONLY our device (NVMe). Prove the 0x4100 bridge is
+     * default-deny -- a config read of a NON-granted device (the host bridge at bdf 0) must be rejected. */
+    long denied = epin_pci_call(0, 0x000000, 0, 4, 0);
+    fprintf(stderr, ">>> epin_pci: L4 isolation -- config-read non-granted bdf 0 -> %ld (%s)\n",
+            denied, denied < 0 ? "DENIED (good -- cannot see other devices)" : "ALLOWED (BAD!)");
+
     ops = lkl_host_ops;                       /* start from the default posix-host ops */
     ops.timer_alloc       = ht_timer_alloc;   /* ...and swap the clock for our thread timer */
     ops.timer_set_oneshot = ht_timer_set_oneshot;

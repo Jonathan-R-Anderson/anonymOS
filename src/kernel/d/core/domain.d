@@ -43,6 +43,7 @@ struct DomainRec {
     bool          inUse;
     bool          running;        // DM4: Running state mirror
     bool          paused;         // DM4: Paused state mirror
+    bool          isTemplate;     // DM6: an immutable Template (a running domain references one)
     DomainId      objId;          // ObjType.Domain
     uint          templateObjId;  // immutable Template referenced (0 = none yet, DM6)
     uint          identityObjId;  // the IdentityRec (color / ceiling / net / clip)
@@ -131,6 +132,16 @@ public DomainId domainCreate(const(char)* name, uint identityObjId, uint templat
 }
 
 public void domainFreeze() { g_domFrozen = true; }              // registry immutable
+
+// DM6: mark a domain as an immutable Template (a running domain references one).
+public void domainSetTemplate(uint domObjId) {
+    auto d = domainById(domObjId);
+    if (d !is null) d.isTemplate = true;
+}
+public bool domainIsTemplate(uint domObjId) {
+    auto d = domainById(domObjId);
+    return d !is null && d.isTemplate;
+}
 
 private void mkBootDomain(const(char)* name) {
     const uint idobj = identityByName(name);                    // link domain → identity (0 if absent)
@@ -350,7 +361,7 @@ public uint domainClone(uint srcObjId, const(char)* newName) {
 public bool domainRename(uint domObjId, const(char)* newName) {
     if (g_domFrozen) return false;
     auto d = domainById(domObjId);
-    if (d is null) return false;
+    if (d is null || d.isTemplate) return false;   // DM6: templates are immutable
     const int nl = domCstrLen(newName);
     if (nl == 0 || nl >= DOM_NAME_MAX) return false;
     if (domainByName(newName) != 0) return false;     // unique name
@@ -434,6 +445,24 @@ public void domainPersistProof() {
     const bool ok = objstoreInstallDomain("PersistProbe", "Personal", "", PERSIST_FULL);
     klog(ok ? "[domain] persist proof: PersistProbe created + persisted to disk (boot 1 -- reboot to verify)\n"
             : "[domain] persist proof FAIL: objstoreInstallDomain\n");
+}
+
+// DOMAIN_MANAGER DM6 boot proof: a manifest type=template entry becomes an immutable Template,
+// and a domain that names it links to it (templateObjId).
+__gshared bool g_domTemplateProofDone = false;
+public void domainTemplateProof() {
+    if (g_domTemplateProofDone) return;
+    g_domTemplateProofDone = true;
+    const uint tpl = domainByName("DevTemplate\0".ptr);
+    const uint dom = domainByName("DevSandbox\0".ptr);
+    if (tpl == 0 || dom == 0) { klog("[domain] template proof SKIP (no DevTemplate/DevSandbox)\n"); return; }
+    bool ok = domainIsTemplate(tpl);                        // DevTemplate is a template
+    auto dd = domainById(dom);
+    ok = ok && (dd !is null) && (dd.templateObjId == tpl);  // DevSandbox references it
+    ok = ok && !domainIsTemplate(dom);                      // DevSandbox is a domain, not a template
+    ok = ok && !domainRename(tpl, "Renamed\0".ptr);         // a template is immutable → rename refused
+    if (ok) klog("[domain] template proof PASS: DevTemplate immutable template + DevSandbox references it\n");
+    else    klog("[domain] template proof FAIL\n");
 }
 
 public void domainStats() {

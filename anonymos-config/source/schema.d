@@ -214,7 +214,7 @@ SchemaNode documentSchema()
         p["name"] = str(true);
         p["type"] = enumN(["domain", "template"]);
         p["identity"] = str(false, RefKind.identity);   // the security identity this domain binds to
-        p["template"] = str(false, RefKind.identity);   // parent template (DM6); identity-ref for now
+        p["template"] = str();                          // DM6: the referenced template's name (a domains[] entry)
         p["persist"] = enumN(["ephemeral", "home-only", "full"]);
         p["packages"] = arr(str());
         p["applications"] = arr(str());

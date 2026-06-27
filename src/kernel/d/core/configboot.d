@@ -35,7 +35,7 @@ import core.crypto : cryptoVerify;
 import core.namespace : nsAlloc, nsAllocRestricted, nsBind, nsBindDeny, nsRootDir;  // DOMAIN_MANAGER DM2.3
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;                  // DOMAIN_MANAGER DM2.3
 import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy;
-import core.domain   : domainCreate, domainByName, domainById;   // DOMAIN_MANAGER DM1
+import core.domain   : domainCreate, domainByName, domainById, domainSetTemplate;   // DOMAIN_MANAGER DM1/DM6
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
 import core.store : genSetActive, genActive, genCreate;
 import core.audit : auditLog, AuditKind;
@@ -235,33 +235,40 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
         break;
     }
     case TAG_DOMAIN_CREATE: {
-        // payload: name\0 identity\0 template\0 u8 persist  → domainCreate
+        // payload: name\0 identity\0 template\0 u8 persist u8 type(1=template)  → domainCreate
         size_t off = 0;
         const(char)* name    = readCStr(payload, len, off);
         const(char)* idName  = readCStr(payload, len, off);
-        const(char)* tplName = readCStr(payload, len, off);   // DM6 (template resolution); ignored now
+        const(char)* tplName = readCStr(payload, len, off);   // DM6: the referenced template's name
         if (name is null || idName is null || tplName is null) break;
         if (off >= len) break;
         const ubyte persist = payload[off];
+        const ubyte dtype   = (off + 1 < len) ? payload[off + 1] : 0;   // DM6: 1=template (optional byte)
         // resolve the identity this domain binds to (0 = none / not found)
         const uint identityObjId = (idName[0] != 0) ? identityByName(idName) : 0;
+        // DM6: resolve the referenced template by name (templates are emitted first → already created)
+        const uint templateObjId = (tplName[0] != 0) ? domainByName(tplName) : 0;
         // idempotent: a domain of this name may already exist (the DM0 compiled-in seed) —
         // re-assert the manifest's persist policy rather than fail, like the identity case.
         const uint existing = domainByName(name);
         if (existing != 0) {
             auto r = domainById(existing);
             if (r !is null) r.persistMode = persist;
+            if (dtype == 1) domainSetTemplate(existing);
             ++g_cfgDomApplied;
             klog("[configboot] domain "); klog(name); klog(" exists (persist re-asserted)\n");
             break;
         }
-        const uint id = domainCreate(name, identityObjId, 0);
+        const uint id = domainCreate(name, identityObjId, templateObjId);
         if (id != 0) {
             auto r = domainById(id);
             if (r !is null) r.persistMode = persist;
+            if (dtype == 1) domainSetTemplate(id);
             ++g_cfgDomApplied;
-            klog("[configboot] domain "); klog(name); klog(" created -> identity ");
+            klog(dtype == 1 ? "[configboot] template " : "[configboot] domain ");
+            klog(name); klog(" created -> identity ");
             klog(idName[0] != 0 ? idName : "(none)".ptr);
+            if (templateObjId != 0) { klog(" template "); klog(tplName); }
             klog(" persist="); klog_hex(persist); klog("\n");
         }
         break;

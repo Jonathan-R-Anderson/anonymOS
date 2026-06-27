@@ -491,6 +491,7 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
                 lit(b, "\nidentityObjId="); num(b, e.identityObjId);
                 lit(b, "\ntemplate=");     num(b, e.templateObjId);
                 lit(b, "\nstate=");        litz(b, domainStateName(e.state));
+                lit(b, "\ntype=");         lit(b, e.isTemplate ? "template" : "domain");
                 lit(b, "\npersist=");      persistName(b, e.persistMode);
                 lit(b, "\npolicyEpoch=");  num(b, e.policyEpoch);
                 put(b, '\n');
@@ -622,6 +623,7 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 if (idr !is null) jstr(b, idr.name.ptr, idr.nameLen); else lit(b, "null");
                 lit(b, ", \"template\": ");    num(b, e.templateObjId);
                 lit(b, ", \"state\": \"");     litz(b, domainStateName(e.state)); put(b, '"');
+                lit(b, ", \"type\": \"");      lit(b, e.isTemplate ? "template" : "domain"); put(b, '"');
                 lit(b, ", \"persist\": \"");   persistName(b, e.persistMode); put(b, '"');
                 lit(b, ", \"policyEpoch\": "); num(b, e.policyEpoch);
                 lit(b, " }");

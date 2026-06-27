@@ -222,9 +222,14 @@ private ubyte persistMode(string s)
 private ubyte[] manifestDomains(in CompiledGraph g)
 {
     ManifestBuilder b;
+    // DM6: two passes — emit templates (type=="template") FIRST so a domain that references a
+    // template is created after it (the kernel resolves the template name → objId at create time).
+    foreach (pass; 0 .. 2)
     foreach (name, rec; g.domainTable)
     {
-        // payload: name\0 identity\0 template\0 u8 persist
+        const bool isTpl = (rec.type_ == "template");
+        if ((pass == 0) != isTpl) continue;     // pass 0 = templates, pass 1 = domains
+        // payload: name\0 identity\0 template\0 u8 persist u8 type(1=template)
         ubyte[] p;
         foreach (c; name) p ~= cast(ubyte) c;
         p ~= cast(ubyte) 0;
@@ -235,6 +240,7 @@ private ubyte[] manifestDomains(in CompiledGraph g)
         foreach (c; rec.template_) p ~= cast(ubyte) c;
         p ~= cast(ubyte) 0;
         p ~= persistMode(rec.persist);
+        p ~= cast(ubyte)(isTpl ? 1 : 0);        // DM6: type (1=template, 0=domain)
         b.putRecord(Tag.domainCreate, p);
 
         // DM2.3: the restricted-filesystem policy (fsPolicy starts the domain's ns, fsBind per path)

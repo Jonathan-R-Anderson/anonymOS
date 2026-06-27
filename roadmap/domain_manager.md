@@ -710,6 +710,23 @@ is done.
 First-class immutable Template Domains; running domains reference one; changes live in a
 writable overlay (Deliverables 5, the Template-Domains section).
 
+**Status — DM6.1 (first-class immutable Templates) DONE + verified.** A manifest `"type": "template"`
+entry now becomes an immutable Template that a domain references. `core/domain.d` `DomainRec.isTemplate` +
+`domainSetTemplate`/`domainIsTemplate`; `domainRename` refuses a template (immutable). Pipeline: `schema.d`
+the `template` field is a plain name (no longer a false identity-ref); `manifest.d` emits templates **first**
+(two-pass) + a `type` byte on the `domainCreate` record (backward-compatible); `configboot.d` reads the type
+byte → `domainSetTemplate`, and resolves the `template` name → `templateObjId` (templates exist first). The
+`/config/domains.json` + `/objects/domains/<name>/meta` views show `type`. `examples/system.json` got a
+`DevTemplate` that `DevSandbox` references. Verified: `[configboot] template DevTemplate created`;
+`[configboot] domain DevSandbox created -> identity Personal template DevTemplate`; `[domain] template proof
+PASS: DevTemplate immutable template + DevSandbox references it` (rename refused). No regression. *Remaining
+DM6 (the deeper half — the writable overlay):* `ObjType.Overlay` per running domain = a CoW writable layer
+over the immutable template (the roadmap §5 design: a per-domain rtfs subtree with copy-up at `rtCreate`,
+mirroring `addrspace.d` page-CoW + `core/store.d` Generations), with `HOSQ_DOMAIN_{SNAPSHOT,RESTORE,COMMIT,
+DISCARD}` (commit folds the overlay into a NEW template version, never mutating the existing one) +
+`inspect diff` + `validate before commit`. This unlocks DM5's persistMode-driven overlay+home reload. The
+template catalog (Developer/Gaming/Research/… as manifests) seeds alongside it.
+
 - `ObjType.Template` objects under `/objects/templates/<name>/`, persisted like domains
   (immutable: a frozen Generation + frozen `IdentityRec`).
 - Overlay = per-domain rtfs subtree (a dedicated `g_rt` root index, `posix.d:3569`) with

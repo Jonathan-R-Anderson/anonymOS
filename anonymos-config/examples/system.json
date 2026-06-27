@@ -29,7 +29,9 @@
       "clip": "deny", "gui": ["borderAlways","noScreenshotAcrossId"] }
   ],
   "domains": [
+    { "name": "DevTemplate", "type": "template", "identity": "Personal", "persist": "ephemeral" },
     { "name": "DevSandbox", "type": "domain", "identity": "Personal", "persist": "full",
+      "template": "DevTemplate",
       "packages": ["git","clang"], "applications": ["terminal","editor"],
       "filesystemAccess": {
         "defaultPolicy": "deny",

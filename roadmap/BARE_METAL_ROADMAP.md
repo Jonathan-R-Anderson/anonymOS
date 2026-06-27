@@ -170,6 +170,16 @@ EpinAnonymOS's input rings (`g_kbd_ring`/`g_mouse_ring`). **Develop/verify in QE
 (`-device qemu-xhci -device usb-kbd -device usb-mouse`), then it works on real xHCI unchanged.
 **Verify:** typing/moving drives the desktop with PS/2 removed.
 
+**★ GATING (checked 2026-06-26): the current `liblkl.a` has NO USB host stack** — only the HID layer
+(`CONFIG_HID=y`, `hid_init`) + a `CONFIG_USB_PCI=y` stub; `CONFIG_USB` itself is OFF and `xhci_hcd_init`/
+`usb_hcd` are absent. So **L5 step 0 = reconfigure LKL + rebuild `liblkl.a`**: enable `CONFIG_USB=y`,
+`CONFIG_USB_XHCI_HCD=y`, `CONFIG_USB_XHCI_PCI=y`, `CONFIG_USB_HID=y`, `CONFIG_INPUT_EVDEV=y` (in
+`~/lkl-build/linux/.config` → `make -C tools/lkl olddefconfig` + rebuild, ~10 min), then relink lkl-boot.
+After that the bring-up mirrors NVMe: point `.add` at the xHCI class (0x0c0330), let LKL's `xhci_hcd`
+probe it through the proven bridge (config/MMIO/DMA/IRQ all work), enumerate `usb-kbd`, then read
+`/dev/input/event*` via `lkl_sys_read` and feed `g_kbd_ring`/`g_mouse_ring`. **Risk:** USB transfers use
+URBs (not blk-mq) so the NVMe I/O-dispatch quirk likely won't recur, but xHCI-in-LKL is untested.
+
 ## L6 — GPU via LKL (the research frontier)
 LKL's `nouveau` drives the GTX 1080: real PCI BARs + MSI + large DMA + **display scanout / mode-setting**
 to the physical monitor — the hardest integration. Mesa's `nouveau`/`nvk` userspace runs on top via the

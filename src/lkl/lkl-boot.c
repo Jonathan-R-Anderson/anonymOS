@@ -116,7 +116,9 @@ static struct epin_pci_dev g_epin_pci;
 static struct lkl_pci_dev *epin_pci_add(const char *name, void *kernel_ram, unsigned long ram_size)
 {
     (void)name; (void)kernel_ram; (void)ram_size;
-    long bdf = epin_pci_call(2, 0, 0x0108, 0, 0); /* prefer NVMe (class 0x0108) — conflict-free */
+    long bdf = epin_pci_call(2, 0, 0x0c03, 0, 0); /* L5: prefer a USB controller (xHCI, class 0x0c03) */
+    if (bdf < 0)
+        bdf = epin_pci_call(2, 0, 0x0108, 0, 0); /* else NVMe (class 0x0108) — the L3/L4 vehicle */
     if (bdf < 0)
         bdf = epin_pci_call(2, 0, 0, 0, 0);      /* else first non-bridge device */
     if (bdf < 0) {

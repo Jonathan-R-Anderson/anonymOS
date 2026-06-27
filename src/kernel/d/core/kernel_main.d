@@ -1204,12 +1204,14 @@ private void maybeSpawnLklTest() {
     // NVMe device.  The 0x4100 bridge is default-deny, so without this grant it would see NO hardware at
     // all; with it, it sees NVMe and is denied (-EPERM) any scan/config/MMIO of every other device.
     const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
-    const uint nvmeBdf = findDeviceByClass(0x0108);    // NVMe = class 0x01 (storage) / sub 0x08 (NVM)
-    if (lklTid > 0 && nvmeBdf != 0xFFFFFFFF) {
-        grantDeviceCap(lklTid, nvmeBdf);
-        klog("[lkl] L4: granted lkl-boot a device-cap for NVMe ONLY (bdf="); klog_hex(nvmeBdf); klog(")\n");
+    // L5: prefer a USB controller (xHCI, class 0x0c03) for input; else NVMe (the L3/L4 vehicle).
+    uint devBdf = findDeviceByClass(0x0c03);
+    if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
+    if (lklTid > 0 && devBdf != 0xFFFFFFFF) {
+        grantDeviceCap(lklTid, devBdf);
+        klog("[lkl] L4/L5: granted lkl-boot a device-cap for ONE device (bdf="); klog_hex(devBdf); klog(")\n");
     } else {
-        klog("[lkl] L4: no NVMe to grant — lkl-boot will see NO device (default-deny)\n");
+        klog("[lkl] L4: no grantable device — lkl-boot will see NO device (default-deny)\n");
     }
 }
 private void maybeSpawnGlTest() {

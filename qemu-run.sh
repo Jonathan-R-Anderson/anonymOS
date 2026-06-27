@@ -56,6 +56,16 @@ if [ "${LKL_NVME:-0}" = "1" ]; then
   echo "[qemu-run] LKL_NVME=1: attaching NVMe $NVME_IMG for the LKL driver"
 fi
 
+# L5 LKL bring-up: an xHCI USB controller + a USB keyboard/mouse for LKL's xhci+usbhid to drive.
+# Opt-in via LKL_USB=1 so the normal desktop boot is unchanged.
+USBDEV=()
+if [ "${LKL_USB:-0}" = "1" ]; then
+  USBDEV=( -device qemu-xhci,id=xhci
+           -device usb-kbd,bus=xhci.0
+           -device usb-mouse,bus=xhci.0 )
+  echo "[qemu-run] LKL_USB=1: attaching xHCI + usb-kbd + usb-mouse for the LKL driver"
+fi
+
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
@@ -70,6 +80,7 @@ exec "$QEMU_BIN" \
   -device ahci,id=ahci0 \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
   "${NVME[@]}" \
+  "${USBDEV[@]}" \
   "${GFX[@]}"
 # R2 (GPU stack) is OFF by default: `gtk,gl=on` + a virtio-gpu-gl device gives a BLACK SCREEN on
 # many hosts (the GL display path doesn't present the firmware-VGA framebuffer the desktop renders

@@ -180,6 +180,9 @@ struct app {
     struct gdomain doms[MAX_DOMS]; // DM10: the domains, read from the declarative config
     int n_doms;                    // number loaded
     char fs_view[1280];            // DM10.2: the selected domain's restricted-FS RuntimeView
+    int  editing;                  // DM10.5: clone-name text-input dialog is open
+    char editbuf[24];              // the typed new-domain name (DOM_NAME_MAX)
+    int  editlen;
 };
 
 static void log_line(const char *s) { fputs(s, stdout); fputc('\n', stdout); fflush(stdout); }
@@ -330,15 +333,25 @@ static void dev_chip_rect(int idx, int *x, int *y, int *w, int *h)
     *y = RY0 + N_CTL * CTL_H + (CTL_H - 26) / 2; *h = 26; *w = 78;
     *x = PILL_X + idx * (78 + 8);
 }
-// DM10.3: the lifecycle action buttons (Start / Stop / Snapshot / Commit), one row below launch.
-#define N_ACTION 4
-static const char *ACTION_LABEL[N_ACTION] = { "Start", "Stop", "Snapshot", "Commit" };
-static const char *ACTION_VERB [N_ACTION] = { "start", "stop", "snapshot", "commit" };
+// DM10.3/10.5: the lifecycle action buttons (Start / Stop / Snapshot / Commit / Clone), one row
+// below launch.  Clone (idx 4) opens the text-input dialog instead of acting immediately.
+#define N_ACTION 5
+static const char *ACTION_LABEL[N_ACTION] = { "Start", "Stop", "Snapshot", "Commit", "Clone" };
+static const char *ACTION_VERB [N_ACTION] = { "start", "stop", "snapshot", "commit", "clone" };
 static void action_btn_rect(int idx, int *x, int *y, int *w, int *h)
 {
-    *y = RY0 + (N_CTL + 1) * CTL_H + 8 + 48; *h = 30; *w = 100;
-    *x = LABEL_X + idx * (100 + 6);
+    *y = RY0 + (N_CTL + 1) * CTL_H + 8 + 48; *h = 30; *w = 84;
+    *x = LABEL_X + idx * (84 + 6);
 }
+
+// DM10.5: evdev keycode → lowercase ASCII (US QWERTY) for the clone-name text field.  The DM gets
+// raw evdev codes from wl_keyboard (it ignores the xkb keymap), so we map the printable subset.
+static const char EVDEV_CHAR[128] = {
+    [2]='1',[3]='2',[4]='3',[5]='4',[6]='5',[7]='6',[8]='7',[9]='8',[10]='9',[11]='0',[12]='-',
+    [16]='q',[17]='w',[18]='e',[19]='r',[20]='t',[21]='y',[22]='u',[23]='i',[24]='o',[25]='p',
+    [30]='a',[31]='s',[32]='d',[33]='f',[34]='g',[35]='h',[36]='j',[37]='k',[38]='l',
+    [44]='z',[45]='x',[46]='c',[47]='v',[48]='b',[49]='n',[50]='m',
+};
 
 // --- drawing --------------------------------------------------------------
 
@@ -468,6 +481,25 @@ static void domain_action(struct app *app, const char *verb)
     int keep = app->sel;
     load_domains(app);                       // re-read state (the kernel may have changed it)
     if (keep < app->n_doms) app->sel = keep;
+    refresh_fs_view(app);
+}
+
+// DM10.5: commit the Clone dialog — write "clone <src> <newname>" to the control endpoint, then
+// re-read so the new domain appears in the list.
+static void domain_action_clone(struct app *app)
+{
+    if (app->sel < 0 || app->sel >= app->n_doms || app->editlen == 0) return;
+    char cmd[96];
+    int len = snprintf(cmd, sizeof(cmd), "clone %s %s", app->doms[app->sel].name, app->editbuf);
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) { printf("DOMAINMGR: clone open FAILED\n"); fflush(stdout); return; }
+    ssize_t w = write(fd, cmd, len);
+    close(fd);
+    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
+    load_domains(app);                       // the clone is a NEW domain — re-read the full list
+    // select the freshly-created clone if present
+    for (int i = 0; i < app->n_doms; i++)
+        if (strcmp(app->doms[i].name, app->editbuf) == 0) { app->sel = i; break; }
     refresh_fs_view(app);
 }
 
@@ -610,6 +642,21 @@ static void draw_manager(struct app *app)
     cairo_set_source_rgb(cr, 0.22, 0.27, 0.33);
     cairo_rectangle(cr, 0, app->height - FOOTER_H, app->width, 1); cairo_fill(cr);
 
+    // DM10.5: the Clone-name dialog (modal box) — drawn last so it overlays everything.
+    if (app->editing) {
+        int dw = 440, dh = 130, dx = (app->width - dw) / 2, dy = (app->height - dh) / 2;
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.45);                 // dim backdrop
+        cairo_rectangle(cr, 0, 0, app->width, app->height); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.16, 0.19, 0.24);              // dialog body
+        rounded_rect(cr, dx, dy, dw, dh, 12); cairo_fill(cr);
+        cairo_argb(cr, app->doms[app->sel].color);              // accent strip
+        rounded_rect(cr, dx, dy, dw, 5, 12); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.10, 0.12, 0.15);             // text field
+        rounded_rect(cr, dx + 20, dy + 56, dw - 40, 34, 7); cairo_fill(cr);
+        cairo_set_source_rgb(cr, 0.30, 0.40, 0.55);
+        rounded_rect(cr, dx + 20, dy + 56, dw - 40, 34, 7); cairo_set_line_width(cr, 1.5); cairo_stroke(cr);
+    }
+
     cairo_destroy(cr);
     cairo_surface_flush(surface);
     cairo_surface_destroy(surface);
@@ -701,6 +748,19 @@ static void draw_manager(struct app *app)
              sd->type, sd->identity, dom_templ_name(app, sd->templObjId), sd->persist, sd->state,
              SHELL_LBL[cc->shell]);
     draw_text(app, foot, PAD, app->height - FOOTER_H + 9, app->width - 2 * PAD, 12, 0xff9aa4b3u);
+
+    // DM10.5: the Clone-name dialog text (over the modal box drawn in the cairo pass).
+    if (app->editing) {
+        int dw = 440, dh = 130, dx = (app->width - dw) / 2, dy = (app->height - dh) / 2;
+        char head[80];
+        snprintf(head, sizeof(head), "Clone \"%s\" as a new domain", sd->name);
+        draw_text(app, head, dx + 20, dy + 20, dw - 40, 15, 0xfff0f3f8u);
+        char field[40];
+        snprintf(field, sizeof(field), "%s_", app->editbuf);   // trailing _ = caret
+        draw_text(app, field, dx + 30, dy + 64, dw - 60, 16, 0xfff2f5fau);
+        draw_text(app, "Type a name  -  Enter = create,  Esc = cancel",
+                  dx + 20, dy + 100, dw - 40, 12, 0xff8b94a3u);
+    }
 
     // window-control buttons (minimize / maximize / close) at the top-right.
     wl_deco_draw(app->pixels, app->width, app->width, app->height, 0xffd0d6e0u);
@@ -844,11 +904,17 @@ static void handle_click(struct app *app)
             return;
         }
     }
-    // DM10.3: lifecycle action buttons — write the verb to the kernel control endpoint.
+    // DM10.3/10.5: lifecycle action buttons.  Clone opens the name dialog; the rest act at once.
     for (int a = 0; a < N_ACTION; a++) {
         int bx, by, bw, bh; action_btn_rect(a, &bx, &by, &bw, &bh);
         if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
-            domain_action(app, ACTION_VERB[a]);
+            if (a == 4) {   // Clone → open the text dialog, pre-filled with "<src>-clone"
+                snprintf(app->editbuf, sizeof(app->editbuf), "%.16s-clone", app->doms[app->sel].name);
+                app->editlen = strlen(app->editbuf);
+                app->editing = 1;
+            } else {
+                domain_action(app, ACTION_VERB[a]);
+            }
             redraw_commit(app, "domain action");
             return;
         }
@@ -893,6 +959,20 @@ static void kb_key(void *data, struct wl_keyboard *k, uint32_t serial, uint32_t 
 {
     struct app *app = data; (void)k; (void)serial; (void)time;
     if (state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
+    // DM10.5: the clone-name text-input dialog captures the keyboard while open.
+    if (app->editing) {
+        if (key == 1)        { app->editing = 0; }                         // Esc → cancel
+        else if (key == 28)  { app->editing = 0; domain_action_clone(app); } // Enter → commit clone
+        else if (key == 14)  { if (app->editlen > 0) app->editbuf[--app->editlen] = 0; } // Backspace
+        else {
+            char c = (key < 128) ? EVDEV_CHAR[key] : 0;
+            if (c && app->editlen < (int)sizeof(app->editbuf) - 1) {
+                app->editbuf[app->editlen++] = c; app->editbuf[app->editlen] = 0;
+            }
+        }
+        redraw_commit(app, "clone edit");
+        return;
+    }
     // Up=103 Down=108 Enter=28 Esc=1.
     if (key == 108 && app->sel < app->n_doms - 1) { app->sel++; refresh_fs_view(app); redraw_commit(app, "key"); }
     else if (key == 103 && app->sel > 0)        { app->sel--; refresh_fs_view(app); redraw_commit(app, "key"); }

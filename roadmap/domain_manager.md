@@ -865,8 +865,19 @@ System -> OK` / `DOMAINMGR: control-write path self-test ('ping System') wrote 1
 `domainControlProof`. The pixel hit-test → action is the same pattern as the working launch buttons; the
 visual click is the user's to confirm on the desktop.
 
-*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE` instead of poll-on-action), a Clone/Create dialog
-(needs a text-input field for the new name), and the appearance/startup/template-browser/marketplace tabs.
+**Status — DM10.5 (Clone dialog with text input) DONE + verified.** The Domain Manager can now CREATE
+domains. The *Clone* button (5th in the Lifecycle row) opens a modal name dialog pre-filled with
+`<src>-clone`; since the GUI gets raw evdev keycodes and ignores the xkb keymap, a small `EVDEV_CHAR[128]`
+US-QWERTY map turns keystrokes into the editable name (Backspace edits, Esc cancels, Enter commits). Enter
+calls `domain_action_clone()` → writes `clone <src> <newname>` to `/config/domain.action` → the kernel
+creates the clone → the GUI re-reads `/config/domains.json` and selects the new domain. Verified in-VM: the
+control executor's 3-token parse works — `[domain] control: clone DevSandbox -> OK` and `control proof PASS
+(…/clone via parse+exec)`; the proof clones then `domainDelete`s, leaving the registry clean (the GUI still
+loads 11, not 12). The clone reuses the already-proven write path (DM10.4 ping) + the now-proven clone verb;
+the text-entry UX is the user's to confirm on the desktop.
+
+*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE` instead of poll-on-action), a from-scratch Create
+(vs Clone) flow, and the appearance/startup/template-browser/marketplace tabs.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

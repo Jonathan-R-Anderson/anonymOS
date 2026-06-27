@@ -324,9 +324,13 @@ public void domainControlProof() {
     ok = ok && domainControlWrite("resume DevSandbox".ptr, 17)  && (d.state == DomainState.Running);
     ok = ok &&  domainControlWrite("snapshot DevSandbox".ptr, 19);             // overlay exists after start
     ok = ok && domainControlWrite("stop DevSandbox".ptr, 15)    && (d.state == DomainState.Defined);
+    // clone — the 3-token parse (verb name newname); a new domain appears, then clean it up
+    ok = ok && domainControlWrite("clone DevSandbox DevSandboxCl".ptr, 29) && (domainByName("DevSandboxCl\0".ptr) != 0);
+    { const uint cl = domainByName("DevSandboxCl\0".ptr); if (cl != 0) domainDelete(cl); }
+    ok = ok && (domainByName("DevSandboxCl\0".ptr) == 0);                     // cleanup leaves the registry clean
     ok = ok && !domainControlWrite("frobnicate DevSandbox".ptr, 21);          // unknown verb → denied
     ok = ok && !domainControlWrite("start Nonexistent".ptr, 17);              // unknown domain → denied
-    klog(ok ? "[domain] control proof PASS (ping/start/pause/resume/snapshot/stop via parse+exec; unknown verb+domain denied)\n"
+    klog(ok ? "[domain] control proof PASS (ping/start/pause/resume/snapshot/stop/clone via parse+exec; unknown verb+domain denied)\n"
             : "[domain] control proof FAIL\n");
 }
 

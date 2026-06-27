@@ -154,15 +154,22 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
     USB (L5) and the GPU (L6), which the proven bridge already supports.
 
 ## L4 — Per-device LKL isolation (cap-gating) + bridge LKL's devices to EpinAnonymOS
-**Isolation (the "Device isolation" section above):** a privileged **device-manager** enumerates PCI,
-mints one **device-cap** per device, and spawns **one LKL instance per peripheral**, each holding only its
-own device-cap. Make the `0x4100` bridge **cap-gated**: `op2`/config/MMIO check the caller's cap table for
-a device-cap matching the target (else `-EPERM`), so an LKL sees only its granted device — never the bus.
-The grant is explicit (the user's policy, via the cap system — [[shell-track-a]] `cap_grant`).
-**Bridge:** each LKL has its own VFS/`/dev`; reach its device nodes via `lkl_sys_open`/`read`/`write`/
-`ioctl` and surface them as EpinAnonymOS devices, so the existing userspace + desktop use them unchanged.
-**Verify:** two LKL instances each see only their own device; an EpinAnonymOS `/dev/*` backed by an LKL
-device.
+**★ CAP-GATING ✅ DONE (commit 9ec3379b2) — the user's isolation requirement, verified.** The `0x4100`
+bridge is now **default-deny**: a per-PROCESS device capability (`struct DeviceCap` = bdf + sized MMIO BAR
+ranges; `g_taskDevCap[MAX_TASKS]` in posix.d) gates every op — `op2` scan returns ONLY granted devices (an
+ungranted LKL enumerates nothing), `op0/op1` config + `op3/op4` MMIO → `-EPERM` unless the caller holds a
+cap for that bdf / a phys inside its granted BAR, `op5` virt→phys is the caller's own memory (unrestricted).
+Keyed on the **process leader** (`devCapLeader`) so an LKL's timer + IRQ-poller pthreads (separate tasks)
+share the one grant. `grantDeviceCap` sizes the BARs (write-1s/readback/restore) for exact MMIO gating;
+it is privileged (kernel/device-manager only, never via the ABI). Bootstrap policy in `maybeSpawnLklTest`:
+grant lkl-boot a cap for **NVMe only**. **VERIFIED:** serial shows the grant + `config-read non-granted
+bdf 0 -> -1 (DENIED)`, while the granted NVMe still drives fully (scan + BAR MMIO + IRQ + 37 doorbells).
+- **Follow-ups (not yet):** (a) a **userspace device-manager** that enumerates PCI, mints a cap per device,
+  and **spawns one LKL per peripheral** (the kernel mechanism + a hardcoded bootstrap grant are in; this is
+  the orchestration layer + `cap_grant`-driven policy — [[shell-track-a]]). (b) **Bridge LKL `/dev/*`**:
+  each LKL has its own VFS/`/dev`; reach its nodes via `lkl_sys_open`/`read`/`write`/`ioctl` and surface
+  them as EpinAnonymOS devices so the desktop uses them unchanged. **Verify:** two LKLs each see only their
+  own device; an EpinAnonymOS `/dev/*` backed by an LKL device.
 
 ## L5 — USB HID via LKL (the usable-desktop unlock)
 LKL's `xhci_hcd` + `usbhid` drive the real USB keyboard/mouse → bridge LKL's `/dev/input/event*` to

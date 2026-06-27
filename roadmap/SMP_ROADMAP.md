@@ -50,7 +50,18 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU GDT/TSS + IDT + syscall entry) DONE + verified
+## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a (AP late rendezvous) DONE — verified
+
+**S4.4 (an AP runs a userspace task in parallel) is being built in verified increments** — plan in
+`~/.claude/plans/binary-hugging-tide.md` (Approach B: a separate AP entry path; the BSP's `context.S` stays
+byte-for-byte untouched; AP/BSP converge only at the shared D dispatch under the BKL).
+- **S4.4a (late rendezvous) DONE:** the AP leaves its early worker loop and enters `apKernelLoop` (its execution
+  home for running tasks) when the BSP sets `g_apActivate[idx]` just before `kernelLoop()` — the point where mm
+  + task 0 exist (`kmain.d` `apKernelLoop`/`smpActivateAp`). For S4.4a `apKernelLoop` is a placeholder (per-CPU
+  heartbeat). NOTE the report prints before `DOMAINMGR: loaded 11 domains` because the desktop is a *userspace*
+  process loaded *inside* `kernelLoop` — mm/tasks are nonetheless ready at the pre-`kernelLoop` activation point.
+  **Verified `SMP=4`:** `AP idx 1 entered apKernelLoop (S4.4a: post-desktop rendezvous)`, desktop loads 11
+  domains, 0 faults, S4.1/4.2/4.3 still `3 of 3`; `SMP=1` → `single-core: no AP to activate`, desktop boots.
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:

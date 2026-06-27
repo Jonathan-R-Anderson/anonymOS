@@ -73,7 +73,7 @@ import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager p
 import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
 import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM11: distro/pkgMgr + /linux proof
 import core.domain : domInheritProof;                       // DOMAIN_MANAGER DM9: inheritance least-privilege merge
-import core.kmain : smpWorkReport;                          // SMP_ROADMAP S4 foundation report
+import core.kmain : smpWorkReport, smpActivateAp;           // SMP_ROADMAP S4 foundation report + S4.4a activation
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -3142,6 +3142,7 @@ void d_kernel_main() {
     // desktop compositor presents). No-op on serial-only/headless boots.
     splashRun();
 
+    smpActivateAp();             // SMP_ROADMAP S4.4a: activate an AP into apKernelLoop (desktop is up)
     klog("[dkernel] entering kernel loop\n");
     kernelLoop();
 

@@ -93,6 +93,9 @@ public __gshared ubyte[MAX_CPUS] g_cpuPercpuOk;      // [i] = 1 once AP i verifi
 public __gshared ubyte[MAX_CPUS] g_apCpuStateOk;     // S4.1: [i] = 1 once AP i installed its own GDT/TSS
 public __gshared ubyte[MAX_CPUS] g_apIdtOk;          // S4.2: [i] = 1 once AP i handled a #BP on its own IST
 public __gshared ubyte[MAX_CPUS] g_apSyscallOk;      // S4.3: [i] = 1 once AP i routed `syscall` to its own stub
+public __gshared ubyte[MAX_CPUS] g_apActivate;       // S4.4a: BSP sets [i]=1 to call AP i out of its worker → apKernelLoop
+public __gshared ubyte[MAX_CPUS] g_apKernelLoopEntered;  // S4.4a: AP i sets [i]=1 once it enters apKernelLoop
+public __gshared uint g_apActivatedIdx = 0;          // S4.4a: which AP the BSP activated (for the report)
 
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
@@ -226,11 +229,44 @@ extern(C) void apEntry(limine_smp_info* info) {
                 if ((pc.heartbeat & 0xFFFF) == 0) {                 // periodically touch shared state
                     bklAcquire(&g_bkl); ++g_apWorkTotal; bklRelease(&g_bkl);
                 }
+                // S4.4a: when the BSP activates this AP (after the desktop is up, so mm + tasks exist),
+                // leave the early worker and enter apKernelLoop — the AP's home for running tasks.
+                if (g_apActivate[idx]) apKernelLoop(idx);            // never returns
             }
         }
     }
     __asm("cli", "");                                // fallback park (idx out of range / GS mismatch)
     for (;;) __asm("hlt", "");
+}
+
+// SMP_ROADMAP S4.4: the AP's "kernel loop" — its execution home once activated late (after the
+// desktop is up + mm/tasks exist).  S4.4a placeholder: announce arrival + keep doing per-CPU work.
+// Later phases replace the body with the per-CPU task-run coroutine (pick a task → ring3 → dispatch).
+void apKernelLoop(uint idx) {
+    g_apKernelLoopEntered[idx] = 1;
+    auto pc = &g_percpu[idx];
+    for (;;) ++pc.heartbeat;                          // visible per-CPU progress (no shared state yet)
+}
+
+// SMP_ROADMAP S4.4a: called by the BSP just before kernelLoop (desktop up).  Activate the first
+// online AP into apKernelLoop and report the post-desktop rendezvous — single-threaded on the BSP,
+// so no klog race with the AP.
+public void smpActivateAp() @nogc nothrow {
+    if (g_smpCpuCount <= 1) { klog("[smp] single-core: no AP to activate\n"); return; }
+    uint ap = 0; bool found = false;
+    foreach (i; 0 .. g_smpCpuCount) {
+        if (i >= MAX_CPUS) break;
+        if (cast(uint)i == g_bspCpuIndex) continue;
+        if (g_cpuOnline[i]) { ap = cast(uint)i; found = true; break; }
+    }
+    if (!found) { klog("[smp] no online AP to activate\n"); return; }
+    g_apActivatedIdx = ap;
+    g_apActivate[ap] = 1;                             // release the AP from its worker into apKernelLoop
+    for (uint spin = 0; spin < 200_000_000u && !g_apKernelLoopEntered[ap]; ++spin) __asm("pause", "");
+    klog("[smp] AP idx "); klog_hex(ap);
+    klog(g_apKernelLoopEntered[ap]
+         ? " entered apKernelLoop (S4.4a: post-desktop rendezvous)\n"
+         : " did NOT enter apKernelLoop — TIMEOUT\n");
 }
 
 // Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs

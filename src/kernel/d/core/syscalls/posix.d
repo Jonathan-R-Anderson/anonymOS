@@ -30,7 +30,8 @@ import core.cap : Capability, CAP_INVALID,
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolveWithRights, nsResolveCheck; // Phase 9/IR-P2 + DM2 (deny vs not-found)
-import core.domain : domainControlWrite;                    // DM10.3: /config/domain.action control-write executor
+import core.domain : domainControlWrite,                     // DM10.3: /config/domain.action control-write executor
+                     domainDeviceAllowed, domainSetDevice, domainByName, domainById, DomainId; // DM10.7
 import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device-class enforcement
                        DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;
@@ -2042,6 +2043,9 @@ private int deviceClassGate(const(char)* path) {
     if (cls == 0) return 0;                       // not a brokered device → no gate
     int tid = cast(int)g_current_task_id;
     if (tid < 0 || tid >= MAX_TASKS) return 0;
+    const uint dom = g_tasks[tid].domainObjId;
+    if (dom != 0)                                 // DM10.7: a domain-bound task → the domain's mask
+        return domainDeviceAllowed(dom, cls) ? 0 : negErrno(EACCES);
     const uint idObj = g_tasks[tid].identityObjId;
     if (idObj == 0) return 0;                     // no identity → unrestricted (kernel/desktop)
     if (!identityDeviceAllowed(idObj, cls)) return negErrno(EACCES);
@@ -2068,17 +2072,30 @@ public void domDeviceProof() {
     for (int i = MAX_TASKS - 1; i > 0; --i) if (!g_tasks[i].active) { tid = i; break; }
     if (bank != 0 && tid > 0) {
         const uint savedId  = g_tasks[tid].identityObjId;
+        const uint savedDom = g_tasks[tid].domainObjId;
         const savedCur = g_current_task_id;
         g_tasks[tid].identityObjId = bank;
+        g_tasks[tid].domainObjId   = 0;   // identity-path test: no domain override
         g_current_task_id = cast(typeof(g_current_task_id))tid;
         ok = ok && (deviceClassGate("/dev/input/event0\0".ptr) == 0);            // input allowed
         ok = ok && (deviceClassGate("/dev/dri/card0\0".ptr) == 0);               // gpu allowed
         ok = ok && (deviceClassGate("/dev/video0\0".ptr) == negErrno(EACCES));   // camera DENIED
         ok = ok && (deviceClassGate("/dev/bus/usb/001/002\0".ptr) == negErrno(EACCES)); // usb DENIED
+        // DM10.7: the per-domain mask + a GUI device toggle (devon/devoff → domainSetDevice)
+        const DomainId bdom = domainByName("Banking\0".ptr);
+        if (bdom != 0) {
+            g_tasks[tid].domainObjId = bdom;
+            ok = ok && (deviceClassGate("/dev/video0\0".ptr) == negErrno(EACCES)); // domain mask denies camera
+            domainSetDevice(bdom, DEVCLASS_CAMERA, true);                          // GUI toggles camera ON
+            ok = ok && (deviceClassGate("/dev/video0\0".ptr) == 0);               // now allowed
+            domainSetDevice(bdom, DEVCLASS_CAMERA, false);                        // toggle OFF (restore)
+            ok = ok && (deviceClassGate("/dev/video0\0".ptr) == negErrno(EACCES));
+        } else ok = false;
+        g_tasks[tid].domainObjId = savedDom;
         g_current_task_id = savedCur;
         g_tasks[tid].identityObjId = savedId;
     } else ok = false;
-    klog(ok ? "[domain] device proof PASS (Banking: input+gpu allowed, camera+usb EACCES via deviceClassGate)\n"
+    klog(ok ? "[domain] device proof PASS (per-domain mask: camera EACCES, GUI toggle ON→allowed→OFF→EACCES; input+gpu OK)\n"
             : "[domain] device proof FAIL\n");
 }
 

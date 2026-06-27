@@ -16,7 +16,9 @@
 module core.domain;
 
 import core.objmgr : ObjType, objAlloc, objGet, objRelease, objCountType;
-import core.identity : identityById, identityByName;
+import core.identity : identityById, identityByName, IdentityRec,
+                       DEVCLASS_INPUT, DEVCLASS_GPU, DEVCLASS_CAMERA,
+                       DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;  // DM8/DM10.7 device policy
 import core.namespace : nsAllocRestricted, nsBind, nsBindDeny, nsRootDir,
                         nsResolveCheck, nsRelease;     // DOMAIN_MANAGER DM2
 import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;  // DOMAIN_MANAGER DM2
@@ -58,6 +60,8 @@ struct DomainRec {
     DomainState   state;
     uint          nameLen;
     char[DOM_NAME_MAX] name;      // "System","Personal",… (mirrors the identity name)
+    uint          allowedDevices; // DM8/DM10.7: per-domain §7 device mask (seeded from the identity, GUI-toggled)
+    uint          devInit;        // 0 until allowedDevices is seeded (distinguishes "deny all" from "unset")
     ulong         policyEpoch;    // signed-mutation counter (mirrors IdentityRec)
 }
 
@@ -125,6 +129,9 @@ public DomainId domainCreate(const(char)* name, uint identityObjId, uint templat
         e.templateObjId = templateObjId;
         e.persistMode   = PERSIST_EPHEMERAL;
         e.state         = DomainState.Defined;
+        auto idr0 = identityById(identityObjId);                 // DM10.7: seed the per-domain device mask
+        e.allowedDevices = (idr0 !is null) ? idr0.allowedDevices : 0;
+        e.devInit = 1;
         domCopyName(e, name);
         const uint oid = objAlloc(ObjType.Domain, cast(void*)&e);
         if (oid == 0) { e = DomainRec.init; return 0; }
@@ -263,6 +270,54 @@ public void domainBuildAllNamespaces() {
             domainBuildNamespace(e.objId);
 }
 
+// DM10.7 — per-domain §7 device policy (the GUI Permissions/peripherals tab).  The mask is seeded
+// from the identity at create and then GUI-toggled per domain.  Unseeded ⟹ unrestricted (safety).
+public bool domainDeviceAllowed(uint domObjId, uint devClass) {
+    auto d = domainById(domObjId);
+    if (d is null || devClass == 0) return true;
+    if (!d.devInit) return true;
+    return (d.allowedDevices & devClass) == devClass;
+}
+public uint domainDeviceMask(uint domObjId) { auto d = domainById(domObjId); return d is null ? 0 : d.allowedDevices; }
+public bool domainSetDevice(uint domObjId, uint devClass, bool on) {
+    auto d = domainById(domObjId);
+    if (d is null || devClass == 0) return false;
+    if (on) d.allowedDevices |= devClass; else d.allowedDevices &= ~devClass;
+    d.devInit = 1; ++d.policyEpoch;
+    return true;
+}
+public uint domainDeviceClassByName(const(char)* n) {
+    if (verbEq(n, "input"))  return DEVCLASS_INPUT;
+    if (verbEq(n, "gpu"))    return DEVCLASS_GPU;
+    if (verbEq(n, "camera")) return DEVCLASS_CAMERA;
+    if (verbEq(n, "mic"))    return DEVCLASS_MIC;
+    if (verbEq(n, "audio"))  return DEVCLASS_AUDIO;
+    if (verbEq(n, "usb"))    return DEVCLASS_USB;
+    return 0;
+}
+
+// DM10.7 — runtime filesystem bindings (the GUI Filesystem tab: grant/deny a REAL path to a
+// domain).  An allow binding resolves to the live backing (nsRootDir), so it grants the domain
+// access to that actual filesystem path; deny overrides on longest-prefix.  Idempotent ns build.
+public bool domainFsBindAllow(uint domObjId, const(char)* path, bool rw) {
+    auto d = domainById(domObjId);
+    if (d is null || path is null || path[0] != '/') return false;
+    if (d.nsObjId == 0) domainBuildNamespace(domObjId);
+    const uint rights = rw ? (CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_STAT)
+                           : (CAP_RIGHT_READ | CAP_RIGHT_STAT);
+    const bool ok = nsBind(d.nsObjId, path, nsRootDir(), rights);
+    if (ok) ++d.policyEpoch;
+    return ok;
+}
+public bool domainFsBindDeny(uint domObjId, const(char)* path) {
+    auto d = domainById(domObjId);
+    if (d is null || path is null || path[0] != '/') return false;
+    if (d.nsObjId == 0) domainBuildNamespace(domObjId);
+    const bool ok = nsBindDeny(d.nsObjId, path);
+    if (ok) ++d.policyEpoch;
+    return ok;
+}
+
 // DM10.3 — the control-write EXECUTOR.  Parses a "verb name [arg]" command (the action panels
 // will write this to a control path; the native HOSQ_DOMAIN_* verbs can call it too) and invokes
 // the matching lifecycle/overlay op.  NON-ESCALATING by construction: every verb is an existing
@@ -282,7 +337,7 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     // tokenize into verb / name / arg over whitespace
     char[16]           verb = 0;
     char[DOM_NAME_MAX] name = 0;
-    char[DOM_NAME_MAX] arg  = 0;
+    char[96]           arg  = 0;   // wide enough for a filesystem path
     size_t pos = 0, tok = 0, vi = 0;
     while (pos < n) {
         const char c = buf[pos];
@@ -308,6 +363,13 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     // DM7: package manager verbs — "install <domain> <pkg>" / "uninstall <domain> <pkg>"
     else if (verbEq(verb.ptr, "install"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgInstallByName(name.ptr, arg.ptr) == 0);
     else if (verbEq(verb.ptr, "uninstall")) ok = (name[0] != 0) && (arg[0] != 0) && (pkgRemoveByName(name.ptr, arg.ptr) == 0);
+    // DM10.7: peripheral device toggles — "devon/devoff <domain> <gpu|audio|camera|mic|usb|input>"
+    else if (verbEq(verb.ptr, "devon"))     ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), true);
+    else if (verbEq(verb.ptr, "devoff"))    ok = (id != 0) && domainSetDevice(id, domainDeviceClassByName(arg.ptr), false);
+    // DM10.7: filesystem path access — "fsro/fsrw/fsdeny <domain> <path>" (real backing paths)
+    else if (verbEq(verb.ptr, "fsro"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, false);
+    else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
+    else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;
@@ -335,7 +397,13 @@ public void domainControlProof() {
     ok = ok && (domainByName("DevSandboxCl\0".ptr) == 0);                     // cleanup leaves the registry clean
     ok = ok && !domainControlWrite("frobnicate DevSandbox".ptr, 21);          // unknown verb → denied
     ok = ok && !domainControlWrite("start Nonexistent".ptr, 17);              // unknown domain → denied
-    klog(ok ? "[domain] control proof PASS (ping/start/pause/resume/snapshot/stop/clone via parse+exec; unknown verb+domain denied)\n"
+    // DM10.7: device toggle + filesystem-path binding via the control path
+    const uint devDom = domainByName("Development\0".ptr);
+    ok = ok && domainControlWrite("devoff Development gpu".ptr, 22) && !domainDeviceAllowed(devDom, DEVCLASS_GPU);
+    ok = ok && domainControlWrite("devon Development gpu".ptr, 21)  &&  domainDeviceAllowed(devDom, DEVCLASS_GPU);
+    ok = ok && domainControlWrite("fsrw Development /host/projects".ptr, 31);     // grant a real path rw
+    ok = ok && domainControlWrite("fsdeny Development /host/projects/key".ptr, 37); // deny a sub-path
+    klog(ok ? "[domain] control proof PASS (lifecycle/clone + devon/devoff + fsrw/fsdeny via parse+exec; unknown denied)\n"
             : "[domain] control proof FAIL\n");
 }
 

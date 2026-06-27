@@ -311,8 +311,15 @@ int main(int argc, char **argv)
         lkl_sys_write(fd, "hello-from-L2\n", 14);
         lkl_sys_close(fd);
     }
-    lkl_sys_halt();
-    lkl_cleanup();
-    fprintf(stderr, ">>> LKL halted cleanly.\n");
-    return 0;
+    /* L5: do NOT halt — the USB enumeration runs ASYNCHRONOUSLY in the kernel's hub work-thread.
+     * Halting here rebooted the kernel mid-enumeration ("reboot: Restarting system" at ~t=3s),
+     * before usbhid bound + /dev/input/event* appeared — THAT was the "stall".  Keep the LKL
+     * resident so the keyboard/mouse fully enumerate; the input bridge (read /dev/input/event*
+     * -> EpinAnonymOS input rings) lands here next. */
+    fprintf(stderr, ">>> LKL staying resident for USB enumeration + input...\n");
+    for (;;) {
+        struct timespec ts = { .tv_sec = 1, .tv_nsec = 0 };
+        nanosleep(&ts, NULL);
+    }
+    return 0;   /* unreached */
 }

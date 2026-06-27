@@ -2666,7 +2666,7 @@ public int sys_open(const(char)* path, int flags) {
             const(char)* osub; size_t osubLen; int ofield;
             const int okind = objfsParseDeep(path, osub, osubLen, ofield);
             if (okind > 0 && osub is null)        g_fdTable[fd].fileSize = SYNTHDIR_OBJ_BASE + okind;
-            else if (okind > 0 && ofield == 0)    g_fdTable[fd].fileSize = SYNTHDIR_OBJ_ENTRY;
+            else if (okind > 0 && ofield == 0)    g_fdTable[fd].fileSize = SYNTHDIR_OBJ_ENTRY + cast(ulong)okind; // DM2.4: encode kind
         }
         // F3: tag /system/current so getdents64 enumerates the base components.
         {
@@ -7476,13 +7476,26 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         return cast(long)written;
     }
     // F5: /objects/<kind>/<obj> enumeration — the object's field files.
-    if (f.fileSize == SYNTHDIR_OBJ_ENTRY) {
-        static immutable string[3] fields = ["meta", "capabilities", "relationships"];
+    // DM2.4: the tag now encodes the kind (SYNTHDIR_OBJ_ENTRY + kind) so domains (kind 5 =
+    // OBJFS_DOMAINS) also list a "filesystem" field (the restricted-view RuntimeView).
+    if (f.fileSize >= SYNTHDIR_OBJ_ENTRY && f.fileSize < SYNTHDIR_OBJ_ENTRY + 16) {
+        const ulong okind = f.fileSize - SYNTHDIR_OBJ_ENTRY;
+        static immutable string[3] baseFields = ["meta", "capabilities", "relationships"];
         ulong logical = 2;
-        foreach (nm; fields) {
+        foreach (nm; baseFields) {
             if (f.offset <= logical) {
                 if (!writeDirent64(buf, count, &written, logical + 61440,
                                    cast(long)logical + 1, DT_REG, nm.ptr, nm.length))
+                    return cast(long)written;
+                f.offset = logical + 1;
+            }
+            ++logical;
+        }
+        if (okind == 5) {   // OBJFS_DOMAINS → add the RuntimeView field
+            if (f.offset <= logical) {
+                static immutable string fsName = "filesystem";
+                if (!writeDirent64(buf, count, &written, logical + 61440,
+                                   cast(long)logical + 1, DT_REG, fsName.ptr, fsName.length))
                     return cast(long)written;
                 f.offset = logical + 1;
             }

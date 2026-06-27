@@ -4,7 +4,7 @@ module core.kernel_main;
 
 import core.task;
 import core.hoscall : hosQuery, HOS_SYS_QUERY, HOSQ_DEV_READ, HOSQ_SPAWN, HOSQ_WAIT;   // Track B0 / Z4a–b native ABI
-import core.hoscall : configDomainsDump, domObjViewDump;   // DOMAIN_MANAGER DM0: /config + /objects/domains boot proofs
+import core.hoscall : configDomainsDump, domObjViewDump, domFsViewDump;   // DOMAIN_MANAGER DM0/DM2.4 boot proofs
 import core.addrspace;
 import core.elf_loader;
 import core.io;
@@ -2888,6 +2888,7 @@ void d_kernel_main() {
     domObjViewDump();            // /objects/domains/<name>/{meta,relationships,capabilities}
     domReadPathProof();          // end-to-end /objects/domains read path (parse+render)
     domFsManifestProof();        // DOMAIN_MANAGER DM2.3: DevSandbox's ns reflects its manifest filesystemAccess
+    domFsViewDump();             // DOMAIN_MANAGER DM2.4: dump DevSandbox's RuntimeView (/objects/domains/<name>/filesystem)
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

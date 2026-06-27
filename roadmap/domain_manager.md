@@ -575,11 +575,20 @@ path\0) records per domain; `configboot.d` `TAG_FS_POLICY` builds a fresh `nsAll
 domain (overriding the DM2.2 default) and `TAG_FS_BIND` does `nsBind`(ro/rw)/`nsBindDeny`. Verified: host
 `check` OK + the 512-byte TLV carries the fs paths; in-VM `[configboot] domain DevSandbox fs policy →
 restricted ns` + `[domain] fs manifest proof PASS: DevSandbox ns from manifest (Home+Projects rw,
-/System/Templates ro, secrets denied, unbound deny-by-default)`. *Remaining DM2:* DM2.4
-(`Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET` — inspection), and the live domain-bound enforcement test
-(a real task with `Task.namespaceObjId` = the domain ns — the DM2/DM3 boundary). Deferred fields:
-`mounts`/`sharedFolders`/`tempFolders`/`packageWritable`/`execPaths` (accepted by the schema, compiled in
-later milestones).
+/System/Templates ro, secrets denied, unbound deny-by-default)`.
+
+**DM2.4 (RuntimeView inspection) DONE + verified.** A domain object gained a `filesystem` field —
+`cat /objects/domains/<name>/filesystem` renders the **RuntimeView**: the resolved restricted view
+(`defaultPolicy=deny`, then `ro`/`rw`/`deny` per binding). `core/namespace.d` `nsBindingAt` (enumerate a
+ns's bindings) + `nsHasRootMount`; `core/hoscall.d` `OBJF_FS` field + `objfsFieldId("filesystem")` + the
+renderer in `objfsField`; `posix.d` the `/objects/<kind>/<obj>` getdents tag now encodes the kind
+(`SYNTHDIR_OBJ_ENTRY + okind`) so domains (kind 5) also LIST `filesystem` (others unchanged). Verified:
+`[domain] /objects/domains/DevSandbox/filesystem (DM2.4 RuntimeView)` shows exactly the manifest policy. The
+native `HOSQ_DOMAIN_FS_GET` verb is deferred to its DM10 GUI consumer (the data is already cat-able Linux-side
+via this field, like DM0.b). **★ DM2 is COMPLETE** — the brief's central requirement (capability-mediated,
+default-deny restricted filesystem visibility) is declarative end-to-end + enforced + inspectable. The live
+"a real task gets EACCES" test is **DM3** (it needs `Task.namespaceObjId` = the domain ns). Deferred fields:
+`mounts`/`sharedFolders`/`tempFolders`/`packageWritable`/`execPaths` (schema-accepted, compiled in later milestones).
 
 - `core/namespace.d`: add a `denied` flag to `NsBinding`; make `nsResolveWithRights`
   (`namespace.d:174`) return EACCES on a longest-prefix match to a denied binding even when

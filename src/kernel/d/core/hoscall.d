@@ -21,7 +21,8 @@ import core.domain   : g_domains, DomainState, domainStateName, domainCount,
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
-import core.namespace: g_namespaces, nsClone, nsRecByObj;   // Z4c.3 / Z12.1
+import core.namespace: g_namespaces, nsClone, nsRecByObj,
+                       nsBindingAt, nsHasRootMount;          // Z4c.3 / Z12.1 + DOMAIN_MANAGER DM2.4
 import core.io       : klog, klog_hex;           // Z4b.3/Z4c.3 verb tracing
 import core.servicemgr : g_svcs;
 import core.task     : g_tasks, MAX_TASKS;
@@ -295,7 +296,7 @@ public int objfsEnum(int kind, int logical, char* nameBuf, size_t cap) {
 // ── F5: capabilities + relationships as first-class FS fields ─────────────────
 // Each object is a directory of fields: `meta` (F1 metadata), `capabilities` (the
 // rights it holds, decoded), `relationships` (its graph edges — namespace/owner/…).
-enum int OBJF_META = 1, OBJF_CAPS = 2, OBJF_RELS = 3;
+enum int OBJF_META = 1, OBJF_CAPS = 2, OBJF_RELS = 3, OBJF_FS = 4;  // OBJF_FS: DOMAIN_MANAGER DM2.4 RuntimeView
 
 private immutable string[19] g_capBitNames = [
     "read", "write", "close", "stat", "ioctl", "mmap", "dup", "pass", "retype", "call",
@@ -308,6 +309,7 @@ public int objfsFieldId(const(char)* name, size_t len) {
     if (nameEq(name, len, "meta"))          return OBJF_META;
     if (nameEq(name, len, "capabilities"))  return OBJF_CAPS;
     if (nameEq(name, len, "relationships")) return OBJF_RELS;
+    if (nameEq(name, len, "filesystem"))    return OBJF_FS;   // DOMAIN_MANAGER DM2.4
     return 0;
 }
 
@@ -394,6 +396,25 @@ public long objfsField(int kind, const(char)* objName, size_t objLen, int field,
                         lit(b, " (inherited from identity "); foreach (i; 0 .. idr.nameLen) put(b, idr.name[i]); lit(b, ")\n");
                         capDecode(b, idr.rightsCeiling);
                     } else { lit(b, " (no identity)\n"); capDecode(b, 0); }
+                } else if (field == OBJF_FS) {   // DM2.4: the resolved RESTRICTED filesystem view (RuntimeView)
+                    lit(b, "# restricted filesystem view of domain "); foreach (i; 0 .. e.nameLen) put(b, e.name[i]); put(b, '\n');
+                    if (e.nsObjId == 0) {
+                        lit(b, "namespace=none (no restricted view built yet)\n");
+                    } else {
+                        lit(b, "namespace=");     num(b, e.nsObjId);
+                        lit(b, "\ndefaultPolicy="); lit(b, nsHasRootMount(e.nsObjId) ? "allow (\"/\" mounted)" : "deny");
+                        lit(b, "\n# mode  path  (resolved bindings; longest-prefix wins, deny overrides)\n");
+                        int idx = 0;
+                        const(char)* p; uint pl; uint rr; bool dn;
+                        while (nsBindingAt(e.nsObjId, idx, p, pl, rr, dn)) {
+                            if (dn)                          lit(b, "deny  ");
+                            else if (rr & CAP_RIGHT_WRITE)   lit(b, "rw    ");
+                            else                             lit(b, "ro    ");
+                            foreach (i; 0 .. pl) put(b, p[i]);
+                            put(b, '\n');
+                            ++idx;
+                        }
+                    }
                 } else { // relationships — the domain's object-graph edges
                     lit(b, "domain=");      foreach (i; 0 .. e.nameLen) put(b, e.name[i]);
                     lit(b, "\nidentity=");  num(b, e.identityObjId);
@@ -644,6 +665,21 @@ public void domObjViewDump() {
     klog_hex(cast(ulong)(m > 0 ? m : 0)); klog("B rels=");
     klog_hex(cast(ulong)(r > 0 ? r : 0)); klog("B caps=");
     klog_hex(cast(ulong)(c > 0 ? c : 0)); klog("B\n");
+}
+
+// DOMAIN_MANAGER DM2.4: one-shot dump of a manifest domain's RuntimeView (the resolved
+// restricted-filesystem view) — proves `cat /objects/domains/DevSandbox/filesystem` works.
+__gshared bool g_domFsViewDumped = false;
+public void domFsViewDump() {
+    if (g_domFsViewDumped) return;
+    g_domFsViewDumped = true;
+    const long n = objfsField(OBJFS_DOMAINS, "DevSandbox\0".ptr, 10, OBJF_FS,
+                              g_domDumpBuf.ptr, g_domDumpBuf.length - 1);
+    if (n > 0) {
+        g_domDumpBuf[cast(size_t)n] = 0;
+        klog("[domain] /objects/domains/DevSandbox/filesystem (DM2.4 RuntimeView):\n");
+        klog(g_domDumpBuf.ptr);
+    } else klog("[domain] RuntimeView render: no DevSandbox fs view\n");
 }
 
 // ── /system immutable base views (OBJECT_FILESYSTEM_ROADMAP F3) ───────────────

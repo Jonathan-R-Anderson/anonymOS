@@ -282,6 +282,30 @@ public uint nsValidateBindings() {
     return dangling;
 }
 
+// DOMAIN_MANAGER DM2.4: enumerate a namespace's in-use bindings (for the RuntimeView render).
+// Returns false once `idx` is past the last in-use binding.  `denied` marks a deny binding.
+public bool nsBindingAt(uint nsObjId, int idx, out const(char)* path, out uint pathLen,
+                        out uint rights, out bool denied) {
+    auto ns = nsRecByObj(nsObjId);
+    if (ns is null) return false;
+    int n = 0;
+    foreach (ref b; ns.binds) {
+        if (!b.inUse) continue;
+        if (n == idx) { path = b.path.ptr; pathLen = b.pathLen; rights = b.rights; denied = b.denied; return true; }
+        ++n;
+    }
+    return false;
+}
+
+// True if this namespace has the wide-open "/" mount (i.e. NOT deny-by-default).
+public bool nsHasRootMount(uint nsObjId) {
+    auto ns = nsRecByObj(nsObjId);
+    if (ns is null) return false;
+    foreach (ref b; ns.binds)
+        if (b.inUse && !b.denied && b.pathLen == 1 && b.path[0] == '/') return true;
+    return false;
+}
+
 // The object bound at "/" in this namespace (its root Directory).
 public uint nsRoot(uint nsObjId) {
     auto ns = nsRecByObj(nsObjId);

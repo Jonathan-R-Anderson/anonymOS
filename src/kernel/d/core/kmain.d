@@ -3,6 +3,7 @@ module core.kmain;
 import arch.x86_64.limine;
 import arch.x86_64.bootstrap;
 import arch.x86_64.arch;
+import arch.x86_64.gdt : loadGdt, loadTr, prepareApCpuState, apGdtPtr;  // SMP S4.1 per-CPU GDT/TSS
 import core.globals;
 import core.io;
 import ldc.attributes;
@@ -88,6 +89,7 @@ public __gshared uint  g_smpCpuCount = 1;            // total CPUs (incl. BSP); 
 public __gshared uint  g_bspCpuIndex = 0;            // which per-CPU slot is the BSP
 public __gshared ubyte[MAX_CPUS] g_cpuOnline;        // [i] = 1 once AP i reports in (i = per-CPU index)
 public __gshared ubyte[MAX_CPUS] g_cpuPercpuOk;      // [i] = 1 once AP i verified its GS-addressed area
+public __gshared ubyte[MAX_CPUS] g_apCpuStateOk;     // S4.1: [i] = 1 once AP i installed its own GDT/TSS
 
 extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
 
@@ -120,6 +122,12 @@ private void* readGsBase() {
     ulong val;
     asm @nogc nothrow { mov RCX, 0xC0000101; rdmsr; shl RDX, 32; or RAX, RDX; mov val, RAX; }
     return cast(void*)val;
+}
+// S4.1: read back the Task Register selector (str) to confirm TR points at the loaded TSS.
+private ushort readTr() {
+    ushort sel = void;
+    asm @nogc nothrow { str sel; }
+    return sel;
 }
 
 // S2 accessors (the migration shim).  BSP-only until S3 makes the per-CPU field authoritative.
@@ -162,6 +170,20 @@ extern(C) void apEntry(limine_smp_info* info) {
             g_cpuPercpuOk[idx] = 1;                  // GS-addressed per-CPU area verified
         g_percpu[idx].alive = true;
         g_cpuOnline[idx] = 1;
+        // S4.1: install THIS CPU's own GDT + TSS (its own IST/kernel stack), prepared by the BSP.
+        // This is the prerequisite for an AP ever taking a syscall/IRQ/fault — the CPU loads rsp0/
+        // ist1 from its OWN TSS on a ring3→ring0 transition, not the BSP's single global stack.
+        // loadGdt reloads every segment selector (incl. %gs ← kdata, base 0), so re-establish the
+        // per-CPU GS base immediately after, then re-verify it still round-trips.
+        auto gp = apGdtPtr(idx);
+        if (gp !is null) {
+            loadGdt(gp);
+            loadTr(0x28);                            // TR → this AP's own TSS (GDT index 5)
+            setGsBase(&g_percpu[idx]);               // re-establish per-CPU GS after the segment reload
+            auto self2 = cast(PerCpu*)readGsBase();
+            if (self2 is &g_percpu[idx] && readTr() == 0x28)
+                g_apCpuStateOk[idx] = 1;             // own GDT/TSS installed + GS survived the reload
+        }
         bklProofRun();                               // S3: contend on the BKL with the BSP + other APs
         g_cpuBklDone[idx] = 1;
         // S4 foundation: instead of parking, run SUSTAINED parallel kernel work via this CPU's
@@ -205,6 +227,14 @@ void smpBringup() {
         g_percpu[g_bspCpuIndex].currentTask = g_current_task_id;   // shim: mirror the global (0 this early)
     }
 
+    // S4.1: BSP builds each AP's own GDT + TSS + IST stack SINGLE-THREADED, before releasing them
+    // (no allocator/data race).  The AP just loadGdt+loadTr its own copy on entry.
+    foreach (i; 0 .. resp.cpu_count) {
+        if (i >= MAX_CPUS) break;
+        if (cast(uint)i == g_bspCpuIndex) continue;   // BSP keeps init_gdt's tssArea
+        prepareApCpuState(cast(uint)i);
+    }
+
     uint apCount = 0;
     foreach (i; 0 .. resp.cpu_count) {
         if (i >= MAX_CPUS) break;
@@ -244,6 +274,15 @@ void smpBringup() {
     klog("[smp] BKL: counter="); klog_hex(g_bklCounter); klog(" expected="); klog_hex(bklExpect);
     klog((g_bklCounter == bklExpect) ? " PASS (cross-core mutual exclusion across all cores)\n"
                                      : " FAIL (lost updates → broken lock / race)\n");
+
+    // S4.1: every AP loaded its OWN GDT+TSS (survived loadGdt's segment reload, TR→its own TSS, GS
+    // re-established) — the per-CPU kernel-entry stacks an AP needs to take a syscall/IRQ are in place.
+    uint cpuStateOk = 0;
+    foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_apCpuStateOk[i]) ++cpuStateOk;
+    klog("[smp] "); klog_hex(cpuStateOk); klog(" of "); klog_hex(apCount);
+    klog((cpuStateOk == apCount)
+         ? " APs installed their own per-CPU GDT/TSS (S4.1: ready for kernel entry)\n"
+         : " APs installed per-CPU GDT/TSS — MISMATCH\n");
 }
 
 // SMP_ROADMAP S4 foundation report: read the AP work counters AFTER the desktop is up, proving the

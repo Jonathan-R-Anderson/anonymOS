@@ -162,6 +162,74 @@ void x64_set_tss_stacks(ulong rsp0, ulong ist1) {
     tssArea.ist1 = ist1;
 }
 
+// ------------------------------------------------------------------
+// SMP_ROADMAP S4.1: per-CPU GDT + TSS + IST/kernel stack for the APs.
+//
+// The kernel-entry path (context.S) uses ONE global TSS (`tssArea`) — its rsp0/ist1
+// point at a single shared kernel stack.  For an AP to ever take a syscall/IRQ/fault it
+// needs its OWN TSS (so the CPU loads the AP's own kernel stack on the ring3→ring0
+// transition, not the BSP's), and a TSS needs its own GDT slot (ltr's busy bit forbids two
+// CPUs sharing one TSS descriptor).  So each AP gets its own GDT (a copy of the BSP's known-
+// good code/data descriptors + its own TSS descriptor) + its own TSS + its own IST stack.
+//
+// The BSP prepares all of this single-threaded BEFORE releasing the APs (so there is no
+// allocator/data race); each AP then just loadGdt+loadTr its own copy.
+// ------------------------------------------------------------------
+enum uint MAX_SMP_CPUS = 256;       // per-CPU descriptor/stack pool ceiling (matches kmain MAX_CPUS)
+align(16) __gshared gdt_entry[7][MAX_SMP_CPUS]  g_apGdt;
+align(16) __gshared tss[MAX_SMP_CPUS]           g_apTss;
+align(16) __gshared gdt_ptr[MAX_SMP_CPUS]       g_apGdtPtr;
+align(16) __gshared ubyte[0x2000][MAX_SMP_CPUS] g_apIstStack;   // 8 KiB rsp0/ist1 kernel stack per AP
+
+private void apGdtSetGate(uint idx, int num, ulong base, ulong limit, ubyte access, ubyte gran) {
+    g_apGdt[idx][num].base_low    = cast(ushort)(base & 0xFFFF);
+    g_apGdt[idx][num].base_middle = cast(ubyte)((base >> 16) & 0xFF);
+    g_apGdt[idx][num].base_high   = cast(ubyte)((base >> 24) & 0xFF);
+    g_apGdt[idx][num].limit_low   = cast(ushort)(limit & 0xFFFF);
+    g_apGdt[idx][num].granularity = cast(ubyte)((limit >> 16) & 0x0F);
+    g_apGdt[idx][num].granularity |= cast(ubyte)(gran & 0xF0);
+    g_apGdt[idx][num].access      = access;
+}
+
+private void apTssSetGate(uint idx, int num, ulong base, ulong limit) {
+    auto td = cast(tss_entry*)&g_apGdt[idx][num];
+    td.limit_low   = cast(ushort)(limit & 0xFFFF);
+    td.base_low    = cast(ushort)(base & 0xFFFF);
+    td.base_middle = cast(ubyte)((base >> 16) & 0xFF);
+    td.access      = 0x89;                       // present, 64-bit TSS (available)
+    td.granularity = 0x00;
+    td.base_high   = cast(ubyte)((base >> 24) & 0xFF);
+    td.base_upper  = cast(uint)((base >> 32) & 0xFFFFFFFF);
+    td.reserved    = 0;
+}
+
+// BSP-side: fully build AP `idx`'s GDT + TSS.  Call before releasing the AP.
+void prepareApCpuState(uint idx) {
+    if (idx >= MAX_SMP_CPUS) return;
+    // Build the 5 standard descriptors from canonical VALUES (NOT by copying the BSP's gdt[],
+    // which init_gdt has not populated yet at smpBringup time — _start runs smpBringup before
+    // bootstrap_kernel→init_gdt, so a copy would hand the AP a null code segment → triple fault).
+    // These are exactly init_gdt's gates.
+    apGdtSetGate(idx, 0, 0, 0,           0x00, 0x00);   // NULL
+    apGdtSetGate(idx, 1, 0, 0xFFFFFFFF,  0x9A, 0xAF);   // kernel code (64-bit)
+    apGdtSetGate(idx, 2, 0, 0xFFFFFFFF,  0x92, 0xCF);   // kernel data
+    apGdtSetGate(idx, 3, 0, 0xFFFFFFFF,  0xF2, 0xCF);   // user data
+    apGdtSetGate(idx, 4, 0, 0xFFFFFFFF,  0xFA, 0xAF);   // user code
+    // This AP's own kernel stack top → rsp0 (ring0 entry) + ist1 (the entry IST).
+    ulong ktop = cast(ulong)&g_apIstStack[idx][0] + g_apIstStack[idx].length;
+    ubyte* traw = cast(ubyte*)&g_apTss[idx];
+    for (size_t i = 0; i < tss.sizeof; i++) traw[i] = 0;
+    g_apTss[idx].rsp0       = ktop;
+    g_apTss[idx].ist1       = ktop;
+    g_apTss[idx].iomap_base = cast(ushort)tss.sizeof;
+    // TSS descriptor at index 5 (selector 0x28) → this AP's TSS (16 bytes spanning slots 5,6).
+    apTssSetGate(idx, 5, cast(ulong)&g_apTss[idx], tss.sizeof - 1);
+    g_apGdtPtr[idx].limit = cast(ushort)(g_apGdt[idx].sizeof - 1);
+    g_apGdtPtr[idx].base  = cast(ulong)g_apGdt[idx].ptr;
+}
+
+gdt_ptr* apGdtPtr(uint idx) { return (idx < MAX_SMP_CPUS) ? &g_apGdtPtr[idx] : null; }
+
 extern(C) void x64_set_tss_stacks_default()
 {
     ulong kstack = 0xffffffff81b4c2a0UL;

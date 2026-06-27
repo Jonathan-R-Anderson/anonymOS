@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 + S2 + S3 (lock) + S4 foundation (sustained parallel AP work) DONE + verified
+## Status (2026-06-27): S0 + S1 + S2 + S3 (lock) + S4 foundation + S4.1 (per-CPU GDT/TSS) DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -94,13 +94,28 @@ brings every AP online**, with no hardcoded count:
   sustained parallel kernel work`** (each AP did ~170 M lock-free iterations + the shared total is consistent
   with no lost updates — all while the desktop's 11 domains loaded), 0 faults, desktop boots. `SMP=1` →
   `counter=0x186a0` PASS + `single-core: no AP workers`, desktop boots — **degrades gracefully.**
+- **S4.1 (per-CPU GDT + TSS + IST/kernel stack):** the kernel-entry path (`context.S`) uses ONE global TSS
+  (`tssArea`, one shared kernel stack) + one `curUserSpaceState` + one IST — so two CPUs entering the kernel at
+  once would corrupt them *before* any BKL could help. The unavoidable prerequisite is per-CPU entry state.
+  S4.1 lands the first + load-bearing piece: each AP gets its **own GDT** (canonical kcode/kdata/ucode/udata +
+  its own TSS descriptor — `ltr`'s busy bit forbids two CPUs sharing one) + **own TSS** (own `rsp0`/`ist1`
+  kernel stack) + **own 8 KiB IST stack** (`arch/x86_64/gdt.d`: `prepareApCpuState`/`g_apGdt`/`g_apTss`). The
+  **BSP builds them single-threaded before releasing the APs** (no allocator race); each AP `loadGdt`+`loadTr`s
+  its own copy on entry. ★ TRAP 1: `loadGdt` reloads every segment selector incl. `%gs ← kdata (base 0)`,
+  wiping the S2 GS base — so the AP re-runs `setGsBase` + re-verifies right after. ★ TRAP 2: `_start` runs
+  `smpBringup` *before* `bootstrap_kernel→init_gdt`, so the BSP `gdt[]` is still zero then — building the AP GDT
+  by *copying* it handed the AP a null code segment → `loadGdt`'s `lretq $0x08` triple-faulted (with
+  `-no-reboot`, that froze the VM after "CPUs discovered"). Fixed by building from canonical descriptor values.
+  **Verified `SMP=4`:** `3 of 3 APs installed their own per-CPU GDT/TSS (S4.1: ready for kernel entry)`, `str`
+  confirms `TR==0x28`, the GS-driven workers keep running (~170 M iters → GS survived the reload), 0 faults,
+  desktop boots; `SMP=1` unaffected.
 
-**Next (full S4 + the BKL wire-in):** turn the AP workers into a real **per-CPU scheduler** — make the per-CPU
-`currentTask` authoritative behind **swapgs**, give each AP a per-CPU GDT/IDT/TSS + a scheduler entry so it
-pulls a task and `iret`s to userspace, and take the proven BKL at every kernel entry/exit. That is the point an
-AP runs a *real task* (the desktop on CPU0, an LKL on CPU1) in parallel — the bare-metal-vision payoff. The
-parallel-execution + lock primitives it needs are now proven; what remains is the per-CPU scheduler + the
-careful entry-prologue rewrite.
+**Next (S4.2 + the rest of full S4):** the descriptor foundation is in place; remaining is per-CPU **IDT** + per-
+CPU **`curUserSpaceState`** + a per-CPU **syscall entry** (each AP's own `LSTAR` → a `swapgs`+BKL-aware stub) +
+the **AP scheduler** picking a task + `iret`-to-ring3, plus taking the proven BKL on the **BSP's** entry too (so
+the two CPUs are mutually excluded in the kernel). That is the point an AP runs a *real task* (the desktop on
+CPU0, an LKL on CPU1) in parallel — the bare-metal-vision payoff. The parallel-execution, lock, and per-CPU
+descriptor primitives it needs are now all proven.
 
 ## Phases
 

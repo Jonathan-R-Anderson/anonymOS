@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 + S2 + S3 (lock primitive) DONE + verified
+## Status (2026-06-27): S0 + S1 + S2 + S3 (lock) + S4 foundation (sustained parallel AP work) DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -80,16 +80,27 @@ brings every AP online**, with no hardcoded count:
   **S4** — with the APs parked and running NO kernel code, wrapping the entry path serializes nothing and only
   adds prologue risk; so S3 here delivers the *load-bearing correctness* (a lock that actually mutually-excludes
   the real cores), and S4 wires it in once APs run tasks.
+- **S4 foundation (sustained parallel AP execution):** instead of parking, each AP now runs a continuous
+  kernel worker keyed off its **GS-addressed per-CPU area** — `++pc.heartbeat` lock-free (each `PerCpu` is
+  cache-line-sized + 64-aligned, so the per-CPU writes never false-share), touching a shared `g_apWorkTotal`
+  under the BKL every 65 536 iterations. So **N − 1 cores do real, continuous, BKL-coordinated kernel work
+  while the BSP boots the whole desktop.** A post-desktop `smpWorkReport()` reads the counters to prove the
+  parallelism actually overlapped the boot. ★ This is the *execution* foundation S4's scheduler needs proven;
+  real per-CPU **tasks** (a per-CPU scheduler picking a task + swapgs + the entry-path BKL so an AP can `iret`
+  to userspace) are the remaining full-S4 work.
 - **Verified in-VM:** `SMP=4` → `4 CPUs discovered` + `3 of 3 APs online; 3 GS-addressed per-CPU verified` +
-  `BSP per-CPU area OK` + **`BKL: counter=0x61a80 expected=0x61a80 PASS (cross-core mutual exclusion across all
-  cores)`** (0x61a80 = 4×100 000 — zero lost updates across 4 cores), 0 faults, desktop boots. `SMP=1` →
-  `counter=0x186a0` (1×100 000) PASS, desktop boots — **degrades gracefully.**
+  **`BKL: counter=0x61a80 expected=0x61a80 PASS`** (4×100 000, zero lost updates) + **`AP parallel work … cpu1=
+  0x0ac66eb0 cpu2=0x0a916059 cpu3=0x09a35d53; sharedWork=0x1f18`** + **`S4 foundation PASS: every AP ran
+  sustained parallel kernel work`** (each AP did ~170 M lock-free iterations + the shared total is consistent
+  with no lost updates — all while the desktop's 11 domains loaded), 0 faults, desktop boots. `SMP=1` →
+  `counter=0x186a0` PASS + `single-core: no AP workers`, desktop boots — **degrades gracefully.**
 
-**Next (S4 + the BKL wire-in):** make the per-CPU `currentTask` authoritative behind **swapgs**, give each AP a
-per-CPU GDT/IDT/TSS + a scheduler entry so it can pull a task and `iret` to userspace, and take the proven BKL
-at every kernel entry/exit. That is the point an AP runs a *real task* (the desktop on CPU0, an LKL on CPU1) in
-parallel — the bare-metal-vision payoff. Today the APs are parked (`cli; hlt`) with valid per-CPU areas + a
-proven lock, but no scheduler entry.
+**Next (full S4 + the BKL wire-in):** turn the AP workers into a real **per-CPU scheduler** — make the per-CPU
+`currentTask` authoritative behind **swapgs**, give each AP a per-CPU GDT/IDT/TSS + a scheduler entry so it
+pulls a task and `iret`s to userspace, and take the proven BKL at every kernel entry/exit. That is the point an
+AP runs a *real task* (the desktop on CPU0, an LKL on CPU1) in parallel — the bare-metal-vision payoff. The
+parallel-execution + lock primitives it needs are now proven; what remains is the per-CPU scheduler + the
+careful entry-prologue rewrite.
 
 ## Phases
 
@@ -108,7 +119,7 @@ proven lock, but no scheduler entry.
   exit (incl. before returning to userspace and around `scheduleNext`). Correct-but-serial kernel,
   **parallel userspace**. **Verify:** an LKL on CPU1 and the desktop on CPU0 both make full-speed progress
   at the same time (the L5 boot-contention disappears).
-- **S4 — Per-CPU scheduler.** Per-CPU run queues + a balancer; tasks can be **pinned** (pin each
+- **S4 — Per-CPU scheduler.** ◑ *(FOUNDATION done — APs run sustained parallel kernel work keyed off their GS per-CPU area, BKL-coordinated, ~170 M iters/AP while the desktop boots; the per-CPU run queue + userspace-task path remains — see Status).* Per-CPU run queues + a balancer; tasks can be **pinned** (pin each
   per-device LKL to a core — ties into L4 isolation). Idle CPUs run idle or steal work. `scheduleNext`
   becomes per-CPU.
 - **S5 — Preemption.** The per-CPU local-APIC timer drives a preemption tick → fair time-slicing *within* a

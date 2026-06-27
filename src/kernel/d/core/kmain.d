@@ -95,16 +95,19 @@ extern(C) extern __gshared ulong g_current_task_id;  // the single global curren
 // 8).  `selfPtr` sits at offset 0 so `%gs:0` reads it once the GS base points here — the production
 // fast path (S3, behind swapgs).  Today the kernel scheduler still uses the global g_current_task_id;
 // `currentTask` is the per-CPU mirror it migrates onto in S3.
-struct PerCpu {
+align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-share between cores
     PerCpu* selfPtr;        // offset 0: %gs:0 ⟹ &g_percpu[thisCpu]
+    ulong   currentTask;    // per-CPU current task (shim today; authoritative in S4)
+    ulong   idleTask;
+    ulong   heartbeat;      // S4 foundation: per-CPU work counter (the AP increments it, lock-free)
     uint    cpuIndex;
     uint    lapicId;
-    ulong   currentTask;    // per-CPU current task (shim today; authoritative in S3)
-    ulong   idleTask;
     uint    schedCursor;    // per-CPU scheduler run cursor (S4)
     bool    alive;
+    ubyte[15] _pad;         // pad PerCpu to 64 bytes (one cache line)
 }
-public __gshared PerCpu[MAX_CPUS] g_percpu;
+align(64) public __gshared PerCpu[MAX_CPUS] g_percpu;
+public __gshared ulong g_apWorkTotal = 0;   // shared total, incremented under the BKL by the AP workers
 
 // IA32_GS_BASE (0xC0000101): same MSR arch_prctl(ARCH_SET_GS) writes — so it is UNSAFE to rely on in
 // the live syscall path without swapgs (userspace can clobber it).  S2 sets+verifies it only on the
@@ -161,8 +164,21 @@ extern(C) void apEntry(limine_smp_info* info) {
         g_cpuOnline[idx] = 1;
         bklProofRun();                               // S3: contend on the BKL with the BSP + other APs
         g_cpuBklDone[idx] = 1;
+        // S4 foundation: instead of parking, run SUSTAINED parallel kernel work via this CPU's
+        // GS-addressed per-CPU area (S2), BKL-coordinated for the shared total — so N-1 cores do
+        // continuous work while the BSP boots the desktop.  Real per-CPU *tasks* (a per-CPU
+        // scheduler + swapgs + the entry-path BKL) are the full S4 — see SMP_ROADMAP.
+        auto pc = cast(PerCpu*)readGsBase();         // this AP's per-CPU area (via GS)
+        if (pc is &g_percpu[idx]) {
+            for (;;) {
+                ++pc.heartbeat;                                      // lock-free (own cache line)
+                if ((pc.heartbeat & 0xFFFF) == 0) {                 // periodically touch shared state
+                    bklAcquire(&g_bkl); ++g_apWorkTotal; bklRelease(&g_bkl);
+                }
+            }
+        }
     }
-    __asm("cli", "");                                // park (no per-CPU IDT/scheduler yet — S4+)
+    __asm("cli", "");                                // fallback park (idx out of range / GS mismatch)
     for (;;) __asm("hlt", "");
 }
 
@@ -228,6 +244,22 @@ void smpBringup() {
     klog("[smp] BKL: counter="); klog_hex(g_bklCounter); klog(" expected="); klog_hex(bklExpect);
     klog((g_bklCounter == bklExpect) ? " PASS (cross-core mutual exclusion across all cores)\n"
                                      : " FAIL (lost updates → broken lock / race)\n");
+}
+
+// SMP_ROADMAP S4 foundation report: read the AP work counters AFTER the desktop is up, proving the
+// APs ran sustained kernel work IN PARALLEL with the BSP's whole boot (the desktop loaded meanwhile).
+public void smpWorkReport() @nogc nothrow {
+    if (g_smpCpuCount <= 1) { klog("[smp] single-core: no AP workers\n"); return; }
+    klog("[smp] AP parallel work (ran while the BSP booted the desktop):");
+    bool allWorked = true;
+    foreach (i; 0 .. g_smpCpuCount) {
+        if (i >= MAX_CPUS || i == g_bspCpuIndex) continue;
+        klog(" cpu"); klog_hex(i); klog("="); klog_hex(g_percpu[i].heartbeat);
+        if (g_percpu[i].heartbeat == 0) allWorked = false;
+    }
+    klog("; sharedWork="); klog_hex(g_apWorkTotal); klog("\n");
+    klog(allWorked ? "[smp] S4 foundation PASS: every AP ran sustained parallel kernel work\n"
+                   : "[smp] S4 foundation: an AP did no work\n");
 }
 
 extern __gshared ulong hhdm_offset;

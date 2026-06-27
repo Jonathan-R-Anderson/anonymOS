@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 + S2 + S3 (lock) + S4 foundation + S4.1 (per-CPU GDT/TSS) DONE + verified
+## Status (2026-06-27): S0 + S1 + S2 + S3 + S4 foundation + S4.1 (per-CPU GDT/TSS) + S4.2 (per-CPU IDT) DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -109,13 +109,23 @@ brings every AP online**, with no hardcoded count:
   **Verified `SMP=4`:** `3 of 3 APs installed their own per-CPU GDT/TSS (S4.1: ready for kernel entry)`, `str`
   confirms `TR==0x28`, the GS-driven workers keep running (~170 M iters → GS survived the reload), 0 faults,
   desktop boots; `SMP=1` unaffected.
+- **S4.2 (per-CPU IDT + first ring-0 fault entry):** a shared AP IDT (`arch/x86_64/interrupts.d`:
+  `buildApIdt`/`g_apIdt`) where every vector defaults to a safe `cli;hlt` stub (a *stray* AP exception halts
+  just that AP — never a triple fault) and vector 3 (#BP) routes to `apBpHandler` (`asm.S`) via **IST1**. Each
+  AP `loadIdt`s it then deliberately runs `int3`: the CPU switches to **that AP's own IST1 stack** (from its
+  S4.1 TSS), the handler sets `bpHandled` via `%gs:48` (immediate→memory, zero register clobber; a
+  `static assert(PerCpu.bpHandled.offsetof == 48)` guards the asm offset) and `iret`s back. This is the **first
+  functional exercise of the per-CPU entry stacks** — a ring-0 trap handled end-to-end on the AP's own
+  TSS/IST/IDT, fully isolated from the BSP. One IDT suffices for all APs: per-CPU isolation comes from the
+  per-CPU TSS (IST1 → each AP's own stack) + GS in the handler. **Verified `SMP=4`:** `3 of 3 APs handled a #BP
+  on their own IST stack (S4.2: per-CPU IDT + fault entry works)`, 0 faults, desktop boots; `SMP=1` unaffected.
 
-**Next (S4.2 + the rest of full S4):** the descriptor foundation is in place; remaining is per-CPU **IDT** + per-
-CPU **`curUserSpaceState`** + a per-CPU **syscall entry** (each AP's own `LSTAR` → a `swapgs`+BKL-aware stub) +
-the **AP scheduler** picking a task + `iret`-to-ring3, plus taking the proven BKL on the **BSP's** entry too (so
-the two CPUs are mutually excluded in the kernel). That is the point an AP runs a *real task* (the desktop on
-CPU0, an LKL on CPU1) in parallel — the bare-metal-vision payoff. The parallel-execution, lock, and per-CPU
-descriptor primitives it needs are now all proven.
+**Next (the rest of full S4):** the per-CPU descriptor + fault-entry foundation is proven; remaining is per-CPU
+**`curUserSpaceState`** + a per-CPU **syscall entry** (each AP's own `LSTAR` → a `swapgs`+BKL-aware stub) + the
+**AP scheduler** picking a task + `iret`-to-ring3, plus taking the proven BKL on the **BSP's** entry too (so the
+two CPUs are mutually excluded in the kernel). That is the point an AP runs a *real task* (the desktop on CPU0,
+an LKL on CPU1) in parallel — the bare-metal-vision payoff. The parallel-execution, lock, per-CPU descriptor,
+and per-CPU fault-entry primitives it needs are now all proven.
 
 ## Phases
 

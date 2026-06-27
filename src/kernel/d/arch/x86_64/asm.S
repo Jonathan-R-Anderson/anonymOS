@@ -24,6 +24,22 @@ loadTr:
     ltr %di
     ret
 
+# SMP_ROADMAP S4.2: the AP's #BP (int3) handler.  Reached via the AP's IST1 stack (its own
+# per-CPU TSS stack).  GS base = &g_percpu[thisCpu], so %gs:48 is that CPU's PerCpu.bpHandled
+# (offset asserted in kmain.d).  Immediate→memory, so NO register is clobbered — just set the
+# flag and iretq (#BP pushes no error code).
+.global apBpHandler
+apBpHandler:
+    movq $1, %gs:48
+    iretq
+
+# Safe catch-all for every other AP vector: halt this AP (never triple-fault the VM).
+.global apDefaultHandler
+apDefaultHandler:
+    cli
+1:  hlt
+    jmp 1b
+
 .global x64ReadCR2
 x64ReadCR2:
     mov %cr2, %rax

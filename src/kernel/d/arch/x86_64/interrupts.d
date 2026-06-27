@@ -84,6 +84,35 @@ void init_idt() {
      }
      early_idt_ptr.limit = early_idt.sizeof - 1;
      early_idt_ptr.base = cast(ulong)early_idt.ptr;
-      
+
      loadIdt(&early_idt_ptr);
+}
+
+// ------------------------------------------------------------------
+// SMP_ROADMAP S4.2: a per-CPU (shared) IDT for the APs.  Every vector defaults to a safe
+// cli;hlt stub so a STRAY AP exception halts just that AP (never a triple fault); vector 3
+// (#BP) routes to apBpHandler via IST1 — so an AP's deliberate int3 is handled on its OWN
+// per-CPU TSS/IST stack (S4.1), proving the per-CPU entry machinery end-to-end, isolated
+// from the BSP.  One shared IDT suffices: per-CPU differentiation comes from the per-CPU TSS
+// (IST1 → each AP's own stack) and from GS inside the handler.
+// ------------------------------------------------------------------
+__gshared idt_entry[256] g_apIdt;
+__gshared idt_ptr        g_apIdtPtr;
+extern (C) { void apBpHandler(); void apDefaultHandler(); }
+
+private void apIdtSet(int vec, ulong handler, ubyte ist) {
+    g_apIdt[vec].offset_1  = handler & 0xFFFF;
+    g_apIdt[vec].selector  = 0x08;          // kernel code
+    g_apIdt[vec].ist       = ist;           // 0 = no switch; 1 = use TSS.ist1 (the AP's own stack)
+    g_apIdt[vec].type_attr = 0x8E;          // present, DPL0, 64-bit interrupt gate
+    g_apIdt[vec].offset_2  = (handler >> 16) & 0xFFFF;
+    g_apIdt[vec].offset_3  = (handler >> 32) & 0xFFFFFFFF;
+    g_apIdt[vec].zero      = 0;
+}
+
+void buildApIdt() {
+    for (int i = 0; i < 256; i++) apIdtSet(i, cast(ulong)&apDefaultHandler, 0);
+    apIdtSet(3, cast(ulong)&apBpHandler, 1);   // #BP → AP handler on IST1 (per-CPU TSS stack)
+    g_apIdtPtr.limit = g_apIdt.sizeof - 1;
+    g_apIdtPtr.base  = cast(ulong)g_apIdt.ptr;
 }

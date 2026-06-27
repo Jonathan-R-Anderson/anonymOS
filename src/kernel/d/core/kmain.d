@@ -4,6 +4,7 @@ import arch.x86_64.limine;
 import arch.x86_64.bootstrap;
 import arch.x86_64.arch;
 import arch.x86_64.gdt : loadGdt, loadTr, prepareApCpuState, apGdtPtr;  // SMP S4.1 per-CPU GDT/TSS
+import arch.x86_64.interrupts : loadIdt, buildApIdt, g_apIdtPtr;        // SMP S4.2 per-CPU IDT
 import core.globals;
 import core.io;
 import ldc.attributes;
@@ -90,6 +91,7 @@ public __gshared uint  g_bspCpuIndex = 0;            // which per-CPU slot is th
 public __gshared ubyte[MAX_CPUS] g_cpuOnline;        // [i] = 1 once AP i reports in (i = per-CPU index)
 public __gshared ubyte[MAX_CPUS] g_cpuPercpuOk;      // [i] = 1 once AP i verified its GS-addressed area
 public __gshared ubyte[MAX_CPUS] g_apCpuStateOk;     // S4.1: [i] = 1 once AP i installed its own GDT/TSS
+public __gshared ubyte[MAX_CPUS] g_apIdtOk;          // S4.2: [i] = 1 once AP i handled a #BP on its own IST
 
 extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
 
@@ -99,15 +101,21 @@ extern(C) extern __gshared ulong g_current_task_id;  // the single global curren
 // `currentTask` is the per-CPU mirror it migrates onto in S3.
 align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-share between cores
     PerCpu* selfPtr;        // offset 0: %gs:0 ⟹ &g_percpu[thisCpu]
-    ulong   currentTask;    // per-CPU current task (shim today; authoritative in S4)
-    ulong   idleTask;
-    ulong   heartbeat;      // S4 foundation: per-CPU work counter (the AP increments it, lock-free)
-    uint    cpuIndex;
-    uint    lapicId;
-    uint    schedCursor;    // per-CPU scheduler run cursor (S4)
-    bool    alive;
-    ubyte[15] _pad;         // pad PerCpu to 64 bytes (one cache line)
+    ulong   currentTask;    // 8:  per-CPU current task (shim today; authoritative in S4)
+    ulong   idleTask;       // 16
+    ulong   heartbeat;      // 24: S4 foundation per-CPU work counter (the AP increments it, lock-free)
+    uint    cpuIndex;       // 32
+    uint    lapicId;        // 36
+    uint    schedCursor;    // 40: per-CPU scheduler run cursor (S4)
+    bool    alive;          // 44
+    ubyte[3] _pad0;         // 45..47
+    ulong   bpHandled;      // 48: S4.2 — the AP's #BP handler sets this via %gs:48 (see asm.S)
+    ubyte[8] _pad1;         // 56..63 → pad PerCpu to 64 bytes (one cache line)
 }
+static assert(PerCpu.sizeof == 64);
+static assert(PerCpu.bpHandled.offsetof == 48);   // apBpHandler in asm.S hardcodes %gs:48
+static assert(PerCpu.heartbeat.offsetof == 24);
+static assert(PerCpu.cpuIndex.offsetof == 32);
 align(64) public __gshared PerCpu[MAX_CPUS] g_percpu;
 public __gshared ulong g_apWorkTotal = 0;   // shared total, incremented under the BKL by the AP workers
 
@@ -184,6 +192,14 @@ extern(C) void apEntry(limine_smp_info* info) {
             if (self2 is &g_percpu[idx] && readTr() == 0x28)
                 g_apCpuStateOk[idx] = 1;             // own GDT/TSS installed + GS survived the reload
         }
+        // S4.2: load the AP IDT, then deliberately take a #BP (int3).  The CPU switches to THIS
+        // AP's IST1 stack (from its S4.1 TSS) and runs apBpHandler, which sets bpHandled via %gs:48.
+        // First FUNCTIONAL exercise of the per-CPU TSS/IST — a ring-0 trap handled end-to-end on the
+        // AP's own stacks, isolated from the BSP's single global entry path.
+        loadIdt(&g_apIdtPtr);
+        g_percpu[idx].bpHandled = 0;
+        __asm("int3", "");                           // → apBpHandler on IST1 → bpHandled=1 → iret
+        if (g_percpu[idx].bpHandled == 1) g_apIdtOk[idx] = 1;
         bklProofRun();                               // S3: contend on the BKL with the BSP + other APs
         g_cpuBklDone[idx] = 1;
         // S4 foundation: instead of parking, run SUSTAINED parallel kernel work via this CPU's
@@ -234,6 +250,7 @@ void smpBringup() {
         if (cast(uint)i == g_bspCpuIndex) continue;   // BSP keeps init_gdt's tssArea
         prepareApCpuState(cast(uint)i);
     }
+    buildApIdt();   // S4.2: build the shared AP IDT once (vector 3 → apBpHandler on IST1)
 
     uint apCount = 0;
     foreach (i; 0 .. resp.cpu_count) {
@@ -283,6 +300,15 @@ void smpBringup() {
     klog((cpuStateOk == apCount)
          ? " APs installed their own per-CPU GDT/TSS (S4.1: ready for kernel entry)\n"
          : " APs installed per-CPU GDT/TSS — MISMATCH\n");
+
+    // S4.2: every AP took a #BP and handled it on its OWN IST stack (per-CPU TSS/IST/IDT work
+    // end-to-end for a ring-0 trap) — the first functional exercise of the S4.1 entry stacks.
+    uint idtOk = 0;
+    foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_apIdtOk[i]) ++idtOk;
+    klog("[smp] "); klog_hex(idtOk); klog(" of "); klog_hex(apCount);
+    klog((idtOk == apCount)
+         ? " APs handled a #BP on their own IST stack (S4.2: per-CPU IDT + fault entry works)\n"
+         : " APs handled #BP on own IST — MISMATCH\n");
 }
 
 // SMP_ROADMAP S4 foundation report: read the AP work counters AFTER the desktop is up, proving the

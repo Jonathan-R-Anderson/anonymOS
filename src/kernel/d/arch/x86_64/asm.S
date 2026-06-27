@@ -40,6 +40,50 @@ apDefaultHandler:
 1:  hlt
     jmp 1b
 
+# SMP_ROADMAP S4.3: set up THIS CPU's own syscall MSRs (per-CPU MSRs, so the BSP is untouched).
+# Mirrors the BSP's setupSysCalls exactly, except LSTAR points at apSyscallStub.
+.global setupApSyscall
+setupApSyscall:
+    # STAR: SYSCALL CS/SS = 0x08/0x10; SYSRET base = 0x10
+    movq  $0xC0000081, %rcx
+    movl  $0x0, %eax
+    movl  $0x00100008, %edx
+    wrmsr
+    # LSTAR: this AP's 64-bit syscall entry point
+    movq  $0xC0000082, %rcx
+    movabsq $apSyscallStub, %rax
+    movq  %rax, %rdx
+    shrq  $32, %rdx
+    wrmsr
+    # SFMASK: same mask the BSP uses (TF/IF/DF/IOPL/NT/AC)
+    movq  $0xC0000084, %rcx
+    movl  $0x47700, %eax
+    movl  $0, %edx
+    wrmsr
+    # EFER: set SCE (bit 0), preserve the rest
+    movq  $0xC0000080, %rcx
+    rdmsr
+    orl   $0x1, %eax
+    wrmsr
+    ret
+
+# The AP's own syscall entry.  On `syscall`: RCX = return RIP, R11 = saved RFLAGS, CS/SS =
+# kernel (from STAR).  GS base = &g_percpu[thisCpu], so %gs:56 is that CPU's PerCpu.syscallSeen
+# (offset asserted in kmain.d).  Record entry, restore RFLAGS, and return to the caller.
+.global apSyscallStub
+apSyscallStub:
+    movq  $1, %gs:56
+    pushq %r11
+    popfq
+    jmpq  *%rcx
+
+# CPL0 self-test driver: executes `syscall`; apSyscallStub's `jmp *rcx` returns control to the
+# `ret` below (RCX = the instruction after `syscall`), which returns to the D caller.
+.global apDoSyscall
+apDoSyscall:
+    syscall
+    ret
+
 .global x64ReadCR2
 x64ReadCR2:
     mov %cr2, %rax

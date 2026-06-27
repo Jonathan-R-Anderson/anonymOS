@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0 + S1 + S2 + S3 + S4 foundation + S4.1 (per-CPU GDT/TSS) + S4.2 (per-CPU IDT) DONE + verified
+## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU GDT/TSS + IDT + syscall entry) DONE + verified
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:
@@ -119,13 +119,25 @@ brings every AP online**, with no hardcoded count:
   TSS/IST/IDT, fully isolated from the BSP. One IDT suffices for all APs: per-CPU isolation comes from the
   per-CPU TSS (IST1 → each AP's own stack) + GS in the handler. **Verified `SMP=4`:** `3 of 3 APs handled a #BP
   on their own IST stack (S4.2: per-CPU IDT + fault entry works)`, 0 faults, desktop boots; `SMP=1` unaffected.
+- **S4.3 (per-CPU syscall entry):** the third + final leg of per-CPU CPU-state. Each AP sets its **own** syscall
+  MSRs — `LSTAR` → an AP entry stub, plus `STAR`/`SFMASK`/`EFER.SCE` (all per-CPU MSRs, mirroring the BSP's
+  `setupSysCalls` exactly except `LSTAR`, so the **BSP's syscall path is untouched**) — then self-tests that the
+  `syscall` instruction routes to its own stub via a **CPL0 round-trip** (`asm.S`: `setupApSyscall` /
+  `apSyscallStub` / `apDoSyscall`; the stub records entry via `%gs:56`, restores RFLAGS from R11, and
+  `jmp *rcx`s back). A `static assert(PerCpu.syscallSeen.offsetof == 56)` guards the asm offset; a mis-setup is
+  caught by the S4.2 IDT (a stray #GP/#UD halts that AP, surfaced as the S3/worker tallies coming up short).
+  **Verified `SMP=4`:** `3 of 3 APs routed \`syscall\` to their own per-CPU entry stub (S4.3: syscall entry
+  ready)`, 0 faults, desktop boots; `SMP=1` unaffected. **The per-CPU entry trio — GDT/TSS + IDT + syscall — is
+  complete.**
 
-**Next (the rest of full S4):** the per-CPU descriptor + fault-entry foundation is proven; remaining is per-CPU
-**`curUserSpaceState`** + a per-CPU **syscall entry** (each AP's own `LSTAR` → a `swapgs`+BKL-aware stub) + the
-**AP scheduler** picking a task + `iret`-to-ring3, plus taking the proven BKL on the **BSP's** entry too (so the
-two CPUs are mutually excluded in the kernel). That is the point an AP runs a *real task* (the desktop on CPU0,
-an LKL on CPU1) in parallel — the bare-metal-vision payoff. The parallel-execution, lock, per-CPU descriptor,
-and per-CPU fault-entry primitives it needs are now all proven.
+**Next (the rest of full S4):** all three per-CPU entry primitives are proven; remaining is per-CPU
+**`curUserSpaceState`** (the entry path's single global state buffer), the **AP scheduler** picking a task +
+`iret`-to-ring3 with `swapgs`, plus taking the proven BKL on the **BSP's** entry too (so the two CPUs are
+mutually excluded in the kernel). That last group is the high-risk part — it touches `context.S`, the BSP's
+working entry path the desktop depends on — and needs the later/full kernel context (mm + tasks up), so it is a
+deliberate separate step. That is the point an AP runs a *real task* (the desktop on CPU0, an LKL on CPU1) in
+parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the **entire per-CPU entry state**
+(GDT/TSS/IDT/syscall) it needs are now all proven.
 
 ## Phases
 

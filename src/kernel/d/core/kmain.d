@@ -92,6 +92,10 @@ public __gshared ubyte[MAX_CPUS] g_cpuOnline;        // [i] = 1 once AP i report
 public __gshared ubyte[MAX_CPUS] g_cpuPercpuOk;      // [i] = 1 once AP i verified its GS-addressed area
 public __gshared ubyte[MAX_CPUS] g_apCpuStateOk;     // S4.1: [i] = 1 once AP i installed its own GDT/TSS
 public __gshared ubyte[MAX_CPUS] g_apIdtOk;          // S4.2: [i] = 1 once AP i handled a #BP on its own IST
+public __gshared ubyte[MAX_CPUS] g_apSyscallOk;      // S4.3: [i] = 1 once AP i routed `syscall` to its own stub
+
+extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
+extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
 
 extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
 
@@ -110,10 +114,11 @@ align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-sha
     bool    alive;          // 44
     ubyte[3] _pad0;         // 45..47
     ulong   bpHandled;      // 48: S4.2 — the AP's #BP handler sets this via %gs:48 (see asm.S)
-    ubyte[8] _pad1;         // 56..63 → pad PerCpu to 64 bytes (one cache line)
+    ulong   syscallSeen;    // 56: S4.3 — the AP's syscall stub sets this via %gs:56 (see asm.S)
 }
 static assert(PerCpu.sizeof == 64);
-static assert(PerCpu.bpHandled.offsetof == 48);   // apBpHandler in asm.S hardcodes %gs:48
+static assert(PerCpu.bpHandled.offsetof == 48);    // apBpHandler   in asm.S hardcodes %gs:48
+static assert(PerCpu.syscallSeen.offsetof == 56);  // apSyscallStub in asm.S hardcodes %gs:56
 static assert(PerCpu.heartbeat.offsetof == 24);
 static assert(PerCpu.cpuIndex.offsetof == 32);
 align(64) public __gshared PerCpu[MAX_CPUS] g_percpu;
@@ -200,6 +205,14 @@ extern(C) void apEntry(limine_smp_info* info) {
         g_percpu[idx].bpHandled = 0;
         __asm("int3", "");                           // → apBpHandler on IST1 → bpHandled=1 → iret
         if (g_percpu[idx].bpHandled == 1) g_apIdtOk[idx] = 1;
+        // S4.3: set up THIS CPU's own syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE — all
+        // per-CPU MSRs, so the BSP's syscall path is untouched) and self-test that `syscall` routes
+        // to its own stub (a CPL0 round-trip).  The third leg of per-CPU entry state, after GDT/TSS
+        // (S4.1) + IDT (S4.2) — the syscall-entry plumbing an AP needs to run a real task.
+        setupApSyscall();
+        g_percpu[idx].syscallSeen = 0;
+        apDoSyscall();                               // syscall → apSyscallStub → jmp *rcx returns here
+        if (g_percpu[idx].syscallSeen == 1) g_apSyscallOk[idx] = 1;
         bklProofRun();                               // S3: contend on the BKL with the BSP + other APs
         g_cpuBklDone[idx] = 1;
         // S4 foundation: instead of parking, run SUSTAINED parallel kernel work via this CPU's
@@ -309,6 +322,15 @@ void smpBringup() {
     klog((idtOk == apCount)
          ? " APs handled a #BP on their own IST stack (S4.2: per-CPU IDT + fault entry works)\n"
          : " APs handled #BP on own IST — MISMATCH\n");
+
+    // S4.3: every AP set its own syscall MSRs and `syscall` routed to its own per-CPU stub (CPL0
+    // round-trip) — the per-CPU syscall-entry plumbing an AP needs to run a real task.
+    uint sysOk = 0;
+    foreach (i; 0 .. resp.cpu_count) if (i < MAX_CPUS && g_apSyscallOk[i]) ++sysOk;
+    klog("[smp] "); klog_hex(sysOk); klog(" of "); klog_hex(apCount);
+    klog((sysOk == apCount)
+         ? " APs routed `syscall` to their own per-CPU entry stub (S4.3: syscall entry ready)\n"
+         : " APs syscall-entry — MISMATCH\n");
 }
 
 // SMP_ROADMAP S4 foundation report: read the AP work counters AFTER the desktop is up, proving the

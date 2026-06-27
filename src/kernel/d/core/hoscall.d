@@ -20,6 +20,7 @@ import core.domain   : g_domains, DomainState, domainStateName, domainCount,
                        PERSIST_EPHEMERAL, PERSIST_HOME_ONLY, PERSIST_FULL;  // DOMAIN_MANAGER DM0
 import core.pkgrepo  : pkgRepoCount, pkgRepoAt, pkgInstalledMask;          // DOMAIN_MANAGER DM7
 import core.domain   : domainDeviceMask;                                  // DOMAIN_MANAGER DM10.7
+import core.domain   : domainDistro, domainPkgMgr, distroName, pkgMgrName; // DOMAIN_MANAGER DM11
 import core.cap      : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_CALL,
                        CAP_RIGHT_EXEC, CAP_RIGHT_ADMIN_ALL,
                        Capability, capGet, capUsable, capInstall, CAP_INVALID, CAP_MAX; // Z4c.3
@@ -629,6 +630,8 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 lit(b, ", \"type\": \"");      lit(b, e.isTemplate ? "template" : "domain"); put(b, '"');
                 lit(b, ", \"persist\": \"");   persistName(b, e.persistMode); put(b, '"');
                 lit(b, ", \"devices\": \"");   hex(b, domainDeviceMask(e.objId)); put(b, '"');  // DM10.7 peripheral mask
+                lit(b, ", \"distro\": \"");          litz(b, distroName(domainDistro(e.objId))); put(b, '"');   // DM11
+                lit(b, ", \"packageManager\": \""); litz(b, pkgMgrName(domainPkgMgr(e.objId))); put(b, '"');    // DM11
                 lit(b, ", \"policyEpoch\": "); num(b, e.policyEpoch);
                 lit(b, " }");
             }

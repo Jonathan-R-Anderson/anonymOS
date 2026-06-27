@@ -149,6 +149,8 @@ struct gdomain {
     unsigned objId;           // this domain's object id
     unsigned templObjId;      // the referenced template's object id (0 = none)
     unsigned devices;         // DM10.7: §7 peripheral device mask (Permissions tab)
+    char     distro[16];      // DM11: Linux-compat distribution
+    char     pkgmgr[16];      // DM11: package manager
 };
 
 // DM10.7: a repository package, parsed from /config/packages.json (Packages tab).
@@ -374,8 +376,19 @@ static void fs_btn_rect(int idx, int *x, int *y, int *w, int *h) {
 static void dev_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Permissions device toggle pills
     *y = TAB_Y + 24 + idx * 42; *h = 30; *w = 70; *x = LABEL_X + 240;
 }
+// DM11: distro selector + package profiles (top of the Packages tab).
+#define N_DISTRO 4
+static const char *DISTRO_NAME[N_DISTRO] = { "native", "busybox", "nix", "alpine" };
+#define N_PROFILE 5
+static const char *PROFILE_NAME[N_PROFILE] = { "minimal", "development", "office", "research", "media" };
+static void distro_btn_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 30; *h = 24; *w = 82; *x = LABEL_X + 150 + idx * (82 + 6);
+}
+static void profile_btn_rect(int idx, int *x, int *y, int *w, int *h) {
+    *y = TAB_Y + 64; *h = 24; *w = 96; *x = LABEL_X + 70 + idx * (96 + 6);
+}
 static void pkg_row_rect(int idx, int *x, int *y, int *w, int *h) {   // Packages install/remove pills
-    *y = TAB_Y + 24 + idx * 34; *h = 26; *w = 92; *x = LABEL_X + 320;
+    *y = TAB_Y + 104 + idx * 30; *h = 26; *w = 92; *x = LABEL_X + 320;
 }
 
 // DM10.5: evdev keycode → lowercase ASCII (US QWERTY) for the clone-name text field.  The DM gets
@@ -459,13 +472,15 @@ static void load_domains(struct app *app)
         if (j_field(nm, objEnd, "color", num, sizeof(num)))    g->color = (uint32_t)strtoul(num, NULL, 16);
         else g->color = 0xFF808080u;
         if (j_field(nm, objEnd, "devices", num, sizeof(num)))  g->devices = (unsigned)strtoul(num, NULL, 16);
+        j_field(nm, objEnd, "distro",  g->distro,  sizeof(g->distro));
+        j_field(nm, objEnd, "packageManager", g->pkgmgr, sizeof(g->pkgmgr));
         if (g->name[0]) app->n_doms++;
         p = objEnd;
     }
     free(json);
     if (app->n_doms == 0) { load_domains_fallback(app); return; }
     printf("DOMAINMGR: loaded %d domains from /config/domains.json (declarative):", app->n_doms);
-    for (int i = 0; i < app->n_doms; i++) printf(" %s[%s dev=0x%x]", app->doms[i].name, app->doms[i].type, app->doms[i].devices);
+    for (int i = 0; i < app->n_doms; i++) printf(" %s[%s dev=0x%x distro=%s]", app->doms[i].name, app->doms[i].type, app->doms[i].devices, app->doms[i].distro);
     printf("\n"); fflush(stdout);
 }
 
@@ -748,15 +763,29 @@ static void tab_filesystem(struct app *app, cairo_t *cr) {
 }
 
 static void tab_packages(struct app *app, cairo_t *cr) {
+    struct gdomain *sd = &app->doms[app->sel];
     unsigned mask = app->pkg_mask[app->sel];
     if (cr) {
+        for (int i = 0; i < N_DISTRO; i++) { int x,y,w,h; distro_btn_rect(i,&x,&y,&w,&h);  // DM11 distro selector
+            if (strcmp(sd->distro, DISTRO_NAME[i]) == 0) cairo_argb(cr, sd->color);
+            else cairo_set_source_rgb(cr,0.18,0.22,0.28);
+            rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
+        for (int i = 0; i < N_PROFILE; i++) { int x,y,w,h; profile_btn_rect(i,&x,&y,&w,&h);  // DM11 profiles
+            cairo_set_source_rgb(cr,0.22,0.30,0.42); rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
         for (int i = 0; i < app->n_pkgs; i++) { int x,y,w,h; pkg_row_rect(i,&x,&y,&w,&h);
-            int inst = (mask>>i)&1;
-            if (inst) cairo_set_source_rgb(cr,0.46,0.26,0.26); else cairo_set_source_rgb(cr,0.22,0.30,0.42);
+            if ((mask>>i)&1) cairo_set_source_rgb(cr,0.46,0.26,0.26); else cairo_set_source_rgb(cr,0.22,0.30,0.42);
             rounded_rect(cr,x,y,w,h,6); cairo_fill(cr); }
     } else {
-        draw_text(app,"Software repository (/config/packages.json) — install is cap-gated to the domain ceiling:",
-                  LABEL_X, TAB_Y+6, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        char hd[112]; snprintf(hd,sizeof(hd),"Distribution: %s    Package manager: %s    (/linux = RO compat root)",
+                               sd->distro[0]?sd->distro:"native", sd->pkgmgr[0]?sd->pkgmgr:"native");
+        draw_text(app, hd, LABEL_X, TAB_Y+8, app->width-LABEL_X-PAD, 12, 0xff8b94a3u);
+        draw_text(app,"Distro:",LABEL_X,TAB_Y+35,80,13,0xffb7c1d0u);
+        for (int i = 0; i < N_DISTRO; i++) { int x,y,w,h; distro_btn_rect(i,&x,&y,&w,&h);
+            draw_text(app, DISTRO_NAME[i], x+8, y+5, w-12, 12, 0xffe8edf5u); }
+        draw_text(app,"Profiles:",LABEL_X,TAB_Y+69,70,13,0xffb7c1d0u);
+        for (int i = 0; i < N_PROFILE; i++) { int x,y,w,h; profile_btn_rect(i,&x,&y,&w,&h);
+            draw_text(app, PROFILE_NAME[i], x+6, y+5, w-8, 12, 0xffe8edf5u); }
+        draw_text(app,"Repository (cap-gated install per domain):",LABEL_X,TAB_Y+98,420,12,0xff6b7686u);
         for (int i = 0; i < app->n_pkgs; i++) {
             int x,y,w,h; pkg_row_rect(i,&x,&y,&w,&h);
             struct gpkg *p = &app->pkgs[i];
@@ -766,7 +795,6 @@ static void tab_packages(struct app *app, cairo_t *cr) {
             draw_text(app,sz,LABEL_X+220,y+6,90,12,0xff97a1b0u);
             draw_text(app, ((mask>>i)&1)?"Remove":"Install", x+12, y+5, w-16, 12, 0xffe8edf5u);
         }
-        if (app->n_pkgs == 0) draw_text(app,"(repository empty)",LABEL_X,TAB_Y+34,200,13,0xff8d97a6u);
     }
 }
 
@@ -1101,7 +1129,11 @@ static void handle_click(struct app *app)
                 app->edit_mode = FSBTN_MODE[i];
                 snprintf(app->editbuf, sizeof(app->editbuf), "/"); app->editlen = 1; app->editing = 1;
                 redraw_commit(app, "fs add"); return; } }
-    } else if (app->tab == 2) {                     // Packages: install / uninstall
+    } else if (app->tab == 2) {                     // Packages: distro / profile / install
+        for (int i = 0; i < N_DISTRO; i++) { int bx,by,bw,bh; distro_btn_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { domain_action_arg(app, "distro", DISTRO_NAME[i]); return; } }
+        for (int i = 0; i < N_PROFILE; i++) { int bx,by,bw,bh; profile_btn_rect(i,&bx,&by,&bw,&bh);
+            if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) { domain_action_arg(app, "profile", PROFILE_NAME[i]); return; } }
         for (int i = 0; i < app->n_pkgs; i++) { int bx,by,bw,bh; pkg_row_rect(i,&bx,&by,&bw,&bh);
             if (x>=bx && x<=bx+bw && y>=by && y<=by+bh) {
                 int inst = (app->pkg_mask[app->sel] >> i) & 1;

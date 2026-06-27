@@ -71,6 +71,7 @@ import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain res
 import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
 import core.domain : domainBuildAllNamespaces; // DOMAIN_MANAGER DM10.2: eager per-domain ns for the GUI Filesystem view
 import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER DM10.3: parsed control-string executor + proof
+import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM11: distro/pkgMgr + /linux proof
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
 import core.domain : domainRehydrateFromDisk, domainPersistProof; // DOMAIN_MANAGER DM5: on-disk persistence
@@ -2909,6 +2910,7 @@ void d_kernel_main() {
     domDeviceProof();            // DOMAIN_MANAGER DM8: §7 device-class enforcement (deviceClassGate)
     pkgRepoSelfTest();           // DOMAIN_MANAGER DM7: software repo + cap-gated per-domain package install
     configPackagesDump();        // DOMAIN_MANAGER DM7: /config/packages.json render proof (catalog + installs)
+    domDistroProof();            // DOMAIN_MANAGER DM11: per-domain distro/pkgMgr + RO /linux compat root
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

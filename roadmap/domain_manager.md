@@ -1013,6 +1013,22 @@ Per-domain Linux compat config driving real package managers in a per-domain Lin
   package into its overlay cache; switching the domain's `packageManager` re-roots `/linux`;
   allowlist/denylist + freeze honored.
 
+**Status — DM11 (per-domain distro / package-manager + profiles) DONE + verified (the musl-fit subset).**
+`DomainRec.distro`+`pkgMgr` (enums `DISTRO_NATIVE/BUSYBOX/NIX/ALPINE`, `PKGMGR_NATIVE/BUSYBOX/NIX/APK`), seeded
+NATIVE. `domainSetDistro` sets the distro, defaults the package manager to match, and (re)mounts a **READ-ONLY
+`/linux` compat root** in the domain namespace (`nsBind` to the live backing) — switching the distro re-roots
+at runtime. `domainBuildNamespace` mounts `/linux` for any non-native domain. Package **profiles** (core/
+pkgrepo.d `pkgApplyProfile`: minimal / development / office / research / media → catalog bundles, each still
+DM7-cap-gated). Control verbs `distro` / `pkgmgr` / `profile <domain> <name>` (the GUI's Packages tab gained a
+**distro selector** + **profile buttons** + a distribution/package-manager header, parsing the new
+`/config/domains.json` `distro` + `packageManager` fields). Verified in-VM (HEADLESS=1 GPU=1, 0 boot
+exceptions): `[domain] distro proof PASS (busybox → /linux RO; switch to nix re-roots + pkgMgr follows)`;
+`[pkg] profile applied: minimal` + `repo proof PASS (… + profile apply)`; the GUI parsed `Development[…
+distro=nix]`. ★ Honest limit (as the brief states): full glibc distros (Arch/Debian/Fedora) need glibc-loader
+support and are out of scope — the model carries them, the runtime ships the musl-fit subset, and all distros
+currently resolve `/linux` to the live backing RO (distinct on-disk `/System/LinuxRoots/<distro>` trees +
+repos/mirrors/pinning/signing-key freeze are the follow-up).
+
 ## DM12 — Marketplace / signed downloadable templates · P: Low · E: 4 · R: high · deps: DM6, DM5
 
 Installable templates without rebuilding the OS (Deliverables 15 export/import, 16

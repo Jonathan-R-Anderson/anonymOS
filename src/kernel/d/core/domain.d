@@ -27,7 +27,7 @@ import core.objstore : objstoreMounted, objstoreInstallDomain,
 import core.overlay : overlayCreate, overlayDestroy, overlaySnapshot, overlayCommit,
                       overlayDiscard, overlayRestore;            // DOMAIN_MANAGER DM6.2
 import core.io : klog, klog_hex;
-import core.pkgrepo : pkgInstallByName, pkgRemoveByName;   // DOMAIN_MANAGER DM7: package manager verbs
+import core.pkgrepo : pkgInstallByName, pkgRemoveByName, pkgApplyProfile;   // DOMAIN_MANAGER DM7/DM11
 
 extern (C) @nogc nothrow:
 
@@ -41,6 +41,12 @@ enum DomainState : uint { Defined = 0, Starting, Running, Paused, Stopping, Fail
 enum ubyte PERSIST_EPHEMERAL = 0;  // nothing persists (fresh every boot)
 enum ubyte PERSIST_HOME_ONLY = 1;  // only /Domains/<name>/Home survives
 enum ubyte PERSIST_FULL      = 2;  // the full domain segment survives
+
+// DM11: per-domain Linux-compat distribution + package manager.  The musl-fit subset is real
+// (native object store / BusyBox / Nix-static / Alpine-apk); full glibc distros are modeled but
+// out of scope (need glibc-loader support).  A non-native domain gets a RO /linux compat root.
+enum ubyte DISTRO_NATIVE = 0, DISTRO_BUSYBOX = 1, DISTRO_NIX = 2, DISTRO_ALPINE = 3;
+enum ubyte PKGMGR_NATIVE = 0, PKGMGR_BUSYBOX = 1, PKGMGR_NIX = 2, PKGMGR_APK = 3;
 
 // --- the domain object --------------------------------------------------------
 enum int DOM_NAME_MAX = 24;
@@ -62,6 +68,8 @@ struct DomainRec {
     char[DOM_NAME_MAX] name;      // "System","Personal",… (mirrors the identity name)
     uint          allowedDevices; // DM8/DM10.7: per-domain §7 device mask (seeded from the identity, GUI-toggled)
     uint          devInit;        // 0 until allowedDevices is seeded (distinguishes "deny all" from "unset")
+    ubyte         distro;         // DM11: DISTRO_* Linux-compat root selector
+    ubyte         pkgMgr;         // DM11: PKGMGR_* package manager for this domain
     ulong         policyEpoch;    // signed-mutation counter (mirrors IdentityRec)
 }
 
@@ -257,8 +265,55 @@ public uint domainBuildNamespace(uint domObjId) {
     nsBindDeny(ns, "/Shared/Private\0".ptr);   // a hole inside the allowed /Shared (deny-override)
     nsBindDeny(ns, "/System\0".ptr);           // explicit deny (also covered by deny-by-default)
 
+    // DM11: a non-native domain mounts its distro's Linux compat root at /linux (READ-only).
+    if (d.distro != DISTRO_NATIVE) nsBind(ns, "/linux\0".ptr, root, RO);
+
     d.nsObjId = ns;
     return ns;
+}
+
+// DM11 — per-domain distribution / package-manager selection.  Setting the distro re-mounts the
+// RO /linux compat root and defaults the package manager to match; switching re-roots at runtime.
+public ubyte domainDistro(uint domObjId) { auto d = domainById(domObjId); return d is null ? 0 : d.distro; }
+public ubyte domainPkgMgr(uint domObjId) { auto d = domainById(domObjId); return d is null ? 0 : d.pkgMgr; }
+
+public bool domainSetDistro(uint domObjId, ubyte distro) {
+    auto d = domainById(domObjId);
+    if (d is null) return false;
+    d.distro = distro;
+    d.pkgMgr = (distro == DISTRO_BUSYBOX) ? PKGMGR_BUSYBOX :
+               (distro == DISTRO_NIX)     ? PKGMGR_NIX :
+               (distro == DISTRO_ALPINE)  ? PKGMGR_APK : PKGMGR_NATIVE;
+    if (d.nsObjId == 0) domainBuildNamespace(domObjId);
+    if (distro != DISTRO_NATIVE && d.nsObjId != 0)
+        nsBind(d.nsObjId, "/linux\0".ptr, nsRootDir(), CAP_RIGHT_READ | CAP_RIGHT_STAT);  // RO re-root
+    ++d.policyEpoch;
+    return true;
+}
+public bool domainSetPkgMgr(uint domObjId, ubyte pm) {
+    auto d = domainById(domObjId);
+    if (d is null) return false;
+    d.pkgMgr = pm; ++d.policyEpoch; return true;
+}
+public ubyte distroByName(const(char)* n) {
+    if (verbEq(n,"busybox")) return DISTRO_BUSYBOX;
+    if (verbEq(n,"nix"))     return DISTRO_NIX;
+    if (verbEq(n,"alpine"))  return DISTRO_ALPINE;
+    return DISTRO_NATIVE;
+}
+public ubyte pkgMgrByName(const(char)* n) {
+    if (verbEq(n,"busybox")) return PKGMGR_BUSYBOX;
+    if (verbEq(n,"nix"))     return PKGMGR_NIX;
+    if (verbEq(n,"apk"))     return PKGMGR_APK;
+    return PKGMGR_NATIVE;
+}
+public const(char)* distroName(ubyte d) {
+    return d==DISTRO_BUSYBOX ? "busybox\0".ptr : d==DISTRO_NIX ? "nix\0".ptr :
+           d==DISTRO_ALPINE  ? "alpine\0".ptr  : "native\0".ptr;
+}
+public const(char)* pkgMgrName(ubyte p) {
+    return p==PKGMGR_BUSYBOX ? "busybox\0".ptr : p==PKGMGR_NIX ? "nix\0".ptr :
+           p==PKGMGR_APK     ? "apk\0".ptr     : "native\0".ptr;
 }
 
 // DM2/DM10: ensure every (non-template) domain has a restricted namespace, so the GUI's
@@ -371,6 +426,10 @@ public bool domainControlWrite(const(char)* cmd, size_t len) {
     else if (verbEq(verb.ptr, "fsrw"))      ok = (id != 0) && domainFsBindAllow(id, arg.ptr, true);
     else if (verbEq(verb.ptr, "fsdeny"))    ok = (id != 0) && domainFsBindDeny(id, arg.ptr);
     else if (verbEq(verb.ptr, "delete"))    ok = (id != 0) && domainDelete(id);   // DM10.7: GUI Delete button
+    // DM11: distro / package-manager / profile — "distro <domain> <busybox|nix|alpine|native>" etc.
+    else if (verbEq(verb.ptr, "distro"))    ok = (id != 0) && domainSetDistro(id, distroByName(arg.ptr));
+    else if (verbEq(verb.ptr, "pkgmgr"))    ok = (id != 0) && domainSetPkgMgr(id, pkgMgrByName(arg.ptr));
+    else if (verbEq(verb.ptr, "profile"))   ok = (name[0] != 0) && (arg[0] != 0) && (pkgApplyProfile(name.ptr, arg.ptr) >= 1);
     else { klog("[domain] control: unknown verb '"); klog(verb.ptr); klog("'\n"); return false; }
     klog("[domain] control: "); klog(verb.ptr); klog(" "); klog(name.ptr); klog(ok ? " -> OK\n" : " -> FAIL\n");
     return ok;
@@ -406,6 +465,28 @@ public void domainControlProof() {
     ok = ok && domainControlWrite("fsdeny Development /host/projects/key".ptr, 37); // deny a sub-path
     klog(ok ? "[domain] control proof PASS (lifecycle/clone + devon/devoff + fsrw/fsdeny via parse+exec; unknown denied)\n"
             : "[domain] control proof FAIL\n");
+}
+
+// DM11 boot proof: a domain's distro selects a RO /linux compat root; switching the distro re-roots
+// and the package manager follows.  Leaves Development on the Nix distro (a sensible dev default).
+__gshared bool g_distroProofDone = false;
+public void domDistroProof() {
+    if (g_distroProofDone) return;
+    g_distroProofDone = true;
+    const uint dev = domainByName("Development\0".ptr);
+    if (dev == 0) { klog("[domain] distro proof SKIP (no Development)\n"); return; }
+    bool ok = domainSetDistro(dev, DISTRO_BUSYBOX) && (domainDistro(dev) == DISTRO_BUSYBOX)
+              && (domainPkgMgr(dev) == PKGMGR_BUSYBOX);
+    // /linux resolves READ-only in the domain ns (read granted, write denied)
+    const(char)* rest; uint rights; bool denied;
+    auto d = domainById(dev);
+    const uint t = (d !is null && d.nsObjId != 0)
+                   ? nsResolveCheck(d.nsObjId, "/linux/bin\0".ptr, rest, rights, denied) : 0;
+    ok = ok && (t != 0) && ((rights & CAP_RIGHT_READ) != 0) && ((rights & CAP_RIGHT_WRITE) == 0);
+    // switching the distro re-roots /linux and the package manager follows
+    ok = ok && domainSetDistro(dev, DISTRO_NIX) && (domainPkgMgr(dev) == PKGMGR_NIX);
+    klog(ok ? "[domain] distro proof PASS (busybox -> /linux RO; switch to nix re-roots + pkgMgr follows)\n"
+            : "[domain] distro proof FAIL\n");
 }
 
 // DOMAIN_MANAGER DM2 boot proof: build a real domain's restricted namespace and resolve several

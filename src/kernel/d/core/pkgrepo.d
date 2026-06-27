@@ -162,6 +162,32 @@ public int pkgRemoveByName(const(char)* domainName, const(char)* pkgName) {
     return pkgRepoRemove(cast(uint)idx, dom);
 }
 
+// ── DM11: package profiles — reusable bundles of catalog packages (the brief's profiles) ──────
+private bool pkgStrEq(const(char)* a, string lit) {
+    size_t i = 0;
+    for (; i < lit.length; ++i) if (a[i] != lit[i]) return false;
+    return a[i] == 0;
+}
+private int profilePkgs(const(char)* p, ref const(char)*[4] dst) {
+    if (pkgStrEq(p, "minimal"))     { dst[0] = "hello\0".ptr; return 1; }
+    if (pkgStrEq(p, "development")) { dst[0] = "text-editor\0".ptr; dst[1] = "dev-toolchain\0".ptr; return 2; }
+    if (pkgStrEq(p, "office"))      { dst[0] = "text-editor\0".ptr; return 1; }
+    if (pkgStrEq(p, "research"))    { dst[0] = "text-editor\0".ptr; dst[1] = "web-browser\0".ptr; return 2; }
+    if (pkgStrEq(p, "media"))       { dst[0] = "media-player\0".ptr; return 1; }
+    return -1;
+}
+// Install a named profile's packages into a domain (each still cap-gated to the domain ceiling).
+// Returns the count successfully installed, or -1 for an unknown profile.
+public int pkgApplyProfile(const(char)* domainName, const(char)* profile) {
+    const(char)*[4] dst;
+    const int n = profilePkgs(profile, dst);
+    if (n < 0) return -1;
+    int installed = 0;
+    foreach (i; 0 .. n) if (pkgInstallByName(domainName, dst[i]) == PKG_OK) ++installed;
+    klog("[pkg] profile applied: "); klog(profile); klog("\n");
+    return installed;
+}
+
 // DM7 boot proof: cap-gated per-domain install/remove.  A user-cap package installs into any
 // domain; an admin-cap package is DENIED in a user-ceiling domain but installs in System.
 __gshared bool g_pkgProofDone = false;
@@ -189,7 +215,10 @@ public void pkgRepoSelfTest() {
     ok = ok && pkgIsInstalled(sysDom, cast(uint)sysmon);
     // remove clears the per-domain bit
     ok = ok && (pkgRepoRemove(cast(uint)hello, devDom) == PKG_OK) && !pkgIsInstalled(devDom, cast(uint)hello);
+    // DM11: a package profile installs its bundle (cap-gated) into a domain
+    ok = ok && (pkgApplyProfile("Development\0".ptr, "minimal\0".ptr) >= 1) && pkgIsInstalled(devDom, cast(uint)hello);
+    pkgRepoRemove(cast(uint)hello, devDom);   // cleanup
 
-    klog(ok ? "[pkg] repo proof PASS (cap-gated per-domain install/remove; admin pkg EACCES in user domain, OK in System)\n"
+    klog(ok ? "[pkg] repo proof PASS (cap-gated install/remove + profile apply; admin pkg EACCES in user domain, OK in System)\n"
             : "[pkg] repo proof FAIL\n");
 }

@@ -621,6 +621,7 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 lit(b, ", \"identity\": ");
                 auto idr = identityById(e.identityObjId);
                 if (idr !is null) jstr(b, idr.name.ptr, idr.nameLen); else lit(b, "null");
+                lit(b, ", \"color\": \"");     hex(b, idr !is null ? idr.color : 0xFF808080u); put(b, '"');  // DM10: GUI accent
                 lit(b, ", \"template\": ");    num(b, e.templateObjId);
                 lit(b, ", \"state\": \"");     litz(b, domainStateName(e.state)); put(b, '"');
                 lit(b, ", \"type\": \"");      lit(b, e.isTemplate ? "template" : "domain"); put(b, '"');

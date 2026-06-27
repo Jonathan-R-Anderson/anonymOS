@@ -817,6 +817,22 @@ merge (Deliverable 7).
 
 Expand `cd/wl-domain-manager` into the brief's full GUI (Deliverable 10), updating live.
 
+**Status — DM10.1 (the GUI is now DECLARATIVE) DONE + verified.** ★ This closes the gap where all of
+DM0-DM6 was kernel-side but the *visible* Domain Manager still showed 7 hardcoded domains. `src/util/
+wl-domain-manager.c` now READS `/config/domains.json` (the kernel-generated declarative config, from
+system.json via DM1) at startup — a `struct gdomain doms[]` parsed by a minimal JSON extractor, replacing
+the hardcoded `DOMAINS[]` as the source of truth (with a fallback to the built-ins if the config is
+missing). The list shows every declared domain, the panel/footer surface the new attributes (`type` domain/
+template, `identity`, `template` name, `persist`, live `state`), templates render as a hollow diamond and
+running domains get a green state dot. `core/hoscall.d` added the bound identity's `color` to
+`/config/domains.json` for the GUI accents. Verified in-VM: `DOMAINMGR: loaded 11 domains from
+/config/domains.json (declarative): System[domain] … DevTemplate[template] DevSandbox[domain]
+BankVault[domain] PersistProbe[domain]` — the manifest-declared domains + the template + the persisted probe
+all appear, parsed with their type; the GUI window renders (980×600). *Remaining DM10:* live updates
+(`HOSQ_DOMAIN_SUBSCRIBE`), the action panels (Create/Clone/Snapshot/Commit/Start/Stop wired to the
+`HOSQ_DOMAIN_*` verbs), the `Filesystem` RuntimeView panel (read `/objects/domains/<name>/filesystem`), the
+appearance/startup/template-browser/marketplace tabs.
+
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a
   `HOSQ_DOMAIN_LIST` read; subscribe via `HOSQ_DOMAIN_SUBSCRIBE=48` (reuse the

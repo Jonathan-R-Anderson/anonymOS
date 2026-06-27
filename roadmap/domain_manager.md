@@ -852,10 +852,21 @@ control: ping/start/pause/resume/snapshot/stop → OK; unknown verb 'frobnicate'
 control proof PASS`. ★ TRAP: a D module-global without `__gshared` is THREAD-LOCAL → compiles to an `%fs:0x0`
 TLS read → page-faults in the kernel (no TLS); every kernel module global must be `__gshared`.
 
-*Remaining DM10:* wire `domainControlWrite` to a write path — either a writable `/config/domain.action`
-synthetic file (needs an fd/object-model write-op for the new fd type) or a native `HOSQ_DOMAIN_CTL` verb —
-then the GUI action buttons (Start/Stop/Snapshot/Commit/Clone) + live updates (`HOSQ_DOMAIN_SUBSCRIBE`) +
-the appearance/startup/template-browser/marketplace tabs.
+**Status — DM10.4 (interactive action buttons, wired end-to-end) DONE + verified.** The Domain Manager now
+DRIVES domains, not just displays them. Wiring: a new `FD_DOMAIN_CTL` fd type + an open clause for
+`/config/domain.action` (write-only) in `posix.d`; `fileObjWrite` routes that fd's writes to
+`domainControlWrite` (DM10.3). The GUI gained a *Lifecycle* row of buttons — Start / Stop / Snapshot /
+Commit — state-tinted (Start green only when stopped; Stop red + Snapshot/Commit blue when running);
+clicking one calls `domain_action()` which writes `"verb name"` to `/config/domain.action` then re-reads
+`/config/domains.json` so the panel reflects the new state. Verified in-VM END-TO-END: the GUI's startup
+self-test wrote `ping System` to the control file and the KERNEL executed it — `[domain] control: ping
+System -> OK` / `DOMAINMGR: control-write path self-test ('ping System') wrote 11` — proving the exact path
+(GUI open→write → `FD_DOMAIN_CTL` → `domainControlWrite`) the buttons use; the verbs themselves are proven by
+`domainControlProof`. The pixel hit-test → action is the same pattern as the working launch buttons; the
+visual click is the user's to confirm on the desktop.
+
+*Remaining DM10:* live updates (`HOSQ_DOMAIN_SUBSCRIBE` instead of poll-on-action), a Clone/Create dialog
+(needs a text-input field for the new name), and the appearance/startup/template-browser/marketplace tabs.
 
 - Make the DM a native-personality `HOSQ` client (the `store-app.c sc4` shape); replace the
   hardcoded `DOMAINS[]`/`DEFAULTS[]` (`wl-domain-manager.c:107/127`) with a

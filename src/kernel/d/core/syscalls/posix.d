@@ -30,6 +30,7 @@ import core.cap : Capability, CAP_INVALID,
 import core.ipc : IpcCapDesc, ipcDelegateCap, ipcAcceptCap; // Phase 7 IPC router
 import core.device : deviceNoteOpen; // Phase 8: /dev resolves to Device objects
 import core.namespace : nsResolveWithRights, nsResolveCheck; // Phase 9/IR-P2 + DM2 (deny vs not-found)
+import core.domain : domainControlWrite;                    // DM10.3: /config/domain.action control-write executor
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
                    userSetActiveSubject; // Phase 10 / IR-P3 User objects
@@ -101,6 +102,7 @@ enum FileType {
     FD_RTDIR,            // runtime-overlay directory, enumerable with getdents64
     FD_PTY_MASTER,       // pseudo-terminal master (/dev/ptmx)
     FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
+    FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
 }
 
 struct File {
@@ -1958,6 +1960,15 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         return cast(ssize_t)count;
     }
 
+    // DM10.3: a write to /config/domain.action is a domain control command.  Parse + execute
+    // via the (deny-by-default) executor; the write always "succeeds" at the fd level so the
+    // client's write() returns the byte count (the command's accept/reject is observable in the
+    // domain state it then re-reads from /config/domains.json).
+    if (f.type == FileType.FD_DOMAIN_CTL) {
+        domainControlWrite(cast(const(char)*)buf, cast(size_t)count);
+        return cast(ssize_t)count;
+    }
+
     // Simulate success for others (e.g. /dev/null)
     return cast(ssize_t)count;
 }
@@ -2594,6 +2605,20 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].offset = 0;
         g_fdTable[fd].backend = cast(void*)g_appsBuf.ptr;
         g_fdTable[fd].fileSize = cast(ulong)pos;
+        return publishActiveFdReturn(fd);
+    }
+
+    // DM10.3: /config/domain.action — the domain CONTROL-WRITE file.  The Domain Manager (a
+    // Linux-personality client) writes a "verb name [arg]" command here to invoke a domain
+    // lifecycle/overlay op (start/stop/pause/resume/snapshot/commit/clone).  The write handler
+    // (fileObjWrite, FD_DOMAIN_CTL) routes to domainControlWrite — itself deny-by-default.
+    if (cstrEq(path, "/config/domain.action")) {
+        if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
+        g_fdTable[fd].type     = FileType.FD_DOMAIN_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
         return publishActiveFdReturn(fd);
     }
 

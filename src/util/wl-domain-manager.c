@@ -330,6 +330,15 @@ static void dev_chip_rect(int idx, int *x, int *y, int *w, int *h)
     *y = RY0 + N_CTL * CTL_H + (CTL_H - 26) / 2; *h = 26; *w = 78;
     *x = PILL_X + idx * (78 + 8);
 }
+// DM10.3: the lifecycle action buttons (Start / Stop / Snapshot / Commit), one row below launch.
+#define N_ACTION 4
+static const char *ACTION_LABEL[N_ACTION] = { "Start", "Stop", "Snapshot", "Commit" };
+static const char *ACTION_VERB [N_ACTION] = { "start", "stop", "snapshot", "commit" };
+static void action_btn_rect(int idx, int *x, int *y, int *w, int *h)
+{
+    *y = RY0 + (N_CTL + 1) * CTL_H + 8 + 48; *h = 30; *w = 100;
+    *x = LABEL_X + idx * (100 + 6);
+}
 
 // --- drawing --------------------------------------------------------------
 
@@ -444,6 +453,37 @@ static void refresh_fs_view(struct app *app)
            app->doms[app->sel].name, n, binds); fflush(stdout);
 }
 
+// DM10.3: send a "verb name" lifecycle command to the kernel control endpoint
+// (/config/domain.action), then re-read the declarative state so the GUI reflects the result.
+static void domain_action(struct app *app, const char *verb)
+{
+    if (app->sel < 0 || app->sel >= app->n_doms) return;
+    char cmd[80];
+    int len = snprintf(cmd, sizeof(cmd), "%s %s", verb, app->doms[app->sel].name);
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) { printf("DOMAINMGR: action '%s' open FAILED\n", cmd); fflush(stdout); return; }
+    ssize_t w = write(fd, cmd, len);
+    close(fd);
+    printf("DOMAINMGR: action '%s' -> wrote %zd\n", cmd, w); fflush(stdout);
+    int keep = app->sel;
+    load_domains(app);                       // re-read state (the kernel may have changed it)
+    if (keep < app->n_doms) app->sel = keep;
+    refresh_fs_view(app);
+}
+
+// DM10.3: one-shot self-test that proves the control-write path end-to-end (open -> write ->
+// kernel domainControlWrite) without a side effect — "ping" is a no-op verb.
+static void domain_ctl_selftest(struct app *app)
+{
+    int fd = open("/config/domain.action", O_WRONLY);
+    if (fd < 0) { printf("DOMAINMGR: control-write path UNAVAILABLE (open failed)\n"); fflush(stdout); return; }
+    const char *name = app->n_doms > 0 ? app->doms[0].name : "System";
+    char cmd[64]; int len = snprintf(cmd, sizeof(cmd), "ping %s", name);
+    ssize_t w = write(fd, cmd, len);
+    close(fd);
+    printf("DOMAINMGR: control-write path self-test ('%s') wrote %zd\n", cmd, w); fflush(stdout);
+}
+
 static void draw_manager(struct app *app)
 {
     cairo_surface_t *surface = cairo_image_surface_create_for_data(
@@ -548,6 +588,22 @@ static void draw_manager(struct app *app)
         rounded_rect(cr, x, y, w, h, 9); cairo_fill(cr);
     }
 
+    // DM10.3: lifecycle action buttons (Start / Stop / Snapshot / Commit) — tinted by state.
+    {
+        const char *st = app->doms[app->sel].state;
+        int running = (st[0] == 'R'), paused = (st[0] == 'P');
+        for (int a = 0; a < N_ACTION; a++) {
+            int x, y, w, h; action_btn_rect(a, &x, &y, &w, &h);
+            // enabled-state hint: Start only when stopped; Stop/Snapshot/Commit when running/paused
+            int enabled = (a == 0) ? (!running && !paused) : (running || paused);
+            if (a == 0 && enabled)      cairo_set_source_rgb(cr, 0.20, 0.52, 0.34);  // Start green
+            else if (a == 1 && enabled) cairo_set_source_rgb(cr, 0.52, 0.26, 0.26);  // Stop red
+            else if (enabled)           cairo_set_source_rgb(cr, 0.22, 0.30, 0.42);  // Snap/Commit blue
+            else                        cairo_set_source_rgb(cr, 0.16, 0.18, 0.22);  // disabled
+            rounded_rect(cr, x, y, w, h, 7); cairo_fill(cr);
+        }
+    }
+
     // Footer band.
     cairo_set_source_rgb(cr, 0.086, 0.102, 0.125);
     cairo_rectangle(cr, 0, app->height - FOOTER_H, app->width, FOOTER_H); cairo_fill(cr);
@@ -604,6 +660,13 @@ static void draw_manager(struct app *app)
         const char *lbl = (b == 0) ? "Launch Terminal" : "Launch Files";
         uint32_t col = (b == 0) ? 0xff10141au : 0xffe8edf5u;
         draw_text(app, lbl, x + 18, y + 12, w - 24, 14, col);
+    }
+
+    // DM10.3: action button labels.
+    draw_text(app, "Lifecycle", LABEL_X, RY0 + (N_CTL + 1) * CTL_H + 8 + 30, 120, 12, 0xff8b94a3u);
+    for (int a = 0; a < N_ACTION; a++) {
+        int x, y, w, h; action_btn_rect(a, &x, &y, &w, &h);
+        draw_text(app, ACTION_LABEL[a], x + 12, y + 9, w - 16, 13, 0xffe8edf5u);
     }
 
     // DM10.2: the Restricted Filesystem (RuntimeView) column — the selected domain's resolved,
@@ -781,6 +844,15 @@ static void handle_click(struct app *app)
             return;
         }
     }
+    // DM10.3: lifecycle action buttons — write the verb to the kernel control endpoint.
+    for (int a = 0; a < N_ACTION; a++) {
+        int bx, by, bw, bh; action_btn_rect(a, &bx, &by, &bw, &bh);
+        if (x >= bx && x <= bx + bw && y >= by && y <= by + bh) {
+            domain_action(app, ACTION_VERB[a]);
+            redraw_commit(app, "domain action");
+            return;
+        }
+    }
 }
 
 static void pointer_enter(void *data, struct wl_pointer *p, uint32_t serial, struct wl_surface *s, wl_fixed_t sx, wl_fixed_t sy)
@@ -932,6 +1004,7 @@ int main(void)
     // kernel from system.json — the GUI now reflects DM0-DM6 instead of a hardcoded list.
     load_domains(&app);
     refresh_fs_view(&app);   // DM10.2: the first selected domain's RuntimeView
+    domain_ctl_selftest(&app); // DM10.3: prove the control-write path (ping) at startup
 
     signal(SIGCHLD, SIG_IGN);   // auto-reap launched apps (no zombies)
 

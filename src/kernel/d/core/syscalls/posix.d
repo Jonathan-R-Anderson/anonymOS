@@ -7778,8 +7778,16 @@ public uint findDeviceByClass(uint cls) {
     auto devs = scanPCIDevices();
     foreach (ref d; devs) {
         const uint clsReg = pciConfigRead32(d.bus, d.slot, d.func, 8);
-        if (((((clsReg >> 24) & 0xFF) << 8) | ((clsReg >> 16) & 0xFF)) == cls)
+        if (((((clsReg >> 24) & 0xFF) << 8) | ((clsReg >> 16) & 0xFF)) == cls) {
+            // The LKL must NEVER be handed EpinOS's own virtio devices — above all the virtio-gpu it
+            // uses for the desktop (under GPU=1 the virtio-gpu-gl is class 0x0380, so without this it
+            // gets granted to the LKL; the LKL touching it corrupts the host-visible blob region and
+            // QEMU aborts: KVM_SET_USER_MEMORY_REGION failed).  Skip virtio (vendor 0x1AF4); the LKL's
+            // real targets (bochs-display 0x1234, qemu-xhci, NVMe, bare-metal nouveau 0x10DE) are not.
+            const uint ven = pciConfigRead32(d.bus, d.slot, d.func, 0) & 0xFFFF;
+            if (ven == 0x1AF4) continue;
             return (cast(uint)d.bus << 16) | (cast(uint)d.slot << 8) | d.func;
+        }
     }
     return 0xFFFFFFFF;
 }

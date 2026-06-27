@@ -1197,22 +1197,26 @@ private __gshared int  g_lklTestDelay   = 0;
 private void maybeSpawnLklTest() {
     if (g_lklTestStarted) return;
     if (g_lklTestDelay++ < 80) return;   // let the system settle first
-    g_lklTestStarted = true;
-    klog("[lkl] launching lkl-boot (boot the Linux kernel as a library inside EpinAnonymOS)\n");
-    spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
-    // L4 isolation (the user's requirement): grant the just-spawned lkl-boot a capability for ONLY the
-    // NVMe device.  The 0x4100 bridge is default-deny, so without this grant it would see NO hardware at
-    // all; with it, it sees NVMe and is denied (-EPERM) any scan/config/MMIO of every other device.
-    const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
+    g_lklTestStarted = true;             // one-shot, whether or not we actually launch
+    // Find the LKL's device FIRST and only launch lkl-boot when one is attached (via qemu-run.sh
+    // LKL_GPU/LKL_USB/LKL_NVME): a device-driver OS with no device is pointless, and auto-launching it
+    // on a normal desktop boot (especially the GPU=1 virgl desktop) is undesirable / destabilizing.
     // L6.1: prefer a display controller (bochs GPU, 0x0380); else USB (xHCI, 0x0c03); else NVMe (0x0108).
     uint devBdf = findDeviceByClass(0x0380);
     if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
     if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
-    if (lklTid > 0 && devBdf != 0xFFFFFFFF) {
+    if (devBdf == 0xFFFFFFFF) {
+        klog("[lkl] no LKL device attached (no 0x0380/0c03/0108) -> not launching lkl-boot\n");
+        return;
+    }
+    klog("[lkl] launching lkl-boot (boot the Linux kernel as a library inside EpinAnonymOS)\n");
+    spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
+    // L4 isolation: grant the just-spawned lkl-boot a capability for ONLY this one device.  The 0x4100
+    // bridge is default-deny, so it is denied (-EPERM) any scan/config/MMIO of every other device.
+    const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
+    if (lklTid > 0) {
         grantDeviceCap(lklTid, devBdf);
         klog("[lkl] L4/L5: granted lkl-boot a device-cap for ONE device (bdf="); klog_hex(devBdf); klog(")\n");
-    } else {
-        klog("[lkl] L4: no grantable device — lkl-boot will see NO device (default-deny)\n");
     }
 }
 private void maybeSpawnGlTest() {

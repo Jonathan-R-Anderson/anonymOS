@@ -19,7 +19,7 @@
 // Kernel constraints: -betterC, plain structs, __gshared fixed tables, @nogc nothrow.
 module core.overlay;
 
-import core.objmgr : ObjType, objAlloc, objRelease;
+import core.objmgr : ObjType, objAlloc, objRelease, objGet;
 import core.store  : storePut, genCreate, genNumber, genParent, genCount, genEntry;
 import core.io     : klog, klog_hex;
 
@@ -84,6 +84,22 @@ public bool overlayWrite(uint domObjId, const(ubyte)* data, uint len) {
 public uint overlayChangeCount(uint domObjId) { auto o = ovlByDom(domObjId); return o is null ? 0 : o.count; }
 public uint overlayBaseGen(uint domObjId)     { auto o = ovlByDom(domObjId); return o is null ? 0 : o.baseGen; }
 
+// Inspect diff: the i-th changed StoreObject of the overlay (the pending changes vs the base).
+public uint overlayEntryAt(uint domObjId, uint i) {
+    auto o = ovlByDom(domObjId);
+    return (o is null || i >= o.count) ? 0 : o.entries[i];
+}
+
+// Validate before commit: an overlay is committable iff it has at least one change and every
+// change is still a live StoreObject (none dropped/garbage-collected).  Empty ⟹ nothing to fold.
+public bool overlayValidate(uint domObjId) {
+    auto o = ovlByDom(domObjId);
+    if (o is null || o.count == 0) return false;
+    foreach (i; 0 .. o.count)
+        if (o.entries[i] == 0 || objGet(o.entries[i]) is null) return false;
+    return true;
+}
+
 // Snapshot: freeze the current overlay as an immutable Generation (parent = the previous
 // snapshot, so snapshots form a lineage).  Returns the snapshot Generation id.
 public uint overlaySnapshot(uint domObjId) {
@@ -117,6 +133,7 @@ public bool overlayRestore(uint domObjId, uint snapGen) {
 public uint overlayCommit(uint domObjId) {
     auto o = ovlByDom(domObjId);
     if (o is null) return 0;
+    if (!overlayValidate(domObjId)) return 0;        // validate before commit (deny-by-default)
     const uint newBase = genCreate(o.baseGen, o.entries.ptr, o.count);
     if (newBase == 0) return 0;
     o.baseGen = newBase;
@@ -140,6 +157,7 @@ public void overlaySelfTest() {
     static immutable ubyte[3] b = ['b','a','r'];
     ok = ok && overlayWrite(dom, a.ptr, 3) && overlayWrite(dom, b.ptr, 3);
     ok = ok && (overlayChangeCount(dom) == 2);
+    ok = ok && overlayValidate(dom) && (overlayEntryAt(dom, 0) != 0);   // inspect-diff + validate-before-commit
 
     const uint snap = overlaySnapshot(dom);            // immutable snapshot of the 2 changes
     ok = ok && (snap != 0) && (genCount(snap) == 2);
@@ -148,8 +166,10 @@ public void overlaySelfTest() {
     ok = ok && overlayWrite(dom, c.ptr, 4) && (overlayChangeCount(dom) == 3);
     overlayDiscard(dom);                               // revert to base (empty)
     ok = ok && (overlayChangeCount(dom) == 0) && (genCount(snap) == 2);   // snapshot untouched
+    ok = ok && !overlayValidate(dom);                  // an empty overlay is NOT committable
 
     ok = ok && overlayRestore(dom, snap) && (overlayChangeCount(dom) == 2);
+    ok = ok && overlayValidate(dom);                   // restored ⟹ committable again
 
     const uint oldBase = overlayBaseGen(dom);
     const uint newBase = overlayCommit(dom);
@@ -160,6 +180,6 @@ public void overlaySelfTest() {
             && (overlayChangeCount(dom) == 0);         // overlay cleared after commit
 
     overlayDestroy(dom);
-    if (ok) klog("[overlay] selftest PASS (write/snapshot/discard/restore/commit; commit never mutates the base)\n");
+    if (ok) klog("[overlay] selftest PASS (write/snapshot/discard/restore/inspect-diff/validate/commit; commit never mutates the base)\n");
     else    klog("[overlay] selftest FAIL\n");
 }

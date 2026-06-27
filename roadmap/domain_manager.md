@@ -741,10 +741,15 @@ read), so the hot path is untouched. Verified: `[domain] overlay-write proof PAS
 captured in the overlay (copy-up)` (a throwaway clone started → an overlay; a spare task bound into it; two
 simulated `rtCreate`s land 2 entries in the overlay). No regression (boot's many file creates are unaffected).
 When DM3's real launch-into-domain lands, a domain's actual file edits flow into its overlay automatically.
-*Remaining DM6 (refinements):* the layered READ resolver (overlay shadows the template — reads fall back to
-the lower layer); `inspect diff` (StoreObject digests); `validate before commit`; the `HOSQ_DOMAIN_*` verb
-exposure; persist the overlay blobs (DM5 persistMode reload); the template catalog (Developer/Gaming/…) as
-seeded manifests. **The overlay control plane + the copy-up data-plane hook are DONE; DM6's core is in place.**
+**`inspect diff` + `validate before commit` DONE** (overlay.d `overlayEntryAt` enumerates the pending
+changes; `overlayValidate` requires ≥1 change all still live StoreObjects — deny-by-default, an empty/dropped
+overlay is NOT committable; `overlayCommit` calls it first). Verified in the overlay selftest
+(`write/snapshot/discard/restore/inspect-diff/validate/commit`; an empty overlay rejects commit, a restored
+one accepts). *Remaining DM6 (refinements):* the layered READ resolver (overlay shadows the template — reads
+fall back to the lower layer; the per-domain write isolation itself is already DM2's restricted namespace);
+the `HOSQ_DOMAIN_*` verb exposure; persist the overlay blobs (DM5 persistMode reload); the template catalog
+(Developer/Gaming/…) as seeded manifests. **DM6 core + ops are DONE: templates, overlay control plane
+(write/snapshot/discard/restore/inspect/validate/commit, commit never mutates the base), copy-up data plane.**
 
 - `ObjType.Template` objects under `/objects/templates/<name>/`, persisted like domains
   (immutable: a frozen Generation + frozen `IdentityRec`).

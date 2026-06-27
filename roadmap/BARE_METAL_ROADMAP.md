@@ -143,10 +143,15 @@ Four EpinAnonymOS-native capabilities to expose to the userspace LKL (a small cu
   with a ~4ms periodic safety trigger. **RESULT: LKL's nvme admin Identify COMPLETES** (`nvme nvme0: 1/0/0
   default/read/poll queues` + namespace identify + `Abort status: 0x0`) — a real Linux driver now
   initializes a device AND completes admin commands through the bridge, where before it hung forever.
-  - **KNOWN REMAINING:** an I/O-queue READ (QID 1, opcode 0x2, 4096B) times out at ~30s. NOT an IRQ issue
-    (the safety trigger fires every ~4ms; the admin queue on the same INTx works) — the controller never
-    writes the I/O completion, so it's an I/O-queue submission/DMA issue. Next: log the I/O SQ/CQ +
-    data-buffer phys + the doorbell writes to find why the controller doesn't process the I/O command.
+  - **KNOWN REMAINING (diagnosed, low-priority):** an I/O-queue READ (QID 1, opcode 0x2, 4096B) times out
+    at ~30s. Doorbell instrumentation pinned it: of 31 doorbell writes, **ALL are admin queue** (0x1000/
+    0x1004) and **ZERO are the I/O queue** (0x1008/0x100c) — so the read is queued in blk-mq but **never
+    dispatched to the hardware I/O SQ**, with no error (the I/O queue is created fine). So it is **NOT a
+    bridge defect** (config/MMIO/DMA/IRQ all proven — admin commands complete end to end); it's a deep
+    nvme/blk-mq submission quirk under LKL+INTx (the request never reaches `nvme_queue_rq`/never rings the
+    SQ doorbell). Diagnosing further needs LKL-internal blk-mq instrumentation. **Low priority — NVMe isn't
+    on the target hardware** (it was only the conflict-free bring-up vehicle); the real driver targets are
+    USB (L5) and the GPU (L6), which the proven bridge already supports.
 
 ## L4 — Per-device LKL isolation (cap-gating) + bridge LKL's devices to EpinAnonymOS
 **Isolation (the "Device isolation" section above):** a privileged **device-manager** enumerates PCI,

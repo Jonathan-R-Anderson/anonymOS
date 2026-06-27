@@ -1031,17 +1031,766 @@ repos/mirrors/pinning/signing-key freeze are the follow-up).
 
 ## DM12 — Marketplace / signed downloadable templates · P: Low · E: 4 · R: high · deps: DM6, DM5
 
-Installable templates without rebuilding the OS (Deliverables 15 export/import, 16
-marketplace).
+## DM12 — Marketplace / signed downloadable templates + I2P P2P template network
 
-- Local registry `/objects/templates/` (objstore-backed); `ExportDomain`/`ImportDomain`
-  (`HOSQ_DOMAIN_EXPORT/IMPORT` 38/39) as signed bundles (`crypto.d` HMAC + `update.d` bundle
-  format); install = write a Template object + manifest to disk. Signature verification,
-  publisher identities (an `IdentityRec` per publisher), semver (`policyEpoch`), dependency
-  checking (`compiler.d` resolution), trust policies, rollback (Generations), offline install.
-- *Verify:* `domain export Development dev.hosdt` → a signed bundle; tamper a byte → `domain
-  import` rejects (bad HMAC); a valid import on a fresh boot reconstructs the domain; an
-  unsigned/untrusted-publisher template is refused; version rollback works.
+**Priority:** Low
+**Effort:** 4 → 6
+**Risk:** High
+**Dependencies:** DM6, DM5, Deliverable 15 export/import, Deliverable 16 marketplace
+
+Implement installable Template Domains that can be exported, signed, published, discovered, downloaded, verified, installed, rolled back, and shared over a decentralized I2P-based P2P marketplace.
+
+### Goal
+
+Templates should be installable without rebuilding the OS.
+
+Users should be able to:
+
+* export a local Template Domain into a signed bundle
+* import a template bundle from disk
+* publish a signed template to a decentralized P2P network
+* discover templates by name, category, publisher, hash, tag, or capability
+* download templates from peers over I2P
+* verify signatures, manifests, dependencies, and trust policies before install
+* reject unsigned, tampered, untrusted, or incompatible templates
+* rollback installed templates using Generations
+
+---
+
+# 1. Local template registry
+
+Add a local registry:
+
+```text
+/objects/templates/
+```
+
+This registry is objstore-backed and stores:
+
+```text
+/objects/templates/<template-id>/
+    manifest.json
+    template.object
+    publisher.identity
+    generations/
+    dependencies/
+    signatures/
+    cache/
+```
+
+Each installed template must be represented as a first-class Template object.
+
+A template install is not “copy files into the OS.”
+A template install means:
+
+1. verify bundle
+2. verify publisher identity
+3. verify dependencies
+4. create or update Template object
+5. write manifest
+6. register Generation
+7. expose template to Domain Manager
+
+---
+
+# 2. Export / Import syscalls
+
+Implement:
+
+```c
+HOSQ_DOMAIN_EXPORT = 38
+HOSQ_DOMAIN_IMPORT = 39
+```
+
+Expose CLI commands:
+
+```sh
+domain export Development dev.hosdt
+domain import dev.hosdt
+domain template list
+domain template info Development
+domain template rollback Development --generation 2
+```
+
+Export creates a signed `.hosdt` bundle.
+
+Import verifies and installs the bundle.
+
+---
+
+# 3. Bundle format
+
+Use the existing `update.d` bundle format.
+
+A `.hosdt` bundle contains:
+
+```text
+bundle.hosdt
+    manifest.json
+    template.object
+    filesystem.overlay
+    policy.d/
+    linux-compat.d/
+    packages.d/
+    services.d/
+    appearance.d/
+    identity.d/
+    signatures/
+        publisher.hmac
+        bundle.hmac
+    publisher.identity
+```
+
+The manifest must include:
+
+```json
+{
+  "kind": "AnonymOS.TemplateDomain",
+  "schemaVersion": 1,
+  "templateId": "dev.anonymos.template.development",
+  "name": "Development",
+  "description": "Developer workspace template",
+  "publisher": {
+    "identityId": "publisher.example",
+    "displayName": "Example Publisher",
+    "i2pDestination": "..."
+  },
+  "version": "1.2.0",
+  "policyEpoch": 4,
+  "createdAt": "...",
+  "templateHash": "...",
+  "bundleHash": "...",
+  "dependencies": [],
+  "capabilitiesRequested": [],
+  "linuxCompat": {},
+  "packageManagers": [],
+  "trust": {
+    "requiresTrustedPublisher": true,
+    "allowUnsigned": false
+  }
+}
+```
+
+Use semver for template versions.
+
+Use `policyEpoch` to prevent unsafe downgrades unless explicitly allowed.
+
+---
+
+# 4. Signing and verification
+
+Use `crypto.d` HMAC support.
+
+Every exported template bundle must be signed.
+
+Import must reject:
+
+* missing HMAC
+* invalid HMAC
+* modified bundle contents
+* unsigned bundle
+* unknown publisher
+* untrusted publisher
+* incompatible schema version
+* missing dependency
+* invalid dependency version
+* policy downgrade without explicit rollback permission
+
+Verification flow:
+
+```text
+read bundle
+verify bundle hash
+verify HMAC
+load publisher IdentityRec
+check publisher trust policy
+check manifest
+check dependency graph
+check policyEpoch
+stage install
+commit Generation
+```
+
+Test:
+
+```sh
+domain export Development dev.hosdt
+hexedit dev.hosdt
+domain import dev.hosdt
+```
+
+Expected result:
+
+```text
+error: bad HMAC; template rejected
+```
+
+---
+
+# 5. Publisher identities
+
+Each publisher is represented by an `IdentityRec`.
+
+Publisher identities are stored locally:
+
+```text
+/objects/identities/publishers/
+```
+
+A publisher identity includes:
+
+```json
+{
+  "identityId": "publisher.example",
+  "displayName": "Example Publisher",
+  "publicKey": "...",
+  "i2pDestination": "...",
+  "trustLevel": "trusted | known | untrusted | blocked",
+  "firstSeen": "...",
+  "lastSeen": "...",
+  "policy": {
+    "allowTemplateInstall": true,
+    "allowAutoUpdate": false
+  }
+}
+```
+
+Unsigned templates are refused by default.
+
+Untrusted publishers are refused unless the user explicitly allows temporary install into a quarantined review domain.
+
+---
+
+# 6. Generations and rollback
+
+Each import creates a Generation:
+
+```text
+/objects/templates/<template-id>/generations/<generation-id>/
+```
+
+A Generation stores:
+
+* manifest
+* bundle hash
+* template object hash
+* publisher identity snapshot
+* dependency lockfile
+* install timestamp
+
+Rollback command:
+
+```sh
+domain template rollback Development --generation 1
+```
+
+Rollback must still verify that the previous Generation is valid.
+
+---
+
+# 7. Offline install
+
+Offline install must work from a local `.hosdt` file.
+
+No network access should be required for:
+
+```sh
+domain import dev.hosdt
+```
+
+If the publisher is unknown, import should fail unless the user manually imports or trusts the publisher identity first.
+
+---
+
+# 8. I2P P2P template marketplace
+
+Add a decentralized template-sharing network over I2P.
+
+The marketplace must not depend on a central server.
+
+Use:
+
+* I2P hidden destinations for peer identity and transport
+* Kademlia DHT for discovery
+* signed template manifests for trust
+* content-addressed bundle hashes for downloads
+
+---
+
+# 9. Marketplace object model
+
+Add:
+
+```text
+MarketplaceNode
+MarketplacePeer
+TemplateAnnouncement
+TemplateIndexRecord
+TemplateDownloadSession
+PublisherIdentityRecord
+DHTRoutingTable
+```
+
+Suggested object paths:
+
+```text
+/objects/marketplace/
+/objects/marketplace/peers/
+/objects/marketplace/dht/
+/objects/marketplace/index/
+/objects/marketplace/downloads/
+/objects/marketplace/publishers/
+```
+
+---
+
+# 10. I2P transport
+
+Each node has an I2P destination.
+
+Local config:
+
+```text
+/objects/marketplace/config.json
+```
+
+Example:
+
+```json
+{
+  "enabled": true,
+  "i2pSAMHost": "127.0.0.1",
+  "i2pSAMPort": 7656,
+  "localDestination": "...",
+  "bootstrapPeers": [],
+  "allowPublishing": true,
+  "allowDownloads": true,
+  "maxPeers": 128,
+  "maxParallelDownloads": 3
+}
+```
+
+The implementation should use I2P SAM where possible instead of embedding a full router.
+
+Required commands:
+
+```sh
+market peer start
+market peer stop
+market peer status
+market peer id
+```
+
+---
+
+# 11. Kademlia DHT
+
+Implement a Kademlia-style DHT over I2P.
+
+Node IDs are derived from publisher or peer identity:
+
+```text
+nodeId = SHA256(i2pDestination)
+```
+
+Use XOR distance.
+
+Required DHT RPCs:
+
+```text
+PING
+STORE
+FIND_NODE
+FIND_TEMPLATE
+FIND_PUBLISHER
+GET_MANIFEST
+GET_PEERS
+```
+
+Routing table:
+
+```text
+/objects/marketplace/dht/routing-table
+```
+
+Each peer record includes:
+
+```json
+{
+  "nodeId": "...",
+  "i2pDestination": "...",
+  "lastSeen": "...",
+  "reputation": 0,
+  "supportedProtocols": ["hosdt-dht-v1"],
+  "publisherIdentity": null
+}
+```
+
+---
+
+# 12. Template announcements
+
+Publishing a template does not push the full bundle into the DHT.
+
+It stores a small signed announcement:
+
+```json
+{
+  "recordType": "TemplateAnnouncement",
+  "templateId": "dev.anonymos.template.development",
+  "name": "Development",
+  "version": "1.2.0",
+  "policyEpoch": 4,
+  "publisher": "publisher.example",
+  "publisherIdentityHash": "...",
+  "bundleHash": "...",
+  "manifestHash": "...",
+  "size": 10485760,
+  "tags": ["development", "compiler", "linux"],
+  "categories": ["Developer"],
+  "dependencies": [],
+  "i2pSources": [
+    "..."
+  ],
+  "signature": "..."
+}
+```
+
+The announcement itself must be signed.
+
+The bundle is downloaded directly from peers by content hash.
+
+---
+
+# 13. Publishing templates
+
+CLI:
+
+```sh
+domain export Development dev.hosdt
+market publish dev.hosdt
+```
+
+Publishing flow:
+
+```text
+load bundle
+verify local signature
+extract manifest
+create TemplateAnnouncement
+sign announcement
+STORE announcement in DHT
+serve bundle by content hash over I2P
+```
+
+Command examples:
+
+```sh
+market publish dev.hosdt
+market unpublish dev.anonymos.template.development
+market published list
+```
+
+---
+
+# 14. Searching marketplace
+
+CLI:
+
+```sh
+market search development
+market search --tag compiler
+market search --publisher publisher.example
+market search --category Forensics
+market info dev.anonymos.template.development
+```
+
+Search should query the DHT and return signed announcements.
+
+Results must show trust status:
+
+```text
+Development 1.2.0
+Publisher: Example Publisher
+Trust: trusted
+Bundle: sha256:...
+Sources: 5
+Status: installable
+```
+
+Untrusted results should be clearly marked:
+
+```text
+Trust: unknown — install blocked by policy
+```
+
+---
+
+# 15. Downloading templates
+
+CLI:
+
+```sh
+market download dev.anonymos.template.development
+market install dev.anonymos.template.development
+```
+
+Download flow:
+
+```text
+find announcement
+verify announcement signature
+check publisher identity
+find peers serving bundleHash
+download bundle chunks over I2P
+verify chunk hashes
+reconstruct bundle
+verify bundle hash
+verify bundle HMAC
+stage import
+install Template object
+commit Generation
+```
+
+Downloads must be content-addressed.
+
+Never trust filenames.
+
+---
+
+# 16. Trust policies
+
+Add marketplace trust policy:
+
+```json
+{
+  "allowUnknownPublishers": false,
+  "allowUnsignedTemplates": false,
+  "allowPolicyDowngrade": false,
+  "allowQuarantineInstall": true,
+  "trustedPublishers": [],
+  "blockedPublishers": [],
+  "minimumPolicyEpoch": 1,
+  "requireReproducibleManifest": true
+}
+```
+
+Commands:
+
+```sh
+market publisher list
+market publisher trust publisher.example
+market publisher block publisher.example
+market publisher info publisher.example
+```
+
+---
+
+# 17. Quarantine install
+
+Unknown templates may optionally be installed into a quarantined review state.
+
+They must not be usable as normal Template Domains until trusted.
+
+```sh
+market install dev.template.unknown --quarantine
+domain template promote dev.template.unknown
+```
+
+Quarantined templates:
+
+* cannot run startup services
+* cannot request network permissions
+* cannot inherit user identity
+* cannot modify global defaults
+* cannot auto-update
+
+---
+
+# 18. Dependency resolution
+
+Use `compiler.d` resolution for dependencies.
+
+A template may depend on:
+
+* another Template Domain
+* package set
+* Linux compatibility profile
+* service profile
+* policy module
+* identity inheritance profile
+
+Dependency example:
+
+```json
+{
+  "dependencies": [
+    {
+      "kind": "TemplateDomain",
+      "templateId": "base.anonymos.template.linux",
+      "version": ">=1.0.0 <2.0.0"
+    }
+  ]
+}
+```
+
+Import must fail if dependencies cannot be resolved locally or downloaded from trusted marketplace sources.
+
+---
+
+# 19. Auto-update support
+
+Add optional auto-update later, but design DM12 so it can support:
+
+```sh
+market update check
+market update install Development
+```
+
+Auto-update must never bypass:
+
+* signature verification
+* trust policy
+* policyEpoch checks
+* dependency checks
+* Generation rollback
+
+---
+
+# 20. Verification tests
+
+Required tests:
+
+```sh
+domain export Development dev.hosdt
+domain import dev.hosdt
+```
+
+Expected:
+
+```text
+template installed
+```
+
+Tamper test:
+
+```sh
+domain export Development dev.hosdt
+printf x >> dev.hosdt
+domain import dev.hosdt
+```
+
+Expected:
+
+```text
+error: bad HMAC
+```
+
+Fresh boot test:
+
+```sh
+domain import dev.hosdt
+domain create MyDev --template Development
+```
+
+Expected:
+
+```text
+domain reconstructed successfully
+```
+
+Untrusted publisher test:
+
+```sh
+domain import unknown-template.hosdt
+```
+
+Expected:
+
+```text
+error: publisher is not trusted
+```
+
+P2P publish test:
+
+```sh
+market peer start
+market publish dev.hosdt
+market search Development
+```
+
+Expected:
+
+```text
+Development appears as signed marketplace result
+```
+
+P2P download test from another node:
+
+```sh
+market search Development
+market download dev.anonymos.template.development
+market install dev.anonymos.template.development
+```
+
+Expected:
+
+```text
+download verified
+template installed
+```
+
+Bad peer test:
+
+```text
+peer serves corrupted bundle chunk
+```
+
+Expected:
+
+```text
+chunk rejected
+peer reputation decreased
+download retries from another peer
+```
+
+Rollback test:
+
+```sh
+market install Development@1.2.0
+market install Development@1.3.0
+domain template rollback Development --generation 1
+```
+
+Expected:
+
+```text
+rollback completed
+previous signed generation restored
+```
+
+---
+
+# 21. Acceptance criteria
+
+DM12 is complete when:
+
+* templates can be exported as signed `.hosdt` bundles
+* tampered bundles are rejected
+* valid bundles import on a fresh boot
+* publisher identities are enforced
+* untrusted publishers are blocked by default
+* Template objects are installed into `/objects/templates/`
+* imports create Generations
+* rollback works
+* I2P peer node can start and expose a destination
+* Kademlia DHT can discover peers
+* signed template announcements can be published
+* another node can find, download, verify, and install a template
+* corrupted downloads are rejected
+* dependency resolution works before install
+* offline install still works without P2P access
+
 
 ---
 

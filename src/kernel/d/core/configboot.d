@@ -32,7 +32,8 @@ module core.configboot;
 import core.io : klog, klog_hex;
 import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : cryptoVerify;
-import core.namespace : nsAlloc;
+import core.namespace : nsAlloc, nsAllocRestricted, nsBind, nsBindDeny, nsRootDir;  // DOMAIN_MANAGER DM2.3
+import core.cap : CAP_RIGHT_READ, CAP_RIGHT_WRITE, CAP_RIGHT_STAT;                  // DOMAIN_MANAGER DM2.3
 import core.identity : identityCreate, identityFreeze, identityByName, NetPolicy, ClipPolicy;
 import core.domain   : domainCreate, domainByName, domainById;   // DOMAIN_MANAGER DM1
 import core.servicemgr : serviceRegister, serviceAddDep, serviceStartAll;
@@ -71,6 +72,8 @@ private enum ubyte TAG_GEN_SET        = 5;
 private enum ubyte TAG_IDENTITY_FREEZE = 6;
 private enum ubyte TAG_SVC_START_ALL  = 7;
 private enum ubyte TAG_DOMAIN_CREATE  = 8;   // DOMAIN_MANAGER DM1
+private enum ubyte TAG_FS_POLICY      = 9;   // DOMAIN_MANAGER DM2.3
+private enum ubyte TAG_FS_BIND        = 10;  // DOMAIN_MANAGER DM2.3
 
 private enum MANIFEST_HEADER_SIZE = 16;
 private enum MANIFEST_HMAC_SIZE   = 32;
@@ -261,6 +264,39 @@ private void applyOne(ubyte tag, ubyte len, const(ubyte)* payload) {
             klog(idName[0] != 0 ? idName : "(none)".ptr);
             klog(" persist="); klog_hex(persist); klog("\n");
         }
+        break;
+    }
+    case TAG_FS_POLICY: {
+        // payload: domainName\0 u8 flags(bit0=allowTraversal) → build a fresh restricted ns
+        // for the domain (OVERRIDES any DM2.2 default).  The following TAG_FS_BIND records fill it.
+        size_t off = 0;
+        const(char)* name = readCStr(payload, len, off);
+        if (name is null || off >= len) break;
+        const ubyte flags = payload[off];
+        auto d = domainById(domainByName(name));
+        if (d is null) break;
+        const uint ns = nsAllocRestricted();      // no "/" binding → deny-by-default
+        if (ns == 0) break;
+        d.nsObjId = ns;
+        if (flags & 1) nsBind(ns, "/\0".ptr, nsRootDir(), CAP_RIGHT_READ | CAP_RIGHT_STAT); // allowTraversal
+        klog("[configboot] domain "); klog(name); klog(" fs policy → restricted ns\n");
+        break;
+    }
+    case TAG_FS_BIND: {
+        // payload: domainName\0 u8 mode(1=ro,2=rw,3=deny) path\0
+        size_t off = 0;
+        const(char)* name = readCStr(payload, len, off);
+        if (name is null || off >= len) break;
+        const ubyte mode = payload[off]; off += 1;
+        const(char)* path = readCStr(payload, len, off);
+        if (path is null) break;
+        auto d = domainById(domainByName(name));
+        if (d is null || d.nsObjId == 0) break;   // policy (TAG_FS_POLICY) must precede the binds
+        const uint RW = CAP_RIGHT_READ | CAP_RIGHT_WRITE | CAP_RIGHT_STAT;
+        const uint RO = CAP_RIGHT_READ | CAP_RIGHT_STAT;
+        if      (mode == 1) nsBind(d.nsObjId, path, nsRootDir(), RO);
+        else if (mode == 2) nsBind(d.nsObjId, path, nsRootDir(), RW);
+        else if (mode == 3) nsBindDeny(d.nsObjId, path);
         break;
     }
     case TAG_SVC_REG: {

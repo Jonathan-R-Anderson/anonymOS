@@ -66,7 +66,8 @@ import core.identity : identityInitDefaults, identityInitLaunchRules, identityBy
                        identitySelfTest, idprocSelfTest, identityStats, identityNamePrint,
                        identityById; // IDENTITY_DOMAIN P2/P3 (+ F4.2 launch cap-gate)
 import core.domain : domainInitDefaults, domainSelfTest, domainStats; // DOMAIN_MANAGER DM0
-import core.domain : domainNsProof;   // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
+import core.domain : domainNsProof;        // DOMAIN_MANAGER DM2: per-domain restricted-namespace proof
+import core.domain : domFsManifestProof;   // DOMAIN_MANAGER DM2.3: manifest-built fs policy proof
 import core.idns : idnsInitRoots, idnsSelfTest, idnsStats; // IDENTITY_DOMAIN P4 per-identity namespaces
 import core.idipc : idipcInit, idipcSelfTest, idipcStats; // IDENTITY_DOMAIN P5 cross-identity IPC policy
 import core.idwin : idwinInit, idwinSelfTest, idwinStats; // IDENTITY_DOMAIN P6 unspoofable window identity borders
@@ -2886,6 +2887,7 @@ void d_kernel_main() {
     configDomainsDump();         // /config/domains.json render (now includes manifest domains)
     domObjViewDump();            // /objects/domains/<name>/{meta,relationships,capabilities}
     domReadPathProof();          // end-to-end /objects/domains read path (parse+render)
+    domFsManifestProof();        // DOMAIN_MANAGER DM2.3: DevSandbox's ns reflects its manifest filesystemAccess
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 

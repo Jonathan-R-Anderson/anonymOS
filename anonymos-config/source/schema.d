@@ -222,7 +222,19 @@ SchemaNode documentSchema()
         p["startupPrograms"] = arr(str());
         p["environment"] = freeNode();
         p["defaults"] = freeNode();
-        p["filesystemAccess"] = freeNode();             // DM2 gives this an explicit nested schema
+        // DM2.3: the restricted-filesystem policy — the core fields are validated + compiled;
+        // mounts/sharedFolders/tempFolders/packageWritable/execPaths/allowCrossDomainAccess are
+        // accepted (allowUnknown) but compiled in later milestones.
+        {
+            SchemaNode[string] fp;
+            fp["defaultPolicy"] = enumN(["deny", "allow"]);
+            fp["readOnly"]  = arr(str());
+            fp["readWrite"] = arr(str());
+            fp["deny"]      = arr(str());
+            fp["allowTraversalOutsideMounts"] = boolN();
+            fp["homeVisible"] = boolN();
+            p["filesystemAccess"] = obj(fp, false, true);
+        }
         p["networkPolicy"] = freeNode();
         p["permissions"] = freeNode();
         p["appearance"] = freeNode();

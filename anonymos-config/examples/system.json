@@ -30,7 +30,13 @@
   ],
   "domains": [
     { "name": "DevSandbox", "type": "domain", "identity": "Personal", "persist": "full",
-      "packages": ["git","clang"], "applications": ["terminal","editor"] },
+      "packages": ["git","clang"], "applications": ["terminal","editor"],
+      "filesystemAccess": {
+        "defaultPolicy": "deny",
+        "readWrite": ["/Domains/DevSandbox/Home", "/tmp", "/Shared/Projects"],
+        "readOnly":  ["/System/Templates", "/Shared/Public"],
+        "deny":      ["/Shared/Projects/secrets"]
+      } },
     { "name": "BankVault",  "type": "domain", "identity": "Banking",  "persist": "home-only" }
   ],
   "namespaces": [

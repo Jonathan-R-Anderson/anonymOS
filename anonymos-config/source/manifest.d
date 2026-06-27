@@ -50,6 +50,8 @@ enum Tag : ubyte
     identityFreeze = 6,   // payload: (none)                    → identityFreeze
     svcStartAll    = 7,   // payload: (none)                    → serviceStartAll (applied after all svcDep)
     domainCreate   = 8,   // payload: name\0 identity\0 template\0 u8 persist  → domainCreate (DOMAIN_MANAGER DM1)
+    fsPolicy       = 9,   // payload: domainName\0 u8 flags(bit0=allowTraversal)  → start a domain fs policy (DM2.3)
+    fsBind         = 10,  // payload: domainName\0 u8 mode(1=ro,2=rw,3=deny) path\0  → add a binding (DM2.3)
 }
 
 // The trusted key MUST match src/kernel/d/core/crypto.d g_trustedKey exactly.
@@ -234,6 +236,35 @@ private ubyte[] manifestDomains(in CompiledGraph g)
         p ~= cast(ubyte) 0;
         p ~= persistMode(rec.persist);
         b.putRecord(Tag.domainCreate, p);
+
+        // DM2.3: the restricted-filesystem policy (fsPolicy starts the domain's ns, fsBind per path)
+        if (rec.fsHasPolicy)
+        {
+            ubyte[] fp;
+            foreach (c; name) fp ~= cast(ubyte) c;
+            fp ~= cast(ubyte) 0;
+            ubyte flags = 0;
+            if (rec.fsAllowTraversal) flags |= 1;
+            fp ~= flags;
+            b.putRecord(Tag.fsPolicy, fp);
+
+            void emitBinds(in string[] paths, ubyte mode)
+            {
+                foreach (path; paths)
+                {
+                    ubyte[] bp;
+                    foreach (c; name) bp ~= cast(ubyte) c;
+                    bp ~= cast(ubyte) 0;
+                    bp ~= mode;
+                    foreach (c; path) bp ~= cast(ubyte) c;
+                    bp ~= cast(ubyte) 0;
+                    b.putRecord(Tag.fsBind, bp);
+                }
+            }
+            emitBinds(rec.fsReadOnly,  1);
+            emitBinds(rec.fsReadWrite, 2);
+            emitBinds(rec.fsDeny,      3);
+        }
     }
     return b.buf;
 }

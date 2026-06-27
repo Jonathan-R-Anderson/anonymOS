@@ -564,9 +564,22 @@ target is the rtfs-root Directory object (the gate only needs `target!=0` + righ
 resolver handles the real file since `namespaceCheckOpen` returns 0=proceed — it does NOT redirect via
 `outRest`). Verified: `[domain] ns proof PASS: Development restricted view` — building Development's real
 ns + resolving 5 paths (home rw allowed, `/Shared` ro, `/Shared/Private`+`/System` denied, unbound
-`/etc/passwd` deny-by-default). *Remaining DM2:* DM2.3 (explicit `filesystemAccess` schema/TLV → override
-the default from the manifest), DM2.4 (`Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET`), and the live
-domain-bound enforcement test (a real task with `Task.namespaceObjId` = the domain ns — the DM2/DM3 boundary).
+`/etc/passwd` deny-by-default).
+
+**DM2.3 (manifest drives the restricted view) DONE + verified — host + in-VM.** The `filesystemAccess`
+block now flows from JSON to an enforced restricted namespace: `schema.d` gave it an explicit schema
+(`defaultPolicy`/`readOnly`/`readWrite`/`deny`/`allowTraversalOutsideMounts`/`homeVisible`, allowUnknown for
+the deferred mounts/shared/…); `compiler.d` `DomainRecFields` gained the fs lists + `buildDomainTable` reads
+them; `manifest.d` emits `Tag.fsPolicy=9` (domainName\0 u8 flags) + `Tag.fsBind=10` (domainName\0 u8 mode
+path\0) records per domain; `configboot.d` `TAG_FS_POLICY` builds a fresh `nsAllocRestricted()` for the
+domain (overriding the DM2.2 default) and `TAG_FS_BIND` does `nsBind`(ro/rw)/`nsBindDeny`. Verified: host
+`check` OK + the 512-byte TLV carries the fs paths; in-VM `[configboot] domain DevSandbox fs policy →
+restricted ns` + `[domain] fs manifest proof PASS: DevSandbox ns from manifest (Home+Projects rw,
+/System/Templates ro, secrets denied, unbound deny-by-default)`. *Remaining DM2:* DM2.4
+(`Filesystem/RuntimeView` + `HOSQ_DOMAIN_FS_GET` — inspection), and the live domain-bound enforcement test
+(a real task with `Task.namespaceObjId` = the domain ns — the DM2/DM3 boundary). Deferred fields:
+`mounts`/`sharedFolders`/`tempFolders`/`packageWritable`/`execPaths` (accepted by the schema, compiled in
+later milestones).
 
 - `core/namespace.d`: add a `denied` flag to `NsBinding`; make `nsResolveWithRights`
   (`namespace.d:174`) return EACCES on a longest-prefix match to a denied binding even when

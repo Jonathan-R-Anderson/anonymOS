@@ -118,6 +118,12 @@ struct DomainRecFields
     string identity;    // the identity name this domain binds to ("" → same-named identity)
     string template_;   // parent template name (DM6); "" = none
     string persist;     // "ephemeral" | "home-only" | "full" (default "ephemeral")
+    // DM2.3 — the restricted-filesystem policy (the core fields; others deferred)
+    bool     fsHasPolicy;       // a filesystemAccess block was declared
+    bool     fsAllowTraversal;  // allowTraversalOutsideMounts → re-add a read-only "/" mount
+    string[] fsReadOnly;        // allowed read-only mount points
+    string[] fsReadWrite;       // allowed read-write mount points
+    string[] fsDeny;            // explicit deny holes (override a shorter allow)
 }
 
 struct BootStep
@@ -786,6 +792,23 @@ DomainRecFields[string] buildDomainTable(const ref JSONValue doc)
                 if (auto id = "identity" in e.object) r.identity = id.str;
                 if (auto tpl = "template" in e.object) r.template_ = tpl.str;
                 if (auto ps = "persist" in e.object) r.persist = ps.str;
+                // DM2.3: the filesystemAccess policy
+                if (auto fa = "filesystemAccess" in e.object)
+                    if (fa.type == JSONType.object)
+                    {
+                        r.fsHasPolicy = true;
+                        if (auto at = "allowTraversalOutsideMounts" in fa.object)
+                            if (at.type == JSONType.true_ || at.type == JSONType.false_)
+                                r.fsAllowTraversal = at.boolean;
+                        void readPaths(string key, ref string[] dst) {
+                            if (auto a = key in fa.object)
+                                if (a.type == JSONType.array)
+                                    foreach (pe; a.array) if (pe.type == JSONType.string) dst ~= pe.str;
+                        }
+                        readPaths("readOnly",  r.fsReadOnly);
+                        readPaths("readWrite", r.fsReadWrite);
+                        readPaths("deny",      r.fsDeny);
+                    }
                 if (r.name.length) tab[r.name] = r;
             }
     return tab;

@@ -267,6 +267,37 @@ public void domainNsProof() {
     else    klog("[domain] ns proof FAIL: behaviour\n");
 }
 
+// DOMAIN_MANAGER DM2.3 boot proof: a domain whose namespace was built from its manifest
+// filesystemAccess (by configboot's TAG_FS_POLICY/TAG_FS_BIND) enforces exactly that policy.
+// Runs AFTER configBootApply (the manifest domain + its ns must exist).
+__gshared bool g_domFsManifestProofDone = false;
+public void domFsManifestProof() {
+    if (g_domFsManifestProofDone) return;
+    g_domFsManifestProofDone = true;
+    auto d = domainById(domainByName("DevSandbox\0".ptr));
+    if (d is null || d.nsObjId == 0) { klog("[domain] fs manifest proof SKIP (no DevSandbox ns)\n"); return; }
+    const uint ns = d.nsObjId;
+    const(char)* rest; uint rights; bool denied;
+    bool ok = true;
+    // readWrite /Domains/DevSandbox/Home → allowed, WRITE
+    const uint t1 = nsResolveCheck(ns, "/Domains/DevSandbox/Home/x\0".ptr, rest, rights, denied);
+    ok = ok && (t1 != 0) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
+    // readWrite /Shared/Projects → allowed, WRITE
+    const uint t2 = nsResolveCheck(ns, "/Shared/Projects/build\0".ptr, rest, rights, denied);
+    ok = ok && (t2 != 0) && ((rights & CAP_RIGHT_WRITE) != 0) && !denied;
+    // deny /Shared/Projects/secrets → denied, overriding the /Shared/Projects rw allow
+    const uint t3 = nsResolveCheck(ns, "/Shared/Projects/secrets/key\0".ptr, rest, rights, denied);
+    ok = ok && (t3 == 0) && denied;
+    // readOnly /System/Templates → allowed READ but not WRITE
+    const uint t4 = nsResolveCheck(ns, "/System/Templates/dev\0".ptr, rest, rights, denied);
+    ok = ok && (t4 != 0) && ((rights & CAP_RIGHT_READ) != 0) && ((rights & CAP_RIGHT_WRITE) == 0) && !denied;
+    // an unbound path → deny-by-default
+    const uint t5 = nsResolveCheck(ns, "/etc/passwd\0".ptr, rest, rights, denied);
+    ok = ok && (t5 == 0) && !denied;
+    if (ok) klog("[domain] fs manifest proof PASS: DevSandbox ns from manifest (Home+Projects rw, /System/Templates ro, secrets denied, unbound deny-by-default)\n");
+    else    klog("[domain] fs manifest proof FAIL\n");
+}
+
 public void domainStats() {
     klog("[domain] count=");  klog_hex(cast(ulong)domainCount());
     klog(" created=");        klog_hex(g_domCreateTotal);

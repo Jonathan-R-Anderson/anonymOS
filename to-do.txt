@@ -10,11 +10,7 @@ https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a0cd0e9-8
 
 https://chatgpt.com/g/g-p-685cd97493e08191aa5b5ca1ce6f9099-anonymos/c/6a1b900c-4c1c-83ea-b830-3a0137c662cc (dynamically linked)
 
-make sure the kernel can handle multiple cores/multithreading/dynamic linking
-
-make sure it does hardware abstraction
-
-control panel like with qubes os, different subsystems have colored borders to indicate profiles
+dynamic linking
 
 https://www.gnunet.org/en/index.html
 

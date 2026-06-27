@@ -15,7 +15,7 @@ Core principles:
 * Keep BusyBox-style applets small and share common security/userland code.
 * Every filesystem operation must eventually route through one permission enforcement layer.
 * Use Linux/POSIX behavior where reasonable, but document intentional deviations.
-
+* There should also be a chroot jail and ways to lock down the linux personality
 Implement the following system.
 
 ---

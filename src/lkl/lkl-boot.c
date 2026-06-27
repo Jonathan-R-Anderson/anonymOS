@@ -196,6 +196,7 @@ struct lkl_iomem_ops {
     int (*write)(void *data, int offset, void *value, int size);
 };
 extern void *register_iomem(void *data, int size, const struct lkl_iomem_ops *ops);
+extern void *register_iomem_direct(void *host_va, int size);  /* L6.1: a host-mapped (op8) BAR, direct */
 extern int lkl_trigger_irq(int irq);   /* exported liblkl symbol — raises a Linux IRQ inside LKL */
 
 /* Every BAR MMIO routes here: data = the BAR's physical base, forward (phys+offset) to op3/op4. */
@@ -249,6 +250,24 @@ static void *epin_pci_resource_alloc(struct lkl_pci_dev *dev, unsigned long sz, 
     if (!bar_phys)
         return NULL;
     fprintf(stderr, ">>> epin_pci: BAR%d phys=0x%llx size=0x%lx\n", idx, bar_phys, sz);
+    /* L6.1: a large memory BAR (a GPU framebuffer aperture) can't use the routed iomem path —
+     * register_iomem caps a region at 16MB-1 and a per-access op3/op4 syscall is unusable for a
+     * framebuffer.  op8 maps the BAR's phys straight into this process; register it DIRECT so the
+     * driver's ioremap hands back that real CPU pointer (TTM blits become plain memcpy).  Small
+     * register BARs (bochs dispi/VGA/qext) keep the cheap routed path. */
+    if (sz > 0xFFFFFF) {
+        long va = epin_pci_call(8, (long)bar_phys, 0, (long)sz, 0);   /* op8 = direct-map BAR phys */
+        if (va > 0) {
+            void *tok = register_iomem_direct((void *)(uintptr_t)va, (int)sz);
+            fprintf(stderr, ">>> epin_pci: BAR%d DIRECT phys=0x%llx -> va=0x%lx tok=%p\n",
+                    idx, bar_phys, va, tok);
+            if (tok)
+                return tok;
+            fprintf(stderr, ">>> epin_pci: BAR%d register_iomem_direct full — routed fallback\n", idx);
+        } else {
+            fprintf(stderr, ">>> epin_pci: BAR%d op8 FAILED (%ld) — routed fallback\n", idx, va);
+        }
+    }
     return register_iomem((void *)(uintptr_t)bar_phys, (int)sz, &epin_iomem_ops);
 }
 

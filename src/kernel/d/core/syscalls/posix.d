@@ -7875,6 +7875,27 @@ public long linux_sys_epin_lkl_pci(ulong op, ulong bdf, ulong off, ulong size, u
             }
             input_enqueue(bdf != 0, cast(ushort)off, cast(ushort)size, cast(int)val);
             return 0;
+        case 8: {                                   // L6.1: direct-map a granted BAR's phys into the calling
+            // LKL process and return the host VA.  A GPU framebuffer BAR is too large for the routed iomem
+            // path (register_iomem caps a region at 16MB-1) and far too hot (a syscall per pixel word via
+            // op3/op4); mapping it straight in makes the driver's TTM blits plain memcpys.  bdf = BAR phys
+            // base, size = BAR length.  Same cap gate as op3/op4 — the WHOLE range must be a granted BAR.
+            import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER, PTE_CD;
+            import core.syscalls.mmap : g_nextMmapAddr, alloc_phys_page_wrapper;
+            if (size == 0) return negErrno(EINVAL);
+            const ulong barPhys = bdf & ~0xFFFUL;
+            const ulong endPhys = (bdf + size - 1) | 0xFFFUL;
+            const ulong barLen  = endPhys - barPhys + 1;
+            if (barLen > (256UL << 20)) return negErrno(EINVAL);              // sanity: <= 256MB
+            if (!taskHasMmioCap(tid, barPhys) || !taskHasMmioCap(tid, endPhys))
+                return negErrno(EPERM);                                       // L4: not (entirely) your device
+            const ulong vbase = g_nextMmapAddr;
+            g_nextMmapAddr += barLen;
+            const ulong mapFlags = PTE_PRESENT | PTE_RW | PTE_USER | PTE_CD;  // device MMIO: uncached
+            for (ulong o = 0; o < barLen; o += 4096)                          // map runs in the caller's CR3
+                map_page_hhdm(barPhys + o, vbase + o, mapFlags, &alloc_phys_page_wrapper);
+            return cast(long)(vbase + (bdf - barPhys));                       // preserve any sub-page offset
+        }
         default: return negErrno(EINVAL);
     }
 }

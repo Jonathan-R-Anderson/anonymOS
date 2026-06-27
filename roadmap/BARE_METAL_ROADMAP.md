@@ -256,23 +256,29 @@ walk changes) and **risks the proven NOMMU L3/L5**. So L6 is its own phase:
   pages; `MAP_FIXED_NOREPLACE` → `BUG_ON(res!=va)` panic). **The bridge DMA SURVIVES the MMU** — the
   shmem-mmap'd pages are real host mappings so `op5` virt→phys still resolves; **USB still fully enumerates +
   creates input devices under MMU** (verified). Build needs `make -k` (the unused `lib/hijack` glibc-isms).
-- **L6.1 ⚠️ PARTIAL — bochs-drm PROBES the GPU through the bridge, blocked on the framebuffer map.** The LKL
-  finds `bochs-display` (`0x11111234`, class 0x0380, scan/grant prefer 0x0380) and reads BAR0 (16MB fb at
-  0xfd000000), but bochs-drm fails: `Cannot map framebuffer` (-ENOMEM). **ROOT CAUSE (genuine GPU frontier):
-  the LKL iomem layer (`lib/iomem.c`) is unsuited to a GPU framebuffer** — `lkl_ioremap` routes EVERY access
-  through `lkl_iomem_access → ops->read/write` (i.e. an op3/op4 syscall *per access* — impractical for the
-  millions of accesses a framebuffer needs), AND caps a region at 16MB (`IOMEM_OFFSET_BITS=24`; the fb is
-  exactly 16MB). **NEEDED: DIRECT-map the framebuffer into the LKL** (EpinAnonymOS already maps phys→user-VA
-  for its own DRM mmap, posix.d:10193). Options: (a) bridge op8 = map a BAR's phys→the LKL process VA, +
-  patch the LKL ioremap/iomem to return that direct VA for large BARs; (b) a **shadow framebuffer** (render
-  in RAM, blit to VRAM via the bridge on flush); (c) re-architect `lib/iomem.c` for large direct-mapped BARs.
-  This is a substantial, deep piece — the GPU is "the hardest integration" per the north star.
-- **L6.2 — scanout/mode-setting + the desktop composites on the LKL's GPU** (Weston → `/dev/dri/card0`; the
-  full integration) — beyond L6.1, far larger.
-**Honest status:** L6.0 (the MMU unlock) is DONE + proven; L6.1 reaches the GPU and reads its BARs but the
-**usable framebuffer + L6.2 are a multi-week research effort** (the iomem/framebuffer re-architecting + the
-desktop integration). L6 is also fundamentally **bare-metal** (nouveau needs the real GTX 1080; bochs-display
-is only the L6.1 proxy). `SMP_ROADMAP.md` remains the more immediate, higher-leverage win.
+- **L6.1 ✅ DONE — bochs-drm fully PROBES the GPU through the bridge and creates `/dev/dri/card0`.** Serial
+  proof: `epin_pci: BAR0 DIRECT phys=0xfd000000 -> va=0x700000000000`, then `[drm] Found bochs VGA, ID 0xb0c5`,
+  `[drm] Initialized bochs-drm 1.0.0 ... on minor 0`, `[drm] fb0: bochs-drmdrmfb frame buffer device`. The fix
+  was **DIRECT-mapping the framebuffer** (option a), in three coordinated edits:
+  - **Bridge `op8`** (`posix.d` `linux_sys_epin_lkl_pci`): cap-gated; maps a granted BAR's phys straight into
+    the calling LKL task's address space (`map_page_hhdm` + `PTE_CD`, `owned=false` — device MMIO, never freed)
+    at a fresh `g_nextMmapAddr` VA, returns the VA. Mirrors the kernel's own FD_DRM mmap (phys→user-VA).
+  - **`lkl-boot.c` `epin_pci_resource_alloc`**: a BAR `> 16MB-1` (the framebuffer) calls `op8` then
+    `register_iomem_direct(va, sz)`; small register BARs keep the routed `register_iomem` (op3/op4) path.
+  - **LKL `lib/iomem.c`** (overlay tracked at `src/lkl/lkl-iomem.c`): new `register_iomem_direct(host_va,size)`
+    records the real host VA + returns a normal token (bypassing the 16MB cap); `lkl_ioremap` returns
+    `host_va + offset` for direct regions so TTM's `memcpy_toio` blits hit real memory with zero syscalls.
+    ★ TRAP fixed: `register_iomem`'s free-slot search was `!ops`, but a direct region also has `ops==NULL`
+    (marked by `host_va`) — so the register BAR collided with the framebuffer's slot/token → `readw(mmio+0x500)`
+    read garbage → `[drm] *ERROR* ID mismatch`. Fix: free slot needs `!ops && !host_va`.
+- **L6.2 (next) — pixels from the LKL GPU on screen.** After card0 is created the LKL kernel's `kernel_init`
+  runs `/init` (no userspace init present) and faults, so `lkl_start_kernel` never returns and lkl-boot's
+  resident loop is unreached. Plan: have **lkl-boot itself be an in-LKL KMS client** — open `/dev/dri/card0`,
+  `DRM_IOCTL_MODE_CREATE_DUMB` + map + `ADDFB` + `SETCRTC`, draw a test pattern to the (direct-mapped) VRAM so
+  it scans out to the QEMU bochs-display — and keep it resident (suppress/replace the doomed `/init`).
+**Honest status:** L6.0 (MMU) + **L6.1 (a real Linux GPU DRM driver creating card0 through the cap-gated
+bridge, framebuffer direct-mapped) are DONE + verified.** L6.2 (pixels on screen) is in progress. L6 remains
+fundamentally **bare-metal** for the real path (nouveau needs the GTX 1080; bochs-display is the L6.1 proxy).
 
 ## Sequencing
 BM0 (verify) → L1 (build LKL) → L2 (boot LKL inside) → L3 (hardware bridge, on AHCI) → L4 (device bridge)

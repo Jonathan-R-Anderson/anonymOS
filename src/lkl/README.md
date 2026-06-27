@@ -32,3 +32,19 @@ a timer IRQ that never fires. **Fix:** a CUSTOM LKL timer host-op (a host thread
 clock_nanosleep and calls `lkl_trigger_irq` on the timer IRQ) — bypassing POSIX timers + signals — or
 implement POSIX timers + real signal delivery in the personality.
 Then L3 = a kernel `/dev/vfio` so LKL's `vfio_pci` reaches real PCI (vfio_pci.c is the reference).
+
+## LKL-tree overlays (out-of-repo source, tracked here for reproducibility)
+The LKL is built out-of-tree under `~/lkl-build/linux`. Source files there that we modify have canonical
+copies in this dir and must be copied over the LKL tree before building:
+- **`lkl-iomem.c` → `tools/lkl/lib/iomem.c`** (L6.1, GPU framebuffer direct-map). Adds
+  `register_iomem_direct(host_va, size)` (records a real host VA, returns a token, no 16MB cap) and makes
+  `lkl_ioremap` return `host_va + offset` for direct regions, so a GPU framebuffer BAR mapped by bridge
+  `op8` is touched by plain `memcpy` (no per-access `op3/op4`). The free-slot search in `register_iomem`
+  was fixed to `!ops && !host_va` so a routed register BAR can't collide with a direct framebuffer slot.
+- Also out-of-repo (documented in `roadmap/BARE_METAL_ROADMAP.md`, not copied here): the LKL `defconfig`
+  (`CONFIG_MMU`+`DRM`+`DRM_BOCHS`+`TTM`) and the 1-line `ttm_module.c` `CONFIG_LKL` guard (L6.0).
+
+★ **Build trap:** the build compiles `~/lkl-build/lkl-boot.c`, NOT the repo `src/lkl/lkl-boot.c`. **Copy
+`lkl-boot.c` AND `lkl-iomem.c` into the build tree before building** — a forgotten copy silently builds a
+STALE binary (e.g. missing the L6.0 `shmem_mmap` host-op → `bootmem_init` calls a null op → the LKL faults
+at `rip=0` before Linux even boots).

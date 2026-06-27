@@ -1,10 +1,24 @@
 # EpinAnonymOS SMP / Multi-core Roadmap
 
 ## North star
-Run EpinAnonymOS across all cores of the target box (**i9-9900KF, 8C/16T**). The bare-metal vision
-([[bare-metal-lkl]], `BARE_METAL_ROADMAP.md`) is a set of **per-device LKL driver-OSes + the desktop
-compositor** — today they timeshare a single core cooperatively, a hard bottleneck. With SMP a usb-lkl, a
-gpu-lkl, a net-lkl, and Weston each get their own core and run **in parallel**.
+Run EpinAnonymOS across **all cores the host actually exposes — discovered at runtime, with NO fixed
+limit.** The dev/target box happens to be an i9-9900KF (8C/16T), but **8 must never be hardcoded anywhere**:
+the kernel enumerates the CPUs at boot and scales to whatever it finds — a 2-core VM, a 16-core laptop, a
+64-core workstation — all from the same binary. The bare-metal vision ([[bare-metal-lkl]],
+`BARE_METAL_ROADMAP.md`) is a set of **per-device LKL driver-OSes + the desktop compositor** — today they
+timeshare a single core cooperatively, a hard bottleneck. With SMP a usb-lkl, a gpu-lkl, a net-lkl, and
+Weston each get their own core and run **in parallel** — and on a bigger host, more drivers/apps spread
+across more cores with zero code changes.
+
+## Dynamic core count (HARD REQUIREMENT)
+- **Discover N at runtime** from the limine SMP response (it returns the live CPU list) — fall back to the
+  ACPI **MADT** (LAPIC entries) if needed. Never assume a count.
+- **No magic 8.** Per-CPU structures are sized to the discovered N: either a runtime-allocated array of
+  per-CPU areas (`percpu[N]`), or a generous compile-time `MAX_CPUS` (e.g. 256/512) indexed by the live
+  count — never a literal 8. Run queues, idle tasks, APIC-id tables, and IPI bookkeeping all scale to N.
+- **Bring up every AP** the firmware reports (not the first 8); each that comes online joins the scheduler.
+- **Degrade gracefully:** N==1 must still boot (today's path); the code is "for each online CPU", so 1, 8,
+  or 128 are the same logic. Optionally honor an `smp=` cap for debugging, defaulting to "all".
 
 **Scope honesty (from the L5 isolation test, 2026-06-26):** SMP is the right architecture for the
 multi-core target, but it is **NOT the fix for the L5 USB-enumeration stall**. That was proven a
@@ -46,7 +60,8 @@ it matters.**
   enter the kernel, load a per-CPU GDT/IDT/TSS, switch to the kernel CR3, init its local APIC, enter a
   per-CPU idle loop. **Verify:** each AP prints "CPU N online" and idles; the BSP keeps running the desktop.
 - **S2 — Per-CPU state.** A per-CPU area addressed via `GS` (`swapgs` on kernel entry): `currentTask`,
-  `idleTask`, local-APIC id, scheduler cursor, a per-CPU scratch stack. Replace the global
+  `idleTask`, local-APIC id, scheduler cursor, a per-CPU scratch stack — **one entry per discovered CPU,
+  sized to the runtime N (allocated for the live count; never a fixed 8).** Replace the global
   `g_current_task_id` with the per-CPU current task (keep a shim during migration).
 - **S3 — Big Kernel Lock.** One spinlock at every kernel entry (syscall/IRQ/fault prologue), released at
   exit (incl. before returning to userspace and around `scheduleNext`). Correct-but-serial kernel,

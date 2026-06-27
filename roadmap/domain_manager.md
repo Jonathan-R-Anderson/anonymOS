@@ -1831,6 +1831,13 @@ exist here (sockets are AF_UNIX only) — the offline export/import/sign/verify/
 is real; the marketplace object model (`/objects/marketplace/*`) + per-publisher PKI (currently the single
 crypto.d system key) are the follow-up. This completes the DM0–DM12 roadmap's feasible-now surface.
 
+➤ **The deferred §8–17 P2P marketplace + its prerequisite network stack now live in their own combined
+roadmap: [`NETWORK_AND_MARKETPLACE_ROADMAP.md`](NETWORK_AND_MARKETPLACE_ROADMAP.md)** (Part A = a domain-gated
+IPv4 TCP/UDP stack on virtio-net, which also makes the DM8 `NetPolicy` `connect()` gate real; Part B = the I2P
+SAM transport + Kademlia DHT + content-addressed download riding on Part A, reusing this DM12 offline bundle
+core verbatim). The marketplace is not a separable Domain Manager feature — it is the application that rides on
+the missing transport, so the two are scoped together there.
+
 ---
 
 ## Compatibility mapping (the UX/display layer over real enforcement)

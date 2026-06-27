@@ -30,6 +30,7 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 | Capability model (19 rights, derive, revoke, typed admin) | ✅ | [`CAPABILITY_MODEL`](roadmap/CAPABILITY_MODEL.md) |
 | Object-Reference-Graph + cycle-detecting GC | ✅ | [`OBJECT_REFERENCE_GRAPH_ROADMAP`](roadmap/OBJECT_REFERENCE_GRAPH_ROADMAP.md) / [`ORG_ARCHITECTURE`](roadmap/ORG_ARCHITECTURE.md) |
 | Identity / security domains (Qubes-style, no VMs) | ✅ | [`IDENTITY_DOMAIN_ROADMAP`](roadmap/IDENTITY_DOMAIN_ROADMAP.md) |
+| Domain Manager — cloneable domains: restricted FS, device/peripheral gates, cap-gated packages, per-domain Linux distros, signed exportable templates + inheritance, full tabbed GUI | ✅ | [`domain_manager`](roadmap/domain_manager.md) |
 | Native object filesystem (`/objects`, `/config`, `/system`) | ✅ | [`OBJECT_FILESYSTEM_ROADMAP`](roadmap/OBJECT_FILESYSTEM_ROADMAP.md) |
 | Declarative config compiler + verified-config boot | ✅ | [`DECLARATIVE_CONFIG_SPEC`](roadmap/DECLARATIVE_CONFIG_SPEC.md) / [`anonymos-config/`](anonymos-config/) |
 | Secure IPC (X25519 / HKDF / ChaCha20-Poly1305) | ✅ | [`SECURE_IPC_ROADMAP`](roadmap/SECURE_IPC_ROADMAP.md) |
@@ -39,6 +40,8 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 | Real Z Shell (Linux + native-ABI port) | ✅ | [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) |
 | Shell & command set (`hos-sh`, `esh`, busybox 381 applets) | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) |
 | Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
+| SMP / multi-core (dynamic core count, BKL-first → per-CPU) | 🔵 | [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) |
+| TCP/IP network stack + I2P P2P template marketplace | 🔵 | [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) |
 
 ---
 
@@ -139,6 +142,32 @@ immutable thereafter. Seven compiled-in domains: `System` (gray), `Personal`
   session descriptor at broker issuance.
 - **Unspoofable window borders**: `winRegister` stamps `identityObjId` +
   `identityColor` from the owning process — apps cannot supply them.
+
+### 🏛️ Domain Manager (cloneable OS-environment domains)
+*Roadmap: [`domain_manager`](roadmap/domain_manager.md) — DM0–DM12 complete (to the feasible substrate).*
+
+A **domain** is a first-class, persistent, cloneable object — a complete reusable OS
+environment blending Qubes templates, Docker images, NixOS modules, and immutable
+snapshots, all on the identity/capability/namespace/object-store substrate. Declared in
+`system.json`, every domain is driven from the data, not hardcoded:
+
+- **Restricted, deny-by-default filesystem** (`core/namespace.d`): each domain sees only
+  its granted paths (`/objects/domains/<name>/filesystem` is the resolved RuntimeView);
+  real host paths can be granted/denied at runtime (`fsro`/`fsrw`/`fsdeny`).
+- **Lifecycle + content-addressed CoW overlays**: start/stop/pause/snapshot/commit/clone;
+  commit folds into a *new* immutable base (the old one is never mutated). Persists across
+  reboot.
+- **Peripheral device gates** (`§7` device classes): per-domain GPU / camera / mic / audio /
+  USB / input toggles enforced at `open()` — a `usb:false` domain physically cannot open
+  the node.
+- **Cap-gated package manager** + per-domain **Linux distros** (BusyBox/Nix/Alpine, a RO
+  `/linux` compat root) + package profiles.
+- **Signed exportable templates** (`.hosdt`, HMAC-signed): export/import/verify/trust/
+  rollback, with **least-privilege inheritance** (a child template can only narrow its
+  parent's access, never escalate).
+- **Full tabbed GUI** (`util/wl-domain-manager.c`): a Wayland client with Overview /
+  Filesystem / Packages / Network / Permissions / Startup / Appearance tabs — every feature
+  above is clickable and writes back through `/config/domain.action`.
 
 ### 📁 Native object filesystem
 *Roadmap: [`OBJECT_FILESYSTEM_ROADMAP`](roadmap/OBJECT_FILESYSTEM_ROADMAP.md) — F0–F5 done.*
@@ -271,8 +300,18 @@ audit log of capability use (~466k decisions on a live boot). *Ed25519
 asymmetric signing is pending (HMAC stand-in today).*
 
 ### 🌐 Networking
-A complete in-kernel network stack: Ethernet, ARP, IPv4/IPv6, ICMP/ICMPv6, TCP,
-UDP, DNS, DHCP, HTTP, HTTPS, TLS — plus VirtIO and VeraCrypt driver stubs.
+*Roadmap: [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) — planned.*
+
+**Working today:** AF_UNIX sockets (`syscalls/posix.d` — the full BSD-socket shape:
+`socket`/`bind`/`listen`/`accept`/`connect`/`send`/`recv` + poll/epoll), used by
+Weston/Wayland and IPC.
+
+**Present but not yet wired:** IPv4/IPv6 stack modules (`network/`: ethernet, ARP, IP,
+ICMP, TCP, UDP, DNS, DHCP) and a virtio-net / e1000 NIC driver exist, but
+`networkStackInit` is never called, AF_INET sockets reject, and there is no boot
+self-test — so there is no *functional* TCP/IP yet. Integrating and proving that stack
+(host `ping <guest>`, real musl TCP), enforcing per-domain `NetPolicy` at `connect()`,
+and the **I2P P2P template marketplace** on top are the planned work.
 
 ---
 
@@ -413,6 +452,18 @@ anonymOS is honest about its gaps (each roadmap names them):
   Until that lands `-sh` runs on the betterC evaluator; **L5** (the Domain Manager's *native
   (-sh/LFE)* shell option) can ship on that, but the full language + rich forms need the runtime
   port. The vendored upstream source + this decision live in [`deps/lfe-sh/`](deps/lfe-sh/VENDOR.md).
+- **Functional TCP/IP + P2P marketplace**
+  ([`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md)) — the
+  stack modules (`network/`) and a virtio-net/e1000 NIC driver exist but are **unwired +
+  unverified** (`networkStackInit` is never called, AF_INET sockets reject, no boot
+  proof), so there is no working network today. The Domain Manager's I2P P2P template
+  marketplace (DM12 §8–17) rides on that missing transport — its *offline* signed-bundle
+  half (export/import/verify/trust/rollback) **is** done.
+- **SMP / multi-core** ([`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md)) — single-core only; AP
+  bringup + a Big-Kernel-Lock for parallel userspace is the first cut.
+- **Domain Manager substrate limits** ([`domain_manager`](roadmap/domain_manager.md)) —
+  network/clipboard *runtime* gates (need the stack above / Weston hooks) and on-disk
+  per-distro Linux roots remain; the device/fs/package/template core is done + verified.
 - **Disposable identities, brokers, signed identity policy** (Identity M3/M4);
   **desktop settings app, animations, multi-window workspaces** (G18–G21).
 

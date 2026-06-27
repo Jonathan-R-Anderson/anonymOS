@@ -1204,8 +1204,9 @@ private void maybeSpawnLklTest() {
     // NVMe device.  The 0x4100 bridge is default-deny, so without this grant it would see NO hardware at
     // all; with it, it sees NVMe and is denied (-EPERM) any scan/config/MMIO of every other device.
     const int lklTid = cast(int)g_current_task_id;     // spawnWaylandProgram set this to the new task
-    // L5: prefer a USB controller (xHCI, class 0x0c03) for input; else NVMe (the L3/L4 vehicle).
-    uint devBdf = findDeviceByClass(0x0c03);
+    // L6.1: prefer a display controller (bochs GPU, 0x0380); else USB (xHCI, 0x0c03); else NVMe (0x0108).
+    uint devBdf = findDeviceByClass(0x0380);
+    if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
     if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
     if (lklTid > 0 && devBdf != 0xFFFFFFFF) {
         grantDeviceCap(lklTid, devBdf);

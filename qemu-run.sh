@@ -66,6 +66,14 @@ if [ "${LKL_USB:-0}" = "1" ]; then
   echo "[qemu-run] LKL_USB=1: attaching xHCI + usb-kbd + usb-mouse for the LKL driver"
 fi
 
+# L6.1 LKL GPU: a secondary bochs-display (class 0x0380) for LKL's bochs-drm to drive -- the QEMU
+# proxy for nouveau (EpinAnonymOS keeps the primary VGA).  Opt-in via LKL_GPU=1.
+GPUDEV=()
+if [ "${LKL_GPU:-0}" = "1" ]; then
+  GPUDEV=( -device bochs-display,id=lklgpu )
+  echo "[qemu-run] LKL_GPU=1: attaching bochs-display for the LKL DRM driver"
+fi
+
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
@@ -81,6 +89,7 @@ exec "$QEMU_BIN" \
   -device ide-hd,drive=hosdisk,bus=ahci0.0 \
   "${NVME[@]}" \
   "${USBDEV[@]}" \
+  "${GPUDEV[@]}" \
   "${GFX[@]}"
 # R2 (GPU stack) is OFF by default: `gtk,gl=on` + a virtio-gpu-gl device gives a BLACK SCREEN on
 # many hosts (the GL display path doesn't present the firmware-VGA framebuffer the desktop renders

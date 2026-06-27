@@ -239,6 +239,41 @@ Linux ABI (this is the half that "comes from the Linux compatibility layer"). Br
 to the existing DRM-uABI seam. **Verify:** the desktop composites on the real GPU. (Pascal's signed-firmware
 limits apply, same as upstream nouveau.)
 
+**★★ GATING FINDING (checked 2026-06-26): L6 needs LKL's MMU first.** The current `liblkl.a` is **NOMMU**
+(`# CONFIG_MMU is not set`), but **every real GPU DRM driver depends on `MMU`** — `DRM_BOCHS` (the QEMU GPU
+proxy for nouveau) `depends on DRM && PCI && MMU` and `select`s `DRM_TTM`; **nouveau** likewise needs TTM/MMU.
+The DRM *core* + `DRM_KMS_HELPER` + `DRM_FBDEV_EMULATION` do build NOMMU, but there is **no usable PCI-GPU
+driver** without MMU (`simpledrm` only adopts a pre-existing firmware framebuffer — it doesn't drive the GPU's
+PCI). LKL **has** an MMU option (`config MMU` in `arch/lkl/Kconfig`), so it's possible — but enabling it is a
+**substantial prerequisite, not an increment**: LKL gains real virtual memory, which changes the model the
+DMA bridge relies on (`.map_page`/op5 today = the host-chunk linear offset; with an LKL MMU the page-table
+walk changes) and **risks the proven NOMMU L3/L5**. So L6 is its own phase:
+- **L6.0 ✅ DONE (commit d7803181d): LKL MMU works through the bridge.** Enabled `CONFIG_MMU`+`DRM`+
+  `DRM_BOCHS`+`TTM` in the LKL build; **TTM needed a 1-line patch** (`ttm_module.c`: guard the x86-only
+  `boot_cpu_data.x86` line with `CONFIG_LKL`, like UML's `CONFIG_UML` guard). The MMU host-op (`shmem_init`/
+  `shmem_mmap`, which back LKL "physical" memory with a host shm it mmaps at kernel-VAs) was overridden in
+  lkl-boot.c to use a **memfd** (EpinAnonymOS has no `shm_open`/`/dev/shm`) with **`MAP_FIXED`** (LKL remaps
+  pages; `MAP_FIXED_NOREPLACE` → `BUG_ON(res!=va)` panic). **The bridge DMA SURVIVES the MMU** — the
+  shmem-mmap'd pages are real host mappings so `op5` virt→phys still resolves; **USB still fully enumerates +
+  creates input devices under MMU** (verified). Build needs `make -k` (the unused `lib/hijack` glibc-isms).
+- **L6.1 ⚠️ PARTIAL — bochs-drm PROBES the GPU through the bridge, blocked on the framebuffer map.** The LKL
+  finds `bochs-display` (`0x11111234`, class 0x0380, scan/grant prefer 0x0380) and reads BAR0 (16MB fb at
+  0xfd000000), but bochs-drm fails: `Cannot map framebuffer` (-ENOMEM). **ROOT CAUSE (genuine GPU frontier):
+  the LKL iomem layer (`lib/iomem.c`) is unsuited to a GPU framebuffer** — `lkl_ioremap` routes EVERY access
+  through `lkl_iomem_access → ops->read/write` (i.e. an op3/op4 syscall *per access* — impractical for the
+  millions of accesses a framebuffer needs), AND caps a region at 16MB (`IOMEM_OFFSET_BITS=24`; the fb is
+  exactly 16MB). **NEEDED: DIRECT-map the framebuffer into the LKL** (EpinAnonymOS already maps phys→user-VA
+  for its own DRM mmap, posix.d:10193). Options: (a) bridge op8 = map a BAR's phys→the LKL process VA, +
+  patch the LKL ioremap/iomem to return that direct VA for large BARs; (b) a **shadow framebuffer** (render
+  in RAM, blit to VRAM via the bridge on flush); (c) re-architect `lib/iomem.c` for large direct-mapped BARs.
+  This is a substantial, deep piece — the GPU is "the hardest integration" per the north star.
+- **L6.2 — scanout/mode-setting + the desktop composites on the LKL's GPU** (Weston → `/dev/dri/card0`; the
+  full integration) — beyond L6.1, far larger.
+**Honest status:** L6.0 (the MMU unlock) is DONE + proven; L6.1 reaches the GPU and reads its BARs but the
+**usable framebuffer + L6.2 are a multi-week research effort** (the iomem/framebuffer re-architecting + the
+desktop integration). L6 is also fundamentally **bare-metal** (nouveau needs the real GTX 1080; bochs-display
+is only the L6.1 proxy). `SMP_ROADMAP.md` remains the more immediate, higher-leverage win.
+
 ## Sequencing
 BM0 (verify) → L1 (build LKL) → L2 (boot LKL inside) → L3 (hardware bridge, on AHCI) → L4 (device bridge)
 → L5 (USB HID — usable desktop) → L6 (GPU — long). L3 is the make-or-break research milestone; everything

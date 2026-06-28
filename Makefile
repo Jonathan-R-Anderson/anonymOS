@@ -112,8 +112,9 @@ WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 #   make calamares-deps # §D3 Calamares C++ deps (yaml-cpp, …)           [yaml-cpp DONE]
 #   make parted-stack   # §D2 partitioning backend (util-linux/libparted) [TODO]
 #   make calamares      # §D3 the Calamares installer ELF                 [needs §D2]
+#   make veracrypt      # §E1 stripped VeraCrypt crypto core (libvc_crypto) [crypto DONE, KAT PASS]
 # =========================================================
-.PHONY: qt-stack parted-stack calamares-deps calamares installer-deps
+.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt installer-deps
 qt-stack:
 	+$(MAKE) -C deps/qt-stack all
 calamares-deps:
@@ -122,7 +123,9 @@ parted-stack:
 	+$(MAKE) -C deps/parted-stack all
 calamares:
 	+$(MAKE) -C deps/calamares calamares
-installer-deps: qt-stack calamares-deps parted-stack calamares
+veracrypt:
+	+$(MAKE) -C deps/veracrypt test
+installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
 ZSHFNS_SRC   := deps/zsh/zsh-5.9

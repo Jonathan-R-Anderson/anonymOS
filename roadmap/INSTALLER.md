@@ -261,6 +261,18 @@ needs, DELETE the rest:
 - Cross-build it the repo way (`deps/veracrypt/Makefile`, musl-clang, `-static -no-pie`), and **fold
   it into the kernel's existing `veracrypt_impl.d`** rather than duplicating — that file is the seed.
 
+**Crypto core ✅ DONE — cross-builds + KAT-validated.** `deps/veracrypt/Makefile` (opt-in:
+`make veracrypt`) compiles ONLY a curated, software-only C subset of `../VeraCrypt/src/Crypto` into
+`sysroot/lib/libvc_crypto.a` (37 symbols): AES (Aescrypt/Aeskey/Aestab), Serpent, Twofish,
+Kuznyechik, SHA-512, Whirlpool, Streebog. `-DCRYPTOPP_DISABLE_ASM` selects the pure-C transforms (no
+hw-asm/SSE/AVX/NEON variants, no CPU-feature dispatch, no `cpu.c` — nothing but the math compiles;
+VeraCrypt's `_UEFI` mode is avoided as it pulls in EDK2 `<Uefi.h>`). `make veracrypt` links a NIST
+known-answer test (`test/kat.c`, musl-static, runs on the build host): **AES-256 KAT PASS** (FIPS-197)
++ **SHA-512 KAT PASS** — the strip kept a *correct* core, not just a linkable one. (Camellia/blake2s
+have minor include quirks; PBKDF2/`Pkcs5.c` pulls in Argon2 — both folded into E2.)
+**E1 remaining:** the volume-header + hidden-OS layout source (from `Common/BootEncryption.cpp`) and
+the `Boot/EFI` pre-boot loader subset; then prune the vendored tree to exactly the used files.
+
 ### E2 — Crypto core (extend `veracrypt_impl.d` to VeraCrypt parity)
 Bring the kernel/installer crypto to header-compatible parity with the stripped subset: the full
 cipher set + cascades, the exact PBKDF2 iteration counts + header KDF, the **hidden-volume header**
@@ -504,12 +516,13 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7), not built.** An *optional* Phase-5
-  step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`) and the kernel already seeds the crypto
-  (`drivers/veracrypt_impl.d`: XTS-AES, PBKDF2-HMAC-SHA512, VeraCrypt header). Next: strip VeraCrypt
-  to the decoy/hidden-OS subset (E1), reach header parity (E2), then the encrypted layout + hidden-OS
-  install + EFI pre-boot loader (E3–E5) on the §D2(b) engine, the optional installer page (E6), and
-  the deniability security review (E7).
+- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 crypto core ✅ DONE.** An
+  *optional* Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`) and the kernel already seeds the
+  crypto (`drivers/veracrypt_impl.d`: XTS-AES, PBKDF2-HMAC-SHA512, VeraCrypt header). **E1 crypto core
+  built + KAT-validated** (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors PASS).
+  Next: finish E1 (volume-header + hidden-OS source + `Boot/EFI` loader, then prune the tree), reach
+  header parity (E2), then the encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on
+  the §D2(b) engine, the optional installer page (E6), and the deniability security review (E7).
 - **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**

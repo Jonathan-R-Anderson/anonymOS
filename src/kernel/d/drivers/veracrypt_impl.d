@@ -1,10 +1,23 @@
 module drivers.veracrypt_impl;
 
 import drivers.veracrypt;
-// import anonymos_crypto.primitives.sha512;
+import core.io : klog, klog_hex;
 
 extern(C) void sha512_hash(const(ubyte)* data, size_t len, ubyte* output) @nogc nothrow;
 extern(C) void aes_encrypt(ubyte* data, const(ubyte)* key) @nogc nothrow;
+
+// PBKDF2 header-KDF iterations — MUST match deps/veracrypt/vcheader.h VC_HEADER_ITERATIONS
+// so a header built here opens with the host reference (and vice versa).  §E2b.
+enum uint VC_HEADER_ITERATIONS = 1000;
+
+// Big-endian field writers (VeraCrypt header fields are big-endian).
+@nogc nothrow private void putBE16(ubyte* p, ushort v) { p[0]=cast(ubyte)(v>>8); p[1]=cast(ubyte)v; }
+@nogc nothrow private void putBE32(ubyte* p, uint v) {
+    p[0]=cast(ubyte)(v>>24); p[1]=cast(ubyte)(v>>16); p[2]=cast(ubyte)(v>>8); p[3]=cast(ubyte)v;
+}
+@nogc nothrow private void putBE64(ubyte* p, ulong v) {
+    foreach (i; 0 .. 8) p[i] = cast(ubyte)(v >> (56 - 8*i));
+}
 
 // XTS-AES Implementation
 // Uses aes_encrypt (ECB) to implement XTS mode
@@ -173,82 +186,70 @@ uint crc32(const(ubyte)* data, size_t len)
     return ~crc;
 }
 
-// Header Generation
+// Build a 512-byte VeraCrypt boot/system volume header per VOLUME_FORMAT.md, byte-exact
+// with the host reference deps/veracrypt/vcheader.c (vc_create_header).  salt is 64 bytes
+// (stored plaintext), masterKey is the 256-byte key area, the sizes describe the volume.
+// hiddenVolSize != 0 marks this as the OUTER header of a hidden pair.  §E2b.
 @nogc nothrow
-void create_veracrypt_header(const(char)* password, uint passLen, const(ubyte)* masterKey, uint keyLen, ubyte* outHeaderSector)
+void create_veracrypt_header(const(char)* password, uint passLen,
+                             const(ubyte)* salt, const(ubyte)* masterKey,
+                             ulong hiddenVolSize, ulong volumeSize,
+                             ulong encAreaStart, ulong encAreaLen, ubyte* out512)
 {
-    // 1. Generate Salt (64 bytes)
-    // For now, pseudo-random based on time/stack
-    ubyte[64] salt;
-    for (int i = 0; i < 64; i++) salt[i] = cast(ubyte)(i * 17 + passLen); // TODO: Better PRNG
-    
-    // 2. Derive Header Key (PBKDF2)
-    // VeraCrypt uses 500,000 iterations for SHA-512
-    // For installer speed, we use fewer (e.g., 1000) but in real life should be 500k
-    // We need 64 bytes for AES-256 (32 key + 32 tweak? No, XTS uses 64 bytes total: 32+32)
-    // Actually, VeraCrypt uses XTS mode for the header too.
-    // Header Key size = 64 bytes (512 bits) for AES-256-XTS.
+    ubyte[512] h;
+    for (int i = 0; i < 512; i++) h[i] = 0;
+
+    for (int i = 0; i < 64; i++) h[i] = salt[i];                 // [0..63]  plaintext salt
+    h[64]='V'; h[65]='E'; h[66]='R'; h[67]='A';                 // [64]     magic
+    putBE16(h.ptr+68, 0x0005);                                  // [68]     version
+    putBE16(h.ptr+70, 0x0111);                                  // [70]     min program version
+    for (int i = 0; i < 256; i++) h[256+i] = masterKey[i];      // [256]    master keydata
+    putBE32(h.ptr+72, crc32(h.ptr+256, 256));                   // [72]     key-area CRC
+    putBE64(h.ptr+92,  hiddenVolSize);                          // [92]     hidden volume size
+    putBE64(h.ptr+100, volumeSize);                             // [100]    volume size
+    putBE64(h.ptr+108, encAreaStart);                          // [108]    encrypted area start
+    putBE64(h.ptr+116, encAreaLen);                            // [116]    encrypted area length
+    putBE32(h.ptr+124, 0);                                      // [124]    flags
+    putBE32(h.ptr+128, 512);                                    // [128]    sector size
+    putBE32(h.ptr+252, crc32(h.ptr+64, 188));                   // [252]    header CRC of [64..251]
+
     ubyte[64] headerKey;
-    pbkdf2_sha512(password, passLen, salt.ptr, 64, 1000, headerKey.ptr, 64);
-    
-    // 3. Prepare Decrypted Header
-    ubyte[512] header; // Full sector
-    for (int i = 0; i < 512; i++) header[i] = 0;
-    
-    // Copy Salt (first 64 bytes are unencrypted salt)
-    for (int i = 0; i < 64; i++) outHeaderSector[i] = salt[i];
-    
-    // The rest (448 bytes) is encrypted.
-    // We construct the plaintext header first.
-    // Offset 0 in encrypted part is "VERA"
-    header[0] = 'V'; header[1] = 'E'; header[2] = 'R'; header[3] = 'A';
-    header[4] = 0x00; header[5] = 0x05; // Version 5
-    header[6] = 0x00; header[7] = 0x05; // Min Version 5
-    
-    // Key Area CRC (CRC of master key data)
-    // Master key data starts at offset 256 in encrypted area?
-    // No, struct says:
-    // magic (4) + version (2) + min (2) + crc (4) + ...
-    // masterKeyData is at end.
-    
-    // Let's place master key at offset 256 (0x100)
-    for (int i = 0; i < keyLen && i < 64; i++) header[256+i] = masterKey[i];
-    
-    // Calculate Key Area CRC (256 bytes starting at 256)
-    uint kCrc = crc32(header.ptr + 256, 256);
-    header[8] = cast(ubyte)((kCrc >> 24) & 0xFF);
-    header[9] = cast(ubyte)((kCrc >> 16) & 0xFF);
-    header[10] = cast(ubyte)((kCrc >> 8) & 0xFF);
-    header[11] = cast(ubyte)(kCrc & 0xFF);
-    
-    // Volume Size (dummy)
-    // Hidden Volume Size (dummy)
-    // Encrypted Area Start (dummy)
-    // Encrypted Area Length (dummy)
-    // Flags
-    // Sector Size (512)
-    header[128] = 0x00; header[129] = 0x00; header[130] = 0x02; header[131] = 0x00; // 512
-    
-    // Header CRC (first 252 bytes)
-    uint hCrc = crc32(header.ptr, 252);
-    header[252] = cast(ubyte)((hCrc >> 24) & 0xFF);
-    header[253] = cast(ubyte)((hCrc >> 16) & 0xFF);
-    header[254] = cast(ubyte)((hCrc >> 8) & 0xFF);
-    header[255] = cast(ubyte)(hCrc & 0xFF);
-    
-    // 4. Encrypt Header
-    // VeraCrypt encrypts the 448 bytes using XTS mode with the derived header key.
-    // Tweak is 0? Or sector number?
-    // For header, tweak is usually 0 or related to salt?
-    // VeraCrypt documentation says: "The header is encrypted in XTS mode... The secondary key (tweak key) is... The 64-bit tweak is 0."
-    
-    ubyte[32] key1;
-    ubyte[32] key2;
-    for (int i = 0; i < 32; i++) key1[i] = headerKey[i];
-    for (int i = 0; i < 32; i++) key2[i] = headerKey[32+i];
-    
-    xts_encrypt_sector(header.ptr, 448, 0, key1.ptr, key2.ptr);
-    
-    // Copy encrypted part to output
-    for (int i = 0; i < 448; i++) outHeaderSector[64+i] = header[i];
+    pbkdf2_sha512(password, passLen, salt, 64, VC_HEADER_ITERATIONS, headerKey.ptr, 64);
+    ubyte[32] key1, key2;
+    for (int i = 0; i < 32; i++) { key1[i] = headerKey[i]; key2[i] = headerKey[32+i]; }
+    xts_encrypt_sector(h.ptr+64, 448, 0, key1.ptr, key2.ptr);   // encrypt [64..512), unit 0
+
+    for (int i = 0; i < 512; i++) out512[i] = h[i];
+}
+
+// Boot proof (§E2b): build a VeraCrypt header with fixed inputs that match the host
+// parity checker (deps/veracrypt/test/parity_check.c) and write it to a spare disk, so
+// the host can confirm byte-identical parity + open it with the independent C crypto.
+// SKIPs when there's no spare disk (never touches the object store).
+@nogc nothrow
+public void vcHeaderProof()
+{
+    import drivers.block.disk : diskFindTarget, diskWriteSectorsOn;
+    enum ulong VC_HEADER_LBA = 600_000;        // ~293 MiB in: clear of the GPT/ESP proof writes
+
+    ulong tsec;
+    int idx = diskFindTarget(tsec);
+    if (idx < 0 || VC_HEADER_LBA >= tsec) { klog("[vc-header] proof SKIP (no spare disk)\n"); return; }
+
+    ubyte[64] salt;
+    ubyte[256] mk;
+    for (int i = 0; i < 64; i++)  salt[i] = cast(ubyte)(0x11*i + 1);
+    for (int i = 0; i < 256; i++) mk[i]   = cast(ubyte)(0xA5 ^ i);
+    immutable char[14] pw = ['d','e','c','o','y','-','p','a','s','s','w','o','r','d'];
+
+    ubyte[512] hdr;
+    create_veracrypt_header(pw.ptr, 14, salt.ptr, mk.ptr,
+                            0, 1UL<<30, 0x20000, 0x40000000, hdr.ptr);
+
+    if (!diskWriteSectorsOn(idx, VC_HEADER_LBA, 1, hdr.ptr)) {
+        klog("[vc-header] proof FAIL (write)\n"); return;
+    }
+    klog("[vc-header] proof: wrote VeraCrypt header to target idx=0x"); klog_hex(idx);
+    klog(" lba=0x"); klog_hex(VC_HEADER_LBA);
+    klog(" (host parity_check opens + byte-compares vs vcheader.c)\n");
 }

@@ -300,12 +300,16 @@ header CRCs — as `vc_create_header` / `vc_open_header` over `libvc_crypto.a`. 
 *only* its own password, wrong passwords are rejected, and the `"VERA"` magic is encrypted (no
 plaintext tell). The XTS + PBKDF2 here deliberately mirror `veracrypt_impl.d`'s algorithms so it is
 the byte-exact reference for E2b.
-**⚠ E2b — the kernel port is the remaining work, and the kernel needs REAL crypto first:** today
-`veracrypt_impl.d` is *dead code* — it isn't compiled in, and the `sha512_hash`/`aes_encrypt` it calls
-are **stubs** (`core/stubs.d` — `sha512_hash` literally just klogs "STUB"). E2b = give the kernel the
-real primitives (link `libvc_crypto.a`'s `.o`s, or implement in D), then make `veracrypt_impl.d`
-produce byte-identical headers, cross-validated against this C reference (kernel writes to a spare
-disk → `vc_open_header` opens it), the way §D2(b)'s GPT/FAT proofs cross-validate with `sgdisk`/`fsck`.
+**E2b — kernel native-D header ✅ DONE + byte-identical to the C reference.** Done in two steps:
+- **E2b-1 — real kernel crypto** (`drivers/veracrypt_crypto.d`): pure-D AES-256 + SHA-512 replace the
+  former do-nothing `core/stubs.d` stubs (`sha512_hash` used to just klog "STUB"). `vcCryptoKat()` runs
+  at boot → `[vc-crypto] KAT PASS (AES-256 FIPS-197 + SHA-512 NIST)`.
+- **E2b-2 — the header port** (`veracrypt_impl.d` rewritten to `VOLUME_FORMAT.md`: absolute big-endian
+  offsets, XTS unit 0, PBKDF2 matched). `vcHeaderProof()` writes a header (fixed inputs) to a spare
+  disk; the host `make veracrypt parity-check` → `vc-parity <image>` cross-checks it the §D2(b) way:
+  **"kernel header is byte-identical to vcheader.c reference" + "vc_open_header opens it + recovers the
+  master key"** — both PASS. Two independent implementations (kernel D, host VeraCrypt-derived C)
+  produce the *same bytes*. Header parity proven.
 
 ### E3 — On-disk layout (built on the §D2(b) GPT engine)
 The Phase-8 partitioner (`core/diskpart.d`) lays the GPT down; §E adds the encrypted layout:
@@ -633,15 +637,16 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 + E2a ✅ DONE.** An *optional*
+- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 + E2 ✅ DONE.** An *optional*
   Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`). **E1 crypto core built + KAT-validated**
   (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors). **E2a header engine +
   deniability proven** (`vcheader.c`; `header-test` 8/8 — decoy/hidden headers each open with only
-  their own password, wrong rejected, magic encrypted). ⚠ The kernel's `drivers/veracrypt_impl.d` is
-  currently *dead code* calling `core/stubs.d` **stubs** (no real AES/SHA-512 in-kernel yet). Next:
-  E2b — give the kernel real crypto + a byte-identical native-D header cross-validated against
-  `vcheader.c`; then the encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on the
-  §D2(b) engine, the optional installer page (E6), and the deniability security review (E7).
+  their own password, wrong rejected, magic encrypted). **E2b kernel native-D header DONE**: real
+  in-kernel AES-256 + SHA-512 (`drivers/veracrypt_crypto.d`, replaces the old `core/stubs.d` stubs;
+  boot `[vc-crypto] KAT PASS`) + `veracrypt_impl.d` rewritten to the spec, **byte-identical to the
+  `vcheader.c` reference** (`vc-parity` cross-check: kernel header == reference + opens). Next: the
+  encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on the §D2(b) engine, the
+  optional installer page (E6), and the deniability security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),

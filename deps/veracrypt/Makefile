@@ -67,5 +67,13 @@ header-test: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-header
 	$(BLD)/vc-header
 
+# §E2b — cross-validate a KERNEL-written header (on a disk image) vs the host reference.
+# Builds the checker; run it as: build/vc-parity <disk-image> [lba]
+parity-check: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/parity_check.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-parity
+	@echo "[veracrypt] built $(BLD)/vc-parity — run: $(BLD)/vc-parity <disk-image> [lba]"
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

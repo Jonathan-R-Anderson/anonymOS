@@ -239,6 +239,81 @@ bool gptWriteToDisk(int diskIdx, ulong diskSectors, ulong espSectors) {
     return true;
 }
 
+// ── Minimal FAT32 formatter for the ESP (UEFI/limine-readable) ───────────────
+// Writes a valid, EMPTY FAT32 onto the ESP partition (espFirstLba .. +espSectors) of
+// the target disk: boot sector/BPB + FSInfo + backup boot + the head of each FAT
+// (cluster 2 = root dir, EOC).  The disk is assumed zeroed, so the rest of the FATs
+// and the empty root cluster read as free/zero — a valid empty filesystem; a real
+// install should zero the reserved+FAT region first for non-blank targets.
+bool fatFormatEsp(int diskIdx, ulong espFirstLba, ulong espSectors) {
+    enum uint RESERVED = 32;
+    enum uint NUM_FATS = 2;
+    const uint secPerClus = 1;                       // 512 B clusters — valid FAT32 at ESP sizes
+    // Microsoft fatgen FAT-size formula (FAT32 variant).
+    const ulong tmp1 = espSectors - RESERVED;
+    const ulong tmp2 = (256UL * secPerClus + NUM_FATS) / 2;
+    const uint fatSize = cast(uint)((tmp1 + (tmp2 - 1)) / tmp2);
+    const ulong dataStart = RESERVED + cast(ulong)NUM_FATS * fatSize;
+    if (dataStart + secPerClus > espSectors) return false;
+    const uint totalClusters = cast(uint)((espSectors - dataStart) / secPerClus);
+    if (totalClusters < 65525) return false;         // below this it isn't FAT32
+
+    __gshared ubyte[SECTOR] s;
+    void clr() { foreach (i; 0 .. SECTOR) s[i] = 0; }
+
+    // boot sector / BPB
+    clr();
+    s[0] = 0xEB; s[1] = 0x58; s[2] = 0x90;
+    immutable char[8] oem = ['M','S','W','I','N','4','.','1'];
+    foreach (i; 0 .. 8) s[3 + i] = oem[i];
+    put16(s.ptr, 11, 512);                           // bytes/sector
+    s[13] = cast(ubyte)secPerClus;                   // sectors/cluster
+    put16(s.ptr, 14, cast(ushort)RESERVED);          // reserved sectors
+    s[16] = NUM_FATS;                                // FAT count
+    put16(s.ptr, 17, 0);                             // root entries (0 on FAT32)
+    put16(s.ptr, 19, 0);                             // total16 (use 32)
+    s[21] = 0xF8;                                    // media
+    put16(s.ptr, 22, 0);                             // FATsz16 (use 32)
+    put16(s.ptr, 24, 32);                            // sectors/track
+    put16(s.ptr, 26, 8);                             // heads
+    put32(s.ptr, 28, cast(uint)espFirstLba);         // hidden sectors (partition LBA)
+    put32(s.ptr, 32, cast(uint)espSectors);          // total32
+    put32(s.ptr, 36, fatSize);                       // FATsz32
+    put16(s.ptr, 40, 0);                             // ext flags
+    put16(s.ptr, 42, 0);                             // fs version
+    put32(s.ptr, 44, 2);                             // root cluster
+    put16(s.ptr, 48, 1);                             // FSInfo sector
+    put16(s.ptr, 50, 6);                             // backup boot sector
+    s[64] = 0x80;                                    // drive number
+    s[66] = 0x29;                                    // ext boot sig
+    put32(s.ptr, 67, cast(uint)(rdtscSeed() | 1));   // volume serial
+    immutable char[11] lbl = ['E','P','I','N',' ','E','S','P',' ',' ',' '];
+    foreach (i; 0 .. 11) s[71 + i] = lbl[i];
+    immutable char[8] fst = ['F','A','T','3','2',' ',' ',' '];
+    foreach (i; 0 .. 8) s[82 + i] = fst[i];
+    s[510] = 0x55; s[511] = 0xAA;
+    if (!diskWriteSectorsOn(diskIdx, espFirstLba + 0, 1, s.ptr)) return false;     // boot
+    if (!diskWriteSectorsOn(diskIdx, espFirstLba + 6, 1, s.ptr)) return false;     // backup boot
+
+    // FSInfo (sector 1)
+    clr();
+    put32(s.ptr, 0,   0x41615252);                   // "RRaA"
+    put32(s.ptr, 484, 0x61417272);                   // "rrAa"
+    put32(s.ptr, 488, totalClusters - 1);            // free count (root uses 1)
+    put32(s.ptr, 492, 3);                            // next free hint
+    put32(s.ptr, 508, 0xAA550000);                   // trail sig
+    if (!diskWriteSectorsOn(diskIdx, espFirstLba + 1, 1, s.ptr)) return false;
+
+    // head of each FAT: cluster 0 (media|EOC), 1 (EOC), 2 (root dir, EOC)
+    clr();
+    put32(s.ptr, 0, 0x0FFFFFF8);
+    put32(s.ptr, 4, 0x0FFFFFFF);
+    put32(s.ptr, 8, 0x0FFFFFFF);
+    if (!diskWriteSectorsOn(diskIdx, espFirstLba + RESERVED, 1, s.ptr)) return false;
+    if (!diskWriteSectorsOn(diskIdx, espFirstLba + RESERVED + fatSize, 1, s.ptr)) return false;
+    return true;
+}
+
 // Boot proof: if a spare (non-object-store) target disk is attached, write a real
 // GPT to it (primary + backup) and read it back to validate.  SKIPs (never clobbers)
 // when the only disk is the live object store.  Lays a 256 MiB ESP + root remainder.
@@ -259,7 +334,9 @@ public void gptWriteProof() {
         backupSig = true;
         foreach (i; 0 .. 8) if (bk[i] != GPT_SIG[i]) backupSig = false;
     }
+    // Format the just-laid ESP (at the standard first-usable LBA) as FAT32.
+    const bool fatOk = fatFormatEsp(idx, FIRST_USABLE, ESP);
     klog("[diskpart] GPT-write proof PASS (wrote+reread GPT on target idx=0x"); klog_hex(idx);
     klog(" sectors=0x"); klog_hex(tsec); klog("; primary validated, backup-hdr-sig=0x");
-    klog_hex(backupSig ? 1 : 0); klog(")\n");
+    klog_hex(backupSig ? 1 : 0); klog(", esp-fat32=0x"); klog_hex(fatOk ? 1 : 0); klog(")\n");
 }

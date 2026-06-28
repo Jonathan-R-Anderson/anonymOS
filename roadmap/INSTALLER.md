@@ -395,8 +395,14 @@ finishes.
   primary validated, backup-hdr-sig=0x1)`, the object store on disk0 untouched — and host **`sgdisk
   -p`** reads the result as a clean GPT with **part 1 = ESP (EF00) 256 MiB + part 2 = Linux root
   (8304)**, no backup-GPT errors.
-  **Remaining §D2(b):** cap-gate the write (the one-shot block-write capability, Phase 11) → format
-  the ESP (minimal FAT32) → copy the rootfs → install limine (BIOS/UEFI) → expose it to userspace
+  **ESP FAT32 format ✅ DONE + externally validated.** `fatFormatEsp()` writes a valid empty FAT32
+  onto the ESP partition (boot/BPB + FSInfo + backup boot + the head of each FAT; Microsoft fatgen
+  FAT-size formula; on a zeroed target the rest reads as free → valid empty FS). The write proof now
+  formats the just-laid ESP and reports `esp-fat32=0x1`. Cross-validated on the host: `file` →
+  *"FAT (32 bit)", label "EPIN ESP", sectors/FAT 4064*; `fsck.fat` parses it cleanly (512 B/cluster,
+  2 FATs 32-bit, 516128 data clusters).
+  **Remaining §D2(b):** copy the rootfs onto the root partition → install limine (BIOS/UEFI to the
+  ESP) → cap-gate the writes (the one-shot block-write capability, Phase 11) → expose to userspace
   (native HOS object-ABI verb or a syscall) so the installer can drive "pick disk → install".
 - **§D2 / Calamares core: not built yet.** After §D2(b): build the `calamares` ELF (recipe staged in
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces

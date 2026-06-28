@@ -218,7 +218,7 @@ parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the
 - **S5 — Preemption.** ✅ *(the AP runs a PREEMPTIBLE task — see Status; multi-task time-slicing on an AP ties into the S4 per-CPU run queue).* The per-CPU local-APIC timer drives a preemption tick → fair time-slicing *within* a
   core, and removes the cooperative-yield requirement (and the whole cooperative-starvation bug class). The
   real fix for "one task hogs the core."
-- **S6 — Fine-grained locking.** Replace the BKL with per-subsystem locks, in contention order: page/heap
+- **S6 — Fine-grained locking.** ◑ *(REPRESENTATIVE slice done: the page allocator — top of the contention order — has its own leaf lock (`memory/mm.d` `g_physAllocLock`; `alloc_phys_page`/`alloc_phys_pages`/`free_phys_page` wrapped), so any CPU allocs/frees WITHOUT the BKL. Verified: the AP did 47+ alloc/free cycles lock-free-of-BKL, concurrent with the BSP's desktop allocs, 0 faults/OOM. The remaining subsystems are the long game — see below.)* Replace the BKL with per-subsystem locks, in contention order: page/heap
   allocator → object/cap tables → fd tables → namespace tables → scheduler queues. Each needs a lock-order
   audit (deadlock avoidance). **The large, careful, long-tail work — do it driven by profiling.**
 - **S7 — IPIs.** ✅ *(cross-CPU IPI mechanism + TLB-shootdown handler — see Status; auto-wiring into fork/mmap/munmap is gated on APs sharing a page table, which the disjoint AP task doesn't yet).* Inter-processor interrupts for **TLB shootdown** (a CPU editing a shared page table —

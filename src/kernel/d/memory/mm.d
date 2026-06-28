@@ -146,7 +146,19 @@ void physPageClearMemOwner(ulong phys) {
 // device / framebuffer physical address can never be handed back out as RAM.
 // Callers must only free pages they exclusively own (anonymous / private file
 // maps); never device (g_fb) or shared (memfd) pages — see the `owned` flag.
-void free_phys_page(ulong addr) {
+// SMP_ROADMAP S6 (representative fine-grained lock): the page allocator gets its OWN leaf
+// spinlock, INDEPENDENT of the Big Kernel Lock — so any CPU can alloc/free WITHOUT holding the
+// BKL, and two cores allocating at once are serialized only here (not across the whole kernel).
+// Leaf lock: never held while acquiring the BKL → no lock-order deadlock.  The full per-subsystem
+// split (object/cap/fd/namespace/scheduler tables, in contention order) is the S6 long game.
+private __gshared uint g_physAllocLock = 0;
+private uint physTryLock(uint* p) { uint old=void; asm @nogc nothrow { mov RDX,p; mov EAX,1; xchg [RDX],EAX; mov old,EAX; } return old; }
+private void physUnlock(uint* p) { asm @nogc nothrow { mov RDX,p; xor EAX,EAX; mov [RDX],EAX; } }
+private void physLockAcq() { while (physTryLock(&g_physAllocLock) != 0) __asm("pause", ""); }
+private void physLockRel() { physUnlock(&g_physAllocLock); }
+
+void free_phys_page(ulong addr) { physLockAcq(); free_phys_page_impl(addr); physLockRel(); }
+private void free_phys_page_impl(ulong addr) {
     addr &= ~0xFFFUL;
     if (addr < 0x100000) return;             // low memory / null
     if (addr >= g_next_phys_alloc) return;   // never came from the pool
@@ -263,7 +275,8 @@ void archMapKernel(ulong new_cr3) {
     klog("archMapKernel: done\n");
 }
 
-ulong alloc_phys_page() {
+ulong alloc_phys_page() { physLockAcq(); ulong r = alloc_phys_page_impl(); physLockRel(); return r; }
+private ulong alloc_phys_page_impl() {
     uint chargedObj = 0;
     if (!physChargeUntyped(1, chargedObj)) {
         klog("OOM in alloc_phys_page: untyped denied\n");
@@ -319,7 +332,8 @@ ulong alloc_phys_page() {
     return 0;
 }
 
-ulong alloc_phys_pages(size_t n) {
+ulong alloc_phys_pages(size_t n) { physLockAcq(); ulong r = alloc_phys_pages_impl(n); physLockRel(); return r; }
+private ulong alloc_phys_pages_impl(size_t n) {
     if (n == 0) return 0;
 
     uint chargedObj = 0;

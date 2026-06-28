@@ -6,7 +6,7 @@ import arch.x86_64.arch;
 import arch.x86_64.gdt : loadGdt, loadTr, prepareApCpuState, apGdtPtr;  // SMP S4.1 per-CPU GDT/TSS
 import arch.x86_64.interrupts : loadIdt, buildApIdt, g_apIdtPtr;        // SMP S4.2 per-CPU IDT
 import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER; // SMP S4.4b AP test-task maps
-import memory.mm : alloc_phys_page, archMapKernel;                      // SMP S4.4b AP test-task address space
+import memory.mm : alloc_phys_page, free_phys_page, archMapKernel;      // SMP S4.4b AP test-task + S6 alloc demo
 import core.exports : phys_to_virt;                                     // SMP S4.4b write stub via HHDM alias
 import core.task : REG_RIP, REG_RSP, REG_RFLAGS, REASON_TRAP;           // SMP S4.4b seed apCurUserSpaceState
 import core.task : allocTask, g_tasks;                                  // SMP S4.4c AP gets a real (hidden) task slot
@@ -115,6 +115,8 @@ public __gshared ubyte[MAX_CPUS] g_apRealSyscallOk;  // S4.4c: AP i dispatched a
 public __gshared int   g_apTid = 0;                  // S4.4c: the AP task's g_tasks[] slot (hidden from BSP scheduler)
 public __gshared ulong g_apSyscallRet = 0;           // S4.4c: the AP's getpid return value
 public __gshared ulong g_apSyscallCount = 0;         // S4.4d: how many getpids the AP task has issued (parallel w/ BSP)
+public __gshared ulong g_apAllocCount = 0;           // S6: page alloc+free cycles the AP did WITHOUT the BKL (leaf lock only)
+public ulong apAllocCount() @nogc nothrow { return g_apAllocCount; }
 // S5: the activated AP's local-APIC timer tick count (the BSP surfaces it — the AP can't klog on its CR3).
 public ulong apActivatedApicTicks() @nogc nothrow {
     return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].apicTicks : 0;
@@ -320,6 +322,13 @@ extern(C) void apKernelLoopBody(uint idx) {
         ++g_apSyscallCount;
         if (pid > 0) { g_apRing3Ok[idx] = 1; g_apRealSyscallOk[idx] = 1; g_apSyscallRet = cast(ulong)pid; }
         bklRelease(&g_bkl);
+        // S6: periodically exercise the fine-grained allocator lock WITHOUT the BKL — concurrent with
+        // the BSP's allocs (which also take the same leaf lock).  Bounded + balanced (alloc then free)
+        // so it can't leak/OOM.  This is the representative "a subsystem locked independently of the BKL".
+        if (g_apAllocCount < 256 && (g_apSyscallCount & 0xFFF) == 0) {
+            const ulong pg = alloc_phys_page();      // NO BKL held — only the allocator's own leaf lock
+            if (pg != 0) { free_phys_page(pg); ++g_apAllocCount; }
+        }
         *cast(ulong*)(&apCurUserSpaceState[8]) = cast(ulong)pid;   // RAX (reg 0) → the resumed stub sees the result
         for (uint d = 0; d < 20000; ++d) __asm("pause", "");       // throttle so BKL contention can't stall the desktop
         ++pc.heartbeat;

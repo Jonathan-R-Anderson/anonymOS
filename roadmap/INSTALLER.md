@@ -224,6 +224,95 @@ existing desktop now, then swapped for the real installer when §D1–§D3 compl
 
 ---
 
+## §E — VeraCrypt-derived decoy/hidden-OS disk encryption (stripped to plausible deniability)
+
+An **optional installer step** (one page in the Phase-5 flow, off by default) offering
+**plausible-deniability full-disk encryption with a hidden OS**: a second EpinAnonymOS installed in
+a *different layer of the disk encryption* than the visible one. Built by **refactoring the vendored
+`deps/VeraCrypt` down to ONLY this feature** — strip everything else. Reuses the §D2(b) partition
+engine (the kernel owns block I/O + the GPT/ESP layout) and the crypto already seeded in the kernel
+(`src/kernel/d/drivers/veracrypt_impl.d`: XTS-AES, PBKDF2-HMAC-SHA512, VeraCrypt volume header).
+
+### E0 — The deniability model (what "decoy OS" means here)
+Two operating systems, two passwords, on one disk:
+- **Decoy OS** — a normal-looking, fully-encrypted EpinAnonymOS on the system partition. Booting it
+  proves the disk is encrypted (nothing suspicious about that), so the **decoy password** is the one
+  you reveal under coercion.
+- **Hidden OS** — the *real* EpinAnonymOS, living inside a **hidden volume** in the free space of a
+  second ("outer") volume. Its existence is **cryptographically undetectable**: the hidden volume is
+  indistinguishable from the random data that fills the outer volume's free space. The **hidden
+  password** boots it; without it there is no evidence it exists.
+The outer volume itself is a third, decoy-sensitive container (with plausible-but-fake files) the
+user can also reveal — so revealing *a* password never proves it was the only one. This is
+VeraCrypt's hidden-OS construction, adapted; the security claim is *plausible deniability*, and §E7
+treats it as security-critical, not a checkbox.
+
+### E1 — Strip VeraCrypt to the decoy/hidden-OS subset (`deps/veracrypt`)
+Refactor the 76 MB vendored tree to a minimal cross-buildable library — KEEP only what the feature
+needs, DELETE the rest:
+- **KEEP** — `Crypto/` ciphers (AES + Serpent + Twofish + the cascades) and hashes
+  (SHA-512/Whirlpool/Streebog/BLAKE2s) + the KDF; the **volume-header format** (primary + the hidden
+  header at the second offset); the system-encryption + **hidden-OS layout logic** distilled from
+  `Common/BootEncryption.cpp`; and the **EFI pre-boot loader** (`Boot/EFI`).
+- **STRIP** — the wxWidgets GUI (`Main/`, `Mount/`, `Resources/`), file-container volumes (the
+  non-system use case), the Windows kernel driver (`Driver/`), `Format/`, `ExpandVolume/`, `Setup/`,
+  `COMReg/`, `PKCS11`/smartcard, language packs, and all non-target-OS code. The result is a tiny,
+  auditable encryption core — no daemon, no mount service, no Windows.
+- Cross-build it the repo way (`deps/veracrypt/Makefile`, musl-clang, `-static -no-pie`), and **fold
+  it into the kernel's existing `veracrypt_impl.d`** rather than duplicating — that file is the seed.
+
+### E2 — Crypto core (extend `veracrypt_impl.d` to VeraCrypt parity)
+Bring the kernel/installer crypto to header-compatible parity with the stripped subset: the full
+cipher set + cascades, the exact PBKDF2 iteration counts + header KDF, the **hidden-volume header**
+(a second encrypted header at the standard backup offset that only the hidden password decrypts), and
+XTS over the whole system partition. Header-compat means a stripped VeraCrypt could in principle open
+our volumes — a strong correctness check, not a runtime dependency.
+
+### E3 — On-disk layout (built on the §D2(b) GPT engine)
+The Phase-8 partitioner (`core/diskpart.d`) lays the GPT down; §E adds the encrypted layout:
+- **ESP** (unencrypted, FAT32 — already done in §D2(b)): holds *only* the §E5 pre-boot loader. No
+  plaintext OS leaks here.
+- **System partition** (after the ESP): the **decoy OS**, system-encrypted (XTS-AES); its VeraCrypt
+  header sits at the partition start.
+- **Outer-volume partition**: a normal encrypted volume (decoy-sensitive fake files) whose free
+  space holds the **hidden volume** → the **hidden OS**. Outer header at the front, hidden header at
+  the backup offset.
+
+### E4 — Encryption + hidden-OS install engine (kernel-side, on §D2(b) block I/O)
+Layered on `diskWriteSectorsOn` / the cap-gated install op: (1) write the decoy OS to the system
+partition and XTS-encrypt it under the decoy password; (2) write the outer volume + its header; (3)
+clone-install the *real* EpinAnonymOS into the hidden volume and encrypt it under the hidden
+password; (4) fill all unused space with indistinguishable-from-ciphertext random so the hidden
+volume can't be located by entropy analysis. All three headers PBKDF2-derived; the hidden one is
+findable only with its password.
+
+### E5 — Pre-boot authentication (the EFI loader, decoy vs hidden)
+The stripped `Boot/EFI` loader is installed to the ESP and runs *before* the kernel: it prompts for a
+password, tries to decrypt the system-partition header (→ decoy) and the hidden header (→ hidden),
+and on a match decrypts that system's first sectors and **chain-loads it** (which then hands off to
+limine/the EpinAnonymOS kernel for that OS). A wrong password reveals nothing; no prompt text hints
+that a hidden OS could exist. (For BIOS targets, the equivalent VeraCrypt MBR bootstrap; EFI is the
+primary path.)
+
+### E6 — Installer integration: an OPTIONAL step
+In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:
+**None** · **Full-disk encryption** (single password) · **Hidden OS (plausible deniability)**. Picking
+the hidden-OS option collects the decoy + outer + hidden passwords (with clear deniability guidance),
+and the installer then runs §E3–E5 instead of a plain copy. It writes its choice into the declarative
+`install.json` (encryption mode + which-OS-is-which), so first boot and the §E5 loader are configured
+declaratively — no imperative branching. Defaults to **None**; nothing about §E touches a normal
+unencrypted or single-password install.
+
+### E7 — Deniability security review (security-critical)
+Treat plausible deniability as a threat model, not a feature flag: the hidden volume must be
+**entropy-indistinguishable** from free space (no headers, no FS signatures, no size tells); the
+decoy OS must be a *believable* daily-driver (real use, plausible timestamps) or its emptiness
+betrays the hidden one; **no leaks** — the ESP, logs, `install.json`, swap, hibernation, or the
+decoy OS's own state must never reference the hidden OS or its password. Document the residual risks
+honestly (this is hard, and weak operational use defeats the math).
+
+---
+
 ## PHASE 1 — Repository analysis
 Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
 the rootfs is generated; how packages install; how users/identities are created; how the
@@ -248,9 +337,11 @@ name, installer name, version strings, copyright, default colours — with EpinA
 No upstream branding remains visible.
 
 ## PHASE 5 — Installation flow
-Pages: Welcome · Language · Keyboard · Timezone · Disk Selection · Filesystem · Encryption ·
-Hostname · Administrator · **Identities** · Summary · Installation · Finish. Feels like a
-professional OS installer.
+Pages: Welcome · Language · Keyboard · Timezone · Disk Selection · Filesystem · **Encryption
+(optional)** · Hostname · Administrator · **Identities** · Summary · Installation · Finish. Feels
+like a professional OS installer. The **Encryption** page is an *optional* step (skippable; default
+**None**) offering None · Full-disk encryption · **Hidden OS (plausible deniability)** — the §E
+VeraCrypt-derived decoy/hidden-OS feature.
 
 ## PHASE 6 — Identity Manager page (custom module)
 A bespoke Calamares C++/QML module replacing plain Linux user creation: an **Identity Manager**
@@ -267,10 +358,13 @@ install-complete marker (§D4.2/D4.4)**: its presence on the on-disk object stor
 boot keys off to set `system.installed = true` and retire the installer entry.
 
 ## PHASE 8 — Disk installation
-Support GPT/MBR, EFI/BIOS, ext4/Btrfs/XFS, LUKS, swapfile/partition; automatic **and** manual
+Support GPT/MBR, EFI/BIOS, ext4/Btrfs/XFS, swapfile/partition; automatic **and** manual
 partitioning; respect immutable layouts. Driven by §D2 — KPMcore/libparted where built, the
-native object-FS module by default. Bootloader = **limine** (the OS already installs limine on
-GPT/ESP); the module lays down GPT + ESP + rootfs and installs limine UEFI/BIOS.
+native object-FS module (§D2(b)) by default. Bootloader = **limine** (the OS already installs limine
+on GPT/ESP); the module lays down GPT + ESP + rootfs and installs limine UEFI/BIOS. **Encryption is
+the §E VeraCrypt-derived path** (XTS-AES system encryption, optionally the **hidden/decoy OS**) — not
+LUKS — chosen so it can carry the plausible-deniability feature; when the §E Encryption step is
+enabled, the §E5 pre-boot loader fronts limine on the ESP.
 
 ## PHASE 9 — Post-install scripts (modular)
 Generate declarative config · install bootloader (limine) · copy kernel + modules · generate
@@ -287,9 +381,11 @@ on a partial first boot converge, never resurrecting the entry once install trul
 
 ## PHASE 11 — Security
 No plaintext passwords; password hashing; secure temp files; least privilege; installer runs with
-the **minimal capability set** (a one-shot block-write cap for the chosen disk — §D2.2), not root;
-validate input; verify copied files; verify package integrity; Secure Boot if available; encrypted
-installs.
+the **minimal capability set** (a one-shot block-write cap for the chosen disk — §D2.2/§D2(b)), not
+root; validate input; verify copied files; verify package integrity; Secure Boot if available;
+**encrypted installs via §E** (XTS-AES + the optional **hidden/decoy OS** for plausible deniability).
+The §E path carries its own security review (§E7): the hidden OS must be entropy-indistinguishable
+from free space and leak-free across the ESP, logs, `install.json`, swap, and the decoy OS's state.
 
 ## PHASE 12 — Project integration
 Integrate with the object model, identity manager, package manager, filesystem, Linux-compat
@@ -408,6 +504,12 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
+- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7), not built.** An *optional* Phase-5
+  step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`) and the kernel already seeds the crypto
+  (`drivers/veracrypt_impl.d`: XTS-AES, PBKDF2-HMAC-SHA512, VeraCrypt header). Next: strip VeraCrypt
+  to the decoy/hidden-OS subset (E1), reach header parity (E2), then the encrypted layout + hidden-OS
+  install + EFI pre-boot loader (E3–E5) on the §D2(b) engine, the optional installer page (E6), and
+  the deniability security review (E7).
 - **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**

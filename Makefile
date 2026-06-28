@@ -86,6 +86,7 @@ WLPROBE_BIN   := build/wl-probe
 WLSHM_DEMO_BIN := build/wl-shm-demo
 WLTERM_BIN    := build/wl-term
 WLCAIRO_DEMO_BIN := build/wl-cairo-demo
+INSTALLER_BIN := build/wl-installer
 WLFILES_BIN := build/wl-files
 WLDOMAINMGR_BIN := build/wl-domain-manager
 IDLE_BIN := build/idle
@@ -325,6 +326,19 @@ $(WLCAIRO_DEMO_BIN): src/util/wl-cairo-demo.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CO
 		$$PANGOCAIRO_LIBS \
 		-pthread
 
+# INSTALLER D4.1: the live "Install EpinAnonymOS to Disk" desktop entry's launch target.
+# Currently the §D4.5 placeholder stub (real Calamares drops in at the same /calamares path
+# once §D1-D3 land).  Same Cairo/FreeType/Wayland build as wl-cairo-demo.
+$(INSTALLER_BIN): src/util/wl-installer.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
+	@echo "==== Building wl-installer (INSTALLER D4.1 'Install to Disk' entry; D4.5 stub) ===="
+	@PANGOCAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags pangocairo wayland-client)" ; \
+	PANGOCAIRO_LIBS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --static --libs pangocairo wayland-client)" ; \
+	$(MUSL_CC) -static -O2 -Wall -Wextra \
+		-I$(WAYLAND_SYSROOT)/include -Ibuild $$PANGOCAIRO_CFLAGS \
+		-o $@ src/util/wl-installer.c $(XDG_SHELL_CODE) \
+		$$PANGOCAIRO_LIBS \
+		-pthread
+
 $(WLFILES_BIN): src/util/wl-files.c $(XDG_SHELL_HEADER) $(XDG_SHELL_CODE)
 	@echo "==== Building wl-files (GUI G17 file manager) ===="
 	@CAIRO_CFLAGS="$$(PKG_CONFIG_LIBDIR='$(WAYLAND_SYSROOT)/lib/pkgconfig:$(WAYLAND_SYSROOT)/share/pkgconfig' PKG_CONFIG_PATH='' PKG_CONFIG_SYSROOT_DIR='' pkg-config --cflags cairo wayland-client)" ; \
@@ -375,7 +389,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Building ISO ===="
 
 	rm -rf cd
@@ -477,6 +491,10 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 	cp $(WLFILES_BIN) cd/wl-files
 	printf '\n    module_path: boot():/wl-files\n' >> cd/boot/limine/limine.conf
 	@echo "Included wl-files (GUI G17)"
+
+	cp $(INSTALLER_BIN) cd/calamares
+	printf '\n    module_path: boot():/calamares\n' >> cd/boot/limine/limine.conf
+	@echo "Included wl-installer as /calamares (INSTALLER D4.1 'Install to Disk' entry; D4.5 stub)"
 
 	@if [ -x "$(RUSTC)" ]; then \
 	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \

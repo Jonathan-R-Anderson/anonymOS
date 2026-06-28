@@ -372,9 +372,16 @@ finishes.
 - **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
   the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
   specified (D2/D3) and **now unblocked** (qtwayland landed). Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§D4 / live "Install to Disk" desktop entry + self-removal: specified, not built.** New requirement:
-  a branded installer entry on the live Weston desktop (panel launcher + keybind + live-only
-  autostart via `cd/desktop.conf`) that retires itself once `system.installed = true` is set at the
-  installed system's first boot (`/config/system.json` + an on-disk object-store marker; kernel
-  renders a `/system/state/installed` signal the desktop-shell gate reads). Low-risk and decoupled —
-  per D4.5 it can land early against a stub `/calamares` and be validated on today's desktop.
+- **§D4.1 ✅ DONE — the "Install to Disk" desktop entry exists + verified in VBox.** `SUPER+I`
+  (added to `src/desktop.conf`: `bind = SUPER, I, exec, /calamares`) opens a branded **"Install
+  EpinAnonymOS to Disk"** window on the live Weston desktop. Launch target = a **§D4.5 stub**
+  (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client adapted from `wl-cairo-demo.c`:
+  heading + description + entry + "Install to Disk" button), built via `INSTALLER_BIN` and staged
+  as `cd/calamares` + `module_path: boot():/calamares` — the real Calamares (§D1–D3) drops in at
+  the same path later. Verified: boots to the desktop, `SUPER+I` raises the installer on top, 0
+  kernel faults (VBox, x2APIC on). The live first-run **autostart was intentionally deferred to
+  §D4.3** (it must be gated to live media; an ungated autostart would also run on installed boots).
+- **§D4.2–D4.5 remaining (the self-removal):** `system.installed` flag in `/config/system.json` +
+  on-disk marker (D4.2), the desktop-shell visibility gate that hides the entry when installed
+  (D4.3, incl. the gated live-only autostart), kernel `installed` detection/signal (D4.4). The
+  stub (D4.5) is done. Until D4.3 lands the `SUPER+I` entry shows on every boot (live or installed).

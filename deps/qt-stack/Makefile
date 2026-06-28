@@ -93,6 +93,12 @@ $(STAMPS)/qtbase: $(MUSL_CXX) $(CXXRT_STAMP) $(TOOLCHAIN) $(SELF)/Makefile | dir
 	@touch $@
 
 # ── qtwayland (the qwayland platform plugin, static) ─────────────────────────
+# PREREQUISITE (D1.1 two-stage): qtwayland's cross build needs the HOST tool
+# `qtwaylandscanner` + Qt PRIVATE headers (Qt::CorePrivate).  Debian's qt6-base-dev does
+# NOT ship private headers, and qt6-base-private-dev / qt6-wayland-dev aren't installed.
+# So first build a HOST qtbase (native, with -DQT_FEATURE_private_tests / private headers)
+# + host qtwayland tools, point HOST_QT_PREFIX at it, then this target works.  Until then
+# qtwayland is blocked on the host toolchain, not on the cross recipe (qtbase proves that).
 qtwayland: $(STAMPS)/qtwayland
 $(STAMPS)/qtwayland: $(STAMPS)/qtbase
 	$(call fetch,qtwayland)

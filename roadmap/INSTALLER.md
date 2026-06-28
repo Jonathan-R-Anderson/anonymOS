@@ -248,3 +248,20 @@ Qt runs here before any Calamares code; (2) scaffold `installer/calamares/` + br
 custom modules against that; (3) bring up partitioning via §D2(b) (native module) to sidestep the
 util-linux/udev swamp, building D2.1/D2.2 in parallel for the standard module. Each step boots the
 live ISO and is checkpointed; nothing lands that breaks the desktop.
+
+## Build status (live)
+- **§D1 qtbase ✅ DONE + verified.** `deps/qt-stack` cross-builds **static Qt 6.4.2** with musl-clang
+  + libc++, reusing the gtk-stack sysroot for shared prereqs. `qtbase` configures clean and builds
+  **[1013/1013], 0 errors** → `libQt6{Core,Gui,Widgets,Network,Concurrent,Xml,PrintSupport}.a` +
+  platform-support libs in `sysroot`. The plan's dominant risk (does Qt build here at all?) is
+  retired. Config keys that mattered: bundled md4c/b2 (`-DINPUT_libmd4c=qt`), and
+  `-DINPUT_opengl=no -DFEATURE_egl=OFF` (raster + `wl_shm`, Widgets-only — D1.5).
+- **§D1 qtwayland ◑ blocked on the HOST toolchain (two-stage, D1.1).** The cross recipe is fine; it
+  needs the **host** `qtwaylandscanner` + Qt **private** headers (`Qt::CorePrivate`). Debian's
+  `qt6-base-dev` ships neither, and `qt6-base-private-dev` / `qt6-wayland-dev` aren't installed (no
+  sudo). **Next:** build a host qtbase (native, with private headers) + host qtwayland tools, point
+  `HOST_QT_PREFIX` at it, then `make -C deps/qt-stack qtwayland`. (Same two-stage Qt cross-build
+  pattern; just host-side.)
+- **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
+  the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
+  specified (D2/D3) and build once qtwayland lands. Phase-1 analysis: `installer/ARCHITECTURE.md`.

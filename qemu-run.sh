@@ -81,6 +81,21 @@ if [ "${LKL_GPU:-0}" = "1" ]; then
   echo "[qemu-run] LKL_GPU=1: attaching bochs-display for the LKL DRM driver"
 fi
 
+# NETWORK_AND_MARKETPLACE_ROADMAP N0: a NIC for the IPv4 stack.  OPT-IN via NET=1 so the default
+# desktop boot has NO NIC (the in-kernel network init is skipped → desktop is never at risk while
+# the driver is brought up).  QEMU user-net gives the guest 10.0.2.15, gateway/DNS 10.0.2.2/3.
+# e1000 (the fuller driver draft) by default; NET=virtio selects virtio-net once that lands.
+NETDEV=( -nic none )
+if [ "${NET:-0}" = "1" ] || [ "${NET:-0}" = "e1000" ]; then
+  NETDEV=( -netdev user,id=net0 -device e1000,netdev=net0
+           -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
+  echo "[qemu-run] NET=1: e1000 + user-net (guest 10.0.2.15, gw 10.0.2.2); frames dumped to net.pcap"
+elif [ "${NET:-0}" = "virtio" ]; then
+  NETDEV=( -netdev user,id=net0 -device virtio-net-pci,netdev=net0
+           -object filter-dump,id=netdump,netdev=net0,file=net.pcap )
+  echo "[qemu-run] NET=virtio: virtio-net + user-net; frames dumped to net.pcap"
+fi
+
 exec "$QEMU_BIN" \
   -boot d \
   -cdrom hos.iso \
@@ -98,6 +113,7 @@ exec "$QEMU_BIN" \
   "${NVME[@]}" \
   "${USBDEV[@]}" \
   "${GPUDEV[@]}" \
+  "${NETDEV[@]}" \
   "${GFX[@]}"
 # R2 (GPU stack) is OFF by default: `gtk,gl=on` + a virtio-gpu-gl device gives a BLACK SCREEN on
 # many hosts (the GL display path doesn't present the firmware-VGA framebuffer the desktop renders

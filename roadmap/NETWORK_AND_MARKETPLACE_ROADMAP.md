@@ -56,6 +56,29 @@ announced, discovered, and downloaded peer-to-peer over I2P, content-addressed a
 
 ---
 
+## Status (2026-06-27): N0 + N1 DONE + verified — the box is on the network (rx/tx + ARP)
+
+- **N0 (NIC driver) ✅** — the **e1000** path (`drivers/network/network.d`) is brought up and proven. It was a
+  half-finished draft: `e1000Receive`, `readE1000Mac`, and `enablePCIBusMastering` were all **commented out**,
+  and MMIO used a hardcoded `KERNEL_BASE` with the raw BAR phys as a pointer. Fixed: map the BAR through the
+  runtime **HHDM** (`+ hhdm_offset`, matching the AHCI MMIO path), enable bus-master + memory-space in the PCI
+  command register (DMA), and restore the MAC read (RAL/RAH) + the rx descriptor poll. **Verified:** init clean,
+  `MAC=52:54:00:12:34:56`, tx works (the ARP request is on the wire), rx works (1 frame delivered).
+- **N1 (Ethernet + ARP) ✅** — frame demux by ethertype + the ARP request/reply path resolve the gateway MAC.
+  ★ ROOT-CAUSE BUG: the wire structs were **not packed** — `IPv4Address` has alignment 4 (its `union { ubyte[4];
+  uint addr; }`), so it took 2 bytes of padding inside `ARPPacket`, scrambling every field on the wire (the
+  request went out as `who-has 0.0.0.0 tell 0.0.10.0`). Fix = `align(1):` on `ARPPacket` (the same fix the
+  IPv4/ICMP/UDP/TCP headers will need). **Verified `NET=1`:** `who-has 10.0.2.2 tell 10.0.2.15` → slirp `Reply
+  10.0.2.2 is-at 52:55:0a:00:02:02` → `gateway ARP RESOLVED`, 0 faults.
+- **Harness:** `NET=1 bash qemu-run.sh` adds e1000 + QEMU user-net (guest 10.0.2.15) + a `net.pcap` dump; the
+  default boot is `-nic none` so the in-kernel network init is skipped (the desktop is never at risk). ★ The
+  locally-built **virgl QEMU lacks slirp** (`network backend 'user' is not compiled in`) — run the network test
+  on the **system QEMU** (`QEMU_BIN=qemu-system-x86_64`, no GPU), which has user-net.
+- **Next: N2 (IPv4 + ICMP → ping)** — pack the IPv4/ICMP wire structs (same `align(1)` fix) and verify a ping
+  round-trips end-to-end.
+
+---
+
 # Part A — TCP/IP network stack
 
 A small, correct, polled IPv4 stack (matching the kernel's existing no-IRQ polling model), wired behind the

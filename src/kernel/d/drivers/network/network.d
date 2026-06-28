@@ -165,16 +165,15 @@ export extern(C) bool sendEthFrame(const(ubyte)* data, size_t len) @nogc nothrow
 export extern(C) int receiveEthFrame(ubyte* buffer, size_t maxLen) @nogc nothrow {
     if (!g_networkAvailable || buffer is null || maxLen == 0) return -1;
     
+    int r;
     switch (g_netDevice.type) {
-        case NetworkDeviceType.E1000:
-            return e1000Receive(buffer, maxLen);
-        case NetworkDeviceType.RTL8139:
-            return rtl8139Receive(buffer, maxLen);
-        case NetworkDeviceType.VirtIO:
-            return virtioReceive(buffer, maxLen);
-        default:
-            return -1;
+        case NetworkDeviceType.E1000:   r = e1000Receive(buffer, maxLen); break;
+        case NetworkDeviceType.RTL8139: r = rtl8139Receive(buffer, maxLen); break;
+        case NetworkDeviceType.VirtIO:  r = virtioReceive(buffer, maxLen); break;
+        default: r = -1;
     }
+    if (r >= 14) { ++g_netRxFrames; g_netRxLastEtherType = (cast(ulong)buffer[12] << 8) | buffer[13]; }
+    return r;
 }
 
 // ============================================================================
@@ -233,24 +232,29 @@ private enum NUM_TX_DESC = 8;
 private enum RX_BUFFER_SIZE = 2048;
 
 import memory.physmem : allocFrame, freeFrame;
+import core.globals : hhdm_offset;   // N0 fix: phys↔virt via the runtime HHDM (not a hardcoded base)
 
-// Helper for physToVirt (assuming identity map or offset)
-private enum ulong KERNEL_BASE = 0xFFFF_8000_0000_0000;
-private T* physToVirt(T)(size_t phys) { return cast(T*)(phys + KERNEL_BASE); }
+// phys → virt through the kernel's higher-half direct map (matches phys_to_virt / the AHCI MMIO path).
+private T* physToVirt(T)(size_t phys) { return cast(T*)(phys + hhdm_offset); }
 
 // Descriptor rings (Dynamic allocation)
 private __gshared E1000RxDesc* g_rxDescriptors;
 private __gshared E1000TxDesc* g_txDescriptors;
 private __gshared uint g_rxCurrent = 0;
 private __gshared uint g_txCurrent = 0;
+private __gshared ulong g_netRxFrames = 0;   // N0: count inbound frames the driver has delivered
+private __gshared ulong g_netRxLastEtherType = 0;  // N0: ethertype of the most recent frame (verify)
+export extern(C) ulong getNetRxFrames() @nogc nothrow { return g_netRxFrames; }
+export extern(C) ulong getNetRxLastEtherType() @nogc nothrow { return g_netRxLastEtherType; }
 
 private void initE1000(NetworkDevice* dev) @nogc nothrow {
     printLine("[e1000] Initializing Intel E1000...");
     
-    // Read BAR0 for memory-mapped I/O
-    dev.memBase = readPCIBar(dev.pciDev, 0);
-    
-    // Enable bus mastering
+    // Read BAR0 for memory-mapped I/O — map it through the HHDM so memBase is a usable virtual
+    // address (the registers are accessed as memBase+offset; the raw phys is not mapped low).
+    dev.memBase = readPCIBar(dev.pciDev, 0) + hhdm_offset;
+
+    // Enable bus mastering (REQUIRED for DMA — the rx/tx descriptor rings + buffers)
     enablePCIBusMastering(dev.pciDev);
     
     // Reset device (RST bit clears itself and all other bits)
@@ -284,33 +288,15 @@ private void initE1000(NetworkDevice* dev) @nogc nothrow {
 }
 
 private void readE1000Mac(NetworkDevice* dev) @nogc nothrow {
-    /*
-    // Read MAC from EEPROM (simplified)
-    uint macLow = readE1000Reg(dev, E1000Reg.RAL);
+    // The device loads the MAC from EEPROM into Receive-Address registers RAL/RAH after reset.
+    uint macLow  = readE1000Reg(dev, E1000Reg.RAL);
     uint macHigh = readE1000Reg(dev, E1000Reg.RAH);
-    
     dev.macAddress[0] = cast(ubyte)(macLow & 0xFF);
     dev.macAddress[1] = cast(ubyte)((macLow >> 8) & 0xFF);
     dev.macAddress[2] = cast(ubyte)((macLow >> 16) & 0xFF);
     dev.macAddress[3] = cast(ubyte)((macLow >> 24) & 0xFF);
     dev.macAddress[4] = cast(ubyte)(macHigh & 0xFF);
     dev.macAddress[5] = cast(ubyte)((macHigh >> 8) & 0xFF);
-    
-    print("[e1000] MAC: ");
-    for (int i = 0; i < 6; i++) {
-        if (i > 0) print(":");
-        // Print hex byte
-        ubyte b = dev.macAddress[i];
-        ubyte hi = (b >> 4) & 0xF;
-        ubyte lo = b & 0xF;
-        char[2] hex;
-        hex[0] = cast(char)(hi < 10 ? '0' + hi : 'A' + hi - 10);
-        hex[1] = cast(char)(lo < 10 ? '0' + lo : 'A' + lo - 10);
-        print(hex[0..2]);
-    }
-    printLine("");
-    */
-    return;
 }
 
 private void initE1000Rings(NetworkDevice* dev) @nogc nothrow {
@@ -444,46 +430,21 @@ private bool e1000Send(const(ubyte)* data, size_t len) @nogc nothrow {
 }
 
 private int e1000Receive(ubyte* buffer, size_t maxLen) @nogc nothrow {
-    /*
     if (buffer is null || maxLen == 0) return -1;
-    
-    // Get current RX descriptor
+    // Poll the current RX descriptor for the DD (descriptor-done) bit.
     E1000RxDesc* desc = &g_rxDescriptors[g_rxCurrent];
-    
-    // Check if descriptor has data (DD bit set)
-    if ((desc.status & 1) == 0) {
-        return 0; // No packet available
-    }
-    
-    // Debug: Print once
-    static bool s_firstPacket = true;
-    if (s_firstPacket) {
-        printLine("[e1000] First packet received!");
-        s_firstPacket = false;
-    }
-    
-    // Get packet length
+    if ((desc.status & 1) == 0) return 0;        // no packet available yet
     uint pktLen = desc.length;
     if (pktLen > maxLen) pktLen = cast(uint)maxLen;
-    
-    // Copy data from RX buffer
+    // Copy out of the DMA buffer (mapped via the HHDM).
     ubyte* rxBuf = physToVirt!ubyte(cast(size_t)desc.addr);
-    
-    for (uint i = 0; i < pktLen; i++) {
-        buffer[i] = rxBuf[i];
-    }
-    
-    // Reset descriptor
+    for (uint i = 0; i < pktLen; i++) buffer[i] = rxBuf[i];
+    // Hand the descriptor back to the NIC and advance RDT to it.
     desc.status = 0;
-    
-    // Update tail pointer
-    uint oldCurrent = g_rxCurrent;
+    const uint oldCurrent = g_rxCurrent;
     g_rxCurrent = (g_rxCurrent + 1) % NUM_RX_DESC;
     writeE1000Reg(&g_netDevice, E1000Reg.RDT, oldCurrent);
-    
     return cast(int)pktLen;
-    */
-    return -1;
 }
 
 // ============================================================================
@@ -537,17 +498,9 @@ private ulong readPCIBar(PCIDevice* dev, uint barIndex) @nogc nothrow {
 }
 
 private void enablePCIBusMastering(PCIDevice* dev) @nogc nothrow {
-    /*
     import drivers.pci : pciConfigRead32, pciConfigWrite32;
-    
-    // Read command register (offset 0x04)
+    // Command register (0x04): set bus-master (bit 2) + memory-space (bit 1) so MMIO + DMA work.
     uint cmd = pciConfigRead32(dev.bus, dev.slot, dev.func, 0x04);
-    
-    // Set bus mastering bit (bit 2)
-    cmd |= (1 << 2);
-    
-    // Write back
+    cmd |= (1 << 2) | (1 << 1);
     pciConfigWrite32(dev.bus, dev.slot, dev.func, 0x04, cmd);
-    */
-    return;
 }

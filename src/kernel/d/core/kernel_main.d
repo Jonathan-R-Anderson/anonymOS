@@ -78,6 +78,11 @@ import core.kmain : bklAcquire, bklRelease, g_bkl;          // SMP_ROADMAP S4.4d
 import core.kmain : g_apSyscallCount, apActivatedApicTicks;  // SMP_ROADMAP S4.4d/S5: AP's parallel getpid + timer counters
 import core.kmain : sendApIpi, apActivatedLapicId, apActivatedIpiCount, g_apActivatedIdx;  // S7: BSP→AP IPIs
 import core.kmain : apAllocCount;                          // SMP_ROADMAP S6: AP's BKL-free allocations
+// NETWORK_AND_MARKETPLACE_ROADMAP N0/N1: bring up the IPv4 stack on a NIC + an ARP round-trip proof.
+import network.stack : configureNetwork, startNetworkStack, networkStackPoll, ping;
+import drivers.network.network : isNetworkAvailable, getMacAddress, getNetRxFrames, getNetRxLastEtherType;
+import network.arp : arpSendRequest, arpLookup;
+import network.types : IPv4Address, MACAddress;
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2595,6 +2600,30 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 // Kernel main loop
 // ------------------------------------------------------------------
 
+// NETWORK_AND_MARKETPLACE_ROADMAP N0/N1: bring up the IPv4 stack + prove a frame round-trips (ARP).
+// Gated: the default boot has `-nic none`, so initNetwork finds no NIC → isNetworkAvailable() is false
+// → we skip everything device-touching.  Only `NET=1` (e1000 + user-net) exercises the driver.
+private void networkSelfTest() @nogc nothrow {
+    configureNetwork(10,0,2,15, 10,0,2,2, 255,255,255,0, 10,0,2,3);   // QEMU user-net: guest .15, gw .2
+    if (!isNetworkAvailable()) { klog("[net] no NIC present — IPv4 stack not started (default boot)\n"); return; }
+    startNetworkStack();
+    ubyte[6] mac; getMacAddress(mac.ptr);
+    ulong macv = 0; foreach (i; 0 .. 6) macv = (macv << 8) | mac[i];
+    klog("[net] N0: e1000 up, MAC="); klog_hex(macv); klog(" IP=10.0.2.15 gw=10.0.2.2\n");
+    // N1: resolve the gateway MAC via ARP — send a request, poll the rx ring for the reply.
+    auto gw = IPv4Address(10,0,2,2);
+    arpSendRequest(gw);
+    MACAddress gwmac; bool resolved = false;
+    for (uint i = 0; i < 8_000_000u && !resolved; ++i) {
+        networkStackPoll();
+        if (arpLookup(gw, &gwmac)) resolved = true;
+    }
+    klog("[net] N0 rx frames="); klog_hex(getNetRxFrames());
+    klog(" lastEtherType="); klog_hex(getNetRxLastEtherType());
+    klog(resolved ? " — N1: gateway ARP RESOLVED (a frame round-tripped!)\n"
+                  : " — N1: gateway ARP not resolved yet\n");
+}
+
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog
 __gshared uint g_apPitLogN   = 0;   // SMP_ROADMAP S4.4d: caps the proof klog (stop after 40 — no forever-spam)
 
@@ -3183,6 +3212,7 @@ void d_kernel_main() {
     splashRun();
 
     smpActivateAp();             // SMP_ROADMAP S4.4a: activate an AP into apKernelLoop (desktop is up)
+    networkSelfTest();           // NETWORK_ROADMAP N0/N1: IPv4 stack + ARP round-trip (no-op without NET=1)
     klog("[dkernel] entering kernel loop\n");
     kernelLoop();
 

@@ -9,8 +9,10 @@ enum ARPOperation : ushort {
     REPLY = 2,
 }
 
-/// ARP packet (for Ethernet/IPv4)
+/// ARP packet (for Ethernet/IPv4) — PACKED: this is a wire struct, no inter-field padding.
+/// (IPv4Address has alignment 4 via its `uint addr` union, which otherwise pads it onto the wire.)
 struct ARPPacket {
+    align(1):
     ushort hardwareType;    // 1 for Ethernet
     ushort protocolType;    // 0x0800 for IPv4
     ubyte hardwareSize;     // 6 for MAC

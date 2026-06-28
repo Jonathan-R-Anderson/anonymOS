@@ -372,11 +372,15 @@ finishes.
 - **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
   the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
   specified (D2/D3) and **now unblocked** (qtwayland landed). Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** A branded **"Install
-  EpinAnonymOS to Disk"** window. Launch target = a **§D4.5 stub** (`src/util/wl-installer.c`, a
-  Cairo/FreeType Wayland client adapted from `wl-cairo-demo.c`: heading + description + entry +
-  "Install to Disk" button), built via `INSTALLER_BIN` and staged as `cd/calamares` +
-  `module_path: boot():/calamares` — the real Calamares (§D1–D3) drops in at the same path later.
+- **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
+  **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
+  EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**
+  and **Try Live Session**. *Try Live Session* closes the installer to the live desktop; *Install to
+  Disk* shows a clear "Calamares disk-install is being integrated (§D1–D3), not in this build yet"
+  screen (the stub genuinely can't partition/copy/persist — no fake install; no text-entry box).
+  Built via `INSTALLER_BIN`, staged as `cd/calamares` + `module_path: boot():/calamares`; the real
+  Calamares (§D1–D3) drops in at the same path later. All button actions verified via QMP in
+  software QEMU (Install→info, Back→welcome, Try-Live→close).
 - **§D4.2 / D4.3 / D4.4 ✅ DONE — installer AUTO-LAUNCHES on a live boot and self-removes once
   installed (verified both ways, 0 faults).** No key combo: on a live boot the installer **appears
   automatically, front-and-centre**. Mechanics in `deps/weston-14.0.0/desktop-shell/shell.c`:

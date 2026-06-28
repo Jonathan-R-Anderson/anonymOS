@@ -61,11 +61,26 @@ struct app {
     int post_map_frame_armed;
     int post_map_frame_done;
     int running;
+    int screen;          /* 0 = welcome (Install / Try Live), 1 = install-info */
     double pointer_x;
     double pointer_y;
     char entry_text[64];
     int entry_len;
 };
+
+/* Button hit-rects, computed from the window size so draw + click agree.
+ * which: 0 = Install, 1 = Try Live, 2 = Back. */
+enum { BTN_INSTALL = 0, BTN_LIVE = 1, BTN_BACK = 2 };
+static void btn_rect(struct app *app, int which,
+                     double *x, double *y, double *w, double *h)
+{
+    double W = app->width, H = app->height;
+    if (which == BTN_BACK) { *x = 48; *y = H - 76; *w = 150; *h = 50; return; }
+    *y = H - 96; *h = 58;
+    double bw = (W - 48 - 48 - 24) / 2;      /* two buttons, 48px side margins, 24px gap */
+    *w = bw;
+    *x = (which == BTN_INSTALL) ? 48 : (W - 48 - bw);
+}
 
 static void log_line(const char *s)
 {
@@ -250,90 +265,60 @@ static void draw_demo(struct app *app)
         app->stride);
     cairo_t *cr = cairo_create(surface);
 
-    cairo_set_source_rgb(cr, 0.94, 0.96, 0.98);
-    cairo_paint(cr);
-
-    const double card_x = 36;
-    const double card_y = 42;
-    const double card_w = app->width - 72;
-    const double card_h = app->height - 84;
-    const double icon_x = 60;
-    const double icon_y = 66;
-    const double text_x = 142;
-    const double entry_y = 158;
-    const double row_y = 236;
-
+    /* full-window gradient (no inner card — clean welcome) */
     cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, app->width, app->height);
     cairo_pattern_add_color_stop_rgb(grad, 0.0, 0.07, 0.13, 0.22);
-    cairo_pattern_add_color_stop_rgb(grad, 0.55, 0.06, 0.46, 0.43);
-    cairo_pattern_add_color_stop_rgb(grad, 1.0, 0.48, 0.23, 0.82);
-    rounded_rect(cr, 20, 20, app->width - 40, app->height - 40, 18);
+    cairo_pattern_add_color_stop_rgb(grad, 0.55, 0.06, 0.30, 0.40);
+    cairo_pattern_add_color_stop_rgb(grad, 1.0, 0.16, 0.12, 0.34);
+    cairo_rectangle(cr, 0, 0, app->width, app->height);
     cairo_set_source(cr, grad);
     cairo_fill(cr);
     cairo_pattern_destroy(grad);
 
-    rounded_rect(cr, card_x, card_y, card_w, card_h, 12);
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.92);
-    cairo_fill(cr);
-
-    rounded_rect(cr, icon_x, icon_y, 66, 66, 15);
-    cairo_set_source_rgb(cr, 0.05, 0.09, 0.16);
-    cairo_fill(cr);
-    cairo_set_source_rgb(cr, 0.23, 0.74, 0.95);
-    cairo_set_line_width(cr, 6);
-    cairo_move_to(cr, icon_x + 18, icon_y + 24);
-    cairo_line_to(cr, icon_x + 32, icon_y + 33);
-    cairo_line_to(cr, icon_x + 18, icon_y + 44);
-    cairo_stroke(cr);
-    cairo_move_to(cr, icon_x + 42, icon_y + 48);
-    cairo_line_to(cr, icon_x + 58, icon_y + 48);
-    cairo_stroke(cr);
-
-    rounded_rect(cr, 60, entry_y, app->width - 120, 50, 9);
-    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-    cairo_fill_preserve(cr);
-    cairo_set_source_rgb(cr, 0.58, 0.64, 0.72);
-    cairo_set_line_width(cr, 2);
-    cairo_stroke(cr);
-
-    rounded_rect(cr, 60, row_y, 148, 44, 9);
-    if (app->button_active)
-        cairo_set_source_rgb(cr, 0.03, 0.32, 0.30);
-    else
-        cairo_set_source_rgb(cr, 0.05, 0.46, 0.43);
-    cairo_fill(cr);
-
-    rounded_rect(cr, 226, row_y, app->width - 286, 44, 9);
-    cairo_set_source_rgb(cr, 0.91, 0.95, 0.98);
-    cairo_fill(cr);
+    double bx, by, bw, bh;
+    if (app->screen == 0) {
+        /* Install (primary, teal) + Try Live (secondary, light) */
+        btn_rect(app, BTN_INSTALL, &bx, &by, &bw, &bh);
+        rounded_rect(cr, bx, by, bw, bh, 10);
+        cairo_set_source_rgb(cr, 0.05, 0.55, 0.50);
+        cairo_fill(cr);
+        btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
+        rounded_rect(cr, bx, by, bw, bh, 10);
+        cairo_set_source_rgb(cr, 0.88, 0.91, 0.95);
+        cairo_fill(cr);
+    } else {
+        btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
+        rounded_rect(cr, bx, by, bw, bh, 10);
+        cairo_set_source_rgb(cr, 0.30, 0.35, 0.44);
+        cairo_fill(cr);
+    }
 
     cairo_destroy(cr);
     cairo_surface_flush(surface);
     cairo_surface_destroy(surface);
 
-    draw_text_ft(app, "Install EpinAnonymOS to Disk", (int)text_x, 70,
-                 app->width - (int)text_x - 58, 18, 0xff0d1728u);
-    draw_text_ft(app,
-                 "Copies the OS to a disk, installs limine, and reboots into your install.",
-                 (int)text_x, 100, app->width - (int)text_x - 58, 12, 0xff334155u);
-    /* §D4.5 placeholder: the real Calamares installer (roadmap §D1-D3) drops in at
-     * the same /calamares path once built; this stub proves the §D4.1 desktop entry. */
-    const char *entry = app->entry_len > 0 ? app->entry_text :
-                        (app->entry_focused ? "" : "Calamares installer integration in progress (roadmap D1-D3)");
-    draw_text_ft(app, entry, 78, (int)entry_y + 15,
-                 app->width - 156, 12, 0xff1f2937u);
-    if (app->entry_focused) {
-        int cursor_x = 80 + app->entry_len * 7;
-        if (cursor_x > app->width - 88)
-            cursor_x = app->width - 88;
-        for (int yy = (int)entry_y + 13; yy < (int)entry_y + 35 && yy < app->height; ++yy) {
-            if (cursor_x >= 0 && cursor_x < app->width)
-                app->pixels[yy * app->width + cursor_x] = 0xff0f766eu;
-        }
+    /* heading */
+    draw_text_ft(app, "Welcome to EpinAnonymOS", 48, 60, app->width - 96, 22, 0xffffffffu);
+
+    if (app->screen == 0) {
+        draw_text_ft(app, "Install EpinAnonymOS to a disk, or try the live",
+                     48, 104, app->width - 96, 13, 0xffd6deeau);
+        draw_text_ft(app, "session first without changing anything.",
+                     48, 126, app->width - 96, 13, 0xffd6deeau);
+        btn_rect(app, BTN_INSTALL, &bx, &by, &bw, &bh);
+        draw_text_ft(app, "Install to Disk", (int)bx + 36, (int)by + 36, (int)bw, 15, 0xffffffffu);
+        btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
+        draw_text_ft(app, "Try Live Session", (int)bx + 32, (int)by + 36, (int)bw, 15, 0xff14203au);
+    } else {
+        draw_text_ft(app, "Disk installation is being integrated (Calamares) and",
+                     48, 104, app->width - 96, 13, 0xffd6deeau);
+        draw_text_ft(app, "is not available in this build yet (roadmap D1-D3).",
+                     48, 126, app->width - 96, 13, 0xffd6deeau);
+        draw_text_ft(app, "Choose \"Try Live Session\" to run EpinAnonymOS now.",
+                     48, 158, app->width - 96, 13, 0xffaeb9cau);
+        btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
+        draw_text_ft(app, "Back", (int)bx + 54, (int)by + 32, (int)bw, 15, 0xffffffffu);
     }
-    draw_text_ft(app, "Install to Disk", 84, (int)row_y + 13, 130, 12, 0xffffffffu);
-    draw_text_ft(app, "EpinAnonymOS live installer", 244, (int)row_y + 13,
-                 app->width - 322, 11, 0xff334155u);
 }
 
 static int publish_pixels(struct app *app)
@@ -682,6 +667,12 @@ static void pointer_motion(void *data, struct wl_pointer *pointer,
     app->pointer_y = wl_fixed_to_double(sy);
 }
 
+static int in_rect(struct app *app, double x, double y, double w, double h)
+{
+    return app->pointer_x >= x && app->pointer_x < x + w &&
+           app->pointer_y >= y && app->pointer_y < y + h;
+}
+
 static void pointer_button(void *data, struct wl_pointer *pointer,
                            uint32_t serial, uint32_t time,
                            uint32_t button, uint32_t state)
@@ -693,9 +684,32 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
     if (button != 0x110 || state != WL_POINTER_BUTTON_STATE_PRESSED)
         return;
 
-    app->entry_focused = 1;
-    app->button_active = (app->pointer_y >= 220.0);
-    redraw_commit(app, app->button_active ? "button click" : "entry focus");
+    double x, y, w, h;
+    if (app->screen == 0) {
+        btn_rect(app, BTN_LIVE, &x, &y, &w, &h);
+        if (in_rect(app, x, y, w, h)) {
+            /* Try Live Session: close the installer -> the live desktop behind it. */
+            printf("INSTALLER: 'Try Live Session' -- closing to the live desktop\n");
+            app->running = 0;
+            return;
+        }
+        btn_rect(app, BTN_INSTALL, &x, &y, &w, &h);
+        if (in_rect(app, x, y, w, h)) {
+            /* Disk install = the Calamares build (roadmap D1-D3), not yet integrated;
+             * show the status screen rather than silently doing nothing. */
+            printf("INSTALLER: 'Install to Disk' -- Calamares not yet integrated (D1-D3)\n");
+            app->screen = 1;
+            redraw_commit(app, "install-info");
+            return;
+        }
+    } else {
+        btn_rect(app, BTN_BACK, &x, &y, &w, &h);
+        if (in_rect(app, x, y, w, h)) {
+            app->screen = 0;
+            redraw_commit(app, "back");
+            return;
+        }
+    }
 }
 
 static void pointer_axis(void *data, struct wl_pointer *pointer,

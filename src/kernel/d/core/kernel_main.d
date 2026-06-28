@@ -83,6 +83,8 @@ import network.stack : configureNetwork, startNetworkStack, networkStackPoll, pi
 import drivers.network.network : isNetworkAvailable, getMacAddress, getNetRxFrames, getNetRxLastEtherType;
 import network.arp : arpSendRequest, arpLookup;
 import network.types : IPv4Address, MACAddress;
+import network.icmp : getIcmpEchoReplies;   // N2: verify a ping round-trips
+import network.dns : dnsResolve;            // N2/N3/N6: prove the IPv4 RX path via a DNS reply
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2622,6 +2624,31 @@ private void networkSelfTest() @nogc nothrow {
     klog(" lastEtherType="); klog_hex(getNetRxLastEtherType());
     klog(resolved ? " — N1: gateway ARP RESOLVED (a frame round-tripped!)\n"
                   : " — N1: gateway ARP not resolved yet\n");
+    if (!resolved) return;
+    // N2: ping the gateway — send an ICMP echo, poll the rx ring for the echo reply.
+    ping(10,0,2,2);
+    bool gotReply = false;
+    for (uint i = 0; i < 8_000_000u && !gotReply; ++i) {
+        networkStackPoll();
+        if (getIcmpEchoReplies() > 0) gotReply = true;
+    }
+    klog("[net] N2: ping 10.0.2.2 ");
+    klog(gotReply ? "ECHO REPLY received — IPv4 + ICMP work end-to-end!\n"
+                  : "no reply (icmpEchoReplies=0; slirp ICMP is host-blocked by ping_group_range)\n");
+    // IPv4 RECEIVE proof via DNS — slirp answers DNS even when ICMP is host-blocked.  A resolved name
+    // means the guest received + parsed an inbound IP packet (the DNS reply), exercising IPv4 RX + UDP.
+    // The draft IP-send has no ARP defer-and-retransmit, so pre-resolve the DNS server's MAC first.
+    auto dnssrv = IPv4Address(10,0,2,3);
+    arpSendRequest(dnssrv);
+    MACAddress dm;
+    for (uint i = 0; i < 8_000_000u; ++i) { networkStackPoll(); if (arpLookup(dnssrv, &dm)) break; }
+    IPv4Address dip;
+    const bool dns = dnsResolve("example.com", &dip, 4000);
+    const ulong dipv = (cast(ulong)dip.bytes[0] << 24) | (cast(ulong)dip.bytes[1] << 16)
+                     | (cast(ulong)dip.bytes[2] << 8) | dip.bytes[3];
+    klog("[net] N2 IPv4-RX / N3 UDP / N6 DNS: dnsResolve(example.com) ");
+    klog(dns ? "OK — inbound IP packet received + parsed! ip=" : "FAILED ip=");
+    klog_hex(dipv); klog("\n");
 }
 
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog

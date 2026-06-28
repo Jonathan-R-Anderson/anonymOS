@@ -13,12 +13,17 @@ enum ICMPType : ubyte {
 
 /// ICMP header
 struct ICMPHeader {
+    align(1):               // wire struct — pack
     ubyte type;
     ubyte code;
     ushort checksum;
     ushort identifier;
     ushort sequence;
 }
+
+// N2: count ICMP echo replies received, so a ping can be verified end-to-end.
+private __gshared ulong g_icmpEchoReplies = 0;
+export extern(C) ulong getIcmpEchoReplies() @nogc nothrow { return g_icmpEchoReplies; }
 
 /// Send ICMP echo request (ping)
 export extern(C) bool icmpSendPing(const ref IPv4Address destIP,
@@ -118,7 +123,7 @@ export extern(C) void icmpHandlePacket(const(ubyte)* data, size_t len,
         icmpSendPong(srcIP, identifier, sequence, payload, payloadLen);
     }
     else if (header.type == ICMPType.ECHO_REPLY) {
-        // Ping reply received
-        // TODO: Notify waiting ping request
+        // Ping reply received — record it so a ping can be verified end-to-end.
+        ++g_icmpEchoReplies;
     }
 }

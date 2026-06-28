@@ -74,8 +74,22 @@ announced, discovered, and downloaded peer-to-peer over I2P, content-addressed a
   default boot is `-nic none` so the in-kernel network init is skipped (the desktop is never at risk). ★ The
   locally-built **virgl QEMU lacks slirp** (`network backend 'user' is not compiled in`) — run the network test
   on the **system QEMU** (`QEMU_BIN=qemu-system-x86_64`, no GPU), which has user-net.
-- **Next: N2 (IPv4 + ICMP → ping)** — pack the IPv4/ICMP wire structs (same `align(1)` fix) and verify a ping
-  round-trips end-to-end.
+- **N2 (IPv4 + ICMP) ◑ — TX proven; RX-of-an-inbound-IP-packet is blocked by the sandboxed host, not the
+  code.** Packed the IPv4/ICMP headers (`align(1)`, defensive — they were naturally packed) + added an
+  ICMP-echo-reply counter. **Verified on the wire (pcap):** the guest emits a well-formed `ICMP echo request
+  10.0.2.15 > 10.0.2.2` AND a well-formed `DNS A? example.com` query — so IPv4 + ICMP + UDP + DNS-query **TX**
+  are all correct. But **no inbound IP packet can be elicited on this host:** ICMP is host-disabled
+  (`/proc/sys/net/ipv4/ping_group_range = 1 0` → slirp can't make ICMP sockets, so no echo reply), DNS has no
+  upstream (sandboxed host → slirp's DNS proxy gets no answer), and the draft's **DHCP RX is unwired** (the UDP
+  layer doesn't route port 67/68 to `dhcpHandlePacket`, and DHCP isn't called from `networkStackPoll`). So the
+  IPv4 *receive* dispatch (IP-header parse → per-protocol demux) is exercised in code but not yet end-to-end
+  proven; the **eth RX is** proven (N1's ARP replies were received + parsed). ★ Also found: the draft IP-send
+  has **no ARP defer-and-retransmit** — the first packet to an unresolved IP triggers ARP but is dropped, so a
+  dest MAC must be pre-resolved (the self-test ARPs the DNS server before the query). To finish N2 end-to-end:
+  run on a **non-sandboxed host** (host `ping_group_range` widened, or internet for DNS, or a **tap** device for
+  host→guest ping), and/or **wire DHCP RX** (UDP 67/68 → `dhcpHandlePacket`) — slirp's DHCP is internal and
+  answers offline.
+- **Next: N3 (UDP socket integration) / N4 (TCP)** + finishing N2's RX verification per the above.
 
 ---
 

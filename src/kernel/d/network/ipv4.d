@@ -6,6 +6,7 @@ import network.arp;
 
 /// IPv4 header
 struct IPv4Header {
+    align(1):               // wire struct — pack (no inter-field padding)
     ubyte versionIHL;       // Version (4 bits) + IHL (4 bits)
     ubyte tos;              // Type of Service
     ushort totalLength;     // Total length (header + data)

@@ -453,6 +453,164 @@ prior root (or selects it from the recent-roots ring). Updates while offline que
 
 ---
 
+## §G — Perlin-noise decoy activity generator (deterministic fake histories; required for boot)
+
+A track **separate from §F**, integrated with the §E decoy/hidden-OS feature. It synthesizes
+believable, deterministic fake system histories — logs, processes, users, services, network, object
+access, security events, filesystem/object-tree activity — so a decoy environment looks *lived-in*.
+An empty, pristine decoy is the single biggest tell that a hidden OS exists; §G removes that tell.
+**Boot-required:** every boot passes through the §G honey-hashed, typo-tolerant matcher (§G Phase 2),
+which both gates entry and derives the fake-universe seed.
+
+### 1. Executive Summary
+The fake universe is a **pure, lazily-evaluated function** `U(seed, subsystem, t₀…t₁) → events` that is
+**never materialized or stored** — each read (e.g. "tail `/var/log/auth.log` around a date") is answered
+on the fly by sampling a seeded coherent-noise field over the queried window. That one decision
+discharges most requirements simultaneously: deterministic + reboot-stable + snapshot-trivial (persist
+only the seed), scales to years (cost is O(window), not O(history)), different password → different
+universe (seed = KDF(password)), and rootless/immutable (a cap-gated *read-only* generator; nothing
+mutable to write). §G is **not** a log writer bolted onto the OS — it is a new *generated object view*
+(the same mechanism that already renders Linux-path compat views and the Domain-Manager `RuntimeView`),
+selected by the boot authentication context.
+
+### 2. Architecture Review (what fits, what fights)
+- **Fits:** the object model already produces **generated views** (`core/namespace.d` RuntimeView; the
+  Linux-path compat views) — a decoy is just another deterministic view subtree. The **immutable +
+  A/B** model is *ideal*: a deterministic generator needs no mutable state, so there is nothing to
+  diverge across reboots. The **capability/rootless** model gives the generator a least-privilege
+  mint-decoy-objects capability. **§E** already turns a boot password into a decrypted decoy OS; §G
+  hangs the matching fake history off the *same* password.
+- **Fights (architectural problems to fix first):**
+  1. **No virtual clock.** Time today is raw `rdtsc`/RTC (`core/random.d`, `diskpart.d`). Fake history
+     read against the real wall clock will be internally inconsistent (uptime, "now", mtimes). §G needs
+     a **seed-anchored virtual clock** (a decoy "install epoch" derived from the seed; history generated
+     backward from it; "now" tracks real time but offset) and a rule that **no decoy artifact may ever
+     read the real RTC directly**.
+  2. **No logging/audit subsystem exists** (`grep` finds none). Good news (clean slate, no real-log
+     format to fake against) and a task (define the canonical log/object-event schema the generator and
+     any *real* logging will share, so real and fake are format-identical).
+  3. **Float nondeterminism.** Classic Perlin uses floats — IEEE-754 + compiler reordering can differ
+     across builds/arches, **breaking determinism (req 1/2)**. Mandate **integer/fixed-point coherent
+     noise** (seeded permutation table, integer gradients) — justified by determinism over "true" Perlin.
+  4. **Real entropy leakage.** Any real PID/inode/UUID/MAC/hash that reaches a decoy object breaks
+     determinism *and* can leak. Every id in a decoy view must be **derived from the seed**, never minted
+     from real counters.
+
+### 3. Missing Components (must build)
+Virtual clock; canonical event/log schema; deterministic integer coherent-noise lib; KDF→universe seed
+derivation; the honey-hashed typo-tolerant boot matcher; the timeline/event engine; the cross-subsystem
+correlation engine; the decoy view-provider that maps generated events onto the object tree; per-subsystem
+generators (proc/user/service/net/security/audit/fs); a statistical "realism" shaper; and a forensic
+self-audit harness that tries to *distinguish* generated from real.
+
+### 4. Detailed Implementation To-Do List
+Format per task: *Purpose · New/Files · Deps · Security · Complexity (S/M/L) · Order.*
+
+**PHASE 1 — Core architecture, object & storage model, snapshot integration**
+- **G1.1 Virtual clock.** *Purpose:* one seed-anchored time source for all decoy artifacts; ban direct
+  RTC reads in decoy context. *New:* `core/decoy_clock.d`. *Files:* `core/random.d`, time call-sites.
+  *Deps:* G2 seed. *Security:* a single real-timestamp leak dates the decoy → high. *Cx:* M. *Order:* 1.
+- **G1.2 Canonical event schema.** *Purpose:* one TLV/object schema for events (ts, subsystem, actor,
+  object-ref, severity, corr-id) shared by real + fake so they're indistinguishable. *New:*
+  `core/event_schema.d`. *Deps:* object model. *Security:* schema drift = tell → med. *Cx:* M. *Order:* 1.
+- **G1.3 Decoy view provider.** *Purpose:* a generated object subtree (`/var/log`, `/proc`, object
+  access histories) backed by the generator, materialized on traversal. *New:* `core/decoy_view.d`.
+  *Files:* `core/namespace.d` (RuntimeView hook), object FS. *Deps:* G3/G4. *Cx:* L. *Order:* 3.
+- **G1.4 Snapshot = seed only.** *Purpose:* persist just `{seed, params, install-epoch}` in the decoy's
+  config object; regenerate everything. *Files:* `core/store.d`, `core/configboot.d`. *Cx:* S. *Order:* 2.
+
+**PHASE 2 — Seed generation, password-derived universe, noise subsystem, the boot gate**
+- **G2.1 Password → universe seed (honey).** *Purpose:* seed = slow-KDF(canonical matched secret); every
+  password yields *a* plausible universe, none stored. *New:* `core/decoy_seed.d`. *Deps:* §E2b KDF
+  (`pbkdf2_sha512`/AES). *Security:* the seed is as sensitive as the password → high. *Cx:* M. *Order:* 1.
+- **G2.2 Honey-hashed, typo-tolerant boot matcher (REQUIRED FOR BOOT).** *Purpose:* accept a typed
+  password, decide if it's "close enough" to a registered decoy, boot that decoy's universe; reject
+  everything else. *Design (security-engineered):* **fuzz the *input*, not the storage** — from the typed
+  password generate a *bounded* candidate set (case/layout/edit-distance ≤ t corrections) and check each
+  against **exact, per-decoy slow salted verifiers**; storage stays strong exact hashes (no similarity
+  data about the secret on disk). Snap a fuzzy hit to the **canonical** decoy so the seed (and thus the
+  whole history) is identical for the decoy and its typos (req 2). A pool of **honey/chaff verifiers**
+  pads the real decoys so the stored count never reveals how many decoys exist; a typed password matching
+  **no** real verifier **does not boot** (per spec). *New:* `core/decoy_match.d`; wire into the §E5
+  pre-boot auth. *Deps:* G2.1, §E. *Security:* ⚠ **explicit usability↔security trade-off — fuzzy
+  acceptance widens the accept set and lowers effective entropy; keep t small, require strong base
+  decoy passwords, rate-limit, and never persist similarity data.** *Cx:* L. *Order:* 2.
+- **G2.3 Deterministic integer coherent-noise lib.** *Purpose:* reproducible bursty noise (value/simplex,
+  seeded permutation, fixed-point), multi-octave. *New:* `core/coherent_noise.d` (+ KAT vectors). *Deps:*
+  G2.1. *Security:* a noise spectral fingerprint is a tell (§G risk) → shape in G4. *Cx:* M. *Order:* 3.
+
+**PHASE 3 — Timeline engine, event engine, correlated subsystem activity**
+- **G3.1 Rate-to-events (bursty).** *Purpose:* turn noise N(t) into an event **rate** λ(t), place events
+  by a *deterministic* Poisson/Hawkes process → natural bursts + heavy tails, not smooth noise (req 4,5).
+  *New:* `core/decoy_timeline.d`. *Deps:* G2.3. *Cx:* M. *Order:* 1.
+- **G3.2 Correlation engine.** *Purpose:* one shared "intensity" field drives all subsystems through
+  per-subsystem transfer functions + lags, so a busy hour shows correlated login+process+net+log spikes,
+  and one event deterministically spawns its consequences (login → session → process tree → net flows).
+  *New:* `core/decoy_correlate.d`. *Deps:* G3.1. *Security:* uncorrelated subsystems = the #1 forensic
+  tell → high. *Cx:* L. *Order:* 2.
+- **G3.3 Realism shaper.** *Purpose:* map raw event stats onto real-world distributions (diurnal/weekly/
+  seasonal cycles, holidays, log-message templates, port/protocol mixes). *New:* `core/decoy_realism.d`.
+  *Cx:* L. *Order:* 3.
+
+**PHASE 4 — Object-tree integration: process/user/service histories**
+- **G4.1 proc/G4.2 user/G4.3 service generators.** *Purpose:* deterministic `/proc`, login/session, and
+  service-restart histories as objects, all ids seed-derived, all consistent with G3.2's events. *New:*
+  `core/decoy_proc.d`, `decoy_user.d`, `decoy_service.d`. *Deps:* G1.3, G3.2. *Cx:* M each. *Order:* 1–3.
+
+**PHASE 5 — Security history, network history, audit trails**
+- **G5.1 security/G5.2 network/G5.3 audit generators.** *Purpose:* plausible auth failures/alerts, flow
+  records + DNS/connection logs, and a coherent audit trail — all correlated with G3.2 and each other.
+  *New:* `core/decoy_security.d`, `decoy_net.d`, `decoy_audit.d`. *Security:* a fake "successful root
+  login" contradicting the rootless model is a tell → keep events in-model. *Cx:* M each. *Order:* 1–3.
+
+**PHASE 6 — Snapshot persistence, distributed, performance**
+- **G6.1 Distributed coherence.** *Purpose:* the seed *is* the sync unit — another node regenerates the
+  same universe for free; align only the "live" epoch via the ORG distributed clock. *Files:*
+  `core/org_dist.d`. *Cx:* M. *Order:* 2.
+- **G6.2 Windowed cache + latency parity.** *Purpose:* cache hot windows; make generated-read latency
+  match real-read latency so **timing can't distinguish fake from real** (a real side-channel). *New:*
+  `core/decoy_cache.d`. *Security:* high (timing leak). *Cx:* M. *Order:* 1.
+- **G6.3 Forensic self-audit.** *Purpose:* a harness that *tries* to distinguish generated vs real
+  (spectral, correlation, distribution, timing tests) — failures become work. *New:* `tests/decoy/`.
+  *Cx:* M. *Order:* 3.
+
+### 5. Dependency Graph
+`§E (decoy OS + KDF)` → `G2.1 seed` → {`G2.2 boot matcher` (also → §E5), `G2.3 noise`} → `G3.1 timeline`
+→ `G3.2 correlation` → `G3.3 realism` → Phase-4/5 generators → `G6` (cache/distributed/audit).
+`G1.1 clock`, `G1.2 schema`, `G1.4 snapshot` underpin everything (build first). `G1.3 view` needs G3/G4.
+
+### 6. Risk Analysis
+- **Determinism breakers:** float noise; real RTC reads; real PIDs/inodes/UUIDs/MACs; non-canonical
+  ordering (map iteration, concurrency); KDF/endianness drift across arches; locale/timezone in rendering.
+- **Decoy-existence leaks:** an *empty/too-clean* decoy; uncorrelated subsystems; a noise spectral
+  fingerprint; **timing** (computed reads slower than stored reads); free-space entropy that says "hidden
+  volume here"; fake events that violate OS invariants (a root login under a rootless model); identical
+  universes across two "different" installs (seed reuse).
+- **Metadata consistency:** file mtimes must equal the events that touched them; log sequence numbers
+  monotonic; process start<exit; session spans contain their child processes; uptime = now − boot;
+  package "installed" dates precede their first "use".
+- **Timestamp requirements:** one virtual clock; monotonic per subsystem; consistent offsets; no future
+  timestamps; DST/timezone handled deterministically.
+- **Resource/scaling:** never generate history you don't read (lazy); bound candidate-fuzzing in G2.2;
+  cap cache; keep noise sampling O(1) table lookups; years-of-history must stay O(query window).
+
+### 7. Recommended Order of Development
+G1.1 clock + G1.2 schema + G1.4 snapshot → G2.1 seed → **G2.2 boot matcher (gates boot — land early,
+behind a flag)** → G2.3 noise → G3.1 timeline → G3.2 correlation → G3.3 realism → G1.3 view → Phase-4
+then Phase-5 generators → G6 cache/distributed/forensic-audit.
+
+### 8. Final Validation Checklist
+☐ same decoy password → byte-identical history across two cold boots and two machines · ☐ different
+password → fully uncorrelated history · ☐ a typo within threshold boots the *same* universe; outside →
+**no boot** · ☐ no decoy artifact ever reads the real RTC · ☐ no real PID/inode/UUID/MAC in any decoy
+object · ☐ cross-subsystem events correlate (login↔session↔proc↔net↔log) · ☐ all metadata invariants
+hold (mtimes, monotonic seq, span containment, uptime) · ☐ generated-vs-real reads are
+timing-indistinguishable · ☐ generated stats pass the forensic self-audit · ☐ storage reveals neither
+the decoy count nor which entries are real (honey/chaff) · ☐ snapshot persists only the seed/params · ☐
+years of history with O(window) cost.
+
+---
+
 ## PHASE 1 — Repository analysis
 Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
 the rootfs is generated; how packages install; how users/identities are created; how the
@@ -665,7 +823,15 @@ finishes.
   which is its hard prerequisite. Carries real, documented tensions: the public-hash fingerprint vs
   the OS's anonymity goals, update-key custody, and RPC trust (F7). Contract source will live in
   `installer/contracts/` (`zksolc`, ABI in-repo).
-- **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
+- **§G Perlin-noise decoy activity generator: SPECIFIED (G Phases 1–6), not built.** Deterministic fake
+  histories (logs/procs/users/services/net/security/audit/object-access) for the §E decoy environments,
+  so a decoy looks lived-in. **Required for boot** via a honey-hashed, **typo-tolerant** matcher
+  (fuzz the *input* against exact per-decoy verifiers + honey/chaff so storage never reveals the decoy
+  set; a typo near a decoy boots that decoy's universe, anything else is rejected). Key design: the
+  universe is a **pure lazily-generated function of seed=KDF(password)** — never stored, so it's
+  reboot-deterministic, snapshot-trivial (seed only), and O(query-window) at any history length.
+  Architectural prerequisites flagged: a seed-anchored **virtual clock** (no real-RTC leaks), a shared
+  event schema, and **integer/fixed-point** noise (float breaks determinism). Builds on §E.
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**
   and **Try Live Session**. *Try Live Session* closes the installer to the live desktop; *Install to

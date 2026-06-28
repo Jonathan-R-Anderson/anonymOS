@@ -8,12 +8,34 @@ installer/install-to-disk.sh      # → hos-installed.img  (GPT + ESP + limine U
 installer/boot-installed.sh       # boot it in QEMU via OVMF (HEADLESS=1 for windowless)
 ```
 
-To install onto a **real disk / USB stick**:
+## Real hardware
+
+Two ways to get onto a physical machine — **both are bootable on real BIOS *and* UEFI**:
 
 ```sh
-sudo dd if=hos-installed.img of=/dev/sdX bs=4M conv=fsync   # /dev/sdX = your target
+# A) Live boot — write the ISO to a USB stick (it is isohybrid: MBR + GPT/ESP).
+sudo dd if=hos.iso of=/dev/sdX bs=4M conv=fsync status=progress
+
+# B) Installed disk — write the GPT/UEFI image to the target disk or a USB stick.
+sudo dd if=hos-installed.img of=/dev/sdX bs=4M conv=fsync status=progress
 ```
-then boot that disk on a UEFI machine — it loads straight into EpinAnonymOS.
+`/dev/sdX` is the **whole device** (e.g. `/dev/sdb`), not a partition — double-check with
+`lsblk` first; `dd` to the wrong device destroys it.
+
+What to expect on real hardware (this is the [bare-metal](../roadmap/BARE_METAL_ROADMAP.md)
+bring-up edge — "continue development" territory):
+
+- **Boot + display:** limine sets up the firmware framebuffer (GOP under UEFI / VBE under
+  BIOS) at the panel's native mode; the kernel renders the Weston/Pixman desktop into it
+  in software. No GPU acceleration on metal yet (virgl is QEMU-only; nouveau is future
+  work) — the desktop is software-composited.
+- **Input:** modern boards are USB-only (no PS/2). The kernel auto-launches the embedded
+  **LKL** when it sees a USB xHCI controller (class `0x0c03`) and bridges USB HID →
+  keyboard/mouse. This is the part most likely to need iteration on specific hardware.
+- **Storage:** the AHCI driver backs the object store on a real SATA disk; NVMe is driven
+  via LKL.
+
+Prefer **UEFI** boot mode in the firmware setup if the machine offers both.
 
 ## What it does
 

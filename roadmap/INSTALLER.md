@@ -337,6 +337,94 @@ honestly (this is hard, and weak operational use defeats the math).
 
 ---
 
+## §F — Blockchain-anchored boot integrity (zkSync anti-rootkit attestation)
+
+An **optional installer step** that anchors the hashes of the immutable system files to a
+**smart contract on the zkSync Era network** (an Ethereum L2), so that **at boot the system verifies
+its own files against an external, tamper-evident source of truth** — a rootkit that rewrites local
+files (and the local manifest) still can't rewrite the public chain, so the mismatch is detected.
+This layers an *off-machine* root of trust on top of the existing in-machine `manifest.blob`
+(HMAC-signed, verified-config boot). The contract is **yet to be written**; this section is its plan.
+
+### F0 — Model + why a chain
+The immutable `/system` store (already A/B-updated + rollback-capable) has a well-defined content set.
+Compute a **Merkle root over all `/system` file hashes** and publish that 32-byte root on-chain.
+- **Boot check:** recompute the local `/system` Merkle root and compare it to the on-chain root. Equal
+  → untampered; different → tamper/rootkit → tamper response (warn, refuse to mount RW, or drop to a
+  recovery/known-good image). The check must run from an **early, trusted stage** (kernel, before any
+  userland) or a boot-stage rootkit could fake it — anchoring is only as strong as the verifier's
+  own integrity (Secure Boot / measured boot still matter underneath).
+- **Why zkSync Era:** EVM-compatible but L2 — gas is cents not dollars, so frequent hash updates on
+  every system update are affordable; finality is fast. (`zksolc` compiler + the zkSync RPC.)
+- **⚠ Honest tensions (carried into F7), not afterthoughts:** (1) publishing your exact system-file
+  hashes is a **public fingerprint** — in direct tension with this OS's anonymity goals; mitigations
+  (publish only a salted root, or a per-install commitment) must be designed in, not bolted on.
+  (2) Boot-time verification needs **working internet at boot** — and the network stack's **RX is
+  currently blocked on real hardware** (see the network roadmap), so this feature is **gated on that
+  landing first.** (3) The update key is a live attack surface (F7).
+
+### F1 — Network bring-up (the hard prerequisite)
+Deploying the contract (install time) and reading it (boot time) both need connectivity, so the
+installer gains a **Network** step:
+- **Ethernet:** DHCP over the existing e1000 driver (TX proven; **RX is the open blocker** — N-roadmap).
+- **Wi-Fi:** bring up a wifi NIC + `wpa_supplicant`/`iwd`-style association (SSID + passphrase from the
+  installer UI). EpinAnonymOS has no wifi driver yet → either a native driver or the LKL bridge
+  (the bare-metal roadmap already drives Linux drivers via LKL — the same path can carry `mac80211`).
+- **Verify connectivity** (DNS + a zkSync RPC reachability probe) before offering F3, and **fail
+  gracefully** when offline: F-features become unavailable, the install still completes without them.
+- This step is genuinely **blocked on the 🚧 network stack** (RX) + a wifi path; F1 is where that work
+  surfaces in the installer.
+
+### F2 — The smart contract (Solidity, to be written → `installer/contracts/`)
+A minimal owner-gated registry:
+- **Storage:** `bytes32 systemRoot` (the current Merkle root), `uint64 version`, `address owner`.
+- **`updateRoot(bytes32 newRoot, uint64 newVersion)`** — `onlyOwner`; emits `RootUpdated(newRoot,
+  version, block.timestamp)` for an auditable history (every legitimate system state is on record).
+- **`currentRoot() view returns (bytes32, uint64)`** — public; what the boot check reads.
+- Optional: a small ring of recent roots so an in-flight A/B update (old root still valid briefly)
+  doesn't trip the check. Owner is ideally a **multisig / hardware-key**, not a hot key (F7).
+- Compile with `zksolc`; keep the source + ABI in-repo so the build is reproducible + auditable.
+
+### F3 — Deploy flow (install time)
+After F1 connectivity: compile the contract, deploy it to zkSync Era from the user's funded account
+(gas), and record the **contract address + chain ID + RPC endpoint** into the declarative
+`install.json` / system config so boot and updates know where to look. The signing/deploy key is
+collected securely and **never written to disk in the clear** (F7). Offline → skip, install proceeds.
+
+### F4 — Seed the hashes
+At install, compute the `/system` Merkle root over the freshly-laid rootfs and call `updateRoot()`
+with version 1, so the chain reflects the as-installed system from first boot.
+
+### F5 — Boot-time verification
+Early in boot (kernel stage, post-network-init), read `currentRoot()` over JSON-RPC, recompute the
+local `/system` root, compare:
+- **match** → continue.
+- **mismatch** → tamper response: loud warning + a configurable policy (audit-only · block RW mount ·
+  boot the last known-good A/B image · halt). Policy is declarative.
+- **offline / RPC unreachable** → **cached-last-known-good** fallback (the last verified root, stored
+  signed locally): fail-secure to a degraded "could not attest" state rather than silently fail-open.
+- Harden the read against a lying RPC (F7): query **multiple endpoints**, or verify a light-client
+  proof, so one malicious node can't forge `currentRoot()`.
+
+### F6 — Update integration (keep the chain == the legit system)
+Hook the **A/B system update** path: after staging a new `/system`, recompute its Merkle root and call
+`updateRoot(newRoot, version+1)` **as part of committing the update**, so the on-chain truth always
+tracks the current legitimate system and the next boot verifies clean. A rollback re-publishes the
+prior root (or selects it from the recent-roots ring). Updates while offline queue the publish.
+
+### F7 — Security review (security-critical)
+- **Verifier integrity:** on-chain anchoring detects file tampering but not a verifier that's already
+  subverted — pair with Secure Boot / measured boot so the kernel doing the check is itself trusted.
+- **Update-key custody:** the `owner` key can rewrite "truth"; if stolen, an attacker legitimizes a
+  rootkit. Multisig / hardware-backed key; never a plaintext on-disk hot key.
+- **RPC trust:** don't trust a single node's `currentRoot()` — multi-endpoint agreement or a proof.
+- **Privacy:** public hashes fingerprint the install — publish a **salted/committed** root, reconcile
+  with the OS's anonymity model, and treat the wallet/tx history as linkable metadata.
+- **Availability:** define the offline policy deliberately (fail-secure vs usable-offline) — a check
+  that bricks the machine when the RPC is down is its own denial of service.
+
+---
+
 ## PHASE 1 — Repository analysis
 Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
 the rootfs is generated; how packages install; how users/identities are created; how the
@@ -361,11 +449,13 @@ name, installer name, version strings, copyright, default colours — with EpinA
 No upstream branding remains visible.
 
 ## PHASE 5 — Installation flow
-Pages: Welcome · Language · Keyboard · Timezone · Disk Selection · Filesystem · **Encryption
-(optional)** · Hostname · Administrator · **Identities** · Summary · Installation · Finish. Feels
-like a professional OS installer. The **Encryption** page is an *optional* step (skippable; default
-**None**) offering None · Full-disk encryption · **Hidden OS (plausible deniability)** — the §E
-VeraCrypt-derived decoy/hidden-OS feature.
+Pages: Welcome · Language · Keyboard · Timezone · **Network (optional)** · Disk Selection · Filesystem
+· **Encryption (optional)** · **Boot integrity (optional)** · Hostname · Administrator · **Identities**
+· Summary · Installation · Finish. Feels like a professional OS installer. Two *optional, skippable*
+steps: the **Encryption** page (default **None**) offers None · Full-disk encryption · **Hidden OS
+(plausible deniability)** — the §E VeraCrypt-derived decoy/hidden-OS feature; the **Boot integrity**
+page offers the §F zkSync blockchain-anchored anti-rootkit attestation (which needs the **Network**
+step's connectivity to deploy its contract).
 
 ## PHASE 6 — Identity Manager page (custom module)
 A bespoke Calamares C++/QML module replacing plain Linux user creation: an **Identity Manager**
@@ -535,6 +625,12 @@ finishes.
   Next: finish E1 (volume-header + hidden-OS source + `Boot/EFI` loader, then prune the tree), reach
   header parity (E2), then the encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on
   the §D2(b) engine, the optional installer page (E6), and the deniability security review (E7).
+- **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
+  *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
+  smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),
+  which is its hard prerequisite. Carries real, documented tensions: the public-hash fingerprint vs
+  the OS's anonymity goals, update-key custody, and RPC trust (F7). Contract source will live in
+  `installer/contracts/` (`zksolc`, ABI in-repo).
 - **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**

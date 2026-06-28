@@ -270,8 +270,20 @@ VeraCrypt's `_UEFI` mode is avoided as it pulls in EDK2 `<Uefi.h>`). `make verac
 known-answer test (`test/kat.c`, musl-static, runs on the build host): **AES-256 KAT PASS** (FIPS-197)
 + **SHA-512 KAT PASS** — the strip kept a *correct* core, not just a linkable one. (Camellia/blake2s
 have minor include quirks; PBKDF2/`Pkcs5.c` pulls in Argon2 — both folded into E2.)
-**E1 remaining:** the volume-header + hidden-OS layout source (from `Common/BootEncryption.cpp`) and
-the `Boot/EFI` pre-boot loader subset; then prune the vendored tree to exactly the used files.
+**Volume-header + hidden-volume layout ✅ DISTILLED** → `deps/veracrypt/VOLUME_FORMAT.md`. The
+upstream `Common/` encryption C (`Volumes.c`/`Xts.c`/`Crypto.c`) is MSVC/Windows-tangled (`__int64`
+intrinsics, `<strsafe.h>`/`<io.h>`, an `EncryptionThreadPool`, the EFI `_UEFI`+`<Uefi.h>` path) — and
+its only clean cross-build is the `_UEFI` mode, which needs the EDK2 headers. Porting it recreates the
+"musl swamp" §D2 deliberately rejected. So §E keeps the split the architecture already implies:
+**the portable crypto core stays C (`libvc_crypto.a`, done), and the XTS mode + volume header + the
+hidden-volume layout are implemented NATIVELY in the kernel's `veracrypt_impl.d`** (which already seeds
+`xts_encrypt_sector`/`pbkdf2_sha512`/`create_veracrypt_header`; the kernel owns block I/O per §D2(b),
+so it owns the on-disk encryption). `VOLUME_FORMAT.md` is the byte-exact spec it implements in E2 —
+header geometry, every field offset, the `HIDDEN_VOLUME_SIZE` tell + the second hidden header at
+`TC_VOLUME_HEADER_SIZE`, the random-fill deniability requirement, and the KDF/cipher set.
+**"Strip" = build only the Crypto/ subset; the rest of the vendored tree is reference** (kept on
+purpose — other VeraCrypt features may be wanted later), not compiled or shipped.
+**E1 remaining → folded into E5:** the `Boot/EFI` pre-boot loader is its own UEFI-toolchain build.
 
 ### E2 — Crypto core (extend `veracrypt_impl.d` to VeraCrypt parity)
 Bring the kernel/installer crypto to header-compatible parity with the stripped subset: the full

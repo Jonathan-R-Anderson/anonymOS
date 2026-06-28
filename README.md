@@ -42,6 +42,7 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 | Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
 | SMP / multi-core — a secondary core runs a **preemptible userspace task in parallel** with the desktop (BKL + per-CPU APIC timer + cross-CPU IPIs) | 🚧 | [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) |
 | TCP/IP network stack + I2P P2P template marketplace — **NIC + Ethernet/ARP up (box is on the network); IPv4/ICMP/UDP/DHCP TX proven; RX blocked on a real network** | 🚧 | [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) |
+| Disk installer + **hidden/decoy-OS disk encryption** — install a second OS in a deeper encryption layer for plausible deniability (VeraCrypt-derived, an *optional* install step). **Proven: GPT + FAT32 ESP partition engine (host `sgdisk`/`fsck.fat`-validated); the stripped VeraCrypt crypto core cross-builds + passes NIST AES-256/SHA-512 KATs.** Full encrypted hidden-OS install + EFI pre-boot auth in progress | 🚧 | [`INSTALLER`](roadmap/INSTALLER.md) |
 
 ---
 

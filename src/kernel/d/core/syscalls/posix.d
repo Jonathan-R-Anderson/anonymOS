@@ -7863,22 +7863,38 @@ private int devCapLeader(int tid) {
     const int p = g_tasks[tid].processLeaderTid;
     return (p >= 0 && p < MAX_TASKS) ? p : tid;
 }
+// SMP_ROADMAP S8: a leaf lock for the per-task device-cap table — makes the device bridge
+// SMP-safe (so a per-device LKL pinned to its own core can grant/check caps without racing
+// the BSP).  Wrapper pattern (single acquire/release).  Leaf: never held while taking the BKL.
+private __gshared uint g_devCapLock = 0;
+private uint dcTryLock(uint* p) { uint old=void; asm @nogc nothrow { mov RDX,p; mov EAX,1; xchg [RDX],EAX; mov old,EAX; } return old; }
+private void dcUnlock(uint* p) { asm @nogc nothrow { mov RDX,p; xor EAX,EAX; mov [RDX],EAX; } }
+private void dcLockAcq() { while (dcTryLock(&g_devCapLock) != 0) {} }
+private void dcLockRel() { dcUnlock(&g_devCapLock); }
+
 public bool taskHasDevCap(int tid, uint bdf) {
+    dcLockAcq();
     const int p = devCapLeader(tid);
-    return p >= 0 && g_taskDevCap[p].valid && g_taskDevCap[p].bdf == bdf;
+    const bool r = p >= 0 && g_taskDevCap[p].valid && g_taskDevCap[p].bdf == bdf;
+    dcLockRel();
+    return r;
 }
 public bool taskHasMmioCap(int tid, ulong phys) {
+    dcLockAcq();
+    bool r = false;
     const int p = devCapLeader(tid);
-    if (p < 0 || !g_taskDevCap[p].valid) return false;
-    auto c = &g_taskDevCap[p];
-    foreach (i; 0 .. 6)
-        if (c.barBase[i] != 0 && phys >= c.barBase[i] && phys <= c.barEnd[i])
-            return true;
-    return false;
+    if (p >= 0 && g_taskDevCap[p].valid) {
+        auto c = &g_taskDevCap[p];
+        foreach (i; 0 .. 6)
+            if (c.barBase[i] != 0 && phys >= c.barBase[i] && phys <= c.barEnd[i]) { r = true; break; }
+    }
+    dcLockRel();
+    return r;
 }
 // Grant PROCESS-leader task `tid` a capability for device `bdf` (records bdf + sizes its MMIO BARs).
 // Privileged: only the kernel / a device-manager calls this — it is NOT reachable through the 0x4100 ABI.
-public void grantDeviceCap(int tid, uint bdf) {
+public void grantDeviceCap(int tid, uint bdf) { dcLockAcq(); grantDeviceCap_impl(tid, bdf); dcLockRel(); }
+private void grantDeviceCap_impl(int tid, uint bdf) {
     import drivers.pci : pciConfigRead32, pciConfigWrite32;
     const int p = devCapLeader(tid);
     if (p < 0) return;
@@ -7939,8 +7955,11 @@ public uint findDeviceByClass(uint cls) {
 
 // L5 kernel-side INTx wake: the bdf the task's PROCESS was granted, or 0xFFFFFFFF if none.
 public uint taskGrantedBdf(int tid) {
+    dcLockAcq();
     const int p = devCapLeader(tid);
-    return (p >= 0 && g_taskDevCap[p].valid) ? g_taskDevCap[p].bdf : 0xFFFFFFFFu;
+    const uint r = (p >= 0 && g_taskDevCap[p].valid) ? g_taskDevCap[p].bdf : 0xFFFFFFFFu;
+    dcLockRel();
+    return r;
 }
 // L5 kernel-side INTx wake: is the device's PCI Status "Interrupt Status" bit set (a level-triggered
 // INTx is asserted while the device has an unacked interrupt)?  Status is the high half of cfg 0x04.

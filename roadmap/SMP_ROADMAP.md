@@ -212,7 +212,7 @@ parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the
   exit (incl. before returning to userspace and around `scheduleNext`). Correct-but-serial kernel,
   **parallel userspace**. **Verify:** an LKL on CPU1 and the desktop on CPU0 both make full-speed progress
   at the same time (the L5 boot-contention disappears).
-- **S4 — Per-CPU scheduler.** ◑ *(FOUNDATION done — APs run sustained parallel kernel work keyed off their GS per-CPU area, BKL-coordinated, ~170 M iters/AP while the desktop boots; the per-CPU run queue + userspace-task path remains — see Status).* Per-CPU run queues + a balancer; tasks can be **pinned** (pin each
+- **S4 — Per-CPU scheduler.** ◑ *(an AP RUNS A USERSPACE TASK in parallel with the desktop — S4.4a–d, the core goal — and tasks can be PINNED (the AP task is pinned, BSP-invisible); what remains of the FULL S4 is per-CPU run queues + a balancer + work-stealing so an AP picks from MULTIPLE tasks, not the one hardcoded pinned task — see Status).* Per-CPU run queues + a balancer; tasks can be **pinned** (pin each
   per-device LKL to a core — ties into L4 isolation). Idle CPUs run idle or steal work. `scheduleNext`
   becomes per-CPU.
 - **S5 — Preemption.** ✅ *(the AP runs a PREEMPTIBLE task — see Status; multi-task time-slicing on an AP ties into the S4 per-CPU run queue).* The per-CPU local-APIC timer drives a preemption tick → fair time-slicing *within* a
@@ -224,7 +224,7 @@ parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the
 - **S7 — IPIs.** ✅ *(cross-CPU IPI mechanism + TLB-shootdown handler — see Status; auto-wiring into fork/mmap/munmap is gated on APs sharing a page table, which the disjoint AP task doesn't yet).* Inter-processor interrupts for **TLB shootdown** (a CPU editing a shared page table —
   fork CoW / mmap / munmap — must invalidate the other CPUs' TLBs), cross-CPU wakeups, and a reschedule
   IPI. Needs local-APIC IPI send + a per-CPU IPI handler.
-- **S8 — SMP-safe device bridge + per-device LKL pinning.** Lock `g_taskDevCap[]` (L4); pin each
+- **S8 — SMP-safe device bridge + per-device LKL pinning.** ◑ *(MECHANISMS in place: `g_taskDevCap[]` now has its own leaf lock (`posix.d` `g_devCapLock` — the accessors wrapped → SMP-safe device bridge); and the AP's task is PINNED to its core (BSP-invisible, never migrates — verified `AP task tid=1 PINNED to CPU idx 1`). What remains is the PRODUCTION integration: running a real device LKL (usb-lkl/gpu-lkl/net-lkl) as the pinned task — the bare-metal-LKL bring-up on top of this SMP foundation, a large separate effort.)* Lock `g_taskDevCap[]` (L4); pin each
   per-device LKL to its own core (S4) so usb-lkl / gpu-lkl / net-lkl truly run in parallel — the production
   realization of the bare-metal vision. The LKL's polled IRQ thread then owns a dedicated core (no
   contention).

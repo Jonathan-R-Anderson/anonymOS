@@ -420,6 +420,13 @@ public void smpActivateAp() @nogc nothrow {
     // AP — running on its task's CR3 — cannot safely klog (it would fault on a non-shared mapping).
     klog("[smp] AP idx "); klog_hex(ap);
     klog(" now looping getpid in parallel with the desktop (count surfaced from the BSP below)\n");
+    // S8: the AP's task is PINNED to this core — it runs ONLY here (tracked in g_percpu[ap].currentTask),
+    // is marked `waiting` so the BSP's scheduleNext never picks it, and never migrates.  This is exactly
+    // the per-device-LKL pinning S8 needs; what remains for production S8 is running a REAL device LKL
+    // (usb-lkl/gpu-lkl/net-lkl) as this pinned task — the bare-metal-LKL integration on top of this.
+    klog("[smp] AP task tid="); klog_hex(cast(ulong)g_apTid);
+    klog(" PINNED to CPU idx "); klog_hex(ap);
+    klog(" (BSP scheduler skips it; never migrates) — S8 pinning mechanism\n");
 }
 
 // Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs

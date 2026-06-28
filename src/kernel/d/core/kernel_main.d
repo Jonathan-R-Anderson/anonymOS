@@ -76,6 +76,7 @@ import core.domain : domInheritProof;                       // DOMAIN_MANAGER DM
 import core.kmain : smpWorkReport, smpActivateAp;           // SMP_ROADMAP S4 foundation report + S4.4a activation
 import core.kmain : bklAcquire, bklRelease, g_bkl;          // SMP_ROADMAP S4.4d: BKL around the kernelLoop coroutine
 import core.kmain : g_apSyscallCount, apActivatedApicTicks;  // SMP_ROADMAP S4.4d/S5: AP's parallel getpid + timer counters
+import core.kmain : sendApIpi, apActivatedLapicId, apActivatedIpiCount, g_apActivatedIdx;  // S7: BSP→AP IPIs
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2709,11 +2710,17 @@ private void kernelLoop() {
                 // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE (BSP
                 // side, under the BKL → no race, and on the BSP's CR3 so klog is safe).  These lines
                 // appearing AMONG the desktop's serial output are the proof the AP runs in parallel.
-                if (g_apSyscallCount != 0 && g_apPitLogN < 40 && (++g_apPitLogCtr % 2000) == 0) {
-                    ++g_apPitLogN;
-                    klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
-                    klog(" apicTicks="); klog_hex(apActivatedApicTicks());   // S5: AP preemption timer firing
-                    klog(" — AP task running PREEMPTIBLY in PARALLEL with the desktop\n");
+                if (g_apSyscallCount != 0 && (++g_apPitLogCtr % 2000) == 0) {
+                    // S7: the BSP fires a cross-CPU IPI (vector 0x40) at the AP — its handler bumps
+                    // ipiCount + does a TLB-shootdown CR3 reload.  Then surface all three AP counters.
+                    if (g_apActivatedIdx != 0) sendApIpi(apActivatedLapicId(), 0x40);
+                    if (g_apPitLogN < 40) {
+                        ++g_apPitLogN;
+                        klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
+                        klog(" apicTicks="); klog_hex(apActivatedApicTicks());   // S5: AP preemption timer
+                        klog(" ipiCount="); klog_hex(apActivatedIpiCount());     // S7: BSP→AP IPIs handled
+                        klog(" — AP runs preemptibly + handles BSP IPIs, in PARALLEL with the desktop\n");
+                    }
                 }
                 // Re-check parked poll/epoll sleepers every tick (catch-all for passive
                 // fds like the compositor's repaint timerfd).  Cheap now that the idle

@@ -221,7 +221,7 @@ parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the
 - **S6 — Fine-grained locking.** Replace the BKL with per-subsystem locks, in contention order: page/heap
   allocator → object/cap tables → fd tables → namespace tables → scheduler queues. Each needs a lock-order
   audit (deadlock avoidance). **The large, careful, long-tail work — do it driven by profiling.**
-- **S7 — IPIs.** Inter-processor interrupts for **TLB shootdown** (a CPU editing a shared page table —
+- **S7 — IPIs.** ✅ *(cross-CPU IPI mechanism + TLB-shootdown handler — see Status; auto-wiring into fork/mmap/munmap is gated on APs sharing a page table, which the disjoint AP task doesn't yet).* Inter-processor interrupts for **TLB shootdown** (a CPU editing a shared page table —
   fork CoW / mmap / munmap — must invalidate the other CPUs' TLBs), cross-CPU wakeups, and a reschedule
   IPI. Needs local-APIC IPI send + a per-CPU IPI handler.
 - **S8 — SMP-safe device bridge + per-device LKL pinning.** Lock `g_taskDevCap[]` (L4); pin each

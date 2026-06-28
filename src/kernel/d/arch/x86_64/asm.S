@@ -139,6 +139,49 @@ apTimerHandler:
 apSpuriousHandler:
     iretq
 
+# SMP_ROADMAP S7: enable x2APIC on the BSP so it can SEND IPIs via the ICR MSR.  Does NOT set up a
+# timer (the BSP keeps using the PIC/PIT) — only the mode + spurious vector.  Per-CPU MSR.
+.global setupBspX2apic
+setupBspX2apic:
+    movl  $0x1B, %ecx
+    rdmsr
+    orl   $0xC00, %eax          # x2APIC (bit 10) + global enable (bit 11)
+    wrmsr
+    movl  $0x80F, %ecx          # spurious vector register
+    movl  $0x1FF, %eax          # vector 0xFF + APIC software-enable (bit 8)
+    xorl  %edx, %edx
+    wrmsr
+    ret
+
+# Send a fixed IPI to a target CPU.  extern(C) void sendApIpi(uint lapicId /*edi*/, uint vector /*esi*/).
+# x2APIC ICR = MSR 0x830 = (destApicId << 32) | vector  (fixed delivery / physical dest / no shorthand).
+.global sendApIpi
+sendApIpi:
+    movl  %edi, %edx           # high 32 bits = destination APIC id
+    movl  %esi, %eax           # low  32 bits = vector (delivery/dest/shorthand fields all 0)
+    movl  $0x830, %ecx
+    wrmsr
+    ret
+
+# The AP's IPI handler (AP IDT vector 0x40, IST1).  Bumps PerCpu.ipiCount via %gs:72, performs the
+# TLB-shootdown action (full CR3 reload → flush this CPU's non-global TLB), EOIs, iretq.
+.global apIpiHandler
+apIpiHandler:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    incq  %gs:72
+    movq  %cr3, %rax           # TLB shootdown: reload CR3 to flush this CPU's TLB
+    movq  %rax, %cr3
+    movl  $0x80B, %ecx         # x2APIC EOI
+    xorl  %eax, %eax
+    xorl  %edx, %edx
+    wrmsr
+    popq  %rdx
+    popq  %rcx
+    popq  %rax
+    iretq
+
 .global x64ReadCR2
 x64ReadCR2:
     mov %cr2, %rax

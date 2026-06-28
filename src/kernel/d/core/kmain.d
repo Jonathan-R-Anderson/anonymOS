@@ -119,6 +119,13 @@ public __gshared ulong g_apSyscallCount = 0;         // S4.4d: how many getpids 
 public ulong apActivatedApicTicks() @nogc nothrow {
     return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].apicTicks : 0;
 }
+// S7: the activated AP's APIC id (IPI destination) + the IPIs it has received + handled.
+public uint  apActivatedLapicId()  @nogc nothrow {
+    return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].lapicId : 0;
+}
+public ulong apActivatedIpiCount() @nogc nothrow {
+    return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].ipiCount : 0;
+}
 
 // S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
 // the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
@@ -135,6 +142,8 @@ __gshared immutable ubyte[11] g_apStubCode =
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
 extern(C) void setupApTimer();     // asm.S S5: enable x2APIC + the per-CPU local-APIC periodic timer (vec 0x20)
+extern(C) void setupBspX2apic() @nogc nothrow;   // asm.S S7: enable x2APIC on the BSP so it can SEND IPIs (no timer)
+extern(C) void sendApIpi(uint lapicId, uint vector) @nogc nothrow;  // asm.S S7: fixed IPI to a target APIC id via the ICR
 
 extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
 
@@ -155,12 +164,14 @@ align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-sha
     ulong   bpHandled;      // 48: S4.2 — the AP's #BP handler sets this via %gs:48 (see asm.S)
     ulong   syscallSeen;    // 56: S4.3 — the AP's syscall stub sets this via %gs:56 (see asm.S)
     ulong   apicTicks;      // 64: S5 — the AP's local-APIC timer handler bumps this via %gs:64 (see asm.S)
-    ubyte[56] _pad2;        // pad PerCpu to 128 bytes (two cache lines)
+    ulong   ipiCount;       // 72: S7 — the AP's IPI handler bumps this via %gs:72 (see asm.S)
+    ubyte[48] _pad2;        // pad PerCpu to 128 bytes (two cache lines)
 }
 static assert(PerCpu.sizeof == 128);
 static assert(PerCpu.bpHandled.offsetof == 48);    // apBpHandler    in asm.S hardcodes %gs:48
 static assert(PerCpu.syscallSeen.offsetof == 56);  // apSyscallStub  in asm.S hardcodes %gs:56
 static assert(PerCpu.apicTicks.offsetof == 64);    // apTimerHandler in asm.S hardcodes %gs:64
+static assert(PerCpu.ipiCount.offsetof == 72);     // apIpiHandler   in asm.S hardcodes %gs:72
 static assert(PerCpu.heartbeat.offsetof == 24);
 static assert(PerCpu.cpuIndex.offsetof == 32);
 align(64) public __gshared PerCpu[MAX_CPUS] g_percpu;
@@ -371,6 +382,7 @@ public void smpActivateAp() @nogc nothrow {
     }
     if (!found) { klog("[smp] no online AP to activate\n"); return; }
     g_apActivatedIdx = ap;
+    setupBspX2apic();                                // S7: enable x2APIC on the BSP so it can send IPIs to the AP
     prepareApTestTask();                             // S4.4b: build the ring-3 test task (BSP, single-threaded)
     g_apActivate[ap] = 1;                             // release the AP from its worker into apKernelLoop
     for (uint spin = 0; spin < 200_000_000u && !g_apKernelLoopEntered[ap]; ++spin) __asm("pause", "");

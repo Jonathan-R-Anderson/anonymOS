@@ -54,5 +54,3 @@ deps/zsh/modules/
 deps/zsh/zsh-5.9-dyn/
 deps/gtk-stack/stamps/meson-cross.ini
 deps/gtk-stack/sysroot/share/gdb/auto-load/home/
-hos-installed.img
-ovmf-vars-installed.fd

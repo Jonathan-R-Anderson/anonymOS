@@ -5,10 +5,22 @@ import arch.x86_64.bootstrap;
 import arch.x86_64.arch;
 import arch.x86_64.gdt : loadGdt, loadTr, prepareApCpuState, apGdtPtr;  // SMP S4.1 per-CPU GDT/TSS
 import arch.x86_64.interrupts : loadIdt, buildApIdt, g_apIdtPtr;        // SMP S4.2 per-CPU IDT
+import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER; // SMP S4.4b AP test-task maps
+import memory.mm : alloc_phys_page, archMapKernel;                      // SMP S4.4b AP test-task address space
+import core.exports : phys_to_virt;                                     // SMP S4.4b write stub via HHDM alias
+import core.task : REG_RIP, REG_RSP, REG_RFLAGS, REASON_TRAP;           // SMP S4.4b seed apCurUserSpaceState
 import core.globals;
 import core.io;
 import ldc.attributes;
 import ldc.llvmasm;
+
+// SMP_ROADMAP S4.4b — the AP's own userspace entry path + per-CPU buffers (arch/x86_64/ap_context.S).
+extern(C) ulong apSwitchToUserspace(void* userState, void* kernelState);  // coroutine: iretq → ring3 → ret here
+extern(C) void  apEnterKernelLoop(uint idx, void* kstackTop);             // switch AP C stack + LSTAR → apKernelLoopBody
+extern(C) extern __gshared ubyte[0x298] apCurUserSpaceState;              // the AP task's saved user state
+extern(C) extern __gshared ulong apLastSyscallRax;                        // syscall # the AP's stub passed
+extern(C) ulong x64ReadCR3() @nogc nothrow;
+extern(C) void  x64WriteCR3(ulong) @nogc nothrow;
 
 extern (C):
 
@@ -96,6 +108,18 @@ public __gshared ubyte[MAX_CPUS] g_apSyscallOk;      // S4.3: [i] = 1 once AP i 
 public __gshared ubyte[MAX_CPUS] g_apActivate;       // S4.4a: BSP sets [i]=1 to call AP i out of its worker → apKernelLoop
 public __gshared ubyte[MAX_CPUS] g_apKernelLoopEntered;  // S4.4a: AP i sets [i]=1 once it enters apKernelLoop
 public __gshared uint g_apActivatedIdx = 0;          // S4.4a: which AP the BSP activated (for the report)
+public __gshared ubyte[MAX_CPUS] g_apRing3Ok;        // S4.4b: AP i completed a ring0→ring3→ring0 round trip
+
+// S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
+// the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
+align(16) __gshared ubyte[0x10000] g_apKernelStack;
+__gshared ulong g_apTaskPml4 = 0;                    // the AP test task's page-table root (built on the BSP)
+enum ulong AP_STUB_VA = 0x400000UL;                  // ring-3 stub code page
+enum ulong AP_STK_VA  = 0x440000UL;                  // ring-3 stub stack page
+enum ulong AP_SENTINEL = 0x5A44UL;                   // the syscall number the stub passes ("S44")
+// mov $0x5A44,%rax ; syscall ; jmp .   — does one syscall then self-loops (the syscall never returns to it)
+__gshared immutable ubyte[11] g_apStubCode =
+    [0x48,0xC7,0xC0,0x44,0x5A,0x00,0x00, 0x0F,0x05, 0xEB,0xFE];
 
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
@@ -231,7 +255,9 @@ extern(C) void apEntry(limine_smp_info* info) {
                 }
                 // S4.4a: when the BSP activates this AP (after the desktop is up, so mm + tasks exist),
                 // leave the early worker and enter apKernelLoop — the AP's home for running tasks.
-                if (g_apActivate[idx]) apKernelLoop(idx);            // never returns
+                // S4.4b: switch to the dedicated AP kernel C stack first (via the asm trampoline).
+                if (g_apActivate[idx])
+                    apEnterKernelLoop(idx, cast(void*)(&g_apKernelStack[0] + g_apKernelStack.length));
             }
         }
     }
@@ -239,13 +265,53 @@ extern(C) void apEntry(limine_smp_info* info) {
     for (;;) __asm("hlt", "");
 }
 
-// SMP_ROADMAP S4.4: the AP's "kernel loop" — its execution home once activated late (after the
-// desktop is up + mm/tasks exist).  S4.4a placeholder: announce arrival + keep doing per-CPU work.
-// Later phases replace the body with the per-CPU task-run coroutine (pick a task → ring3 → dispatch).
-void apKernelLoop(uint idx) {
+// SMP_ROADMAP S4.4b: the AP's kernel loop body, running on g_apKernelStack (switched in
+// apEnterKernelLoop, which also repointed LSTAR → apServiceSyscall).  Runs the prebuilt ring-3 test
+// task once — a ring0→ring3→ring0 round trip through the AP's OWN entry path — then stays alive.
+extern(C) void apKernelLoopBody(uint idx) {
     g_apKernelLoopEntered[idx] = 1;
+    if (g_apTaskPml4 != 0) {
+        x64WriteCR3(g_apTaskPml4);                   // the AP test task's disjoint address space
+        apLastSyscallRax = 0;
+        const ulong reason = apSwitchToUserspace(&apCurUserSpaceState[0], apKernelState_ptr());
+        if (reason == 0x100 && apLastSyscallRax == AP_SENTINEL) g_apRing3Ok[idx] = 1;
+    }
     auto pc = &g_percpu[idx];
-    for (;;) ++pc.heartbeat;                          // visible per-CPU progress (no shared state yet)
+    for (;;) ++pc.heartbeat;                          // round trip done; keep visible per-CPU progress
+}
+
+// apKernelState lives in ap_context.S; expose its address without importing the symbol type.
+extern(C) extern __gshared ubyte[0x290] apKernelState;
+private void* apKernelState_ptr() { return &apKernelState[0]; }
+
+// SMP_ROADMAP S4.4b: build the AP's ring-3 test task ON THE BSP (single-threaded, before activation,
+// so the phys allocator is never raced).  A disjoint address space (own PML4) → no TLB shootdown.
+public void prepareApTestTask() @nogc nothrow {
+    const ulong savedCr3 = x64ReadCR3();
+    const ulong pml4 = alloc_phys_page();
+    if (pml4 == 0) { klog("[smp] S4.4b: no page for AP task PML4\n"); return; }
+    archMapKernel(pml4);                              // copy the kernel high-half into the new space
+    const ulong codePhys = alloc_phys_page();
+    const ulong stkPhys  = alloc_phys_page();
+    if (codePhys == 0 || stkPhys == 0) { klog("[smp] S4.4b: no page for AP task code/stack\n"); return; }
+    x64WriteCR3(pml4);                                // switch in to map user pages (BSP survives: high-half copied)
+    map_page_hhdm(codePhys, AP_STUB_VA, PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+    map_page_hhdm(stkPhys,  AP_STK_VA,  PTE_PRESENT | PTE_RW | PTE_USER, &alloc_phys_page);
+    // Write the stub via the code page's HHDM alias (always kernel-RW, regardless of the user PTE).
+    auto code = cast(ubyte*)phys_to_virt(codePhys);
+    foreach (i, b; g_apStubCode) code[i] = b;
+    x64WriteCR3(savedCr3);                            // restore the BSP's address space
+    // Seed the AP task's initial user state (mirrors loadTaskState).
+    auto u = cast(ulong*)(&apCurUserSpaceState[0]);
+    u[0] = REASON_TRAP;                              // reason → iret entry
+    auto r = cast(ulong*)(&apCurUserSpaceState[8]); // 18 registers
+    for (uint i = 0; i < 18; i++) r[i] = 0;
+    r[REG_RIP]    = AP_STUB_VA;
+    r[REG_RSP]    = AP_STK_VA + 0x1000;             // top of the 4 KiB stub stack
+    r[REG_RFLAGS] = 0x202;                          // IF set
+    *cast(uint*)(&apCurUserSpaceState[8 + 0x90 + 24]) = 0x1F80;  // mxcsr
+    *cast(ushort*)(&apCurUserSpaceState[8 + 0x90 + 0]) = 0x037F; // fcw
+    g_apTaskPml4 = pml4;
 }
 
 // SMP_ROADMAP S4.4a: called by the BSP just before kernelLoop (desktop up).  Activate the first
@@ -261,12 +327,19 @@ public void smpActivateAp() @nogc nothrow {
     }
     if (!found) { klog("[smp] no online AP to activate\n"); return; }
     g_apActivatedIdx = ap;
+    prepareApTestTask();                             // S4.4b: build the ring-3 test task (BSP, single-threaded)
     g_apActivate[ap] = 1;                             // release the AP from its worker into apKernelLoop
     for (uint spin = 0; spin < 200_000_000u && !g_apKernelLoopEntered[ap]; ++spin) __asm("pause", "");
     klog("[smp] AP idx "); klog_hex(ap);
     klog(g_apKernelLoopEntered[ap]
          ? " entered apKernelLoop (S4.4a: post-desktop rendezvous)\n"
          : " did NOT enter apKernelLoop — TIMEOUT\n");
+    // S4.4b: wait for the ring0→ring3→ring0 round trip through the AP's own entry path.
+    for (uint spin = 0; spin < 200_000_000u && !g_apRing3Ok[ap]; ++spin) __asm("pause", "");
+    klog("[smp] AP idx "); klog_hex(ap);
+    klog(g_apRing3Ok[ap]
+         ? " ring0→ring3→ring0 OK (S4.4b: ran a userspace stub on its own entry path)\n"
+         : " ring3 round trip FAILED/timed out (AP halted on its own IDT — desktop unaffected)\n");
 }
 
 // Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs

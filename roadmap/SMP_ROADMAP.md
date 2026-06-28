@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a (AP late rendezvous) DONE — verified
+## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a + S4.4b (AP runs ring-3 code) DONE — verified
 
 **S4.4 (an AP runs a userspace task in parallel) is being built in verified increments** — plan in
 `~/.claude/plans/binary-hugging-tide.md` (Approach B: a separate AP entry path; the BSP's `context.S` stays
@@ -62,6 +62,21 @@ byte-for-byte untouched; AP/BSP converge only at the shared D dispatch under the
   process loaded *inside* `kernelLoop` — mm/tasks are nonetheless ready at the pre-`kernelLoop` activation point.
   **Verified `SMP=4`:** `AP idx 1 entered apKernelLoop (S4.4a: post-desktop rendezvous)`, desktop loads 11
   domains, 0 faults, S4.1/4.2/4.3 still `3 of 3`; `SMP=1` → `single-core: no AP to activate`, desktop boots.
+- **S4.4b (first ring-3 on an AP) DONE:** the AP runs a hand-built userspace stub and returns — **the first
+  userspace code an AP has ever run in this OS.** New `arch/x86_64/ap_context.S` = a faithful copy of the BSP's
+  `x64SwitchToUserspace`/`serviceSyscall`/`restoreKernelState` but addressing the AP's OWN per-CPU buffers
+  (`apCurUserSpaceState`/`apKernelState`/`apLastSyscall*`) — so the BSP's `context.S` stays byte-for-byte
+  untouched. ★ Two simplifications keep S4.4b low-risk (one active AP, single buffers, a stub that never touches
+  GS): **no swapgs** (GS stays = the per-CPU area; buffers are absolute-addressed) and **no IST1 dance** (the
+  AP's TSS.ist1 stays = `g_apIstStack` from S4.1). `apEnterKernelLoop` switches to a dedicated 64 KiB AP kernel
+  C stack (`g_apKernelStack` — the 8 KiB IST is entry-only) and repoints `LSTAR`→`apServiceSyscall`. The AP
+  task is built **on the BSP, single-threaded, before activation** (`prepareApTestTask`: own PML4 +
+  `archMapKernel` + map a R+X stub page + a R+W stack page; disjoint address space → no TLB shootdown). The
+  coroutine: `apKernelLoopBody` (on the AP stack) `x64WriteCR3(apTaskPml4)` → `apSwitchToUserspace` iretq's to
+  ring 3 → the stub `mov $0x5A44,%rax; syscall` enters `apServiceSyscall` → saves user state, restores
+  `apKernelState`, `ret`s back. A failure halts only the AP via its own IDT (`apDefaultHandler` = `cli;hlt`),
+  never a triple fault. **Verified `SMP=4`:** `AP idx 1 ring0→ring3→ring0 OK (S4.4b: ran a userspace stub on
+  its own entry path)`, desktop loads 11 domains, 0 faults; `SMP=1` unaffected.
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:

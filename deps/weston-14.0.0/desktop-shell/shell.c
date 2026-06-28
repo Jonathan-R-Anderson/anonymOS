@@ -4924,6 +4924,18 @@ epin_load_config(struct weston_compositor *ec)
 	if (n <= 0) return;
 	buf[n] = 0;
 
+	/* INSTALLER D4.2/D4.3: the live-only desktop entries (the "Install to Disk"
+	 * installer, tagged 'bind-live' / 'autostart-live') are present until the OS is
+	 * installed to disk, then disappear from every future startup.  The install marker
+	 * is /install.json — the one declarative file Calamares writes (roadmap Phase 7);
+	 * first boot of the installed system leaves it on the persistent root.  Its presence
+	 * IS "installed".  (D4.2's richer system.installed flag / /system/state/installed
+	 * signal can replace this raw check later without touching the gate logic.) */
+	int installed = (access("/install.json", F_OK) == 0);
+	weston_log("epin: install state = %s (live-only entries %s)\n",
+		   installed ? "INSTALLED" : "live",
+		   installed ? "HIDDEN" : "shown");
+
 	char *save = NULL;
 	for (char *line = strtok_r(buf, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
 		char *l = epin_trim(line);
@@ -4938,6 +4950,14 @@ epin_load_config(struct weston_compositor *ec)
 				epin_autostart[epin_autostart_n++] = strdup(val);
 		} else if (!strcasecmp(key, "bind")) {
 			epin_parse_bind(ec, val);
+		} else if (!strcasecmp(key, "autostart-live")) {
+			/* D4.3: live-media-only autostart — skipped once installed. */
+			if (!installed && epin_autostart_n < EPIN_MAX_AUTOSTART && val[0])
+				epin_autostart[epin_autostart_n++] = strdup(val);
+		} else if (!strcasecmp(key, "bind-live")) {
+			/* D4.3: live-media-only keybinding — skipped once installed. */
+			if (!installed)
+				epin_parse_bind(ec, val);
 		}
 		/* (background is applied by the shell's own config path) */
 	}

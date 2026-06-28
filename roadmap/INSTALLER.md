@@ -372,27 +372,27 @@ finishes.
 - **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
   the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
   specified (D2/D3) and **now unblocked** (qtwayland landed). Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§D4.1 ✅ DONE — the "Install to Disk" desktop entry exists + verified in VBox.** The `SUPER+I`
-  binding opens a branded **"Install EpinAnonymOS to Disk"** window on the live Weston desktop.
-  Launch target = a **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client
-  adapted from `wl-cairo-demo.c`: heading + description + entry + "Install to Disk" button), built
-  via `INSTALLER_BIN` and staged as `cd/calamares` + `module_path: boot():/calamares` — the real
-  Calamares (§D1–D3) drops in at the same path later. Verified in VBox (x2APIC on): `SUPER+I`
-  raises the installer on top, 0 kernel faults.
-- **§D4.2 / D4.3 / D4.4 ✅ DONE — the entry self-removes once installed (verified both ways).** The
-  install marker is **`/install.json`** (the one declarative file Calamares writes, roadmap Phase 7;
-  its presence = "installed"). The desktop-shell (`deps/weston-14.0.0/desktop-shell/shell.c`,
-  `epin_load_config`) checks `access("/install.json")` once and gates new **`bind-live` /
-  `autostart-live`** directives: registered while live, **skipped once installed**. `src/desktop.conf`
-  now uses `bind-live = SUPER, I, exec, /calamares` for the installer entry. Verified in VBox:
-  live boot → `epin: install state = live`, `SUPER+I` registered + launches; with `/install.json`
-  present → `epin: install state = INSTALLED (live-only entries HIDDEN)`, the `SUPER+I` bind is **not
-  registered** and the keypress does nothing — the entry is gone, on this and every future startup.
-  0 faults both ways. (D4.4 uses the marker-presence as the signal; D4.2's richer `system.installed`
-  field in `/config/system.json` + a kernel `/system/state/installed` render can replace the raw
-  `access()` check later without touching the gate.)
-- **§D4 remaining:** the gated live first-run **`autostart-live`** auto-launch (mechanism is in the
-  shell; not enabled in `desktop.conf` yet — it currently lands occluded behind the maximized Domain
-  Manager, a window-stacking refinement: make the installer the front/primary surface on live boot).
-  And the **real install→marker write**: Calamares (§D1–D3) + first boot (Phase 7/10) must actually
-  drop `/install.json` on the persistent on-disk root so a truly-installed system trips the gate.
+- **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** A branded **"Install
+  EpinAnonymOS to Disk"** window. Launch target = a **§D4.5 stub** (`src/util/wl-installer.c`, a
+  Cairo/FreeType Wayland client adapted from `wl-cairo-demo.c`: heading + description + entry +
+  "Install to Disk" button), built via `INSTALLER_BIN` and staged as `cd/calamares` +
+  `module_path: boot():/calamares` — the real Calamares (§D1–D3) drops in at the same path later.
+- **§D4.2 / D4.3 / D4.4 ✅ DONE — installer AUTO-LAUNCHES on a live boot and self-removes once
+  installed (verified both ways, 0 faults).** No key combo: on a live boot the installer **appears
+  automatically, front-and-centre**. Mechanics in `deps/weston-14.0.0/desktop-shell/shell.c`:
+  `epin_load_config` checks `access("/install.json")` once (the install marker = the one declarative
+  file Calamares writes, Phase 7; presence = "installed") and recognises two LIVE-MEDIA-ONLY
+  directives, **`autostart-live`** and `bind-live`, which are honoured while live and **skipped once
+  installed**. `autostart-live` entries launch on a **+3000 ms `wl_event_loop` timer** so they map
+  *after* the desktop and come up as the focused, on-top window (fixes the earlier occlusion behind
+  the maximized Domain Manager). `src/desktop.conf` now has `autostart-live = /calamares` (no
+  keybind). Verified in VBox (x2APIC on): live boot → `install state = live`, `scheduled 1 live-only
+  autostart … (+3000ms, on top)`, installer renders on top with no input; with `/install.json`
+  present → `install state = INSTALLED (live-only entries HIDDEN)`, **nothing scheduled, no installer**
+  — gone on this and every future startup. (D4.2's richer `system.installed` field in
+  `/config/system.json` + a kernel `/system/state/installed` render can replace the raw `access()`
+  signal later without touching the gate.)
+- **§D4 remaining:** the **real install→marker write** — Calamares (§D1–D3) + first boot (Phase
+  7/10) must actually drop `/install.json` on the persistent on-disk root so a truly-installed
+  system trips the gate (today the gate is proven; the thing that *creates* the marker for real is
+  the Calamares build).

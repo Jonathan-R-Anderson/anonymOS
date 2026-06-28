@@ -332,7 +332,7 @@ static void draw_demo(struct app *app)
         }
     }
     draw_text_ft(app, "Install to Disk", 84, (int)row_y + 13, 130, 12, 0xffffffffu);
-    draw_text_ft(app, "live install entry (SUPER+I)", 244, (int)row_y + 13,
+    draw_text_ft(app, "EpinAnonymOS live installer", 244, (int)row_y + 13,
                  app->width - 322, 11, 0xff334155u);
 }
 

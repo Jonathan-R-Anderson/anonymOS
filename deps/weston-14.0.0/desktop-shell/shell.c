@@ -4184,6 +4184,27 @@ desktop_shell_client_destroy(struct wl_listener *listener, void *data)
 #define EPIN_MAX_AUTOSTART 16
 static char *epin_autostart[EPIN_MAX_AUTOSTART];
 static int   epin_autostart_n = 0;
+/* Live-media-only autostart (the installer, D4.3): launched on a short delay so it maps
+ * AFTER the regular autostart (the Domain Manager) and therefore comes up as the focused,
+ * on-top window — the installer "appears automatically" front-and-centre on a live boot.
+ * Populated only when NOT installed (/install.json absent), so it never runs post-install. */
+static char *epin_autostart_live[EPIN_MAX_AUTOSTART];
+static int   epin_autostart_live_n = 0;
+static struct wl_event_source *epin_live_timer = NULL;
+
+static int
+epin_launch_live_autostart(void *data)
+{
+	struct desktop_shell *shell = data;
+	for (int i = 0; i < epin_autostart_live_n; i++) {
+		if (wet_client_start(shell->compositor, epin_autostart_live[i]))
+			weston_log("epin: autostart-live (delayed, on top) %s\n",
+				   epin_autostart_live[i]);
+		else
+			weston_log("epin: autostart-live FAILED %s\n", epin_autostart_live[i]);
+	}
+	return 0;
+}
 
 static void
 launch_desktop_shell_process(void *data)
@@ -4217,6 +4238,19 @@ launch_desktop_shell_process(void *data)
 			else
 				weston_log("epin: autostart FAILED %s\n", epin_autostart[i]);
 		}
+	}
+
+	/* D4.3: launch live-only entries (the installer) on a short delay, so they map
+	 * after the desktop above and become the front/on-top window — "appears
+	 * automatically".  Skipped entirely when installed (the list is empty then). */
+	if (epin_autostart_live_n > 0) {
+		struct wl_event_loop *loop =
+			wl_display_get_event_loop(shell->compositor->wl_display);
+		epin_live_timer = wl_event_loop_add_timer(loop,
+							  epin_launch_live_autostart, shell);
+		wl_event_source_timer_update(epin_live_timer, 3000);
+		weston_log("epin: scheduled %d live-only autostart entry(ies) (+3000ms, on top)\n",
+			   epin_autostart_live_n);
 	}
 }
 
@@ -4951,9 +4985,10 @@ epin_load_config(struct weston_compositor *ec)
 		} else if (!strcasecmp(key, "bind")) {
 			epin_parse_bind(ec, val);
 		} else if (!strcasecmp(key, "autostart-live")) {
-			/* D4.3: live-media-only autostart — skipped once installed. */
-			if (!installed && epin_autostart_n < EPIN_MAX_AUTOSTART && val[0])
-				epin_autostart[epin_autostart_n++] = strdup(val);
+			/* D4.3: live-media-only autostart — delayed launch (front/on-top via the
+			 * live list), skipped entirely once installed. */
+			if (!installed && epin_autostart_live_n < EPIN_MAX_AUTOSTART && val[0])
+				epin_autostart_live[epin_autostart_live_n++] = strdup(val);
 		} else if (!strcasecmp(key, "bind-live")) {
 			/* D4.3: live-media-only keybinding — skipped once installed. */
 			if (!installed)

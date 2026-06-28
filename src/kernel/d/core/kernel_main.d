@@ -49,6 +49,7 @@ import core.admin : adminInstallInitCaps, adminSelfTest, adminStats; // IR-P3 ty
 import core.store : storeSelfTest, storeStats, storeMountSystem; // IR-P4 immutable store
 import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B update + rollback
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
+import core.diskpart : gptPartProof;                // INSTALLER §D2(b): native GPT partition engine
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
                        objstoreLoadExec; // F4/F4.2 persisted object store (/objects/apps) + launch
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
@@ -2958,6 +2959,7 @@ void d_kernel_main() {
     // disk is attached — the store then stays in-memory).
     diskInit();
     diskSelfTest();
+    gptPartProof();   // INSTALLER §D2(b): build+validate a GPT layout (in-memory; no disk write)
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
     // F4.2: locate the store-app image boot module so seeded apps get a real,

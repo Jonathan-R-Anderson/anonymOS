@@ -377,10 +377,23 @@ finishes.
   libuuid/libblkid + libparted, autotools-cross like gtk-stack) is **scaffolded** (the recipe; the
   musl-porting long-pole is next). Opt-in top-level targets added (NOT in the default build):
   `make qt-stack | calamares-deps | parted-stack | calamares | installer-deps`.
-- **§D2 / Calamares core: not built yet.** Remaining: build §D2 (util-linux/libparted + KPMcore, or
-  the §D2(b) native object-FS module) → then the `calamares` ELF (recipe staged in
-  `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python) → wire `installer/calamares/` (sequence,
-  branding, the custom `identitymanager` module). Phase-1 analysis: `installer/ARCHITECTURE.md`.
+- **§D2(b) native object-FS partition engine ◑ BEGUN (chosen over util-linux/libparted).** The
+  rootless, udev-free backend: the kernel owns block I/O (`drivers.block.disk`
+  `diskRead/WriteSectors`) + caps, so the installer asks it to "lay down GPT+ESP+rootfs" rather than
+  touching raw devices. **GPT layout primitive ✅ DONE** — `src/kernel/d/core/diskpart.d` builds a
+  spec-valid GPT (protective MBR + GPT header + 128-entry array with an EFI System Partition + a
+  Linux-root partition, all CRC32-checked, type GUIDs + per-partition GUIDs) and validates one back.
+  Boot proof (`gptPartProof`, wired after `diskSelfTest` in `kernel_main.d`) builds a GPT for an 8 GiB
+  disk in-memory (no disk write → live object store safe) + validates + corruption-checks: serial
+  shows `[diskpart] GPT proof PASS (esp_lba=0x22 root_lba=0x100022 …; corruption rejected)`.
+  **Remaining §D2(b):** commit the GPT to a target disk via `diskWriteSectors` (primary + backup,
+  cap-gated — the one-shot block-write cap, Phase 11) → format the ESP (minimal FAT32) → copy the
+  rootfs → install limine (BIOS/UEFI) → expose it to userspace (native HOS object-ABI verb or a
+  syscall) so the installer can drive "pick disk → install".
+- **§D2 / Calamares core: not built yet.** After §D2(b): build the `calamares` ELF (recipe staged in
+  `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
+  it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
+  the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
 - **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**

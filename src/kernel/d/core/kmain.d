@@ -115,6 +115,10 @@ public __gshared ubyte[MAX_CPUS] g_apRealSyscallOk;  // S4.4c: AP i dispatched a
 public __gshared int   g_apTid = 0;                  // S4.4c: the AP task's g_tasks[] slot (hidden from BSP scheduler)
 public __gshared ulong g_apSyscallRet = 0;           // S4.4c: the AP's getpid return value
 public __gshared ulong g_apSyscallCount = 0;         // S4.4d: how many getpids the AP task has issued (parallel w/ BSP)
+// S5: the activated AP's local-APIC timer tick count (the BSP surfaces it — the AP can't klog on its CR3).
+public ulong apActivatedApicTicks() @nogc nothrow {
+    return (g_apActivatedIdx < MAX_CPUS) ? g_percpu[g_apActivatedIdx].apicTicks : 0;
+}
 
 // S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
 // the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
@@ -130,6 +134,7 @@ __gshared immutable ubyte[11] g_apStubCode =
 
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
+extern(C) void setupApTimer();     // asm.S S5: enable x2APIC + the per-CPU local-APIC periodic timer (vec 0x20)
 
 extern(C) extern __gshared ulong g_current_task_id;  // the single global current task (exports.d)
 
@@ -149,10 +154,13 @@ align(64) struct PerCpu {  // cache-line sized so per-CPU writes don't false-sha
     ubyte[3] _pad0;         // 45..47
     ulong   bpHandled;      // 48: S4.2 — the AP's #BP handler sets this via %gs:48 (see asm.S)
     ulong   syscallSeen;    // 56: S4.3 — the AP's syscall stub sets this via %gs:56 (see asm.S)
+    ulong   apicTicks;      // 64: S5 — the AP's local-APIC timer handler bumps this via %gs:64 (see asm.S)
+    ubyte[56] _pad2;        // pad PerCpu to 128 bytes (two cache lines)
 }
-static assert(PerCpu.sizeof == 64);
-static assert(PerCpu.bpHandled.offsetof == 48);    // apBpHandler   in asm.S hardcodes %gs:48
-static assert(PerCpu.syscallSeen.offsetof == 56);  // apSyscallStub in asm.S hardcodes %gs:56
+static assert(PerCpu.sizeof == 128);
+static assert(PerCpu.bpHandled.offsetof == 48);    // apBpHandler    in asm.S hardcodes %gs:48
+static assert(PerCpu.syscallSeen.offsetof == 56);  // apSyscallStub  in asm.S hardcodes %gs:56
+static assert(PerCpu.apicTicks.offsetof == 64);    // apTimerHandler in asm.S hardcodes %gs:64
 static assert(PerCpu.heartbeat.offsetof == 24);
 static assert(PerCpu.cpuIndex.offsetof == 32);
 align(64) public __gshared PerCpu[MAX_CPUS] g_percpu;
@@ -280,17 +288,17 @@ extern(C) void apKernelLoopBody(uint idx) {
     auto pc = &g_percpu[idx];
     if (g_apTaskPml4 == 0 || g_apTid <= 0) { for (;;) ++pc.heartbeat; }
     x64WriteCR3(g_apTaskPml4);                        // the AP test task's disjoint address space (once)
+    setupApTimer();                                   // S5: this CPU's own x2APIC periodic timer (vec 0x20)
     // S4.4d: the AP coroutine — resume the userspace stub, dispatch its getpid through the SHARED
     // handler under the BKL, write the result back, and resume again.  This runs CONCURRENTLY with the
     // BSP's kernelLoop, which holds the same BKL across its handling — so the two cores are mutually
     // excluded in the kernel but run userspace in true parallel.  getpid reads the global
     // g_current_task_id, so point it at the AP's task while the lock is held, then restore it.
     for (;;) {
-        // Run the test stub with interrupts OFF (clear IF): the AP has no real interrupt handlers yet
-        // (its IDT routes every vector to apDefaultHandler=cli;hlt), so a timer/IPI during the ring-3
-        // stub would halt the AP.  apServiceSyscall re-sets IF on each syscall, so clear it every time.
-        // (Real per-CPU interrupt handling is S5.)
-        *cast(ulong*)(&apCurUserSpaceState[8 + REG_RFLAGS*8]) &= ~0x200UL;
+        // S5: run the stub with interrupts ON (set IF) — now PREEMPTIBLE.  The AP's own local-APIC timer
+        // (vector 0x20 → apTimerHandler on IST1) fires during the stub, bumps apicTicks, EOIs, and resumes
+        // it.  (Before S5 the stub had to run IF=0, or a timer would halt the AP via apDefaultHandler.)
+        *cast(ulong*)(&apCurUserSpaceState[8 + REG_RFLAGS*8]) |= 0x200UL;
         const ulong reason = apSwitchToUserspace(&apCurUserSpaceState[0], apKernelState_ptr());
         if (reason != 0x100 || apLastSyscallRax != AP_GETPID) break;   // unexpected → stop (no fault loop)
         bklAcquire(&g_bkl);
@@ -401,6 +409,14 @@ void smpBringup() {
     g_smpCpuCount = cast(uint)resp.cpu_count;
     klog("[smp] "); klog_hex(resp.cpu_count); klog(" CPUs discovered (bsp lapic=");
     klog_hex(resp.bsp_lapic_id); klog(")\n");
+    {   // S5 probe: local-APIC base + x2APIC support + what limine left enabled
+        ulong apicBase; uint feat;
+        asm @nogc nothrow { mov RCX, 0x1B; rdmsr; shl RDX,32; or RAX,RDX; mov apicBase, RAX; }
+        asm @nogc nothrow { push RBX; mov EAX, 1; cpuid; mov feat, ECX; pop RBX; }
+        klog("[smp] APIC base="); klog_hex(apicBase);
+        klog(" x2APIC-cpuid="); klog_hex((feat >> 21) & 1);
+        klog(" limine-flags="); klog_hex(resp.flags); klog("\n");
+    }
 
     // S2: lay out one per-CPU area per discovered CPU, BEFORE releasing the APs (they read it on entry).
     foreach (i; 0 .. resp.cpu_count) {

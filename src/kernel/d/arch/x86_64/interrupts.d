@@ -98,7 +98,7 @@ void init_idt() {
 // ------------------------------------------------------------------
 __gshared idt_entry[256] g_apIdt;
 __gshared idt_ptr        g_apIdtPtr;
-extern (C) { void apBpHandler(); void apDefaultHandler(); }
+extern (C) { void apBpHandler(); void apDefaultHandler(); void apTimerHandler(); void apSpuriousHandler(); }
 
 private void apIdtSet(int vec, ulong handler, ubyte ist) {
     g_apIdt[vec].offset_1  = handler & 0xFFFF;
@@ -112,7 +112,9 @@ private void apIdtSet(int vec, ulong handler, ubyte ist) {
 
 void buildApIdt() {
     for (int i = 0; i < 256; i++) apIdtSet(i, cast(ulong)&apDefaultHandler, 0);
-    apIdtSet(3, cast(ulong)&apBpHandler, 1);   // #BP → AP handler on IST1 (per-CPU TSS stack)
+    apIdtSet(3,    cast(ulong)&apBpHandler,       1);   // #BP → AP handler on IST1 (per-CPU TSS stack)
+    apIdtSet(0x20, cast(ulong)&apTimerHandler,    1);   // S5: local-APIC timer → preemption tick (IST1)
+    apIdtSet(0xFF, cast(ulong)&apSpuriousHandler, 1);   // S5: APIC spurious vector (IST1)
     g_apIdtPtr.limit = g_apIdt.sizeof - 1;
     g_apIdtPtr.base  = cast(ulong)g_apIdt.ptr;
 }

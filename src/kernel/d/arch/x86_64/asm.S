@@ -84,6 +84,61 @@ apDoSyscall:
     syscall
     ret
 
+# SMP_ROADMAP S5: set up THIS CPU's own local-APIC timer via x2APIC (MSRs — no MMIO map needed).
+# Per-CPU MSRs, so the BSP's PIC/PIT is untouched.  Periodic timer → vector 0x20 → apTimerHandler.
+.global setupApTimer
+setupApTimer:
+    # IA32_APIC_BASE (0x1B): set bit 10 (x2APIC) + bit 11 (global enable), preserve the base.
+    movl  $0x1B, %ecx
+    rdmsr
+    orl   $0xC00, %eax
+    wrmsr
+    # Spurious Interrupt Vector (x2APIC MSR 0x80F): vector 0xFF + bit 8 (APIC software-enable).
+    movl  $0x80F, %ecx
+    movl  $0x1FF, %eax
+    xorl  %edx, %edx
+    wrmsr
+    # Divide Configuration (0x83E): divide by 16 (encoding 0b0011).
+    movl  $0x83E, %ecx
+    movl  $0x3, %eax
+    xorl  %edx, %edx
+    wrmsr
+    # LVT Timer (0x832): vector 0x20 + periodic mode (bit 17).  Unmasked (bit 16 = 0).
+    movl  $0x832, %ecx
+    movl  $0x20020, %eax
+    xorl  %edx, %edx
+    wrmsr
+    # Initial Count (0x838): start the periodic countdown (period ≈ count × 16 / apic_freq).
+    movl  $0x838, %ecx
+    movl  $0x800000, %eax
+    xorl  %edx, %edx
+    wrmsr
+    ret
+
+# The AP's local-APIC timer handler.  Reached via the AP IDT vector 0x20 on IST1 (so it lands on
+# the AP's own stack regardless of ring).  GS base = the per-CPU area, so %gs:64 is PerCpu.apicTicks
+# (offset asserted in kmain.d).  Bump the tick, EOI the x2APIC (MSR 0x80B = 0), iretq.  An interrupt
+# (not an exception) pushes no error code.
+.global apTimerHandler
+apTimerHandler:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    incq  %gs:64
+    movl  $0x80B, %ecx
+    xorl  %eax, %eax
+    xorl  %edx, %edx
+    wrmsr
+    popq  %rdx
+    popq  %rcx
+    popq  %rax
+    iretq
+
+# Spurious-interrupt handler (vector 0xFF): no EOI needed for a spurious — just return.
+.global apSpuriousHandler
+apSpuriousHandler:
+    iretq
+
 .global x64ReadCR2
 x64ReadCR2:
     mov %cr2, %rax

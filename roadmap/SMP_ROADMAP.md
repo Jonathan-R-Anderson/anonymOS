@@ -208,14 +208,14 @@ parallel — the bare-metal-vision payoff. Parallel execution, the lock, and the
   `idleTask`, local-APIC id, scheduler cursor, a per-CPU scratch stack — **one entry per discovered CPU,
   sized to the runtime N (allocated for the live count; never a fixed 8).** Replace the global
   `g_current_task_id` with the per-CPU current task (keep a shim during migration).
-- **S3 — Big Kernel Lock.** ◑ *(the lock PRIMITIVE is done + proven cross-core — `bklAcquire`/`bklRelease`, 4×100k increments, zero lost updates; the entry-path wire-in is deferred to S4 when APs run kernel code — see Status).* One spinlock at every kernel entry (syscall/IRQ/fault prologue), released at
+- **S3 — Big Kernel Lock.** ✅ *(lock primitive proven cross-core in S3; WIRED IN at the kernelLoop coroutine boundary in S4.4d — the BSP holds `g_bkl` across its kernel handling, released only around the userspace run, so the BSP + an AP are mutually excluded in the kernel while running userspace in parallel).* One spinlock at every kernel entry (syscall/IRQ/fault prologue), released at
   exit (incl. before returning to userspace and around `scheduleNext`). Correct-but-serial kernel,
   **parallel userspace**. **Verify:** an LKL on CPU1 and the desktop on CPU0 both make full-speed progress
   at the same time (the L5 boot-contention disappears).
 - **S4 — Per-CPU scheduler.** ◑ *(FOUNDATION done — APs run sustained parallel kernel work keyed off their GS per-CPU area, BKL-coordinated, ~170 M iters/AP while the desktop boots; the per-CPU run queue + userspace-task path remains — see Status).* Per-CPU run queues + a balancer; tasks can be **pinned** (pin each
   per-device LKL to a core — ties into L4 isolation). Idle CPUs run idle or steal work. `scheduleNext`
   becomes per-CPU.
-- **S5 — Preemption.** The per-CPU local-APIC timer drives a preemption tick → fair time-slicing *within* a
+- **S5 — Preemption.** ✅ *(the AP runs a PREEMPTIBLE task — see Status; multi-task time-slicing on an AP ties into the S4 per-CPU run queue).* The per-CPU local-APIC timer drives a preemption tick → fair time-slicing *within* a
   core, and removes the cooperative-yield requirement (and the whole cooperative-starvation bug class). The
   real fix for "one task hogs the core."
 - **S6 — Fine-grained locking.** Replace the BKL with per-subsystem locks, in contention order: page/heap

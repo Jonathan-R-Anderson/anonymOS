@@ -75,7 +75,7 @@ import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM
 import core.domain : domInheritProof;                       // DOMAIN_MANAGER DM9: inheritance least-privilege merge
 import core.kmain : smpWorkReport, smpActivateAp;           // SMP_ROADMAP S4 foundation report + S4.4a activation
 import core.kmain : bklAcquire, bklRelease, g_bkl;          // SMP_ROADMAP S4.4d: BKL around the kernelLoop coroutine
-import core.kmain : g_apSyscallCount;                       // SMP_ROADMAP S4.4d: AP's parallel getpid counter (BSP surfaces it)
+import core.kmain : g_apSyscallCount, apActivatedApicTicks;  // SMP_ROADMAP S4.4d/S5: AP's parallel getpid + timer counters
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2712,7 +2712,8 @@ private void kernelLoop() {
                 if (g_apSyscallCount != 0 && g_apPitLogN < 40 && (++g_apPitLogCtr % 2000) == 0) {
                     ++g_apPitLogN;
                     klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
-                    klog(" — AP task running in PARALLEL with the desktop\n");
+                    klog(" apicTicks="); klog_hex(apActivatedApicTicks());   // S5: AP preemption timer firing
+                    klog(" — AP task running PREEMPTIBLY in PARALLEL with the desktop\n");
                 }
                 // Re-check parked poll/epoll sleepers every tick (catch-all for passive
                 // fds like the compositor's repaint timerfd).  Cheap now that the idle

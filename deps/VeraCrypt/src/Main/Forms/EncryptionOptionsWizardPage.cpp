@@ -1,0 +1,163 @@
+/*
+ Derived from source code of TrueCrypt 7.1a, which is
+ Copyright (c) 2008-2012 TrueCrypt Developers Association and which is governed
+ by the TrueCrypt License 3.0.
+
+ Modifications and additions to the original source code (contained in this file)
+ and all other portions of this file are Copyright (c) 2013-2026 AM Crypto
+ and are governed by the Apache License 2.0 the full text of which is
+ contained in the file License.txt included in VeraCrypt binary and source
+ code distribution packages.
+*/
+
+#include "System.h"
+#include "Volume/EncryptionTest.h"
+#include "Volume/Pkcs5Kdf.h"
+#include "Main/GraphicUserInterface.h"
+#include "BenchmarkDialog.h"
+#include "EncryptionOptionsWizardPage.h"
+#include "EncryptionTestDialog.h"
+
+namespace VeraCrypt
+{
+	EncryptionOptionsWizardPage::EncryptionOptionsWizardPage (wxPanel* parent)
+		: EncryptionOptionsWizardPageBase (parent)
+	{
+
+#ifdef TC_MACOSX
+		EncryptionAlgorithmStaticText->Connect( wxEVT_SIZE, wxSizeEventHandler( EncryptionOptionsWizardPage::HandleOnSize ), NULL, this );
+#endif
+		EncryptionAlgorithms = EncryptionAlgorithm::GetAvailableAlgorithms();
+		foreach (shared_ptr <EncryptionAlgorithm> ea, EncryptionAlgorithms)
+		{
+			if (!ea->IsDeprecated())
+				EncryptionAlgorithmChoice->Append (ea->GetName(true), ea.get());
+		}
+
+		EncryptionAlgorithmChoice->Select (0);
+
+		Kdfs = Pkcs5Kdf::GetAvailableAlgorithms();
+		foreach (shared_ptr <Pkcs5Kdf> kdf, Kdfs)
+		{
+			if (!kdf->IsDeprecated())
+				HashChoice->Append (kdf->GetName(), kdf.get());
+		}
+
+		HashChoice->Select (0);
+		OnEncryptionAlgorithmSelected();
+
+	}
+
+#ifdef TC_MACOSX
+	EncryptionOptionsWizardPage::~EncryptionOptionsWizardPage()
+	{
+		EncryptionAlgorithmStaticText->Disconnect( wxEVT_SIZE, wxSizeEventHandler( EncryptionOptionsWizardPage::HandleOnSize ), NULL, this );
+	}
+	
+	void EncryptionOptionsWizardPage::HandleOnSize( wxSizeEvent& event )
+	{
+		int width, height;
+		EncryptionAlgorithmStaticText->GetClientSize (&width, &height);
+		EncryptionAlgorithmStaticText->Wrap (width);
+		event.Skip();
+	}
+#endif
+
+	shared_ptr <EncryptionAlgorithm> EncryptionOptionsWizardPage::GetEncryptionAlgorithm () const
+	{
+		return Gui->GetSelectedData <EncryptionAlgorithm> (EncryptionAlgorithmChoice)->GetNew();
+	}
+
+	shared_ptr <Pkcs5Kdf> EncryptionOptionsWizardPage::GetPkcs5Kdf () const
+	{
+		return shared_ptr <Pkcs5Kdf> (Gui->GetSelectedData <Pkcs5Kdf> (HashChoice)->Clone());
+	}
+
+	void EncryptionOptionsWizardPage::OnBenchmarkButtonClick (wxCommandEvent& event)
+	{
+		BenchmarkDialog dialog (this);
+		dialog.ShowModal();
+	}
+
+	void EncryptionOptionsWizardPage::OnEncryptionAlgorithmSelected ()
+	{
+		FreezeScope freeze (this);
+
+		shared_ptr <EncryptionAlgorithm> ea = GetEncryptionAlgorithm();
+		CipherList ciphers = ea->GetCiphers();
+
+		if (ciphers.size() == 1)
+		{
+			EncryptionAlgorithmHyperlink->SetLabel (StringFormatter (LangString["MORE_INFO_ABOUT"], ea->GetName()));
+
+			if (typeid (*ea) == typeid (AES))
+				EncryptionAlgorithmStaticText->SetLabel (LangString["AES_HELP"]);
+			else if (typeid (*ea) == typeid (Serpent))
+				EncryptionAlgorithmStaticText->SetLabel (LangString["SERPENT_HELP"]);
+			else if (typeid (*ea) == typeid (Twofish))
+				EncryptionAlgorithmStaticText->SetLabel (LangString["TWOFISH_HELP"]);
+			else if (typeid (*ea) == typeid (Camellia))
+				EncryptionAlgorithmStaticText->SetLabel (LangString["CAMELLIA_HELP"]);
+			else if (typeid (*ea) == typeid (Kuznyechik))
+				EncryptionAlgorithmStaticText->SetLabel (LangString["KUZNYECHIK_HELP"]);
+			else
+				EncryptionAlgorithmStaticText->SetLabel (L"");
+		}
+		else
+		{
+			if (ciphers.size() == 2)
+			{
+				EncryptionAlgorithmStaticText->SetLabel (StringFormatter (LangString["TWO_LAYER_CASCADE_HELP"],
+					ciphers[0]->GetName(), (int) ciphers[0]->GetKeySize() * 8,
+					ciphers[1]->GetName(), (int) ciphers[1]->GetKeySize() * 8));
+			}
+			else if (ciphers.size() == 3)
+			{
+				EncryptionAlgorithmStaticText->SetLabel (StringFormatter (LangString["THREE_LAYER_CASCADE_HELP"],
+					ciphers[0]->GetName(), (int) ciphers[0]->GetKeySize() * 8,
+					ciphers[1]->GetName(), (int) ciphers[1]->GetKeySize() * 8,
+					ciphers[2]->GetName(), (int) ciphers[2]->GetKeySize() * 8));
+			}
+			else
+				EncryptionAlgorithmStaticText->SetLabel (L"");
+
+			EncryptionAlgorithmHyperlink->SetLabel (LangString["IDC_MORE_INFO_SYS_ENCRYPTION"]);
+		}
+
+		Layout();
+	}
+
+	void EncryptionOptionsWizardPage::OnEncryptionAlgorithmHyperlinkClick (wxHyperlinkEvent& event)
+	{
+		if (GetEncryptionAlgorithm()->GetCiphers().size() == 1)
+			Gui->OpenHomepageLink (this, wxString (GetEncryptionAlgorithm()->GetName()).Lower());
+		else
+			Gui->OpenHomepageLink (this, L"cascades");
+	}
+
+	void EncryptionOptionsWizardPage::OnHashHyperlinkClick (wxHyperlinkEvent& event)
+	{
+		Gui->OpenHomepageLink (this, L"hashalgorithms");
+	}
+
+	void EncryptionOptionsWizardPage::OnTestButtonClick (wxCommandEvent& event)
+	{
+		EncryptionTestDialog dialog (this);
+		dialog.ShowModal();
+	}
+
+	void EncryptionOptionsWizardPage::SetEncryptionAlgorithm (shared_ptr <EncryptionAlgorithm> algorithm)
+	{
+		if (algorithm)
+		{
+			EncryptionAlgorithmChoice->SetStringSelection (algorithm->GetName(true));
+			OnEncryptionAlgorithmSelected ();
+		}
+	}
+
+	void EncryptionOptionsWizardPage::SetPkcs5Kdf (shared_ptr <Pkcs5Kdf> kdf)
+	{
+		if (kdf)
+			HashChoice->SetStringSelection (kdf->GetName());
+	}
+}

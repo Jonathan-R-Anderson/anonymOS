@@ -50,7 +50,19 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) + S4.4a–d DONE — ★ AN AP RUNS A USERSPACE TASK IN PARALLEL WITH THE DESKTOP — verified
+## Status (2026-06-27): S0–S3 + S5 + S7 DONE; S4 + S6 + S8 PARTIAL (mechanisms in place) — ★ AN AP RUNS A PREEMPTIBLE USERSPACE TASK IN PARALLEL WITH THE DESKTOP, takes cross-CPU IPIs, and allocates off the BKL
+
+**Full-sweep summary (all 8 phases addressed; per-phase detail below + in the Phases list):**
+`S0` dynamic core discovery · `S1` AP bringup · `S2` GS-addressed per-CPU areas · `S3` ✅ Big Kernel Lock
+(primitive proven cross-core + wired into the kernelLoop boundary in S4.4d) · `S4` ◑ an AP runs a **userspace
+task in parallel** with the desktop + the task is **pinned** (S4.4a–d); per-CPU run-queue/balancer/work-stealing
+across *multiple* AP tasks remains · `S5` ✅ per-CPU local-APIC timer → the AP task is **preemptible** · `S6` ◑
+representative fine-grained lock (the page allocator has its own leaf lock off the BKL); the rest of the
+per-subsystem split is the long game · `S7` ✅ cross-CPU IPIs (x2APIC ICR) + a per-CPU IPI handler +
+TLB-shootdown action · `S8` ◑ SMP-safe device-cap table (leaf-locked) + explicit per-core pinning; running a
+real per-device LKL on a pinned core is the production integration. Every step boot-verified `SMP=4` (the
+desktop loads its 11 domains, 0 faults) and `SMP=1` (graceful degradation). The three ◑ phases are each the
+known long-tail / integration work the roadmap itself flags, not gaps in the proven mechanisms.
 
 **S4.4 (an AP runs a userspace task in parallel) is being built in verified increments** — plan in
 `~/.claude/plans/binary-hugging-tide.md` (Approach B: a separate AP entry path; the BSP's `context.S` stays

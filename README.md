@@ -40,7 +40,7 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 | Real Z Shell (Linux + native-ABI port) | ✅ | [`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) |
 | Shell & command set (`hos-sh`, `esh`, busybox 381 applets) | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) |
 | Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
-| SMP / multi-core (dynamic core count, BKL-first → per-CPU) | 🔵 | [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) |
+| SMP / multi-core — a secondary core runs a **preemptible userspace task in parallel** with the desktop (BKL + per-CPU APIC timer + cross-CPU IPIs) | 🚧 | [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) |
 | TCP/IP network stack + I2P P2P template marketplace | 🔵 | [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) |
 
 ---
@@ -313,6 +313,38 @@ self-test — so there is no *functional* TCP/IP yet. Integrating and proving th
 (host `ping <guest>`, real musl TCP), enforcing per-domain `NetPolicy` at `connect()`,
 and the **I2P P2P template marketplace** on top are the planned work.
 
+### ⚙️ SMP / multi-core
+*Roadmap: [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) — in progress.*
+
+The kernel was written single-threaded; SMP is being brought up in verified, one-commit
+increments, the BSP's working desktop path protected at every step (each phase boot-verified
+`SMP=N` with the desktop still loading its 11 domains, 0 faults, and `SMP=1` degrading
+gracefully).
+
+**Working today — a secondary core (AP) runs a *preemptible userspace task in parallel* with
+the desktop:**
+- **Dynamic discovery + bringup** (S0–S1) — the kernel reads the live core count from the
+  Limine SMP request (never a hardcoded number) and brings every AP online.
+- **Per-CPU state + Big Kernel Lock** (S2–S3) — each CPU has a GS-addressed per-CPU area; a
+  cross-core-proven BKL is taken across the kernel-handling portion of the run loop (released
+  only around the userspace run), so the BSP and an AP are mutually excluded *in the kernel*
+  while running userspace in true parallel.
+- **An AP runs a real task** (S4) — a secondary core `iret`s into ring 3 through its own
+  per-CPU entry path (GDT/TSS/IST, IDT, syscall MSRs — the BSP's `context.S` stays untouched),
+  runs a userspace stub that issues real `getpid` syscalls dispatched through the *shared*
+  handler under the BKL, all concurrently with the desktop — and the task is **pinned** to its
+  core.
+- **Preemption** (S5) — each AP enables x2APIC and runs its own local-APIC timer, so its task
+  is preemptible (interrupts on, the timer fires and is handled on the AP's own stack).
+- **Cross-CPU IPIs** (S7) — the BSP sends inter-processor interrupts (x2APIC ICR) that the AP
+  handles, with a TLB-shootdown action.
+- **Fine-grained locking, first slice** (S6) — the page allocator has its own leaf lock, so a
+  core can allocate without holding the BKL.
+
+What is **not** finished (the per-CPU run-queue/balancer, the full per-subsystem lock split,
+and running a real per-device LKL on a pinned core) is detailed under
+[Honesty: what is *not* yet done](#honesty-what-is-not-yet-done).
+
 ---
 
 ## Build & run
@@ -405,10 +437,12 @@ anonymOS is honest about its gaps (each roadmap names them):
 - **Truly immutable image on real storage** — the content store is RAM-backed
   today; real disk-backed verification + physical `/var` separation pending.
 - **Ed25519 + Limine verified boot** — HMAC stand-in today.
-- **Kernel-mode IRQ handling** ([`DESKTOP_RESPONSIVENESS`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md))
-  — IRQs caught only in userspace; the scheduler is **cooperative** (no
-  preemption), single-core, polled. This blocks true `hlt`-idle, SMP, and
-  preemption.
+- **Kernel-mode IRQ handling on the boot CPU** ([`DESKTOP_RESPONSIVENESS`](roadmap/DESKTOP_RESPONSIVENESS_ROADMAP.md))
+  — on the BSP, hardware IRQs are caught in userspace (the run loop returns on the
+  PIC IRQ) and its scheduler is **PIC-driven + cooperative**, polled — so the BSP
+  still can't true-`hlt`-idle. (Secondary cores **do** now have real per-CPU
+  **local-APIC** IRQ handling — timer + IPIs — see the SMP section; the BSP's PIC
+  path is the part that remains.)
 - **GPU acceleration — kernel path done; guest GL renders, but on the CPU not yet
   the GPU** ([`ZSH_INTEGRATION_ROADMAP`](roadmap/ZSH_INTEGRATION_ROADMAP.md) R2).
   What works: the kernel drives the virtio-gpu **virgl** 3D pipeline end-to-end and
@@ -459,8 +493,23 @@ anonymOS is honest about its gaps (each roadmap names them):
   proof), so there is no working network today. The Domain Manager's I2P P2P template
   marketplace (DM12 §8–17) rides on that missing transport — its *offline* signed-bundle
   half (export/import/verify/trust/rollback) **is** done.
-- **SMP / multi-core** ([`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md)) — single-core only; AP
-  bringup + a Big-Kernel-Lock for parallel userspace is the first cut.
+- **SMP / multi-core — partial** ([`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md)). **Done + verified:**
+  dynamic core discovery, AP bringup, per-CPU state, the Big Kernel Lock (wired into the run
+  loop), an AP running a *preemptible userspace task in parallel* with the desktop, per-CPU
+  local-APIC timer preemption, and cross-CPU IPIs + TLB-shootdown (see the SMP section above).
+  **Not done yet — the three long-tail / integration pieces I did *not* implement:**
+  - **A real per-CPU scheduler** (S4 remainder) — the AP today runs *one* hard-pinned task; per-CPU
+    run queues + a load balancer + work-stealing so a core picks from *multiple* tasks are not done.
+  - **Full fine-grained locking** (S6 remainder) — only the page allocator is split out of the BKL;
+    object/cap tables, fd tables, namespace tables, and scheduler queues are still all under the one
+    Big Kernel Lock. Replacing it per-subsystem (each with a lock-order audit, driven by profiling)
+    is the explicit long game.
+  - **Real per-device LKLs on dedicated cores** (S8 remainder) — the pinning + SMP-safe-device-cap
+    *mechanisms* exist, but actually running usb-lkl / gpu-lkl / net-lkl each on its own core (the
+    production payoff) needs the bare-metal-LKL bring-up to run on an AP — a separate integration.
+  - The AP task also still uses a **disjoint** address space and runs **without `swapgs`** (single
+    active AP); multiple APs running real tasks would need `swapgs` + per-CPU entry buffers
+    generalized to the full core count, and automatic TLB shootdown wired into `fork`/`mmap`/`munmap`.
 - **Domain Manager substrate limits** ([`domain_manager`](roadmap/domain_manager.md)) —
   network/clipboard *runtime* gates (need the stack above / Weston hooks) and on-disk
   per-distro Linux roots remain; the device/fs/package/template core is done + verified.

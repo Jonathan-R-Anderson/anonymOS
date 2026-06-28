@@ -31,14 +31,9 @@ void* hb_buffer_set_script(void* buffer, int script) { return null; }
 void* hb_buffer_set_language(void* buffer, void* language) { return null; }
 void* hb_language_from_string(const(char)* str, int len) { return null; }
 
-// Crypto Stubs
-void sha512_hash(const(ubyte)* data, size_t len, ubyte* hash) {
-    klog("STUB: sha512_hash\n");
-}
-
-void aes_encrypt(const(ubyte)* input, ubyte* output, const(ubyte)* key, int bits) {
-    klog("STUB: aes_encrypt\n");
-}
+// Crypto: real AES-256 + SHA-512 now live in drivers/veracrypt_crypto.d
+// (extern(C) aes_encrypt / sha512_hash), validated by vcCryptoKat(). The former
+// do-nothing stubs were removed (§E2b).
 
 extern(C) void* calloc(size_t nmemb, size_t size) {
     // Very basic calloc stub

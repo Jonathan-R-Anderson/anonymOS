@@ -1,474 +1,250 @@
-```text
-You are integrating the Calamares installer into this operating system. Do NOT treat this as a standalone Linux distribution. Treat this as an installer that becomes a first-class component of the existing project architecture.
-
-Your goal is to completely integrate Calamares while preserving the design philosophy of this operating system:
-
-• Immutable kernel
-• Rootless security model
-• Object-oriented operating system architecture
-• Declarative system configuration
-• BusyBox-based userland
-• Linux compatibility layer
-• Identity-based security model
-• Minimal, auditable codebase
-• Modular architecture
-
-Before writing code, thoroughly inspect the existing repository and understand:
-
-- Build system
-- Boot process
-- Init system
-- Filesystem layout
-- Packaging format
-- Existing installer or live environment (if present)
-- Current configuration system
-- Object model
-- Linux compatibility layer
-- Security architecture
-
-Never duplicate functionality that already exists.
-
-──────────────────────────────────────────────
-PHASE 1 — Repository Analysis
-──────────────────────────────────────────────
-
-Determine:
-
-• How installation currently works
-• How the live environment boots
-• Where the root filesystem is generated
-• How packages are installed
-• How users are created
-• How bootloader configuration is generated
-• How configuration files are generated
-• How first boot initialization works
-
-Produce a report describing:
-
-- Existing architecture
-- Integration points
-- Required modifications
-- Components that should remain untouched
-
-──────────────────────────────────────────────
-PHASE 2 — Add Calamares
-──────────────────────────────────────────────
-
-Integrate Calamares as an internal project component.
-
-Create a directory such as:
-
-installer/
-    calamares/
-
-Do NOT place configuration throughout the repository.
-
-Everything installer-related should live inside installer/.
-
-Include:
-
-installer/
-    calamares/
-        branding/
-        modules/
-        settings.conf
-        modules.conf
-        branding.desc
-        scripts/
-        assets/
-        translations/
-        slides/
-
-The installer should build alongside the rest of the project.
-
-──────────────────────────────────────────────
-PHASE 3 — Build Integration
-──────────────────────────────────────────────
-
-Modify the project's build system so that:
-
-- Calamares builds automatically
-- Installer assets are copied into the live image
-- Branding is generated automatically
-- Installer modules are compiled
-- Packaging is automated
-
-The installer must be built as part of the normal build process.
-
-Do not require manual copying.
-
-──────────────────────────────────────────────
-PHASE 4 — Branding
-──────────────────────────────────────────────
-
-Replace all Calamares branding.
-
-Replace:
-
-logos
-
-icons
-
-backgrounds
-
-slideshow
-
-window title
-
-distribution name
-
-installer name
-
-version strings
-
-copyright
-
-default colors
-
-with project branding.
-
-No upstream branding should remain visible.
-
-──────────────────────────────────────────────
-PHASE 5 — Installation Flow
-──────────────────────────────────────────────
-
-Design a modern installation workflow.
-
-Required pages:
-
-Welcome
-
-Language
-
-Keyboard
-
-Timezone
-
-Disk Selection
-
-Filesystem
-
-Encryption
-
-Hostname
-
-Administrator
-
-Identities
-
-Summary
-
-Installation
-
-Finish
-
-The installer should feel like a professional operating system installer.
-
-──────────────────────────────────────────────
-PHASE 6 — Identity Manager Page
-──────────────────────────────────────────────
-
-Create a completely custom Calamares module.
-
-Instead of traditional Linux user creation only, create an Identity Manager page.
-
-Example:
-
-Administrator Account
-
-Identity Profiles
-
-☑ Personal
-
-☑ Work
-
-☑ Banking
-
-☑ Research
-
-☑ Disposable
-
-☑ Anonymous
-
-Each identity should become a declarative object within the installed system.
-
-Do NOT immediately create every identity.
-
-Instead, generate configuration describing them.
-
-──────────────────────────────────────────────
-PHASE 7 — Declarative Configuration
-──────────────────────────────────────────────
-
-The installer should NOT perform extensive imperative configuration.
-
-Instead it should generate one declarative configuration file.
-
-Example:
-
-system.json
-
-or
-
-install.json
-
-This configuration should include:
-
-hostname
-
-locale
-
-timezone
-
-filesystem
-
-encryption
-
-bootloader
-
-users
-
-administrator
-
-identity definitions
-
-desktop options
-
-linux compatibility options
-
-security options
-
-package selections
-
-network configuration
-
-Everything should be generated from installer choices.
-
-First boot should consume this configuration.
-
-──────────────────────────────────────────────
-PHASE 8 — Disk Installation
-──────────────────────────────────────────────
-
-Support:
-
-GPT
-
-MBR
-
-EFI
-
-BIOS
-
-ext4
-
-Btrfs
-
-XFS
-
-LUKS encryption
-
-swapfile
-
-swap partition
-
-Support automatic partitioning and manual partitioning.
-
-Respect immutable filesystem layouts if enabled.
-
-──────────────────────────────────────────────
-PHASE 9 — Post-install Scripts
-──────────────────────────────────────────────
-
-Implement post-install modules for:
-
-Generating declarative configuration
-
-Installing bootloader
-
-Copying kernel
-
-Generating initramfs
-
-Creating administrator account
-
-Creating initial object tree
-
-Generating identity metadata
-
-Initializing package database
-
-Installing Linux compatibility layer
-
-Preparing first boot
-
-These scripts should be modular.
-
-──────────────────────────────────────────────
-PHASE 10 — First Boot Integration
-──────────────────────────────────────────────
-
-Instead of performing all configuration during installation:
-
-Installer
-
-↓
-
-Generate configuration
-
-↓
-
-Copy operating system
-
-↓
-
-Reboot
-
-↓
-
-First Boot
-
-↓
-
-Initialize system
-
-↓
-
-Generate object tree
-
-↓
-
-Create identities
-
-↓
-
-Initialize permissions
-
-↓
-
-Enable services
-
-↓
-
-Finalize installation
-
-──────────────────────────────────────────────
-PHASE 11 — Security
-──────────────────────────────────────────────
-
-Ensure:
-
-No plaintext passwords
-
-Password hashing
-
-Secure temporary files
-
-Least privilege
-
-Installer runs with minimal privileges possible
-
-Validate user input
-
-Verify copied files
-
-Verify package integrity
-
-Support Secure Boot if available
-
-Support encrypted installations
-
-──────────────────────────────────────────────
-PHASE 12 — Project Integration
-──────────────────────────────────────────────
-
-Integrate with:
-
-Object model
-
-Identity manager
-
-Package manager
-
-Filesystem
-
-Linux compatibility layer
-
-Security manager
-
-Kernel configuration
-
-Init system
-
-Configuration manager
-
-Do not hardcode Linux assumptions if the project already abstracts them.
-
-──────────────────────────────────────────────
-PHASE 13 — Documentation
-──────────────────────────────────────────────
-
-Generate:
-
-Architecture document
-
-Installer developer guide
-
-Directory structure
-
-Module documentation
-
-Branding guide
-
-Configuration reference
-
-Build instructions
-
-Flow diagrams
-
-First boot sequence
-
-Future extension guide
-
-──────────────────────────────────────────────
-PHASE 14 — Validation
-──────────────────────────────────────────────
-
-Verify:
-
-✓ Installer builds successfully
-
-✓ Live ISO boots
-
-✓ Installer launches automatically
-
-✓ Installation succeeds
-
-✓ Bootloader installs correctly
-
-✓ System boots
-
-✓ First boot consumes generated configuration
-
-✓ Identities initialize correctly
-
-✓ Object tree initializes
-
-✓ Linux compatibility layer functions
-
-✓ Security configuration is applied
-
-✓ Declarative configuration is preserved
-
-──────────────────────────────────────────────
-GENERAL REQUIREMENTS
-──────────────────────────────────────────────
-
-- Favor modularity over monolithic code.
-- Reuse Calamares modules where possible and create custom modules only for features unique to this operating system.
-- Keep all installer-specific code isolated under the `installer/` subtree.
-- Document every modification and explain why it is necessary.
-- If the existing repository already provides equivalent functionality, extend or integrate with it rather than replacing it.
-- At the end, produce a checklist of completed tasks, remaining work, integration risks, and recommended next steps.
-```
+# EpinAnonymOS Installer Roadmap — Calamares, integrated as a first-class component
+
+Integrate the **Calamares** installer into EpinAnonymOS as a first-class, in-OS component
+— **not** a standalone Linux distro bolted on. Preserve the design philosophy throughout:
+immutable kernel · rootless security · object-oriented OS architecture · declarative
+configuration · BusyBox userland · Linux compatibility layer · identity-based security ·
+minimal, auditable, modular code. Never duplicate functionality that already exists.
+
+The original 14-phase plan is preserved below (Phases 1–14). Two things the plan previously
+hand-waved are now first-class, because they are the load-bearing prerequisites: the **Qt
+runtime** Calamares needs (§D1) and the **partitioning backend** it drives (§D2). Both are
+specified against *this OS's actual build system*, not a generic Linux host.
+
+---
+
+## North star
+
+Boot the live ISO → a branded Calamares launches on the Weston desktop → the user picks a
+disk, a hostname, and a set of **Identity profiles** → Calamares writes ONE declarative
+`install.json`, copies the OS to the disk, installs limine, and reboots → first boot consumes
+`install.json` and materialises the object tree, identities, and permissions. No imperative
+sprawl; the installer *describes*, first boot *realises*.
+
+---
+
+## Target-environment reality (read this before writing any build code)
+
+Calamares is C++/Qt and builds fine against musl (Alpine ships it). The cost here is not the
+libc — it is that **none of the Qt/KPMcore dependency stack is built in this repo yet**, and
+this is not a normal Linux target. The existing cross-build convention (`deps/<name>/`) is the
+template; mirror it exactly.
+
+- **Toolchain.** `deps/musl/install/bin/musl-clang{,++}` (clang-18), `llvm-ar/ranlib/strip`.
+  C++ runtime is **libc++** from `deps/cxxrt` (`stamps/libcxx.done`), *not* libstdc++.
+- **Linking convention is STATIC.** Every `deps/*/sysroot` is built `-static -no-pie`
+  (see `deps/gtk-stack/Makefile` `BASE_LDFLAGS`). GUI apps (`gtk-hello`, `wl-term`, the
+  Wayland clients) ship as **single static ELF boot modules** in `cd/`, listed in
+  `src/boot/limine.conf` as `module_path:`. Qt + Calamares must follow suit: a **static Qt**
+  with the Wayland platform plugin **statically imported**, linked into one Calamares binary.
+- **Display server is Weston/Wayland.** There is no X11. The only viable Qt platform plugin is
+  **`qwayland`**; `xcb` is out. Input/output go through the same Weston the desktop uses.
+- **No udev, no systemd, no polkit, no /sys PCI tree.** Storage is the kernel's **object
+  filesystem** + an AHCI/NVMe block layer with **GPT** already understood by the boot path.
+  The system is **rootless** (identity-based caps), so Calamares's usual "run partitioning as
+  root via pkexec" model does not apply — see §D2.
+- **Build orchestration.** Top-level `Makefile` builds `deps/*` via their sub-Makefiles into
+  sysroots, then the `hos.iso` target stages binaries/blobs into `cd/`. Cross files live at
+  `deps/<name>/stamps/meson-cross.ini` (meson) — CMake needs an analogous toolchain file.
+
+---
+
+## §D1 — Qt runtime (`deps/qt-stack`)
+
+A **static Qt 6** cross-built with musl-clang + libc++, the minimum module set Calamares
+needs, with `qwayland` as a static plugin. New tree `deps/qt-stack/` mirroring
+`deps/gtk-stack/` (`Makefile`, `downloads/`, `build/`, `stamps/`, `sysroot/`).
+
+### D1.1 — Host Qt tools (two-stage cross-build)
+Qt 6's CMake build needs **host** `moc`/`rcc`/`uic`/`qmlcachegen`/`syncqt` of the *same
+version* to cross-compile the target. Either install distro `qt6-base-dev-tools` or build a
+minimal **host** `qtbase` (`-DQT_BUILD_TOOLS_ONLY`-style) once. Record its path; pass
+`-DQT_HOST_PATH=<host-qt>` to every target build. Pin one Qt version (6.8 LTS) for all modules.
+
+### D1.2 — Prerequisite libraries (into the qt-stack sysroot)
+Reuse what `deps/gtk-stack/sysroot` already provides where possible (zlib, libpng, freetype,
+fontconfig, harfbuzz, pcre2, glib, **wayland + wayland-protocols**, libxkbcommon). Add what Qt
+additionally wants, built static against musl: **double-conversion**, **zstd**, optional
+**OpenSSL** (for `qtnetwork` TLS — can defer; the installer is offline), **libb2**. xkbcommon
++ wayland are mandatory for `qwayland`.
+
+### D1.3 — qtbase (static, musl, libc++)
+Configure target qtbase with CMake + a Qt toolchain file (analogue of `meson-cross.ini`:
+`CMAKE_C/CXX_COMPILER` = musl-clang{,++}, `CMAKE_SYSROOT` = the qt-stack sysroot,
+`-stdlib=libc++`, `-static -no-pie`). Key flags:
+`-DBUILD_SHARED_LIBS=OFF -DQT_HOST_PATH=… -DQT_FEATURE_xcb=OFF -DQT_FEATURE_dbus=OFF`
+(no dbus daemon here) `-DQT_FEATURE_glib=ON -DQT_FEATURE_widgets=ON -DINPUT_opengl=es2`
+(Mesa GLES2/virgl is what the desktop uses) `-DFEATURE_system_*` for the libs from D1.2.
+Expect **musl patches** (port the ones Alpine carries): `__GLIBC__` guards, `execinfo`/
+`backtrace` → libexecinfo or stub, `getauxval`, `pthread_getname`, `qt_safe_*` signal bits,
+`iconv`. Stage `Core/Gui/Widgets/Network` static libs + headers into `sysroot`.
+
+### D1.4 — qtwayland (the platform plugin, static)
+Build `qtwayland` static against qtbase. Output is `libqwayland-integration.a` +
+`libQt6WaylandClient.a`. Because Qt is static, the plugin cannot be discovered at runtime —
+Calamares's `main()` (or a thin launcher) must `Q_IMPORT_PLUGIN(QWaylandIntegrationPlugin)`
+and link the plugin lib. Set `QT_QPA_PLATFORM=wayland` at runtime via the Calamares wrapper.
+
+### D1.5 — qtdeclarative + qtsvg + qttools
+`qtdeclarative` (QML — Calamares branding/slideshow + several view modules use Quick);
+`qtsvg` (SVG icons/branding); `qttools` host side for `lupdate/lrelease` (translations, Phase
+13). QML with **static** Qt needs `qmlimportscanner` + `qmlcachegen` (host tools) and
+`qt_import_qml_plugins()` so the QML modules are linked in. If QML proves too heavy on musl,
+fall back to **Widgets-only** Calamares pages (Calamares supports both; lose only the fancy
+slideshow).
+
+### D1.6 — package + stage
+Like Mesa drivers in the `hos.iso` target: there are no runtime `.so`s (static), so staging is
+just the final Calamares ELF (§Phase 3) plus Qt **runtime data** that is read at startup —
+`plugins/platforms` is linked-in, but **fonts** (already seeded), **QML modules** (if linked,
+none external), and the **i18n `.qm`** files go into the rootfs the installer process sees.
+
+---
+
+## §D2 — Partitioning backend (`deps/parted-stack`) + the rootless adaptation
+
+Calamares partitions through **KPMcore**, which wraps a backend (libparted or sfdisk) and
+discovers devices via libblkid + udev. This OS has **no udev and no /sys block tree**, and is
+**rootless** — so the backend needs real work, not just a build.
+
+### D2.1 — Build the backend libraries (static, musl)
+New `deps/parted-stack/` (mirror gtk-stack). Cross-build static against musl:
+- **util-linux** → `libblkid` (fs/partition probing) + `libsmartcols` + `libuuid`,
+  `--disable-all-programs --enable-libblkid --enable-libuuid`. (Heavy musl porting; Alpine
+  patches exist.)
+- **libparted** (GNU parted) → GPT/MBR table manipulation. Disable device-mapper, NLS, readline:
+  `--disable-device-mapper --without-readline --disable-nls`. libparted does direct block-device
+  I/O via `ioctl`/`BLKxxx` — see D2.3 for how those reach the kernel's block layer.
+- optional **libatasmart** (KPMcore wants it; can stub).
+
+### D2.2 — KPMcore (static, against Qt + the backend)
+Build KPMcore with CMake against `deps/qt-stack` (Qt6 Core/Gui) + `deps/parted-stack`
+(libparted/libblkid). KPMcore normally runs its partition operations through a privileged
+helper (`kpmcore_externalcommand` via pkexec/`SUID`). **Rootless replacement:** build
+KPMcore's **"sfdisk"/external** backend OR patch its `ExternalCommand` to invoke operations
+through EpinAnonymOS's **capability-gated device syscall** instead of pkexec — the installer
+identity is granted a one-shot block-write capability for the target disk only (mirrors the
+DM8 device-class gate / the L4 LKL per-device cap). No SUID, no root.
+
+### D2.3 — Device discovery + I/O against the object FS (the real adaptation)
+KPMcore/libblkid enumerate disks from `/sys/block` + udev. EpinAnonymOS exposes block devices
+as **objects** (`/objects/devices/…`) and through the AHCI/NVMe drivers, not `/sys`. Two
+acceptable paths, pick per effort:
+- **(a) Shim:** a thin compat layer that synthesises the few `/sys/block/<dev>/{size,…}` nodes
+  + `/dev/<dev>` block files KPMcore reads, backed by the object FS — least KPMcore patching.
+- **(b) Native module (preferred, fits Phase 12):** a custom Calamares C++ partition module
+  that talks to the OS's block/object layer + the existing **GPT** support directly, bypassing
+  KPMcore. The OS already creates GPT + an ESP on the boot path, so the primitives exist; this
+  module just exposes "pick disk → lay down GPT+ESP+rootfs → mark bootable" to the UI. This is
+  the rootless, udev-free, object-FS-honest design and avoids the util-linux/udev musl swamp.
+
+The plan **builds D2.1+D2.2 (the literal KPMcore/libparted backend)** so the standard Calamares
+`partition` module compiles and runs, **and** keeps **(b)** as the shippable default for this
+OS. Disk Installation (Phase 8) consumes whichever is enabled via `modules.conf`.
+
+---
+
+## §D3 — Build integration (wiring D1/D2 into the tree)
+- `deps/qt-stack/Makefile` and `deps/parted-stack/Makefile` follow the `deps/gtk-stack`
+  stamp/sysroot pattern; add `qt-stack` / `parted-stack` / `calamares` targets to the top-level
+  `Makefile`, gated like the GPU/GTK pieces so a normal build is unaffected if they're absent.
+- `deps/calamares/Makefile` cross-builds Calamares (CMake, against qt-stack + parted-stack +
+  yaml-cpp static), producing one static `calamares` ELF + its `.qm`/branding assets.
+- `hos.iso` stages the `calamares` ELF as a boot module + appends `module_path: boot():/calamares`
+  to `limine.conf` (conditional, like `gl-term`/`wl-files`), and seeds the branding/settings into
+  the installer's runtime view.
+- A live-session hook autostarts Calamares on the Weston desktop (reuse the Domain Manager
+  autostart path: `wet_client_start` / the boot-module autostart already used for the desktop).
+
+---
+
+## PHASE 1 — Repository analysis
+Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
+the rootfs is generated; how packages install; how users/identities are created; how the
+bootloader + config are generated; how first boot initialises. Report: existing architecture,
+integration points, required modifications, components to leave untouched.
+
+## PHASE 2 — Add Calamares
+Vendor Calamares + the §D1/§D2 deps under `deps/`; put **all installer-specific** content under
+`installer/calamares/` (`branding/ modules/ settings.conf modules.conf branding.desc scripts/
+assets/ translations/ slides/`). Builds alongside the project. **Prereq: §D1 Qt runtime +
+§D2 backend exist.**
+
+## PHASE 3 — Build integration
+Per §D3: Calamares + branding build automatically, assets land in the live image, no manual
+copying.
+
+## PHASE 4 — Branding
+Replace ALL Calamares branding — logos, icons, backgrounds, slideshow, window title, distro
+name, installer name, version strings, copyright, default colours — with EpinAnonymOS branding.
+No upstream branding remains visible.
+
+## PHASE 5 — Installation flow
+Pages: Welcome · Language · Keyboard · Timezone · Disk Selection · Filesystem · Encryption ·
+Hostname · Administrator · **Identities** · Summary · Installation · Finish. Feels like a
+professional OS installer.
+
+## PHASE 6 — Identity Manager page (custom module)
+A bespoke Calamares C++/QML module replacing plain Linux user creation: an **Identity Manager**
+(Administrator account + toggleable profiles: Personal · Work · Banking · Research · Disposable ·
+Anonymous). Do **not** create every identity immediately — emit *configuration* describing them
+(consumed at first boot). Each becomes a declarative **object** in the installed system.
+
+## PHASE 7 — Declarative configuration
+The installer performs minimal imperative work; it generates ONE declarative file
+(`install.json`): hostname, locale, timezone, filesystem, encryption, bootloader, users,
+administrator, identity definitions, desktop options, Linux-compat options, security options,
+package selections, network configuration. First boot consumes it.
+
+## PHASE 8 — Disk installation
+Support GPT/MBR, EFI/BIOS, ext4/Btrfs/XFS, LUKS, swapfile/partition; automatic **and** manual
+partitioning; respect immutable layouts. Driven by §D2 — KPMcore/libparted where built, the
+native object-FS module by default. Bootloader = **limine** (the OS already installs limine on
+GPT/ESP); the module lays down GPT + ESP + rootfs and installs limine UEFI/BIOS.
+
+## PHASE 9 — Post-install scripts (modular)
+Generate declarative config · install bootloader (limine) · copy kernel + modules · generate
+initramfs/rootfs · create administrator · create initial object tree · generate identity
+metadata · init package database · install Linux-compat layer · prepare first boot.
+
+## PHASE 10 — First-boot integration
+Installer → generate config → copy OS → reboot → first boot: init system, generate object tree,
+create identities, init permissions, enable services, finalise. (Not all config during install.)
+
+## PHASE 11 — Security
+No plaintext passwords; password hashing; secure temp files; least privilege; installer runs with
+the **minimal capability set** (a one-shot block-write cap for the chosen disk — §D2.2), not root;
+validate input; verify copied files; verify package integrity; Secure Boot if available; encrypted
+installs.
+
+## PHASE 12 — Project integration
+Integrate with the object model, identity manager, package manager, filesystem, Linux-compat
+layer, security manager, kernel config, init system, configuration manager. **Do not hardcode
+Linux assumptions the project already abstracts** (this is why §D2(b) is preferred).
+
+## PHASE 13 — Documentation
+Architecture doc, installer developer guide, directory structure, module docs, branding guide,
+configuration reference, build instructions, flow diagrams, first-boot sequence, extension guide.
+
+## PHASE 14 — Validation
+✓ installer builds ✓ live ISO boots ✓ installer auto-launches ✓ install succeeds ✓ bootloader
+installs ✓ system boots ✓ first boot consumes `install.json` ✓ identities init ✓ object tree init
+✓ Linux-compat works ✓ security applied ✓ declarative config preserved.
+
+---
+
+## General requirements
+Favour modularity over monoliths · reuse Calamares modules, write custom ones only for what is
+unique here (Identity, the object-FS partition module) · keep installer code under `installer/` ·
+document every modification + why · extend/integrate rather than replace where the repo already
+provides the function · end with a checklist of done / remaining / risks / next steps.
+
+## Honest status + risk
+The dominant cost and risk is **§D1/§D2**, not the Calamares glue: static **Qt 6 on musl/libc++**
+(porting patches, two-stage host-tools build, static-QML plugin import) and the **udev-free,
+rootless partitioning backend** are each multi-day efforts with real chance of upstream friction.
+Mitigation/order: (1) `deps/qt-stack` qtbase+qwayland static "hello world" on Weston FIRST — prove
+Qt runs here before any Calamares code; (2) scaffold `installer/calamares/` + branding + the
+custom modules against that; (3) bring up partitioning via §D2(b) (native module) to sidestep the
+util-linux/udev swamp, building D2.1/D2.2 in parallel for the standard module. Each step boots the
+live ISO and is checkpointed; nothing lands that breaks the desktop.

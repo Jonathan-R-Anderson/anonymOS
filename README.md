@@ -41,7 +41,7 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 | Shell & command set (`hos-sh`, `esh`, busybox 381 applets) | ✅ | [`SHELL_AND_COMMANDS_ROADMAP`](roadmap/SHELL_AND_COMMANDS_ROADMAP.md) |
 | Memory-safety hardening (W^X, ASLR, NX stack) | 🚧 | [`SECURITY_ROADMAP`](roadmap/SECURITY_ROADMAP.md) |
 | SMP / multi-core — a secondary core runs a **preemptible userspace task in parallel** with the desktop (BKL + per-CPU APIC timer + cross-CPU IPIs) | 🚧 | [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) |
-| TCP/IP network stack + I2P P2P template marketplace | 🔵 | [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) |
+| TCP/IP network stack + I2P P2P template marketplace — **NIC + Ethernet/ARP up (box is on the network); IPv4/ICMP/UDP/DHCP TX proven; RX blocked on a real network** | 🚧 | [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) |
 
 ---
 
@@ -300,18 +300,29 @@ audit log of capability use (~466k decisions on a live boot). *Ed25519
 asymmetric signing is pending (HMAC stand-in today).*
 
 ### 🌐 Networking
-*Roadmap: [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) — planned.*
+*Roadmap: [`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md) — in progress.*
 
 **Working today:** AF_UNIX sockets (`syscalls/posix.d` — the full BSD-socket shape:
 `socket`/`bind`/`listen`/`accept`/`connect`/`send`/`recv` + poll/epoll), used by
-Weston/Wayland and IPC.
+Weston/Wayland and IPC. And, behind a `NET=1` boot gate, the **box is on the network**:
+the **e1000 driver is up** (`drivers/network/network.d` — MMIO via the HHDM, bus-master
+DMA, MAC read, rx/tx rings) and **Ethernet + ARP work end-to-end** — a frame round-trips
+and the gateway MAC resolves (verified: `who-has 10.0.2.2` → slirp reply → ARP resolved).
+The IPv4 / ICMP / UDP / DNS / **DHCP** *transmit* paths are all proven correct on the wire
+(pcap shows a well-formed ICMP echo, a DNS `A?` query, and a textbook 552-byte DHCP
+DISCOVER). The default boot stays `-nic none`, so the desktop is never at risk.
 
-**Present but not yet wired:** IPv4/IPv6 stack modules (`network/`: ethernet, ARP, IP,
-ICMP, TCP, UDP, DNS, DHCP) and a virtio-net / e1000 NIC driver exist, but
-`networkStackInit` is never called, AF_INET sockets reject, and there is no boot
-self-test — so there is no *functional* TCP/IP yet. Integrating and proving that stack
-(host `ping <guest>`, real musl TCP), enforcing per-domain `NetPolicy` at `connect()`,
-and the **I2P P2P template marketplace** on top are the planned work.
+**⚠️ Current blocker — the receive path can't be verified in this sandbox:** the inbound
+IPv4 dispatch (IP-header parse → per-protocol demux) runs in code but cannot be proven
+end-to-end here, because the test host's QEMU **slirp replies *only* to ARP** — ICMP is
+host-disabled (`/proc/sys/net/ipv4/ping_group_range = 1 0`), DNS has no upstream internet,
+and even slirp's *internal* DHCP server stays silent. ARP is the one service slirp answers
+with no host interaction, so the Ethernet RX *is* proven but the IP RX is not. **Unblocking
+it needs a real NIC, a tap device, or a non-sandboxed host** — then TCP (which depends on a
+SYN-ACK arriving), AF_INET behind the existing socket syscalls (today `connect` rejects
+`AF_INET`), per-domain `NetPolicy` enforcement at `connect()`, and the **I2P P2P template
+marketplace** on top can be built and verified. *(N0 NIC + N1 ARP done; N2/N3/N6 TX proven;
+N2+ RX gated on an RX-capable network environment.)*
 
 ### ⚙️ SMP / multi-core
 *Roadmap: [`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md) — in progress.*
@@ -486,13 +497,19 @@ anonymOS is honest about its gaps (each roadmap names them):
   Until that lands `-sh` runs on the betterC evaluator; **L5** (the Domain Manager's *native
   (-sh/LFE)* shell option) can ship on that, but the full language + rich forms need the runtime
   port. The vendored upstream source + this decision live in [`deps/lfe-sh/`](deps/lfe-sh/VENDOR.md).
-- **Functional TCP/IP + P2P marketplace**
-  ([`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md)) — the
-  stack modules (`network/`) and a virtio-net/e1000 NIC driver exist but are **unwired +
-  unverified** (`networkStackInit` is never called, AF_INET sockets reject, no boot
-  proof), so there is no working network today. The Domain Manager's I2P P2P template
-  marketplace (DM12 §8–17) rides on that missing transport — its *offline* signed-bundle
-  half (export/import/verify/trust/rollback) **is** done.
+- **Functional TCP/IP + P2P marketplace — partial**
+  ([`NETWORK_AND_MARKETPLACE_ROADMAP`](roadmap/NETWORK_AND_MARKETPLACE_ROADMAP.md)).
+  **Done + verified:** the e1000 NIC driver is up and **Ethernet + ARP work end-to-end**
+  (a frame round-trips; the gateway MAC resolves) — the box is on the network behind a
+  `NET=1` gate. The IPv4 / ICMP / UDP / DNS / DHCP **transmit** paths are all proven
+  correct on the wire. **Not done — the receive path is blocked on the test environment:**
+  this sandbox's QEMU slirp answers *only* ARP (ICMP host-disabled, DNS no upstream, DHCP
+  silent), so the inbound IPv4 dispatch can't be proven here — it needs a real NIC / a tap
+  device / a non-sandboxed host. Until RX is verified, **TCP** (which needs a SYN-ACK to
+  arrive), **AF_INET** behind the socket syscalls (today `connect` rejects `AF_INET`),
+  per-domain `NetPolicy` enforcement, and the **I2P P2P template marketplace** (DM12 §8–17)
+  remain unbuilt. The marketplace's *offline* signed-bundle half
+  (export/import/verify/trust/rollback) **is** done.
 - **SMP / multi-core — partial** ([`SMP_ROADMAP`](roadmap/SMP_ROADMAP.md)). **Done + verified:**
   dynamic core discovery, AP bringup, per-CPU state, the Big Kernel Lock (wired into the run
   loop), an AP running a *preemptible userspace task in parallel* with the desktop, per-CPU

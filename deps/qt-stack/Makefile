@@ -29,12 +29,19 @@ DLDIR         := $(SELF)/downloads
 BLDDIR        := $(SELF)/build
 TOOLCHAIN     := $(SELF)/qt-cross.cmake
 
-# Host Qt (provides moc/rcc/uic/qmlcachegen for the cross build).  Debian multiarch.
+# Host Qt (provides moc/rcc/uic/qmlcachegen + qtwaylandscanner for the cross build).
 # NB: no inline comments on these — a trailing space leaks into the URL.
 QT_VER        ?= 6.4.2
 QT_BRANCH     := $(basename $(QT_VER))
-HOST_QT_PREFIX ?= /usr
-HOST_QT_CMAKE  ?= /usr/lib/x86_64-linux-gnu/cmake
+# Self-contained host Qt we build natively (D1.1 two-stage).  Debian's /usr Qt ships
+# moc/rcc/uic but NO qtwaylandscanner and NO private headers, and there is no sudo to
+# install qt6-base-private-dev / qt6-wayland-dev — so the cross qtwayland build can't
+# import Qt6::qtwaylandscanner from it.  We build our own coherent host prefix instead.
+HOST_QT        := $(SELF)/host-qt
+HOST_QT_PREFIX ?= $(HOST_QT)
+HOST_QT_CMAKE  ?= $(HOST_QT)/lib/cmake
+HOST_CC        ?= cc
+HOST_CXX       ?= c++
 
 QT_BASE_URL   := https://download.qt.io/archive/qt/$(QT_BRANCH)/$(QT_VER)/submodules
 
@@ -52,7 +59,7 @@ CMAKE_CROSS = cmake -G Ninja -S $(BLDDIR)/$(1)-src -B $(BLDDIR)/$(1)-build \
     -DQT_HOST_PATH=$(HOST_QT_PREFIX) \
     -DQT_HOST_PATH_CMAKE_DIR=$(HOST_QT_CMAKE)
 
-.PHONY: all qtbase qtwayland clean
+.PHONY: all host-qt qtbase qtwayland clean
 all: qtwayland
 
 dirs:
@@ -67,11 +74,65 @@ define fetch
 	     $(QT_BASE_URL)/$(1)-everywhere-src-$(QT_VER).tar.xz; \
 	fi
 endef
+# Wipe BOTH the src AND the build dir: a Qt CMake build dir caches QT_HOST_PATH /
+# QT_HOST_PATH_CMAKE_DIR etc., so reconfiguring a stale build dir with changed -D flags
+# leaves a split host-path state (the host-toolchain switch hit exactly this).  A clean
+# build dir guarantees the configure bakes a consistent host path.
 define unpack
-	@rm -rf $(BLDDIR)/$(1)-src; mkdir -p $(BLDDIR)/$(1)-src; \
+	@rm -rf $(BLDDIR)/$(1)-src $(BLDDIR)/$(1)-build; mkdir -p $(BLDDIR)/$(1)-src; \
 	tar -xf $(DLDIR)/$(1)-everywhere-src-$(QT_VER).tar.xz \
 	    -C $(BLDDIR)/$(1)-src --strip-components=1
 endef
+
+# ── host-qt (D1.1): native host qtbase + host qtwayland, self-contained ───────
+# A coherent host Qt prefix so the cross qtwayland build can import the host
+# Qt6::qtwaylandscanner tool (+ matching moc/rcc/uic, same 6.4.2 version).  Built
+# natively with the system compiler (cc/c++), SHARED libs (host-only, never shipped).
+# Minimal feature set: Core + Gui + the host tools are all qtwayland's scanner and
+# its CMake export need; widgets/network/sql/printsupport/dbus are dropped for speed.
+# xkbcommon is OFF too: Ubuntu's system xkbcommon-keysyms.h (1.6.0) predates the
+# XKB_KEY_dead_* keysyms Qt 6.4.2 references, so qxkbcommon.cpp won't compile on the
+# host — and a tool-only host Qt needs no keyboard support anyway (the cross build gets
+# real xkbcommon from deps/gtk-stack/sysroot, 1.7.0, which has those keysyms).
+host-qt: $(STAMPS)/host-qt
+$(STAMPS)/host-qt: $(SELF)/Makefile | dirs
+	$(call fetch,qtbase)
+	$(call fetch,qtwayland)
+	# (1) host qtbase — provides the host tool-chain + Qt6 CMake package + private headers
+	@rm -rf $(BLDDIR)/qtbase-host-src; mkdir -p $(BLDDIR)/qtbase-host-src; \
+	  tar -xf $(DLDIR)/qtbase-everywhere-src-$(QT_VER).tar.xz \
+	      -C $(BLDDIR)/qtbase-host-src --strip-components=1
+	# CMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON: Qt 6.4.2 + CMake >= 3.28 otherwise dies promoting
+	# Threads::Threads (found in a parent scope) to IMPORTED_GLOBAL from src/corelib — forbidden
+	# across directory scopes.  This makes find_package create its targets global inline, so Qt's
+	# manual (now-redundant) promotion is skipped.  The cross qtbase build dodges it via its
+	# toolchain-file scoping; the native host build needs the flag.
+	$(RUN) cmake -G Ninja -S $(BLDDIR)/qtbase-host-src -B $(BLDDIR)/qtbase-host-build \
+	    -DCMAKE_INSTALL_PREFIX=$(HOST_QT) -DCMAKE_BUILD_TYPE=Release \
+	    -DCMAKE_C_COMPILER=$(HOST_CC) -DCMAKE_CXX_COMPILER=$(HOST_CXX) \
+	    -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON \
+	    -DBUILD_SHARED_LIBS=ON \
+	    -DFEATURE_xcb=OFF -DFEATURE_dbus=OFF -DFEATURE_sql=OFF -DFEATURE_icu=OFF \
+	    -DFEATURE_widgets=OFF -DFEATURE_printsupport=OFF -DFEATURE_network=OFF \
+	    -DFEATURE_concurrent=OFF -DFEATURE_testlib=OFF -DFEATURE_xkbcommon=OFF \
+	    -DINPUT_libmd4c=qt -DINPUT_libb2=qt \
+	    -DQT_BUILD_EXAMPLES=OFF -DQT_BUILD_TESTS=OFF -DQT_BUILD_BENCHMARKS=OFF
+	$(RUN) cmake --build $(BLDDIR)/qtbase-host-build $(NINJA_BUILD_FLAGS)
+	$(RUN) cmake --install $(BLDDIR)/qtbase-host-build
+	# (2) host qtwayland — builds & installs the host qtwaylandscanner tool + its CMake
+	#     export (Qt6::qtwaylandscanner), which the cross qtwayland build imports.
+	@rm -rf $(BLDDIR)/qtwayland-host-src; mkdir -p $(BLDDIR)/qtwayland-host-src; \
+	  tar -xf $(DLDIR)/qtwayland-everywhere-src-$(QT_VER).tar.xz \
+	      -C $(BLDDIR)/qtwayland-host-src --strip-components=1
+	$(RUN) cmake -G Ninja -S $(BLDDIR)/qtwayland-host-src -B $(BLDDIR)/qtwayland-host-build \
+	    -DCMAKE_INSTALL_PREFIX=$(HOST_QT) -DCMAKE_BUILD_TYPE=Release \
+	    -DCMAKE_C_COMPILER=$(HOST_CC) -DCMAKE_CXX_COMPILER=$(HOST_CXX) \
+	    -DCMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON \
+	    -DCMAKE_PREFIX_PATH=$(HOST_QT) \
+	    -DFEATURE_wayland_server=OFF
+	$(RUN) cmake --build $(BLDDIR)/qtwayland-host-build $(NINJA_BUILD_FLAGS)
+	$(RUN) cmake --install $(BLDDIR)/qtwayland-host-build
+	@touch $@
 
 # ── qtbase (Core/Gui/Widgets/Network, static, GLES2, Wayland-ready) ──────────
 qtbase: $(STAMPS)/qtbase
@@ -93,14 +154,12 @@ $(STAMPS)/qtbase: $(MUSL_CXX) $(CXXRT_STAMP) $(TOOLCHAIN) $(SELF)/Makefile | dir
 	@touch $@
 
 # ── qtwayland (the qwayland platform plugin, static) ─────────────────────────
-# PREREQUISITE (D1.1 two-stage): qtwayland's cross build needs the HOST tool
-# `qtwaylandscanner` + Qt PRIVATE headers (Qt::CorePrivate).  Debian's qt6-base-dev does
-# NOT ship private headers, and qt6-base-private-dev / qt6-wayland-dev aren't installed.
-# So first build a HOST qtbase (native, with -DQT_FEATURE_private_tests / private headers)
-# + host qtwayland tools, point HOST_QT_PREFIX at it, then this target works.  Until then
-# qtwayland is blocked on the host toolchain, not on the cross recipe (qtbase proves that).
+# D1.1 two-stage: the cross build needs the HOST tool `qtwaylandscanner` (imported as
+# Qt6::qtwaylandscanner from QT_HOST_PATH) + the CROSS Qt private headers.  The private
+# headers come from our from-source cross qtbase (sysroot); the host scanner comes from
+# the self-contained `host-qt` prefix built above (HOST_QT_PREFIX points there).
 qtwayland: $(STAMPS)/qtwayland
-$(STAMPS)/qtwayland: $(STAMPS)/qtbase
+$(STAMPS)/qtwayland: $(STAMPS)/qtbase $(STAMPS)/host-qt
 	$(call fetch,qtwayland)
 	$(call unpack,qtwayland)
 	$(RUN) $(call CMAKE_CROSS,qtwayland) -DFEATURE_wayland_server=OFF

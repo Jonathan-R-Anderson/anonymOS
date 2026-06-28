@@ -391,6 +391,21 @@ public void smpActivateAp() @nogc nothrow {
     }
     if (!found) { klog("[smp] no online AP to activate\n"); return; }
     g_apActivatedIdx = ap;
+    // The kernel's APIC/SMP stack drives the local APIC via x2APIC MSRs (0x80x/0x83x).
+    // setupBspX2apic() enables x2APIC mode by writing IA32_APIC_BASE bit 10; on a CPU
+    // without x2APIC that wrmsr #GPs, and (this early, before the first userspace entry)
+    // the trap path lands in restoreKernelState with an empty kernelState → a cryptic
+    // fault.  Detect the missing feature up front and fail with an actionable message.
+    // (Notably VirtualBox ships x2APIC OFF by default: `VBoxManage modifyvm <vm> --x2apic on`.)
+    {
+        uint feat;
+        asm @nogc nothrow { push RBX; mov EAX, 1; cpuid; mov feat, ECX; pop RBX; }
+        if (((feat >> 21) & 1) == 0) {
+            klog("[smp] FATAL: CPU lacks x2APIC (CPUID.01h:ECX[21]=0); the APIC/SMP stack requires it.\n");
+            klog("[smp]   VirtualBox: VBoxManage modifyvm <vm> --x2apic on  (or System>Processor>Extended Features)\n");
+            while (true) { asm @nogc nothrow { cli; hlt; } }
+        }
+    }
     setupBspX2apic();                                // S7: enable x2APIC on the BSP so it can send IPIs to the AP
     prepareApTestTask();                             // S4.4b: build the ring-3 test task (BSP, single-threaded)
     g_apActivate[ap] = 1;                             // release the AP from its worker into apKernelLoop

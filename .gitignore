@@ -61,6 +61,7 @@ deps/qt-stack/build/
 deps/qt-stack/downloads/
 deps/qt-stack/sysroot/
 deps/qt-stack/stamps/
+deps/qt-stack/host-qt/
 deps/parted-stack/build/
 deps/parted-stack/downloads/
 deps/parted-stack/sysroot/

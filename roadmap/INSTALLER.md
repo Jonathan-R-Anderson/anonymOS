@@ -15,11 +15,15 @@ specified against *this OS's actual build system*, not a generic Linux host.
 
 ## North star
 
-Boot the live ISO → a branded Calamares launches on the Weston desktop → the user picks a
-disk, a hostname, and a set of **Identity profiles** → Calamares writes ONE declarative
-`install.json`, copies the OS to the disk, installs limine, and reboots → first boot consumes
-`install.json` and materialises the object tree, identities, and permissions. No imperative
-sprawl; the installer *describes*, first boot *realises*.
+Boot the live ISO → the Weston desktop comes up carrying an **"Install EpinAnonymOS to Disk"
+desktop entry** (panel launcher + keybind, and a first-run auto-launch on live media) → the
+user opens it → a branded Calamares lets them pick a disk, a hostname, and a set of **Identity
+profiles** → Calamares writes ONE declarative `install.json`, copies the OS to the disk,
+installs limine, and reboots → first boot consumes `install.json`, materialises the object
+tree, identities, and permissions, and **sets `system.installed = true`**. From then on the
+installer desktop entry is **gone from every startup** — declaratively, because it is gated on
+that one flag, not torn down by hand. No imperative sprawl; the installer *describes*, first
+boot *realises*, and the install surface *retires itself*.
 
 ---
 
@@ -158,6 +162,68 @@ OS. Disk Installation (Phase 8) consumes whichever is enabled via `modules.conf`
 
 ---
 
+## §D4 — Live "Install to Disk" desktop entry + post-install self-removal
+
+The installer must be reachable from the running live desktop as a first-class **desktop entry**
+("Install EpinAnonymOS to Disk"), and that entry must **disappear from every future startup once
+the OS is installed to disk** — declaratively (gated on one flag), never by deleting files.
+
+Grounding in this OS's real mechanisms: the desktop is **Weston + the desktop-shell panel + the
+Domain Manager**, configured by the single file **`cd/desktop.conf`** that the shell reads at boot
+(`autostart = <module>`, `bind = MODIFIERS, KEY, exec, <module>`, panel launchers). Persistence is
+the **AHCI object store** (F4, `objstoreMounted()`) + the declarative **`/config/system.json`**
+(rendered by the kernel; see `core/hoscall.d`). D4 wires the entry into the former and gates it on
+a flag in the latter.
+
+### D4.1 — The entry (live desktop surface)
+A branded launcher **"Install EpinAnonymOS to Disk"** (icon + label) that launches the Calamares
+boot module (`/calamares`, §D3). Surfaced three complementary ways, all driven by
+`desktop.conf` / the shell so no new launch machinery is invented:
+- a **panel launcher** in the desktop-shell panel — the always-visible primary entry;
+- a **keybind** (e.g. `bind = SUPER, I, exec, /calamares`);
+- on live media only, an optional **first-run auto-launch** (`autostart = /calamares`) so a fresh
+  boot opens the installer directly (the North-Star flow).
+The **Domain Manager** (the default autostart client) also grows an "Install to Disk" toolbar
+action. Every one of these routes through the single visibility gate in D4.3.
+
+### D4.2 — The `installed` state flag (single source of truth)
+One persistent boolean — **`system.installed`** in `/config/system.json`, backed by an object in
+the on-disk object store — is the authority. It is **false/absent on live media** and set **true
+exactly once**, at first boot of the installed system (Phase 10, when `install.json` is consumed).
+It is never written by a live session. The kernel exposes it as a read-only userspace signal
+(e.g. `/system/state/installed`, alongside the existing `/config` render path) so the shell can
+consult it cheaply without parsing JSON.
+
+### D4.3 — Conditional visibility (the self-removal)
+At desktop startup the shell consults the `installed` signal and **includes the installer entry
+iff not installed**. "Disappears after install" is therefore declarative and idempotent:
+- live / not-yet-installed (`installed != true`) → entry shown in the panel + keybind, and
+  optionally auto-launched;
+- installed (`installed == true`) → entry **omitted** from the panel launcher, the keybind table,
+  the `autostart` list, and the DM toolbar — on this boot and every future one.
+Nothing is deleted and no imperative teardown runs; flipping the one flag retires the entry
+everywhere at once. (Same pattern the DM device-class gate / `/config` render already use to drive
+UI purely from declarative state.) Implementation seam: have the desktop-shell's `desktop.conf`
+reader skip any entry tagged `live-only` (a new `installer = /calamares` directive, or a
+`live-only` flag on a `bind`/`autostart`/launcher line) when the `installed` signal is true.
+
+### D4.4 — Live-vs-installed detection (how the flag gets its initial value)
+The **live ISO** boots from **read-only media** with an **ephemeral object store** and **no
+install-complete marker**; the **installed system** boots from the **on-disk object store**
+carrying the marker that `install.json` + first boot left. The kernel derives `installed` from
+"booted off the persistent on-disk store **AND** the install-complete marker is present", then
+renders it into `system.json` / the `/system/state/installed` signal. A blank or half-written
+target disk seen *during* a live session (object store freshly formatted, no marker) still reads
+`installed = false`, so the entry correctly stays until a real install finishes and reboots.
+
+### D4.5 — Incremental delivery (decouple from the heavy Calamares build)
+The entry + gate are independently testable and can land **before** Calamares fully builds: ship a
+tiny placeholder `/calamares` (or point the entry at a stub that prints "installer not yet built")
+so D4.1–D4.4 — appears on live, hidden after `system.installed=true` — can be validated on the
+existing desktop now, then swapped for the real installer when §D1–§D3 complete.
+
+---
+
 ## PHASE 1 — Repository analysis
 Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
 the rootfs is generated; how packages install; how users/identities are created; how the
@@ -172,7 +238,9 @@ assets/ translations/ slides/`). Builds alongside the project. **Prereq: §D1 Qt
 
 ## PHASE 3 — Build integration
 Per §D3: Calamares + branding build automatically, assets land in the live image, no manual
-copying.
+copying. **Also stage the §D4 desktop entry**: the "Install EpinAnonymOS to Disk" launcher
+icon/label asset, and the `desktop.conf` lines that surface it (panel launcher + keybind +
+live-only `autostart`), authored as `live-only` so the D4.3 gate can hide them post-install.
 
 ## PHASE 4 — Branding
 Replace ALL Calamares branding — logos, icons, backgrounds, slideshow, window title, distro
@@ -194,7 +262,9 @@ Anonymous). Do **not** create every identity immediately — emit *configuration
 The installer performs minimal imperative work; it generates ONE declarative file
 (`install.json`): hostname, locale, timezone, filesystem, encryption, bootloader, users,
 administrator, identity definitions, desktop options, Linux-compat options, security options,
-package selections, network configuration. First boot consumes it.
+package selections, network configuration. First boot consumes it. **`install.json` is also the
+install-complete marker (§D4.2/D4.4)**: its presence on the on-disk object store is what first
+boot keys off to set `system.installed = true` and retire the installer entry.
 
 ## PHASE 8 — Disk installation
 Support GPT/MBR, EFI/BIOS, ext4/Btrfs/XFS, LUKS, swapfile/partition; automatic **and** manual
@@ -210,6 +280,10 @@ metadata · init package database · install Linux-compat layer · prepare first
 ## PHASE 10 — First-boot integration
 Installer → generate config → copy OS → reboot → first boot: init system, generate object tree,
 create identities, init permissions, enable services, finalise. (Not all config during install.)
+**First boot of the installed system sets `system.installed = true`** (§D4.2) after consuming
+`install.json` — the single, idempotent act that makes the §D4.3 gate hide the "Install to Disk"
+desktop entry on this and all future startups. Setting it must be crash-safe/idempotent (re-runs
+on a partial first boot converge, never resurrecting the entry once install truly completed).
 
 ## PHASE 11 — Security
 No plaintext passwords; password hashing; secure temp files; least privilege; installer runs with
@@ -227,8 +301,11 @@ Architecture doc, installer developer guide, directory structure, module docs, b
 configuration reference, build instructions, flow diagrams, first-boot sequence, extension guide.
 
 ## PHASE 14 — Validation
-✓ installer builds ✓ live ISO boots ✓ installer auto-launches ✓ install succeeds ✓ bootloader
-installs ✓ system boots ✓ first boot consumes `install.json` ✓ identities init ✓ object tree init
+✓ installer builds ✓ live ISO boots ✓ **"Install to Disk" desktop entry present on the live
+desktop** (panel + keybind) ✓ entry launches Calamares ✓ installer auto-launches (live first-run)
+✓ install succeeds ✓ bootloader installs ✓ system boots ✓ first boot consumes `install.json`
+✓ **first boot sets `system.installed = true`** ✓ **installer desktop entry ABSENT after
+install + reboot, and on every subsequent startup** ✓ identities init ✓ object tree init
 ✓ Linux-compat works ✓ security applied ✓ declarative config preserved.
 
 ---
@@ -247,7 +324,11 @@ Mitigation/order: (1) `deps/qt-stack` qtbase+qwayland static "hello world" on We
 Qt runs here before any Calamares code; (2) scaffold `installer/calamares/` + branding + the
 custom modules against that; (3) bring up partitioning via §D2(b) (native module) to sidestep the
 util-linux/udev swamp, building D2.1/D2.2 in parallel for the standard module. Each step boots the
-live ISO and is checkpointed; nothing lands that breaks the desktop.
+live ISO and is checkpointed; nothing lands that breaks the desktop. **§D4 (the live "Install to
+Disk" entry + self-removal) is low-risk and decoupled** — it touches only `desktop.conf` / the
+desktop-shell gate + one persistent `system.installed` flag, so it can land early against a stub
+`/calamares` (D4.5) and be validated on the current desktop before the heavy Qt/KPMcore work
+finishes.
 
 ## Build status (live)
 - **§D1 qtbase ✅ DONE + verified.** `deps/qt-stack` cross-builds **static Qt 6.4.2** with musl-clang
@@ -256,12 +337,44 @@ live ISO and is checkpointed; nothing lands that breaks the desktop.
   platform-support libs in `sysroot`. The plan's dominant risk (does Qt build here at all?) is
   retired. Config keys that mattered: bundled md4c/b2 (`-DINPUT_libmd4c=qt`), and
   `-DINPUT_opengl=no -DFEATURE_egl=OFF` (raster + `wl_shm`, Widgets-only — D1.5).
-- **§D1 qtwayland ◑ blocked on the HOST toolchain (two-stage, D1.1).** The cross recipe is fine; it
-  needs the **host** `qtwaylandscanner` + Qt **private** headers (`Qt::CorePrivate`). Debian's
-  `qt6-base-dev` ships neither, and `qt6-base-private-dev` / `qt6-wayland-dev` aren't installed (no
-  sudo). **Next:** build a host qtbase (native, with private headers) + host qtwayland tools, point
-  `HOST_QT_PREFIX` at it, then `make -C deps/qt-stack qtwayland`. (Same two-stage Qt cross-build
-  pattern; just host-side.)
+- **§D1 qtwayland ✅ DONE (host-toolchain blocker resolved).** `make -C deps/qt-stack qtwayland`
+  cross-builds the **static `qwayland` platform plugin**: `sysroot/lib/libQt6WaylandClient.a` (2.1 MB),
+  `sysroot/plugins/platforms/libqwayland-generic.a` (the QPA plugin for `Q_IMPORT_PLUGIN`), the shell
+  integrations (`xdg-shell`/`wl-shell`/`ivi-shell`/`qt-shell`/`fullscreen-shell-v1`), the `bradient`
+  client-side-decoration plugin, and the `Qt6WaylandClient` CMake package. **The two-stage host
+  toolchain (D1.1) is now a real, self-contained target:** `make -C deps/qt-stack host-qt` builds a
+  **native** host Qt (host qtbase + host qtwayland) into `deps/qt-stack/host-qt`, providing
+  `moc/rcc/uic/syncqt` **and** `qtwaylandscanner` (+ its `Qt6WaylandScannerTools` CMake export) — so
+  the cross build imports `Qt6::qtwaylandscanner` from there instead of Debian's `/usr` Qt (which ships
+  no scanner + no private headers). The whole cross stack now uses `host-qt` as `QT_HOST_PATH`, fully
+  decoupled from Debian. ★★ TRAPS (all fixed in the Makefile):
+  (1) **`CMAKE_FIND_PACKAGE_TARGETS_GLOBAL=ON`** on the host build — Qt 6.4.2 + CMake ≥ 3.28 otherwise
+  dies promoting `Threads::Threads` to `IMPORTED_GLOBAL` from `src/corelib` (cross-directory scope is
+  forbidden); the flag makes `find_package` create targets global inline so Qt's manual promotion is
+  skipped. The cross qtbase dodges this via its toolchain-file scoping; the native host build needs it.
+  (2) **`-DFEATURE_xkbcommon=OFF` on the host build** — Ubuntu's system `xkbcommon-keysyms.h` (1.6.0)
+  predates the `XKB_KEY_dead_*` keysyms Qt 6.4.2 references, so `qxkbcommon.cpp` won't compile on the
+  host; a tool-only host Qt needs no keyboard, and the cross build gets real xkbcommon (1.7.0, with
+  those keysyms) from `deps/gtk-stack/sysroot`.
+  (3) **Cross qtbase MUST be rebuilt against `host-qt`, not Debian** — the cross qtbase *bakes*
+  `initial_qt_host_path[_cmake_dir]` into `sysroot/lib/cmake/Qt6/Qt6Dependencies.cmake`, and cross
+  qtwayland reads them. If they point at Debian, `find_package(Qt6HostInfo)` resolves Debian's
+  `QT6_HOST_INFO_LIBEXECDIR=lib/qt6/libexec`, so syncqt is sought at `host-qt/lib/qt6/libexec/syncqt.pl`
+  (doesn't exist; ours is `host-qt/libexec/syncqt.pl`) → "Can't open perl script … syncqt.pl". Building
+  cross qtbase against `host-qt` bakes the correct `./libexec`.
+  (4) **`unpack` now wipes the `-build` dir too** — a stale Qt CMake build dir caches
+  `QT_HOST_PATH`/`QT_HOST_PATH_CMAKE_DIR`, so reconfiguring with changed `-D` flags left a *split*
+  host-path state (`QT_HOST_PATH=host-qt` but `_CMAKE_DIR=/usr`). A clean build dir per configure
+  prevents it.
+  **Remaining for roadmap-order step (1):** runtime proof — a static qtbase+qwayland "hello world"
+  rendered on Weston (boot the live ISO). The build artifacts are all present; only the on-Weston
+  validation is left.
 - **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
   the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
-  specified (D2/D3) and build once qtwayland lands. Phase-1 analysis: `installer/ARCHITECTURE.md`.
+  specified (D2/D3) and **now unblocked** (qtwayland landed). Phase-1 analysis: `installer/ARCHITECTURE.md`.
+- **§D4 / live "Install to Disk" desktop entry + self-removal: specified, not built.** New requirement:
+  a branded installer entry on the live Weston desktop (panel launcher + keybind + live-only
+  autostart via `cd/desktop.conf`) that retires itself once `system.installed = true` is set at the
+  installed system's first boot (`/config/system.json` + an on-disk object-store marker; kernel
+  renders a `/system/state/installed` signal the desktop-shell gate reads). Low-risk and decoupled —
+  per D4.5 it can land early against a stub `/calamares` and be validated on today's desktop.

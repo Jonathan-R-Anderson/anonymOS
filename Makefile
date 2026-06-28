@@ -125,6 +125,7 @@ calamares:
 	+$(MAKE) -C deps/calamares calamares
 veracrypt:
 	+$(MAKE) -C deps/veracrypt test
+	+$(MAKE) -C deps/veracrypt header-test
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob

@@ -59,5 +59,13 @@ test: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-kat
 	$(BLD)/vc-kat
 
+# §E2 — the VeraCrypt volume-header engine on the KAT'd crypto: round-trip + hidden-volume
+# deniability. -I$(SELF) so vcheader.h resolves.
+header-test: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/header_test.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-header
+	$(BLD)/vc-header
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

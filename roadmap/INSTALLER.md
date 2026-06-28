@@ -292,6 +292,21 @@ cipher set + cascades, the exact PBKDF2 iteration counts + header KDF, the **hid
 XTS over the whole system partition. Header-compat means a stripped VeraCrypt could in principle open
 our volumes — a strong correctness check, not a runtime dependency.
 
+**E2a — header engine + deniability ✅ DONE on the KAT'd crypto** (`deps/veracrypt/vcheader.{c,h}`,
+`make veracrypt` → `header-test`). Implements the full `VOLUME_FORMAT.md` layout — AES-256-XTS header
+(data unit 0), PBKDF2-HMAC-SHA512 header KDF, big-endian fields at every documented offset, key-area +
+header CRCs — as `vc_create_header` / `vc_open_header` over `libvc_crypto.a`. The 8/8 test proves the
+**hidden-volume deniability mechanism end-to-end**: create a decoy + a hidden header, each opens with
+*only* its own password, wrong passwords are rejected, and the `"VERA"` magic is encrypted (no
+plaintext tell). The XTS + PBKDF2 here deliberately mirror `veracrypt_impl.d`'s algorithms so it is
+the byte-exact reference for E2b.
+**⚠ E2b — the kernel port is the remaining work, and the kernel needs REAL crypto first:** today
+`veracrypt_impl.d` is *dead code* — it isn't compiled in, and the `sha512_hash`/`aes_encrypt` it calls
+are **stubs** (`core/stubs.d` — `sha512_hash` literally just klogs "STUB"). E2b = give the kernel the
+real primitives (link `libvc_crypto.a`'s `.o`s, or implement in D), then make `veracrypt_impl.d`
+produce byte-identical headers, cross-validated against this C reference (kernel writes to a spare
+disk → `vc_open_header` opens it), the way §D2(b)'s GPT/FAT proofs cross-validate with `sgdisk`/`fsck`.
+
 ### E3 — On-disk layout (built on the §D2(b) GPT engine)
 The Phase-8 partitioner (`core/diskpart.d`) lays the GPT down; §E adds the encrypted layout:
 - **ESP** (unencrypted, FAT32 — already done in §D2(b)): holds *only* the §E5 pre-boot loader. No
@@ -618,13 +633,15 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 crypto core ✅ DONE.** An
-  *optional* Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`) and the kernel already seeds the
-  crypto (`drivers/veracrypt_impl.d`: XTS-AES, PBKDF2-HMAC-SHA512, VeraCrypt header). **E1 crypto core
-  built + KAT-validated** (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors PASS).
-  Next: finish E1 (volume-header + hidden-OS source + `Boot/EFI` loader, then prune the tree), reach
-  header parity (E2), then the encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on
-  the §D2(b) engine, the optional installer page (E6), and the deniability security review (E7).
+- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 + E2a ✅ DONE.** An *optional*
+  Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`). **E1 crypto core built + KAT-validated**
+  (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors). **E2a header engine +
+  deniability proven** (`vcheader.c`; `header-test` 8/8 — decoy/hidden headers each open with only
+  their own password, wrong rejected, magic encrypted). ⚠ The kernel's `drivers/veracrypt_impl.d` is
+  currently *dead code* calling `core/stubs.d` **stubs** (no real AES/SHA-512 in-kernel yet). Next:
+  E2b — give the kernel real crypto + a byte-identical native-D header cross-validated against
+  `vcheader.c`; then the encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on the
+  §D2(b) engine, the optional installer page (E6), and the deniability security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),

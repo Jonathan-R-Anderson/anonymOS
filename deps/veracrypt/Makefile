@@ -82,5 +82,12 @@ layout-check: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-layout
 	@echo "[veracrypt] built $(BLD)/vc-layout — run: $(BLD)/vc-layout <disk-image>"
 
+# §E4a — validate the kernel's multi-sector volume DATA encryption + random free-fill.
+volume-check: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/volume_check.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -lm -o $(BLD)/vc-volume
+	@echo "[veracrypt] built $(BLD)/vc-volume — run: $(BLD)/vc-volume <disk-image>"
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

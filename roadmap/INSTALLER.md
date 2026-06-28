@@ -338,6 +338,16 @@ password; (4) fill all unused space with indistinguishable-from-ciphertext rando
 volume can't be located by entropy analysis. All three headers PBKDF2-derived; the hidden one is
 findable only with its password.
 
+**E4a — volume data-encryption engine ✅ DONE + host-validated.** `veracrypt_impl.d
+vcVolumeDataProof()` does the two data primitives behind (1)/(4): XTS-encrypts a **multi-sector**
+region (each 512-byte sector as its own XTS data unit — the real "XTS over the whole partition", not
+E3's single block) and **random-fills free space**. Host `make veracrypt volume-check` → `vc-volume
+<image>`: **all 16 rootfs sectors decrypt at their per-sector units**, and the free-fill measures
+**7.975 bits/byte** Shannon entropy (≈ perfect → indistinguishable from ciphertext, so the hidden
+volume can hide in it). (Proof uses a deterministic PRNG for the fill; a real install swaps in a
+CSPRNG.) **E4b/c remaining:** extend the §D2(b) GPT to the system + outer-volume partitions, drive
+this engine over a *real* rootfs/clone, and cap-gate the writes (the one-shot block-write capability).
+
 ### E5 — Pre-boot authentication (the EFI loader, decoy vs hidden)
 The stripped `Boot/EFI` loader is installed to the ESP and runs *before* the kernel: it prompts for a
 password, tries to decrypt the system-partition header (→ decoy) and the hidden header (→ hidden),
@@ -814,7 +824,9 @@ finishes.
   `vcheader.c` reference** (`vc-parity` cross-check: kernel header == reference + opens). **E3
   encrypted layout DONE**: the kernel writes the three-header decoy/hidden scheme + XTS data to a
   spare disk, host `vc-layout` validates 8/8 (each header opens with only its password, deniability
-  holds, decoy data decrypts). Next: E4 (turn the layout into a real partition+rootfs install) + the
+  holds, decoy data decrypts). **E4a volume data engine DONE**: multi-sector XTS (per-sector data
+  units) + random free-fill, host `vc-volume` validates (16/16 sectors decrypt; free-fill 7.975
+  bits/byte entropy). Next: E4b/c (GPT system+outer partitions + real rootfs clone + cap-gate) + the
   EFI pre-boot loader (E5) on the §D2(b) engine, the optional installer page (E6), and the security
   review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An

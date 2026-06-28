@@ -309,3 +309,58 @@ public void vcEncryptedLayoutProof()
     klog(" (sys=0x"); klog_hex(VC_SYS_HDR_LBA); klog(" outer=0x"); klog_hex(VC_OUTER_HDR_LBA);
     klog(" hidden=0x"); klog_hex(VC_HIDDEN_HDR_LBA); klog("; host layout_check validates)\n");
 }
+
+// ── §E4a: the volume DATA-encryption engine ──────────────────────────────────
+// (1) XTS-encrypt a multi-sector region (a stand-in "rootfs") with the volume master
+//     key, each 512-byte sector as its own XTS data unit (unit = sector index) — this
+//     is the real "XTS over the whole system partition", not the single block of E3.
+// (2) Random-fill free space so the hidden volume is entropy-indistinguishable from it.
+// Host volume_check.c decrypts every sector + measures the free-fill entropy.  SKIP
+// without a spare disk.  Fixed inputs/LBAs match deps/veracrypt/test/volume_check.c.
+enum ulong VC_ROOTFS_LBA       = 900_000;
+enum uint  VC_ROOTFS_SECTORS   = 16;
+enum ulong VC_FREEFILL_LBA     = 950_000;
+enum uint  VC_FREEFILL_SECTORS = 16;
+
+private ulong xorshift64(ref ulong s) @nogc nothrow {
+    s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s;
+}
+
+@nogc nothrow
+public void vcVolumeDataProof()
+{
+    import drivers.block.disk : diskFindTarget, diskWriteSectorsOn;
+
+    ulong tsec;
+    int idx = diskFindTarget(tsec);
+    if (idx < 0 || VC_FREEFILL_LBA + VC_FREEFILL_SECTORS >= tsec) {
+        klog("[vc-voldata] proof SKIP (no spare disk)\n"); return;
+    }
+
+    ubyte[256] mkD;
+    for (int i = 0; i < 256; i++) mkD[i] = cast(ubyte)(0xA5 ^ i);
+    ubyte[32] k1, k2;
+    for (int i = 0; i < 32; i++) { k1[i] = mkD[i]; k2[i] = mkD[32+i]; }
+
+    // (1) multi-sector rootfs: each sector XTS-encrypted at its own data unit
+    ubyte[512] sec;
+    for (uint s = 0; s < VC_ROOTFS_SECTORS; s++) {
+        for (int j = 0; j < 512; j++) sec[j] = cast(ubyte)(s*13 + j*7 + 0x42);
+        xts_encrypt_sector(sec.ptr, 512, s, k1.ptr, k2.ptr);    // data unit = sector index
+        if (!diskWriteSectorsOn(idx, VC_ROOTFS_LBA + s, 1, sec.ptr)) { klog("[vc-voldata] FAIL (rootfs)\n"); return; }
+    }
+
+    // (2) random-fill free space (deterministic PRNG here; a real install uses a CSPRNG)
+    ulong rng = 0x9E3779B97F4A7C15UL;
+    for (uint s = 0; s < VC_FREEFILL_SECTORS; s++) {
+        for (int j = 0; j < 512; j += 8) {
+            ulong r = xorshift64(rng);
+            for (int b = 0; b < 8; b++) sec[j+b] = cast(ubyte)(r >> (8*b));
+        }
+        if (!diskWriteSectorsOn(idx, VC_FREEFILL_LBA + s, 1, sec.ptr)) { klog("[vc-voldata] FAIL (fill)\n"); return; }
+    }
+
+    klog("[vc-voldata] proof: wrote XTS rootfs (0x"); klog_hex(VC_ROOTFS_SECTORS);
+    klog(" sectors @0x"); klog_hex(VC_ROOTFS_LBA); klog(") + random free-fill @0x"); klog_hex(VC_FREEFILL_LBA);
+    klog(" (host volume_check decrypts + entropy-checks)\n");
+}

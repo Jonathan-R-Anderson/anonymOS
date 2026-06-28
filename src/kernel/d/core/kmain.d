@@ -114,6 +114,7 @@ public __gshared ubyte[MAX_CPUS] g_apRing3Ok;        // S4.4b: AP i completed a 
 public __gshared ubyte[MAX_CPUS] g_apRealSyscallOk;  // S4.4c: AP i dispatched a real syscall (getpid) under the BKL
 public __gshared int   g_apTid = 0;                  // S4.4c: the AP task's g_tasks[] slot (hidden from BSP scheduler)
 public __gshared ulong g_apSyscallRet = 0;           // S4.4c: the AP's getpid return value
+public __gshared ulong g_apSyscallCount = 0;         // S4.4d: how many getpids the AP task has issued (parallel w/ BSP)
 
 // S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
 // the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
@@ -122,9 +123,10 @@ __gshared ulong g_apTaskPml4 = 0;                    // the AP test task's page-
 enum ulong AP_STUB_VA = 0x400000UL;                  // ring-3 stub code page
 enum ulong AP_STK_VA  = 0x440000UL;                  // ring-3 stub stack page
 enum ulong AP_GETPID = 39UL;                         // the stub issues getpid (Linux syscall 39)
-// mov $39,%rax ; syscall ; jmp .   — does one getpid then self-loops (the syscall returns to the kernel coroutine)
+// mov $39,%rax ; syscall ; jmp -11 (back to mov)  — LOOPS getpid forever; each syscall returns to the
+// kernel coroutine (apKernelLoopBody), which resumes the stub so it issues the next one (S4.4d).
 __gshared immutable ubyte[11] g_apStubCode =
-    [0x48,0xC7,0xC0,0x27,0x00,0x00,0x00, 0x0F,0x05, 0xEB,0xFE];
+    [0x48,0xC7,0xC0,0x27,0x00,0x00,0x00, 0x0F,0x05, 0xEB,0xF5];
 
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
@@ -190,13 +192,13 @@ enum uint BKL_PROOF_ITERS = 100_000;
 public __gshared ulong g_bklCounter = 0;     // mutated ONLY under the BKL (the mutual-exclusion proof)
 public __gshared ubyte[MAX_CPUS] g_cpuBklDone;
 
-private uint bklTryHold(uint* p) {           // returns the PREVIOUS value: 0 = we acquired
+private uint bklTryHold(uint* p) @nogc nothrow {   // returns the PREVIOUS value: 0 = we acquired
     uint old = void;
     asm @nogc nothrow { mov RDX, p; mov EAX, 1; xchg [RDX], EAX; mov old, EAX; }
     return old;
 }
-public void bklAcquire(uint* p) { while (bklTryHold(p) != 0) __asm("pause", ""); }
-public void bklRelease(uint* p) { asm @nogc nothrow { mov RDX, p; xor EAX, EAX; mov [RDX], EAX; } }
+public void bklAcquire(uint* p) @nogc nothrow { while (bklTryHold(p) != 0) __asm("pause", ""); }
+public void bklRelease(uint* p) @nogc nothrow { asm @nogc nothrow { mov RDX, p; xor EAX, EAX; mov [RDX], EAX; } }
 
 // Each caller hammers a shared counter under the BKL; a correct lock yields exactly its share.
 private void bklProofRun() {
@@ -275,29 +277,35 @@ extern(C) void apEntry(limine_smp_info* info) {
 // task once — a ring0→ring3→ring0 round trip through the AP's OWN entry path — then stays alive.
 extern(C) void apKernelLoopBody(uint idx) {
     g_apKernelLoopEntered[idx] = 1;
-    if (g_apTaskPml4 != 0) {
-        x64WriteCR3(g_apTaskPml4);                   // the AP test task's disjoint address space
-        apLastSyscallRax = 0;
-        const ulong reason = apSwitchToUserspace(&apCurUserSpaceState[0], apKernelState_ptr());
-        if (reason == 0x100) {
-            g_apRing3Ok[idx] = 1;                    // S4.4b: ring0→ring3→ring0 round trip
-            // S4.4c: the stub issued a real getpid — dispatch it through the SHARED handler under the
-            // BKL.  getpid reads the global g_current_task_id, so point it at the AP's task while the
-            // lock is held (the BSP is not yet in kernelLoop, so it never observes the transient value).
-            if (apLastSyscallRax == AP_GETPID && g_apTid > 0) {
-                bklAcquire(&g_bkl);
-                const ulong saved = g_current_task_id;
-                g_current_task_id = cast(ulong)g_apTid;
-                const long pid = linux_sys_getpid();     // the SAME shared handler the BSP's dispatch calls
-                g_current_task_id = saved;
-                bklRelease(&g_bkl);
-                g_apSyscallRet = cast(ulong)pid;
-                if (pid > 0) g_apRealSyscallOk[idx] = 1;
-            }
-        }
-    }
     auto pc = &g_percpu[idx];
-    for (;;) ++pc.heartbeat;                          // round trip done; keep visible per-CPU progress
+    if (g_apTaskPml4 == 0 || g_apTid <= 0) { for (;;) ++pc.heartbeat; }
+    x64WriteCR3(g_apTaskPml4);                        // the AP test task's disjoint address space (once)
+    // S4.4d: the AP coroutine — resume the userspace stub, dispatch its getpid through the SHARED
+    // handler under the BKL, write the result back, and resume again.  This runs CONCURRENTLY with the
+    // BSP's kernelLoop, which holds the same BKL across its handling — so the two cores are mutually
+    // excluded in the kernel but run userspace in true parallel.  getpid reads the global
+    // g_current_task_id, so point it at the AP's task while the lock is held, then restore it.
+    for (;;) {
+        // Run the test stub with interrupts OFF (clear IF): the AP has no real interrupt handlers yet
+        // (its IDT routes every vector to apDefaultHandler=cli;hlt), so a timer/IPI during the ring-3
+        // stub would halt the AP.  apServiceSyscall re-sets IF on each syscall, so clear it every time.
+        // (Real per-CPU interrupt handling is S5.)
+        *cast(ulong*)(&apCurUserSpaceState[8 + REG_RFLAGS*8]) &= ~0x200UL;
+        const ulong reason = apSwitchToUserspace(&apCurUserSpaceState[0], apKernelState_ptr());
+        if (reason != 0x100 || apLastSyscallRax != AP_GETPID) break;   // unexpected → stop (no fault loop)
+        bklAcquire(&g_bkl);
+        const ulong saved = g_current_task_id;
+        g_current_task_id = cast(ulong)g_apTid;
+        const long pid = linux_sys_getpid();         // the SAME shared handler the BSP's dispatch calls
+        g_current_task_id = saved;
+        ++g_apSyscallCount;
+        if (pid > 0) { g_apRing3Ok[idx] = 1; g_apRealSyscallOk[idx] = 1; g_apSyscallRet = cast(ulong)pid; }
+        bklRelease(&g_bkl);
+        *cast(ulong*)(&apCurUserSpaceState[8]) = cast(ulong)pid;   // RAX (reg 0) → the resumed stub sees the result
+        for (uint d = 0; d < 20000; ++d) __asm("pause", "");       // throttle so BKL contention can't stall the desktop
+        ++pc.heartbeat;
+    }
+    for (;;) ++pc.heartbeat;
 }
 
 // apKernelState lives in ap_context.S; expose its address without importing the symbol type.
@@ -378,6 +386,11 @@ public void smpActivateAp() @nogc nothrow {
     } else {
         klog(" getpid dispatch FAILED/timed out (S4.4c)\n");
     }
+    // S4.4d: the AP now LOOPS getpid forever (apKernelLoopBody) in parallel with the BSP's desktop.
+    // Its sustained progress is surfaced from the BSP side (the PIT handler in kernelLoop), since the
+    // AP — running on its task's CR3 — cannot safely klog (it would fault on a non-shared mapping).
+    klog("[smp] AP idx "); klog_hex(ap);
+    klog(" now looping getpid in parallel with the desktop (count surfaced from the BSP below)\n");
 }
 
 // Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs

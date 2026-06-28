@@ -74,6 +74,8 @@ import core.domain : domainControlWrite, domainControlProof; // DOMAIN_MANAGER D
 import core.domain : domDistroProof;                        // DOMAIN_MANAGER DM11: distro/pkgMgr + /linux proof
 import core.domain : domInheritProof;                       // DOMAIN_MANAGER DM9: inheritance least-privilege merge
 import core.kmain : smpWorkReport, smpActivateAp;           // SMP_ROADMAP S4 foundation report + S4.4a activation
+import core.kmain : bklAcquire, bklRelease, g_bkl;          // SMP_ROADMAP S4.4d: BKL around the kernelLoop coroutine
+import core.kmain : g_apSyscallCount;                       // SMP_ROADMAP S4.4d: AP's parallel getpid counter (BSP surfaces it)
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2591,8 +2593,17 @@ private long dispatchLinuxSyscall(ulong n, ulong a, ulong b, ulong c,
 // Kernel main loop
 // ------------------------------------------------------------------
 
+__gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog
+__gshared uint g_apPitLogN   = 0;   // SMP_ROADMAP S4.4d: caps the proof klog (stop after 40 — no forever-spam)
+
 private void kernelLoop() {
     while (true) {
+        // SMP_ROADMAP S4.4d: take the Big Kernel Lock across the whole kernel-handling portion of
+        // the loop so the AP and BSP never race on shared state (g_current_task_id, g_tasks,
+        // scheduleNext, the syscall dispatch).  It is released ONLY around the userspace run below,
+        // so the AP can hold it (and dispatch its own task's syscalls) while the BSP is in ring 3.
+        // EVERY exit path from here to the userspace run, and the end of the body, must release it.
+        bklAcquire(&g_bkl);
         maybeSpawnWaylandClient();
         // R2.5: GPU-test launchers OFF during Weston-GL bring-up — they contend with
         // Weston for the single shared GPU control queue. Re-enable once GL desktop is stable.
@@ -2618,13 +2629,15 @@ private void kernelLoop() {
                 }
                 if (!anyRunnable) {
                     klog("[kernel] all tasks exited — halting\n");
-                    while (true) { asm @nogc nothrow { cli; hlt; } }
+                    while (true) { asm @nogc nothrow { cli; hlt; } }   // terminal: BKL held, fine
                 }
             }
+            bklRelease(&g_bkl);
             continue;
         }
         if (task.waiting) {
             scheduleNext();
+            bklRelease(&g_bkl);
             continue;
         }
 
@@ -2644,6 +2657,7 @@ private void kernelLoop() {
             } else {
                 g_taskPendingSig[tid] = 0;
                 exitTask(tid, 128 + psig);   // default action: 128+signo (killed job)
+                bklRelease(&g_bkl);
                 continue;
             }
         }
@@ -2659,11 +2673,17 @@ private void kernelLoop() {
         // Switch to this task's page table
         x64WriteCR3(task.pml4Phys);
 
+        // S4.4d: release the BKL across the userspace run — while the BSP is in ring 3 the AP can
+        // hold the lock and dispatch its own task's syscalls.  Re-acquired immediately on return.
+        bklRelease(&g_bkl);
+
         // Hand off to userspace; returns when an interrupt/syscall fires
         const ulong _sw0 = rdtsc();
         ulong reason = x64SwitchToUserspace(
             cast(void*)&curUserSpaceState[0],
             cast(void*)&kernelState[0]);
+
+        bklAcquire(&g_bkl);   // back in the kernel — re-take the lock for the handling below
         if (tid >= 0 && tid < MAX_TASKS) {
             g_schedCyc[tid] += rdtsc() - _sw0;   // userspace cycles this quantum
             ++g_schedN[tid];
@@ -2686,6 +2706,14 @@ private void kernelLoop() {
             if (irqIdx == 0) {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
                 increment_ticks();
+                // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE (BSP
+                // side, under the BKL → no race, and on the BSP's CR3 so klog is safe).  These lines
+                // appearing AMONG the desktop's serial output are the proof the AP runs in parallel.
+                if (g_apSyscallCount != 0 && g_apPitLogN < 40 && (++g_apPitLogCtr % 2000) == 0) {
+                    ++g_apPitLogN;
+                    klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
+                    klog(" — AP task running in PARALLEL with the desktop\n");
+                }
                 // Re-check parked poll/epoll sleepers every tick (catch-all for passive
                 // fds like the compositor's repaint timerfd).  Cheap now that the idle
                 // task — not the parked pollers' epoll re-runs — absorbs the idle core.
@@ -2725,6 +2753,7 @@ private void kernelLoop() {
                     // if it is truly accessing 0x10. For arch_prctl emulation we
                     // can just return 0 to RAX and skip ahead.
                     task.regs[REG_RAX] = 0;
+                    bklRelease(&g_bkl);
                     continue;
                 }
             }
@@ -2761,6 +2790,7 @@ private void kernelLoop() {
             exitTask(tid, 11);
         }
         // else: unknown — ignore and continue
+        bklRelease(&g_bkl);   // S4.4d: end of the BKL-protected handling for this iteration
     }
 }
 

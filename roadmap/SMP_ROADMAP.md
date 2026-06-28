@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a/b/c (AP runs ring-3 code + dispatches a real syscall) DONE — verified
+## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) + S4.4a–d DONE — ★ AN AP RUNS A USERSPACE TASK IN PARALLEL WITH THE DESKTOP — verified
 
 **S4.4 (an AP runs a userspace task in parallel) is being built in verified increments** — plan in
 `~/.claude/plans/binary-hugging-tide.md` (Approach B: a separate AP entry path; the BSP's `context.S` stays
@@ -87,6 +87,26 @@ byte-for-byte untouched; AP/BSP converge only at the shared D dispatch under the
   restructure are S4.4d**, kept separate to verify the real-syscall dispatch in isolation first. **Verified
   `SMP=4`:** `AP idx 1 issued getpid via the shared handler under the BKL → pid=0x2 (tid=1)`, desktop loads 11
   domains, 0 faults; `SMP=1` unaffected.
+- **S4.4d (an AP runs a userspace task IN PARALLEL with the desktop) DONE — the bare-metal-vision payoff:**
+  the stub now LOOPS getpid (`jmp` back), and `apKernelLoopBody` is a full coroutine — resume the stub →
+  dispatch its getpid through the shared handler **under the BKL** → write the result back → resume — running
+  **concurrently** with the BSP's desktop. Two pieces:
+  1. **`kernelLoop` BKL restructure** (`kernel_main.d`): the BSP takes `g_bkl` across the whole kernel-handling
+     portion of the loop, **released only around `x64SwitchToUserspace`** (so the AP can hold it and dispatch
+     while the BSP is in ring 3) and **before every `continue`** (4 of them) + at the end. So `g_current_task_id`,
+     `g_tasks`, `scheduleNext`, and the dispatch are mutually excluded between the two cores. When no AP is
+     active the lock is uncontended → no BSP behavior change (verified single-core).
+  2. **The AP coroutine** (`kmain.d apKernelLoopBody`): loops resume→getpid→write-RAX→throttle, forever.
+  ★ TRAP 1: the stub must run with **IF=0** — the AP has no real interrupt handlers (its IDT routes every
+  vector to `apDefaultHandler=cli;hlt`), so a timer/IPI during the ring-3 stub would halt the AP; `apServiceSyscall`
+  re-sets IF each syscall, so the loop clears it (`apCurUserSpaceState[RFLAGS] &= ~0x200`) before each resume.
+  ★ TRAP 2 (the deadlock): the AP **cannot `klog`** — it runs on its task's CR3, which doesn't map whatever klog
+  touches beyond the kernel high-half, so klog **faults holding the BKL → the BSP freezes**. The AP's progress is
+  surfaced from the **BSP side** (a capped klog in the PIT handler, on the BSP's CR3, under the BKL → no race).
+  **Verified `SMP=4`:** `cpu1 getpid x…` count climbs **x44 → x2f35c (~193 000 getpids)** *interleaved with* the
+  desktop loading its 11 domains and continuing to run (both cores' serial output alternates to the end), 0
+  faults, no deadlock; `SMP=1` → no AP loop, desktop boots. **This is literally an AP running a userspace task
+  in parallel with the desktop — the goal of the whole SMP arc.**
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:

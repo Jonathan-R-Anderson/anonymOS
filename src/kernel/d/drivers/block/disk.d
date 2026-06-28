@@ -11,7 +11,7 @@
 module drivers.block.disk;
 
 import drivers.block.ahci : initAHCI, ahciDataPort, readSector, writeSector,
-                            HBA_PORT, g_ahciDevices;
+                            HBA_PORT, g_ahciDevices, getPort;
 import memory.dma : dma_alloc;
 import core.stdc.string : memcpy, memset;
 import core.io : klog, klog_hex;
@@ -78,6 +78,56 @@ public bool diskWriteSectors(ulong lba, uint count, const(void)* src) {
         in_   += chunk * SECTOR;
         lba   += chunk;
         count -= chunk;
+    }
+    return true;
+}
+
+// ─── Per-disk I/O (INSTALLER §D2(b): write a TARGET disk, not the object store) ──
+// The object store lives on the first SATA disk (ahciDataPort / g_dataPort).  The
+// installer lays a GPT down on a DIFFERENT disk, so these address a chosen disk by
+// its g_ahciDevices[] index, reusing the same DMA bounce buffer.
+
+// Find an installable target: a present SATA data disk that is NOT the object-store
+// disk.  Returns its g_ahciDevices index (or -1) and its capacity in sectors.
+public int diskFindTarget(out ulong targetSectors) {
+    targetSectors = 0;
+    if (!g_diskReady) return -1;
+    foreach (i; 0 .. cast(int)g_ahciDevices.length) {
+        auto d = &g_ahciDevices[i];
+        if (!d.present || d.type != 1 || d.capacity == 0) continue;
+        if (getPort(d.port) is ahciDataPort()) continue;   // skip the live/object-store disk
+        targetSectors = d.capacity / SECTOR;
+        return i;
+    }
+    return -1;
+}
+
+public bool diskWriteSectorsOn(int idx, ulong lba, uint count, const(void)* src) {
+    if (!g_diskReady || count == 0 || idx < 0 || idx >= cast(int)g_ahciDevices.length) return false;
+    if (!g_ahciDevices[idx].present) return false;
+    HBA_PORT* port = getPort(g_ahciDevices[idx].port);
+    if (port is null) return false;
+    const(ubyte)* in_ = cast(const(ubyte)*)src;
+    while (count > 0) {
+        const ushort chunk = cast(ushort)(count > BOUNCE_SECTORS ? BOUNCE_SECTORS : count);
+        memcpy(g_bounceVirt, in_, chunk * SECTOR);
+        if (!writeSector(port, lba, chunk, g_bouncePhys)) return false;
+        in_ += chunk * SECTOR; lba += chunk; count -= chunk;
+    }
+    return true;
+}
+
+public bool diskReadSectorsOn(int idx, ulong lba, uint count, void* dst) {
+    if (!g_diskReady || count == 0 || idx < 0 || idx >= cast(int)g_ahciDevices.length) return false;
+    if (!g_ahciDevices[idx].present) return false;
+    HBA_PORT* port = getPort(g_ahciDevices[idx].port);
+    if (port is null) return false;
+    ubyte* out_ = cast(ubyte*)dst;
+    while (count > 0) {
+        const ushort chunk = cast(ushort)(count > BOUNCE_SECTORS ? BOUNCE_SECTORS : count);
+        if (!readSector(port, lba, chunk, g_bouncePhys)) return false;
+        memcpy(out_, g_bounceVirt, chunk * SECTOR);
+        out_ += chunk * SECTOR; lba += chunk; count -= chunk;
     }
     return true;
 }

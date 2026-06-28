@@ -17,6 +17,7 @@
 module core.diskpart;
 
 import core.io : klog, klog_hex;
+import drivers.block.disk : diskFindTarget, diskReadSectorsOn, diskWriteSectorsOn;
 
 @nogc nothrow:
 
@@ -206,4 +207,59 @@ public void gptPartProof() {
     klog("[diskpart] GPT proof PASS (built+validated ESP esp_lba=0x"); klog_hex(L.espFirst);
     klog(" root_lba=0x"); klog_hex(L.rootFirst);
     klog(" last_usable=0x"); klog_hex(L.rootLast); klog("; corruption rejected)\n");
+}
+
+// ── Commit a full GPT (primary + backup) to a TARGET disk ────────────────────
+// Lays down: protective MBR + primary GPT header + entry array at the front, and
+// the backup entry array + backup GPT header at the disk tail.  Caller must pick a
+// disk that is NOT the live object-store disk (diskFindTarget).  Cap-gating (the
+// one-shot block-write capability, Phase 11) belongs at the call site; this is the
+// raw write.  Returns false on any I/O failure or a too-small disk.
+bool gptWriteToDisk(int diskIdx, ulong diskSectors, ulong espSectors) {
+    if (diskSectors < FIRST_USABLE + ENTRY_SECTORS + 64) return false;
+    __gshared ubyte[PRIMARY_SECTORS * SECTOR] pbuf;     // MBR + header + entries (34 sectors)
+    gptBuildPrimary(pbuf.ptr, diskSectors, espSectors);
+    const ulong lastLba = diskSectors - 1;
+
+    // primary region → LBA 0..33
+    if (!diskWriteSectorsOn(diskIdx, 0, PRIMARY_SECTORS, pbuf.ptr)) return false;
+    // backup entry array (same 128 entries) → (last-32) .. (last-1)
+    if (!diskWriteSectorsOn(diskIdx, lastLba - ENTRY_SECTORS, ENTRY_SECTORS, pbuf.ptr + 2 * SECTOR))
+        return false;
+    // backup GPT header → last LBA: the primary header with current/backup/entry-start
+    // fields fixed for the tail copy and the header CRC recomputed.
+    __gshared ubyte[SECTOR] bhdr;
+    foreach (i; 0 .. SECTOR) bhdr[i] = (pbuf.ptr + SECTOR)[i];
+    put64(bhdr.ptr, 24, lastLba);                       // current LBA = last
+    put64(bhdr.ptr, 32, 1);                             // backup LBA  = 1
+    put64(bhdr.ptr, 72, lastLba - ENTRY_SECTORS);       // partition entries start = last-32
+    put32(bhdr.ptr, 16, 0);
+    put32(bhdr.ptr, 16, crc32(bhdr.ptr, 92));
+    if (!diskWriteSectorsOn(diskIdx, lastLba, 1, bhdr.ptr)) return false;
+    return true;
+}
+
+// Boot proof: if a spare (non-object-store) target disk is attached, write a real
+// GPT to it (primary + backup) and read it back to validate.  SKIPs (never clobbers)
+// when the only disk is the live object store.  Lays a 256 MiB ESP + root remainder.
+public void gptWriteProof() {
+    ulong tsec;
+    const int idx = diskFindTarget(tsec);
+    if (idx < 0 || tsec < 8192) { klog("[diskpart] GPT-write proof SKIP (no spare target disk)\n"); return; }
+    enum ulong ESP = (256UL * 1024 * 1024) / SECTOR;    // 256 MiB
+    if (!gptWriteToDisk(idx, tsec, ESP)) { klog("[diskpart] GPT-write proof FAIL (write)\n"); return; }
+
+    __gshared ubyte[PRIMARY_SECTORS * SECTOR] rbuf;
+    if (!diskReadSectorsOn(idx, 0, PRIMARY_SECTORS, rbuf.ptr)) { klog("[diskpart] GPT-write proof FAIL (read)\n"); return; }
+    if (!gptValidate(rbuf.ptr)) { klog("[diskpart] GPT-write proof FAIL (primary invalid)\n"); return; }
+
+    __gshared ubyte[SECTOR] bk;
+    bool backupSig = false;
+    if (diskReadSectorsOn(idx, tsec - 1, 1, bk.ptr)) {
+        backupSig = true;
+        foreach (i; 0 .. 8) if (bk[i] != GPT_SIG[i]) backupSig = false;
+    }
+    klog("[diskpart] GPT-write proof PASS (wrote+reread GPT on target idx=0x"); klog_hex(idx);
+    klog(" sectors=0x"); klog_hex(tsec); klog("; primary validated, backup-hdr-sig=0x");
+    klog_hex(backupSig ? 1 : 0); klog(")\n");
 }

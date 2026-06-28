@@ -386,10 +386,18 @@ finishes.
   Boot proof (`gptPartProof`, wired after `diskSelfTest` in `kernel_main.d`) builds a GPT for an 8 GiB
   disk in-memory (no disk write → live object store safe) + validates + corruption-checks: serial
   shows `[diskpart] GPT proof PASS (esp_lba=0x22 root_lba=0x100022 …; corruption rejected)`.
-  **Remaining §D2(b):** commit the GPT to a target disk via `diskWriteSectors` (primary + backup,
-  cap-gated — the one-shot block-write cap, Phase 11) → format the ESP (minimal FAT32) → copy the
-  rootfs → install limine (BIOS/UEFI) → expose it to userspace (native HOS object-ABI verb or a
-  syscall) so the installer can drive "pick disk → install".
+  **GPT-to-disk write ✅ DONE + externally validated.** `gptWriteToDisk()` commits a full GPT
+  (protective MBR + primary header/entries at the front; backup entry array + backup header at the
+  disk tail) to a TARGET disk, addressed by per-disk block I/O added to `drivers.block.disk`
+  (`diskFindTarget` / `diskRead/WriteSectorsOn` — a chosen disk, never the live object-store disk).
+  `gptWriteProof()` (boot, SKIPs when no spare disk) writes a real GPT to a spare target + rereads +
+  validates. Verified in QEMU with a 2nd disk: `[diskpart] GPT-write proof PASS (… target idx=0x1 …
+  primary validated, backup-hdr-sig=0x1)`, the object store on disk0 untouched — and host **`sgdisk
+  -p`** reads the result as a clean GPT with **part 1 = ESP (EF00) 256 MiB + part 2 = Linux root
+  (8304)**, no backup-GPT errors.
+  **Remaining §D2(b):** cap-gate the write (the one-shot block-write capability, Phase 11) → format
+  the ESP (minimal FAT32) → copy the rootfs → install limine (BIOS/UEFI) → expose it to userspace
+  (native HOS object-ABI verb or a syscall) so the installer can drive "pick disk → install".
 - **§D2 / Calamares core: not built yet.** After §D2(b): build the `calamares` ELF (recipe staged in
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +

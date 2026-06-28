@@ -1,0 +1,40 @@
+# EpinAnonymOS Calamares branding (roadmap/INSTALLER.md Phase 4 — no upstream branding remains).
+---
+componentName: epinanonymos
+
+welcomeStyleCalamares: true
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 800px,520px
+windowPlacement: center
+
+strings:
+    productName:         EpinAnonymOS
+    shortProductName:    EpinAnonymOS
+    version:             rolling
+    shortVersion:        rolling
+    versionedName:       EpinAnonymOS rolling
+    shortVersionedName:  EpinAnonymOS
+    bootloaderEntryName:  EpinAnonymOS
+    productUrl:          https://github.com/  # project repo
+    supportUrl:          https://github.com/
+    knownIssuesUrl:      https://github.com/
+    releaseNotesUrl:     https://github.com/
+    productLogo:         logo.png
+    productIcon:         logo.png
+    productWelcome:      welcome.png
+
+images:
+    productLogo:         logo.png
+    productIcon:         logo.png
+    productWelcome:      welcome.png
+
+slideshow:               show.qml
+slideshowAPI: 2
+
+# Identity-first OS: the palette is dark + privacy-toned. Tune with real assets later.
+style:
+   sidebarBackground:    "#1b1f24"
+   sidebarText:          "#e6e6e6"
+   sidebarTextSelect:    "#3daee9"
+   sidebarTextHighlight: "#3daee9"

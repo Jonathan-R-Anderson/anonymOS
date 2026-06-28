@@ -1,0 +1,9 @@
+# Custom Calamares module — Identity Manager (roadmap/INSTALLER.md Phase 6).
+# Replaces plain Linux user creation: an Administrator account + toggleable Identity
+# profiles, each of which becomes a declarative Domain/identity OBJECT in the installed
+# system (consumed at first boot via install.json — not created imperatively here).
+---
+type:       "viewmodule"
+name:       "identitymanager"
+interface:  "qtplugin"
+load:       "libcalamares_viewmodule_identitymanager.so"

@@ -16,6 +16,7 @@ set(MUSL        "${EPIN_ROOT}/deps/musl/install")
 set(GTK_SYSROOT "${EPIN_ROOT}/deps/gtk-stack/sysroot")
 set(QT_SYSROOT  "${EPIN_ROOT}/deps/qt-stack/sysroot")
 set(PARTED_SYSROOT "${EPIN_ROOT}/deps/parted-stack/sysroot")
+set(CALAMARES_SYSROOT "${EPIN_ROOT}/deps/calamares/sysroot")
 
 # Cross compilers (the musl-clang wrappers default to libc++, as the gtk-stack uses them).
 set(CMAKE_C_COMPILER   "${MUSL}/bin/musl-clang")
@@ -28,7 +29,7 @@ set(CMAKE_OBJCOPY llvm-objcopy CACHE FILEPATH "")
 
 # Sysroot search order: this stack → the shared GTK/Wayland sysroot → musl.
 set(CMAKE_SYSROOT "${MUSL}")
-set(CMAKE_FIND_ROOT_PATH "${QT_SYSROOT};${PARTED_SYSROOT};${GTK_SYSROOT};${MUSL}")
+set(CMAKE_FIND_ROOT_PATH "${CALAMARES_SYSROOT};${QT_SYSROOT};${PARTED_SYSROOT};${GTK_SYSROOT};${MUSL}")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)   # host tools (moc/cmake) come from the host
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)

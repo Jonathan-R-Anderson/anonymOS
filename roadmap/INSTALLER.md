@@ -369,9 +369,18 @@ finishes.
   **Remaining for roadmap-order step (1):** runtime proof — a static qtbase+qwayland "hello world"
   rendered on Weston (boot the live ISO). The build artifacts are all present; only the on-Weston
   validation is left.
-- **§D2 / Calamares: scaffolded, not built.** `installer/calamares/` has the sequence, branding, and
-  the custom `identitymanager` view module; `deps/parted-stack` + `deps/calamares` recipes are
-  specified (D2/D3) and **now unblocked** (qtwayland landed). Phase-1 analysis: `installer/ARCHITECTURE.md`.
+- **§D3 build infrastructure ◑ BEGUN.** The Calamares cross-build tree exists:
+  `deps/calamares/Makefile` (CMake cross via the shared `deps/qt-stack/qt-cross.cmake`, now with a
+  `CALAMARES_SYSROOT` in its find path) builds Calamares' C++ deps + the installer ELF into
+  `deps/calamares/sysroot`. **yaml-cpp ✅ built** (static `libyaml-cpp.a`, musl + libc++) — proving
+  the non-Qt C++ dependency pipeline works. `deps/parted-stack/Makefile` (§D2.1 util-linux
+  libuuid/libblkid + libparted, autotools-cross like gtk-stack) is **scaffolded** (the recipe; the
+  musl-porting long-pole is next). Opt-in top-level targets added (NOT in the default build):
+  `make qt-stack | calamares-deps | parted-stack | calamares | installer-deps`.
+- **§D2 / Calamares core: not built yet.** Remaining: build §D2 (util-linux/libparted + KPMcore, or
+  the §D2(b) native object-FS module) → then the `calamares` ELF (recipe staged in
+  `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python) → wire `installer/calamares/` (sequence,
+  branding, the custom `identitymanager` module). Phase-1 analysis: `installer/ARCHITECTURE.md`.
 - **§D4.1 ✅ DONE — the "Install to Disk" entry exists + verified in VBox.** Launch target = a
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**

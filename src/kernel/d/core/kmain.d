@@ -9,6 +9,8 @@ import arch.x86_64.arch : map_page_hhdm, PTE_PRESENT, PTE_RW, PTE_USER; // SMP S
 import memory.mm : alloc_phys_page, archMapKernel;                      // SMP S4.4b AP test-task address space
 import core.exports : phys_to_virt;                                     // SMP S4.4b write stub via HHDM alias
 import core.task : REG_RIP, REG_RSP, REG_RFLAGS, REASON_TRAP;           // SMP S4.4b seed apCurUserSpaceState
+import core.task : allocTask, g_tasks;                                  // SMP S4.4c AP gets a real (hidden) task slot
+import core.syscalls.posix : linux_sys_getpid;                          // SMP S4.4c AP dispatches a real syscall
 import core.globals;
 import core.io;
 import ldc.attributes;
@@ -109,6 +111,9 @@ public __gshared ubyte[MAX_CPUS] g_apActivate;       // S4.4a: BSP sets [i]=1 to
 public __gshared ubyte[MAX_CPUS] g_apKernelLoopEntered;  // S4.4a: AP i sets [i]=1 once it enters apKernelLoop
 public __gshared uint g_apActivatedIdx = 0;          // S4.4a: which AP the BSP activated (for the report)
 public __gshared ubyte[MAX_CPUS] g_apRing3Ok;        // S4.4b: AP i completed a ring0→ring3→ring0 round trip
+public __gshared ubyte[MAX_CPUS] g_apRealSyscallOk;  // S4.4c: AP i dispatched a real syscall (getpid) under the BKL
+public __gshared int   g_apTid = 0;                  // S4.4c: the AP task's g_tasks[] slot (hidden from BSP scheduler)
+public __gshared ulong g_apSyscallRet = 0;           // S4.4c: the AP's getpid return value
 
 // S4.4b: a dedicated 64 KiB kernel C stack for the single activated AP (the 8 KiB IST is entry-only;
 // the coroutine runs C code here).  One stack suffices while only one AP runs tasks; S4.4d → [MAX_CPUS].
@@ -116,10 +121,10 @@ align(16) __gshared ubyte[0x10000] g_apKernelStack;
 __gshared ulong g_apTaskPml4 = 0;                    // the AP test task's page-table root (built on the BSP)
 enum ulong AP_STUB_VA = 0x400000UL;                  // ring-3 stub code page
 enum ulong AP_STK_VA  = 0x440000UL;                  // ring-3 stub stack page
-enum ulong AP_SENTINEL = 0x5A44UL;                   // the syscall number the stub passes ("S44")
-// mov $0x5A44,%rax ; syscall ; jmp .   — does one syscall then self-loops (the syscall never returns to it)
+enum ulong AP_GETPID = 39UL;                         // the stub issues getpid (Linux syscall 39)
+// mov $39,%rax ; syscall ; jmp .   — does one getpid then self-loops (the syscall returns to the kernel coroutine)
 __gshared immutable ubyte[11] g_apStubCode =
-    [0x48,0xC7,0xC0,0x44,0x5A,0x00,0x00, 0x0F,0x05, 0xEB,0xFE];
+    [0x48,0xC7,0xC0,0x27,0x00,0x00,0x00, 0x0F,0x05, 0xEB,0xFE];
 
 extern(C) void setupApSyscall();   // asm.S: set this CPU's syscall MSRs (LSTAR→apSyscallStub, STAR/FMASK/EFER.SCE)
 extern(C) void apDoSyscall();      // asm.S: CPL0 `syscall` self-test round-trip through apSyscallStub
@@ -274,7 +279,22 @@ extern(C) void apKernelLoopBody(uint idx) {
         x64WriteCR3(g_apTaskPml4);                   // the AP test task's disjoint address space
         apLastSyscallRax = 0;
         const ulong reason = apSwitchToUserspace(&apCurUserSpaceState[0], apKernelState_ptr());
-        if (reason == 0x100 && apLastSyscallRax == AP_SENTINEL) g_apRing3Ok[idx] = 1;
+        if (reason == 0x100) {
+            g_apRing3Ok[idx] = 1;                    // S4.4b: ring0→ring3→ring0 round trip
+            // S4.4c: the stub issued a real getpid — dispatch it through the SHARED handler under the
+            // BKL.  getpid reads the global g_current_task_id, so point it at the AP's task while the
+            // lock is held (the BSP is not yet in kernelLoop, so it never observes the transient value).
+            if (apLastSyscallRax == AP_GETPID && g_apTid > 0) {
+                bklAcquire(&g_bkl);
+                const ulong saved = g_current_task_id;
+                g_current_task_id = cast(ulong)g_apTid;
+                const long pid = linux_sys_getpid();     // the SAME shared handler the BSP's dispatch calls
+                g_current_task_id = saved;
+                bklRelease(&g_bkl);
+                g_apSyscallRet = cast(ulong)pid;
+                if (pid > 0) g_apRealSyscallOk[idx] = 1;
+            }
+        }
     }
     auto pc = &g_percpu[idx];
     for (;;) ++pc.heartbeat;                          // round trip done; keep visible per-CPU progress
@@ -312,6 +332,14 @@ public void prepareApTestTask() @nogc nothrow {
     *cast(uint*)(&apCurUserSpaceState[8 + 0x90 + 24]) = 0x1F80;  // mxcsr
     *cast(ushort*)(&apCurUserSpaceState[8 + 0x90 + 0]) = 0x037F; // fcw
     g_apTaskPml4 = pml4;
+    // S4.4c: a real g_tasks[] slot so the shared syscall handlers (which index g_tasks[tid]) work —
+    // marked `waiting` so the BSP's scheduleNext never picks it (the AP owns it, not the BSP scheduler).
+    const int tid = allocTask();
+    if (tid > 0) {
+        g_tasks[tid].pml4Phys = pml4;
+        g_tasks[tid].waiting  = true;                // hide from the BSP round-robin (kernel_main scheduleNext)
+        g_apTid = tid;
+    }
 }
 
 // SMP_ROADMAP S4.4a: called by the BSP just before kernelLoop (desktop up).  Activate the first
@@ -340,6 +368,16 @@ public void smpActivateAp() @nogc nothrow {
     klog(g_apRing3Ok[ap]
          ? " ring0→ring3→ring0 OK (S4.4b: ran a userspace stub on its own entry path)\n"
          : " ring3 round trip FAILED/timed out (AP halted on its own IDT — desktop unaffected)\n");
+    // S4.4c: wait for the AP's getpid dispatch through the shared handler under the BKL.
+    for (uint spin = 0; spin < 200_000_000u && !g_apRealSyscallOk[ap]; ++spin) __asm("pause", "");
+    klog("[smp] AP idx "); klog_hex(ap);
+    if (g_apRealSyscallOk[ap]) {
+        klog(" issued getpid via the shared handler under the BKL → pid=");
+        klog_hex(g_apSyscallRet); klog(" (S4.4c: AP dispatched a real syscall, tid=");
+        klog_hex(cast(ulong)g_apTid); klog(")\n");
+    } else {
+        klog(" getpid dispatch FAILED/timed out (S4.4c)\n");
+    }
 }
 
 // Discover the live CPU count, lay out per-CPU state, and bring every AP online (S0 + S1 + S2).  Runs

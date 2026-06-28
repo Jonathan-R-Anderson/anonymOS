@@ -50,7 +50,7 @@ fine-grained locking:
 So: **BKL → working multi-core with userspace parallelism → then lower lock granularity where profiling says
 it matters.**
 
-## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a + S4.4b (AP runs ring-3 code) DONE — verified
+## Status (2026-06-27): S0–S3 + S4 foundation + S4.1/4.2/4.3 (per-CPU entry trio) DONE; S4.4a/b/c (AP runs ring-3 code + dispatches a real syscall) DONE — verified
 
 **S4.4 (an AP runs a userspace task in parallel) is being built in verified increments** — plan in
 `~/.claude/plans/binary-hugging-tide.md` (Approach B: a separate AP entry path; the BSP's `context.S` stays
@@ -77,6 +77,16 @@ byte-for-byte untouched; AP/BSP converge only at the shared D dispatch under the
   `apKernelState`, `ret`s back. A failure halts only the AP via its own IDT (`apDefaultHandler` = `cli;hlt`),
   never a triple fault. **Verified `SMP=4`:** `AP idx 1 ring0→ring3→ring0 OK (S4.4b: ran a userspace stub on
   its own entry path)`, desktop loads 11 domains, 0 faults; `SMP=1` unaffected.
+- **S4.4c (AP dispatches a real syscall) DONE:** the stub now issues `getpid` (Linux syscall 39); on the round
+  trip `apKernelLoopBody`, **under the BKL**, points the global `g_current_task_id` at the AP's own task and
+  calls the **same** `linux_sys_getpid` handler the BSP's dispatch uses, then restores it. The AP gets a real
+  but **scheduler-hidden** `g_tasks[]` slot (`allocTask` in `prepareApTestTask`, marked `waiting` so the BSP's
+  `scheduleNext` never picks it; tracked in `g_apTid`). ★ Scope note: the single getpid runs during
+  `smpActivateAp` — *before* the BSP enters `kernelLoop` — so it does not yet race the BSP on `g_current_task_id`
+  (the BKL here excludes the other APs' workers). **The BSP-concurrent looping coroutine + the `kernelLoop` BKL
+  restructure are S4.4d**, kept separate to verify the real-syscall dispatch in isolation first. **Verified
+  `SMP=4`:** `AP idx 1 issued getpid via the shared handler under the BKL → pid=0x2 (tid=1)`, desktop loads 11
+  domains, 0 faults; `SMP=1` unaffected.
 
 The first two phases are implemented and boot-verified — **the kernel now discovers the live core count and
 brings every AP online**, with no hardcoded count:

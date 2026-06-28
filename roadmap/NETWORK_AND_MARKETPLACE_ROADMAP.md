@@ -74,22 +74,28 @@ announced, discovered, and downloaded peer-to-peer over I2P, content-addressed a
   default boot is `-nic none` so the in-kernel network init is skipped (the desktop is never at risk). ★ The
   locally-built **virgl QEMU lacks slirp** (`network backend 'user' is not compiled in`) — run the network test
   on the **system QEMU** (`QEMU_BIN=qemu-system-x86_64`, no GPU), which has user-net.
-- **N2 (IPv4 + ICMP) ◑ — TX proven; RX-of-an-inbound-IP-packet is blocked by the sandboxed host, not the
-  code.** Packed the IPv4/ICMP headers (`align(1)`, defensive — they were naturally packed) + added an
-  ICMP-echo-reply counter. **Verified on the wire (pcap):** the guest emits a well-formed `ICMP echo request
-  10.0.2.15 > 10.0.2.2` AND a well-formed `DNS A? example.com` query — so IPv4 + ICMP + UDP + DNS-query **TX**
-  are all correct. But **no inbound IP packet can be elicited on this host:** ICMP is host-disabled
-  (`/proc/sys/net/ipv4/ping_group_range = 1 0` → slirp can't make ICMP sockets, so no echo reply), DNS has no
-  upstream (sandboxed host → slirp's DNS proxy gets no answer), and the draft's **DHCP RX is unwired** (the UDP
-  layer doesn't route port 67/68 to `dhcpHandlePacket`, and DHCP isn't called from `networkStackPoll`). So the
-  IPv4 *receive* dispatch (IP-header parse → per-protocol demux) is exercised in code but not yet end-to-end
-  proven; the **eth RX is** proven (N1's ARP replies were received + parsed). ★ Also found: the draft IP-send
-  has **no ARP defer-and-retransmit** — the first packet to an unresolved IP triggers ARP but is dropped, so a
-  dest MAC must be pre-resolved (the self-test ARPs the DNS server before the query). To finish N2 end-to-end:
-  run on a **non-sandboxed host** (host `ping_group_range` widened, or internet for DNS, or a **tap** device for
-  host→guest ping), and/or **wire DHCP RX** (UDP 67/68 → `dhcpHandlePacket`) — slirp's DHCP is internal and
-  answers offline.
-- **Next: N3 (UDP socket integration) / N4 (TCP)** + finishing N2's RX verification per the above.
+- **N2 (IPv4 + ICMP) + N3/N6 (UDP/DHCP) TX ◑ — every transmit path is proven correct on the wire; the inbound
+  IP RX path can't be verified here because this sandbox's slirp answers ONLY ARP.** Packed IPv4/ICMP headers
+  (`align(1)`, defensive) + an ICMP-echo-reply counter. **Verified on the wire (pcap), all well-formed:** `ICMP
+  echo request 10.0.2.15 > 10.0.2.2`, `DNS A? example.com` (UDP), and a textbook **552-byte DHCP DISCOVER**
+  `0.0.0.0.68 > 255.255.255.255.67`. So IPv4 + ICMP + UDP + DNS-query + DHCP-DISCOVER **TX** are all correct.
+- ★★ **Decisive RX finding:** the full pcap shows slirp **replies only to ARP** (gateway + DNS-server MAC);
+  **ICMP, DNS, and DHCP all get zero reply** in this environment — ICMP is host-disabled
+  (`ping_group_range = 1 0`), DNS has no upstream internet, and even slirp's *internal* DHCP server stays
+  silent here. ARP is the only slirp service that responds (it fabricates replies for its virtual IPs with no
+  host interaction). So the IPv4 *receive* dispatch is exercised in code but **cannot be end-to-end proven on
+  this host by any available means**; the **eth RX is** proven (N1 ARP replies received + parsed). Finishing
+  N2/N3 RX needs a **real NIC / a tap device / a non-sandboxed host**.
+- ★ **6 real stack bugs fixed along the way** (the DHCP client now emits a standards-compliant DISCOVER, and
+  the IP send handles broadcast): (1) `ipv4Send` ARP-resolved the *broadcast* address instead of using the
+  Ethernet broadcast MAC → broadcast/DHCP could never send; (2) DHCP packet buffer `548 < DHCPHeader(240)+312`
+  → `buildDHCPPacket` returned 0; (3,4) DHCP **magic cookie** stored/compared as a host-endian uint (TX + the
+  RX callback) → byte-swapped on the wire; (5) DHCP **flags** `0x8000` not `htons`'d → broadcast bit landed in
+  the wrong byte; (6) DISCOVER not padded to the BOOTP minimum (250 B) → slirp drops it (now padded to 552).
+  Also: the draft IP-send has **no ARP defer-and-retransmit** (first packet to an unresolved IP is dropped) →
+  the self-test pre-resolves a dest MAC before sending. The DHCP *RX* path turned out to be **wired** after all
+  (it uses a normal `udpBind(68)` + callback, and `udpHandlePacket` dispatches by port).
+- **Next: N3 (UDP socket integration) / N4 (TCP)** + finishing N2/N3 RX on a real network per the above.
 
 ---
 
@@ -127,7 +133,7 @@ existing socket syscalls so AF_INET "just works" for musl binaries.
   loopback interface, IPv6 (optional). The stack stays small; correctness + the domain gate matter more than
   features.
 
-**Honest scope:** a full Linux-grade stack (GRO, TSO, full congestion control, IPv6 everything) is not the
+**Honest scope:** a full Linux-grade stack (GRO, TSO, full congestion control, IPv6 everything) is the
 goal — a *correct, minimal, domain-gated* IPv4 TCP/UDP stack that carries real musl traffic and enforces
 `NetPolicy` is. QEMU user-net (`-netdev user`) + virtio-net is the dev path; bare-metal NICs reuse the LKL
 bridge ([[bare-metal-lkl]], `BARE_METAL_ROADMAP.md`) — an `net-lkl` driving a real NIC over the L1–L5 bridge

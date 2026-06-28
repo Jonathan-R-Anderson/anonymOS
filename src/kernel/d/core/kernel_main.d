@@ -85,6 +85,8 @@ import network.arp : arpSendRequest, arpLookup;
 import network.types : IPv4Address, MACAddress;
 import network.icmp : getIcmpEchoReplies;   // N2: verify a ping round-trips
 import network.dns : dnsResolve;            // N2/N3/N6: prove the IPv4 RX path via a DNS reply
+import network.dhcp : dhcpAcquire, dhcpGetConfig;   // N6 DHCP: the offline-verifiable IPv4+UDP RX proof
+import network.ipv4 : setLocalIPAddress;            // DHCP exchange runs IP-less (src 0.0.0.0)
 import core.pkgrepo : pkgRepoSeed, pkgRepoSelfTest;          // DOMAIN_MANAGER DM7: software repository + package manager
 import core.template_bundle : templateBundleProof, tplSeed; // DOMAIN_MANAGER DM12: signed template bundles
 import core.domain : domainLifecycleProof; // DOMAIN_MANAGER DM4: lifecycle state machine proof
@@ -2649,6 +2651,25 @@ private void networkSelfTest() @nogc nothrow {
     klog("[net] N2 IPv4-RX / N3 UDP / N6 DNS: dnsResolve(example.com) ");
     klog(dns ? "OK — inbound IP packet received + parsed! ip=" : "FAILED ip=");
     klog_hex(dipv); klog("\n");
+    // N6 DHCP — the OFFLINE-verifiable RX proof: slirp's DHCP server is internal (no internet needed),
+    // unlike ICMP (host-blocked) and DNS (no upstream).  A BOUND lease means the guest received + parsed
+    // inbound IP+UDP packets (the OFFER and the ACK) — proving the full IPv4 + UDP RECEIVE path.
+    auto zeroIP = IPv4Address(0,0,0,0);
+    setLocalIPAddress(&zeroIP);          // a DHCP client is IP-less until it has a lease
+    const bool bound = dhcpAcquire(4000);
+    auto staticIP = IPv4Address(10,0,2,15);
+    setLocalIPAddress(&staticIP);        // restore the static IP afterward
+    klog("[net] N2 IPv4-RX / N3 UDP / N6 DHCP: dhcpAcquire ");
+    if (bound) {
+        IPv4Address lip, lgw, lnm, ldns;
+        dhcpGetConfig(&lip, &lgw, &lnm, &ldns);
+        const ulong lipv = (cast(ulong)lip.bytes[0] << 24) | (cast(ulong)lip.bytes[1] << 16)
+                         | (cast(ulong)lip.bytes[2] << 8) | lip.bytes[3];
+        klog("BOUND — inbound IPv4 + UDP RX PROVEN end-to-end! leased ip=");
+        klog_hex(lipv); klog("\n");
+    } else {
+        klog("not bound (no OFFER/ACK received)\n");
+    }
 }
 
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog

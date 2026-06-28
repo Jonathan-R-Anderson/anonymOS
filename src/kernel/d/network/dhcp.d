@@ -86,7 +86,7 @@ private size_t buildDHCPPacket(ubyte* buffer, size_t bufferSize, DHCPMessageType
     hdr.hops = 0;
     hdr.xid = g_dhcpClient.xid;
     hdr.secs = 0;
-    hdr.flags = 0x8000; // Broadcast flag
+    hdr.flags = htons(0x8000); // Broadcast flag (network byte order) — slirp broadcasts the OFFER
     hdr.ciaddr = 0;
     hdr.yiaddr = 0;
     hdr.siaddr = 0;
@@ -95,8 +95,8 @@ private size_t buildDHCPPacket(ubyte* buffer, size_t bufferSize, DHCPMessageType
     // Get MAC address
     getMacAddress(hdr.chaddr.ptr);
     
-    // Magic cookie
-    hdr.magic = 0x63825363;
+    // Magic cookie — must be the bytes 63 82 53 63 on the wire, so byte-swap on little-endian.
+    hdr.magic = htonl(0x63825363);
     
     // Options start after header
     ubyte* options = buffer + DHCPHeader.sizeof;
@@ -135,8 +135,11 @@ private size_t buildDHCPPacket(ubyte* buffer, size_t bufferSize, DHCPMessageType
     
     // End option (255)
     options[optOffset++] = 255;
-    
-    return DHCPHeader.sizeof + optOffset;
+
+    // Pad the vendor/options area to its full length (the buffer is already zeroed, so the bytes
+    // after the End option are 0-pad).  slirp's BOOTP handler expects the full-size packet; an
+    // unpadded 250-byte DISCOVER is silently dropped.
+    return DHCPHeader.sizeof + 312;
 }
 
 /// Parse DHCP options
@@ -223,8 +226,8 @@ private extern(C) void dhcpReceiveCallback(int sockfd, const(ubyte)* data, size_
     if (hdr.op != 2) return; // Not a BOOTREPLY
     if (hdr.xid != g_dhcpClient.xid) return; // Wrong transaction ID
     
-    // Check magic cookie
-    if (hdr.magic != 0x63825363) return;
+    // Check magic cookie (on the wire it is the bytes 63 82 53 63 → compare byte-swapped).
+    if (hdr.magic != htonl(0x63825363)) return;
     
     // Parse options
     const(ubyte)* options = data + DHCPHeader.sizeof;
@@ -299,7 +302,7 @@ export extern(C) bool dhcpDiscover() @nogc nothrow {
     }
     
     // Build DISCOVER packet
-    ubyte[548] packet;
+    ubyte[576] packet;   // must be >= DHCPHeader.sizeof(240) + 312 (buildDHCPPacket's min)
     size_t pktLen = buildDHCPPacket(packet.ptr, packet.length, DHCPMessageType.DISCOVER);
     
     // Send to broadcast address
@@ -317,7 +320,7 @@ export extern(C) bool dhcpRequest() @nogc nothrow {
     if (g_dhcpClient.state != DHCPState.REQUESTING) return false;
     
     // Build REQUEST packet
-    ubyte[548] packet;
+    ubyte[576] packet;   // must be >= DHCPHeader.sizeof(240) + 312 (buildDHCPPacket's min)
     size_t pktLen = buildDHCPPacket(packet.ptr, packet.length, DHCPMessageType.REQUEST);
     
     // Send to broadcast address

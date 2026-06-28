@@ -97,20 +97,27 @@ export extern(C) bool ipv4Send(const ref IPv4Address destIP,
     
     // Resolve destination MAC
     MACAddress destMac;
-    
+
+    // Broadcast (255.255.255.255 or the subnet broadcast) goes to the Ethernet broadcast MAC
+    // directly — never ARP it (DHCP DISCOVER/REQUEST rely on this).
+    if (destIP.isBroadcast()) {
+        destMac = MACAddress(0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF);
+        return sendEthernetFrame(destMac, EtherType.IPv4, packetBuffer.ptr, packetSize);
+    }
+
     // Check if destination is on local network
     bool isLocal = true;
     for (int i = 0; i < 4; i++) {
-        if ((destIP.bytes[i] & g_netmask.bytes[i]) != 
+        if ((destIP.bytes[i] & g_netmask.bytes[i]) !=
             (g_localIP.bytes[i] & g_netmask.bytes[i])) {
             isLocal = false;
             break;
         }
     }
-    
+
     // Use gateway if not local
     IPv4Address targetIP = isLocal ? destIP : g_gateway;
-    
+
     // Resolve MAC address
     if (!arpResolve(targetIP, &destMac, 1000)) {
         return false;  // ARP resolution failed

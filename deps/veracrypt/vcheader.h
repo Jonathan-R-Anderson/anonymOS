@@ -32,4 +32,12 @@ int  vc_open_header(const char *password,
                     const uint8_t header[VC_HEADER_SIZE],
                     uint8_t outMasterKey[VC_MASTER_KEYDATA_SIZE]);
 
+/* AES-256-XTS over one data unit `unit` (len a multiple of 16), key1=data key,
+ * key2=tweak key — the volume DATA encryption (matches veracrypt_impl.d's
+ * xts_encrypt_sector). Used to validate the encrypted system/OS data, not just headers. */
+void vc_xts_encrypt(uint8_t *buf, size_t len, uint64_t unit,
+                    const uint8_t key1[32], const uint8_t key2[32]);
+void vc_xts_decrypt(uint8_t *buf, size_t len, uint64_t unit,
+                    const uint8_t key1[32], const uint8_t key2[32]);
+
 #endif

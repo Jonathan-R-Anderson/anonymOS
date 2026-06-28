@@ -321,6 +321,15 @@ The Phase-8 partitioner (`core/diskpart.d`) lays the GPT down; §E adds the encr
   space holds the **hidden volume** → the **hidden OS**. Outer header at the front, hidden header at
   the backup offset.
 
+**✅ DONE — the encrypted layout is written + host-validated.** `veracrypt_impl.d
+vcEncryptedLayoutProof()` writes the three headers (decoy-system, outer, hidden) at fixed LBAs
+modelling the partitions, plus one XTS-encrypted decoy-OS data block, to a spare disk via
+`diskWriteSectorsOn` (SKIPs without one). The host `make veracrypt layout-check` → `vc-layout
+<image>` validates **8/8**: each header opens with **only its own password**; no password opens
+another volume (deniability); the **decoy data block decrypts** with the recovered decoy master key
+(real data encryption, not just headers); the hidden header shows no plaintext magic. This is the
+multi-header decoy/hidden scheme on disk — E4 turns it into a real partition+rootfs install.
+
 ### E4 — Encryption + hidden-OS install engine (kernel-side, on §D2(b) block I/O)
 Layered on `diskWriteSectorsOn` / the cap-gated install op: (1) write the decoy OS to the system
 partition and XTS-encrypt it under the decoy password; (2) write the outer volume + its header; (3)
@@ -644,9 +653,12 @@ finishes.
   their own password, wrong rejected, magic encrypted). **E2b kernel native-D header DONE**: real
   in-kernel AES-256 + SHA-512 (`drivers/veracrypt_crypto.d`, replaces the old `core/stubs.d` stubs;
   boot `[vc-crypto] KAT PASS`) + `veracrypt_impl.d` rewritten to the spec, **byte-identical to the
-  `vcheader.c` reference** (`vc-parity` cross-check: kernel header == reference + opens). Next: the
-  encrypted layout + hidden-OS install + EFI pre-boot loader (E3–E5) on the §D2(b) engine, the
-  optional installer page (E6), and the deniability security review (E7).
+  `vcheader.c` reference** (`vc-parity` cross-check: kernel header == reference + opens). **E3
+  encrypted layout DONE**: the kernel writes the three-header decoy/hidden scheme + XTS data to a
+  spare disk, host `vc-layout` validates 8/8 (each header opens with only its password, deniability
+  holds, decoy data decrypts). Next: E4 (turn the layout into a real partition+rootfs install) + the
+  EFI pre-boot loader (E5) on the §D2(b) engine, the optional installer page (E6), and the security
+  review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),

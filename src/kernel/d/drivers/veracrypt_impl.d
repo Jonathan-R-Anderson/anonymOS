@@ -253,3 +253,59 @@ public void vcHeaderProof()
     klog(" lba=0x"); klog_hex(VC_HEADER_LBA);
     klog(" (host parity_check opens + byte-compares vs vcheader.c)\n");
 }
+
+// ── §E3: write the full decoy/hidden encrypted layout to a spare disk ─────────
+// Lays the three VeraCrypt headers of the hidden-OS scheme at fixed LBAs (modelling
+// the partitions the §D2(b) GPT engine creates) + one XTS-encrypted "decoy OS" data
+// block, so the host (layout_check.c) can prove each header opens with ONLY its own
+// password, the data decrypts with the decoy master key, and deniability holds.
+// Fixed inputs MUST match deps/veracrypt/test/layout_check.c.  SKIPs without a spare.
+enum ulong VC_SYS_HDR_LBA    = 700_000;     // decoy system-partition header
+enum ulong VC_SYS_DATA_LBA   = 700_008;     // a decoy-OS data block (XTS, decoy key)
+enum ulong VC_OUTER_HDR_LBA  = 800_000;     // outer-volume header
+enum ulong VC_HIDDEN_HDR_LBA = 800_128;     // hidden header (outer + 64 KiB = 128 sectors)
+
+@nogc nothrow
+public void vcEncryptedLayoutProof()
+{
+    import drivers.block.disk : diskFindTarget, diskWriteSectorsOn;
+
+    ulong tsec;
+    int idx = diskFindTarget(tsec);
+    if (idx < 0 || VC_HIDDEN_HDR_LBA >= tsec) { klog("[vc-layout] proof SKIP (no spare disk)\n"); return; }
+
+    ubyte[64] saltD, saltO, saltH;
+    ubyte[256] mkD, mkO, mkH;
+    for (int i = 0; i < 64; i++) {
+        saltD[i] = cast(ubyte)(0x11*i + 1); saltO[i] = cast(ubyte)(0x22*i + 3); saltH[i] = cast(ubyte)(0x33*i + 5);
+    }
+    for (int i = 0; i < 256; i++) {
+        mkD[i] = cast(ubyte)(0xA5 ^ i); mkO[i] = cast(ubyte)(0x5A ^ i); mkH[i] = cast(ubyte)(0x3C + i);
+    }
+    immutable char[14] pwD = ['d','e','c','o','y','-','p','a','s','s','w','o','r','d'];
+    immutable char[14] pwO = ['o','u','t','e','r','-','p','a','s','s','w','o','r','d'];
+    immutable char[15] pwH = ['h','i','d','d','e','n','-','p','a','s','s','w','o','r','d'];
+
+    ubyte[512] hdr;
+    // decoy system header (hiddenVolSize 0)
+    create_veracrypt_header(pwD.ptr, 14, saltD.ptr, mkD.ptr, 0, 1UL<<30, 0x20000, 0x40000000, hdr.ptr);
+    if (!diskWriteSectorsOn(idx, VC_SYS_HDR_LBA, 1, hdr.ptr))    { klog("[vc-layout] FAIL (sys hdr)\n"); return; }
+    // outer header (hiddenVolSize != 0 → marks a hidden pair)
+    create_veracrypt_header(pwO.ptr, 14, saltO.ptr, mkO.ptr, 256UL<<20, 1UL<<30, 0x20000, 0x20000000, hdr.ptr);
+    if (!diskWriteSectorsOn(idx, VC_OUTER_HDR_LBA, 1, hdr.ptr))  { klog("[vc-layout] FAIL (outer hdr)\n"); return; }
+    // hidden header (only the hidden password opens it)
+    create_veracrypt_header(pwH.ptr, 15, saltH.ptr, mkH.ptr, 0, 256UL<<20, 0x20000, 0x10000000, hdr.ptr);
+    if (!diskWriteSectorsOn(idx, VC_HIDDEN_HDR_LBA, 1, hdr.ptr)) { klog("[vc-layout] FAIL (hidden hdr)\n"); return; }
+
+    // a "decoy OS" data block, XTS-encrypted with the decoy master key (unit 0)
+    ubyte[512] data;
+    for (int i = 0; i < 512; i++) data[i] = cast(ubyte)('A' + (i % 26));
+    ubyte[32] k1, k2;
+    for (int i = 0; i < 32; i++) { k1[i] = mkD[i]; k2[i] = mkD[32+i]; }
+    xts_encrypt_sector(data.ptr, 512, 0, k1.ptr, k2.ptr);
+    if (!diskWriteSectorsOn(idx, VC_SYS_DATA_LBA, 1, data.ptr))  { klog("[vc-layout] FAIL (data)\n"); return; }
+
+    klog("[vc-layout] proof: wrote decoy/hidden encrypted layout to target idx=0x"); klog_hex(idx);
+    klog(" (sys=0x"); klog_hex(VC_SYS_HDR_LBA); klog(" outer=0x"); klog_hex(VC_OUTER_HDR_LBA);
+    klog(" hidden=0x"); klog_hex(VC_HIDDEN_HDR_LBA); klog("; host layout_check validates)\n");
+}

@@ -87,6 +87,18 @@ int vc_create_header(const char *password, const uint8_t salt[VC_SALT_SIZE],
     return 0;
 }
 
+void vc_xts_encrypt(uint8_t *buf, size_t len, uint64_t unit,
+                    const uint8_t key1[32], const uint8_t key2[32]){
+    aes_encrypt_ctx ek1, ek2; aes_encrypt_key256(key1,&ek1); aes_encrypt_key256(key2,&ek2);
+    xts_(buf, len, unit, &ek1, 0, &ek2, 1);
+}
+void vc_xts_decrypt(uint8_t *buf, size_t len, uint64_t unit,
+                    const uint8_t key1[32], const uint8_t key2[32]){
+    aes_decrypt_ctx dk1; aes_decrypt_key256(key1,&dk1);
+    aes_encrypt_ctx ek2; aes_encrypt_key256(key2,&ek2);
+    xts_(buf, len, unit, 0, &dk1, &ek2, 0);
+}
+
 int vc_open_header(const char *password, const uint8_t header[VC_HEADER_SIZE],
                    uint8_t outMasterKey[VC_MASTER_KEYDATA_SIZE]){
     uint8_t h[VC_HEADER_SIZE]; memcpy(h, header, VC_HEADER_SIZE);

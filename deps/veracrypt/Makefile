@@ -75,5 +75,12 @@ parity-check: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-parity
 	@echo "[veracrypt] built $(BLD)/vc-parity — run: $(BLD)/vc-parity <disk-image> [lba]"
 
+# §E3 — validate the kernel-written decoy/hidden encrypted LAYOUT on a disk image.
+layout-check: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/layout_check.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-layout
+	@echo "[veracrypt] built $(BLD)/vc-layout — run: $(BLD)/vc-layout <disk-image>"
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

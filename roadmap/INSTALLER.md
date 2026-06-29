@@ -222,6 +222,44 @@ tiny placeholder `/calamares` (or point the entry at a stub that prints "install
 so D4.1–D4.4 — appears on live, hidden after `system.installed=true` — can be validated on the
 existing desktop now, then swapped for the real installer when §D1–§D3 complete.
 
+### D6 — Native in-OS installer (**works today**, no Calamares dependency)
+
+A self-contained installer that installs the running OS to a disk and boots it — independent of the
+heavy §D1–§D3 Qt/Calamares stack. This is what the "Install to Disk" button drives now.
+
+**Approach (prebuilt ESP image).** Building a FAT32 filesystem host-side (`mkfs.fat`/`mcopy`) is far
+simpler and more robust than an in-kernel FAT writer, so:
+- `scripts/mk-install-iso.sh` builds an **`esp-image`** boot module = a FAT32 EFI System Partition
+  containing the whole boot tree (limine `BOOTX64.EFI` + `kernel.elf` + modules + `limine.conf`),
+  and stages it into **`hos-install.iso`** (`make hos-install.iso`).
+- In the OS, `installBootableToDisk()` (`drivers/veracrypt_impl.d`) writes a **single-ESP GPT**
+  (`core/diskpart.d gptWriteBootableEsp`) to a target disk, then streams the `esp-image` payload into
+  the ESP — cap-gated (`core/install_cap.d`). UEFI firmware then boots the installed disk directly.
+- The desktop **"Install to Disk"** button writes `install` to **`/config/install.action`**, a
+  write-only kernel control file (`FD_INSTALL_CTL` in `posix.d`, mirroring `/config/domain.action`),
+  which routes to `installControlWrite()`. Grammar: `install [diskidx]`.
+- **Robustness:** the install targets a spare disk distinct from the object store, and
+  `objstoreMount()` refuses to claim a **GPT-partitioned** disk (`disk.d diskFirstSectorIsGpt`), so an
+  installed disk's boot GPT is never clobbered by the object store — it boots repeatedly.
+
+**Validated** end-to-end in QEMU/OVMF (UEFI) and real VirtualBox: install → the target gets a valid
+single-ESP GPT → booting the installed disk alone (twice) reaches `init = Weston (GW3)`.
+
+#### Testing the installer in VirtualBox
+```
+make hos-install.iso                 # the normal boot tree + the esp-image payload (~440 MiB ISO)
+scripts/vbox-install-test.sh         # create a UEFI/x2APIC VM: store + 8G system disks + installer DVD
+scripts/vbox-install-test.sh --start # boot it
+  # → desktop → "Install to Disk" → Install; tail the VM serial.log for "[install] DONE"; power off
+scripts/vbox-install-test.sh --boot-disk   # detach the DVD + boot the installed system disk
+```
+The VM has two SATA disks: **port 0 `store`** (live object store, scratch) and **port 1 `system`**
+(the install target you boot afterward). UEFI + x2APIC are required (the kernel needs x2APIC; the
+installed disk is UEFI/limine-only — no BIOS bootloader is installed).
+
+> Future: when §D1–§D3 land, Calamares becomes the richer guided installer (partitioning choices,
+> the §E encrypted decoy/hidden-OS option); D6 is the minimal always-available path it builds on.
+
 ---
 
 ## §E — VeraCrypt-derived decoy/hidden-OS disk encryption (stripped to plausible deniability)

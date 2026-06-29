@@ -96,5 +96,16 @@ preboot-check: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-preboot
 	@echo "[veracrypt] built $(BLD)/vc-preboot — run: $(BLD)/vc-preboot <disk-image>"
 
+# §E5b — the pre-boot loader as a real UEFI app (PE32+), via clang's PE target + lld-link
+# (no gnu-efi needed). Self-contained crypto (efi/efi_vc.c) — no libc/VeraCrypt headers.
+EFI      := $(SELF)/efi
+EFI_CFLAGS := -target x86_64-unknown-windows -ffreestanding -fshort-wchar -mno-red-zone -O2 -I$(EFI)
+efi: | $(BLD)
+	clang $(EFI_CFLAGS) -c $(EFI)/efi_main.c -o $(BLD)/efi_main.o
+	clang $(EFI_CFLAGS) -c $(EFI)/efi_vc.c   -o $(BLD)/efi_vc_pe.o
+	lld-link -subsystem:efi_application -entry:efi_main -nodefaultlib \
+	    $(BLD)/efi_main.o $(BLD)/efi_vc_pe.o -out:$(BLD)/preboot.efi
+	@echo "[veracrypt] built $(BLD)/preboot.efi"; file $(BLD)/preboot.efi
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

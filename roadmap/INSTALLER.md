@@ -65,8 +65,9 @@ Implemented now:
   stage2) and the built §H1 Alpine decoy disk image as `decoy-linux.ext4`; the kernel install backend
   refuses to silently fall back to a plain install, writes the encrypted ESP/system/outer GPT, streams
   the preboot ESP, random-fills the decoy system partition and the full outer partition, XTS-encrypts
-  the decoy Linux image into the decoy system partition, and writes decoy/outer/hidden VeraCrypt headers
-  from the selected boot passwords.
+  the decoy Linux image into the decoy system partition, XTS-encrypts the normal installed
+  EpinAnonymOS image into the hidden volume area, and writes decoy/outer/hidden VeraCrypt headers from
+  the selected boot passwords.
 - Installed-state is exposed both in `/config/system.json` as `installed` and as the read-only
   `/system/state/installed` signal. Today this is derived from whether the installed `/install.json`
   boot module was loaded.
@@ -84,10 +85,10 @@ Not implemented in full:
   materialising each as a first-boot identity **object** (Phase 6/10) is not yet wired.
 - Real login password enforcement is not modeled by the kernel user system yet. Usernames/hostnames
   are applied; password hashes are persisted for future auth/encryption consumers.
-- Decoy OS account/password values are captured and persisted, and the staged decoy Linux image is now
-  encrypted into the decoy system partition when Hidden OS is selected. Remaining gaps: per-install
-  regeneration of that image with the user-entered decoy account values, and replacing the EFI
-  `stage2.efi` handoff stub with the real decoy/hidden OS bootloader.
+- Decoy OS account/password values are captured and persisted, and the staged decoy Linux image plus
+  hidden EpinAnonymOS payload are now encrypted into the target disk when Hidden OS is selected.
+  Remaining gaps: per-install regeneration of the decoy image with the user-entered decoy account
+  values, and replacing the EFI `stage2.efi` handoff stub with the real decoy/hidden OS bootloader.
 - The zkSync boot-attestation option is specified only.
 - Full validation from Phase 14 still needs to be rerun on a freshly built install ISO by the operator.
 
@@ -530,8 +531,8 @@ off the boot volume (`EFI_LOADED_IMAGE` → `EFI_SIMPLE_FILE_SYSTEM` → open `\
 → read) and hands off via `LoadImage`/`StartImage`. Proven end-to-end in OVMF — typing
 `decoy-password` runs the whole chain: prompt → unlock → *"chain-loading the OS bootloader…"* →
 **`[stage2] … STAGE2 RUNNING`**. `efi_stage2.c` is still a stand-in for the real decrypted decoy/hidden
-bootloader. The installer now writes the hidden preboot ESP and encrypted decoy Linux image, but a real
-stage2 bootloader remains the E5/H1 handoff gap.
+bootloader. The installer now writes the hidden preboot ESP, encrypted decoy Linux image, and encrypted
+hidden EpinAnonymOS payload, but a real stage2 bootloader remains the E5/H1 handoff gap.
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:
@@ -1105,10 +1106,11 @@ finishes.
   firmware (OVMF)**: a real PE32+ `.efi` (clang PE target, no gnu-efi), self-contained EFI crypto,
   block-IO header reads, decoy/hidden/reject routing, an interactive masked password prompt (validated
   via QMP keystrokes), and `LoadImage`/`StartImage` **chain-load** to the next stage. The installer now
-  stages `esp-hidden-image`, discovers the encrypted GPT layout from EFI, and no longer requires the
-  default `decoy-password` to recognize an installed disk. Remaining: replacing the current stage2
-  handoff stub with the real decoy/hidden OS bootloader, the optional installer page (E6), and the
-  deniability security review (E7).
+  stages `esp-hidden-image`, encrypts the decoy Linux and hidden EpinAnonymOS payloads into the target
+  disk, discovers the encrypted GPT layout from EFI, and no longer requires the default
+  `decoy-password` to recognize an installed disk. Remaining: replacing the current stage2 handoff stub
+  with the real decoy/hidden OS bootloader, the optional installer page (E6), and the deniability
+  security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),

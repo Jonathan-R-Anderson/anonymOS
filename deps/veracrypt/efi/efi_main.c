@@ -83,9 +83,52 @@ static void su_init(void){ outb(0x3F9,0); outb(0x3FB,0x80); outb(0x3F8,1); outb(
 static void sc(char c){ while(!(inb(0x3FD)&0x20)){} outb(0x3F8,(u8)c); if(c=='\n'){ while(!(inb(0x3FD)&0x20)){} outb(0x3F8,'\r'); } }
 static void ss(const char*s){ while(*s) sc(*s++); }
 
-/* §E4b geometry */
-#define SYS_FIRST   (34ULL + 0x20000ULL)
-#define HIDDEN_LBA  (SYS_FIRST + 0x20000ULL + 128ULL)
+#define HIDDEN_HDR_OFFSET 128ULL
+
+static u32 le32(const u8 *p){ return (u32)p[0] | ((u32)p[1]<<8) | ((u32)p[2]<<16) | ((u32)p[3]<<24); }
+static u64 le64(const u8 *p){
+    u64 v=0;
+    for (int i=0;i<8;i++) v |= ((u64)p[i]) << (8*i);
+    return v;
+}
+static int gpt_sig_ok(const u8 *p){
+    static const u8 sig[8] = {'E','F','I',' ','P','A','R','T'};
+    for (int i=0;i<8;i++) if (p[i]!=sig[i]) return 0;
+    return 1;
+}
+static int read_lba(EFI_BLOCK_IO *bio, u64 lba, void *buf){
+    if (!bio || !bio->Media || bio->Media->BlockSize!=512 || lba > bio->Media->LastBlock) return 0;
+    return bio->ReadBlocks(bio, bio->Media->MediaId, lba, 512, buf)==0;
+}
+static int gpt_entry_first(EFI_BLOCK_IO *bio, u64 entry_lba, u32 entsz, u32 idx, u64 *first){
+    u8 sec[512];
+    u64 byte = (u64)idx * entsz;
+    u64 lba = entry_lba + byte / 512;
+    u32 off = (u32)(byte % 512);
+    if (entsz < 128 || off + 48 > 512) return 0;
+    if (!read_lba(bio, lba, sec)) return 0;
+    int nonzero = 0;
+    for (int i=0;i<16;i++) if (sec[off+i]) nonzero = 1;
+    if (!nonzero) return 0;
+    *first = le64(sec + off + 32);
+    return *first != 0;
+}
+static int find_install_layout(EFI_BLOCK_IO *bio, u64 *sys_first, u64 *hidden_lba){
+    u8 h[512];
+    if (!bio || !bio->Media || bio->Media->LogicalPartition || bio->Media->BlockSize!=512) return 0;
+    if (!read_lba(bio, 1, h) || !gpt_sig_ok(h)) return 0;
+    u64 entry_lba = le64(h + 72);
+    u32 num = le32(h + 80);
+    u32 entsz = le32(h + 84);
+    if (entry_lba == 0 || num < 3 || entsz < 128) return 0;
+    u64 sys = 0, outer = 0;
+    if (!gpt_entry_first(bio, entry_lba, entsz, 1, &sys)) return 0;
+    if (!gpt_entry_first(bio, entry_lba, entsz, 2, &outer)) return 0;
+    if (sys > bio->Media->LastBlock || outer + HIDDEN_HDR_OFFSET > bio->Media->LastBlock) return 0;
+    *sys_first = sys;
+    *hidden_lba = outer + HIDDEN_HDR_OFFSET;
+    return 1;
+}
 
 static void try_pw(const char*label,const char*pw,const u8*d,const u8*h){
     u8 key[256];
@@ -156,17 +199,20 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
     for (u64 i=0;i<n;i++){
         EFI_BLOCK_IO *bio=0;
         if (BS->HandleProtocol(handles[i], &BLOCK_IO_GUID, (void**)&bio)!=0 || !bio || !bio->Media) continue;
-        if (bio->Media->BlockSize!=512 || bio->Media->LastBlock < HIDDEN_LBA) continue;
+        u64 sys_first=0, hidden_lba=0;
+        if (!find_install_layout(bio, &sys_first, &hidden_lba)) continue;
         u8 decoy[512], hidden[512], key[256];
-        if (bio->ReadBlocks(bio, bio->Media->MediaId, SYS_FIRST, 512, decoy)!=0) continue;
-        if (bio->ReadBlocks(bio, bio->Media->MediaId, HIDDEN_LBA, 512, hidden)!=0) continue;
-        if (preboot_authenticate("decoy-password", decoy, hidden, key) != PREBOOT_DECOY) continue;
+        if (!read_lba(bio, sys_first, decoy)) continue;
+        if (!read_lba(bio, hidden_lba, hidden)) continue;
 
-        ss("[preboot-efi] install disk found; routing self-test:\n");
-        try_pw("decoy-password ", "decoy-password",  decoy, hidden);
-        try_pw("hidden-password", "hidden-password", decoy, hidden);
-        try_pw("wrong-password ", "not-a-password",  decoy, hidden);
-        ss("[preboot-efi] SELFTEST DONE\n");
+        ss("[preboot-efi] install layout found\n");
+        if (preboot_authenticate("decoy-password", decoy, hidden, key) == PREBOOT_DECOY) {
+            ss("[preboot-efi] routing self-test:\n");
+            try_pw("decoy-password ", "decoy-password",  decoy, hidden);
+            try_pw("hidden-password", "hidden-password", decoy, hidden);
+            try_pw("wrong-password ", "not-a-password",  decoy, hidden);
+            ss("[preboot-efi] SELFTEST DONE\n");
+        }
         interactive(ImageHandle, ST, decoy, hidden);    /* §E5c prompt + §E5d chain-load */
         goto done;
     }

@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest stage-iso-tree hos-install.iso hos-minimal.iso
+.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi hos-install.iso hos-minimal.iso
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -96,6 +96,9 @@ ZSH_BIN := deps/zsh/zsh           # Z1: real upstream zsh (built by deps/zsh/Mak
 DISPLAYINFO_BIN := build/display-info
 GTK_HELLO_BIN := deps/gtk-stack/gtk-hello
 HYPRLAND_BIN := deps/hyprland/Hyprland
+DECOY_IMAGE := deps/decoy-os/build/decoy.ext4
+PREBOOT_EFI := deps/veracrypt/build/preboot.efi
+STAGE2_EFI := deps/veracrypt/build/stage2.efi
 # GW3: Weston (reference Wayland compositor + Pixman software renderer). When
 # WESTON=1 and the binary is built, it is staged as a boot module named "weston"
 # and the kernel selects it as init ahead of Hyprland. Set WESTON=0 to fall back
@@ -131,7 +134,11 @@ veracrypt:
 decoy:
 	+$(MAKE) -C deps/decoy test
 decoy-os:
-	+$(MAKE) -C deps/decoy-os rootfs verify
+	+$(MAKE) -C deps/decoy-os image verify
+$(DECOY_IMAGE):
+	+$(MAKE) -C deps/decoy-os image verify
+veracrypt-efi:
+	+$(MAKE) -C deps/veracrypt efi
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob
@@ -419,7 +426,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -525,6 +532,10 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 	cp $(INSTALLER_BIN) cd/calamares
 	printf '\n    module_path: boot():/calamares\n' >> cd/boot/limine/limine.conf
 	@echo "Included wl-installer as /calamares (INSTALLER D4.1 'Install to Disk' entry; D4.5 stub)"
+
+	cp $(DECOY_IMAGE) cd/decoy-linux.ext4
+	printf '\n    module_path: boot():/decoy-linux.ext4\n' >> cd/boot/limine/limine.conf
+	@echo "Included decoy-linux.ext4 (INSTALLER H1 decoy Linux disk image)"
 
 	@if [ -x "$(RUSTC)" ]; then \
 	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \
@@ -688,7 +699,7 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 # =========================================================
 iso: hos-install.iso
 
-hos-install.iso: stage-iso-tree
+hos-install.iso: stage-iso-tree veracrypt-efi
 	scripts/mk-install-iso.sh
 
 # =========================================================

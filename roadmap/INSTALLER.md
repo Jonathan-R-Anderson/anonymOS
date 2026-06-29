@@ -52,15 +52,21 @@ Implemented now:
   non-secret fields verbatim into the persisted `/install.json`, and first boot
   (`core/install_config.d`) consumes + logs them alongside the account/hostname it already applies.
 - Kernel install backend (`src/kernel/d/drivers/veracrypt_impl.d`) accepts `config <json>` and
-  `install [diskidx]`, writes a GPT + ESP from the staged `esp-image`, persists the captured config
-  into the installed ESP as `/install.json`, and fails instead of reporting 100% if config persistence
-  fails.
+  `install [diskidx]`, writes a GPT + ESP from the staged `esp-image` (or `esp-hidden-image` for
+  Hidden OS), persists the captured config into the installed ESP as `/install.json`, and fails instead
+  of reporting 100% if config persistence fails.
 - First boot consumes installed `/install.json` (`src/kernel/d/core/install_config.d`) and applies the
   OS account name + hostname into the kernel-owned user/hostname views. It also records decoy metadata
   and password-hash presence for later decoy/encryption integration.
 - Plaintext installer passwords are not persisted. The install backend stores SHA-512 hex fields in
   `install.json` (`userPasswordSha512`, `decoyPasswordSha512`, `hiddenPasswordSha512`,
   `outerPasswordSha512`, `decoyBootPasswordSha512`).
+- When **Hidden OS** is selected, the installer ISO carries both `esp-hidden-image` (preboot EFI +
+  stage2) and the built §H1 Alpine decoy disk image as `decoy-linux.ext4`; the kernel install backend
+  refuses to silently fall back to a plain install, writes the encrypted ESP/system/outer GPT, streams
+  the preboot ESP, random-fills the decoy system partition and the full outer partition, XTS-encrypts
+  the decoy Linux image into the decoy system partition, and writes decoy/outer/hidden VeraCrypt headers
+  from the selected boot passwords.
 - Installed-state is exposed both in `/config/system.json` as `installed` and as the read-only
   `/system/state/installed` signal. Today this is derived from whether the installed `/install.json`
   boot module was loaded.
@@ -78,9 +84,10 @@ Not implemented in full:
   materialising each as a first-boot identity **object** (Phase 6/10) is not yet wired.
 - Real login password enforcement is not modeled by the kernel user system yet. Usernames/hostnames
   are applied; password hashes are persisted for future auth/encryption consumers.
-- Decoy OS account/password values are captured and persisted, and the decoy-rootfs build can consume
-  parameterized credentials, but the native installer does not yet stream a freshly parameterized decoy
-  rootfs into an encrypted hidden/decoy layout.
+- Decoy OS account/password values are captured and persisted, and the staged decoy Linux image is now
+  encrypted into the decoy system partition when Hidden OS is selected. Remaining gaps: per-install
+  regeneration of that image with the user-entered decoy account values, and replacing the EFI
+  `stage2.efi` handoff stub with the real decoy/hidden OS bootloader.
 - The zkSync boot-attestation option is specified only.
 - Full validation from Phase 14 still needs to be rerun on a freshly built install ISO by the operator.
 
@@ -315,7 +322,7 @@ prints `true`.
 
 #### Testing the installer in VirtualBox
 ```
-make hos-install.iso                 # the normal boot tree + the esp-image payload (~440 MiB ISO)
+make hos-install.iso                 # boot tree + esp-image + esp-hidden-image + decoy-linux.ext4
 scripts/vbox-install-test.sh         # create a UEFI/x2APIC VM: store + 8G system disks + installer DVD
 scripts/vbox-install-test.sh --start # boot it
   # → desktop → "Install to Disk" → Install; tail the VM serial.log for "[install] DONE"; power off
@@ -522,9 +529,9 @@ freestanding `__chkstk` stack-probe.)
 off the boot volume (`EFI_LOADED_IMAGE` → `EFI_SIMPLE_FILE_SYSTEM` → open `\EFI\anonymos\stage2.efi`
 → read) and hands off via `LoadImage`/`StartImage`. Proven end-to-end in OVMF — typing
 `decoy-password` runs the whole chain: prompt → unlock → *"chain-loading the OS bootloader…"* →
-**`[stage2] … STAGE2 RUNNING`**. `efi_stage2.c` is a stand-in for the real decrypted bootloader, which
-§H1 supplies. **§E5 is complete** (routing, real `.efi`, interactive prompt, chain-load — all in real
-firmware); the only remaining hook is the actual decoy/hidden OS image (§H1 / E4c).
+**`[stage2] … STAGE2 RUNNING`**. `efi_stage2.c` is still a stand-in for the real decrypted decoy/hidden
+bootloader. The installer now writes the hidden preboot ESP and encrypted decoy Linux image, but a real
+stage2 bootloader remains the E5/H1 handoff gap.
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:
@@ -1097,9 +1104,11 @@ finishes.
   (one-shot block-write capability). **E5 DONE — the EFI pre-boot loader works end-to-end in real
   firmware (OVMF)**: a real PE32+ `.efi` (clang PE target, no gnu-efi), self-contained EFI crypto,
   block-IO header reads, decoy/hidden/reject routing, an interactive masked password prompt (validated
-  via QMP keystrokes), and `LoadImage`/`StartImage` **chain-load** to the next stage. Remaining: the
-  real decoy/hidden OS image (E4c rootfs clone, gated on §H1), the optional installer page (E6), and
-  the deniability security review (E7).
+  via QMP keystrokes), and `LoadImage`/`StartImage` **chain-load** to the next stage. The installer now
+  stages `esp-hidden-image`, discovers the encrypted GPT layout from EFI, and no longer requires the
+  default `decoy-password` to recognize an installed disk. Remaining: replacing the current stage2
+  handoff stub with the real decoy/hidden OS bootloader, the optional installer page (E6), and the
+  deniability security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),
@@ -1132,8 +1141,8 @@ finishes.
   **H1 — the decoy distro BUILT** (`deps/decoy-os/`, `make decoy-os`): downloads a real Alpine 3.19
   minirootfs, customizes it into a lived-in workstation (hostname, a real user + home + `.bash_history`
   + notes, an apk package `world`), and **seeds a year of deterministic, password-keyed fake `/var/log`
-  history via §H2** → a 3.6 MB `decoy-rootfs.tar.gz` (`make image` → ext4) for the installer to clone
-  into the encrypted system partition (E4c) and the §E5 loader to chain-load (replacing `stage2.efi`).
+  history via §H2** → `make image` produces `decoy.ext4`, staged in the installer ISO as
+  `decoy-linux.ext4`, for the installer to encrypt into the decoy system partition (E4c).
   Verify PASS: Alpine os-release, busybox+apk, 24 k seeded syslog + 3.4 k auth lines, user, history; the
   seed is reproducible (rootfs `/var/log` == `fakelogd(decoy-password)`).
   **H2 — the Linux fake-log generator BUILT** (`deps/decoy/h2/fakelogd.c`, `make -C deps/decoy h2`):

@@ -553,15 +553,85 @@ __gshared ulong  g_instEspFirst, g_instEspSectors;
 __gshared const(ubyte)* g_instSrc;
 __gshared InstallWriteCap g_instCap;
 private enum size_t INST_CONFIG_MAX = 8192;
+private enum uint INST_SECRET_MAX = 128;
+private enum uint INST_CRYPT_CHUNK = 128;
+private enum ubyte INST_PHASE_ESP = 0;
+private enum ubyte INST_PHASE_SYS_RANDOM = 1;
+private enum ubyte INST_PHASE_OUTER_RANDOM = 2;
+private enum ubyte INST_PHASE_DECOY_IMAGE = 3;
+private enum ubyte INST_PHASE_HIDDEN_IMAGE = 4;
+private enum ubyte INST_PHASE_HEADERS = 5;
+private enum ulong INST_HIDDEN_HDR_OFFSET = 128; // VeraCrypt hidden header, 64 KiB into outer volume.
 __gshared char[INST_CONFIG_MAX] g_instConfig;
 __gshared uint g_instConfigLen;
 __gshared bool g_instConfigPresent;
+__gshared bool g_instConfigHidden;
+__gshared bool g_instHiddenMode;
+__gshared ubyte g_instPhase;
+__gshared ulong g_instProgressDone;
+__gshared char[INST_SECRET_MAX] g_instHiddenPassword;
+__gshared uint g_instHiddenPasswordLen;
+__gshared char[INST_SECRET_MAX] g_instOuterPassword;
+__gshared uint g_instOuterPasswordLen;
+__gshared char[INST_SECRET_MAX] g_instDecoyBootPassword;
+__gshared uint g_instDecoyBootPasswordLen;
+__gshared ulong g_instSysFirst, g_instSysSectors;
+__gshared ulong g_instOuterFirst, g_instOuterSectors;
+__gshared const(ubyte)* g_instDecoyImageSrc;
+__gshared ulong g_instDecoyImageSize;
+__gshared ulong g_instDecoyImageSectors;
+__gshared const(ubyte)* g_instHiddenImageSrc;
+__gshared ulong g_instHiddenImageSize;
+__gshared ulong g_instHiddenImageSectors;
+__gshared ubyte[256] g_instMkD, g_instMkO, g_instMkH;
+__gshared ubyte[64] g_instSaltD, g_instSaltO, g_instSaltH;
+__gshared ubyte[INST_CRYPT_CHUNK * 512] g_instCryptBuf;
 
 @nogc nothrow
 private bool instCtlPrefix(const(char)* cmd, size_t len, string pfx) {
     if (cmd is null || len < pfx.length) return false;
     foreach (i; 0 .. pfx.length) if (cmd[i] != pfx[i]) return false;
     return true;
+}
+
+@nogc nothrow
+private bool instSliceEq(const(char)* s, uint len, string lit) {
+    if (s is null || len != lit.length) return false;
+    foreach (i; 0 .. lit.length) if (s[i] != lit[i]) return false;
+    return true;
+}
+
+@nogc nothrow
+private void instClearTransientPasswords() {
+    foreach (i; 0 .. g_instHiddenPassword.length) g_instHiddenPassword[i] = 0;
+    foreach (i; 0 .. g_instOuterPassword.length) g_instOuterPassword[i] = 0;
+    foreach (i; 0 .. g_instDecoyBootPassword.length) g_instDecoyBootPassword[i] = 0;
+    g_instHiddenPasswordLen = 0;
+    g_instOuterPasswordLen = 0;
+    g_instDecoyBootPasswordLen = 0;
+}
+
+@nogc nothrow
+private void instClearHiddenInstallState() {
+    foreach (i; 0 .. g_instMkD.length) { g_instMkD[i] = 0; g_instMkO[i] = 0; g_instMkH[i] = 0; }
+    foreach (i; 0 .. g_instSaltD.length) { g_instSaltD[i] = 0; g_instSaltO[i] = 0; g_instSaltH[i] = 0; }
+    g_instHiddenMode = false;
+    g_instPhase = INST_PHASE_ESP;
+    g_instProgressDone = 0;
+    g_instSysFirst = 0; g_instSysSectors = 0;
+    g_instOuterFirst = 0; g_instOuterSectors = 0;
+    g_instDecoyImageSrc = null; g_instDecoyImageSize = 0; g_instDecoyImageSectors = 0;
+    g_instHiddenImageSrc = null; g_instHiddenImageSize = 0; g_instHiddenImageSectors = 0;
+}
+
+@nogc nothrow
+private void instStoreSecret(const(char)* val, uint valLen, char[] outBuf, ref uint outLen) {
+    outLen = 0;
+    foreach (i; 0 .. valLen) {
+        if (outLen + 1 >= outBuf.length) break;
+        outBuf[outLen++] = val[i];
+    }
+    if (outLen < outBuf.length) outBuf[outLen] = 0;
 }
 
 @nogc nothrow
@@ -690,6 +760,8 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     char[128] pw; uint pwLen;
     char[129] hash; uint hashLen;
 
+    g_instConfigHidden = false;
+    instClearTransientPasswords();
     g_instConfigLen = 0;
     instCfgAppend("{\n");
     instCfgAppendJsonString("schema".ptr, "epin.install.v1".ptr, cast(uint)"epin.install.v1".length, true);
@@ -730,14 +802,19 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     instHexSha512(pw.ptr, pwLen, hash[], hashLen);
     instCfgAppendJsonString("userPasswordSha512".ptr, hash.ptr, hashLen, true);
     instGetOrDefault(raw, len, "encryption", "none".ptr, encryption[], encryptionLen);
+    g_instConfigHidden = instSliceEq(encryption.ptr, encryptionLen, "Hidden OS") ||
+                         instSliceEq(encryption.ptr, encryptionLen, "hidden");
     instCfgAppendJsonString("encryption".ptr, encryption.ptr, encryptionLen, true);
     instJsonGetString(raw, len, "hiddenPassword", pw[], pwLen);
+    if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instHiddenPassword[], g_instHiddenPasswordLen);
     instHexSha512(pw.ptr, pwLen, hash[], hashLen);
     instCfgAppendJsonString("hiddenPasswordSha512".ptr, hash.ptr, hashLen, true);
     instJsonGetString(raw, len, "outerPassword", pw[], pwLen);
+    if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instOuterPassword[], g_instOuterPasswordLen);
     instHexSha512(pw.ptr, pwLen, hash[], hashLen);
     instCfgAppendJsonString("outerPasswordSha512".ptr, hash.ptr, hashLen, true);
     instJsonGetString(raw, len, "decoyBootPassword", pw[], pwLen);
+    if (g_instConfigHidden) instStoreSecret(pw.ptr, pwLen, g_instDecoyBootPassword[], g_instDecoyBootPasswordLen);
     instHexSha512(pw.ptr, pwLen, hash[], hashLen);
     instCfgAppendJsonString("decoyBootPasswordSha512".ptr, hash.ptr, hashLen, true);
     instGetOrDefault(raw, len, "decoyUser", "decoy".ptr, decoyUser[], decoyUserLen);
@@ -768,6 +845,8 @@ private bool installCaptureConfig(const(char)* json, size_t len) {
 @nogc nothrow
 private void installEnsureDefaultConfig() {
     if (g_instConfigPresent && g_instConfigLen > 0) return;
+    g_instConfigHidden = false;
+    instClearTransientPasswords();
     static immutable string d =
 `{
   "schema": "epin.install.v1",
@@ -928,35 +1007,239 @@ private bool installPersistConfigToEsp() {
     return true;
 }
 
+@nogc nothrow
+private bool installRandomFillCurrentPhase(uint maxSectors, ref uint did) {
+    import core.install_cap : gatedDiskWrite;
+    import core.random : random_get_bytes;
+    enum uint SEC = 512;
+    while (g_instRemaining > 0 && did < maxSectors) {
+        uint n = cast(uint)(g_instRemaining > INST_CRYPT_CHUNK ? INST_CRYPT_CHUNK : g_instRemaining);
+        if (n > maxSectors - did) n = maxSectors - did;
+        if (n == 0) break;
+        random_get_bytes(g_instCryptBuf.ptr, cast(ulong)n * SEC);
+        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, n, g_instCryptBuf.ptr))
+            return false;
+        g_instLba += n;
+        g_instRemaining -= n;
+        g_instProgressDone += n;
+        did += n;
+    }
+    return true;
+}
+
+@nogc nothrow
+private bool installEncryptDecoyImageCurrentPhase(uint maxSectors, ref uint did) {
+    import core.install_cap : gatedDiskWrite;
+    enum uint SEC = 512;
+    ubyte[32] k1, k2;
+    foreach (i; 0 .. 32) { k1[i] = g_instMkD[i]; k2[i] = g_instMkD[32 + i]; }
+
+    while (g_instRemaining > 0 && did < maxSectors) {
+        uint n = cast(uint)(g_instRemaining > INST_CRYPT_CHUNK ? INST_CRYPT_CHUNK : g_instRemaining);
+        if (n > maxSectors - did) n = maxSectors - did;
+        if (n == 0) break;
+        foreach (i; 0 .. cast(size_t)n * SEC) g_instCryptBuf[i] = 0;
+        const ulong sector = g_instOff / SEC;
+        const ulong byteOff = sector * SEC;
+        ulong bytesLeft = g_instDecoyImageSize > byteOff ? g_instDecoyImageSize - byteOff : 0;
+        ulong copyBytes = bytesLeft < cast(ulong)n * SEC ? bytesLeft : cast(ulong)n * SEC;
+        foreach (i; 0 .. cast(size_t)copyBytes)
+            g_instCryptBuf[i] = g_instDecoyImageSrc[cast(size_t)byteOff + i];
+        foreach (s; 0 .. n)
+            xts_encrypt_sector(g_instCryptBuf.ptr + cast(size_t)s * SEC, SEC, sector + s, k1.ptr, k2.ptr);
+        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, n, g_instCryptBuf.ptr))
+            return false;
+        g_instLba += n;
+        g_instOff += cast(ulong)n * SEC;
+        g_instRemaining -= n;
+        g_instProgressDone += n;
+        did += n;
+    }
+    return true;
+}
+
+@nogc nothrow
+private void installEnterHiddenPhase(ubyte phase) {
+    g_instPhase = phase;
+    g_instOff = 0;
+    switch (phase) {
+    case INST_PHASE_SYS_RANDOM:
+        g_instLba = g_instSysFirst;
+        g_instRemaining = g_instSysSectors;
+        klog("[install] Hidden OS: randomizing encrypted decoy system partition\n");
+        break;
+    case INST_PHASE_OUTER_RANDOM:
+        g_instLba = g_instOuterFirst;
+        g_instRemaining = g_instOuterSectors;
+        klog("[install] Hidden OS: randomizing full outer volume partition\n");
+        break;
+    case INST_PHASE_DECOY_IMAGE:
+        g_instLba = g_instSysFirst + 1;
+        g_instRemaining = g_instDecoyImageSectors;
+        klog("[install] Hidden OS: writing encrypted decoy Linux image\n");
+        break;
+    case INST_PHASE_HEADERS:
+        g_instLba = 0;
+        g_instRemaining = 0;
+        break;
+    case INST_PHASE_ESP:
+        break;
+    default:
+        break;
+    }
+}
+
+@nogc nothrow
+private bool installWriteHiddenHeaders() {
+    import core.install_cap : gatedDiskWrite;
+    enum uint SEC = 512;
+    enum ulong HIDDEN_HDR_OFFSET = 128; // VeraCrypt hidden header, 64 KiB into outer volume.
+
+    if (!g_instHiddenMode) return true;
+    if (g_instDecoyImageSrc is null || g_instDecoyImageSize == 0) {
+        klog("[install] FAIL: Hidden OS selected but decoy Linux image module is missing\n");
+        return false;
+    }
+    if (g_instHiddenPasswordLen == 0 || g_instOuterPasswordLen == 0 || g_instDecoyBootPasswordLen == 0) {
+        klog("[install] FAIL: Hidden OS selected without all boot-volume passwords\n");
+        return false;
+    }
+    if (g_instDecoyImageSectors == 0 || g_instDecoyImageSectors + 1 > g_instSysSectors) {
+        klog("[install] FAIL: decoy Linux image does not fit encrypted system partition\n");
+        return false;
+    }
+    if (g_instOuterSectors <= HIDDEN_HDR_OFFSET + 1) {
+        klog("[install] FAIL: outer partition too small for hidden header\n");
+        return false;
+    }
+
+    const ulong sysBytes = g_instSysSectors * SEC;
+    const ulong outerBytes = g_instOuterSectors * SEC;
+    ulong hiddenBytes = (256UL << 20);
+    const ulong maxHiddenBytes = (g_instOuterSectors - HIDDEN_HDR_OFFSET) * SEC;
+    if (hiddenBytes > maxHiddenBytes) hiddenBytes = maxHiddenBytes / 2;
+    if (hiddenBytes < SEC) hiddenBytes = SEC;
+
+    ubyte[512] hdr;
+    create_veracrypt_header(g_instDecoyBootPassword.ptr, g_instDecoyBootPasswordLen,
+                            g_instSaltD.ptr, g_instMkD.ptr, 0, sysBytes, SEC, sysBytes, hdr.ptr);
+    if (!gatedDiskWrite(g_instCap, g_instIdx, g_instSysFirst, 1, hdr.ptr)) {
+        klog("[install] FAIL: writing decoy system header\n");
+        return false;
+    }
+    g_instProgressDone++;
+
+    create_veracrypt_header(g_instOuterPassword.ptr, g_instOuterPasswordLen,
+                            g_instSaltO.ptr, g_instMkO.ptr, hiddenBytes, outerBytes, SEC, outerBytes, hdr.ptr);
+    if (!gatedDiskWrite(g_instCap, g_instIdx, g_instOuterFirst, 1, hdr.ptr)) {
+        klog("[install] FAIL: writing outer volume header\n");
+        return false;
+    }
+    g_instProgressDone++;
+
+    create_veracrypt_header(g_instHiddenPassword.ptr, g_instHiddenPasswordLen,
+                            g_instSaltH.ptr, g_instMkH.ptr, 0, hiddenBytes, SEC, hiddenBytes, hdr.ptr);
+    if (!gatedDiskWrite(g_instCap, g_instIdx, g_instOuterFirst + HIDDEN_HDR_OFFSET, 1, hdr.ptr)) {
+        klog("[install] FAIL: writing hidden volume header\n");
+        return false;
+    }
+    g_instProgressDone++;
+
+    klog("[install] Hidden OS layout written: decoy Linux sectors=0x"); klog_hex(g_instDecoyImageSectors);
+    klog(" sys=0x"); klog_hex(g_instSysFirst);
+    klog(" outer=0x"); klog_hex(g_instOuterFirst);
+    klog(" hidden=0x"); klog_hex(g_instOuterFirst + HIDDEN_HDR_OFFSET);
+    klog("\n");
+    return true;
+}
+
 // Start an install of the esp-image payload to disk `idx` (dsec sectors): write the GPT, set
 // up the streaming state.  Returns false (and does nothing) if no payload / disk too small.
 @nogc nothrow
 public bool installBegin(int idx, ulong dsec) {
-    import core.diskpart : GptLayout, gptWriteBootableEsp;
+    import core.diskpart : GptLayout, gptWriteBootableEsp, gptWriteEncryptedToDisk;
     import core.install_cap : mintInstallWriteCap, revokeInstallWriteCap;
     import core.exports : phys_to_virt;
+    import core.random : random_get_bytes;
     enum uint SEC = 512;
     if (g_instActive) return true;                       // already running
 
+    const bool hidden = g_instConfigHidden;
+    const string espModule = hidden ? "esp-hidden-image" : "esp-image";
     ulong phys, size;
-    if (!instFindModule("esp-image", phys, size)) {
-        klog("[install] no esp-image boot module (build an INSTALL ISO)\n"); return false;
+    if (!instFindModule(espModule, phys, size)) {
+        if (hidden)
+            klog("[install] no esp-hidden-image boot module (build an INSTALL ISO)\n");
+        else
+            klog("[install] no esp-image boot module (build an INSTALL ISO)\n");
+        return false;
+    }
+    ulong decoyPhys = 0, decoySize = 0;
+    if (hidden) {
+        if (!instFindModule("decoy-linux.ext4", decoyPhys, decoySize)) {
+            klog("[install] FAIL: Hidden OS selected but decoy-linux.ext4 is not staged\n");
+            return false;
+        }
+        if (g_instHiddenPasswordLen == 0 || g_instOuterPasswordLen == 0 || g_instDecoyBootPasswordLen == 0) {
+            klog("[install] FAIL: Hidden OS selected but boot-volume passwords are incomplete\n");
+            return false;
+        }
     }
     const ulong espSectors = (size + SEC - 1) / SEC;
-    if (dsec < espSectors + 2048 + 64) { klog("[install] FAIL: target disk too small\n"); return false; }
+    const ulong decoyImageSectors = hidden ? ((decoySize + SEC - 1) / SEC) : 0;
+    ulong sysSectors = VC_INSTALL_SYS_SECTORS;
+    if (hidden && sysSectors < decoyImageSectors + 4096)
+        sysSectors = decoyImageSectors + 4096;
+    if (!hidden && dsec < espSectors + 2048 + 64) { klog("[install] FAIL: target disk too small\n"); return false; }
     klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
     klog("B sectors=0x"); klog_hex(espSectors); klog("\n");
 
+    if (hidden) {
+        random_get_bytes(g_instMkD.ptr, cast(ulong)g_instMkD.length);
+        random_get_bytes(g_instMkO.ptr, cast(ulong)g_instMkO.length);
+        random_get_bytes(g_instMkH.ptr, cast(ulong)g_instMkH.length);
+        random_get_bytes(g_instSaltD.ptr, cast(ulong)g_instSaltD.length);
+        random_get_bytes(g_instSaltO.ptr, cast(ulong)g_instSaltO.length);
+        random_get_bytes(g_instSaltH.ptr, cast(ulong)g_instSaltH.length);
+    }
+
     g_instCap = mintInstallWriteCap(idx);
     GptLayout L;
-    if (!gptWriteBootableEsp(idx, dsec, espSectors, L)) {
-        klog("[install] FAIL (gpt)\n"); revokeInstallWriteCap(g_instCap); g_instFailed = true; return false;
+    bool gptOk;
+    if (hidden)
+        gptOk = gptWriteEncryptedToDisk(idx, dsec, espSectors, sysSectors, L);
+    else
+        gptOk = gptWriteBootableEsp(idx, dsec, espSectors, L);
+    if (!gptOk) {
+        klog("[install] FAIL (gpt)\n");
+        revokeInstallWriteCap(g_instCap);
+        instClearTransientPasswords();
+        instClearHiddenInstallState();
+        g_instFailed = true;
+        return false;
     }
     g_instIdx = idx; g_instSrc = cast(const(ubyte)*) phys_to_virt(phys);
     g_instEspFirst = L.espFirst; g_instEspSectors = espSectors;
-    g_instLba = L.espFirst; g_instRemaining = espSectors; g_instTotal = espSectors; g_instOff = 0;
+    g_instHiddenMode = hidden;
+    g_instPhase = INST_PHASE_ESP;
+    g_instProgressDone = 0;
+    g_instSysFirst = L.sysFirst; g_instSysSectors = hidden ? (L.sysLast - L.sysFirst + 1) : 0;
+    g_instOuterFirst = L.outerFirst; g_instOuterSectors = hidden ? (L.outerLast - L.outerFirst + 1) : 0;
+    g_instDecoyImageSrc = hidden ? cast(const(ubyte)*) phys_to_virt(decoyPhys) : null;
+    g_instDecoyImageSize = hidden ? decoySize : 0;
+    g_instDecoyImageSectors = decoyImageSectors;
+    g_instLba = L.espFirst; g_instRemaining = espSectors;
+    g_instTotal = hidden ? (espSectors + g_instSysSectors + g_instOuterSectors + decoyImageSectors + 3) : espSectors;
+    g_instOff = 0;
     g_instActive = true; g_instDone = false; g_instFailed = false;
-    klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; streaming image\n");
+    if (hidden) {
+        klog("[install] encrypted Hidden OS GPT written; ESP @lba=0x"); klog_hex(L.espFirst);
+        klog(" sys=0x"); klog_hex(L.sysFirst);
+        klog(" outer=0x"); klog_hex(L.outerFirst);
+        klog("; streaming hidden ESP, then encrypted decoy Linux + outer volume\n");
+    } else {
+        klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; streaming image\n");
+    }
     return true;
 }
 
@@ -967,24 +1250,96 @@ public void installStep(uint maxSectors) {
     enum uint SEC = 512;
     if (!g_instActive) return;
     uint did = 0;
-    while (g_instRemaining > 0 && did < maxSectors) {
-        uint chunk = cast(uint)(g_instRemaining > 128 ? 128 : g_instRemaining);
-        if (chunk > maxSectors - did) chunk = maxSectors - did;
-        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, g_instSrc + g_instOff)) {
-            klog("[install] FAIL (write @lba=0x"); klog_hex(g_instLba); klog(")\n");
-            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true; return;
-        }
-        g_instLba += chunk; g_instOff += cast(ulong)chunk * SEC; g_instRemaining -= chunk; did += chunk;
-    }
-    if (g_instRemaining == 0) {
-        if (!installPersistConfigToEsp()) {
-            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
-            klog("[install] FAIL (persist install config)\n");
+    while (g_instActive && did < maxSectors) {
+        if (g_instPhase == INST_PHASE_ESP) {
+            while (g_instRemaining > 0 && did < maxSectors) {
+                uint chunk = cast(uint)(g_instRemaining > 128 ? 128 : g_instRemaining);
+                if (chunk > maxSectors - did) chunk = maxSectors - did;
+                if (chunk == 0) break;
+                if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, g_instSrc + g_instOff)) {
+                    klog("[install] FAIL (write @lba=0x"); klog_hex(g_instLba); klog(")\n");
+                    revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                    instClearTransientPasswords(); instClearHiddenInstallState();
+                    return;
+                }
+                g_instLba += chunk;
+                g_instOff += cast(ulong)chunk * SEC;
+                g_instRemaining -= chunk;
+                g_instProgressDone += chunk;
+                did += chunk;
+            }
+            if (g_instRemaining != 0) break;
+            if (g_instHiddenMode) {
+                installEnterHiddenPhase(INST_PHASE_SYS_RANDOM);
+                continue;
+            }
+            if (!installPersistConfigToEsp()) {
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] FAIL (persist install config)\n");
+                return;
+            }
+            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
+            instClearTransientPasswords(); instClearHiddenInstallState();
+            klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
+            klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
             return;
         }
-        revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
-        klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
-        klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
+
+        if (g_instPhase == INST_PHASE_SYS_RANDOM || g_instPhase == INST_PHASE_OUTER_RANDOM) {
+            if (!installRandomFillCurrentPhase(maxSectors, did)) {
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                if (g_instPhase == INST_PHASE_SYS_RANDOM)
+                    klog("[install] FAIL: randomizing encrypted decoy system partition\n");
+                else
+                    klog("[install] FAIL: randomizing full outer volume partition\n");
+                return;
+            }
+            if (g_instRemaining != 0) break;
+            if (g_instPhase == INST_PHASE_SYS_RANDOM)
+                installEnterHiddenPhase(INST_PHASE_OUTER_RANDOM);
+            else
+                installEnterHiddenPhase(INST_PHASE_DECOY_IMAGE);
+            continue;
+        }
+
+        if (g_instPhase == INST_PHASE_DECOY_IMAGE) {
+            if (!installEncryptDecoyImageCurrentPhase(maxSectors, did)) {
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] FAIL: writing encrypted decoy Linux image\n");
+                return;
+            }
+            if (g_instRemaining != 0) break;
+            installEnterHiddenPhase(INST_PHASE_HEADERS);
+            continue;
+        }
+
+        if (g_instPhase == INST_PHASE_HEADERS) {
+            if (!installWriteHiddenHeaders()) {
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] FAIL (write hidden/decoy headers)\n");
+                return;
+            }
+            if (!installPersistConfigToEsp()) {
+                revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+                instClearTransientPasswords(); instClearHiddenInstallState();
+                klog("[install] FAIL (persist install config)\n");
+                return;
+            }
+            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
+            instClearTransientPasswords(); instClearHiddenInstallState();
+            klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
+            klog(" (Hidden OS selected: preboot ESP + encrypted decoy Linux + outer/hidden headers were written)\n");
+            return;
+        }
+
+        klog("[install] FAIL: invalid install phase\n");
+        revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+        instClearTransientPasswords(); instClearHiddenInstallState();
+        return;
     }
 }
 
@@ -993,7 +1348,9 @@ public void installStep(uint maxSectors) {
 public uint installProgressPermille() {
     if (g_instDone) return 1000;
     if (g_instFailed || !g_instActive || g_instTotal == 0) return 0;
-    return cast(uint)(((g_instTotal - g_instRemaining) * 1000UL) / g_instTotal);
+    ulong done = g_instProgressDone;
+    if (done > g_instTotal) done = g_instTotal;
+    return cast(uint)((done * 1000UL) / g_instTotal);
 }
 
 // Synchronous full install (direct/headless callers).

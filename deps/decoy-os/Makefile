@@ -2,8 +2,8 @@
 #
 # The decoy OS is a REAL Linux distro (Alpine) so it's maximally believable, customized
 # into a lived-in workstation and seeded with the §G/§H2 deterministic fake history. The
-# resulting rootfs tarball is what the installer (E4c) clones into the encrypted system
-# partition + the EFI loader (§E5) chain-loads (replacing the stage2.efi stub).
+# resulting rootfs can be packed into decoy.ext4, which the installer encrypts into
+# the decoy system partition when Hidden OS is selected.
 SELF := $(abspath .)
 BLD  := $(SELF)/build
 DL   := $(SELF)/dl
@@ -46,7 +46,7 @@ $(BLD)/decoy-rootfs.tar.gz: $(DL)/$(MINIROOT) $(BLD)/fakelogd customize.sh | $(B
 	  tar -czf $@ -C $(ROOTFS) .'
 	@echo "[decoy-os] built $@ ($$(du -h $@ | cut -f1)), seeded with the §H2 fake history"
 
-# pack the rootfs into an ext4 image for the installer (E4c clones this into the system part.)
+# Pack the rootfs into an ext4 image for the installer to encrypt into the decoy system partition.
 image: rootfs
 	@rm -f $(BLD)/decoy.ext4
 	fakeroot -i $(BLD)/fakeroot.db sh -c 'dd if=/dev/zero of=$(BLD)/decoy.ext4 bs=1M count=256 status=none && \

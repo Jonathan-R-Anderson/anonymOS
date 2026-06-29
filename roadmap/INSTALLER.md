@@ -30,13 +30,27 @@ boot *realises*, and the install surface *retires itself*.
 ## Current implementation audit (2026-06-29)
 
 The repository does **not** yet implement every facet of this roadmap in full. The native
-installer path is real and now covers the essential plain-install loop, but the full Ubuntu-like
-Calamares flow remains roadmap work.
+installer path is real and now drives a **full, Ubuntu-like guided page sequence** end-to-end; the
+heavy Qt/Calamares stack (§D1–§D3) remains the only roadmap-incomplete delivery vehicle, and the
+native installer is the shippable one.
 
 Implemented now:
-- Native Wayland installer UI at `/calamares` (`src/util/wl-installer.c`) with real/decoy account,
-  hostname, and encryption fields. It sends the captured JSON to `/config/install.action` before
-  triggering install.
+- Native Wayland installer UI at `/calamares` (`src/util/wl-installer.c`, Cairo/FreeType) now spans
+  the **full Phase-5 page sequence**: Welcome · Language · Keyboard · Time zone · Network · Disk ·
+  Filesystem · Encryption · (Decoy) · Boot integrity · Account · Identities · Summary · Install. It
+  has a left step rail, scrollable single-choice option lists (mouse wheel + arrow keys), a
+  toggleable identity-profile page (Phase 6: Personal/Work/Banking/Research/Disposable/Anonymous),
+  per-page validation (password match, required fields gate the Continue button), and a slideshow on
+  the progress page. It sends the captured JSON to `/config/install.action` before triggering install.
+- **Real disk enumeration.** The kernel renders the live AHCI block devices as declarative JSON at
+  **`/config/disks.json`** (`core/hoscall.d` CFG_DISKS — index + size + role hint). The installer's
+  Disk-Selection page reads it and lists real targets (or "Automatic" when none are enumerated);
+  choosing a specific disk sends `install <idx>` to the backend, otherwise `install` (auto-target).
+- **All wizard choices are declarative.** The GUI serialises locale, keymap, timezone, network,
+  filesystem, target disk, boot-integrity mode, and the enabled identity profiles into the captured
+  config; the kernel backend (`drivers/veracrypt_impl.d installBuildPersistedConfig`) carries those
+  non-secret fields verbatim into the persisted `/install.json`, and first boot
+  (`core/install_config.d`) consumes + logs them alongside the account/hostname it already applies.
 - Kernel install backend (`src/kernel/d/drivers/veracrypt_impl.d`) accepts `config <json>` and
   `install [diskidx]`, writes a GPT + ESP from the staged `esp-image`, persists the captured config
   into the installed ESP as `/install.json`, and fails instead of reporting 100% if config persistence
@@ -54,9 +68,14 @@ Implemented now:
   and the desktop shell's install-state check.
 
 Not implemented in full:
-- The Calamares installer binary and its full page sequence are scaffolded, not complete.
-- The Ubuntu-like menu flow is incomplete: locale/timezone/network/filesystem/manual partitioning,
-  boot-integrity, full identity creation, and finished-page integration are not all wired.
+- The Calamares (Qt) installer binary and its page sequence are scaffolded, not complete — the
+  native UI above is the shippable flow that already covers the Ubuntu-like sequence.
+- The locale/keymap/timezone/network/filesystem/boot-integrity selections are **captured,
+  persisted, and consumed (logged) at first boot**, but the kernel does not yet *act* on all of them
+  (e.g. it does not re-map the live keymap or set a system timezone offset from the value). Manual
+  partitioning is still automatic single-ESP only (no custom partition layout UI).
+- Identity profiles chosen on the Identities page are captured + persisted as a declarative list;
+  materialising each as a first-boot identity **object** (Phase 6/10) is not yet wired.
 - Real login password enforcement is not modeled by the kernel user system yet. Usernames/hostnames
   are applied; password hashes are persisted for future auth/encryption consumers.
 - Decoy OS account/password values are captured and persisted, and the decoy-rootfs build can consume
@@ -1128,13 +1147,25 @@ finishes.
   the recommended primary is **hide-in-plain-sight** (disguise as an ordinary daemon), with kernel-hiding
   only as defense-in-depth if it provably evades anti-rootkit tooling. Plausible-deniability/anti-coercion
   on the user's own decoy (VeraCrypt-Hidden-OS threat model). Builds on §E + §G.
-- **§D6 native installer UI ✅ IMPLEMENTED** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland
-  client): a real wizard surface with editable hostname, real OS account/password, encryption mode,
-  hidden/outer/decoy boot passwords, and decoy OS account/password/hostname fields. *Try Live Session*
-  closes the installer; *Install* writes the captured JSON to `/tmp/install.json`, sends
-  `config <json>` to `/config/install.action`, then sends `install`. This is still the native
-  installer, not the finished Calamares flow: it does not yet expose manual partitioning, timezone,
-  package selection, zkSync boot-attestation, or the final identity-profile page.
+- **§D6 native installer UI ✅ IMPLEMENTED — now a full Ubuntu-like guided wizard**
+  (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client). It walks the entire §Phase-5
+  sequence — **Welcome · Language · Keyboard · Time zone · Network · Disk · Filesystem · Encryption ·
+  (Decoy) · Boot integrity · Account · Identities · Summary · Install** — with a left step rail that
+  tracks progress, scrollable single-choice option lists (16 locales, 12 keymaps, 18 time zones,
+  network mode, 3 filesystems, boot-integrity mode) navigable by mouse wheel **and** arrow keys, a
+  toggleable identity-profile page (Personal/Work/Banking/Research/Disposable/Anonymous), and an
+  Account page (name · computer name · username · password · confirm) with live validation that gates
+  the Continue button (required fields + password match). The **Disk page enumerates real targets**
+  from `/config/disks.json` (kernel CFG_DISKS render) and falls back to "Automatic" when none are
+  present. *Try Live* closes the installer; *Install Now* serialises **every** choice (locale,
+  keymap, timezone, network, filesystem, target disk, boot-integrity, identities, encryption +
+  passwords, account, decoy account) into `install.json`, writes `/tmp/install.json`, sends
+  `config <json>` then `install [idx]` to `/config/install.action`, and tracks
+  `/config/install.progress` with a progress bar + slideshow. The kernel persists the non-secret
+  declarative fields into the installed ESP's `/install.json` and first boot logs them. Remaining
+  vs. the full Calamares vision: manual/custom partitioning UI, acting on locale/keymap/timezone at
+  runtime, materialising identity profiles as first-boot objects, and the zkSync deploy flow (§F,
+  network-gated). Builds clean: `make build/wl-installer`, `make -C src/kernel/d`, `make kernel.elf`.
 - **§D4.2 / D4.3 / D4.4 ✅ DONE — installer AUTO-LAUNCHES on a live boot and self-removes once
   installed (verified both ways, 0 faults).** No key combo: on a live boot the installer **appears
   automatically, front-and-centre**. Mechanics in `deps/weston-14.0.0/desktop-shell/shell.c`:

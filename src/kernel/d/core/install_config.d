@@ -39,6 +39,16 @@ __gshared char[IC_FIELD_MAX] g_icHostname;
 __gshared uint g_icHostnameLen;
 __gshared char[IC_FIELD_MAX] g_icEncryption;
 __gshared uint g_icEncryptionLen;
+__gshared char[IC_FIELD_MAX] g_icLocale;
+__gshared uint g_icLocaleLen;
+__gshared char[IC_FIELD_MAX] g_icKeymap;
+__gshared uint g_icKeymapLen;
+__gshared char[IC_FIELD_MAX] g_icTimezone;
+__gshared uint g_icTimezoneLen;
+__gshared char[IC_FIELD_MAX] g_icFilesystem;
+__gshared uint g_icFilesystemLen;
+__gshared char[IC_FIELD_MAX] g_icIdentities;
+__gshared uint g_icIdentitiesLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyUser;
 __gshared uint g_icDecoyUserLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyFullName;
@@ -168,6 +178,11 @@ public bool installConfigApply() {
     }
 
     icJsonGetString("encryption", g_icEncryption[], g_icEncryptionLen);
+    icJsonGetString("locale", g_icLocale[], g_icLocaleLen);
+    icJsonGetString("keymap", g_icKeymap[], g_icKeymapLen);
+    icJsonGetString("timezone", g_icTimezone[], g_icTimezoneLen);
+    icJsonGetString("filesystem", g_icFilesystem[], g_icFilesystemLen);
+    icJsonGetString("identities", g_icIdentities[], g_icIdentitiesLen);
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
     icJsonGetString("decoyHostname", g_icDecoyHostname[], g_icDecoyHostnameLen);
@@ -188,6 +203,15 @@ public bool installConfigApply() {
     if (hostOk) icLogSlice(g_icHostname.ptr, g_icHostnameLen); else klog("(default)".ptr);
     klog(" encryption=");
     if (g_icEncryptionLen > 0) icLogSlice(g_icEncryption.ptr, g_icEncryptionLen); else klog("none".ptr);
+    klog(" locale=");
+    if (g_icLocaleLen > 0) icLogSlice(g_icLocale.ptr, g_icLocaleLen); else klog("(default)".ptr);
+    klog(" keymap=");
+    if (g_icKeymapLen > 0) icLogSlice(g_icKeymap.ptr, g_icKeymapLen); else klog("(default)".ptr);
+    klog(" timezone=");
+    if (g_icTimezoneLen > 0) icLogSlice(g_icTimezone.ptr, g_icTimezoneLen); else klog("(default)".ptr);
+    klog(" filesystem=");
+    if (g_icFilesystemLen > 0) icLogSlice(g_icFilesystem.ptr, g_icFilesystemLen); else klog("(default)".ptr);
+    if (g_icIdentitiesLen > 0) { klog(" identities="); icLogSlice(g_icIdentities.ptr, g_icIdentitiesLen); }
     if (g_icDecoyUserLen > 0 || g_icDecoyHostnameLen > 0) {
         klog(" decoy=");
         if (g_icDecoyUserLen > 0) icLogSlice(g_icDecoyUser.ptr, g_icDecoyUserLen);

@@ -514,10 +514,10 @@ public long objfsRead(int kind, const(char)* objName, size_t objLen, char* buf, 
 // object tables.  Read-only for now; the mutable ones become writable via the
 // identity policyEpoch transaction path (F2 phase 2).  /etc becomes a view of this.
 enum int CFG_NONE = 0, CFG_SYSTEM = 1, CFG_IDENTITIES = 2, CFG_USERS = 3, CFG_SERVICES = 4,
-         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7;
+         CFG_DOMAINS = 5, CFG_PACKAGES = 6, CFG_TEMPLATES = 7, CFG_DISKS = 8;
 
-private immutable string[7] g_configFiles =
-    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json"];
+private immutable string[8] g_configFiles =
+    ["system.json", "identities.json", "users.json", "services.json", "domains.json", "packages.json", "templates.json", "disks.json"];
 
 // "<name>.json" -> config id (0 = not a config file).
 public int configfsId(const(char)* name, size_t len) {
@@ -693,6 +693,28 @@ public long configfsRender(int id, char* buf, size_t buflen) {
                 lit(b, " }");
             }
             lit(b, "\n]\n");
+            return cast(long)b.len;
+        }
+        case CFG_DISKS: {
+            // INSTALLER §D2(b): the live block devices as declarative JSON so the
+            // installer GUI's Disk-Selection page can enumerate REAL install targets
+            // (index + size + a role hint).  Read-only; the kernel owns block I/O, so
+            // the GUI never touches raw devices — it just chooses an index to install to.
+            import drivers.block.ahci : g_ahciDevices;
+            import drivers.block.disk : diskStoreIndex;
+            ulong storeSec = 0;
+            const int storeIdx = diskStoreIndex(storeSec);
+            lit(b, "{ \"disks\": [\n"); bool first = true;
+            foreach (uint i; 0 .. cast(uint)g_ahciDevices.length) {
+                auto d = g_ahciDevices[i];
+                if (!d.present || d.type != 1 || d.capacity == 0) continue; // SATA data disks only
+                if (!first) lit(b, ",\n"); first = false;
+                lit(b, "  { \"index\": ");  num(b, i);
+                lit(b, ", \"sizeMiB\": ");  num(b, d.capacity / (1024UL * 1024UL));
+                lit(b, ", \"role\": \"");   lit(b, (cast(int)i == storeIdx) ? "store" : "target"); put(b, '"');
+                lit(b, " }");
+            }
+            lit(b, "\n] }\n");
             return cast(long)b.len;
         }
         default: return -2; // ENOENT

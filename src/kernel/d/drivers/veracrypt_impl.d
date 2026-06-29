@@ -697,6 +697,35 @@ private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
     instCfgAppendJsonString("hostname".ptr, hostname.ptr, hostnameLen, true);
     instGetOrDefault(raw, len, "user", "user".ptr, user[], userLen);
     instCfgAppendJsonString("user".ptr, user.ptr, userLen, true);
+
+    // INSTALLER §Phase5/Phase7: carry the declarative, non-secret wizard selections through
+    // into the persisted /install.json so first boot consumes them (locale/keyboard/timezone/
+    // network/filesystem/target-disk/boot-integrity/identities).  These never hold secrets, so
+    // they are stored verbatim (unlike the password fields, which are hashed below).
+    {
+        char[160] v; uint vl;
+        instGetOrDefault(raw, len, "userFullName", "".ptr, v[], vl);
+        instCfgAppendJsonString("userFullName".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "locale", "en_US".ptr, v[], vl);
+        instCfgAppendJsonString("locale".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "localeName", "English (US)".ptr, v[], vl);
+        instCfgAppendJsonString("localeName".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "keymap", "us".ptr, v[], vl);
+        instCfgAppendJsonString("keymap".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "timezone", "UTC".ptr, v[], vl);
+        instCfgAppendJsonString("timezone".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "network", "offline".ptr, v[], vl);
+        instCfgAppendJsonString("network".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "filesystem", "ext4".ptr, v[], vl);
+        instCfgAppendJsonString("filesystem".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "targetDisk", "auto".ptr, v[], vl);
+        instCfgAppendJsonString("targetDisk".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "bootIntegrity", "off".ptr, v[], vl);
+        instCfgAppendJsonString("bootIntegrity".ptr, v.ptr, vl, true);
+        instGetOrDefault(raw, len, "identities", "".ptr, v[], vl);
+        instCfgAppendJsonString("identities".ptr, v.ptr, vl, true);
+    }
+
     instJsonGetString(raw, len, "userPassword", pw[], pwLen);
     instHexSha512(pw.ptr, pwLen, hash[], hashLen);
     instCfgAppendJsonString("userPasswordSha512".ptr, hash.ptr, hashLen, true);
@@ -744,6 +773,16 @@ private void installEnsureDefaultConfig() {
   "schema": "epin.install.v1",
   "hostname": "epin",
   "user": "user",
+  "userFullName": "",
+  "locale": "en_US",
+  "localeName": "English (US)",
+  "keymap": "us",
+  "timezone": "UTC",
+  "network": "offline",
+  "filesystem": "ext4",
+  "targetDisk": "auto",
+  "bootIntegrity": "off",
+  "identities": "",
   "userPasswordSha512": "",
   "encryption": "none",
   "hiddenPasswordSha512": "",

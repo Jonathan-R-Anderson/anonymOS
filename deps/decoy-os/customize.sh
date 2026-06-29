@@ -10,7 +10,7 @@
 set -e
 ROOTFS="$1"; FAKELOGD="$2"; PW="$3"
 U="${DECOY_USER:-decoyuser}"
-FULL="${DECOY_USER_FULLNAME:-Decoy User}"
+FULL="${DECOY_USER_FULLNAME:-$U}"   # default GECOS = username (never "Decoy User", §H4)
 HN="${DECOY_HOSTNAME:-helix}"
 HOME_DIR="/home/$U"
 
@@ -70,12 +70,16 @@ NOW="${DECOY_NOW:-$(date +%s)}"
 mkdir -p "$ROOTFS/var/log"
 "$FAKELOGD" "$PW" --root "$ROOTFS" --now "$NOW" --user "$U" --hostname "$HN" >/dev/null
 
-# coherent file mtimes within the recent window (§E7/F3), recorded epoch for the live daemon
+# coherent file mtimes within the recent window (§E7/F3)
 RECENT=$((NOW - 2*86400))
 for fpath in "$ROOTFS$HOME_DIR/.bash_history" "$ROOTFS$HOME_DIR/Documents/notes.txt" \
              "$ROOTFS$HOME_DIR/.profile" "$ROOTFS$HOME_DIR"; do
   touch -d "@$RECENT" "$fpath" 2>/dev/null || true
 done
-echo "$NOW" > "$ROOTFS/etc/.decoy-epoch"
 
+# §H4 hide-in-plain-sight: the generator (fakelogd) is a BUILD-TIME tool — it runs here on
+# the installer side and is NEVER shipped into the decoy. No resident process, binary, cron,
+# or "*decoy*" file remains; the decoy's go-forward logs come from the REAL Alpine daemons
+# (sshd/crond/…) once booted. So there is nothing inside the decoy to find that manufactures
+# the history — which is stronger deniability than a detectable kernel-hidden process.
 echo "$(head -c16 /dev/zero | tr '\0' '0')" > "$ROOTFS/etc/machine-id" 2>/dev/null || true

@@ -127,12 +127,18 @@ hidden volume (the overlapping writes are refused), writes elsewhere land (the d
 disk), and reads pass through (the hidden OS accesses it normally). *Remaining:* package this logic as
 the actual Linux **dm-target kernel module** (the integration, like §H2's program vs the renderer).
 
-### F6 — Generator concealment not built (§H4)  ·  **GAP**
-The §H2 `fakelogd` would be visible inside the decoy (a process/binary/cron that manufactures the
-logs). Finding it proves the decoy is a decoy.
-*Remediation:* §H4 — **hide-in-plain-sight first** (the review's standing recommendation): the backfill
-runs once at install and leaves *no* resident generator; only a believable, ordinary-looking
-maintenance daemon remains (if any). Kernel-level hiding is a last resort and is itself a tell.
+### F6 — Generator concealment / §H4  ·  ✅ **ADDRESSED** (hide-in-plain-sight)
+**Fixed the right way** — the review's own recommendation over a detectable rootkit. The generator is
+a **build-time-only tool**: `fakelogd` runs on the installer side, writes the history, and is **never
+shipped** into the decoy. After install there is **no resident process, binary, cron/init entry, or
+`*decoy*` file** to find, and the decoy's go-forward logs come from the **real Alpine daemons**
+(sshd/crond/…) once booted — indistinguishable because they *are* real. `make -C deps/decoy-os h4`
+scans the rootfs and passes 4/4 (no generator binary/`*decoy*` file, no `decoy`/`fakelogd` string in
+any config/script/log, no resident generator, no `decoy…`/`Decoy User` account). Two tells my own
+earlier work had introduced were removed: the literal `/etc/.decoy-epoch` file (F3) and the
+`decoyuser`/`Decoy User` defaults — the standalone build now defaults to a plausible identity
+(`alex`/`workstation`), which the installer overrides with the user's choice. *Note:* this is stronger
+than kernel-level hiding precisely because there is nothing hidden to detect.
 
 ---
 
@@ -142,15 +148,20 @@ maintenance daemon remains (if any). Kernel-level hiding is a last resort and is
    now consistent with a genuine system.
 2. ~~**F5 disk-illusion / hidden-volume protection (§H3)**~~ ✅ (core logic; the dm-module is the
    integration step).
-3. **F6 concealment (§H4, hide-in-plain-sight)** — the last once-booted gap, then **F4 fixed candidate
-   budget** (minor timing).
+3. ~~**F6 concealment (§H4, hide-in-plain-sight)**~~ ✅ — nothing in the decoy manufactures or reveals
+   the history. Only **F4** (minor fixed-budget loader timing) and the *integration* steps (the §H3
+   dm-target module; the in-kernel full-disk installer) remain.
 
 ## Verdict
-The cryptographic and boot *mechanism* is sound and validated, and the three findings that made the
-decoy detectable from its *content* are now fixed: **F1** (log/distro consistency), **F2** (a
-featureless entropy map — system + outer uniformly 8.000 bits/byte), and **F3** (a seed-anchored
-virtual clock — history runs to the present with coherent mtimes). What remains are the **once-booted**
-gaps that need a coerced examiner *inside* the decoy: **§H3** (the full-disk illusion, so the decoy
-can't see the hidden volume's space) and **§H4** (concealing the generator). The offline image and the
-decoy's own history are now consistent with a genuine, lived-in system; the crypto was never the weak
-point, and the deniability content discipline is essentially in place.
+The cryptographic and boot *mechanism* is sound and validated, and **all five substantive findings are
+now addressed**: F1 (log/distro consistency), F2 (a featureless entropy map — system + outer uniformly
+8.000 bits/byte), F3 (a seed-anchored virtual clock — history runs to the present with coherent
+mtimes), F5/§H3 (the full-disk illusion + the hidden-volume write-protection), and F6/§H4 (the
+generator is build-time-only — nothing inside the decoy manufactures or reveals the history). A
+forensic/coercive examiner now finds, both **offline** (a featureless disk that accounts for its whole
+geometry) and **inside the decoy** (a believable Alpine with a consistent multi-month history, real
+go-forward logs, the user's own account, and no hidden-volume tell or generator artifact), a system
+indistinguishable from a genuine one. What remains is **F4** (minor: length-independent loader timing)
+and the **integration** of the validated logic into shipping form — the §H3 dm-target kernel module and
+the in-kernel full-disk installer. The crypto was never the weak point; the deniability content
+discipline is now in place and evidence-checked.

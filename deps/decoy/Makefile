@@ -4,10 +4,15 @@ SELF := $(abspath .)
 BLD  := $(SELF)/build
 CC   ?= clang
 
-.PHONY: test render h2 g2 clean
+.PHONY: test render h2 g2 h3 clean
 test: | $(BLD)
 	$(CC) -O2 -I$(SELF) $(SELF)/decoy.c $(SELF)/test/decoy_test.c -lm -o $(BLD)/decoy-test
 	$(BLD)/decoy-test
+
+# §H3 — the "protect hidden volume" block filter: decoy can't corrupt/detect the hidden OS.
+h3: | $(BLD)
+	$(CC) -O2 -I$(SELF)/h3 $(SELF)/h3/hidden_protect.c $(SELF)/test/h3_test.c -o $(BLD)/decoy-h3
+	$(BLD)/decoy-h3 $(BLD)/h3disk.img
 
 # §G G3.3 — render decoy events into a realistic, deterministic syslog (+ a visible sample)
 render: | $(BLD)

@@ -115,11 +115,17 @@ leak the hidden OS — but it's a real side channel.
 *Remediation (priority 3):* clamp to a **fixed candidate budget** (constant number of `vc_open_header`
 calls regardless of length) for length-independent timing.
 
-### F5 — Full-disk illusion not built (§H3)  ·  **GAP / HIGH once booted**
-Without §H3, a coerced examiner booting the decoy can enumerate partitions and see the large outer
-partition full of "random" it can't account for — the classic place a hidden volume lives.
-*Remediation:* build §H3 (the device-mapper shim that presents the whole disk and read-protects the
-hidden region as indistinguishable-from-free random — VeraCrypt "protect hidden volume").
+### F5 — Full-disk illusion / §H3  ·  ✅ **ADDRESSED** (core logic; dm-module is the integration)
+**Two parts, both handled.** (a) *Disk illusion:* the install's GPT covers the whole disk — ESP +
+system + outer, leaving only **~1 MiB of normal 1 MiB-alignment overhead** (every real disk has this),
+no partition-sized unaccounted region; the hidden volume lives *inside* the outer partition's encrypted
+free space, not in any visible gap. (b) *Hidden-volume protection:* `deps/decoy/h3/hidden_protect.{c,h}`
+(`make -C deps/decoy h3`) is the "protect hidden volume" block filter — reads pass through (the hidden
+region is random/ciphertext, indistinguishable from outer free space, per F2), writes that would touch
+it are **refused**. 4/4 test: a busy decoy writing across the whole outer volume **cannot corrupt** the
+hidden volume (the overlapping writes are refused), writes elsewhere land (the decoy really uses its
+disk), and reads pass through (the hidden OS accesses it normally). *Remaining:* package this logic as
+the actual Linux **dm-target kernel module** (the integration, like §H2's program vs the renderer).
 
 ### F6 — Generator concealment not built (§H4)  ·  **GAP**
 The §H2 `fakelogd` would be visible inside the decoy (a process/binary/cron that manufactures the
@@ -132,11 +138,12 @@ maintenance daemon remains (if any). Kernel-level hiding is a last resort and is
 
 ## Prioritized remediation
 1. ~~**F1 distro-consistent generator**~~ ✅ · ~~**F2 full-entropy install**~~ ✅ ·
-   ~~**F3 virtual clock + coherent mtimes**~~ ✅ — the three content findings that made the *offline
-   image* and the *booted decoy's history* detectable are all resolved.
-2. **F5 disk-illusion (§H3)** — the remaining *once-booted* gap (the decoy must not see unaccounted
-   disk space).
-3. **F4 fixed candidate budget**, **F6 concealment (§H4, hide-in-plain-sight)**.
+   ~~**F3 virtual clock + coherent mtimes**~~ ✅ — the offline image + the booted decoy's history are
+   now consistent with a genuine system.
+2. ~~**F5 disk-illusion / hidden-volume protection (§H3)**~~ ✅ (core logic; the dm-module is the
+   integration step).
+3. **F6 concealment (§H4, hide-in-plain-sight)** — the last once-booted gap, then **F4 fixed candidate
+   budget** (minor timing).
 
 ## Verdict
 The cryptographic and boot *mechanism* is sound and validated, and the three findings that made the

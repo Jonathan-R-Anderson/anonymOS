@@ -105,10 +105,18 @@ mkinstall: crypto | $(BLD)
 	    $(SELF)/vcheader.c $(SELF)/test/mkinstall.c \
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-mkinstall
 	@dd if=/dev/zero of=$(BLD)/install.img bs=1M count=512 status=none
-	@sgdisk --clear -n 1:34:+64M -t 1:EF00 -n 2:0:+64M -t 2:0700 -n 3:0:0 -t 3:0700 $(BLD)/install.img >/dev/null
-	$(BLD)/vc-mkinstall $(BLD)/install.img $(ROOTFS) decoy-password 131106 131072 262178 786365
-	@echo "--- §F2 entropy map (encrypted partitions must be featureless) ---"
-	@python3 $(SELF)/test/entropy_scan.py $(BLD)/install.img
+	@sgdisk --clear -n 1:0:+64M -t 1:EF00 -n 2:0:+64M -t 2:0700 -n 3:0:0 -t 3:0700 $(BLD)/install.img >/dev/null
+	@# fill the ACTUAL partition regions (query the GPT, don't hardcode — keeps F2/H3 consistent)
+	@set -e; img=$(BLD)/install.img; \
+	  sL=$$(sgdisk -i 2 $$img | awk '/First sector/{print $$3}'); \
+	  sS=$$(sgdisk -i 2 $$img | awk '/Partition size/{print $$3}'); \
+	  oL=$$(sgdisk -i 3 $$img | awk '/First sector/{print $$3}'); \
+	  oS=$$(sgdisk -i 3 $$img | awk '/Partition size/{print $$3}'); \
+	  $(BLD)/vc-mkinstall $$img $(ROOTFS) decoy-password $$sL $$sS $$oL $$oS; \
+	  echo "--- §F2 entropy map (encrypted partitions must be featureless) ---"; \
+	  python3 $(SELF)/test/entropy_scan.py $$img $$sL $$sS $$oL $$oS; \
+	  free=$$(sgdisk -p $$img | awk '/Total free space/{print $$5}'); \
+	  echo "--- §H3 disk-illusion: $$free sectors free ($$(($$free/2048)) MiB) = normal 1MiB alignment, no partition-sized gap ---"
 
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)

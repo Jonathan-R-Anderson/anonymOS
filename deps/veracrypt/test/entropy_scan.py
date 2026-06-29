@@ -5,10 +5,14 @@
 # legitimately low-entropy/structured (every encrypted-Linux disk looks like that).
 import sys, math
 SEC = 512
-sysLBA, sysSec   = 131106, 131072       # §E4b geometry (64 MiB system)
-outerLBA, outerSec = 262178, 786365     # outer = rest of a 512 MiB disk
+# geometry from argv (the Makefile queries the actual GPT), with §E4b-ish defaults
+a = sys.argv
+sysLBA   = int(a[2]) if len(a)>2 else 131106
+sysSec   = int(a[3]) if len(a)>3 else 131072
+outerLBA = int(a[4]) if len(a)>4 else 262178
+outerSec = int(a[5]) if len(a)>5 else 786365
 
-f = open(sys.argv[1], 'rb')
+f = open(a[1], 'rb')
 def ent(b):
     if not b: return 0.0
     h=[0]*256
@@ -26,7 +30,7 @@ def scan(lba, nsec, win=1<<20):
         vals.append(ent(b)); pos += win
     return (min(vals), sum(vals)/len(vals), max(vals)) if vals else (0,0,0)
 
-regions = [("GPT/MBR",0,34), ("ESP (FAT)",34,131072),
+regions = [("GPT/MBR",0,34), ("ESP (FAT)",2048,sysLBA-2048),
            ("system (encrypted)",sysLBA,sysSec), ("outer (enc/random)",outerLBA,outerSec)]
 res={}
 for name,lba,nsec in regions:

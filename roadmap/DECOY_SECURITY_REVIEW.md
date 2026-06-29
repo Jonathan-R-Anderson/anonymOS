@@ -162,11 +162,13 @@ forensic/coercive examiner now finds, both **offline** (a featureless disk that 
 geometry) and **inside the decoy** (a believable Alpine with a consistent multi-month history, real
 go-forward logs, the user's own account, and no hidden-volume tell or generator artifact), a system
 indistinguishable from a genuine one. What remains is **F4** (minor: length-independent loader timing)
-and the **integration** of the validated logic into shipping form — the §H3 dm-target kernel module and
-the in-kernel full-disk installer. The latter is *implemented* (`veracrypt_impl.d vcFullInstallProof`
-composes the complete featureless install — GPT + ESP + headers + encrypted rootfs + random-fill, all
-cap-gated, reusing the validated logic) but its boot proof is blocked by a **flaky polled-AHCI
-multi-disk hang** — a kernel I/O driver bug (no IRQ-driven I/O; a dedicated install disk's writes
-intermittently hang), *separate from the install logic*. It is left unwired so it can't hang a boot;
-the host `make veracrypt mkinstall` proves the F2 algorithm at scale (8.000 entropy). The crypto was
-never the weak point; the deniability content discipline is now in place and evidence-checked.
+and the §H3 **dm-target kernel module** (the §H3 protection logic packaged as a Linux driver). The
+**in-kernel full-disk installer now works**: `veracrypt_impl.d vcFullInstallProof` composes the
+complete featureless install — GPT + ESP + headers + encrypted rootfs + **full random-fill of both
+partitions**, all cap-gated — and is validated in-VM on a dedicated disk: 3-partition GPT covering the
+whole disk (0 free), **system + outer uniformly 8.000 bits/byte**, and the decoy header opens + the
+rootfs decrypts. *(The earlier "flaky AHCI multi-disk hang" was a misdiagnosis: the real bug was a
+function-`static` local array page-faulting under `-betterC` — there's no lazy-init guard runtime, so
+the static access derefs null. Fixed by switching to `__gshared`; multi-sector writes to all ports
+were always fine.)* The host `make veracrypt mkinstall` independently proves the same F2 algorithm. The
+crypto was never the weak point; the deniability content discipline is in place and evidence-checked.

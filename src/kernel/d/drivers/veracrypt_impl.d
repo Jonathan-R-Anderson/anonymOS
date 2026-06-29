@@ -439,11 +439,14 @@ public void vcEncryptedInstallProof()
 enum ulong VC_FI_ESP        = 0x800;    // 1 MiB ESP (entropy-excluded)
 enum ulong VC_FI_SYS        = 0x800;    // 1 MiB system partition
 enum uint  VC_FI_ROOTFS_SEC = 64;       // 32 KiB synthetic rootfs (stand-in)
+__gshared ubyte[VC_FI_ROOTFS_SEC * 512] g_vcRootfs;   // __gshared, NOT `static` (betterC #PF)
 
+private enum uint VC_FILL_CHUNK = 128;          // 64 KiB / call
+__gshared ubyte[VC_FILL_CHUNK * 512] g_vcFillBuf;   // __gshared, NOT `static` (betterC #PF)
 private void vcRandomFillRange(ref InstallWriteCap cap, int idx, ulong startLba, ulong endLba, ref ulong rng)
         @nogc nothrow {
-    enum uint CHUNK = 128;                     // 64 KiB / call
-    static ubyte[CHUNK * 512] buf;
+    enum uint CHUNK = VC_FILL_CHUNK;
+    alias buf = g_vcFillBuf;
     ulong lba = startLba;
     while (lba <= endLba) {
         uint n = cast(uint)((endLba - lba + 1) < CHUNK ? (endLba - lba + 1) : CHUNK);
@@ -477,24 +480,19 @@ public void vcFullInstallProof()
     ubyte[256] mkD; for (int i=0;i<256;i++) mkD[i]=cast(ubyte)(0xA5 ^ i);   // decoy master key
     ubyte[32] k1, k2; for (int i=0;i<32;i++){ k1[i]=mkD[i]; k2[i]=mkD[32+i]; }
 
-    // 1. random-fill a representative BAND at the start of each partition. (Polled AHCI is
-    //    ~1 write/s with no IRQ I/O, so a whole-disk fill is impractical at boot — the host
-    //    `mkinstall` proves the featureless full-disk fill at scale; here we prove the kernel
-    //    *composes* the same install + that the produced bytes are featureless.)
-    enum uint BAND = 256;          // 128 KiB scanned band per partition
+    // 1. random-fill the WHOLE system + outer partitions → no zeros anywhere (featureless).
     ulong rng = 0x9E3779B97F4A7C15UL;
-    ulong sEnd = L.sysFirst   + BAND - 1; if (sEnd > L.sysLast)   sEnd = L.sysLast;
-    ulong oEnd = L.outerFirst + BAND - 1; if (oEnd > L.outerLast) oEnd = L.outerLast;
-    vcRandomFillRange(cap, idx, L.sysFirst,   sEnd, rng);
-    vcRandomFillRange(cap, idx, L.outerFirst, oEnd, rng);
+    vcRandomFillRange(cap, idx, L.sysFirst,   L.sysLast,   rng);
+    klog("[vc-fullinstall] system filled; filling outer\n");
+    vcRandomFillRange(cap, idx, L.outerFirst, L.outerLast, rng);
+    klog("[vc-fullinstall] outer filled\n");
 
     // 2. encrypt a synthetic rootfs into the system partition (batched write over the random)
-    static ubyte[VC_FI_ROOTFS_SEC * 512] rootfs;
     for (uint i=0;i<VC_FI_ROOTFS_SEC;i++){
-        for (int j=0;j<512;j++) rootfs[i*512+j]=cast(ubyte)(i*7 + j + 0x33);
-        xts_encrypt_sector(rootfs.ptr + i*512, 512, i, k1.ptr, k2.ptr);   // each sector at unit i
+        for (int j=0;j<512;j++) g_vcRootfs[i*512+j]=cast(ubyte)(i*7 + j + 0x33);
+        xts_encrypt_sector(g_vcRootfs.ptr + i*512, 512, i, k1.ptr, k2.ptr);   // each sector at unit i
     }
-    gatedDiskWrite(cap, idx, L.sysFirst+1, VC_FI_ROOTFS_SEC, rootfs.ptr);
+    gatedDiskWrite(cap, idx, L.sysFirst+1, VC_FI_ROOTFS_SEC, g_vcRootfs.ptr);
 
     // 3. the decoy header at the system-partition start (same inputs as the §E2b parity check)
     ubyte[64] salt; for (int i=0;i<64;i++) salt[i]=cast(ubyte)(0x11*i + 1);

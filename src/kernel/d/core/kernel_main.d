@@ -2970,13 +2970,8 @@ void d_kernel_main() {
     vcEncryptedLayoutProof(); // INSTALLER §E3: write the decoy/hidden encrypted layout (host validates)
     vcVolumeDataProof();      // INSTALLER §E4a: multi-sector XTS volume data + random free-fill
     installCapProof();        // INSTALLER §E4c: one-shot block-write capability gate (Phase 11)
-    vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header (last)
-    // INSTALLER (in-kernel full-disk installer): vcFullInstallProof() composes the complete
-    // featureless install (GPT+ESP+headers+encrypted rootfs+random-fill, cap-gated) — but its
-    // boot-proof is blocked by a flaky polled-AHCI multi-disk hang (a kernel I/O bug, no IRQ
-    // I/O; the dedicated install disk's writes intermittently hang). The host `make veracrypt
-    // mkinstall` proves the F2 algorithm at scale. Left UNWIRED so it can never hang a boot.
-    // vcFullInstallProof();
+    vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header
+    vcFullInstallProof();      // INSTALLER: in-kernel FULL-DISK install (F2 featureless) on a small disk
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
     // F4.2: locate the store-app image boot module so seeded apps get a real,

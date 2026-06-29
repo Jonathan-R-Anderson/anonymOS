@@ -133,6 +133,23 @@ public bool diskWriteSectorsOn(int idx, ulong lba, uint count, const(void)* src)
     return true;
 }
 
+// Diagnostic: write `n` single sectors to disk `idx` (high LBA), klog progress so the
+// per-write rate / any stall is visible in the serial log.  (AHCI multi-disk hang debug.)
+__gshared ubyte[128 * SECTOR] g_benchBuf;
+public void diskWriteBenchOn(int idx, int n, uint chunk) {
+    alias buf = g_benchBuf;   // __gshared, not `static` (betterC has no lazy-init guard → #PF)
+    if (chunk > 128) chunk = 128;
+    foreach (i; 0 .. chunk * SECTOR) buf[i] = cast(ubyte)(i & 0xFF);
+    klog("[bench] start idx=0x"); klog_hex(idx); klog(" n=0x"); klog_hex(n); klog(" chunk=0x"); klog_hex(chunk); klog("\n");
+    foreach (k; 0 .. n) {
+        if (!diskWriteSectorsOn(idx, 5000 + cast(ulong)k * chunk, chunk, buf.ptr)) {
+            klog("[bench] write FAIL at k=0x"); klog_hex(k); klog("\n"); return;
+        }
+        if ((k % 16) == 0) { klog("[bench] k=0x"); klog_hex(k); klog("\n"); }
+    }
+    klog("[bench] DONE\n");
+}
+
 public bool diskReadSectorsOn(int idx, ulong lba, uint count, void* dst) {
     if (!g_diskReady || count == 0 || idx < 0 || idx >= cast(int)g_ahciDevices.length) return false;
     if (!g_ahciDevices[idx].present) return false;

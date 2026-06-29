@@ -56,29 +56,49 @@ boot), unless explicitly marked 🚧 (in progress) or 🔵 (planned).
 ## Architecture at a glance
 
 ```
-                ┌─────────────────────────────────────────────┐
-                │            system.json  (declarative)        │
-                │   → anonymos-config compiler (host, D)       │
-                │   → manifest.blob (HMAC-signed TLV)          │
-                └────────────────────┬────────────────────────┘
-                                     │ verified at boot
-        ┌────────────────────────────▼───────────────────────────┐
-        │   anonymOS kernel  (D, -betterC, no GC)  · x86_64       │
-        │                                                          │
-        │   ┌─────────────── 6 native pillars ───────────────┐    │
-        │   │ Scheduler · Object Mgr · Capability Mgr        │    │
-        │   │ IPC Router · Memory Mgr · HAL                  │    │
-        │   └────────────────────────────────────────────────┘    │
-        │                      ▲                                   │
-        │   Linux personality   │  Native object ABI (0x4000)      │
-        │   (~160 syscalls) ────┘  deny-by-default unless /hos-sh  │
-        └───────────┬───────────────────────────────┬─────────────┘
-                    │                               │
-        ┌───────────▼───────────┐         ┌─────────▼──────────┐
-        │  Linux userland        │         │  Native shell       │
-        │  busybox · zsh · Weston│         │  hos-sh · esh · LFE │
-        │  GTK · Hyprland        │         │  (object model)     │
-        └────────────────────────┘         └─────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────────────┐
+  │   system.json  — one declarative source of truth for the whole system          │
+  │   anonymos-config compiler (host, D)  →  manifest.blob (HMAC-signed TLV)        │
+  └───────────────────────────────────────┬────────────────────────────────────────┘
+                                           │ verified at boot
+  ┌────────────────────────────────────────▼───────────────────────────────────────┐
+  │ BOOT   Limine → [ optional §E pre-boot auth (UEFI .efi): password →             │
+  │                  DECOY | HIDDEN, decrypt + chain-load the chosen OS ] → kernel    │
+  └────────────────────────────────────────┬───────────────────────────────────────┘
+                                           │
+  ┌────────────────────────────────────────▼───────────────────────────────────────┐
+  │ anonymOS kernel   (D · -betterC · no GC)   x86_64 · SMP (preemptive, N cores)     │
+  │   ┌──────────────────────── 6 native pillars ────────────────────────┐           │
+  │   │ Scheduler · Object Mgr · Capability Mgr · IPC · Memory · HAL      │           │
+  │   └───────────────────────────────────────────────────────────────────┘          │
+  │   Linux personality (~160 syscalls)  ║  Native object ABI 0x4000 (deny-by-default)│
+  │   rootless (no uid 0) · W^X/ASLR · X25519 + ChaCha20-Poly1305 secure IPC          │
+  └──────────┬─────────────────────────────────────────────────────────┬────────────┘
+             │                                                          │
+  ┌──────────▼──────────────── object model ─────────────────┐  ┌──────▼────────────────┐
+  │ Object-Reference-Graph · cap rights/derive/revoke · GC    │  │ Identity / security    │
+  │ Object FS:  /objects · /config · /system  (immutable)     │  │ domains (Qubes-style)  │
+  │ A/B updates + rollback                                    │  │ + Domain Manager (clone)│
+  └──────────┬───────────────────────────────────────────────┘  └──────┬────────────────┘
+             │                                                          │
+  ┌──────────▼───────────────────────┐              ┌──────────────────▼────────────────┐
+  │ Linux userland                    │              │ Native userland                    │
+  │ busybox · zsh · Weston desktop    │              │ hos-sh · esh · LFE (object shell)  │
+  │ (GPU: virgl/GL or Pixman) · GTK   │              │ gl-term / ratty terminals          │
+  └──────────┬───────────────────────┘              └────────────────────────────────────┘
+             │
+  ┌──────────▼──────────────── hardware / persistence ──────────────────────────────────┐
+  │ AHCI SATA → on-disk object store (persists across reboot) · e1000 NIC (Ethernet/ARP) │
+  │ virtio-gpu / virgl (host GPU) · LKL bridge → reuse real Linux drivers on bare metal   │
+  └──────────────────────────────────────────────────────────────────────────────────────┘
+
+  ╔════════════ Installer + plausible deniability  (🚧 roadmap/INSTALLER.md) ════════════╗
+  ║ Calamares (static Qt) + native GPT/ESP partition engine (rootless, no libparted)      ║
+  ║ §E Hidden-OS encryption — VeraCrypt-derived AES/Serpent/Twofish-XTS, decoy + hidden    ║
+  ║    volumes, cap-gated 3-partition install, UEFI pre-boot loader (top of diagram)       ║
+  ║ §G Perlin decoy generator — deterministic fake logs/procs/net/security, keyed per pwd  ║
+  ║ §H Linux decoy OS + concealed synthesis   ·   §F zkSync blockchain boot integrity      ║
+  ╚════════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 The **native kernel is six pillars**: Scheduler, Object Manager, Capability

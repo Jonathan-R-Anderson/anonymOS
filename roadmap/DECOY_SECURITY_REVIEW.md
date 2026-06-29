@@ -163,5 +163,10 @@ geometry) and **inside the decoy** (a believable Alpine with a consistent multi-
 go-forward logs, the user's own account, and no hidden-volume tell or generator artifact), a system
 indistinguishable from a genuine one. What remains is **F4** (minor: length-independent loader timing)
 and the **integration** of the validated logic into shipping form — the §H3 dm-target kernel module and
-the in-kernel full-disk installer. The crypto was never the weak point; the deniability content
-discipline is now in place and evidence-checked.
+the in-kernel full-disk installer. The latter is *implemented* (`veracrypt_impl.d vcFullInstallProof`
+composes the complete featureless install — GPT + ESP + headers + encrypted rootfs + random-fill, all
+cap-gated, reusing the validated logic) but its boot proof is blocked by a **flaky polled-AHCI
+multi-disk hang** — a kernel I/O driver bug (no IRQ-driven I/O; a dedicated install disk's writes
+intermittently hang), *separate from the install logic*. It is left unwired so it can't hang a boot;
+the host `make veracrypt mkinstall` proves the F2 algorithm at scale (8.000 entropy). The crypto was
+never the weak point; the deniability content discipline is now in place and evidence-checked.

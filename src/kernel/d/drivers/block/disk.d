@@ -102,6 +102,22 @@ public int diskFindTarget(out ulong targetSectors) {
     return -1;
 }
 
+// Like diskFindTarget, but only a spare disk whose capacity is <= maxSectors (so the
+// in-kernel full-disk install proof can pick a small dedicated disk it can fill quickly,
+// distinct from a large generic-install target).
+public int diskFindTargetBySize(ulong maxSectors, out ulong targetSectors) {
+    targetSectors = 0;
+    if (!g_diskReady) return -1;
+    foreach (i; 0 .. cast(int)g_ahciDevices.length) {
+        auto d = &g_ahciDevices[i];
+        if (!d.present || d.type != 1 || d.capacity == 0) continue;
+        if (getPort(d.port) is ahciDataPort()) continue;
+        ulong sec = d.capacity / SECTOR;
+        if (sec <= maxSectors) { targetSectors = sec; return i; }
+    }
+    return -1;
+}
+
 public bool diskWriteSectorsOn(int idx, ulong lba, uint count, const(void)* src) {
     if (!g_diskReady || count == 0 || idx < 0 || idx >= cast(int)g_ahciDevices.length) return false;
     if (!g_ahciDevices[idx].present) return false;

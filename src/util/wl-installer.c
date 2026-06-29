@@ -215,6 +215,7 @@ struct app {
     int installing;
     int install_done;
     int install_failed;
+    int install_zero_reads;
     int progress;
     int focused_field;
     int encryption_mode;
@@ -1143,8 +1144,8 @@ static void draw_progress(struct app *app, cairo_t *cr)
 {
     const char *line1, *line2;
     if (app->install_failed) {
-        line1 = "Install is unavailable on this image.";
-        line2 = "Boot hos-install.iso (it carries the esp-image payload) to install.";
+        line1 = "Installation failed.";
+        line2 = "Check the serial log for the [install] FAIL reason, then retry from the live installer.";
     } else if (app->install_done) {
         line1 = "Installation complete.";
         line2 = "Power off, remove the install medium, then boot the disk.";
@@ -1344,7 +1345,24 @@ static void install_step(struct app *app)
         char b[16];
         ssize_t n = read(pf, b, sizeof b - 1);
         close(pf);
-        if (n > 0) { b[n] = 0; app->progress = atoi(b); }
+        if (n > 0) {
+            b[n] = 0;
+            int next = atoi(b);
+            if (next < 0) next = 0;
+            if (next > 1000) next = 1000;
+            if (app->installing && next == 0 && app->progress > 0 && app->progress < 1000) {
+                app->install_failed = 1;
+                app->installing = 0;
+            } else if (app->installing && next == 0 && app->progress == 0) {
+                if (++app->install_zero_reads > 3) {
+                    app->install_failed = 1;
+                    app->installing = 0;
+                }
+            } else {
+                app->install_zero_reads = 0;
+            }
+            app->progress = next;
+        }
     }
 }
 
@@ -1494,6 +1512,7 @@ static void start_install(struct app *app)
     app->screen = SCREEN_PROGRESS;
     app->progress = 0;
     app->install_done = 0;
+    app->install_zero_reads = 0;
     int fd = open("/config/install.action", O_WRONLY);
     if (fd >= 0 && config_ok) {
         close(fd);

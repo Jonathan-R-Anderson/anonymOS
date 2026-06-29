@@ -28,15 +28,30 @@ typedef struct EFI_BLOCK_IO {
     void *WriteBlocks; void *FlushBlocks;
 } EFI_BLOCK_IO;
 
-/* EFI_BOOT_SERVICES — only HandleProtocol (#17) and LocateHandleBuffer (#37) are typed;
- * the rest are placeholders to keep the field offsets correct per the UEFI spec. */
+/* EFI_BOOT_SERVICES — typed members at their spec field numbers; void* padding keeps the
+ * offsets correct (AllocatePool #6, HandleProtocol #17, LoadImage #23, StartImage #24,
+ * LocateHandleBuffer #37). */
 typedef struct {
     char hdr[24];
-    void *p1[16];                                     /* RaiseTPL .. UninstallProtocolInterface */
-    EFI_STATUS (*HandleProtocol)(EFI_HANDLE, EFI_GUID*, void**);   /* #17 */
-    void *p2[19];                                     /* Reserved .. ProtocolsPerHandle (#18..#36) */
+    void *p_1to5[5];                                                       /* #1..#5  */
+    EFI_STATUS (*AllocatePool)(u32 PoolType, u64 Size, void **Buffer);     /* #6      */
+    void *p_7to16[10];                                                     /* #7..#16 */
+    EFI_STATUS (*HandleProtocol)(EFI_HANDLE, EFI_GUID*, void**);           /* #17     */
+    void *p_18to22[5];                                                     /* #18..#22*/
+    EFI_STATUS (*LoadImage)(u8, EFI_HANDLE, void*, void*, u64, EFI_HANDLE*); /* #23   */
+    EFI_STATUS (*StartImage)(EFI_HANDLE, u64*, u16**);                     /* #24     */
+    void *p_25to36[12];                                                    /* #25..#36*/
     EFI_STATUS (*LocateHandleBuffer)(u32 SearchType, EFI_GUID*, void*, u64*, EFI_HANDLE**); /* #37 */
 } EFI_BOOT_SERVICES;
+
+typedef struct { u64 Revision; EFI_HANDLE ParentHandle; void *SystemTable; EFI_HANDLE DeviceHandle; } EFI_LOADED_IMAGE;
+typedef struct EFI_FILE {
+    u64 Revision;
+    EFI_STATUS (*Open)(struct EFI_FILE*, struct EFI_FILE**, u16*, u64, u64);
+    void *Close; void *Delete;
+    EFI_STATUS (*Read)(struct EFI_FILE*, u64*, void*);
+} EFI_FILE;
+typedef struct EFI_SIMPLE_FS { u64 Revision; EFI_STATUS (*OpenVolume)(struct EFI_SIMPLE_FS*, EFI_FILE**); } EFI_SIMPLE_FS;
 
 typedef struct { u16 ScanCode; u16 UnicodeChar; } EFI_INPUT_KEY;
 typedef struct EFI_SIMPLE_TEXT_INPUT {
@@ -57,7 +72,9 @@ typedef struct {
     EFI_BOOT_SERVICES *BS;                                 /* 96 */
 } EFI_SYSTEM_TABLE;
 
-static EFI_GUID BLOCK_IO_GUID = {0x964e5b21,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
+static EFI_GUID BLOCK_IO_GUID    = {0x964e5b21,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
+static EFI_GUID LOADED_IMAGE_GUID= {0x5b1b31a1,0x9562,0x11d2,{0x8e,0x3f,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
+static EFI_GUID SIMPLE_FS_GUID   = {0x964e5b22,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
 
 /* ── COM1 serial (headless OVMF capture) ── */
 static void outb(u16 p, u8 v){ __asm__ __volatile__("outb %0,%1"::"a"(v),"Nd"(p)); }
@@ -92,16 +109,36 @@ static int read_password(EFI_SIMPLE_TEXT_INPUT *ci, char *buf, int max){
     buf[n]=0; return n;
 }
 
+/* Chain-load the matched OS's next stage: read its loader image off the boot volume and
+ * LoadImage/StartImage it. Here it loads \EFI\anonymos\stage2.efi (the stand-in for the
+ * decrypted decoy/hidden bootloader — §H1 supplies the real one). */
+static u16 STAGE2_PATH[] = L"\\EFI\\anonymos\\stage2.efi";
+static void chainload(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST){
+    EFI_BOOT_SERVICES *BS = ST->BS;
+    EFI_LOADED_IMAGE *li=0; EFI_SIMPLE_FS *fs=0; EFI_FILE *root=0, *file=0; void *buf=0; EFI_HANDLE img=0;
+    if (BS->HandleProtocol(Image, &LOADED_IMAGE_GUID, (void**)&li)!=0){ ss("[preboot-efi] chainload: no loaded-image\n"); return; }
+    if (BS->HandleProtocol(li->DeviceHandle, &SIMPLE_FS_GUID, (void**)&fs)!=0){ ss("[preboot-efi] chainload: no filesystem\n"); return; }
+    if (fs->OpenVolume(fs,&root)!=0 || root->Open(root,&file,STAGE2_PATH,1,0)!=0){ ss("[preboot-efi] chainload: stage2 not found\n"); return; }
+    u64 cap = 1u<<20;
+    if (BS->AllocatePool(2 /*LoaderData*/, cap, &buf)!=0){ ss("[preboot-efi] chainload: alloc failed\n"); return; }
+    u64 size = cap;
+    if (file->Read(file,&size,buf)!=0){ ss("[preboot-efi] chainload: read failed\n"); return; }
+    if (BS->LoadImage(0, Image, 0, buf, size, &img)!=0){ ss("[preboot-efi] chainload: LoadImage failed\n"); return; }
+    ss("[preboot-efi] chain-loading the OS bootloader...\n");
+    BS->StartImage(img, 0, 0);
+}
+
 /* Interactive pre-boot authentication: prompt, route, retry. The prompt and the wrong-
  * password message are identical regardless of whether a hidden OS exists. */
-static void interactive(EFI_SIMPLE_TEXT_INPUT *ci, const u8*decoy, const u8*hidden){
+static void interactive(EFI_HANDLE Image, EFI_SYSTEM_TABLE *ST, const u8*decoy, const u8*hidden){
+    EFI_SIMPLE_TEXT_INPUT *ci = ST->ConIn;
     char pw[128]; u8 key[256];
     for (int attempt=0; attempt<3; attempt++){
         ss("[preboot-efi] Enter password: ");
         read_password(ci, pw, sizeof pw);
         int v = preboot_authenticate(pw, decoy, hidden, key);
-        if (v==PREBOOT_DECOY){  ss("[preboot-efi] unlocked; BOOTING DECOY OS\n");  return; }
-        if (v==PREBOOT_HIDDEN){ ss("[preboot-efi] unlocked; BOOTING HIDDEN OS\n"); return; }
+        if (v==PREBOOT_DECOY){  ss("[preboot-efi] unlocked; BOOTING DECOY OS\n");  chainload(Image, ST); return; }
+        if (v==PREBOOT_HIDDEN){ ss("[preboot-efi] unlocked; BOOTING HIDDEN OS\n"); chainload(Image, ST); return; }
         ss("[preboot-efi] access denied\n");
     }
     ss("[preboot-efi] too many attempts\n");
@@ -130,7 +167,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
         try_pw("hidden-password", "hidden-password", decoy, hidden);
         try_pw("wrong-password ", "not-a-password",  decoy, hidden);
         ss("[preboot-efi] SELFTEST DONE\n");
-        interactive(ST->ConIn, decoy, hidden);    /* §E5c: real keyboard prompt */
+        interactive(ImageHandle, ST, decoy, hidden);    /* §E5c prompt + §E5d chain-load */
         goto done;
     }
     ss("[preboot-efi] install layout not found on any block device\n");

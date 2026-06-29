@@ -396,9 +396,15 @@ password from the EFI keyboard (`ConIn->ReadKeyStroke`, masked `*` echo, backspa
 prompt and the wrong-password message are identical whether or not a hidden OS exists.
 `efi/qmp-interactive-test.py` drives it in OVMF with **real keystrokes injected via QMP**: typing
 `decoy-password` → `unlocked; BOOTING DECOY OS`; a wrong password → `access denied` (REJECT). So the
-full user-facing pre-boot flow runs in real firmware. **E5d remaining:** chain-load
-(`LoadImage`/`StartImage`) the matched OS — decrypt its bootloader from the volume + hand off
-(needs a real bootable decoy image → ties into §H1).
+full user-facing pre-boot flow runs in real firmware.
+
+**E5d — chain-load ✅ DONE + OVMF-validated.** After unlock the loader reads the matched OS's loader
+off the boot volume (`EFI_LOADED_IMAGE` → `EFI_SIMPLE_FILE_SYSTEM` → open `\EFI\anonymos\stage2.efi`
+→ read) and hands off via `LoadImage`/`StartImage`. Proven end-to-end in OVMF — typing
+`decoy-password` runs the whole chain: prompt → unlock → *"chain-loading the OS bootloader…"* →
+**`[stage2] … STAGE2 RUNNING`**. `efi_stage2.c` is a stand-in for the real decrypted bootloader, which
+§H1 supplies. **§E5 is complete** (routing, real `.efi`, interactive prompt, chain-load — all in real
+firmware); the only remaining hook is the actual decoy/hidden OS image (§H1 / E4c).
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:

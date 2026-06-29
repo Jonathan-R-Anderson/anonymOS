@@ -985,9 +985,14 @@ finishes.
   design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**
   via the honey-hashed typo-tolerant matcher; the seed-anchored virtual clock + no-float-noise
   prerequisites) is in the §G analysis section above.
-- **§H Linux decoy OS + concealed activity synthesis: SPECIFIED (H1–H5), not built.** The decoy OS is a
-  *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program
-  (H2, the Linux port of §G), a full-disk-illusion block driver hides the hidden volume's space from the
+- **§H Linux decoy OS + concealed activity synthesis: H2 ✅ DONE; H1/H3–H5 remain.** The decoy OS is a
+  *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program.
+  **H2 — the Linux fake-log generator BUILT** (`deps/decoy/h2/fakelogd.c`, `make -C deps/decoy h2`):
+  drives the §G engine+renderer and backfills deterministic, password-keyed history into `/var/log`,
+  routing each subsystem to the right file (auth/sudo → `auth.log`, audit → `audit.log`, the rest →
+  `syslog`), time-ordered. 5/5 self-test: same password → byte-identical `/var/log`, different password →
+  different, correct routing, no auth-content leak into syslog. Remaining: H1 (the actual decoy distro),
+  the full-disk-illusion block driver hides the hidden volume's space from the
   decoy (H3), and the generator is concealed from the decoy's root user (H4: kernel-embedded + hidden
   from the process table). ⚠ Security review (H5) is mandatory and treats **detectability of the
   concealment itself** as the primary risk — a *detected* rootkit is worse for deniability than none, so

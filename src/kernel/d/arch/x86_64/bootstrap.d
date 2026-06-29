@@ -419,9 +419,10 @@ void bootstrap_kernel(limine_memmap_response* mmap, limine_kernel_address_respon
     term_write("MM initialized.\n");
 
     // Still init VGA for backup
-    vga_init(hhdm_offset);
-    vga_puts("EpinAnonymOS booting...\n");
-    klog("VGA initialized.\n");
+    //vga_init(hhdm_offset);
+    //vga_puts("EpinAnonymOS booting...\n");
+    //klog("VGA initialized.\n");
+    term_write("skipping VGA initialization.\n");
 
     publishBootModules(mods);
 

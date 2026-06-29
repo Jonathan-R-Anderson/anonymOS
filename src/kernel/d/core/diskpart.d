@@ -236,6 +236,38 @@ bool gptWriteEncryptedToDisk(int diskIdx, ulong diskSectors, ulong espSectors,
     return true;
 }
 
+// Build + commit a single-ESP BOOTABLE GPT: one EFI System Partition (FAT32) spanning
+// `espSectors` at FIRST_USABLE — the in-OS installer drops a prebuilt FAT32 boot image
+// (limine BOOTX64.EFI + kernel + modules) into it so UEFI firmware boots the installed OS.
+// Mirrors gptWriteEncryptedToDisk (primary + backup), but with one ESP entry.
+bool gptWriteBootableEsp(int diskIdx, ulong diskSectors, ulong espSectors, ref GptLayout L) {
+    if (diskSectors < FIRST_USABLE + espSectors + ENTRY_SECTORS + 64) return false;
+    __gshared ubyte[PRIMARY_SECTORS * SECTOR] pbuf;
+    foreach (i; 0 .. PRIMARY_SECTORS * SECTOR) pbuf[i] = 0;
+
+    L.diskSectors = diskSectors;
+    L.espFirst = FIRST_USABLE;
+    L.espLast  = FIRST_USABLE + espSectors - 1;
+
+    const ulong baseSeed = rdtscSeed();
+    ubyte* e = pbuf.ptr + 2 * SECTOR;                  // entry 0
+    foreach (i; 0 .. 16) e[i] = GUID_ESP[i];
+    fillGuid(e + 16, baseSeed);
+    put64(e, 32, L.espFirst); put64(e, 40, L.espLast); put64(e, 48, 0);
+    gptFinalize(pbuf.ptr, diskSectors, baseSeed);
+
+    const ulong lastLba = diskSectors - 1;
+    if (!diskWriteSectorsOn(diskIdx, 0, PRIMARY_SECTORS, pbuf.ptr)) return false;
+    if (!diskWriteSectorsOn(diskIdx, lastLba - ENTRY_SECTORS, ENTRY_SECTORS, pbuf.ptr + 2 * SECTOR))
+        return false;
+    __gshared ubyte[SECTOR] bhdr;
+    foreach (i; 0 .. SECTOR) bhdr[i] = (pbuf.ptr + SECTOR)[i];
+    put64(bhdr.ptr, 24, lastLba); put64(bhdr.ptr, 32, 1); put64(bhdr.ptr, 72, lastLba - ENTRY_SECTORS);
+    put32(bhdr.ptr, 16, 0); put32(bhdr.ptr, 16, crc32(bhdr.ptr, 92));
+    if (!diskWriteSectorsOn(diskIdx, lastLba, 1, bhdr.ptr)) return false;
+    return true;
+}
+
 // Validate a PRIMARY GPT region built/read into `buf` (>= PRIMARY_SECTORS*SECTOR).
 // Checks: protective MBR signature + 0xEE; GPT signature; header CRC; entry-array
 // CRC; and that the first two entries are non-empty (ESP + root).  Returns true iff

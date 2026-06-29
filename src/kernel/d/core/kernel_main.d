@@ -2972,6 +2972,10 @@ void d_kernel_main() {
     installCapProof();        // INSTALLER §E4c: one-shot block-write capability gate (Phase 11)
     vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header
     vcFullInstallProof();      // INSTALLER: in-kernel FULL-DISK install (F2 featureless) on a small disk
+    {                          // INSTALLER §D: in-OS BOOTABLE install (esp-image → target disk; INSTALL=1 only)
+        import drivers.veracrypt_impl : installBootableProof;
+        installBootableProof();
+    }
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
     // F4.2: locate the store-app image boot module so seeded apps get a real,

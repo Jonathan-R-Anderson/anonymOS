@@ -507,3 +507,88 @@ public void vcFullInstallProof()
     klog(" outer=0x"); klog_hex(L.outerFirst);
     klog(" (cap-gated; host: sgdisk + entropy featureless + rootfs decrypts)\n");
 }
+
+// ─── In-OS BOOTABLE installer (INSTALLER §D: install the running OS to a disk) ────────
+// Writes a single-ESP bootable GPT to disk `idx`, then drops the prebuilt FAT32 boot
+// image (the "esp-image" boot module: limine BOOTX64.EFI + kernel + modules + limine.conf)
+// into the ESP, so UEFI firmware boots the installed OS — no install medium needed.
+// Cap-gated.  Distinct from the §E ENCRYPTED installer above; this is the plain bootable
+// install the desktop "Install to Disk" button drives.  The esp-image module ships only in
+// an INSTALL=1 ISO, so on a normal boot the proof SKIPs.
+
+align(8) private struct InstBootModRec { uint mod_start; uint mod_end; char[120] name; }
+
+@nogc nothrow
+private bool instFindModule(string want, out ulong phys, out ulong size) {
+    import core.exports : g_mboot_modules, g_module_count;
+    phys = 0; size = 0;
+    if (g_mboot_modules is null || g_module_count <= 0) return false;
+    auto recs = cast(const(InstBootModRec)*) g_mboot_modules;
+    for (int i = 0; i < g_module_count; i++) {
+        const(char)* nm = cast(const(char)*)&recs[i].name[0];
+        const(char)* base = nm;
+        for (const(char)* p = nm; *p != 0; p++) if (*p == '/') base = p + 1;
+        size_t j = 0;
+        for (; j < want.length; j++) if (base[j] != want[j]) goto next;
+        if (base[j] != 0) goto next;
+        phys = cast(ulong) recs[i].mod_start;
+        size = cast(ulong) recs[i].mod_end - cast(ulong) recs[i].mod_start;
+        return true;
+    next:;
+    }
+    return false;
+}
+
+// Install the running OS (the esp-image payload) to disk `idx` (dsec sectors).  Returns true
+// on success.  This is the callable the installer UI invokes; the proof below exercises it.
+@nogc nothrow
+public bool installBootableToDisk(int idx, ulong dsec) {
+    import core.diskpart : GptLayout, gptWriteBootableEsp;
+    import core.install_cap : InstallWriteCap, mintInstallWriteCap, gatedDiskWrite, revokeInstallWriteCap;
+    import core.exports : phys_to_virt;
+    enum uint SEC = 512;
+
+    ulong phys, size;
+    if (!instFindModule("esp-image", phys, size)) {
+        klog("[install] no esp-image boot module (build an INSTALL=1 ISO)\n"); return false;
+    }
+    const ulong espSectors = (size + SEC - 1) / SEC;
+    klog("[install] target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
+    klog(" image=0x"); klog_hex(size); klog("B esp_sectors=0x"); klog_hex(espSectors); klog("\n");
+    if (dsec < espSectors + 2048 + 64) { klog("[install] FAIL: target disk too small\n"); return false; }
+
+    auto cap = mintInstallWriteCap(idx);
+    GptLayout L;
+    if (!gptWriteBootableEsp(idx, dsec, espSectors, L)) {
+        klog("[install] FAIL (gpt)\n"); revokeInstallWriteCap(cap); return false;
+    }
+    klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; writing image\n");
+
+    const(ubyte)* src = cast(const(ubyte)*) phys_to_virt(phys);
+    ulong lba = L.espFirst, remaining = espSectors, off = 0, done = 0;
+    while (remaining > 0) {
+        const uint chunk = cast(uint)(remaining > 128 ? 128 : remaining);
+        if (!gatedDiskWrite(cap, idx, lba, chunk, src + off)) {
+            klog("[install] FAIL (write @lba=0x"); klog_hex(lba); klog(")\n");
+            revokeInstallWriteCap(cap); return false;
+        }
+        lba += chunk; off += cast(ulong)chunk * SEC; remaining -= chunk; done += chunk;
+        if ((done & 0x1FFFF) == 0) { klog("[install] wrote 0x"); klog_hex(done); klog(" of 0x"); klog_hex(espSectors); klog(" sectors\n"); }
+    }
+    revokeInstallWriteCap(cap);
+    klog("[install] DONE: installed to idx=0x"); klog_hex(idx);
+    klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
+    return true;
+}
+
+// Boot proof / smoke test: if both a target disk and the esp-image module exist, install.
+@nogc nothrow
+public void installBootableProof() {
+    import drivers.block.disk : diskFindTarget;
+    ulong phys, size;
+    if (!instFindModule("esp-image", phys, size)) { klog("[install] proof SKIP (no esp-image; build INSTALL=1)\n"); return; }
+    ulong dsec;
+    int idx = diskFindTarget(dsec);
+    if (idx < 0) { klog("[install] proof SKIP (no target disk)\n"); return; }
+    installBootableToDisk(idx, dsec);
+}

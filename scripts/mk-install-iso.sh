@@ -4,7 +4,7 @@
 # in-OS installer (desktop "Install to Disk") writes that image, with a single-ESP GPT, onto
 # a target disk, so UEFI firmware boots the installed OS — no install medium needed.
 #
-# Prereq: `make hos.iso` has populated cd/ (the boot tree).  This script is idempotent.
+# Prereq: `make stage-iso-tree` has populated cd/ (the boot tree). This script is idempotent.
 #
 # Usage:  scripts/mk-install-iso.sh [ESP_MiB]      (default 240; must exceed du(cd) + slack)
 set -euo pipefail
@@ -14,7 +14,7 @@ ESP_MB="${1:-240}"
 BOOTX64="deps/bdepend/boot/limine-bin/BOOTX64.EFI"
 LIMCONF="cd/boot/limine/limine.conf"
 
-[ -d cd ] || { echo "cd/ not found — run 'make hos.iso' first" >&2; exit 1; }
+[ -d cd ] || { echo "cd/ not found — run 'make stage-iso-tree' first (or just use 'make iso')" >&2; exit 1; }
 [ -f "$BOOTX64" ] || { echo "$BOOTX64 not found" >&2; exit 1; }
 
 echo "==== mk-install-iso: building the installed-OS ESP image (${ESP_MB} MiB) ===="
@@ -57,12 +57,14 @@ echo "  esp.img: $(du -h esp.img | cut -f1) (boot tree ${USED_MB} MiB + BOOTX64.
 cp esp.img cd/esp-image
 printf '\n    module_path: boot():/esp-image\n' >> "$LIMCONF"
 
-# 4. repackage the ISO (same options as the Makefile hos.iso target).
+# 4. package the installer ISO using the same Limine/xorriso options as the staged boot tree expects.
 xorriso -as mkisofs \
     -b boot/limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
     --efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
     --protective-msdos-label \
     cd -o hos-install.iso 2>/dev/null
+
+rm -f esp.img
 
 echo "==== built hos-install.iso ($(du -h hos-install.iso | cut -f1)) ===="
 echo "  Boot it (UEFI) with a blank target disk; the installer writes the OS to that disk."

@@ -7,11 +7,11 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest hos-minimal.iso
+.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest stage-iso-tree hos-install.iso hos-minimal.iso
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
-# *builds* zsh — it is NOT yet staged into hos.iso (that is Z1).  `make zsh`.
+# *builds* zsh — it is NOT yet staged into the installer ISO (that is Z1).  `make zsh`.
 zsh:
 	$(MAKE) -C deps/zsh
 .NOTPARALLEL:
@@ -40,10 +40,10 @@ all:
 	# (if WESTON=1) the weston compositor + its device-stack libraries.
 	$(MAKE) -j1 deps-desktop
 	$(MAKE) -j1 zsh
-	# Build the kernel + ISO.
+	# Build the kernel + installer ISO.
 	$(MAKE) -j1 build/libkernel_d.a
 	$(MAKE) -j1 kernel.elf
-	$(MAKE) -j1 hos.iso
+	$(MAKE) -j1 iso
 
 	@echo ""
 	@echo "✅ Build complete!"
@@ -106,7 +106,7 @@ WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 
 # =========================================================
 # Installer (Calamares) cross-build — roadmap/INSTALLER.md §D1–D3.
-# OPT-IN: these are NOT part of the default build / hos.iso, so a normal build is
+# OPT-IN: these are NOT part of the default build / installer ISO, so a normal build is
 # unaffected.  Build the pieces explicitly:
 #   make qt-stack       # §D1 static Qt 6 (qtbase + qtwayland)            [DONE]
 #   make calamares-deps # §D3 Calamares C++ deps (yaml-cpp, …)           [yaml-cpp DONE]
@@ -419,8 +419,8 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
-	@echo "==== Building ISO ===="
+stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
 	mkdir -p cd/boot/limine
@@ -678,33 +678,23 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
 	fi
 
-	$(XORRISO) -as mkisofs \
-		-b boot/limine/limine-bios-cd.bin \
-		-no-emul-boot \
-		-boot-load-size 4 \
-		-boot-info-table \
-		--efi-boot boot/limine/limine-uefi-cd.bin \
-		-efi-boot-part \
-		--efi-boot-image \
-		--protective-msdos-label \
-		cd \
-		-o hos.iso
-
 # =========================================================
-# INSTALLER ISO (hos-install.iso) — the normal boot tree PLUS a prebuilt FAT32 "esp-image"
+# INSTALLER ISO (hos-install.iso) — the only full ISO artifact. It contains the
+# normal boot tree PLUS a prebuilt FAT32 "esp-image"
 # boot module (limine BOOTX64.EFI + kernel + modules + limine.conf).  Boot it (UEFI) with a
 # blank target disk; the desktop "Install to Disk" button writes that image, behind a single-
 # ESP GPT, onto the disk, so the machine then boots EpinAnonymOS from disk (no install medium).
 # See scripts/mk-install-iso.sh and scripts/vbox-install-test.sh.
 # =========================================================
-.PHONY: hos-install.iso
-hos-install.iso: hos.iso
+iso: hos-install.iso
+
+hos-install.iso: stage-iso-tree
 	scripts/mk-install-iso.sh
 
 # =========================================================
 # Minimal ISO — kernel + busybox + the signed config manifest ONLY.
 #
-# `make hos.iso` requires the full desktop deps (weston, hyprland, wl-term, …)
+# `make iso` requires the full desktop deps (weston, hyprland, wl-term, …)
 # which need the Ubuntu-18.04 Docker image to build. This target builds a
 # bootable ISO from a CLEAN checkout with just the host toolchain (ldc2/ld/
 # xorriso + busybox): the native boot splash renders, the declarative config
@@ -781,5 +771,6 @@ clean:
 	rm -rf \
 		build \
 		cd \
-		hos.iso \
+		hos-install.iso \
+		esp.img \
 		kernel.elf

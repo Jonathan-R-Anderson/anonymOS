@@ -297,9 +297,21 @@ public bool objstoreLoadExec(int idx, ulong* physOut, ulong* sizeOut) {
 public void objstoreMount(const(void)* sampleExec = null, uint sampleExecLen = 0) {
     if (!diskReady()) { klog("[objstore] no disk — /objects/apps stays empty\n"); return; }
 
-    // INSTALLER §D: never claim a GPT-partitioned disk.  On an INSTALLED EpinAnonymOS system
-    // the first disk's LBA0 is the boot GPT; formatting a raw object store over it would wipe
-    // the bootloader.  Such a disk → store stays unmounted (in-memory), so the OS boots again.
+    // INSTALLER §D: on an INSTALL image (the esp-image payload is present), don't claim any
+    // disk — leave it free as the install target, so a single-disk machine can install onto its
+    // only disk without the live store racing/clobbering the write.  Store stays in-memory.
+    {
+        import drivers.veracrypt_impl : bootHasInstallPayload;
+        if (bootHasInstallPayload()) {
+            klog("[objstore] INSTALL image — store stays in-memory (disk is a free install target)\n");
+            g_mounted = false;
+            return;
+        }
+    }
+
+    // Never claim a GPT-partitioned disk.  On an INSTALLED EpinAnonymOS system the first disk's
+    // LBA0 is the boot GPT; formatting a raw object store over it would wipe the bootloader.
+    // Such a disk → store stays unmounted (in-memory), so the installed OS boots again.
     {
         import drivers.block.disk : diskFirstSectorIsGpt;
         if (diskFirstSectorIsGpt()) {

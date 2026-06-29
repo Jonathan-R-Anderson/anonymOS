@@ -161,6 +161,68 @@ public bool userSetActiveSubject(uint objId) {
     return d != 0;
 }
 
+// First-boot installer apply: replace the default non-root account with the
+// username captured by the installer. Password verification is not modeled in
+// this kernel yet; /etc/passwd identity is the part the object/user layer owns.
+public bool userApplyDefaultInstall(const(char)* name, size_t len) {
+    if (name is null || len == 0) return false;
+
+    char[USER_NAME_MAX] clean;
+    uint cleanLen = 0;
+    foreach (i; 0 .. len) {
+        char c = name[i];
+        if (c == 0) break;
+        const bool ok = (c >= 'a' && c <= 'z') ||
+                        (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') ||
+                        c == '_' || c == '-';
+        if (!ok) return false;
+        if (cleanLen >= USER_NAME_MAX - 1) break;
+        clean[cleanLen++] = c;
+    }
+    if (cleanLen == 0) return false;
+    clean[cleanLen] = 0;
+
+    UserRec* u = userByUid(1000);
+    if (u is null) {
+        char[USER_PATH_MAX] homeTmp;
+        uint hp = 0;
+        foreach (c; "/home/") homeTmp[hp++] = c;
+        foreach (i; 0 .. cleanLen) if (hp < USER_PATH_MAX - 1) homeTmp[hp++] = clean[i];
+        homeTmp[hp] = 0;
+        uint id = userRegister(1000, 1000, clean.ptr, homeTmp.ptr, "/bin/zsh\0".ptr,
+                               USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
+        u = userByObj(id);
+        if (u is null) return false;
+    }
+
+    foreach (i; 0 .. USER_NAME_MAX) u.name[i] = 0;
+    foreach (i; 0 .. cleanLen) u.name[i] = clean[i];
+    u.nameLen = cleanLen;
+
+    foreach (i; 0 .. USER_PATH_MAX) u.home[i] = 0;
+    uint hp = 0;
+    foreach (c; "/home/") u.home[hp++] = c;
+    foreach (i; 0 .. cleanLen) if (hp < USER_PATH_MAX - 1) u.home[hp++] = clean[i];
+    u.home[hp] = 0;
+
+    foreach (i; 0 .. USER_PATH_MAX) u.shell[i] = 0;
+    immutable shell = "/bin/zsh";
+    foreach (i; 0 .. shell.length) u.shell[i] = shell[i];
+    u.shell[shell.length] = 0;
+
+    g_defaultUserObjId = u.objId;
+    g_currentUserObjId = u.objId;
+    userRebuildPasswd();
+    return true;
+}
+
+public const(char)[] userDefaultNameContent() {
+    auto u = userByObj(userDefaultObjId());
+    if (u is null) return null;
+    return u.name[0 .. u.nameLen];
+}
+
 // The User the active task acts as (non-root default / root fallback).
 public UserRec* userCurrent() {
     auto u = userByObj(g_currentUserObjId);

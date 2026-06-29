@@ -35,7 +35,23 @@ mkfs.fat -F 32 -n EPINESP esp.img >/dev/null
 mcopy -s -i esp.img cd/* ::
 mmd -i esp.img ::/EFI ::/EFI/BOOT
 mcopy -i esp.img "$BOOTX64" ::/EFI/BOOT/BOOTX64.EFI
-echo "  esp.img: $(du -h esp.img | cut -f1) (boot tree ${USED_MB} MiB + BOOTX64.EFI)"
+
+# The installed system loads /install.json as a first-boot module. The live
+# installer patches this placeholder in-place after streaming esp-image to disk,
+# so keep it large enough for the wizard JSON without needing FAT allocation.
+INSTALL_PLACEHOLDER="$(mktemp)"
+INSTALL_LIMCONF="$(mktemp)"
+cleanup_install_tmp() { rm -f "$INSTALL_PLACEHOLDER" "$INSTALL_LIMCONF"; }
+trap cleanup_install_tmp EXIT
+dd if=/dev/zero of="$INSTALL_PLACEHOLDER" bs=32768 count=1 status=none
+mcopy -i esp.img "$INSTALL_PLACEHOLDER" ::/install.json
+mcopy -i esp.img ::/boot/limine/limine.conf "$INSTALL_LIMCONF"
+if ! grep -q 'boot():/install.json' "$INSTALL_LIMCONF"; then
+    printf '\n    module_path: boot():/install.json\n' >> "$INSTALL_LIMCONF"
+fi
+mcopy -o -i esp.img "$INSTALL_LIMCONF" ::/boot/limine/limine.conf
+
+echo "  esp.img: $(du -h esp.img | cut -f1) (boot tree ${USED_MB} MiB + BOOTX64.EFI + install.json placeholder)"
 
 # 3. stage it as the "esp-image" boot module + advertise it to limine.
 cp esp.img cd/esp-image

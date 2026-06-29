@@ -51,7 +51,8 @@ import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B updat
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
 import core.diskpart : gptPartProof, gptWriteProof;  // INSTALLER §D2(b): native GPT partition engine
 import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real kernel AES-256 + SHA-512
-import drivers.veracrypt_impl : vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
+import drivers.veracrypt_impl : bootHasInstallPayload,
+                                vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
                                 vcEncryptedInstallProof, vcFullInstallProof; // §E2b/§E3/§E4a/§E4b/full
 import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
@@ -118,6 +119,7 @@ import core.audit : auditStats; // ORG P8.2
 import core.org_dist : orgDistSelfTest, orgDistTick, orgDistStats; // ORG P11
 import core.org_test : orgTestSuite; // ORG P12: invariant/fuzz/scale test suite
 import core.configboot : configBootApply; // DECLARITIVE_MODEL_ROADMAP §4: verified-config boot lowering
+import core.install_config : installConfigApply; // INSTALLER: first-boot install.json apply
 import display.splash : splashRun;        // native boot splash (particle network + boot log)
 import core.syscalls.mmap : sys_munmap, sys_mprotect;
 import core.ticks : increment_ticks, get_ticks, pitMs;
@@ -2950,6 +2952,7 @@ void d_kernel_main() {
     // the non-root subject, then grant PID1 only explicit typed admin caps needed
     // by the current compatibility stubs.
     userRegistryInit();
+    installConfigApply();
     g_tasks[0].userObjId = userDefaultObjId();
     userSetActiveSubject(g_tasks[0].userObjId);
     adminInstallInitCaps(g_tasks[0].capTabId);
@@ -2963,15 +2966,20 @@ void d_kernel_main() {
     // disk is attached — the store then stays in-memory).
     diskInit();
     diskSelfTest();
+    const bool installMedia = bootHasInstallPayload();
     vcCryptoKat();    // INSTALLER §E2b: validate the kernel AES-256 + SHA-512 (FIPS-197 / NIST)
     gptPartProof();   // INSTALLER §D2(b): build+validate a GPT layout (in-memory; no disk write)
-    gptWriteProof();  // INSTALLER §D2(b): write a GPT to a spare target disk + reread (SKIP if none)
-    vcHeaderProof();  // INSTALLER §E2b: write a VeraCrypt header to a spare disk (host parity check)
-    vcEncryptedLayoutProof(); // INSTALLER §E3: write the decoy/hidden encrypted layout (host validates)
-    vcVolumeDataProof();      // INSTALLER §E4a: multi-sector XTS volume data + random free-fill
-    installCapProof();        // INSTALLER §E4c: one-shot block-write capability gate (Phase 11)
-    vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header
-    vcFullInstallProof();      // INSTALLER: in-kernel FULL-DISK install (F2 featureless) on a small disk
+    if (!installMedia) {
+        gptWriteProof();  // INSTALLER §D2(b): write a GPT to a spare target disk + reread (SKIP if none)
+        vcHeaderProof();  // INSTALLER §E2b: write a VeraCrypt header to a spare disk (host parity check)
+        vcEncryptedLayoutProof(); // INSTALLER §E3: write the decoy/hidden encrypted layout (host validates)
+        vcVolumeDataProof();      // INSTALLER §E4a: multi-sector XTS volume data + random free-fill
+        installCapProof();        // INSTALLER §E4c: one-shot block-write capability gate (Phase 11)
+        vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header
+        vcFullInstallProof();      // INSTALLER: in-kernel FULL-DISK install (F2 featureless) on a small disk
+    } else {
+        klog("[install] INSTALL image: skipping disk-writing boot proofs; target disk is reserved for the GUI installer\n");
+    }
     {                          // INSTALLER §D: in-OS BOOTABLE install (esp-image → target disk; INSTALL=1 only)
         import drivers.veracrypt_impl : installBootableProof;
         installBootableProof();

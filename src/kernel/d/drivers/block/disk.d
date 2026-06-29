@@ -118,6 +118,20 @@ public int diskFindTargetBySize(ulong maxSectors, out ulong targetSectors) {
     return -1;
 }
 
+// The object-store disk's own g_ahciDevices index (the first SATA), or -1.  The installer
+// falls back to this on a single-disk machine: with no separate spare, the only disk is the
+// install target (safe because on an INSTALL image the object store stays in-memory).
+public int diskStoreIndex(out ulong sectors) {
+    sectors = 0;
+    if (!g_diskReady) return -1;
+    foreach (i; 0 .. cast(int)g_ahciDevices.length) {
+        auto d = &g_ahciDevices[i];
+        if (!d.present || d.type != 1 || d.capacity == 0) continue;
+        if (getPort(d.port) is ahciDataPort()) { sectors = d.capacity / SECTOR; return i; }
+    }
+    return -1;
+}
+
 // True if the object-store disk (first SATA) already carries a GPT — a protective MBR
 // (0xEE partition) with the 0x55AA boot signature.  The object store refuses to claim /
 // format such a disk, so an INSTALLED EpinAnonymOS disk (whose LBA0 is the boot GPT) is

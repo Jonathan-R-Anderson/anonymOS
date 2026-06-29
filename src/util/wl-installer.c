@@ -22,8 +22,37 @@
 #endif
 
 enum {
-    DEFAULT_WIDTH = 560,
-    DEFAULT_HEIGHT = 360,
+    DEFAULT_WIDTH = 760,
+    DEFAULT_HEIGHT = 560,
+};
+
+enum {
+    SCREEN_WELCOME = 0,
+    SCREEN_ACCOUNT,
+    SCREEN_SECURITY,
+    SCREEN_DECOY,
+    SCREEN_REVIEW,
+    SCREEN_PROGRESS,
+};
+
+enum {
+    FIELD_HOSTNAME = 0,
+    FIELD_REAL_USER,
+    FIELD_REAL_PASSWORD,
+    FIELD_HIDDEN_PASSWORD,
+    FIELD_OUTER_PASSWORD,
+    FIELD_DECOY_BOOT_PASSWORD,
+    FIELD_DECOY_USER,
+    FIELD_DECOY_FULLNAME,
+    FIELD_DECOY_PASSWORD,
+    FIELD_DECOY_HOSTNAME,
+    FIELD_COUNT,
+};
+
+enum {
+    ENC_NONE = 0,
+    ENC_FULL,
+    ENC_HIDDEN,
 };
 
 struct app {
@@ -55,35 +84,44 @@ struct app {
     int committed;
     int font_ready;
     int entry_focused;
-    int button_active;
     int shift;
     int sync_after_commit;
     int post_map_frame_armed;
     int post_map_frame_done;
     int running;
-    int screen;          /* 0 = welcome (Install / Try Live), 1 = install/progress */
+    int screen;
     int installing;      /* 1 while the install loop is driving batches */
     int install_done;    /* 1 once the install finished */
     int install_failed;  /* 1 if /config/install.action could not be opened */
     int progress;        /* install progress, 0..1000 permille */
+    int focused_field;
+    int encryption_mode;
+    int install_config_written;
     double pointer_x;
     double pointer_y;
-    char entry_text[64];
-    int entry_len;
+    char field_text[FIELD_COUNT][96];
+    int field_len[FIELD_COUNT];
 };
 
 /* Button hit-rects, computed from the window size so draw + click agree.
- * which: 0 = Install, 1 = Try Live, 2 = Back. */
-enum { BTN_INSTALL = 0, BTN_LIVE = 1, BTN_BACK = 2 };
+ * which: 0 = primary, 1 = secondary, 2 = back. */
+enum { BTN_PRIMARY = 0, BTN_SECONDARY = 1, BTN_BACK = 2 };
 static void btn_rect(struct app *app, int which,
                      double *x, double *y, double *w, double *h)
 {
     double W = app->width, H = app->height;
-    if (which == BTN_BACK) { *x = 48; *y = H - 76; *w = 150; *h = 50; return; }
-    *y = H - 96; *h = 58;
-    double bw = (W - 48 - 48 - 24) / 2;      /* two buttons, 48px side margins, 24px gap */
-    *w = bw;
-    *x = (which == BTN_INSTALL) ? 48 : (W - 48 - bw);
+    *y = H - 76;
+    *h = 48;
+    if (which == BTN_BACK) {
+        *x = 44;
+        *w = 132;
+        return;
+    }
+    *w = 170;
+    if (which == BTN_SECONDARY)
+        *x = W - 44 - *w - 188;
+    else
+        *x = W - 44 - *w;
 }
 
 static void log_line(const char *s)
@@ -91,6 +129,130 @@ static void log_line(const char *s)
     fputs(s, stdout);
     fputc('\n', stdout);
     fflush(stdout);
+}
+
+static void set_field(struct app *app, int field, const char *value)
+{
+    if (field < 0 || field >= FIELD_COUNT || !value)
+        return;
+    size_t n = strlen(value);
+    if (n >= sizeof(app->field_text[field]))
+        n = sizeof(app->field_text[field]) - 1;
+    memcpy(app->field_text[field], value, n);
+    app->field_text[field][n] = 0;
+    app->field_len[field] = (int)n;
+}
+
+static const char *field_label(int field)
+{
+    switch (field) {
+    case FIELD_HOSTNAME: return "Main OS hostname";
+    case FIELD_REAL_USER: return "Main OS account";
+    case FIELD_REAL_PASSWORD: return "Main OS login password";
+    case FIELD_HIDDEN_PASSWORD: return "Hidden OS boot password";
+    case FIELD_OUTER_PASSWORD: return "Outer volume password";
+    case FIELD_DECOY_BOOT_PASSWORD: return "Decoy OS boot password";
+    case FIELD_DECOY_USER: return "Decoy OS account";
+    case FIELD_DECOY_FULLNAME: return "Decoy OS full name";
+    case FIELD_DECOY_PASSWORD: return "Decoy OS login password";
+    case FIELD_DECOY_HOSTNAME: return "Decoy OS hostname";
+    default: return "";
+    }
+}
+
+static int field_secret(int field)
+{
+    return field == FIELD_REAL_PASSWORD ||
+           field == FIELD_HIDDEN_PASSWORD ||
+           field == FIELD_OUTER_PASSWORD ||
+           field == FIELD_DECOY_BOOT_PASSWORD ||
+           field == FIELD_DECOY_PASSWORD;
+}
+
+static const char *screen_title(struct app *app)
+{
+    switch (app->screen) {
+    case SCREEN_WELCOME: return "Install EpinAnonymOS";
+    case SCREEN_ACCOUNT: return "Main OS Account";
+    case SCREEN_SECURITY: return "Encryption";
+    case SCREEN_DECOY: return "Decoy OS";
+    case SCREEN_REVIEW: return "Review";
+    case SCREEN_PROGRESS: return "Installing";
+    default: return "Install EpinAnonymOS";
+    }
+}
+
+static const char *primary_label(struct app *app)
+{
+    switch (app->screen) {
+    case SCREEN_WELCOME: return "Install";
+    case SCREEN_REVIEW: return "Install";
+    case SCREEN_PROGRESS: return app->install_done ? "Done" : "Installing";
+    default: return "Next";
+    }
+}
+
+static int fields_for_screen(struct app *app, int out[], int max)
+{
+    int n = 0;
+    if (app->screen == SCREEN_ACCOUNT) {
+        int f[] = { FIELD_HOSTNAME, FIELD_REAL_USER, FIELD_REAL_PASSWORD };
+        for (size_t i = 0; i < sizeof(f) / sizeof(f[0]) && n < max; i++) out[n++] = f[i];
+    } else if (app->screen == SCREEN_SECURITY) {
+        if (app->encryption_mode == ENC_FULL && n < max)
+            out[n++] = FIELD_HIDDEN_PASSWORD;
+        if (app->encryption_mode == ENC_HIDDEN) {
+            int f[] = { FIELD_HIDDEN_PASSWORD, FIELD_OUTER_PASSWORD, FIELD_DECOY_BOOT_PASSWORD };
+            for (size_t i = 0; i < sizeof(f) / sizeof(f[0]) && n < max; i++) out[n++] = f[i];
+        }
+    } else if (app->screen == SCREEN_DECOY) {
+        int f[] = { FIELD_DECOY_USER, FIELD_DECOY_FULLNAME, FIELD_DECOY_PASSWORD, FIELD_DECOY_HOSTNAME };
+        for (size_t i = 0; i < sizeof(f) / sizeof(f[0]) && n < max; i++) out[n++] = f[i];
+    }
+    return n;
+}
+
+static void field_rect(struct app *app, int ordinal,
+                       double *x, double *y, double *w, double *h)
+{
+    *x = 260;
+    *y = 148 + ordinal * 76;
+    *w = app->width - 304;
+    *h = 44;
+}
+
+static void segment_rect(struct app *app, int which,
+                         double *x, double *y, double *w, double *h)
+{
+    double gap = 10;
+    *x = 260 + which * ((app->width - 304 - 2 * gap) / 3.0 + gap);
+    *y = 128;
+    *w = (app->width - 304 - 2 * gap) / 3.0;
+    *h = 44;
+}
+
+static void focus_first_field(struct app *app)
+{
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    app->focused_field = n > 0 ? fields[0] : -1;
+}
+
+static void cycle_focus(struct app *app)
+{
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    if (n <= 0) {
+        app->focused_field = -1;
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        if (fields[i] == app->focused_field) {
+            app->focused_field = fields[(i + 1) % n];
+            return;
+        }
+    }
+    app->focused_field = fields[0];
 }
 
 static int create_memfd(const char *name)
@@ -259,6 +421,155 @@ static void draw_text_ft(struct app *app, const char *text, int x, int y,
     }
 }
 
+static void draw_button(struct app *app, cairo_t *cr, int which, const char *label, int enabled)
+{
+    double x, y, w, h;
+    btn_rect(app, which, &x, &y, &w, &h);
+    rounded_rect(cr, x, y, w, h, 8);
+    if (!enabled)
+        cairo_set_source_rgb(cr, 0.23, 0.27, 0.32);
+    else if (which == BTN_PRIMARY)
+        cairo_set_source_rgb(cr, 0.05, 0.52, 0.48);
+    else
+        cairo_set_source_rgb(cr, 0.28, 0.33, 0.40);
+    cairo_fill(cr);
+    draw_text_ft(app, label, (int)x + 26, (int)y + 31, (int)w - 38, 14,
+                 enabled ? 0xffffffffu : 0xff9aa3adu);
+}
+
+static void draw_steps(struct app *app)
+{
+    const char *steps[] = { "Welcome", "Account", "Encryption", "Decoy", "Review", "Install" };
+    for (int i = 0; i < 6; i++) {
+        uint32_t color = (i == app->screen) ? 0xffffffffu : 0xffa9b4c2u;
+        draw_text_ft(app, steps[i], 44, 126 + i * 38, 160, 13, color);
+    }
+}
+
+static void masked_value(struct app *app, int field, char *out, size_t out_sz)
+{
+    if (!out || out_sz == 0)
+        return;
+    if (!field_secret(field)) {
+        snprintf(out, out_sz, "%s", app->field_text[field]);
+        return;
+    }
+    int n = app->field_len[field];
+    if (n <= 0) {
+        out[0] = 0;
+        return;
+    }
+    if ((size_t)n >= out_sz)
+        n = (int)out_sz - 1;
+    for (int i = 0; i < n; i++)
+        out[i] = '*';
+    out[n] = 0;
+}
+
+static void draw_field(struct app *app, cairo_t *cr, int field, int ordinal)
+{
+    double x, y, w, h;
+    field_rect(app, ordinal, &x, &y, &w, &h);
+    draw_text_ft(app, field_label(field), (int)x, (int)y - 22, (int)w, 12, 0xffc8d2dfu);
+    rounded_rect(cr, x, y, w, h, 7);
+    if (field == app->focused_field)
+        cairo_set_source_rgb(cr, 0.13, 0.21, 0.28);
+    else
+        cairo_set_source_rgb(cr, 0.09, 0.14, 0.19);
+    cairo_fill(cr);
+    if (field == app->focused_field) {
+        rounded_rect(cr, x + 0.5, y + 0.5, w - 1, h - 1, 7);
+        cairo_set_source_rgb(cr, 0.16, 0.70, 0.62);
+        cairo_set_line_width(cr, 1.5);
+        cairo_stroke(cr);
+    }
+    char shown[112];
+    masked_value(app, field, shown, sizeof shown);
+    if (shown[0])
+        draw_text_ft(app, shown, (int)x + 14, (int)y + 29, (int)w - 28, 14, 0xffffffffu);
+    else
+        draw_text_ft(app, "Required", (int)x + 14, (int)y + 29, (int)w - 28, 14, 0xff778391u);
+}
+
+static void draw_segments(struct app *app, cairo_t *cr)
+{
+    const char *labels[] = { "None", "Full Disk", "Hidden OS" };
+    for (int i = 0; i < 3; i++) {
+        double x, y, w, h;
+        segment_rect(app, i, &x, &y, &w, &h);
+        rounded_rect(cr, x, y, w, h, 7);
+        if (app->encryption_mode == i)
+            cairo_set_source_rgb(cr, 0.05, 0.52, 0.48);
+        else
+            cairo_set_source_rgb(cr, 0.09, 0.14, 0.19);
+        cairo_fill(cr);
+        draw_text_ft(app, labels[i], (int)x + 16, (int)y + 28, (int)w - 24, 13, 0xffffffffu);
+    }
+}
+
+static const char *encryption_name(struct app *app)
+{
+    if (app->encryption_mode == ENC_FULL)
+        return "Full disk";
+    if (app->encryption_mode == ENC_HIDDEN)
+        return "Hidden OS";
+    return "None";
+}
+
+static void draw_review(struct app *app)
+{
+    char line[160];
+    snprintf(line, sizeof line, "Main OS: %s on %s", app->field_text[FIELD_REAL_USER],
+             app->field_text[FIELD_HOSTNAME]);
+    draw_text_ft(app, line, 260, 138, app->width - 304, 14, 0xffffffffu);
+    snprintf(line, sizeof line, "Encryption: %s", encryption_name(app));
+    draw_text_ft(app, line, 260, 176, app->width - 304, 14, 0xffffffffu);
+    if (app->encryption_mode == ENC_HIDDEN) {
+        snprintf(line, sizeof line, "Decoy OS: %s on %s", app->field_text[FIELD_DECOY_USER],
+                 app->field_text[FIELD_DECOY_HOSTNAME]);
+        draw_text_ft(app, line, 260, 214, app->width - 304, 14, 0xffffffffu);
+        draw_text_ft(app, "Hidden and decoy boot passwords are set.", 260, 252,
+                     app->width - 304, 13, 0xffc8d2dfu);
+    }
+    draw_text_ft(app, "The disk will be overwritten when you continue.", 260, 318,
+                 app->width - 304, 13, 0xffffd08au);
+}
+
+static void draw_progress(struct app *app, cairo_t *cr)
+{
+    const char *line1, *line2;
+    if (app->install_failed) {
+        line1 = "Install unavailable on this image.";
+        line2 = "Boot hos-install.iso to install.";
+    } else if (app->install_done) {
+        line1 = "Installation complete.";
+        line2 = "Power off, remove the install medium, then boot the disk.";
+    } else {
+        line1 = "Installing EpinAnonymOS to the target disk...";
+        line2 = "Writing the GPT, EFI System Partition, and boot image.";
+    }
+    draw_text_ft(app, line1, 260, 138, app->width - 304, 14, 0xffffffffu);
+    draw_text_ft(app, line2, 260, 166, app->width - 304, 13, 0xffc8d2dfu);
+
+    double pbx = 260, pbw = app->width - 304, pbh = 20, pby = 228;
+    rounded_rect(cr, pbx, pby, pbw, pbh, 8);
+    cairo_set_source_rgb(cr, 0.09, 0.14, 0.19);
+    cairo_fill(cr);
+    int pg = app->progress; if (pg < 0) pg = 0; if (pg > 1000) pg = 1000;
+    double fillw = pbw * pg / 1000.0;
+    if (fillw > 1.0) {
+        rounded_rect(cr, pbx, pby, fillw, pbh, 8);
+        if (app->install_failed) cairo_set_source_rgb(cr, 0.80, 0.30, 0.25);
+        else if (app->install_done) cairo_set_source_rgb(cr, 0.20, 0.68, 0.45);
+        else cairo_set_source_rgb(cr, 0.05, 0.52, 0.48);
+        cairo_fill(cr);
+    }
+    char pct[16];
+    int p10 = pg / 10;
+    snprintf(pct, sizeof pct, "%d%%", p10 > 100 ? 100 : p10);
+    draw_text_ft(app, pct, app->width - 96, 204, 80, 14, 0xffffffffu);
+}
+
 static void draw_demo(struct app *app)
 {
     cairo_surface_t *surface = cairo_image_surface_create_for_data(
@@ -269,90 +580,68 @@ static void draw_demo(struct app *app)
         app->stride);
     cairo_t *cr = cairo_create(surface);
 
-    /* full-window gradient (no inner card — clean welcome) */
-    cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, app->width, app->height);
-    cairo_pattern_add_color_stop_rgb(grad, 0.0, 0.07, 0.13, 0.22);
-    cairo_pattern_add_color_stop_rgb(grad, 0.55, 0.06, 0.30, 0.40);
-    cairo_pattern_add_color_stop_rgb(grad, 1.0, 0.16, 0.12, 0.34);
     cairo_rectangle(cr, 0, 0, app->width, app->height);
-    cairo_set_source(cr, grad);
+    cairo_set_source_rgb(cr, 0.06, 0.08, 0.10);
     cairo_fill(cr);
-    cairo_pattern_destroy(grad);
+    cairo_rectangle(cr, 0, 0, 220, app->height);
+    cairo_set_source_rgb(cr, 0.09, 0.13, 0.17);
+    cairo_fill(cr);
+    cairo_rectangle(cr, 220, 0, app->width - 220, app->height);
+    cairo_set_source_rgb(cr, 0.07, 0.10, 0.13);
+    cairo_fill(cr);
 
-    double bx, by, bw, bh;
-    if (app->screen == 0) {
-        /* Install (primary, teal) + Try Live (secondary, light) */
-        btn_rect(app, BTN_INSTALL, &bx, &by, &bw, &bh);
-        rounded_rect(cr, bx, by, bw, bh, 10);
-        cairo_set_source_rgb(cr, 0.05, 0.55, 0.50);
-        cairo_fill(cr);
-        btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
-        rounded_rect(cr, bx, by, bw, bh, 10);
-        cairo_set_source_rgb(cr, 0.88, 0.91, 0.95);
-        cairo_fill(cr);
-    } else {
-        /* progress bar: track + fill proportional to app->progress (0..1000) */
-        double pbx = 48, pbw = app->width - 96, pbh = 20;
-        double pby = 184;
-        rounded_rect(cr, pbx, pby, pbw, pbh, 8);
-        cairo_set_source_rgb(cr, 0.10, 0.16, 0.26);              /* track */
-        cairo_fill(cr);
-        int pg = app->progress; if (pg < 0) pg = 0; if (pg > 1000) pg = 1000;
-        double fillw = pbw * pg / 1000.0;
-        if (fillw > 1.0) {
-            rounded_rect(cr, pbx, pby, fillw, pbh, 8);
-            if (app->install_failed) cairo_set_source_rgb(cr, 0.80, 0.30, 0.25);      /* red */
-            else if (app->install_done) cairo_set_source_rgb(cr, 0.20, 0.70, 0.45);   /* green */
-            else cairo_set_source_rgb(cr, 0.05, 0.62, 0.56);                          /* teal */
-            cairo_fill(cr);
-        }
+    draw_button(app, cr, BTN_PRIMARY, primary_label(app),
+                app->screen != SCREEN_PROGRESS || app->install_done);
+    if (app->screen == SCREEN_WELCOME)
+        draw_button(app, cr, BTN_SECONDARY, "Try Live", 1);
+    if (app->screen != SCREEN_WELCOME && app->screen != SCREEN_PROGRESS)
+        draw_button(app, cr, BTN_BACK, "Back", 1);
 
-        btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
-        rounded_rect(cr, bx, by, bw, bh, 10);
-        cairo_set_source_rgb(cr, 0.30, 0.35, 0.44);
-        cairo_fill(cr);
-    }
+    if (app->screen == SCREEN_SECURITY)
+        draw_segments(app, cr);
+
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    for (int i = 0; i < n; i++)
+        draw_field(app, cr, fields[i], i + (app->screen == SCREEN_SECURITY ? 1 : 0));
+
+    if (app->screen == SCREEN_PROGRESS)
+        draw_progress(app, cr);
 
     cairo_destroy(cr);
     cairo_surface_flush(surface);
     cairo_surface_destroy(surface);
 
-    /* heading */
-    draw_text_ft(app, "Welcome to EpinAnonymOS", 48, 60, app->width - 96, 22, 0xffffffffu);
+    draw_text_ft(app, "EpinAnonymOS", 44, 58, 160, 22, 0xffffffffu);
+    draw_steps(app);
+    draw_text_ft(app, screen_title(app), 260, 58, app->width - 304, 24, 0xffffffffu);
 
-    if (app->screen == 0) {
-        draw_text_ft(app, "Install EpinAnonymOS to a disk, or try the live",
-                     48, 104, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, "session first without changing anything.",
-                     48, 126, app->width - 96, 13, 0xffd6deeau);
-        btn_rect(app, BTN_INSTALL, &bx, &by, &bw, &bh);
-        draw_text_ft(app, "Install to Disk", (int)bx + 36, (int)by + 36, (int)bw, 15, 0xffffffffu);
-        btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
-        draw_text_ft(app, "Try Live Session", (int)bx + 32, (int)by + 36, (int)bw, 15, 0xff14203au);
-    } else {
-        const char *line1, *line2;
-        if (app->install_failed) {
-            line1 = "Install unavailable on this image.";
-            line2 = "Boot the installer ISO (make hos-install.iso) to install.";
-        } else if (app->install_done) {
-            line1 = "Installation complete.";
-            line2 = "Power off, remove the install medium, then boot the disk.";
-        } else {
-            line1 = "Installing EpinAnonymOS to the target disk...";
-            line2 = "Writing the GPT + EFI System Partition + boot image.";
-        }
-        draw_text_ft(app, line1, 48, 104, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, line2, 48, 126, app->width - 96, 13, 0xffd6deeau);
-
-        /* percentage label above the bar */
-        char pct[16]; int p10 = app->progress / 10; if (p10 > 100) p10 = 100;
-        snprintf(pct, sizeof pct, "%d%%", p10);
-        draw_text_ft(app, pct, app->width - 96, 158, 80, 14, 0xffffffffu);
-
-        btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
-        draw_text_ft(app, app->install_done ? "Done" : "Back", (int)bx + 54, (int)by + 32, (int)bw, 15, 0xffffffffu);
+    if (app->screen == SCREEN_WELCOME) {
+        draw_text_ft(app, "Choose the installation settings before anything is written to disk.",
+                     260, 124, app->width - 304, 14, 0xffc8d2dfu);
+        draw_text_ft(app, "This installer collects the main account, encryption mode, hidden OS password, and decoy OS account.",
+                     260, 164, app->width - 304, 13, 0xffc8d2dfu);
+    } else if (app->screen == SCREEN_SECURITY) {
+        if (app->encryption_mode == ENC_NONE)
+            draw_text_ft(app, "No disk encryption will be configured.", 260, 220, app->width - 304, 13, 0xffc8d2dfu);
+        else if (app->encryption_mode == ENC_FULL)
+            draw_text_ft(app, "Set the password used to unlock the installed OS at boot.", 260, 300, app->width - 304, 13, 0xffc8d2dfu);
+    } else if (app->screen == SCREEN_REVIEW) {
+        draw_review(app);
     }
 }
+
+static void buffer_release(void *data, struct wl_buffer *buffer)
+{
+    struct app *app = data;
+    if (app->buffer == buffer)
+        app->buffer = NULL;
+    wl_buffer_destroy(buffer);
+}
+
+static const struct wl_buffer_listener buffer_listener = {
+    .release = buffer_release,
+};
 
 static int publish_pixels(struct app *app)
 {
@@ -390,14 +679,13 @@ static int publish_pixels(struct app *app)
         return -1;
     }
 
+    wl_buffer_add_listener(buffer, &buffer_listener, app);
     app->buffer = buffer;
     return 0;
 }
 
 static void redraw_commit(struct app *app, const char *marker)
 {
-    if (!app->buffer)
-        return;
     draw_demo(app);
     if (publish_pixels(app) < 0)
         return;
@@ -425,6 +713,160 @@ static void install_step(struct app *app)
         close(pf);
         if (n > 0) { b[n] = 0; app->progress = atoi(b); }
     }
+}
+
+static void write_all_len(int fd, const char *s, size_t len)
+{
+    while (len > 0) {
+        ssize_t n = write(fd, s, len);
+        if (n < 0 && errno == EINTR)
+            continue;
+        if (n <= 0)
+            return;
+        s += n;
+        len -= (size_t)n;
+    }
+}
+
+static void append_mem(char *buf, size_t cap, size_t *pos, const char *s, size_t len)
+{
+    if (*pos >= cap)
+        return;
+    if (len > cap - *pos)
+        len = cap - *pos;
+    memcpy(buf + *pos, s, len);
+    *pos += len;
+}
+
+static void append_cstr(char *buf, size_t cap, size_t *pos, const char *s)
+{
+    append_mem(buf, cap, pos, s, strlen(s));
+}
+
+static void append_json_string(char *buf, size_t cap, size_t *pos,
+                               const char *key, const char *value, int comma)
+{
+    append_cstr(buf, cap, pos, "  \"");
+    append_cstr(buf, cap, pos, key);
+    append_cstr(buf, cap, pos, "\": \"");
+    for (const unsigned char *p = (const unsigned char *)value; p && *p; p++) {
+        char b[8];
+        if (*p == '"' || *p == '\\') {
+            b[0] = '\\'; b[1] = (char)*p; b[2] = 0;
+            append_cstr(buf, cap, pos, b);
+        } else if (*p >= 0x20 && *p < 0x7f) {
+            b[0] = (char)*p; b[1] = 0;
+            append_cstr(buf, cap, pos, b);
+        }
+    }
+    append_cstr(buf, cap, pos, comma ? "\",\n" : "\"\n");
+}
+
+#define INSTALL_CONFIG_MAX 4096
+
+static size_t build_install_config(struct app *app, char *buf, size_t cap)
+{
+    size_t pos = 0;
+    if (cap == 0)
+        return 0;
+    append_cstr(buf, cap, &pos, "{\n");
+    append_json_string(buf, cap, &pos, "schema", "epin.install.v1", 1);
+    append_json_string(buf, cap, &pos, "hostname", app->field_text[FIELD_HOSTNAME], 1);
+    append_json_string(buf, cap, &pos, "user", app->field_text[FIELD_REAL_USER], 1);
+    append_json_string(buf, cap, &pos, "userPassword", app->field_text[FIELD_REAL_PASSWORD], 1);
+    append_json_string(buf, cap, &pos, "encryption", encryption_name(app), 1);
+    append_json_string(buf, cap, &pos, "hiddenPassword", app->field_text[FIELD_HIDDEN_PASSWORD], 1);
+    append_json_string(buf, cap, &pos, "outerPassword", app->field_text[FIELD_OUTER_PASSWORD], 1);
+    append_json_string(buf, cap, &pos, "decoyBootPassword", app->field_text[FIELD_DECOY_BOOT_PASSWORD], 1);
+    append_json_string(buf, cap, &pos, "decoyUser", app->field_text[FIELD_DECOY_USER], 1);
+    append_json_string(buf, cap, &pos, "decoyFullName", app->field_text[FIELD_DECOY_FULLNAME], 1);
+    append_json_string(buf, cap, &pos, "decoyPassword", app->field_text[FIELD_DECOY_PASSWORD], 1);
+    append_json_string(buf, cap, &pos, "decoyHostname", app->field_text[FIELD_DECOY_HOSTNAME], 0);
+    append_cstr(buf, cap, &pos, "}\n");
+    if (pos >= cap)
+        pos = cap - 1;
+    buf[pos] = 0;
+    return pos;
+}
+
+static int write_install_config(struct app *app)
+{
+    char json[INSTALL_CONFIG_MAX];
+    char command[INSTALL_CONFIG_MAX + 8];
+    const size_t json_len = build_install_config(app, json, sizeof json);
+    if (json_len == 0)
+        return 0;
+
+    int fd = open("/tmp/install.json", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd >= 0) {
+        write_all_len(fd, json, json_len);
+        close(fd);
+    }
+
+    memcpy(command, "config ", 7);
+    memcpy(command + 7, json, json_len);
+    int cfd = open("/config/install.action", O_WRONLY);
+    if (cfd < 0)
+        return 0;
+    write_all_len(cfd, command, json_len + 7);
+    close(cfd);
+    app->install_config_written = 1;
+    return 1;
+}
+
+static void start_install(struct app *app)
+{
+    int config_ok = write_install_config(app);
+    app->screen = SCREEN_PROGRESS;
+    app->progress = 0;
+    app->install_done = 0;
+    int fd = open("/config/install.action", O_WRONLY);
+    if (fd >= 0 && config_ok) {
+        close(fd);
+        app->installing = 1;
+        app->install_failed = 0;
+        printf("INSTALLER: starting install with wizard config (%s encryption)\n", encryption_name(app));
+    } else {
+        if (fd >= 0)
+            close(fd);
+        app->installing = 0;
+        app->install_failed = 1;
+        printf("INSTALLER: no /config/install.action (boot hos-install.iso)\n");
+    }
+    fflush(stdout);
+    redraw_commit(app, "install-info");
+}
+
+static void go_next(struct app *app)
+{
+    if (app->screen == SCREEN_WELCOME)
+        app->screen = SCREEN_ACCOUNT;
+    else if (app->screen == SCREEN_ACCOUNT)
+        app->screen = SCREEN_SECURITY;
+    else if (app->screen == SCREEN_SECURITY)
+        app->screen = app->encryption_mode == ENC_HIDDEN ? SCREEN_DECOY : SCREEN_REVIEW;
+    else if (app->screen == SCREEN_DECOY)
+        app->screen = SCREEN_REVIEW;
+    else if (app->screen == SCREEN_REVIEW) {
+        start_install(app);
+        return;
+    }
+    focus_first_field(app);
+    redraw_commit(app, "next");
+}
+
+static void go_back(struct app *app)
+{
+    if (app->screen == SCREEN_ACCOUNT)
+        app->screen = SCREEN_WELCOME;
+    else if (app->screen == SCREEN_SECURITY)
+        app->screen = SCREEN_ACCOUNT;
+    else if (app->screen == SCREEN_DECOY)
+        app->screen = SCREEN_SECURITY;
+    else if (app->screen == SCREEN_REVIEW)
+        app->screen = app->encryption_mode == ENC_HIDDEN ? SCREEN_DECOY : SCREEN_SECURITY;
+    focus_first_field(app);
+    redraw_commit(app, "back");
 }
 
 static int create_shm_buffer(struct app *app, int width, int height)
@@ -580,24 +1022,33 @@ static void entry_append_key(struct app *app, uint32_t code)
 {
     if (!app->entry_focused)
         return;
+    if (code == 15) {
+        cycle_focus(app);
+        redraw_commit(app, "field focus");
+        return;
+    }
     if (code == 14) {
-        if (app->entry_len > 0)
-            app->entry_text[--app->entry_len] = 0;
+        int f = app->focused_field;
+        if (f >= 0 && f < FIELD_COUNT && app->field_len[f] > 0)
+            app->field_text[f][--app->field_len[f]] = 0;
         redraw_commit(app, "entry edit");
         return;
     }
     if (code == 28) {
-        app->button_active = 1;
-        redraw_commit(app, "entry submit");
+        if (app->screen != SCREEN_PROGRESS)
+            go_next(app);
         return;
     }
+    int f = app->focused_field;
+    if (f < 0 || f >= FIELD_COUNT)
+        return;
     if (code >= sizeof(keymap_plain))
         return;
     char ch = app->shift ? keymap_shift[code] : keymap_plain[code];
-    if (!ch || app->entry_len >= (int)sizeof(app->entry_text) - 1)
+    if (!ch || app->field_len[f] >= (int)sizeof(app->field_text[f]) - 1)
         return;
-    app->entry_text[app->entry_len++] = ch;
-    app->entry_text[app->entry_len] = 0;
+    app->field_text[f][app->field_len[f]++] = ch;
+    app->field_text[f][app->field_len[f]] = 0;
     redraw_commit(app, "entry edit");
 }
 
@@ -734,48 +1185,65 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         return;
 
     double x, y, w, h;
-    if (app->screen == 0) {
-        btn_rect(app, BTN_LIVE, &x, &y, &w, &h);
+    if (app->screen == SCREEN_WELCOME) {
+        btn_rect(app, BTN_SECONDARY, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
             /* Try Live Session: close the installer -> the live desktop behind it. */
             printf("INSTALLER: 'Try Live Session' -- closing to the live desktop\n");
             app->running = 0;
             return;
         }
-        btn_rect(app, BTN_INSTALL, &x, &y, &w, &h);
+        btn_rect(app, BTN_PRIMARY, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
-            /* INSTALLER §D: kick off the in-OS installer.  The install runs in batches: the
-             * main loop repeatedly writes "install" to /config/install.action (each write
-             * advances a batch) and reads /config/install.progress (0..1000) to drive the
-             * progress bar, until done.  Verify the control file exists up front. */
-            app->screen = 1;
-            app->progress = 0;
-            app->install_done = 0;
-            int fd = open("/config/install.action", O_WRONLY);
-            if (fd >= 0) {
-                close(fd);
-                app->installing = 1;
-                app->install_failed = 0;
-                printf("INSTALLER: 'Install to Disk' -> starting install\n");
-            } else {
-                app->installing = 0;
-                app->install_failed = 1;
-                printf("INSTALLER: 'Install to Disk' -- no /config/install.action "
-                       "(boot the INSTALL image: scripts/mk-install-iso.sh)\n");
-            }
-            redraw_commit(app, "install-info");
+            go_next(app);
             return;
         }
-    } else {
+        return;
+    }
+
+    if (app->screen == SCREEN_PROGRESS) {
         if (app->installing) return;     /* can't go back mid-install */
-        btn_rect(app, BTN_BACK, &x, &y, &w, &h);
+        btn_rect(app, BTN_PRIMARY, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
-            /* "Done" after a finished install closes to the live desktop; "Back" otherwise. */
             if (app->install_done) { app->running = 0; return; }
-            app->screen = 0;
-            redraw_commit(app, "back");
             return;
         }
+        return;
+    }
+
+    if (app->screen == SCREEN_SECURITY) {
+        for (int i = 0; i < 3; i++) {
+            segment_rect(app, i, &x, &y, &w, &h);
+            if (in_rect(app, x, y, w, h)) {
+                app->encryption_mode = i;
+                focus_first_field(app);
+                redraw_commit(app, "encryption");
+                return;
+            }
+        }
+    }
+
+    int fields[8];
+    int n = fields_for_screen(app, fields, 8);
+    for (int i = 0; i < n; i++) {
+        field_rect(app, i + (app->screen == SCREEN_SECURITY ? 1 : 0), &x, &y, &w, &h);
+        if (in_rect(app, x, y, w, h)) {
+            app->focused_field = fields[i];
+            app->entry_focused = 1;
+            redraw_commit(app, "field focus");
+            return;
+        }
+    }
+
+    btn_rect(app, BTN_BACK, &x, &y, &w, &h);
+    if (in_rect(app, x, y, w, h)) {
+        go_back(app);
+        return;
+    }
+    btn_rect(app, BTN_PRIMARY, &x, &y, &w, &h);
+    if (in_rect(app, x, y, w, h)) {
+        go_next(app);
+        return;
     }
 }
 
@@ -949,6 +1417,14 @@ int main(void)
     struct app app;
     memset(&app, 0, sizeof(app));
     app.running = 1;
+    app.screen = SCREEN_WELCOME;
+    app.focused_field = -1;
+    app.encryption_mode = ENC_HIDDEN;
+    set_field(&app, FIELD_HOSTNAME, "epin");
+    set_field(&app, FIELD_REAL_USER, "user");
+    set_field(&app, FIELD_DECOY_USER, "decoy");
+    set_field(&app, FIELD_DECOY_FULLNAME, "Decoy User");
+    set_field(&app, FIELD_DECOY_HOSTNAME, "decoy-pc");
 
     log_line("INSTALLER: starting EpinAnonymOS install entry -- D4.1 START");
     app.display = wl_display_connect(NULL);
@@ -973,7 +1449,7 @@ int main(void)
     xdg_toplevel_add_listener(app.toplevel, &toplevel_listener, &app);
     xdg_toplevel_set_title(app.toplevel, "Install EpinAnonymOS to Disk");
     xdg_toplevel_set_app_id(app.toplevel, "epinanonymos-installer");
-    xdg_toplevel_set_min_size(app.toplevel, 420, 260);
+    xdg_toplevel_set_min_size(app.toplevel, DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
     wl_surface_commit(app.surface);
     wl_display_flush(app.display);

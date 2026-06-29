@@ -549,8 +549,345 @@ __gshared bool   g_instDone   = false;
 __gshared bool   g_instFailed = false;
 __gshared int    g_instIdx;
 __gshared ulong  g_instLba, g_instRemaining, g_instTotal, g_instOff;
+__gshared ulong  g_instEspFirst, g_instEspSectors;
 __gshared const(ubyte)* g_instSrc;
 __gshared InstallWriteCap g_instCap;
+private enum size_t INST_CONFIG_MAX = 8192;
+__gshared char[INST_CONFIG_MAX] g_instConfig;
+__gshared uint g_instConfigLen;
+__gshared bool g_instConfigPresent;
+
+@nogc nothrow
+private bool instCtlPrefix(const(char)* cmd, size_t len, string pfx) {
+    if (cmd is null || len < pfx.length) return false;
+    foreach (i; 0 .. pfx.length) if (cmd[i] != pfx[i]) return false;
+    return true;
+}
+
+@nogc nothrow
+private bool instJsonKeyEq(const(char)* src, size_t len, size_t p, string key, out size_t afterQuote) {
+    afterQuote = p;
+    if (p >= len || src[p] != '"') return false;
+    ++p;
+    foreach (i; 0 .. key.length) {
+        if (p + i >= len || src[p + i] != key[i]) return false;
+    }
+    p += key.length;
+    if (p >= len || src[p] != '"') return false;
+    afterQuote = p + 1;
+    return true;
+}
+
+@nogc nothrow private bool instJsonWs(char c) {
+    return c == ' ' || c == '\n' || c == '\r' || c == '\t';
+}
+
+@nogc nothrow
+private bool instJsonGetString(const(char)* src, size_t len, string key, char[] outBuf, ref uint outLen) {
+    outLen = 0;
+    if (src is null || len == 0) return false;
+    foreach (p0; 0 .. len) {
+        size_t p;
+        if (!instJsonKeyEq(src, len, p0, key, p)) continue;
+        while (p < len && instJsonWs(src[p])) ++p;
+        if (p >= len || src[p] != ':') continue;
+        ++p;
+        while (p < len && instJsonWs(src[p])) ++p;
+        if (p >= len || src[p] != '"') continue;
+        ++p;
+        while (p < len) {
+            char c = src[p++];
+            if (c == '"') {
+                if (outLen < outBuf.length) outBuf[outLen] = 0;
+                return true;
+            }
+            if (c == '\\' && p < len) {
+                char e = src[p++];
+                if (e == '"' || e == '\\' || e == '/') c = e;
+                else if (e == 'n') c = '\n';
+                else if (e == 't') c = '\t';
+                else c = e;
+            }
+            if (c >= 0x20 && c < 0x7f && outLen + 1 < outBuf.length)
+                outBuf[outLen++] = c;
+        }
+    }
+    return false;
+}
+
+@nogc nothrow
+private void instCfgAppend(const(char)* s) {
+    if (s is null) return;
+    while (*s != 0 && g_instConfigLen + 1 < INST_CONFIG_MAX)
+        g_instConfig[g_instConfigLen++] = *s++;
+}
+
+@nogc nothrow
+private void instCfgAppendSlice(const(char)* s, uint len) {
+    foreach (i; 0 .. len)
+        if (g_instConfigLen + 1 < INST_CONFIG_MAX)
+            g_instConfig[g_instConfigLen++] = s[i];
+}
+
+@nogc nothrow
+private void instCfgAppendJsonString(const(char)* key, const(char)* val, uint valLen, bool comma) {
+    instCfgAppend("  \"".ptr);
+    instCfgAppend(key);
+    instCfgAppend("\": \"".ptr);
+    foreach (i; 0 .. valLen) {
+        const char c = val[i];
+        if (c == '"' || c == '\\') {
+            if (g_instConfigLen + 2 < INST_CONFIG_MAX) {
+                g_instConfig[g_instConfigLen++] = '\\';
+                g_instConfig[g_instConfigLen++] = c;
+            }
+        } else if (c >= 0x20 && c < 0x7f) {
+            if (g_instConfigLen + 1 < INST_CONFIG_MAX)
+                g_instConfig[g_instConfigLen++] = c;
+        }
+    }
+    instCfgAppend(comma ? "\",\n".ptr : "\"\n".ptr);
+}
+
+@nogc nothrow
+private void instHexSha512(const(char)* val, uint valLen, char[] outHex, ref uint outLen) {
+    static immutable char[16] hex = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'];
+    outLen = 0;
+    if (valLen == 0) {
+        if (outHex.length > 0) outHex[0] = 0;
+        return;
+    }
+    ubyte[64] digest;
+    sha512_hash(cast(const(ubyte)*)val, valLen, digest.ptr);
+    foreach (i; 0 .. 64) {
+        if (outLen + 2 >= outHex.length) break;
+        outHex[outLen++] = hex[(digest[i] >> 4) & 0xf];
+        outHex[outLen++] = hex[digest[i] & 0xf];
+    }
+    if (outLen < outHex.length) outHex[outLen] = 0;
+}
+
+@nogc nothrow
+private void instGetOrDefault(const(char)* src, size_t len, string key,
+                              const(char)* def, char[] outBuf, ref uint outLen) {
+    if (instJsonGetString(src, len, key, outBuf, outLen)) return;
+    outLen = 0;
+    while (def !is null && def[outLen] != 0 && outLen + 1 < outBuf.length) {
+        outBuf[outLen] = def[outLen];
+        ++outLen;
+    }
+    if (outLen < outBuf.length) outBuf[outLen] = 0;
+}
+
+@nogc nothrow
+private bool installBuildPersistedConfig(const(char)* raw, size_t len) {
+    char[128] hostname; uint hostnameLen;
+    char[128] user; uint userLen;
+    char[128] encryption; uint encryptionLen;
+    char[128] decoyUser; uint decoyUserLen;
+    char[128] decoyFullName; uint decoyFullNameLen;
+    char[128] decoyHostname; uint decoyHostnameLen;
+    char[128] pw; uint pwLen;
+    char[129] hash; uint hashLen;
+
+    g_instConfigLen = 0;
+    instCfgAppend("{\n");
+    instCfgAppendJsonString("schema".ptr, "epin.install.v1".ptr, cast(uint)"epin.install.v1".length, true);
+    instGetOrDefault(raw, len, "hostname", "epin".ptr, hostname[], hostnameLen);
+    instCfgAppendJsonString("hostname".ptr, hostname.ptr, hostnameLen, true);
+    instGetOrDefault(raw, len, "user", "user".ptr, user[], userLen);
+    instCfgAppendJsonString("user".ptr, user.ptr, userLen, true);
+    instJsonGetString(raw, len, "userPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("userPasswordSha512".ptr, hash.ptr, hashLen, true);
+    instGetOrDefault(raw, len, "encryption", "none".ptr, encryption[], encryptionLen);
+    instCfgAppendJsonString("encryption".ptr, encryption.ptr, encryptionLen, true);
+    instJsonGetString(raw, len, "hiddenPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("hiddenPasswordSha512".ptr, hash.ptr, hashLen, true);
+    instJsonGetString(raw, len, "outerPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("outerPasswordSha512".ptr, hash.ptr, hashLen, true);
+    instJsonGetString(raw, len, "decoyBootPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("decoyBootPasswordSha512".ptr, hash.ptr, hashLen, true);
+    instGetOrDefault(raw, len, "decoyUser", "decoy".ptr, decoyUser[], decoyUserLen);
+    instCfgAppendJsonString("decoyUser".ptr, decoyUser.ptr, decoyUserLen, true);
+    instGetOrDefault(raw, len, "decoyFullName", "Decoy User".ptr, decoyFullName[], decoyFullNameLen);
+    instCfgAppendJsonString("decoyFullName".ptr, decoyFullName.ptr, decoyFullNameLen, true);
+    instJsonGetString(raw, len, "decoyPassword", pw[], pwLen);
+    instHexSha512(pw.ptr, pwLen, hash[], hashLen);
+    instCfgAppendJsonString("decoyPasswordSha512".ptr, hash.ptr, hashLen, true);
+    instGetOrDefault(raw, len, "decoyHostname", "decoy-pc".ptr, decoyHostname[], decoyHostnameLen);
+    instCfgAppendJsonString("decoyHostname".ptr, decoyHostname.ptr, decoyHostnameLen, false);
+    instCfgAppend("}\n".ptr);
+    g_instConfig[g_instConfigLen] = 0;
+    return g_instConfigLen > 0 && g_instConfigLen < INST_CONFIG_MAX;
+}
+
+@nogc nothrow
+private bool installCaptureConfig(const(char)* json, size_t len) {
+    if (json is null || len == 0) return false;
+    while (len > 0 && (json[len - 1] == 0 || json[len - 1] == '\r')) --len;
+    if (!installBuildPersistedConfig(json, len)) return false;
+    g_instConfigPresent = true;
+    klog("[install] captured install config bytes=0x"); klog_hex(g_instConfigLen);
+    klog(" (passwords hashed for persistence)\n");
+    return true;
+}
+
+@nogc nothrow
+private void installEnsureDefaultConfig() {
+    if (g_instConfigPresent && g_instConfigLen > 0) return;
+    static immutable string d =
+`{
+  "schema": "epin.install.v1",
+  "hostname": "epin",
+  "user": "user",
+  "userPasswordSha512": "",
+  "encryption": "none",
+  "hiddenPasswordSha512": "",
+  "outerPasswordSha512": "",
+  "decoyBootPasswordSha512": "",
+  "decoyUser": "decoy",
+  "decoyFullName": "Decoy User",
+  "decoyPasswordSha512": "",
+  "decoyHostname": "decoy-pc"
+}
+`;
+    foreach (i; 0 .. d.length) g_instConfig[i] = d[i];
+    g_instConfig[d.length] = 0;
+    g_instConfigLen = cast(uint)d.length;
+    g_instConfigPresent = true;
+}
+
+@nogc nothrow private ushort instFat16(const(ubyte)* p) {
+    return cast(ushort)(cast(ushort)p[0] | (cast(ushort)p[1] << 8));
+}
+
+@nogc nothrow private uint instFat32(const(ubyte)* p) {
+    return cast(uint)p[0] |
+           (cast(uint)p[1] << 8) |
+           (cast(uint)p[2] << 16) |
+           (cast(uint)p[3] << 24);
+}
+
+@nogc nothrow private void instPutFat32(ubyte* p, uint v) {
+    p[0] = cast(ubyte)(v & 0xff);
+    p[1] = cast(ubyte)((v >> 8) & 0xff);
+    p[2] = cast(ubyte)((v >> 16) & 0xff);
+    p[3] = cast(ubyte)((v >> 24) & 0xff);
+}
+
+@nogc nothrow private bool instShortNameEq(const(ubyte)* e) {
+    static immutable ubyte[11] want = ['I','N','S','T','A','L','~','1','J','S','O'];
+    foreach (i; 0 .. 11) if (e[i] != want[i]) return false;
+    return true;
+}
+
+@nogc nothrow
+private bool instFatNextCluster(int idx, ulong fatFirst, uint cluster, out uint next) {
+    import drivers.block.disk : diskReadSectorsOn;
+    enum uint SEC = 512;
+    ubyte[SEC] sec = void;
+    const ulong off = cast(ulong)cluster * 4UL;
+    if (!diskReadSectorsOn(idx, fatFirst + off / SEC, 1, sec.ptr)) return false;
+    next = instFat32(sec.ptr + cast(size_t)(off % SEC)) & 0x0fffffffu;
+    return true;
+}
+
+@nogc nothrow
+private ulong instFatClusterLba(ulong dataFirst, ubyte spc, uint cluster) {
+    return dataFirst + (cast(ulong)cluster - 2UL) * cast(ulong)spc;
+}
+
+@nogc nothrow
+private bool installPersistConfigToEsp() {
+    import drivers.block.disk : diskReadSectorsOn;
+    import core.install_cap : gatedDiskWrite;
+    enum uint SEC = 512;
+    installEnsureDefaultConfig();
+    if (g_instEspFirst == 0 || g_instConfigLen == 0) return false;
+
+    ubyte[SEC] sec = void;
+    if (!diskReadSectorsOn(g_instIdx, g_instEspFirst, 1, sec.ptr)) return false;
+    const ushort bps = instFat16(sec.ptr + 11);
+    const ubyte spc = sec[13];
+    const ushort reserved = instFat16(sec.ptr + 14);
+    const ubyte fats = sec[16];
+    uint fatSz = instFat32(sec.ptr + 36);
+    if (fatSz == 0) fatSz = instFat16(sec.ptr + 22);
+    const uint rootCluster = instFat32(sec.ptr + 44);
+    if (bps != SEC || spc == 0 || reserved == 0 || fats == 0 || fatSz == 0 || rootCluster < 2)
+        return false;
+
+    const ulong fatFirst = g_instEspFirst + reserved;
+    const ulong dataFirst = g_instEspFirst + reserved + cast(ulong)fats * fatSz;
+
+    uint dirCluster = rootCluster;
+    ulong dirEntryLba = 0;
+    size_t dirEntryOff = 0;
+    uint fileCluster = 0;
+    bool found = false;
+    while (dirCluster >= 2 && dirCluster < 0x0ffffff8u && !found) {
+        const ulong clba = instFatClusterLba(dataFirst, spc, dirCluster);
+        foreach (s; 0 .. spc) {
+            if (!diskReadSectorsOn(g_instIdx, clba + s, 1, sec.ptr)) return false;
+            foreach (off; 0 .. 16) {
+                const size_t o = cast(size_t)off * 32;
+                if (sec[o] == 0x00) break;
+                if (sec[o] == 0xE5 || sec[o + 11] == 0x0F) continue;
+                if (!instShortNameEq(sec.ptr + o)) continue;
+                dirEntryLba = clba + s;
+                dirEntryOff = o;
+                fileCluster = (instFat16(sec.ptr + o + 20) << 16) |
+                              instFat16(sec.ptr + o + 26);
+                found = true;
+                break;
+            }
+            if (found) break;
+        }
+        if (found) break;
+        uint next;
+        if (!instFatNextCluster(g_instIdx, fatFirst, dirCluster, next)) return false;
+        if (next == 0 || next == dirCluster) break;
+        dirCluster = next;
+    }
+    if (!found || fileCluster < 2) {
+        klog("[install] FAIL: ESP install.json placeholder not found\n");
+        return false;
+    }
+
+    instPutFat32(sec.ptr + dirEntryOff + 28, g_instConfigLen);
+    if (!gatedDiskWrite(g_instCap, g_instIdx, dirEntryLba, 1, sec.ptr)) return false;
+
+    uint cluster = fileCluster;
+    uint remaining = g_instConfigLen;
+    uint copied = 0;
+    while (cluster >= 2 && cluster < 0x0ffffff8u && remaining > 0) {
+        const ulong clba = instFatClusterLba(dataFirst, spc, cluster);
+        foreach (s; 0 .. spc) {
+            foreach (i; 0 .. SEC) sec[i] = 0;
+            uint n = remaining > SEC ? SEC : remaining;
+            foreach (i; 0 .. n) sec[i] = cast(ubyte)g_instConfig[copied + i];
+            if (!gatedDiskWrite(g_instCap, g_instIdx, clba + s, 1, sec.ptr)) return false;
+            copied += n;
+            remaining -= n;
+            if (remaining == 0) break;
+        }
+        if (remaining == 0) break;
+        uint next;
+        if (!instFatNextCluster(g_instIdx, fatFirst, cluster, next)) return false;
+        if (next == 0 || next == cluster) break;
+        cluster = next;
+    }
+    if (remaining != 0) {
+        klog("[install] FAIL: ESP install.json placeholder too small\n");
+        return false;
+    }
+    klog("[install] persisted install.json bytes=0x"); klog_hex(g_instConfigLen); klog("\n");
+    return true;
+}
 
 // Start an install of the esp-image payload to disk `idx` (dsec sectors): write the GPT, set
 // up the streaming state.  Returns false (and does nothing) if no payload / disk too small.
@@ -577,6 +914,7 @@ public bool installBegin(int idx, ulong dsec) {
         klog("[install] FAIL (gpt)\n"); revokeInstallWriteCap(g_instCap); g_instFailed = true; return false;
     }
     g_instIdx = idx; g_instSrc = cast(const(ubyte)*) phys_to_virt(phys);
+    g_instEspFirst = L.espFirst; g_instEspSectors = espSectors;
     g_instLba = L.espFirst; g_instRemaining = espSectors; g_instTotal = espSectors; g_instOff = 0;
     g_instActive = true; g_instDone = false; g_instFailed = false;
     klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; streaming image\n");
@@ -600,6 +938,11 @@ public void installStep(uint maxSectors) {
         g_instLba += chunk; g_instOff += cast(ulong)chunk * SEC; g_instRemaining -= chunk; did += chunk;
     }
     if (g_instRemaining == 0) {
+        if (!installPersistConfigToEsp()) {
+            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true;
+            klog("[install] FAIL (persist install config)\n");
+            return;
+        }
         revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
         klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
         klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
@@ -636,11 +979,20 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
     import drivers.block.disk : diskFindTarget;
     import drivers.block.ahci : g_ahciDevices;
     enum uint BATCH = 8192;                          // 4 MiB / write → ~60 bar updates
+    static immutable string C = "config ";
     static immutable string P = "install";
+    if (instCtlPrefix(cmd, len, C)) {
+        if (g_instActive || g_instDone) {
+            klog("[install] control: config rejected after install start\n");
+            return false;
+        }
+        return installCaptureConfig(cmd + C.length, len - C.length);
+    }
     if (cmd is null || len < P.length) return false;
     foreach (i; 0 .. P.length) if (cmd[i] != P[i]) return false;
 
     if (!g_instActive && !g_instDone) {              // start a new install
+        import drivers.block.disk : diskStoreIndex;
         int idx = -1; ulong dsec = 0;
         size_t p = P.length;
         while (p < len && (cmd[p] == ' ' || cmd[p] == '\t')) p++;
@@ -653,8 +1005,9 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
             idx = n; dsec = g_ahciDevices[n].capacity / 512;
         } else {
             idx = diskFindTarget(dsec);              // a spare disk distinct from the object store
+            if (idx < 0) idx = diskStoreIndex(dsec); // single-disk: install onto the only disk
         }
-        if (idx < 0) { klog("[install] control: no target disk (attach a second disk)\n"); return false; }
+        if (idx < 0) { klog("[install] control: no disk to install to\n"); return false; }
         klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
         if (!installBegin(idx, dsec)) return false;
     }
@@ -664,14 +1017,23 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
 
 // Boot smoke check: report installer READINESS (do NOT auto-wipe a disk).  Installing is
 // driven by the user (the "Install to Disk" button → /config/install.action).
+// True iff this boot carries the installer payload (the esp-image module) — i.e. an INSTALL
+// image.  The object store uses this to stay in-memory so the disk is a free install target.
+@nogc nothrow
+public bool bootHasInstallPayload() {
+    ulong phys, size;
+    return instFindModule("esp-image", phys, size);
+}
+
 @nogc nothrow
 public void installBootableProof() {
-    import drivers.block.disk : diskFindTarget;
+    import drivers.block.disk : diskFindTarget, diskStoreIndex;
     ulong phys, size;
     if (!instFindModule("esp-image", phys, size)) { klog("[install] not an INSTALL image (no esp-image module)\n"); return; }
     ulong dsec;
     int idx = diskFindTarget(dsec);
-    if (idx < 0) { klog("[install] READY: payload present, but no target disk attached (add a 2nd disk)\n"); return; }
+    if (idx < 0) idx = diskStoreIndex(dsec);         // single-disk: the only disk is the target
+    if (idx < 0) { klog("[install] READY: payload present, but no disk attached\n"); return; }
     klog("[install] READY: esp-image=0x"); klog_hex(size);
     klog("B, target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
     klog(" — click 'Install to Disk' (or: echo install > /config/install.action)\n");

@@ -22,8 +22,27 @@ STORE_VDI="$VMDIR/store.vdi"
 SYS_VDI="$VMDIR/system.vdi"
 MEM_MB="${MEM_MB:-3072}"
 SYS_GB="${SYS_GB:-8}"
+ACTION="${1:-}"
 
 [ -f "$ISO" ] || { echo "ERROR: $ISO not found — run 'make hos-install.iso' first." >&2; exit 1; }
+
+case "$ACTION" in
+    --boot-disk)
+        if ! VBoxManage showvminfo "$VM" >/dev/null 2>&1; then
+            echo "ERROR: VM '$VM' does not exist — install first with: $0 --start" >&2
+            exit 1
+        fi
+        VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium none >/dev/null
+        echo "DVD detached. Starting '$VM' from the installed system disk..."
+        VBoxManage startvm "$VM"
+        exit 0
+        ;;
+    ""|--start) ;;
+    *)
+        echo "Usage: $0 [--start|--boot-disk]" >&2
+        exit 2
+        ;;
+esac
 
 # Tear down any prior VM of this name (and its disks) so the script is re-runnable.
 if VBoxManage showvminfo "$VM" >/dev/null 2>&1; then
@@ -66,9 +85,6 @@ cat <<EOF
     $0 --boot-disk
 EOF
 
-case "${1:-}" in
+case "$ACTION" in
     --start)     VBoxManage startvm "$VM" ;;
-    --boot-disk) VBoxManage storageattach "$VM" --storagectl SATA --port 2 --device 0 --type dvddrive --medium none >/dev/null
-                 echo "DVD detached. Starting '$VM' from the installed system disk..."
-                 VBoxManage startvm "$VM" ;;
 esac

@@ -37,7 +37,7 @@ import core.identity : identityDeviceAllowed, identityByName, // DM8: §7 device
                        DEVCLASS_MIC, DEVCLASS_AUDIO, DEVCLASS_USB;
 import core.user : userCurrentUid, userCurrentGid, userPasswdContent,
                    userGroupContent, userByUid, userByGid,
-                   userSetActiveSubject; // Phase 10 / IR-P3 User objects
+                   userSetActiveSubject, userDefaultNameContent; // Phase 10 / IR-P3 User objects
 import core.admin : adminRequire; // IR-P3 typed admin caps
 import core.org : edgeEnsure, orgPruneDeadOut, edgeAdd, edgeRemove, EdgeKind,
                   orgDotContent, orgStatsContent; // ORG P3/P9/P10: edges + graph export
@@ -2912,6 +2912,17 @@ public int sys_open(const(char)* path, int flags) {
     }
 
     // Check virtual filesystem table (/proc/*, /sys/*, /etc/*, ...)
+    {
+        const(char)[] dyn = pxHostnameVirtualFile(path);
+        if (dyn.length > 0) {
+            g_fdTable[fd].type     = FileType.FD_FILE;
+            g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
+            g_fdTable[fd].offset   = 0;
+            g_fdTable[fd].backend  = cast(void*)dyn.ptr;
+            g_fdTable[fd].fileSize = dyn.length;
+            return publishActiveFdReturn(fd);
+        }
+    }
     foreach (ref vfe; g_vfs) {
         if (cstrEq(path, vfe.path)) {
             g_fdTable[fd].type     = FileType.FD_FILE;
@@ -4089,6 +4100,23 @@ private void rtInit() {
     rtMkdirPath("/tmp\0".ptr,           M1777, 0, 0);
     rtMkdirPath("/home\0".ptr,          M0755, 0, 0);
     rtMkdirPath("/home/user\0".ptr,     M0700, 1000, 1000);
+    {
+        auto uname = userDefaultNameContent();
+        if (uname.length > 0) {
+            bool isDefault = uname.length == 4 &&
+                             uname[0] == 'u' && uname[1] == 's' &&
+                             uname[2] == 'e' && uname[3] == 'r';
+            if (!isDefault) {
+                char[80] homePath;
+                size_t pos = 0;
+                foreach (c; "/home/") homePath[pos++] = c;
+                foreach (i; 0 .. uname.length)
+                    if (pos + 1 < homePath.length) homePath[pos++] = uname[i];
+                homePath[pos] = 0;
+                rtMkdirPath(homePath.ptr, M0700, 1000, 1000);
+            }
+        }
+    }
     rtMkdirPath("/var\0".ptr,           M0755, 0, 0);
     rtMkdirPath("/var/cache\0".ptr,     M0755, 0, 0);
     rtMkdirPath("/var/cache/fontconfig\0".ptr, M0755, 0, 0);
@@ -4780,6 +4808,72 @@ private bool fileIsVirtualContent(File* f) {
 // ── Virtual filesystem table ──────────────────────────────────────────────────
 // Read-only files synthesised by the kernel; content lives in the data segment.
 private struct VFEntry { const(char)[] path; const(char)[] content; }
+
+private __gshared char[65]  g_hostname = "hanonymOS";
+private __gshared char[65]  g_domainname = "(none)";
+private __gshared char[96]  g_pxHostnameFile;
+private __gshared uint      g_pxHostnameFileLen;
+private __gshared char[192] g_pxHostsFile;
+private __gshared uint      g_pxHostsFileLen;
+
+private uint pxHostLen() {
+    uint n = 0;
+    while (n < 64 && g_hostname[n] != 0) ++n;
+    return n;
+}
+
+private void pxAppend(ref uint pos, char[] dst, const(char)* s) {
+    while (*s != 0 && pos < dst.length) dst[pos++] = *s++;
+}
+
+private void pxAppendHost(ref uint pos, char[] dst) {
+    const uint n = pxHostLen();
+    foreach (i; 0 .. n) if (pos < dst.length) dst[pos++] = g_hostname[i];
+}
+
+private void pxRebuildHostnameFiles() {
+    uint pos = 0;
+    pxAppendHost(pos, g_pxHostnameFile[]);
+    if (pos < g_pxHostnameFile.length) g_pxHostnameFile[pos++] = '\n';
+    g_pxHostnameFileLen = pos;
+
+    pos = 0;
+    pxAppend(pos, g_pxHostsFile[], "127.0.0.1 localhost ".ptr);
+    pxAppendHost(pos, g_pxHostsFile[]);
+    pxAppend(pos, g_pxHostsFile[], "\n::1 localhost\n".ptr);
+    g_pxHostsFileLen = pos;
+}
+
+public void posixSetBootHostname(const(char)* name, size_t len) {
+    if (name is null || len == 0) return;
+    if (len > 64) len = 64;
+    size_t outLen = 0;
+    foreach (i; 0 .. len) {
+        char c = name[i];
+        if (c == 0) break;
+        const bool ok = (c >= 'a' && c <= 'z') ||
+                        (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') ||
+                        c == '-';
+        if (!ok) return;
+        g_hostname[outLen++] = c;
+    }
+    if (outLen == 0) return;
+    g_hostname[outLen] = 0;
+    foreach (i; outLen + 1 .. g_hostname.length) g_hostname[i] = 0;
+    pxRebuildHostnameFiles();
+}
+
+private const(char)[] pxHostnameVirtualFile(const(char)* path) {
+    if (g_pxHostnameFileLen == 0) pxRebuildHostnameFiles();
+    if (cstrEq(path, "/etc/hostname") ||
+        cstrEq(path, "/proc/sys/kernel/hostname") ||
+        cstrEq(path, "/run/openrc/options/hostname"))
+        return g_pxHostnameFile[0 .. g_pxHostnameFileLen];
+    if (cstrEq(path, "/etc/hosts"))
+        return g_pxHostsFile[0 .. g_pxHostsFileLen];
+    return null;
+}
 
 private immutable VFEntry[] g_vfs = [
     // /proc
@@ -5529,6 +5623,10 @@ private const(char)[] findVirtualFile(const(char)* path) {
     }
     if (cstrEq(path, "/proc/display-info")) {
         return displayInfoContent();
+    }
+    {
+        auto h = pxHostnameVirtualFile(path);
+        if (h.length) return h;
     }
     // Phase 10: /etc/passwd and /etc/group are derived from the User registry
     // (falling back to the static entry below only if the registry is empty).
@@ -6903,13 +7001,21 @@ public long linux_sys_uname(ulong buf) {
         for(size_t i=0; i<len; i++) dst[i] = src[i];
         dst[len] = 0;
     }
+    void strcpyC(char[] dst, const(char)* src) {
+        size_t len = 0;
+        while (src[len] != 0 && len < dst.length - 1) {
+            dst[len] = src[len];
+            ++len;
+        }
+        dst[len] = 0;
+    }
 
     strcpy(u.sysname, "Linux"); // Pretend to be Linux
-    strcpy(u.nodename, "HanonymOS");
+    strcpyC(u.nodename, g_hostname.ptr);
     strcpy(u.release, "6.0.0"); // Pretend to be a modern kernel
     strcpy(u.version_, "#1 SMP HanonymOS");
     strcpy(u.machine, "x86_64");
-    strcpy(u.domainname, "(none)");
+    strcpyC(u.domainname, g_domainname.ptr);
 
     return 0;
 }
@@ -9341,15 +9447,9 @@ public long linux_sys_adjtimex(ulong buf) {
     return 0; // TIME_OK
 }
 
-// --- sethostname / setdomainname ---
-private __gshared char[65] g_hostname   = "localhost";
-private __gshared char[65] g_domainname = "(none)";
-
 public long linux_sys_sethostname(ulong name, ulong len) {
     if (len > 64) return negErrno(EINVAL);
-    auto src = cast(const(char)*)name;
-    for (ulong i = 0; i < len; ++i) g_hostname[i] = src[i];
-    g_hostname[len] = '\0';
+    posixSetBootHostname(cast(const(char)*)name, cast(size_t)len);
     return 0;
 }
 public long linux_sys_setdomainname(ulong name, ulong len) {

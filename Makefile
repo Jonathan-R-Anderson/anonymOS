@@ -7,7 +7,7 @@ export PROJECT_ROOT
 
 include build.opts
 
-.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi hos-install.iso hos-minimal.iso
+.PHONY: all clean iso zsh progs-haskell deps-core deps-desktop deps-weston deps-hyprland build-display-conf build-font-assets build-gui-assets build-zksync-wallet boot-integrity-contract anonymos-config anonymos-config-test build-config-manifest stage-iso-tree veracrypt-efi hos-install.iso
 
 # ZSH_INTEGRATION_ROADMAP Z0: build real upstream zsh as a static musl binary
 # (against a musl-built ncursesw with compiled-in terminal fallbacks).  This only
@@ -55,6 +55,19 @@ all:
 build/libkernel_d.a:
 	@echo "==== Building D Kernel ===="
 	+$(MAKE) -j1 -C src/kernel/d
+
+boot-integrity-contract:
+	scripts/compile-boot-integrity-contract.sh
+
+build-zksync-wallet:
+	@echo "==== Packing zkSync wallet boot-integrity app ===="
+	python3 scripts/pack-zksync-wallet.py \
+		$(ZKSYNC_WALLET_STATIC) \
+		$(ZKSYNC_WALLET_BLOB) \
+		system/web/zksync-wallet \
+		--contract $(BOOT_INTEGRITY_CONTRACT) \
+		--abi $(BOOT_INTEGRITY_ABI) \
+		--artifact $(BOOT_INTEGRITY_ARTIFACT)
 
 # =========================================================
 # Kernel Link
@@ -155,6 +168,17 @@ ICON_BLOB     := $(ASSET_BLOBS_DIR)/icons.blob
 CURSOR_BLOB   := $(ASSET_BLOBS_DIR)/cursors.blob
 WALLPAPER_BLOB := $(ASSET_BLOBS_DIR)/wallpapers.blob
 THEME_BLOB    := $(ASSET_BLOBS_DIR)/themes.blob
+ZKSYNC_WALLET_STATIC := deps/zksync-wallet-vue/src/static/boot-integrity
+ZKSYNC_WALLET_BLOB := build/zksync-wallet.blob
+BOOT_INTEGRITY_CONTRACT := installer/contracts/BootIntegrityRegistry.sol
+BOOT_INTEGRITY_ABI := installer/contracts/BootIntegrityRegistry.abi.json
+BOOT_INTEGRITY_ARTIFACT := build/contracts/BootIntegrityRegistry.artifact.json
+BOOT_INTEGRITY_MANIFEST := build/zksync-attestation.json
+ZKSYNC_NETWORK ?= zksync-sepolia
+ZKSYNC_CHAIN_ID ?= 300
+ZKSYNC_RPC_URL ?= https://sepolia.era.zksync.dev
+BOOT_INTEGRITY_CONTRACT_ADDRESS ?=
+BOOT_INTEGRITY_DEPLOY_TX ?=
 DISPLAY_CONF := build/display.conf
 # DECLARITIVE_MODEL_ROADMAP §4: the verified declarative-config boot manifest.
 # Generated from a default system.json by the host `anonymos-config emit-manifest`
@@ -426,7 +450,7 @@ $(WLDOMAINMGR_BIN): src/util/wl-domain-manager.c $(XDG_SHELL_HEADER) $(XDG_SHELL
 		-lm \
 		-pthread
 
-stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
+stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_TEST_BIN) $(GL_WL_TEST_BIN) $(GL_TERM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(WLPROBE_BIN) $(DISPLAYINFO_BIN) $(WLSHM_DEMO_BIN) $(WLTERM_BIN) $(WLCAIRO_DEMO_BIN) $(INSTALLER_BIN) $(WLFILES_BIN) $(WLDOMAINMGR_BIN) $(IDLE_BIN) $(HOS_SH_BIN) $(STORE_APP_BIN) $(ZSH_BIN) $(DECOY_IMAGE) build-display-conf build-config-manifest build-gui-assets build-zksync-wallet $(wildcard $(HYPRLAND_BIN)) $(wildcard $(GTK_HELLO_BIN))
 	@echo "==== Staging installer ISO boot tree ===="
 
 	rm -rf cd
@@ -536,6 +560,10 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 	cp $(DECOY_IMAGE) cd/decoy-linux.ext4
 	printf '\n    module_path: boot():/decoy-linux.ext4\n' >> cd/boot/limine/limine.conf
 	@echo "Included decoy-linux.ext4 (INSTALLER H1 decoy Linux disk image)"
+
+	cp $(ZKSYNC_WALLET_BLOB) cd/zksync-wallet.blob
+	printf '\n    module_path: boot():/zksync-wallet.blob\n' >> cd/boot/limine/limine.conf
+	@echo "Included zksync-wallet.blob (ZKsync boot-integrity wallet + contract ABI)"
 
 	@if [ -x "$(RUSTC)" ]; then \
 	   $(MAKE) --no-print-directory $(HELLO_WL_BIN) && cp $(HELLO_WL_BIN) cd/hello-wl && \
@@ -689,6 +717,16 @@ stage-iso-tree: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(
 		echo "Weston not built — run: make deps-weston (staying on Hyprland)"; \
 	fi
 
+	python3 scripts/build-boot-integrity-manifest.py cd $(BOOT_INTEGRITY_MANIFEST) \
+		--network "$(ZKSYNC_NETWORK)" \
+		--chain-id "$(ZKSYNC_CHAIN_ID)" \
+		--rpc-url "$(ZKSYNC_RPC_URL)" \
+		--contract-address "$(BOOT_INTEGRITY_CONTRACT_ADDRESS)" \
+		--deployment-tx "$(BOOT_INTEGRITY_DEPLOY_TX)"
+	cp $(BOOT_INTEGRITY_MANIFEST) cd/zksync-attestation.json
+	printf '\n    module_path: boot():/zksync-attestation.json\n' >> cd/boot/limine/limine.conf
+	@echo "Included zksync-attestation.json (boot-module hash manifest)"
+
 # =========================================================
 # INSTALLER ISO (hos-install.iso) — the only full ISO artifact. It contains the
 # normal boot tree PLUS a prebuilt FAT32 "esp-image"
@@ -701,45 +739,6 @@ iso: hos-install.iso
 
 hos-install.iso: stage-iso-tree veracrypt-efi
 	scripts/mk-install-iso.sh
-
-# =========================================================
-# Minimal ISO — kernel + busybox + the signed config manifest ONLY.
-#
-# `make iso` requires the full desktop deps (weston, hyprland, wl-term, …)
-# which need the Ubuntu-18.04 Docker image to build. This target builds a
-# bootable ISO from a CLEAN checkout with just the host toolchain (ldc2/ld/
-# xorriso + busybox): the native boot splash renders, the declarative config
-# manifest is HMAC-verified and applied, and busybox is init. Use this when the
-# desktop deps aren't built. `make hos-minimal.iso`.
-# =========================================================
-HOS_MINIMAL_ISO := hos-minimal.iso
-
-.PHONY: hos-minimal.iso
-hos-minimal.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(COMPOSITOR_BIN) $(HELLO_GUI_BIN) $(IDLE_BIN) build-display-conf build-config-manifest
-	@echo "==== Building minimal ISO (kernel + busybox + config manifest; no desktop deps) ===="
-	rm -rf cd
-	mkdir -p cd/boot/limine
-	cp kernel.elf cd/boot/kernel.elf
-	printf 'timeout: 3\nverbose: no\nquiet: yes\n\n/EpinAnonymOS\n    protocol: limine\n    path: boot():/boot/kernel.elf\n    cmdline: display.width=$(DISPLAY_WIDTH) display.height=$(DISPLAY_HEIGHT) display.scale=$(DISPLAY_SCALE) display.refresh=$(DISPLAY_REFRESH) display.force_mode=$(DISPLAY_FORCE_MODE) gui.autostart=$(GUI_AUTOSTART)\n    resolution: $(DISPLAY_WIDTH)x$(DISPLAY_HEIGHT)x32\n    module_path: boot():/busybox\n    module_path: boot():/test-drm\n    module_path: boot():/compositor\n    module_path: boot():/hello-gui\n    module_path: boot():/idle\n    module_path: boot():/display.conf\n' > cd/boot/limine/limine.conf
-	cp src/boot/limine-bios.sys src/boot/limine-bios-cd.bin src/boot/limine-uefi-cd.bin cd/boot/limine/
-	cp $(BUSYBOX_BIN) cd/busybox
-	cp $(TEST_DRM_BIN) cd/test-drm
-	cp $(COMPOSITOR_BIN) cd/compositor
-	cp $(HELLO_GUI_BIN) cd/hello-gui
-	cp $(IDLE_BIN) cd/idle
-	cp $(DISPLAY_CONF) cd/display.conf
-	@echo "Included busybox + freestanding tools (minimal ISO)"
-	# Stage the signed declarative-config manifest (the splash + configboot path).
-	@if [ "$(DECLARATIVE_CONFIG)" != "none" ] && [ -f $(CONFIG_MANIFEST) ]; then \
-		cp $(CONFIG_MANIFEST) cd/manifest.blob; \
-		printf '    module_path: boot():/manifest.blob\n' >> cd/boot/limine/limine.conf; \
-		echo "Included manifest.blob (declarative config: $(DECLARATIVE_CONFIG))"; \
-	fi
-	$(XORRISO) -as mkisofs \
-		-b boot/limine/limine-bios-cd.bin -no-emul-boot -boot-load-size 4 -boot-info-table \
-		--efi-boot boot/limine/limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
-		--protective-msdos-label cd -o $(HOS_MINIMAL_ISO)
-	@echo "✅ Built $(HOS_MINIMAL_ISO) (boot with: qemu-system-x86_64 -boot d -cdrom $(HOS_MINIMAL_ISO))"
 
 # =========================================================
 # Legacy: Haskell userspace programs (optional, not part of main build)

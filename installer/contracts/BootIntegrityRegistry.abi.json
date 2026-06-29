@@ -1,0 +1,142 @@
+[
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "initialRoot", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "initialManifestHash", "type": "bytes32" },
+      { "internalType": "uint64", "name": "initialFileCount", "type": "uint64" }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  { "inputs": [], "name": "EmptyOwner", "type": "error" },
+  { "inputs": [], "name": "EmptyRoot", "type": "error" },
+  { "inputs": [], "name": "LengthMismatch", "type": "error" },
+  { "inputs": [], "name": "NotOwner", "type": "error" },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "pathHash", "type": "bytes32" },
+      { "indexed": true, "internalType": "bytes32", "name": "contentHash", "type": "bytes32" },
+      { "indexed": false, "internalType": "uint64", "name": "version", "type": "uint64" }
+    ],
+    "name": "FileHashUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "address", "name": "previousOwner", "type": "address" },
+      { "indexed": true, "internalType": "address", "name": "newOwner", "type": "address" }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      { "indexed": true, "internalType": "bytes32", "name": "systemRoot", "type": "bytes32" },
+      { "indexed": true, "internalType": "bytes32", "name": "manifestHash", "type": "bytes32" },
+      { "indexed": false, "internalType": "uint64", "name": "fileCount", "type": "uint64" },
+      { "indexed": false, "internalType": "uint64", "name": "version", "type": "uint64" }
+    ],
+    "name": "RootUpdated",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "", "type": "bytes32" }
+    ],
+    "name": "fileHashes",
+    "outputs": [
+      { "internalType": "bytes32", "name": "", "type": "bytes32" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "fileCount",
+    "outputs": [
+      { "internalType": "uint64", "name": "", "type": "uint64" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "pathHash", "type": "bytes32" }
+    ],
+    "name": "getFileHash",
+    "outputs": [
+      { "internalType": "bytes32", "name": "", "type": "bytes32" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "manifestHash",
+    "outputs": [
+      { "internalType": "bytes32", "name": "", "type": "bytes32" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      { "internalType": "address", "name": "", "type": "address" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32[]", "name": "pathHashes", "type": "bytes32[]" },
+      { "internalType": "bytes32[]", "name": "contentHashes", "type": "bytes32[]" }
+    ],
+    "name": "setFileHashes",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "systemRoot",
+    "outputs": [
+      { "internalType": "bytes32", "name": "", "type": "bytes32" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "address", "name": "newOwner", "type": "address" }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      { "internalType": "bytes32", "name": "newRoot", "type": "bytes32" },
+      { "internalType": "bytes32", "name": "newManifestHash", "type": "bytes32" },
+      { "internalType": "uint64", "name": "newFileCount", "type": "uint64" }
+    ],
+    "name": "updateRoot",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "version",
+    "outputs": [
+      { "internalType": "uint64", "name": "", "type": "uint64" }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

@@ -47,6 +47,8 @@ __gshared char[IC_FIELD_MAX] g_icTimezone;
 __gshared uint g_icTimezoneLen;
 __gshared char[IC_FIELD_MAX] g_icFilesystem;
 __gshared uint g_icFilesystemLen;
+__gshared char[IC_FIELD_MAX] g_icBootIntegrity;
+__gshared uint g_icBootIntegrityLen;
 __gshared char[IC_FIELD_MAX] g_icIdentities;
 __gshared uint g_icIdentitiesLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyUser;
@@ -58,6 +60,13 @@ __gshared uint g_icDecoyHostnameLen;
 
 public bool installConfigPresent() {
     return g_icPresent;
+}
+
+public bool installConfigBootIntegrityZkSync() {
+    if (g_icBootIntegrityLen != 6) return false;
+    return g_icBootIntegrity[0] == 'z' && g_icBootIntegrity[1] == 'k' &&
+           g_icBootIntegrity[2] == 's' && g_icBootIntegrity[3] == 'y' &&
+           g_icBootIntegrity[4] == 'n' && g_icBootIntegrity[5] == 'c';
 }
 
 private bool icStrEq(const(char)* a, const(char)* b) {
@@ -182,6 +191,7 @@ public bool installConfigApply() {
     icJsonGetString("keymap", g_icKeymap[], g_icKeymapLen);
     icJsonGetString("timezone", g_icTimezone[], g_icTimezoneLen);
     icJsonGetString("filesystem", g_icFilesystem[], g_icFilesystemLen);
+    icJsonGetString("bootIntegrity", g_icBootIntegrity[], g_icBootIntegrityLen);
     icJsonGetString("identities", g_icIdentities[], g_icIdentitiesLen);
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
@@ -211,6 +221,8 @@ public bool installConfigApply() {
     if (g_icTimezoneLen > 0) icLogSlice(g_icTimezone.ptr, g_icTimezoneLen); else klog("(default)".ptr);
     klog(" filesystem=");
     if (g_icFilesystemLen > 0) icLogSlice(g_icFilesystem.ptr, g_icFilesystemLen); else klog("(default)".ptr);
+    klog(" bootIntegrity=");
+    if (g_icBootIntegrityLen > 0) icLogSlice(g_icBootIntegrity.ptr, g_icBootIntegrityLen); else klog("off".ptr);
     if (g_icIdentitiesLen > 0) { klog(" identities="); icLogSlice(g_icIdentities.ptr, g_icIdentitiesLen); }
     if (g_icDecoyUserLen > 0 || g_icDecoyHostnameLen > 0) {
         klog(" decoy=");

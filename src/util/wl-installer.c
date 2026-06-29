@@ -154,8 +154,8 @@ static const struct opt FILESYSTEMS[] = {
 };
 
 static const struct opt BOOTINTEGRITY[] = {
-    { "Off",              "No external boot attestation (default)",            "off",    0 },
-    { "zkSync attestation", "Anchor /system hashes on-chain (requires network)", "zksync", 0 },
+    { "Off",              "No external boot attestation (default)",                  "off",    0 },
+    { "zkSync attestation", "Anchor /system hashes on-chain (requires deployed registry)", "zksync", 0 },
 };
 
 /* Toggleable identity profiles (roadmap §Phase 6). The Administrator account on the
@@ -170,6 +170,50 @@ static const struct opt IDENTITIES[] = {
 };
 
 #define ARRAY_LEN(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
+static int hex_digit(int c)
+{
+    return (c >= '0' && c <= '9') ||
+           (c >= 'a' && c <= 'f') ||
+           (c >= 'A' && c <= 'F');
+}
+
+static int zksync_attestation_has_contract(void)
+{
+    static int cached = -1;
+    if (cached >= 0)
+        return cached;
+
+    cached = 0;
+    int fd = open("/zksync-attestation.json", O_RDONLY);
+    if (fd < 0)
+        return 0;
+
+    char buf[8192];
+    ssize_t n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n <= 0)
+        return 0;
+    buf[n] = 0;
+
+    char *key = strstr(buf, "\"contractAddress\"");
+    if (!key)
+        return 0;
+    char *addr = strstr(key, "0x");
+    if (!addr)
+        return 0;
+
+    int nonzero = 0;
+    for (int i = 0; i < 40; ++i) {
+        int c = addr[2 + i];
+        if (!hex_digit(c))
+            return 0;
+        if (c != '0')
+            nonzero = 1;
+    }
+    cached = nonzero;
+    return cached;
+}
 
 struct disk_entry {
     int index;
@@ -461,6 +505,9 @@ static int opt_is_disabled(struct app *app, int s, int idx)
         return 1;
     if (s == SCREEN_BOOTINTEGRITY && strcmp(o[idx].code, "zksync") == 0 &&
         strcmp(NETWORKS[app->network_idx].code, "offline") == 0)
+        return 1;
+    if (s == SCREEN_BOOTINTEGRITY && strcmp(o[idx].code, "zksync") == 0 &&
+        !zksync_attestation_has_contract())
         return 1;
     return 0;
 }

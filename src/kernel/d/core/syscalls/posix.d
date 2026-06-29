@@ -4805,6 +4805,11 @@ private void rtUnpackAssets() {
     // git plugin + the P9k theme + the Z9 plugins + the AnonymOS profile).  Opt-in via the
     // `omz-setup` function in /etc/zshrc, which installs the profile to ~/.zshrc.
     rtUnpackAssetBlob("/omz.blob\0".ptr);
+
+    // ZKsync boot-integrity wallet and contract artifacts under
+    // /system/web/zksync-wallet so the installed OS can deploy/update the
+    // on-chain hash registry from the bundled wallet UI.
+    rtUnpackAssetBlob("/zksync-wallet.blob\0".ptr);
 }
 
 private enum size_t fileBackendPlain = 0;

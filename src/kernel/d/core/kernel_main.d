@@ -2953,6 +2953,7 @@ void d_kernel_main() {
     // by the current compatibility stubs.
     userRegistryInit();
     installConfigApply();
+    { import core.boot_integrity : bootIntegrityVerifyLocal; bootIntegrityVerifyLocal(); }
     g_tasks[0].userObjId = userDefaultObjId();
     userSetActiveSubject(g_tasks[0].userObjId);
     adminInstallInitCaps(g_tasks[0].capTabId);
@@ -3287,6 +3288,7 @@ void d_kernel_main() {
 
     smpActivateAp();             // SMP_ROADMAP S4.4a: activate an AP into apKernelLoop (desktop is up)
     networkSelfTest();           // NETWORK_ROADMAP N0/N1: IPv4 stack + ARP round-trip (no-op without NET=1)
+    { import core.boot_integrity : bootIntegrityVerifyChain; bootIntegrityVerifyChain(); }
     klog("[dkernel] entering kernel loop\n");
     kernelLoop();
 

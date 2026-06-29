@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk mkinstall clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:
@@ -97,6 +97,18 @@ cryptdisk: crypto | $(BLD)
 	    $(SELF)/vcheader.c $(SELF)/test/cryptdisk.c \
 	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-cryptdisk
 	$(BLD)/vc-cryptdisk $(ROOTFS) decoy-password
+
+# §E7/F2 — assemble a FULL deniable install (GPT + ESP + fully-encrypted system + fully-
+# random outer) and prove the entropy map is featureless.
+mkinstall: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/mkinstall.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-mkinstall
+	@dd if=/dev/zero of=$(BLD)/install.img bs=1M count=512 status=none
+	@sgdisk --clear -n 1:34:+64M -t 1:EF00 -n 2:0:+64M -t 2:0700 -n 3:0:0 -t 3:0700 $(BLD)/install.img >/dev/null
+	$(BLD)/vc-mkinstall $(BLD)/install.img $(ROOTFS) decoy-password 131106 131072 262178 786365
+	@echo "--- §F2 entropy map (encrypted partitions must be featureless) ---"
+	@python3 $(SELF)/test/entropy_scan.py $(BLD)/install.img
 
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)

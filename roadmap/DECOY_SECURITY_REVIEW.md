@@ -60,7 +60,16 @@ decoy (the renderer's native idiom), or (b) give the renderer an Alpine profile 
 `apk`, no systemd/GNOME). In **both** cases the renderer's user/service pools must be derived from the
 *actual* rootfs (`/etc/passwd`, the package set) so it can never name an entity that doesn't exist.
 
-### F2 — A real deniable install must be high-entropy *everywhere*  ·  **CRITICAL**
+### F2 — A real deniable install must be high-entropy *everywhere*  ·  **CRITICAL** · ✅ **ADDRESSED**
+**Fixed:** `deps/veracrypt/test/mkinstall.c` (`make veracrypt mkinstall`) assembles a full install —
+GPT + ESP + the **entire system partition** (decoy rootfs XTS-encrypted + CSPRNG random pad to fill) +
+the **entire outer partition** CSPRNG-random-filled, with the decoy/outer/hidden headers overlaid. The
+entropy map is now featureless: `system 8.000 / outer 8.000` bits/byte, uniform (vs the old
+zeros-with-floating-headers). No zeros, no rootfs↔pad or hidden-volume discontinuity. The in-kernel
+installer must do the same (encrypt the full rootfs + CSPRNG-fill all free space, not the test PRNG).
+Original finding below for the record.
+
+
 Entropy map of the current install artifact (1 MiB windows):
 ```
   GPT/MBR            0.006   ESP-FAT            0.003
@@ -113,14 +122,17 @@ maintenance daemon remains (if any). Kernel-level hiding is a last resort and is
 ---
 
 ## Prioritized remediation
-1. ~~**F1 distro-consistent generator**~~ ✅ done. **F2 full-entropy install** — the remaining
-   prerequisite for *any* deniability (an install that leaves zeros is trivially detectable).
-2. **F3 virtual clock + coherent mtimes**, then **F5 disk-illusion (§H3)**.
+1. ~~**F1 distro-consistent generator**~~ ✅ · ~~**F2 full-entropy install**~~ ✅ — the two
+   prerequisites that made the decoy *trivially* synthetic are resolved.
+2. **F3 virtual clock + coherent mtimes** (the remaining content blocker), then
+   **F5 disk-illusion (§H3)**.
 3. **F4 fixed candidate budget**, **F6 concealment (§H4, hide-in-plain-sight)**.
 
 ## Verdict
-The cryptographic and boot *mechanism* is sound and validated. The **deniability is not yet real**: the
-decoy is currently distinguishable from a genuine system by log/FS inconsistency (F1), a near-empty
-entropy map (F2), and timestamp gaps (F3) — all detectable in minutes by a competent examiner. These
-are content/integration gaps, not flaws in the crypto, and F1–F3 are the blocking work before the
-feature can be claimed as providing plausible deniability.
+The cryptographic and boot *mechanism* is sound and validated. The two findings that made the decoy
+*trivially* synthetic are now fixed — **F1** (log/distro consistency) and **F2** (a featureless entropy
+map; system + outer uniformly 8.000 bits/byte). The remaining blocker to claiming real plausible
+deniability is **F3** (timestamp coherence / a seed-anchored virtual clock); after that, §H3 (the
+decoy must not see unaccounted disk space) and §H4 (the generator must not be findable) are the
+once-booted gaps. The crypto was never the weak point — deniability is a content + integration
+discipline, and it is now most of the way there.

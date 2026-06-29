@@ -129,17 +129,24 @@ int vc_open_header(const char*pw,const unsigned char header[512],unsigned char o
 
 /* §G2.2 typo tolerance — fuzz the INPUT (caps-lock / first-char / transposition / single
  * deletion), the same bounded model as deps/decoy/g2/dm.c. The VeraCrypt header is the
- * exact verifier, so a typo whose correction equals the real password opens the volume. */
+ * exact verifier, so a typo whose correction equals the real password opens the volume.
+ * §E7/F4: cap at + pad to a FIXED budget so the candidate count (hence the auth time) is
+ * independent of the typed-password length (no length side-channel). Padding entries are a
+ * never-matching dummy, so they only burn a constant amount of PBKDF2 work. */
+#define VC_CAND_BUDGET 48
 static char vc_swapcase(char c){ if(c>='a'&&c<='z')return c-32; if(c>='A'&&c<='Z')return c+32; return c; }
 static int vc_typo_candidates(const char *in, char out[][128], int max){
+    int B = max < VC_CAND_BUDGET ? max : VC_CAND_BUDGET;
     int n=0, L=0; while(in[L]) L++;
-    if (L>=128){ if(max>0){ vc_memcpy(out[0],in,L+1); return 1; } return 0; }
-    vc_memcpy(out[n++], in, L+1);                                                       /* as-is */
-    if(n<max){ for(int i=0;i<L;i++) out[n][i]=vc_swapcase(in[i]); out[n][L]=0; n++; }   /* caps lock */
-    if(L>0 && n<max){ vc_memcpy(out[n],in,L+1); out[n][0]=vc_swapcase(out[n][0]); n++; } /* first char */
-    for(int i=0;i+1<L && n<max;i++){ vc_memcpy(out[n],in,L+1); char t=out[n][i]; out[n][i]=out[n][i+1]; out[n][i+1]=t; n++; } /* transpose */
-    for(int i=0;i<L && n<max;i++){ int k=0; for(int j=0;j<L;j++) if(j!=i) out[n][k++]=in[j]; out[n][k]=0; n++; } /* delete */
-    return n;
+    if (L < 128){
+        vc_memcpy(out[n++], in, L+1);                                                  /* as-is */
+        if(n<B){ for(int i=0;i<L;i++) out[n][i]=vc_swapcase(in[i]); out[n][L]=0; n++; } /* caps lock */
+        if(L>0 && n<B){ vc_memcpy(out[n],in,L+1); out[n][0]=vc_swapcase(out[n][0]); n++; } /* first char */
+        for(int i=0;i+1<L && n<B;i++){ vc_memcpy(out[n],in,L+1); char t=out[n][i]; out[n][i]=out[n][i+1]; out[n][i+1]=t; n++; } /* transpose */
+        for(int i=0;i<L && n<B;i++){ int k=0; for(int j=0;j<L;j++) if(j!=i) out[n][k++]=in[j]; out[n][k]=0; n++; } /* delete */
+    }
+    while(n<B){ out[n][0]=1; out[n][1]=0; n++; }     /* dummy "\x01" — never opens a header */
+    return n;                                         /* always == B (fixed-budget) */
 }
 
 int preboot_authenticate(const char*pw,const unsigned char decoy[512],const unsigned char hidden[512],unsigned char outKey[256]){

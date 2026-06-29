@@ -4,17 +4,22 @@
 #include <string.h>
 
 /* §G2.2 typo tolerance — fuzz the INPUT (the bounded model from deps/decoy/g2/dm.c); the
- * VeraCrypt header is the exact verifier. Mirrors deps/veracrypt/efi/efi_vc.c. */
+ * VeraCrypt header is the exact verifier. §E7/F4: cap at + pad to a fixed budget so the
+ * candidate count (hence the auth time) is length-independent. Mirrors efi_vc.c. */
+#define VC_CAND_BUDGET 48
 static char swapcase(char c){ if(c>='a'&&c<='z')return c-32; if(c>='A'&&c<='Z')return c+32; return c; }
 static int typo_candidates(const char *in, char out[][128], int max){
+    int B = max < VC_CAND_BUDGET ? max : VC_CAND_BUDGET;
     int n=0, L=0; while(in[L]) L++;
-    if (L>=128){ if(max>0){ memcpy(out[0],in,L+1); return 1; } return 0; }
-    memcpy(out[n++], in, L+1);                                                          /* as-is */
-    if(n<max){ for(int i=0;i<L;i++) out[n][i]=swapcase(in[i]); out[n][L]=0; n++; }       /* caps lock */
-    if(L>0 && n<max){ memcpy(out[n],in,L+1); out[n][0]=swapcase(out[n][0]); n++; }       /* first char */
-    for(int i=0;i+1<L && n<max;i++){ memcpy(out[n],in,L+1); char t=out[n][i]; out[n][i]=out[n][i+1]; out[n][i+1]=t; n++; } /* transpose */
-    for(int i=0;i<L && n<max;i++){ int k=0; for(int j=0;j<L;j++) if(j!=i) out[n][k++]=in[j]; out[n][k]=0; n++; } /* delete */
-    return n;
+    if (L < 128){
+        memcpy(out[n++], in, L+1);                                                      /* as-is */
+        if(n<B){ for(int i=0;i<L;i++) out[n][i]=swapcase(in[i]); out[n][L]=0; n++; }     /* caps lock */
+        if(L>0 && n<B){ memcpy(out[n],in,L+1); out[n][0]=swapcase(out[n][0]); n++; }     /* first char */
+        for(int i=0;i+1<L && n<B;i++){ memcpy(out[n],in,L+1); char t=out[n][i]; out[n][i]=out[n][i+1]; out[n][i+1]=t; n++; } /* transpose */
+        for(int i=0;i<L && n<B;i++){ int k=0; for(int j=0;j<L;j++) if(j!=i) out[n][k++]=in[j]; out[n][k]=0; n++; } /* delete */
+    }
+    while(n<B){ out[n][0]=1; out[n][1]=0; n++; }      /* dummy — never opens a header */
+    return n;                                          /* always == B (fixed-budget) */
 }
 
 preboot_verdict preboot_authenticate(const char *password,

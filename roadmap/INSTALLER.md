@@ -979,9 +979,14 @@ finishes.
   **G3.3 realism renderer DONE** (`decoy_render.{c,h}`, `make -C deps/decoy render`): turns events into
   believable `/var/log`-style lines (sshd/systemd/cron/sudo/auditd/NetworkManager + a civil-date stamp),
   deterministic + password-keyed; a week renders ~700 plausible lines with realistic quiet/busy
-  variation — the visible payoff + exactly what §H2 writes to disk. Remaining: the
-  seed-anchored virtual clock + event schema + object-view integration (G1/G4), per-subsystem
-  renderers, the honey-hash boot matcher (G2.2, ties to §E), and snapshot/distributed (G6). The full
+  variation — the visible payoff + exactly what §H2 writes to disk.
+  **G2.2 honey-hashed typo-tolerant boot matcher DONE** (`deps/decoy/g2/dm.{c,h}`, `make -C deps/decoy
+  g2`): the boot-required gate tying §G to §E. Exact verifiers (no fuzzy data on disk); typo tolerance
+  by fuzzing the *input* (caps-lock/first-char/transposition/extra-char corrections) against them; a
+  typo near a decoy boots that decoy's **identical** universe (seed snapped to canonical); unrelated
+  passwords + far-off typos are rejected; honey/chaff verifiers hide the decoy count (10/10 test).
+  Remaining: the seed-anchored virtual clock + event schema + object-view integration (G1/G4),
+  per-subsystem renderers, and snapshot/distributed (G6). The full
   design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**
   via the honey-hashed typo-tolerant matcher; the seed-anchored virtual clock + no-float-noise
   prerequisites) is in the §G analysis section above.

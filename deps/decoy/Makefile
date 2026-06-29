@@ -4,7 +4,7 @@ SELF := $(abspath .)
 BLD  := $(SELF)/build
 CC   ?= clang
 
-.PHONY: test render h2 clean
+.PHONY: test render h2 g2 clean
 test: | $(BLD)
 	$(CC) -O2 -I$(SELF) $(SELF)/decoy.c $(SELF)/test/decoy_test.c -lm -o $(BLD)/decoy-test
 	$(BLD)/decoy-test
@@ -13,6 +13,11 @@ test: | $(BLD)
 render: | $(BLD)
 	$(CC) -O2 -I$(SELF) $(SELF)/decoy.c $(SELF)/decoy_render.c $(SELF)/test/render_test.c -o $(BLD)/decoy-render
 	$(BLD)/decoy-render
+
+# §G2.2 — the honey-hashed, typo-tolerant decoy boot matcher.
+g2: | $(BLD)
+	$(CC) -O2 -I$(SELF) -I$(SELF)/g2 $(SELF)/decoy.c $(SELF)/g2/dm.c $(SELF)/test/dm_test.c -o $(BLD)/decoy-dm
+	$(BLD)/decoy-dm
 
 # §H2 — the Linux fake-log generator: write deterministic /var/log history; self-test it.
 h2: | $(BLD)

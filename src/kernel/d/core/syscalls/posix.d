@@ -107,6 +107,7 @@ enum FileType {
     FD_PTY_MASTER,       // pseudo-terminal master (/dev/ptmx)
     FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
     FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
+    FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
 }
 
 struct File {
@@ -1973,6 +1974,15 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         return cast(ssize_t)count;
     }
 
+    // INSTALLER §D: a write to /config/install.action drives the in-OS installer (the desktop
+    // "Install to Disk" button writes "install" here).  Like domain.action, the fd-level write
+    // always succeeds; the outcome is observable in the [install] serial log / the target disk.
+    if (f.type == FileType.FD_INSTALL_CTL) {
+        import drivers.veracrypt_impl : installControlWrite;
+        installControlWrite(cast(const(char)*)buf, cast(size_t)count);
+        return cast(ssize_t)count;
+    }
+
     // Simulate success for others (e.g. /dev/null)
     return cast(ssize_t)count;
 }
@@ -2698,6 +2708,18 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/config/domain.action")) {
         if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
         g_fdTable[fd].type     = FileType.FD_DOMAIN_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // INSTALLER §D: /config/install.action — the installer CONTROL-WRITE file.  The "Install to
+    // Disk" app writes "install [diskidx]" here to install the running OS to a target disk.
+    if (cstrEq(path, "/config/install.action")) {
+        if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
+        g_fdTable[fd].type     = FileType.FD_INSTALL_CTL;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;

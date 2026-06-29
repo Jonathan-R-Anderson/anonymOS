@@ -310,11 +310,11 @@ static void draw_demo(struct app *app)
         btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
         draw_text_ft(app, "Try Live Session", (int)bx + 32, (int)by + 36, (int)bw, 15, 0xff14203au);
     } else {
-        draw_text_ft(app, "Disk installation is being integrated (Calamares) and",
+        draw_text_ft(app, "Installing EpinAnonymOS to the target disk...",
                      48, 104, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, "is not available in this build yet (roadmap D1-D3).",
+        draw_text_ft(app, "Writing the GPT + EFI System Partition + boot image.",
                      48, 126, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, "Choose \"Try Live Session\" to run EpinAnonymOS now.",
+        draw_text_ft(app, "When done, power off, remove the install medium, reboot.",
                      48, 158, app->width - 96, 13, 0xffaeb9cau);
         btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
         draw_text_ft(app, "Back", (int)bx + 54, (int)by + 32, (int)bw, 15, 0xffffffffu);
@@ -695,9 +695,20 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         }
         btn_rect(app, BTN_INSTALL, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
-            /* Disk install = the Calamares build (roadmap D1-D3), not yet integrated;
-             * show the status screen rather than silently doing nothing. */
-            printf("INSTALLER: 'Install to Disk' -- Calamares not yet integrated (D1-D3)\n");
+            /* INSTALLER §D: drive the in-OS installer.  A write of "install" to the kernel
+             * control file /config/install.action installs the running OS (the esp-image
+             * payload) to the first target disk — GPT + ESP + the bootable image — so the
+             * machine boots EpinAnonymOS from disk.  The outcome shows in the [install]
+             * serial log; on success, power off, remove the install medium, and reboot. */
+            int fd = open("/config/install.action", O_WRONLY);
+            if (fd >= 0) {
+                ssize_t n = write(fd, "install", 7);
+                close(fd);
+                printf("INSTALLER: 'Install to Disk' -> /config/install.action (wrote %zd)\n", n);
+            } else {
+                printf("INSTALLER: 'Install to Disk' -- no /config/install.action "
+                       "(boot the INSTALL image: scripts/mk-install-iso.sh)\n");
+            }
             app->screen = 1;
             redraw_commit(app, "install-info");
             return;

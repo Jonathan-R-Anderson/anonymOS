@@ -581,14 +581,49 @@ public bool installBootableToDisk(int idx, ulong dsec) {
     return true;
 }
 
-// Boot proof / smoke test: if both a target disk and the esp-image module exist, install.
+// Control-write executor: the desktop "Install to Disk" button (and a manual
+//   echo install > /config/install.action
+// ) lands here.  Command grammar: "install" → install the running OS to the first target
+// disk; "install <idx>" → to disk index <idx>.  Returns true on success.  Deny-by-default:
+// an unrecognized command (or no target / no payload) does nothing.
+@nogc nothrow
+public bool installControlWrite(const(char)* cmd, size_t len) {
+    import drivers.block.disk : diskFindTarget;
+    import drivers.block.ahci : g_ahciDevices, getPort;
+    static immutable string P = "install";
+    if (cmd is null || len < P.length) return false;
+    foreach (i; 0 .. P.length) if (cmd[i] != P[i]) return false;
+
+    // optional explicit disk index after the verb
+    int idx = -1; ulong dsec = 0;
+    size_t p = P.length;
+    while (p < len && (cmd[p] == ' ' || cmd[p] == '\t')) p++;
+    if (p < len && cmd[p] >= '0' && cmd[p] <= '9') {
+        int n = 0;
+        while (p < len && cmd[p] >= '0' && cmd[p] <= '9') { n = n * 10 + (cmd[p] - '0'); p++; }
+        if (n < 0 || n >= cast(int)g_ahciDevices.length || !g_ahciDevices[n].present) {
+            klog("[install] control: bad disk index\n"); return false;
+        }
+        idx = n; dsec = g_ahciDevices[n].capacity / 512;
+    } else {
+        idx = diskFindTarget(dsec);
+    }
+    if (idx < 0) { klog("[install] control: no target disk\n"); return false; }
+    klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
+    return installBootableToDisk(idx, dsec);
+}
+
+// Boot smoke check: report installer READINESS (do NOT auto-wipe a disk).  Installing is
+// driven by the user (the "Install to Disk" button → /config/install.action).
 @nogc nothrow
 public void installBootableProof() {
     import drivers.block.disk : diskFindTarget;
     ulong phys, size;
-    if (!instFindModule("esp-image", phys, size)) { klog("[install] proof SKIP (no esp-image; build INSTALL=1)\n"); return; }
+    if (!instFindModule("esp-image", phys, size)) { klog("[install] not an INSTALL image (no esp-image module)\n"); return; }
     ulong dsec;
     int idx = diskFindTarget(dsec);
-    if (idx < 0) { klog("[install] proof SKIP (no target disk)\n"); return; }
-    installBootableToDisk(idx, dsec);
+    if (idx < 0) { klog("[install] READY: payload present, but no target disk attached\n"); return; }
+    klog("[install] READY: esp-image=0x"); klog_hex(size);
+    klog("B, target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
+    klog(" — click 'Install to Disk' (or: echo install > /config/install.action)\n");
 }

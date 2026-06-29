@@ -34,6 +34,11 @@ static immutable ubyte[16] GUID_ESP = [
 // Linux root (x86-64) type GUID    4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709
 static immutable ubyte[16] GUID_LINUX_ROOT = [
     0xE3,0xBC,0x68,0x4F, 0xCD,0xE8, 0xB1,0x4D, 0x96,0xE7, 0xFB,0xCA,0xF9,0x84,0xB7,0x09];
+// Microsoft Basic Data type GUID   EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 — used for the
+// §E encrypted system + outer-volume partitions: a generic "data" type is more deniable
+// than "Linux root" (a VeraCrypt-style encrypted partition has no filesystem signature).
+static immutable ubyte[16] GUID_MS_BASIC_DATA = [
+    0xA2,0xA0,0xD0,0xEB, 0xE5,0xB9, 0x33,0x44, 0x87,0xC0, 0x68,0xB6,0xB7,0x26,0x99,0xC7];
 static immutable ubyte[8] GPT_SIG = ['E','F','I',' ','P','A','R','T'];
 
 // ── little-endian writers/readers ────────────────────────────────────────────
@@ -87,7 +92,9 @@ private ulong rdtscSeed() {
 struct GptLayout {
     ulong diskSectors;
     ulong espFirst, espLast;       // EFI System Partition (FAT32) LBA range
-    ulong rootFirst, rootLast;     // Linux root partition LBA range
+    ulong rootFirst, rootLast;     // Linux root partition LBA range (2-partition layout)
+    ulong sysFirst, sysLast;       // §E encrypted system (decoy OS) partition (3-partition)
+    ulong outerFirst, outerLast;   // §E outer-volume partition (holds the hidden volume)
 }
 
 // Build the PRIMARY GPT region — protective MBR (LBA0) + GPT header (LBA1) +
@@ -152,6 +159,81 @@ GptLayout gptBuildPrimary(ubyte* buf, ulong diskSectors, ulong espSectors) {
     const uint hdrCrc = crc32(h, 92);
     put32(h, 16, hdrCrc);                // header CRC32 (over the 92 bytes, CRC field 0)
     return L;
+}
+
+// Finish a PRIMARY GPT region whose 128-entry array (LBA2..33) the caller has already
+// populated: write the protective MBR (LBA0) and the GPT header (LBA1) with the array
+// CRC + header CRC.  Shared by the encrypted 3-partition builder below.
+private void gptFinalize(ubyte* buf, ulong diskSectors, ulong baseSeed) {
+    const ulong lastLba = diskSectors - 1;
+    const ulong lastUse = lastLba - 1 - ENTRY_SECTORS;
+    ubyte* mbr = buf;
+    mbr[446 + 4] = 0xEE;                  // protective MBR partition type
+    put32(mbr, 446 + 8, 1);
+    const ulong span = (diskSectors - 1 > 0xFFFFFFFFUL) ? 0xFFFFFFFFUL : (diskSectors - 1);
+    put32(mbr, 446 + 12, cast(uint)span);
+    mbr[510] = 0x55; mbr[511] = 0xAA;
+
+    ubyte* ents = buf + 2 * SECTOR;
+    const uint entriesCrc = crc32(ents, GPT_ENTRIES * GPT_ENTSZ);
+    ubyte* h = buf + SECTOR;
+    foreach (i; 0 .. 8) h[i] = GPT_SIG[i];
+    put32(h, 8, 0x00010000); put32(h, 12, 92); put32(h, 16, 0); put32(h, 20, 0);
+    put64(h, 24, 1); put64(h, 32, lastLba); put64(h, 40, FIRST_USABLE); put64(h, 48, lastUse);
+    fillGuid(h + 56, baseSeed + 0x200);
+    put64(h, 72, 2); put32(h, 80, GPT_ENTRIES); put32(h, 84, GPT_ENTSZ); put32(h, 88, entriesCrc);
+    put32(h, 16, crc32(h, 92));
+}
+
+// Build the §E ENCRYPTED-install GPT: ESP (FAT32, holds the loader) + system partition
+// (the decoy OS, VeraCrypt-encrypted) + outer-volume partition (holds the hidden volume).
+// The two encrypted partitions use the Microsoft Basic Data type (no FS signature).
+GptLayout gptBuildEncrypted(ubyte* buf, ulong diskSectors, ulong espSectors, ulong sysSectors) {
+    GptLayout L;
+    L.diskSectors = diskSectors;
+    foreach (i; 0 .. PRIMARY_SECTORS * SECTOR) buf[i] = 0;
+
+    const ulong lastUse = (diskSectors - 1) - 1 - ENTRY_SECTORS;
+    L.espFirst   = FIRST_USABLE;
+    L.espLast    = L.espFirst + espSectors - 1;
+    L.sysFirst   = L.espLast + 1;
+    L.sysLast    = L.sysFirst + sysSectors - 1;
+    L.outerFirst = L.sysLast + 1;
+    L.outerLast  = lastUse;
+
+    ubyte* ents = buf + 2 * SECTOR;
+    const ulong baseSeed = rdtscSeed();
+    void writeEntry(uint idx, const ubyte[16] typeGuid, ulong first, ulong last, ulong seed) {
+        ubyte* e = ents + idx * GPT_ENTSZ;
+        foreach (i; 0 .. 16) e[i] = typeGuid[i];
+        fillGuid(e + 16, seed);
+        put64(e, 32, first); put64(e, 40, last); put64(e, 48, 0);
+    }
+    writeEntry(0, GUID_ESP,           L.espFirst,   L.espLast,   baseSeed);
+    writeEntry(1, GUID_MS_BASIC_DATA, L.sysFirst,   L.sysLast,   baseSeed + 0x100);
+    writeEntry(2, GUID_MS_BASIC_DATA, L.outerFirst, L.outerLast, baseSeed + 0x200);
+    gptFinalize(buf, diskSectors, baseSeed);
+    return L;
+}
+
+// Commit the encrypted 3-partition GPT (primary + backup) to a target disk; returns the
+// layout via `L` so the caller can place VeraCrypt headers at the partition starts.
+bool gptWriteEncryptedToDisk(int diskIdx, ulong diskSectors, ulong espSectors,
+                             ulong sysSectors, ref GptLayout L) {
+    if (diskSectors < FIRST_USABLE + espSectors + sysSectors + ENTRY_SECTORS + 64) return false;
+    __gshared ubyte[PRIMARY_SECTORS * SECTOR] pbuf;
+    L = gptBuildEncrypted(pbuf.ptr, diskSectors, espSectors, sysSectors);
+    const ulong lastLba = diskSectors - 1;
+
+    if (!diskWriteSectorsOn(diskIdx, 0, PRIMARY_SECTORS, pbuf.ptr)) return false;
+    if (!diskWriteSectorsOn(diskIdx, lastLba - ENTRY_SECTORS, ENTRY_SECTORS, pbuf.ptr + 2 * SECTOR))
+        return false;
+    __gshared ubyte[SECTOR] bhdr;
+    foreach (i; 0 .. SECTOR) bhdr[i] = (pbuf.ptr + SECTOR)[i];
+    put64(bhdr.ptr, 24, lastLba); put64(bhdr.ptr, 32, 1); put64(bhdr.ptr, 72, lastLba - ENTRY_SECTORS);
+    put32(bhdr.ptr, 16, 0); put32(bhdr.ptr, 16, crc32(bhdr.ptr, 92));
+    if (!diskWriteSectorsOn(diskIdx, lastLba, 1, bhdr.ptr)) return false;
+    return true;
 }
 
 // Validate a PRIMARY GPT region built/read into `buf` (>= PRIMARY_SECTORS*SECTOR).

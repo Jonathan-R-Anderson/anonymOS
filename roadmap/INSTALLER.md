@@ -345,8 +345,17 @@ E3's single block) and **random-fills free space**. Host `make veracrypt volume-
 <image>`: **all 16 rootfs sectors decrypt at their per-sector units**, and the free-fill measures
 **7.975 bits/byte** Shannon entropy (≈ perfect → indistinguishable from ciphertext, so the hidden
 volume can hide in it). (Proof uses a deterministic PRNG for the fill; a real install swaps in a
-CSPRNG.) **E4b/c remaining:** extend the §D2(b) GPT to the system + outer-volume partitions, drive
-this engine over a *real* rootfs/clone, and cap-gate the writes (the one-shot block-write capability).
+CSPRNG.)
+
+**E4b — encrypted layout on a REAL 3-partition GPT ✅ DONE.** `core/diskpart.d gptBuildEncrypted` /
+`gptWriteEncryptedToDisk` extend the §D2(b) engine to **ESP + system (decoy) + outer-volume**
+partitions (the two encrypted ones use the Microsoft Basic Data type — no FS signature, more
+deniable). `veracrypt_impl.d vcEncryptedInstallProof()` writes that GPT, formats the ESP FAT32, and
+places the decoy header at the **system-partition start** (a real boundary, not an arbitrary LBA).
+Host-validated: `sgdisk` shows the 3 partitions (ESP EF00 + 2× 0700), and `vc-parity <img> 131106`
+opens the decoy header at `sysFirst`. **E4c remaining:** drive the §E4a engine over a *real* rootfs
+clone into the system + hidden volumes (the decoy is a real Linux distro — see §H), and cap-gate the
+writes (the one-shot block-write capability).
 
 ### E5 — Pre-boot authentication (the EFI loader, decoy vs hidden)
 The stripped `Boot/EFI` loader is installed to the ESP and runs *before* the kernel: it prompts for a

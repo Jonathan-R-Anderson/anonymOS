@@ -364,3 +364,45 @@ public void vcVolumeDataProof()
     klog(" sectors @0x"); klog_hex(VC_ROOTFS_LBA); klog(") + random free-fill @0x"); klog_hex(VC_FREEFILL_LBA);
     klog(" (host volume_check decrypts + entropy-checks)\n");
 }
+
+// ── §E4b: the encrypted-install layout on a REAL 3-partition GPT ──────────────
+// Writes the encrypted-install GPT (ESP + system + outer) via the §D2(b) engine, formats
+// the ESP FAT32, and places the decoy VeraCrypt header at the SYSTEM PARTITION START — so
+// the header now lives at a real partition boundary, not an arbitrary LBA.  The decoy
+// header uses the same fixed inputs as the §E2b parity check, so the host validates it
+// with the existing `vc-parity <image> <sysFirst>` tool.  Runs last (its 3-part GPT is the
+// final on-disk layout); SKIP without a spare disk.
+enum ulong VC_INSTALL_ESP_SECTORS = 0x20000;   // 64 MiB ESP
+enum ulong VC_INSTALL_SYS_SECTORS = 0x20000;   // 64 MiB system (decoy) partition
+// sysFirst = FIRST_USABLE(34) + ESP = 34 + 0x20000 = 0x20022 (= 131106) — host reads here.
+
+@nogc nothrow
+public void vcEncryptedInstallProof()
+{
+    import drivers.block.disk : diskFindTarget, diskWriteSectorsOn;
+    import core.diskpart : GptLayout, gptWriteEncryptedToDisk, fatFormatEsp;
+
+    ulong tsec;
+    int idx = diskFindTarget(tsec);
+    if (idx < 0) { klog("[vc-install] proof SKIP (no spare disk)\n"); return; }
+
+    GptLayout L;
+    if (!gptWriteEncryptedToDisk(idx, tsec, VC_INSTALL_ESP_SECTORS, VC_INSTALL_SYS_SECTORS, L)) {
+        klog("[vc-install] proof FAIL (gpt)\n"); return;
+    }
+    fatFormatEsp(idx, L.espFirst, VC_INSTALL_ESP_SECTORS);
+
+    // decoy system header at the system-partition start (same inputs as the §E2b parity test)
+    ubyte[64] salt;
+    ubyte[256] mk;
+    for (int i = 0; i < 64; i++)  salt[i] = cast(ubyte)(0x11*i + 1);
+    for (int i = 0; i < 256; i++) mk[i]   = cast(ubyte)(0xA5 ^ i);
+    immutable char[14] pw = ['d','e','c','o','y','-','p','a','s','s','w','o','r','d'];
+    ubyte[512] hdr;
+    create_veracrypt_header(pw.ptr, 14, salt.ptr, mk.ptr, 0, 1UL<<30, 0x20000, 0x40000000, hdr.ptr);
+    if (!diskWriteSectorsOn(idx, L.sysFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (hdr)\n"); return; }
+
+    klog("[vc-install] proof: 3-part encrypted GPT + ESP FAT + decoy header @sys=0x"); klog_hex(L.sysFirst);
+    klog(" outer=0x"); klog_hex(L.outerFirst);
+    klog(" (host: sgdisk 3 parts + vc-parity <img> "); klog_hex(L.sysFirst); klog(")\n");
+}

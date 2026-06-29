@@ -51,7 +51,8 @@ import core.update : updateInit, updateSelfTest, updateStats; // IR-P6 A/B updat
 import drivers.block.disk : diskInit, diskSelfTest; // A5/F4 persistence: SATA disk layer
 import core.diskpart : gptPartProof, gptWriteProof;  // INSTALLER §D2(b): native GPT partition engine
 import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real kernel AES-256 + SHA-512
-import drivers.veracrypt_impl : vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof; // §E2b/§E3/§E4a
+import drivers.veracrypt_impl : vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
+                                vcEncryptedInstallProof; // §E2b/§E3/§E4a/§E4b
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
                        objstoreLoadExec; // F4/F4.2 persisted object store (/objects/apps) + launch
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
@@ -2967,6 +2968,7 @@ void d_kernel_main() {
     vcHeaderProof();  // INSTALLER §E2b: write a VeraCrypt header to a spare disk (host parity check)
     vcEncryptedLayoutProof(); // INSTALLER §E3: write the decoy/hidden encrypted layout (host validates)
     vcVolumeDataProof();      // INSTALLER §E4a: multi-sector XTS volume data + random free-fill
+    vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header (last)
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
     // F4.2: locate the store-app image boot module so seeded apps get a real,

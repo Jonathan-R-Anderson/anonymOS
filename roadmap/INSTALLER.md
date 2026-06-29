@@ -990,8 +990,15 @@ finishes.
   design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**
   via the honey-hashed typo-tolerant matcher; the seed-anchored virtual clock + no-float-noise
   prerequisites) is in the §G analysis section above.
-- **§H Linux decoy OS + concealed activity synthesis: H2 ✅ DONE; H1/H3–H5 remain.** The decoy OS is a
+- **§H Linux decoy OS + concealed activity synthesis: H1 + H2 ✅ DONE; H3–H5 remain.** The decoy OS is a
   *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program.
+  **H1 — the decoy distro BUILT** (`deps/decoy-os/`, `make decoy-os`): downloads a real Alpine 3.19
+  minirootfs, customizes it into a lived-in workstation (hostname, a real user + home + `.bash_history`
+  + notes, an apk package `world`), and **seeds a year of deterministic, password-keyed fake `/var/log`
+  history via §H2** → a 3.6 MB `decoy-rootfs.tar.gz` (`make image` → ext4) for the installer to clone
+  into the encrypted system partition (E4c) and the §E5 loader to chain-load (replacing `stage2.efi`).
+  Verify PASS: Alpine os-release, busybox+apk, 24 k seeded syslog + 3.4 k auth lines, user, history; the
+  seed is reproducible (rootfs `/var/log` == `fakelogd(decoy-password)`).
   **H2 — the Linux fake-log generator BUILT** (`deps/decoy/h2/fakelogd.c`, `make -C deps/decoy h2`):
   drives the §G engine+renderer and backfills deterministic, password-keyed history into `/var/log`,
   routing each subsystem to the right file (auth/sudo → `auth.log`, audit → `audit.log`, the rest →

@@ -353,9 +353,16 @@ partitions (the two encrypted ones use the Microsoft Basic Data type — no FS s
 deniable). `veracrypt_impl.d vcEncryptedInstallProof()` writes that GPT, formats the ESP FAT32, and
 places the decoy header at the **system-partition start** (a real boundary, not an arbitrary LBA).
 Host-validated: `sgdisk` shows the 3 partitions (ESP EF00 + 2× 0700), and `vc-parity <img> 131106`
-opens the decoy header at `sysFirst`. **E4c remaining:** drive the §E4a engine over a *real* rootfs
-clone into the system + hidden volumes (the decoy is a real Linux distro — see §H), and cap-gate the
-writes (the one-shot block-write capability).
+opens the decoy header at `sysFirst`.
+
+**E4c — one-shot block-write capability (Phase 11) ✅ DONE.** `core/install_cap.d`: the installer is
+not root — it mints an `InstallWriteCap` scoped to ONE target disk and revokes it when the install
+finishes, so writes go through `gatedDiskWrite` (no cap → refuse; cap for disk A can't write disk B;
+a revoked cap is dead). `vcEncryptedInstallProof` now routes its header write through the gate (mint →
+gated writes → revoke). `installCapProof()` proves all four cases at boot: **PASS (no-cap=refuse,
+minted=allow, wrong-disk=refuse, revoked=refuse)**. **E4c remaining (gated on §H1):** drive the §E4a
+engine over a *real* rootfs clone — the §H1 decoy Linux distro — into the system + hidden volumes
+(the encryption engine is done; it needs a real rootfs source, which §H1 provides).
 
 ### E5 — Pre-boot authentication (the EFI loader, decoy vs hidden)
 The stripped `Boot/EFI` loader is installed to the ESP and runs *before* the kernel: it prompts for a

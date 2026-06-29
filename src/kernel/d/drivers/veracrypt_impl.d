@@ -379,16 +379,20 @@ enum ulong VC_INSTALL_SYS_SECTORS = 0x20000;   // 64 MiB system (decoy) partitio
 @nogc nothrow
 public void vcEncryptedInstallProof()
 {
-    import drivers.block.disk : diskFindTarget, diskWriteSectorsOn;
+    import drivers.block.disk : diskFindTarget;
     import core.diskpart : GptLayout, gptWriteEncryptedToDisk, fatFormatEsp;
+    import core.install_cap : InstallWriteCap, mintInstallWriteCap, gatedDiskWrite, revokeInstallWriteCap;
 
     ulong tsec;
     int idx = diskFindTarget(tsec);
     if (idx < 0) { klog("[vc-install] proof SKIP (no spare disk)\n"); return; }
 
+    // §E4c: the install holds a one-shot, disk-scoped block-write capability (not root).
+    auto cap = mintInstallWriteCap(idx);
+
     GptLayout L;
     if (!gptWriteEncryptedToDisk(idx, tsec, VC_INSTALL_ESP_SECTORS, VC_INSTALL_SYS_SECTORS, L)) {
-        klog("[vc-install] proof FAIL (gpt)\n"); return;
+        klog("[vc-install] proof FAIL (gpt)\n"); revokeInstallWriteCap(cap); return;
     }
     fatFormatEsp(idx, L.espFirst, VC_INSTALL_ESP_SECTORS);
 
@@ -400,9 +404,10 @@ public void vcEncryptedInstallProof()
     immutable char[14] pw = ['d','e','c','o','y','-','p','a','s','s','w','o','r','d'];
     ubyte[512] hdr;
     create_veracrypt_header(pw.ptr, 14, salt.ptr, mk.ptr, 0, 1UL<<30, 0x20000, 0x40000000, hdr.ptr);
-    if (!diskWriteSectorsOn(idx, L.sysFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (hdr)\n"); return; }
+    if (!gatedDiskWrite(cap, idx, L.sysFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (hdr)\n"); revokeInstallWriteCap(cap); return; }
 
+    revokeInstallWriteCap(cap);    // one-shot: the cap dies with the install
     klog("[vc-install] proof: 3-part encrypted GPT + ESP FAT + decoy header @sys=0x"); klog_hex(L.sysFirst);
     klog(" outer=0x"); klog_hex(L.outerFirst);
-    klog(" (host: sgdisk 3 parts + vc-parity <img> "); klog_hex(L.sysFirst); klog(")\n");
+    klog(" (cap-gated; host: sgdisk 3 parts + vc-parity <img> "); klog_hex(L.sysFirst); klog(")\n");
 }

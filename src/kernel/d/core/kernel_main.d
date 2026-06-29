@@ -53,6 +53,7 @@ import core.diskpart : gptPartProof, gptWriteProof;  // INSTALLER §D2(b): nativ
 import drivers.veracrypt_crypto : vcCryptoKat;       // INSTALLER §E2b: real kernel AES-256 + SHA-512
 import drivers.veracrypt_impl : vcHeaderProof, vcEncryptedLayoutProof, vcVolumeDataProof,
                                 vcEncryptedInstallProof; // §E2b/§E3/§E4a/§E4b
+import core.install_cap : installCapProof;             // INSTALLER §E4c: one-shot block-write cap
 import core.objstore : objstoreMount, objstoreResolveExecPath, objstoreAppRights,
                        objstoreLoadExec; // F4/F4.2 persisted object store (/objects/apps) + launch
 import core.crypto : cryptoSelfTest, cryptoStats; // IR-P8.1/8.2 SHA-256/HMAC + measured boot
@@ -2968,6 +2969,7 @@ void d_kernel_main() {
     vcHeaderProof();  // INSTALLER §E2b: write a VeraCrypt header to a spare disk (host parity check)
     vcEncryptedLayoutProof(); // INSTALLER §E3: write the decoy/hidden encrypted layout (host validates)
     vcVolumeDataProof();      // INSTALLER §E4a: multi-sector XTS volume data + random free-fill
+    installCapProof();        // INSTALLER §E4c: one-shot block-write capability gate (Phase 11)
     vcEncryptedInstallProof(); // INSTALLER §E4b: 3-partition encrypted GPT + ESP + decoy header (last)
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).

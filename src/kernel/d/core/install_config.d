@@ -167,11 +167,16 @@ public bool installConfigApply() {
     icJsonGetString("decoyUser", g_icDecoyUser[], g_icDecoyUserLen);
     icJsonGetString("decoyFullName", g_icDecoyFullName[], g_icDecoyFullNameLen);
     icJsonGetString("decoyHostname", g_icDecoyHostname[], g_icDecoyHostnameLen);
-    g_icRealPasswordSet = icJsonHasNonEmpty("userPassword");
-    g_icHiddenPasswordSet = icJsonHasNonEmpty("hiddenPassword");
-    g_icOuterPasswordSet = icJsonHasNonEmpty("outerPassword");
-    g_icDecoyBootPasswordSet = icJsonHasNonEmpty("decoyBootPassword");
-    g_icDecoyPasswordSet = icJsonHasNonEmpty("decoyPassword");
+    g_icRealPasswordSet = icJsonHasNonEmpty("userPasswordSha512") ||
+                          icJsonHasNonEmpty("userPassword");
+    g_icHiddenPasswordSet = icJsonHasNonEmpty("hiddenPasswordSha512") ||
+                            icJsonHasNonEmpty("hiddenPassword");
+    g_icOuterPasswordSet = icJsonHasNonEmpty("outerPasswordSha512") ||
+                           icJsonHasNonEmpty("outerPassword");
+    g_icDecoyBootPasswordSet = icJsonHasNonEmpty("decoyBootPasswordSha512") ||
+                               icJsonHasNonEmpty("decoyBootPassword");
+    g_icDecoyPasswordSet = icJsonHasNonEmpty("decoyPasswordSha512") ||
+                           icJsonHasNonEmpty("decoyPassword");
 
     klog("[install-config] applied install.json user=");
     if (userOk) icLogSlice(g_icUser.ptr, g_icUserLen); else klog("(default)".ptr);

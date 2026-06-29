@@ -630,6 +630,86 @@ years of history with O(window) cost.
 
 ---
 
+## §H — Linux decoy OS + concealed activity synthesis
+
+**The decoy OS is a real Linux distribution**, not a synthetic view — a genuine, daily-usable distro is
+the most believable decoy (real binaries, real package manager, real journald/syslog). §G's synthetic
+history is realized *inside* that Linux by a concealed component, so an examiner who unlocks the decoy
+under coercion sees a normal, lived-in Linux and finds **no evidence** that (a) it is a decoy or (b) a
+hidden OS exists. Builds on §E (encrypted decoy/hidden layout) and §G (the deterministic generator);
+the decoy rootfs is written by §E4c.
+
+> **Authorization & intent.** §H is plausible-deniability / anti-coercion concealment on the user's
+> *own* decoy environment — the same threat model as VeraCrypt's Hidden OS. It is not for accessing or
+> hiding from third-party systems. The §H4 concealment is dual-use, so the security review (§H5) is
+> mandatory and treats *detectability of the concealment itself* as the primary risk.
+
+### H1 — The decoy Linux distribution
+*Purpose:* a real, believable decoy OS. *Tasks:* select a base distro (Debian/Arch-class); the installer
+images its rootfs into the **encrypted system partition** (§E4b) and registers it with the §E5 pre-boot
+loader (decoy password → chainload this Linux). *Critical:* it must be a *believable daily driver* —
+real installed packages, a plausible home dir, browser/app state — because an empty, pristine decoy is
+the single biggest tell that a hidden OS exists (E7/§G). *Deps:* §E4b/c, §E5. *Files:* `installer/`,
+`installer/decoy/`. *Cx:* M. *Order:* 1.
+
+### H2 — The Linux fake-log generator program
+*Purpose:* a program inside the decoy Linux that backfills + maintains realistic fake history (logs,
+`wtmp`/`btmp`, journald, `~/.bash_history`, package/update history, process/session traces) — the
+**Linux-userland incarnation of §G**, seeded by the decoy password so the same decoy → identical history
+(deterministic, reboot-stable). *Tasks:* port the §G integer coherent-noise + timeline/correlation
+engine to a Linux build; on first decoy boot, backfill years of history from the seed; thereafter run as
+a low-rate daemon maintaining live, correlated activity. *Deps:* §G (engine), H1. *Security:* the
+generator must never write a timestamp/PID/path that contradicts the rest of the decoy (the §G metadata
+invariants apply verbatim). *New:* `installer/decoy/fakelog/`. *Cx:* L. *Order:* 2.
+
+### H3 — Full-disk illusion driver (hide the hidden volume's space)
+*Purpose:* make the decoy Linux believe it owns the **entire disk**, so neither the hidden volume's
+reserved space nor the partition geometry that brackets it is visible (unaccounted space, or a too-small
+"disk", is a tell). *Tasks:* a Linux **block shim / device-mapper target** that (a) reports the full disk
+geometry to the decoy, and (b) **protects the hidden volume's sectors** — reads return indistinguishable-
+from-free random (the §E4a free-fill), writes into that region are redirected or refused (VeraCrypt's
+"protect hidden volume" mode) so the decoy can use "its" disk freely without ever reading, corrupting, or
+*detecting* the hidden OS. *Deps:* §E (layout), §E4a (entropy fill), H1. *Security:* the protection map
+must not itself be discoverable from inside the decoy. *New:* a kernel module
+`installer/decoy/dm-fulldisk/`. *Cx:* L. *Order:* 3.
+
+### H4 — Conceal the generator (kernel-embedded, hidden from the process table)
+*Purpose:* hide H2's existence so an examiner with the decoy password **and root** cannot find the
+fake-history machinery — because finding it proves the decoy is a decoy, which defeats deniability.
+*Tasks (as requested):* compile the generator into the decoy **Linux kernel** (built-in, not a loadable
+module listed in `lsmod`); hide its process from `/proc` (cross-view PID filtering), its files, its open
+sockets, and its CPU/scheduler footprint. *Deps:* H2, H3. *New:* a kernel patch in
+`installer/decoy/conceal/`. *Cx:* XL. *Order:* 4.
+> **⚠ This is the riskiest part of the whole feature — flagged, not glossed.** Kernel-level
+> process/module hiding is *itself a forensic red flag*: anti-rootkit tooling routinely detects hidden
+> PIDs (cross-view `/proc` vs syscall/`/proc/PID` enumeration), hidden modules, and kernel-text
+> integrity violations — and a **detected rootkit on an otherwise-normal decoy screams "this machine is
+> hiding something,"** which is *worse* for deniability than no concealment at all. **Recommended primary
+> strategy: hide in plain sight** — disguise the generator as an ordinary, expected system daemon
+> (telemetry/log-rotation/indexing) whose activity is *indistinguishable from legitimate*, so there is
+> nothing to detect. Treat kernel-embedded hiding as defense-in-depth *only if* it provably evades the
+> known detectors; otherwise it is a liability. §H5 must adjudicate this.
+
+### H5 — Security review (mandatory; detectability is the threat)
+- **Concealment detectability (the #1 risk):** run the decoy against real anti-rootkit / live-forensics
+  tooling (cross-view process scans, kernel-integrity/`kallsyms` checks, module-hiding detectors, timing
+  analysis). If the concealment is detectable, prefer H4's *hide-in-plain-sight* path. A concealment that
+  trips a detector is a deniability *failure*.
+- **Internal consistency:** H2's fake history must satisfy every §G invariant (timestamps, monotonic seq,
+  span containment, cross-subsystem correlation); a fake "root login" under a Linux that otherwise shows
+  none, or logs referencing absent files, are tells.
+- **Disk-illusion leaks:** the H3 protection map, the size mismatch vs SMART/`hdparm`, and write-latency
+  differences over the protected region must not reveal the hidden volume.
+- **Determinism:** H2 inherits §G's float-noise / real-RTC / real-id determinism rules verbatim.
+- **Blast radius:** H3/H4 are kernel code in the *decoy* only — they must never touch the real
+  EpinAnonymOS kernel or the hidden OS, and must fail safe (a bug must not corrupt the hidden volume).
+
+### Dependency & order
+`§E (layout) + §G (engine)` → `H1 distro` → `H2 generator` → `H3 disk-illusion` → `H4 conceal` → `H5
+review`. H4 is gated on H5 deciding kernel-hiding vs hide-in-plain-sight.
+
+---
+
 ## PHASE 1 — Repository analysis
 Determine, and write up in `installer/ARCHITECTURE.md`: how install/live-boot works today; where
 the rootfs is generated; how packages install; how users/identities are created; how the
@@ -853,6 +933,15 @@ finishes.
   reboot-deterministic, snapshot-trivial (seed only), and O(query-window) at any history length.
   Architectural prerequisites flagged: a seed-anchored **virtual clock** (no real-RTC leaks), a shared
   event schema, and **integer/fixed-point** noise (float breaks determinism). Builds on §E.
+- **§H Linux decoy OS + concealed activity synthesis: SPECIFIED (H1–H5), not built.** The decoy OS is a
+  *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program
+  (H2, the Linux port of §G), a full-disk-illusion block driver hides the hidden volume's space from the
+  decoy (H3), and the generator is concealed from the decoy's root user (H4: kernel-embedded + hidden
+  from the process table). ⚠ Security review (H5) is mandatory and treats **detectability of the
+  concealment itself** as the primary risk — a *detected* rootkit is worse for deniability than none, so
+  the recommended primary is **hide-in-plain-sight** (disguise as an ordinary daemon), with kernel-hiding
+  only as defense-in-depth if it provably evades anti-rootkit tooling. Plausible-deniability/anti-coercion
+  on the user's own decoy (VeraCrypt-Hidden-OS threat model). Builds on §E + §G.
   **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
   EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**
   and **Try Live Session**. *Try Live Session* closes the installer to the live desktop; *Install to

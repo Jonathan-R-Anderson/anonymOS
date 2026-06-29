@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:

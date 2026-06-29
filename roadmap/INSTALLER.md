@@ -389,9 +389,16 @@ HMAC/PBKDF2, XTS-decrypt, `vc_open_header`, `preboot_authenticate` — cross-che
 the kernel-written headers first. `efi_main.c` enumerates `EFI_BLOCK_IO`, finds the install disk,
 reads the headers, routes, and emits over COM1. `efi/ovmf-test.sh` boots it under real UEFI firmware
 (OVMF) against the install disk: **`decoy-password→DECOY`, `hidden-password→HIDDEN`,
-`wrong-password→REJECT`**. `make veracrypt efi`. **E5c remaining:** the interactive console password
-prompt + chain-load (`LoadImage`/`StartImage`) of the matched OS — mechanical UEFI plumbing on top of
-this validated routing.
+`wrong-password→REJECT`**. `make veracrypt efi`.
+
+**E5c — interactive console password prompt ✅ DONE + OVMF-validated.** `efi_main.c` reads the
+password from the EFI keyboard (`ConIn->ReadKeyStroke`, masked `*` echo, backspace, retry-limit); the
+prompt and the wrong-password message are identical whether or not a hidden OS exists.
+`efi/qmp-interactive-test.py` drives it in OVMF with **real keystrokes injected via QMP**: typing
+`decoy-password` → `unlocked; BOOTING DECOY OS`; a wrong password → `access denied` (REJECT). So the
+full user-facing pre-boot flow runs in real firmware. **E5d remaining:** chain-load
+(`LoadImage`/`StartImage`) the matched OS — decrypt its bootloader from the volume + hand off
+(needs a real bootable decoy image → ties into §H1).
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:

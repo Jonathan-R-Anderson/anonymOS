@@ -37,8 +37,25 @@ typedef struct {
     void *p2[19];                                     /* Reserved .. ProtocolsPerHandle (#18..#36) */
     EFI_STATUS (*LocateHandleBuffer)(u32 SearchType, EFI_GUID*, void*, u64*, EFI_HANDLE**); /* #37 */
 } EFI_BOOT_SERVICES;
-typedef struct { char hdr[24]; void *fw1[2]; void *ConIn; void *ConOutH; void *ConOut;
-    void *se1[3]; void *RT; EFI_BOOT_SERVICES *BS; } EFI_SYSTEM_TABLE;
+
+typedef struct { u16 ScanCode; u16 UnicodeChar; } EFI_INPUT_KEY;
+typedef struct EFI_SIMPLE_TEXT_INPUT {
+    void *Reset;
+    EFI_STATUS (*ReadKeyStroke)(struct EFI_SIMPLE_TEXT_INPUT*, EFI_INPUT_KEY*);
+    void *WaitForKey;
+} EFI_SIMPLE_TEXT_INPUT;
+
+/* Field names/offsets per the UEFI spec; only ConIn and BS are used. */
+typedef struct {
+    char hdr[24];
+    void *FirmwareVendor; u32 FirmwareRevision, _pad;     /* 24, 32 */
+    EFI_HANDLE ConsoleInHandle;                            /* 40 */
+    EFI_SIMPLE_TEXT_INPUT *ConIn;                          /* 48 */
+    EFI_HANDLE ConsoleOutHandle; void *ConOut;             /* 56, 64 */
+    EFI_HANDLE StdErrHandle; void *StdErr;                 /* 72, 80 */
+    void *RuntimeServices;                                 /* 88 */
+    EFI_BOOT_SERVICES *BS;                                 /* 96 */
+} EFI_SYSTEM_TABLE;
 
 static EFI_GUID BLOCK_IO_GUID = {0x964e5b21,0x6459,0x11d2,{0x8e,0x39,0x00,0xa0,0xc9,0x69,0x72,0x3b}};
 
@@ -59,6 +76,35 @@ static void try_pw(const char*label,const char*pw,const u8*d,const u8*h){
     ss("  "); ss(label); ss(" -> ");
     ss(v==PREBOOT_DECOY?"DECOY":v==PREBOOT_HIDDEN?"HIDDEN":"REJECT");
     ss("\n");
+}
+
+/* Read a password from the EFI console keyboard (ConIn), echoing '*'. Returns length. */
+static int read_password(EFI_SIMPLE_TEXT_INPUT *ci, char *buf, int max){
+    int n=0;
+    for(;;){
+        EFI_INPUT_KEY k;
+        while (ci->ReadKeyStroke(ci,&k)!=0){}        /* busy-poll until a key */
+        u16 c=k.UnicodeChar;
+        if (c==0x0D){ sc('\n'); break; }              /* Enter */
+        if (c==0x08){ if(n>0){ n--; ss("\b \b"); } continue; }  /* Backspace */
+        if (c>=0x20 && n<max-1){ buf[n++]=(char)c; sc('*'); }   /* printable → mask */
+    }
+    buf[n]=0; return n;
+}
+
+/* Interactive pre-boot authentication: prompt, route, retry. The prompt and the wrong-
+ * password message are identical regardless of whether a hidden OS exists. */
+static void interactive(EFI_SIMPLE_TEXT_INPUT *ci, const u8*decoy, const u8*hidden){
+    char pw[128]; u8 key[256];
+    for (int attempt=0; attempt<3; attempt++){
+        ss("[preboot-efi] Enter password: ");
+        read_password(ci, pw, sizeof pw);
+        int v = preboot_authenticate(pw, decoy, hidden, key);
+        if (v==PREBOOT_DECOY){  ss("[preboot-efi] unlocked; BOOTING DECOY OS\n");  return; }
+        if (v==PREBOOT_HIDDEN){ ss("[preboot-efi] unlocked; BOOTING HIDDEN OS\n"); return; }
+        ss("[preboot-efi] access denied\n");
+    }
+    ss("[preboot-efi] too many attempts\n");
 }
 
 EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
@@ -84,6 +130,7 @@ EFI_STATUS efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *ST){
         try_pw("hidden-password", "hidden-password", decoy, hidden);
         try_pw("wrong-password ", "not-a-password",  decoy, hidden);
         ss("[preboot-efi] SELFTEST DONE\n");
+        interactive(ST->ConIn, decoy, hidden);    /* §E5c: real keyboard prompt */
         goto done;
     }
     ss("[preboot-efi] install layout not found on any block device\n");

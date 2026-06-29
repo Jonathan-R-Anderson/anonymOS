@@ -113,8 +113,9 @@ WESTON_BIN   := $(WESTON_BUILD)/frontend/weston
 #   make parted-stack   # §D2 partitioning backend (util-linux/libparted) [TODO]
 #   make calamares      # §D3 the Calamares installer ELF                 [needs §D2]
 #   make veracrypt      # §E1 stripped VeraCrypt crypto core (libvc_crypto) [crypto DONE, KAT PASS]
+#   make decoy          # §G deterministic decoy activity generator engine    [engine DONE, tests PASS]
 # =========================================================
-.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt installer-deps
+.PHONY: qt-stack parted-stack calamares-deps calamares veracrypt decoy installer-deps
 qt-stack:
 	+$(MAKE) -C deps/qt-stack all
 calamares-deps:
@@ -126,6 +127,8 @@ calamares:
 veracrypt:
 	+$(MAKE) -C deps/veracrypt test
 	+$(MAKE) -C deps/veracrypt header-test
+decoy:
+	+$(MAKE) -C deps/decoy test
 installer-deps: qt-stack calamares-deps parted-stack calamares veracrypt
 XKB_SRC_DIR  := deps/gtk-stack/sysroot/share/X11/xkb
 XKB_BLOB     := build/xkb.blob

@@ -969,15 +969,18 @@ finishes.
   which is its hard prerequisite. Carries real, documented tensions: the public-hash fingerprint vs
   the OS's anonymity goals, update-key custody, and RPC trust (F7). Contract source will live in
   `installer/contracts/` (`zksolc`, ABI in-repo).
-- **§G Perlin-noise decoy activity generator: SPECIFIED (G Phases 1–6), not built.** Deterministic fake
-  histories (logs/procs/users/services/net/security/audit/object-access) for the §E decoy environments,
-  so a decoy looks lived-in. **Required for boot** via a honey-hashed, **typo-tolerant** matcher
-  (fuzz the *input* against exact per-decoy verifiers + honey/chaff so storage never reveals the decoy
-  set; a typo near a decoy boots that decoy's universe, anything else is rejected). Key design: the
-  universe is a **pure lazily-generated function of seed=KDF(password)** — never stored, so it's
-  reboot-deterministic, snapshot-trivial (seed only), and O(query-window) at any history length.
-  Architectural prerequisites flagged: a seed-anchored **virtual clock** (no real-RTC leaks), a shared
-  event schema, and **integer/fixed-point** noise (float breaks determinism). Builds on §E.
+- **§G Perlin-noise decoy activity generator: ENGINE CORE ✅ DONE (G2/G3); G1/G4–G6 remain.**
+  `deps/decoy/decoy.{c,h}` (`make decoy`) — the universe as a pure function `U(seed, subsystem,
+  hour-window)`: integer/fixed-point coherent noise (no float → cross-arch deterministic), a shared
+  activity-intensity field driving all 8 subsystems, and heavy-tailed bursty event placement. Portable
+  C, no libc — reused by the kernel decoy view (G) and the §H2 Linux program. Tests PASS: **same
+  password → byte-identical universe; different/1-char-typo password → different; bursty (Fano 1.76);
+  subsystems correlated (r 0.77); 10-years-out is deterministic + O(window).** Remaining: the
+  seed-anchored virtual clock + event schema + object-view integration (G1/G4), per-subsystem
+  renderers, the honey-hash boot matcher (G2.2, ties to §E), and snapshot/distributed (G6). The full
+  design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**
+  via the honey-hashed typo-tolerant matcher; the seed-anchored virtual clock + no-float-noise
+  prerequisites) is in the §G analysis section above.
 - **§H Linux decoy OS + concealed activity synthesis: SPECIFIED (H1–H5), not built.** The decoy OS is a
   *real Linux distro* (most believable); §G's fake history is produced *inside* it by a concealed program
   (H2, the Linux port of §G), a full-disk-illusion block driver hides the hidden volume's space from the

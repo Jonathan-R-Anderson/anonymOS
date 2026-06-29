@@ -61,7 +61,11 @@ struct app {
     int post_map_frame_armed;
     int post_map_frame_done;
     int running;
-    int screen;          /* 0 = welcome (Install / Try Live), 1 = install-info */
+    int screen;          /* 0 = welcome (Install / Try Live), 1 = install/progress */
+    int installing;      /* 1 while the install loop is driving batches */
+    int install_done;    /* 1 once the install finished */
+    int install_failed;  /* 1 if /config/install.action could not be opened */
+    int progress;        /* install progress, 0..1000 permille */
     double pointer_x;
     double pointer_y;
     char entry_text[64];
@@ -287,6 +291,22 @@ static void draw_demo(struct app *app)
         cairo_set_source_rgb(cr, 0.88, 0.91, 0.95);
         cairo_fill(cr);
     } else {
+        /* progress bar: track + fill proportional to app->progress (0..1000) */
+        double pbx = 48, pbw = app->width - 96, pbh = 20;
+        double pby = 184;
+        rounded_rect(cr, pbx, pby, pbw, pbh, 8);
+        cairo_set_source_rgb(cr, 0.10, 0.16, 0.26);              /* track */
+        cairo_fill(cr);
+        int pg = app->progress; if (pg < 0) pg = 0; if (pg > 1000) pg = 1000;
+        double fillw = pbw * pg / 1000.0;
+        if (fillw > 1.0) {
+            rounded_rect(cr, pbx, pby, fillw, pbh, 8);
+            if (app->install_failed) cairo_set_source_rgb(cr, 0.80, 0.30, 0.25);      /* red */
+            else if (app->install_done) cairo_set_source_rgb(cr, 0.20, 0.70, 0.45);   /* green */
+            else cairo_set_source_rgb(cr, 0.05, 0.62, 0.56);                          /* teal */
+            cairo_fill(cr);
+        }
+
         btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
         rounded_rect(cr, bx, by, bw, bh, 10);
         cairo_set_source_rgb(cr, 0.30, 0.35, 0.44);
@@ -310,14 +330,27 @@ static void draw_demo(struct app *app)
         btn_rect(app, BTN_LIVE, &bx, &by, &bw, &bh);
         draw_text_ft(app, "Try Live Session", (int)bx + 32, (int)by + 36, (int)bw, 15, 0xff14203au);
     } else {
-        draw_text_ft(app, "Installing EpinAnonymOS to the target disk...",
-                     48, 104, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, "Writing the GPT + EFI System Partition + boot image.",
-                     48, 126, app->width - 96, 13, 0xffd6deeau);
-        draw_text_ft(app, "When done, power off, remove the install medium, reboot.",
-                     48, 158, app->width - 96, 13, 0xffaeb9cau);
+        const char *line1, *line2;
+        if (app->install_failed) {
+            line1 = "Install unavailable on this image.";
+            line2 = "Boot the installer ISO (make hos-install.iso) to install.";
+        } else if (app->install_done) {
+            line1 = "Installation complete.";
+            line2 = "Power off, remove the install medium, then boot the disk.";
+        } else {
+            line1 = "Installing EpinAnonymOS to the target disk...";
+            line2 = "Writing the GPT + EFI System Partition + boot image.";
+        }
+        draw_text_ft(app, line1, 48, 104, app->width - 96, 13, 0xffd6deeau);
+        draw_text_ft(app, line2, 48, 126, app->width - 96, 13, 0xffd6deeau);
+
+        /* percentage label above the bar */
+        char pct[16]; int p10 = app->progress / 10; if (p10 > 100) p10 = 100;
+        snprintf(pct, sizeof pct, "%d%%", p10);
+        draw_text_ft(app, pct, app->width - 96, 158, 80, 14, 0xffffffffu);
+
         btn_rect(app, BTN_BACK, &bx, &by, &bw, &bh);
-        draw_text_ft(app, "Back", (int)bx + 54, (int)by + 32, (int)bw, 15, 0xffffffffu);
+        draw_text_ft(app, app->install_done ? "Done" : "Back", (int)bx + 54, (int)by + 32, (int)bw, 15, 0xffffffffu);
     }
 }
 
@@ -375,6 +408,22 @@ static void redraw_commit(struct app *app, const char *marker)
     if (marker) {
         printf("G11INPUT: %s -- G11 INPUT\n", marker);
         fflush(stdout);
+    }
+}
+
+/* INSTALLER §D: advance the install by one batch and refresh the progress reading (0..1000).
+ * Each "install" write to /config/install.action does ~4 MiB in the kernel, then we poll
+ * /config/install.progress so the bar tracks the real on-disk write. */
+static void install_step(struct app *app)
+{
+    int fd = open("/config/install.action", O_WRONLY);
+    if (fd >= 0) { ssize_t wn = write(fd, "install", 7); (void)wn; close(fd); }
+    int pf = open("/config/install.progress", O_RDONLY);
+    if (pf >= 0) {
+        char b[16];
+        ssize_t n = read(pf, b, sizeof b - 1);
+        close(pf);
+        if (n > 0) { b[n] = 0; app->progress = atoi(b); }
     }
 }
 
@@ -695,27 +744,34 @@ static void pointer_button(void *data, struct wl_pointer *pointer,
         }
         btn_rect(app, BTN_INSTALL, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
-            /* INSTALLER §D: drive the in-OS installer.  A write of "install" to the kernel
-             * control file /config/install.action installs the running OS (the esp-image
-             * payload) to the first target disk — GPT + ESP + the bootable image — so the
-             * machine boots EpinAnonymOS from disk.  The outcome shows in the [install]
-             * serial log; on success, power off, remove the install medium, and reboot. */
+            /* INSTALLER §D: kick off the in-OS installer.  The install runs in batches: the
+             * main loop repeatedly writes "install" to /config/install.action (each write
+             * advances a batch) and reads /config/install.progress (0..1000) to drive the
+             * progress bar, until done.  Verify the control file exists up front. */
+            app->screen = 1;
+            app->progress = 0;
+            app->install_done = 0;
             int fd = open("/config/install.action", O_WRONLY);
             if (fd >= 0) {
-                ssize_t n = write(fd, "install", 7);
                 close(fd);
-                printf("INSTALLER: 'Install to Disk' -> /config/install.action (wrote %zd)\n", n);
+                app->installing = 1;
+                app->install_failed = 0;
+                printf("INSTALLER: 'Install to Disk' -> starting install\n");
             } else {
+                app->installing = 0;
+                app->install_failed = 1;
                 printf("INSTALLER: 'Install to Disk' -- no /config/install.action "
                        "(boot the INSTALL image: scripts/mk-install-iso.sh)\n");
             }
-            app->screen = 1;
             redraw_commit(app, "install-info");
             return;
         }
     } else {
+        if (app->installing) return;     /* can't go back mid-install */
         btn_rect(app, BTN_BACK, &x, &y, &w, &h);
         if (in_rect(app, x, y, w, h)) {
+            /* "Done" after a finished install closes to the live desktop; "Back" otherwise. */
+            if (app->install_done) { app->running = 0; return; }
             app->screen = 0;
             redraw_commit(app, "back");
             return;
@@ -924,6 +980,21 @@ int main(void)
     log_line("G11CAIRO: requested xdg_toplevel configure");
 
     while (app.running) {
+        /* While installing, don't block on input — drive a batch, refresh the bar, push a
+         * frame, and repeat until /config/install.progress reaches 1000. */
+        if (app.installing) {
+            install_step(&app);
+            redraw_commit(&app, "installing");
+            if (wl_display_roundtrip(app.display) < 0) break;
+            if (app.progress >= 1000) {
+                app.installing = 0;
+                app.install_done = 1;
+                redraw_commit(&app, "install-done");
+                wl_display_roundtrip(app.display);
+                printf("INSTALLER: install complete (100%%)\n");
+            }
+            continue;
+        }
         int ret = wl_display_dispatch(app.display);
         if (ret < 0) {
             perror("G11CAIRO: wl_display_dispatch");

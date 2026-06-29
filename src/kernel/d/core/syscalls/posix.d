@@ -108,6 +108,7 @@ enum FileType {
     FD_PTY_SLAVE,        // pseudo-terminal slave  (/dev/pts/N)
     FD_DOMAIN_CTL,       // DM10.3: /config/domain.action — writes are domain control commands
     FD_INSTALL_CTL,      // INSTALLER §D: /config/install.action — writes drive the in-OS installer
+    FD_INSTALL_PROGRESS, // INSTALLER §D: /config/install.progress — reads return 0..1000 permille
 }
 
 struct File {
@@ -1658,6 +1659,23 @@ private long fileObjRead(ObjHeader* oh, void* _buf, ulong _count) {
         return cast(ssize_t)_count;
     }
 
+    // INSTALLER §D: /config/install.progress — return the install progress as a 0..1000 permille
+    // decimal string (then EOF), so the installer GUI can poll it and draw a progress bar.
+    if (f.type == FileType.FD_INSTALL_PROGRESS) {
+        import drivers.veracrypt_impl : installProgressPermille;
+        if (f.offset > 0 || _buf is null) return 0;
+        char[8] d; int n = 0;
+        uint v = installProgressPermille();
+        if (v == 0) { d[n++] = '0'; }
+        else { char[8] r; int rn = 0; uint x = v; while (x > 0) { r[rn++] = cast(char)('0' + x % 10); x /= 10; } while (rn > 0) d[n++] = r[--rn]; }
+        d[n++] = '\n';
+        ulong w = (cast(ulong)n < _count) ? cast(ulong)n : _count;
+        auto buffer = cast(ubyte*)_buf;
+        foreach (i; 0 .. w) buffer[i] = cast(ubyte)d[cast(size_t)i];
+        f.offset += w;
+        return cast(ssize_t)w;
+    }
+
     if (f.type == FileType.FD_SOCKET) {
         return localSocketRead(f, _buf, _count);
     }
@@ -2720,6 +2738,18 @@ public int sys_open(const(char)* path, int flags) {
     if (cstrEq(path, "/config/install.action")) {
         if ((flags & 3) == O_RDONLY) return negErrno(EACCES);   // write-only control endpoint
         g_fdTable[fd].type     = FileType.FD_INSTALL_CTL;
+        g_fdTable[fd].flags    = flags;
+        g_fdTable[fd].offset   = 0;
+        g_fdTable[fd].backend  = null;
+        g_fdTable[fd].fileSize = 0;
+        return publishActiveFdReturn(fd);
+    }
+
+    // INSTALLER §D: /config/install.progress — read-only; returns the install progress as a
+    // 0..1000 permille decimal string so the installer GUI can draw a progress bar.
+    if (cstrEq(path, "/config/install.progress")) {
+        if ((flags & 3) != O_RDONLY) return negErrno(EACCES);   // read-only
+        g_fdTable[fd].type     = FileType.FD_INSTALL_PROGRESS;
         g_fdTable[fd].flags    = flags;
         g_fdTable[fd].offset   = 0;
         g_fdTable[fd].backend  = null;

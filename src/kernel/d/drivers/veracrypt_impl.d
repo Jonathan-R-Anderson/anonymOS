@@ -539,78 +539,127 @@ private bool instFindModule(string want, out ulong phys, out ulong size) {
     return false;
 }
 
-// Install the running OS (the esp-image payload) to disk `idx` (dsec sectors).  Returns true
-// on success.  This is the callable the installer UI invokes; the proof below exercises it.
+// ── Install state machine ────────────────────────────────────────────────────────────────
+// The install runs in BATCHES so the desktop can show a progress bar: each /config/install.
+// action write advances one batch (installStep) and returns, the GUI reads /config/install.
+// progress (installProgressPermille) between writes.  installBootableToDisk() loops to the end
+// synchronously for direct/headless callers.
+__gshared bool   g_instActive = false;
+__gshared bool   g_instDone   = false;
+__gshared bool   g_instFailed = false;
+__gshared int    g_instIdx;
+__gshared ulong  g_instLba, g_instRemaining, g_instTotal, g_instOff;
+__gshared const(ubyte)* g_instSrc;
+__gshared InstallWriteCap g_instCap;
+
+// Start an install of the esp-image payload to disk `idx` (dsec sectors): write the GPT, set
+// up the streaming state.  Returns false (and does nothing) if no payload / disk too small.
 @nogc nothrow
-public bool installBootableToDisk(int idx, ulong dsec) {
+public bool installBegin(int idx, ulong dsec) {
     import core.diskpart : GptLayout, gptWriteBootableEsp;
-    import core.install_cap : InstallWriteCap, mintInstallWriteCap, gatedDiskWrite, revokeInstallWriteCap;
+    import core.install_cap : mintInstallWriteCap, revokeInstallWriteCap;
     import core.exports : phys_to_virt;
     enum uint SEC = 512;
+    if (g_instActive) return true;                       // already running
 
     ulong phys, size;
     if (!instFindModule("esp-image", phys, size)) {
-        klog("[install] no esp-image boot module (build an INSTALL=1 ISO)\n"); return false;
+        klog("[install] no esp-image boot module (build an INSTALL ISO)\n"); return false;
     }
     const ulong espSectors = (size + SEC - 1) / SEC;
-    klog("[install] target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
-    klog(" image=0x"); klog_hex(size); klog("B esp_sectors=0x"); klog_hex(espSectors); klog("\n");
     if (dsec < espSectors + 2048 + 64) { klog("[install] FAIL: target disk too small\n"); return false; }
+    klog("[install] begin idx=0x"); klog_hex(idx); klog(" image=0x"); klog_hex(size);
+    klog("B sectors=0x"); klog_hex(espSectors); klog("\n");
 
-    auto cap = mintInstallWriteCap(idx);
+    g_instCap = mintInstallWriteCap(idx);
     GptLayout L;
     if (!gptWriteBootableEsp(idx, dsec, espSectors, L)) {
-        klog("[install] FAIL (gpt)\n"); revokeInstallWriteCap(cap); return false;
+        klog("[install] FAIL (gpt)\n"); revokeInstallWriteCap(g_instCap); g_instFailed = true; return false;
     }
-    klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; writing image\n");
-
-    const(ubyte)* src = cast(const(ubyte)*) phys_to_virt(phys);
-    ulong lba = L.espFirst, remaining = espSectors, off = 0, done = 0;
-    while (remaining > 0) {
-        const uint chunk = cast(uint)(remaining > 128 ? 128 : remaining);
-        if (!gatedDiskWrite(cap, idx, lba, chunk, src + off)) {
-            klog("[install] FAIL (write @lba=0x"); klog_hex(lba); klog(")\n");
-            revokeInstallWriteCap(cap); return false;
-        }
-        lba += chunk; off += cast(ulong)chunk * SEC; remaining -= chunk; done += chunk;
-        if ((done & 0x1FFFF) == 0) { klog("[install] wrote 0x"); klog_hex(done); klog(" of 0x"); klog_hex(espSectors); klog(" sectors\n"); }
-    }
-    revokeInstallWriteCap(cap);
-    klog("[install] DONE: installed to idx=0x"); klog_hex(idx);
-    klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
+    g_instIdx = idx; g_instSrc = cast(const(ubyte)*) phys_to_virt(phys);
+    g_instLba = L.espFirst; g_instRemaining = espSectors; g_instTotal = espSectors; g_instOff = 0;
+    g_instActive = true; g_instDone = false; g_instFailed = false;
+    klog("[install] GPT written; ESP @lba=0x"); klog_hex(L.espFirst); klog("; streaming image\n");
     return true;
+}
+
+// Advance the in-flight install by up to `maxSectors` (0xFFFFFFFF = run to completion).
+@nogc nothrow
+public void installStep(uint maxSectors) {
+    import core.install_cap : gatedDiskWrite, revokeInstallWriteCap;
+    enum uint SEC = 512;
+    if (!g_instActive) return;
+    uint did = 0;
+    while (g_instRemaining > 0 && did < maxSectors) {
+        uint chunk = cast(uint)(g_instRemaining > 128 ? 128 : g_instRemaining);
+        if (chunk > maxSectors - did) chunk = maxSectors - did;
+        if (!gatedDiskWrite(g_instCap, g_instIdx, g_instLba, chunk, g_instSrc + g_instOff)) {
+            klog("[install] FAIL (write @lba=0x"); klog_hex(g_instLba); klog(")\n");
+            revokeInstallWriteCap(g_instCap); g_instActive = false; g_instFailed = true; return;
+        }
+        g_instLba += chunk; g_instOff += cast(ulong)chunk * SEC; g_instRemaining -= chunk; did += chunk;
+    }
+    if (g_instRemaining == 0) {
+        revokeInstallWriteCap(g_instCap); g_instActive = false; g_instDone = true;
+        klog("[install] DONE: installed to idx=0x"); klog_hex(g_instIdx);
+        klog(" (reboot from this disk → UEFI → limine → EpinAnonymOS)\n");
+    }
+}
+
+// Progress of the current/last install as 0..1000 permille (1000 = done; 0 = idle/failed).
+@nogc nothrow
+public uint installProgressPermille() {
+    if (g_instDone) return 1000;
+    if (g_instFailed || !g_instActive || g_instTotal == 0) return 0;
+    return cast(uint)(((g_instTotal - g_instRemaining) * 1000UL) / g_instTotal);
+}
+
+// Synchronous full install (direct/headless callers).
+@nogc nothrow
+public bool installBootableToDisk(int idx, ulong dsec) {
+    if (!installBegin(idx, dsec)) return false;
+    while (g_instActive) installStep(0xFFFFFFFFu);
+    return g_instDone;
 }
 
 // Control-write executor: the desktop "Install to Disk" button (and a manual
 //   echo install > /config/install.action
 // ) lands here.  Command grammar: "install" → install the running OS to the first target
-// disk; "install <idx>" → to disk index <idx>.  Returns true on success.  Deny-by-default:
-// an unrecognized command (or no target / no payload) does nothing.
+// disk; "install <idx>" → to disk index <idx>.  Deny-by-default.
+//
+// BATCHED: the FIRST "install" (when idle) starts the install (writes the GPT) + does one
+// batch; each SUBSEQUENT "install" advances another batch.  The GUI loops "write install →
+// read /config/install.progress → redraw bar" so it can show progress (the whole image is too
+// big to write in one syscall without freezing the UI).
 @nogc nothrow
 public bool installControlWrite(const(char)* cmd, size_t len) {
     import drivers.block.disk : diskFindTarget;
-    import drivers.block.ahci : g_ahciDevices, getPort;
+    import drivers.block.ahci : g_ahciDevices;
+    enum uint BATCH = 8192;                          // 4 MiB / write → ~60 bar updates
     static immutable string P = "install";
     if (cmd is null || len < P.length) return false;
     foreach (i; 0 .. P.length) if (cmd[i] != P[i]) return false;
 
-    // optional explicit disk index after the verb
-    int idx = -1; ulong dsec = 0;
-    size_t p = P.length;
-    while (p < len && (cmd[p] == ' ' || cmd[p] == '\t')) p++;
-    if (p < len && cmd[p] >= '0' && cmd[p] <= '9') {
-        int n = 0;
-        while (p < len && cmd[p] >= '0' && cmd[p] <= '9') { n = n * 10 + (cmd[p] - '0'); p++; }
-        if (n < 0 || n >= cast(int)g_ahciDevices.length || !g_ahciDevices[n].present) {
-            klog("[install] control: bad disk index\n"); return false;
+    if (!g_instActive && !g_instDone) {              // start a new install
+        int idx = -1; ulong dsec = 0;
+        size_t p = P.length;
+        while (p < len && (cmd[p] == ' ' || cmd[p] == '\t')) p++;
+        if (p < len && cmd[p] >= '0' && cmd[p] <= '9') {   // explicit "install <idx>"
+            int n = 0;
+            while (p < len && cmd[p] >= '0' && cmd[p] <= '9') { n = n * 10 + (cmd[p] - '0'); p++; }
+            if (n < 0 || n >= cast(int)g_ahciDevices.length || !g_ahciDevices[n].present) {
+                klog("[install] control: bad disk index\n"); return false;
+            }
+            idx = n; dsec = g_ahciDevices[n].capacity / 512;
+        } else {
+            idx = diskFindTarget(dsec);              // a spare disk distinct from the object store
         }
-        idx = n; dsec = g_ahciDevices[n].capacity / 512;
-    } else {
-        idx = diskFindTarget(dsec);                  // a spare disk distinct from the object store
+        if (idx < 0) { klog("[install] control: no target disk (attach a second disk)\n"); return false; }
+        klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
+        if (!installBegin(idx, dsec)) return false;
     }
-    if (idx < 0) { klog("[install] control: no target disk (attach a second disk)\n"); return false; }
-    klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
-    return installBootableToDisk(idx, dsec);
+    if (g_instActive) installStep(BATCH);            // advance one batch
+    return true;
 }
 
 // Boot smoke check: report installer READINESS (do NOT auto-wipe a disk).  Installing is

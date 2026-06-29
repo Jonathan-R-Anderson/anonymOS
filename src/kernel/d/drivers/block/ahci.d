@@ -9,13 +9,9 @@ import core.stdc.string : memset;
 
 @nogc nothrow:
 
-// EpinAnonymOS has NO low identity map: a physical frame is reachable from the CPU
-// only through the HHDM (phys + hhdm_offset).  DMA descriptors must carry PHYSICAL
-// addresses (the HBA reads them), while the CPU touches the same frames via p2v().
 private void* p2v(size_t phys) { return cast(void*)(phys + cast(size_t)hhdm_offset); }
 private size_t v2p(void* virt) { return cast(size_t)virt - cast(size_t)hhdm_offset; }
 
-// AHCI Constants
 enum AHCI_CLASS_CODE = 0x01;
 enum AHCI_SUBCLASS_CODE = 0x06;
 enum AHCI_PROG_IF = 0x01;
@@ -23,54 +19,81 @@ enum AHCI_PROG_IF = 0x01;
 enum HBA_PORT_IPM_ACTIVE = 1;
 enum HBA_PORT_DET_PRESENT = 3;
 
+enum AHCI_DEV_NULL   = 0;
+enum AHCI_DEV_SATA   = 1;
+enum AHCI_DEV_SEMB   = 2;
+enum AHCI_DEV_PM     = 3;
+enum AHCI_DEV_SATAPI = 4;
+
+enum SATA_SIG_ATA   = 0x00000101;
+enum SATA_SIG_ATAPI = 0xEB140101;
+enum SATA_SIG_SEMB  = 0xC33C0101;
+enum SATA_SIG_PM    = 0x96690101;
+
+enum ATA_CMD_READ_DMA_EXT  = 0x25;
+enum ATA_CMD_WRITE_DMA_EXT = 0x35;
+enum ATA_CMD_IDENTIFY      = 0xEC;
+enum ATA_CMD_PACKET        = 0xA0;
+
+enum ATA_DEV_BUSY = 1u << 7;
+enum ATA_DEV_DRQ  = 1u << 3;
+enum HBA_PxIS_TFES = 1u << 30;
+
+enum HBA_PxCMD_ST  = 1u << 0;
+enum HBA_PxCMD_FRE = 1u << 4;
+enum HBA_PxCMD_FR  = 1u << 14;
+enum HBA_PxCMD_CR  = 1u << 15;
+
+enum FIS_TYPE_REG_H2D = 0x27;
+
 struct HBA_PORT
 {
-    uint clb;       // 0x00, command list base address, 1K-byte aligned
-    uint clbu;      // 0x04, command list base address upper 32 bits
-    uint fb;        // 0x08, FIS base address, 256-byte aligned
-    uint fbu;       // 0x0C, FIS base address upper 32 bits
-    uint is_;       // 0x10, interrupt status
-    uint ie;        // 0x14, interrupt enable
-    uint cmd;       // 0x18, command and status
-    uint rsv0;      // 0x1C, Reserved
-    uint tfd;       // 0x20, task file data
-    uint sig;       // 0x24, signature
-    uint ssts;      // 0x28, SATA status (SCR0:SStatus)
-    uint sctl;      // 0x2C, SATA control (SCR2:SControl)
-    uint serr;      // 0x30, SATA error (SCR1:SError)
-    uint sact;      // 0x34, SATA active (SCR3:SActive)
-    uint ci;        // 0x38, command issue
-    uint sntf;      // 0x3C, SATA notification (SCR4:SNotification)
-    uint fbs;       // 0x40, FIS-based switch control
-    uint[11] rsv1;  // 0x44 ~ 0x7F, Reserved
-    uint[4] vendor; // 0x80 ~ 0x8F, vendor specific
+    uint clb;
+    uint clbu;
+    uint fb;
+    uint fbu;
+    uint is_;
+    uint ie;
+    uint cmd;
+    uint rsv0;
+    uint tfd;
+    uint sig;
+    uint ssts;
+    uint sctl;
+    uint serr;
+    uint sact;
+    uint ci;
+    uint sntf;
+    uint fbs;
+    uint[11] rsv1;
+    uint[4] vendor;
 }
 
 struct HBA_MEM
 {
-    uint cap;       // 0x00, Host capability
-    uint ghc;       // 0x04, Global host control
-    uint is_;        // 0x08, Interrupt status
-    uint pi;        // 0x0C, Ports implemented
-    uint vs;        // 0x10, Version
-    uint ccc_ctl;   // 0x14, Command completion coalescing control
-    uint ccc_pts;   // 0x18, Command completion coalescing ports
-    uint em_loc;    // 0x1C, Enclosure management location
-    uint em_ctl;    // 0x20, Enclosure management control
-    uint cap2;      // 0x24, Host capabilities extended
-    uint bohc;      // 0x28, BIOS/OS handoff control and status
-    ubyte[0xA0-0x2C] rsv; // 0x2C - 0x9F, Reserved
-    ubyte[0x100-0xA0] vendor; // 0xA0 - 0xFF, Vendor specific
-    HBA_PORT[32] ports; // 1 ~ 32
+    uint cap;
+    uint ghc;
+    uint is_;
+    uint pi;
+    uint vs;
+    uint ccc_ctl;
+    uint ccc_pts;
+    uint em_loc;
+    uint em_ctl;
+    uint cap2;
+    uint bohc;
+    ubyte[0xA0-0x2C] rsv;
+    ubyte[0x100-0xA0] vendor;
+    HBA_PORT[32] ports;
 }
 
 struct HBA_CMD_HEADER
 {
-    uint dw0;       // Command FIS Length, flags, and PRDTL
-    uint prdbc;     // Transferred byte count
-    uint ctba;      // Command Table Descriptor Base Address
-    uint ctbau;     // Command Table Descriptor Base Address Upper 32 bits
-    uint[4] rsv1;   // Reserved
+    uint dw0;
+    uint prdbc;
+    uint ctba;
+    uint ctbau;
+    uint[4] rsv1;
 }
 
 struct HBA_PRDT_ENTRY
@@ -83,10 +106,10 @@ struct HBA_PRDT_ENTRY
 
 struct HBA_CMD_TBL
 {
-    ubyte[0x40] cfis; // Command FIS
-    ubyte[0x10] acmd; // ATAPI command, 12 or 16 bytes
-    ubyte[0x30] rsv;  // Reserved
-    HBA_PRDT_ENTRY[128] prdt_entry; // Physical region descriptor table entries
+    ubyte[0x40] cfis;
+    ubyte[0x10] acmd;
+    ubyte[0x30] rsv;
+    HBA_PRDT_ENTRY[128] prdt_entry;
 }
 
 struct SGEntry
@@ -98,7 +121,7 @@ struct SGEntry
 struct FIS_REG_H2D
 {
     ubyte fis_type;
-    ubyte pmport;   // Bits 0-3: port multiplier, bit7: command flag
+    ubyte pmport;
     ubyte command;
     ubyte featurel;
     ubyte lba0;
@@ -116,29 +139,113 @@ struct FIS_REG_H2D
     ubyte[4] rsv1;
 }
 
-enum FIS_TYPE_REG_H2D = 0x27;
-
-__gshared HBA_MEM* abar;
-
-public struct AHCIDeviceInfo {
+public struct AHCIDeviceInfo
+{
     int port;
-    int type; // 1=SATA, 4=SATAPI
+    int type;
     ulong capacity;
     bool present;
 }
 
-public __gshared AHCIDeviceInfo[32] g_ahciDevices;
+struct MBR
+{
+    ubyte[446] code;
+    ubyte[64] partitions;
+    ushort signature;
+}
 
-public HBA_PORT* getPort(int index) {
+struct AHCIPortContext
+{
+    HBA_PORT* port;
+    HBA_CMD_HEADER* cmdList;
+    HBA_CMD_TBL* cmdTables;
+    ubyte* fis;
+}
+
+__gshared HBA_MEM* abar;
+public __gshared AHCIDeviceInfo[32] g_ahciDevices;
+public __gshared bool g_mbrDetected = false;
+public __gshared bool g_hiddenOsDetected = false;
+__gshared AHCIPortContext[32] g_portCtx;
+__gshared HBA_PORT* g_primaryPort;
+public __gshared HBA_PORT* g_dataPort;
+
+private T* physToVirt(T)(size_t phys)
+{
+    return cast(T*)(phys + cast(size_t)hhdm_offset);
+}
+
+public HBA_PORT* getPort(int index)
+{
     if (abar is null || index < 0 || index >= 32) return null;
     return &abar.ports[index];
+}
+
+public HBA_PORT* ahciDataPort()
+{
+    return g_dataPort;
+}
+
+private void ahciPause()
+{
+    asm @nogc nothrow { rep; nop; }
+}
+
+private void dumpPortState(HBA_PORT* port, const(char)[] prefix)
+{
+    print(prefix);
+    print(" CI=");   printHex(port.ci);
+    print(" SACT="); printHex(port.sact);
+    print(" TFD=");  printHex(port.tfd);
+    print(" IS=");   printHex(port.is_);
+    print(" SERR="); printHex(port.serr);
+    print(" CMD=");  printHex(port.cmd);
+    printLine("");
+}
+
+private bool waitWhileBusy(HBA_PORT* port,
+                           uint timeout,
+                           const(char)[] where)
+{
+    while ((port.tfd & (ATA_DEV_BUSY | ATA_DEV_DRQ)) != 0)
+    {
+        if (--timeout == 0)
+        {
+            print("[ahci] Error: device busy before command at ");
+            printLine(where);
+            dumpPortState(port, "[ahci] busy-state:");
+            return false;
+        }
+
+        ahciPause();
+    }
+
+    return true;
+}
+
+private int findFreeSlot(HBA_PORT* port)
+{
+    uint occupied = port.sact | port.ci;
+
+    uint slots = (abar.cap >> 8) & 0x1F;
+    slots += 1;
+    if (slots == 0 || slots > 32) slots = 32;
+
+    for (int i = 0; i < cast(int)slots; i++)
+    {
+        if ((occupied & (1u << i)) == 0)
+            return i;
+    }
+
+    printLine("[ahci] Error: no free command slot");
+    dumpPortState(port, "[ahci] no-slot:");
+    return -1;
 }
 
 void initAHCI()
 {
     printLine("[ahci] Initializing AHCI...");
-    
-    // Find AHCI controller on PCI bus
+
     foreach (bus; 0 .. 256)
     {
         foreach (slot; 0 .. 32)
@@ -146,6 +253,7 @@ void initAHCI()
             foreach (func; 0 .. 8)
             {
                 const uint vendorDevice = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0);
+
                 if ((vendorDevice & 0xFFFF) == 0xFFFF)
                 {
                     if (func == 0) break;
@@ -155,29 +263,25 @@ void initAHCI()
                 const uint classCode = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 8);
                 const ubyte baseClass = cast(ubyte)((classCode >> 24) & 0xFF);
                 const ubyte subClass  = cast(ubyte)((classCode >> 16) & 0xFF);
-                const ubyte progIf    = cast(ubyte)((classCode >> 8) & 0xFF);
 
                 if (baseClass == AHCI_CLASS_CODE && subClass == AHCI_SUBCLASS_CODE)
                 {
                     print("[ahci] Found controller at ");
                     printHex(bus); print(":"); printHex(slot); print("."); printHex(func);
                     printLine("");
-                    
-                    // Enable PCI bus-mastering + memory space (so the HBA can DMA).
-                    uint cmd = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04);
-                    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04,
-                                     cmd | 0x06);  // bit1 = memory space, bit2 = bus master
 
-                    // Get BAR5 (ABAR) — a 32-bit MMIO phys; reach it through the HHDM.
+                    uint cmd = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04);
+                    pciConfigWrite32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x04, cmd | 0x06);
+
                     uint bar5 = pciConfigRead32(cast(ubyte)bus, cast(ubyte)slot, cast(ubyte)func, 0x24);
                     const size_t abarPhys = cast(size_t)(cast(ulong)bar5 & 0xFFFFFFF0);
                     abar = cast(HBA_MEM*)p2v(abarPhys);
 
                     print("[ahci] ABAR phys=0x"); printHex(abarPhys);
-                    print(" virt=0x"); printHex(cast(size_t)abar); printLine("");
+                    print(" virt=0x"); printHex(cast(size_t)abar);
+                    printLine("");
 
-                    // AHCI Enable (GHC.AE, bit 31) so the ports speak AHCI not legacy.
-                    abar.ghc = abar.ghc | (1u << 31);
+                    abar.ghc |= 1u << 31;
 
                     probePorts();
                     return;
@@ -185,155 +289,154 @@ void initAHCI()
             }
         }
     }
+
     printLine("[ahci] No controller found.");
 }
 
-// MBR Detection
-struct MBR {
-    ubyte[446] code;
-    ubyte[64] partitions;
-    ushort signature;
-}
+bool detectMBR(HBA_PORT* port)
+{
+    if (port is null) return false;
 
-public __gshared bool g_mbrDetected = false;
-public __gshared bool g_hiddenOsDetected = false;
-
-bool detectMBR(HBA_PORT* port) {
-    if (port == null) return false;
-    
     size_t phys = allocFrame();
     if (phys == 0) return false;
-    
+
     if (!readSector(port, 0, 1, phys))
     {
         freeFrame(phys);
         return false;
     }
-    
+
     MBR* mbr = physToVirt!MBR(phys);
     bool valid = (mbr.signature == 0xAA55);
-    
+
     freeFrame(phys);
-    
-    if (valid) {
+
+    if (valid)
+    {
         printLine("[ahci] Valid MBR detected.");
         g_mbrDetected = true;
         return true;
     }
+
     return false;
 }
 
-bool detectHiddenOS(HBA_PORT* port) {
-    if (port == null) return false;
-    
+bool detectHiddenOS(HBA_PORT* port)
+{
+    if (port is null) return false;
+
     size_t phys = allocFrame();
     if (phys == 0) return false;
-    
+
     if (!readSector(port, 63, 1, phys))
     {
         freeFrame(phys);
         return false;
     }
-    
+
     ubyte* buffer = physToVirt!ubyte(phys);
-    
-    // Check for "ANONYMOS_HIDDEN" magic string at offset 0
     const(char)* magic = "ANONYMOS_HIDDEN";
+
     bool found = true;
-    for (int i = 0; i < 15; i++) {
-        if (buffer[i] != magic[i]) {
+    for (int i = 0; i < 15; i++)
+    {
+        if (buffer[i] != magic[i])
+        {
             found = false;
             break;
         }
     }
-    
+
     freeFrame(phys);
-    
-    if (found) {
+
+    if (found)
+    {
         printLine("[ahci] Hidden OS detected!");
         g_hiddenOsDetected = true;
         return true;
     }
+
     return false;
 }
 
 void probePorts()
 {
     uint pi = abar.pi;
-    print("[ahci] Ports Implemented register: "); printHex(pi); printLine("");
-    
+    print("[ahci] Ports Implemented register: ");
+    printHex(pi);
+    printLine("");
+
     for (int i = 0; i < 32; i++)
     {
         if (pi & 1)
         {
-            print("[ahci] Checking port "); printUnsigned(i); printLine("");
+            print("[ahci] Checking port ");
+            printUnsigned(i);
+            printLine("");
+
             int dt = checkType(&abar.ports[i]);
-            
-            print("[ahci] Port "); printUnsigned(i); 
-            print(" type: "); printUnsigned(dt); printLine("");
-            
+
+            print("[ahci] Port ");
+            printUnsigned(i);
+            print(" type: ");
+            printUnsigned(dt);
+            printLine("");
+
             g_ahciDevices[i].port = i;
             g_ahciDevices[i].type = dt;
-            g_ahciDevices[i].present = true;
-            
+            g_ahciDevices[i].present = (dt != AHCI_DEV_NULL);
+
             if (dt == AHCI_DEV_SATA)
             {
                 print("[ahci] SATA drive found at port ");
                 printUnsigned(i);
                 printLine("");
 
-                // Configure port (rebase command list / FIS into DMA-mapped frames).
                 portRebase(&abar.ports[i], i);
-
                 g_ahciDevices[i].capacity = getDiskCapacity(&abar.ports[i]);
 
-                // First SATA disk = the persistence device (the object store lives here).
-                if (g_dataPort is null) g_dataPort = &abar.ports[i];
+                if (g_dataPort is null)
+                    g_dataPort = &abar.ports[i];
             }
             else if (dt == AHCI_DEV_SATAPI)
             {
                 print("[ahci] SATAPI (CD-ROM) drive found at port ");
                 printUnsigned(i);
                 printLine("");
-                
-                // Configure port
+
                 portRebase(&abar.ports[i], i);
-                
-                g_ahciDevices[i].capacity = 0; // TODO: Get capacity via READ CAPACITY
+                g_ahciDevices[i].capacity = 0;
             }
         }
+
         pi >>= 1;
     }
 }
 
-enum AHCI_DEV_NULL = 0;
-enum AHCI_DEV_SATA = 1;
-enum AHCI_DEV_SEMB = 2;
-enum AHCI_DEV_PM = 3;
-enum AHCI_DEV_SATAPI = 4;
-
-enum SATA_SIG_ATA = 0x00000101;
-enum SATA_SIG_ATAPI = 0xEB140101;
-enum SATA_SIG_SEMB = 0xC33C0101;
-enum SATA_SIG_PM = 0x96690101;
-
 int checkType(HBA_PORT* port)
 {
     uint ssts = port.ssts;
-    ubyte ipm = (ssts >> 8) & 0x0F;
-    ubyte det = ssts & 0x0F;
+    ubyte ipm = cast(ubyte)((ssts >> 8) & 0x0F);
+    ubyte det = cast(ubyte)(ssts & 0x0F);
 
-    print("[ahci] checkType: ssts="); printHex(ssts);
-    print(" det="); printUnsigned(det);
-    print(" ipm="); printUnsigned(ipm);
-    print(" sig="); printHex(port.sig);
+    print("[ahci] checkType: ssts=");
+    printHex(ssts);
+    print(" det=");
+    printUnsigned(det);
+    print(" ipm=");
+    printUnsigned(ipm);
+    print(" sig=");
+    printHex(port.sig);
     printLine("");
 
-    if (det != HBA_PORT_DET_PRESENT) {
+    if (det != HBA_PORT_DET_PRESENT)
+    {
         printLine("[ahci] checkType: DET != PRESENT, returning NULL");
         return AHCI_DEV_NULL;
     }
-    if (ipm != HBA_PORT_IPM_ACTIVE) {
+
+    if (ipm != HBA_PORT_IPM_ACTIVE)
+    {
         printLine("[ahci] checkType: IPM != ACTIVE, returning NULL");
         return AHCI_DEV_NULL;
     }
@@ -341,28 +444,20 @@ int checkType(HBA_PORT* port)
     switch (port.sig)
     {
         case SATA_SIG_ATAPI: return AHCI_DEV_SATAPI;
-        case SATA_SIG_SEMB: return AHCI_DEV_SEMB;
-        case SATA_SIG_PM: return AHCI_DEV_PM;
-        default: return AHCI_DEV_SATA;
+        case SATA_SIG_SEMB:  return AHCI_DEV_SEMB;
+        case SATA_SIG_PM:    return AHCI_DEV_PM;
+        default:             return AHCI_DEV_SATA;
     }
 }
-
-struct AHCIPortContext
-{
-    HBA_PORT* port;
-    HBA_CMD_HEADER* cmdList;
-    HBA_CMD_TBL* cmdTable;
-    ubyte* fis;
-}
-
-__gshared AHCIPortContext[32] g_portCtx;
 
 int portIndex(HBA_PORT* port)
 {
     foreach (idx, ref ctx; g_portCtx)
     {
-        if (ctx.port is port) return cast(int)idx;
+        if (ctx.port is port)
+            return cast(int)idx;
     }
+
     return -1;
 }
 
@@ -370,99 +465,144 @@ bool allocatePortResources(HBA_PORT* port, int index)
 {
     const size_t kCmdListSize = 1024;
     const size_t kFISSize = 256;
-    const size_t kCmdTableSize = 4096;
+    const size_t kCmdTableSize = 4096 * 32;
 
-    // dma_alloc returns the HHDM virtual pointer and the physical address: the HBA
-    // gets the phys (port.clb/fb, header.ctba), the CPU writes through the virt.
-    size_t clbPhys, fisPhys, cmdTblPhys;
+    size_t clbPhys;
+    size_t fisPhys;
+    size_t cmdTblPhys;
+
     auto cmdList = cast(HBA_CMD_HEADER*)dma_alloc(kCmdListSize, 1024, &clbPhys);
-    auto fisBase = cast(ubyte*)        dma_alloc(kFISSize,   256,  &fisPhys);
-    auto cmdTbl  = cast(HBA_CMD_TBL*)  dma_alloc(kCmdTableSize, 128, &cmdTblPhys);
-    if (cmdList is null || fisBase is null || cmdTbl is null)
-    {
+    auto fisBase = cast(ubyte*)dma_alloc(kFISSize, 256, &fisPhys);
+    auto cmdTbls = cast(HBA_CMD_TBL*)dma_alloc(kCmdTableSize, 128, &cmdTblPhys);
+
+    if (cmdList is null || fisBase is null || cmdTbls is null)
         return false;
-    }
 
     memset(cmdList, 0, kCmdListSize);
     memset(fisBase, 0, kFISSize);
-    memset(cmdTbl, 0, kCmdTableSize);
+    memset(cmdTbls, 0, kCmdTableSize);
 
     port.clb = cast(uint)clbPhys;
     port.clbu = cast(uint)(clbPhys >> 32);
     port.fb = cast(uint)fisPhys;
     port.fbu = cast(uint)(fisPhys >> 32);
 
+    for (int i = 0; i < 32; i++)
+    {
+        size_t tblPhys = cmdTblPhys + cast(size_t)i * 4096;
+        cmdList[i].ctba = cast(uint)tblPhys;
+        cmdList[i].ctbau = cast(uint)(tblPhys >> 32);
+    }
+
     g_portCtx[index].port = port;
     g_portCtx[index].cmdList = cmdList;
-    g_portCtx[index].cmdTable = cmdTbl;
+    g_portCtx[index].cmdTables = cmdTbls;
     g_portCtx[index].fis = fisBase;
 
     return true;
 }
 
-import core.stdc.string : memset;
-
-private T* physToVirt(T)(size_t phys)
-{
-    return cast(T*)(phys + cast(size_t)hhdm_offset);
-}
-
 void startCmd(HBA_PORT* port)
 {
-    int timeout = 1000000;
-    while (port.cmd & (1 << 15)) 
+    uint timeout = 1000000;
+
+    while ((port.cmd & HBA_PxCMD_CR) != 0)
     {
-        timeout--;
-        if (timeout == 0)
+        if (--timeout == 0)
         {
-             printLine("[ahci] Error: startCmd timeout (CR bit stuck)");
-             return;
+            printLine("[ahci] Error: startCmd timeout, CR bit stuck");
+            dumpPortState(port, "[ahci] startCmd:");
+            return;
         }
-        asm @nogc nothrow { rep; nop; }
+
+        ahciPause();
     }
-    port.cmd |= (1 << 4);
-    port.cmd |= (1 << 0);
+
+    port.cmd |= HBA_PxCMD_FRE;
+    port.cmd |= HBA_PxCMD_ST;
 }
 
 void stopCmd(HBA_PORT* port)
 {
-    port.cmd &= ~(1 << 0);
-    port.cmd &= ~(1 << 4);
-    
-    int timeout = 1000000;
-    while (true)
+    port.cmd &= ~HBA_PxCMD_ST;
+
+    uint timeout = 1000000;
+    while ((port.cmd & HBA_PxCMD_CR) != 0)
     {
-        if (port.cmd & (1 << 15)) {}
-        else if (port.cmd & (1 << 14)) {}
-        else break;
-        
-        timeout--;
-        if (timeout == 0)
+        if (--timeout == 0)
         {
-            printLine("[ahci] Error: stopCmd timeout");
-            return;
+            printLine("[ahci] Error: stopCmd timeout, CR bit stuck");
+            dumpPortState(port, "[ahci] stopCmd CR:");
+            break;
         }
-        asm @nogc nothrow { rep; nop; }
+
+        ahciPause();
     }
+
+    port.cmd &= ~HBA_PxCMD_FRE;
+
+    timeout = 1000000;
+    while ((port.cmd & HBA_PxCMD_FR) != 0)
+    {
+        if (--timeout == 0)
+        {
+            printLine("[ahci] Error: stopCmd timeout, FR bit stuck");
+            dumpPortState(port, "[ahci] stopCmd FR:");
+            break;
+        }
+
+        ahciPause();
+    }
+}
+
+private void resetPort(HBA_PORT* port)
+{
+    printLine("[ahci] resetting port after failed command");
+    dumpPortState(port, "[ahci] before-reset:");
+
+    stopCmd(port);
+
+    port.is_ = 0xFFFFFFFF;
+    port.serr = 0xFFFFFFFF;
+
+    port.sctl = (port.sctl & ~0xFu) | 1u;
+
+    for (uint i = 0; i < 100000; i++)
+        ahciPause();
+
+    port.sctl &= ~0xFu;
+
+    for (uint i = 0; i < 100000; i++)
+        ahciPause();
+
+    port.is_ = 0xFFFFFFFF;
+    port.serr = 0xFFFFFFFF;
+
+    startCmd(port);
+
+    dumpPortState(port, "[ahci] after-reset:");
 }
 
 void releasePortResources(int index)
 {
     auto ctx = g_portCtx[index];
-    if (ctx.cmdList !is null) freeFrame(cast(size_t)ctx.cmdList);
-    if (ctx.fis !is null) freeFrame(cast(size_t)ctx.fis);
-    if (ctx.cmdTable !is null) freeFrame(cast(size_t)ctx.cmdTable);
+
+    /*
+       NOTE:
+       These were allocated with dma_alloc(), not allocFrame().
+       If your DMA allocator has a dma_free(), use that here.
+       Do not free HHDM virtual addresses with freeFrame().
+    */
+
     g_portCtx[index] = AHCIPortContext.init;
 }
-
-__gshared HBA_PORT* g_primaryPort;
-public __gshared HBA_PORT* g_dataPort;   // the first SATA data disk (object-store device)
-
-public HBA_PORT* ahciDataPort() { return g_dataPort; }
 
 void portRebase(HBA_PORT* port, int portNumber)
 {
     stopCmd(port);
+
+    port.is_ = 0xFFFFFFFF;
+    port.serr = 0xFFFFFFFF;
 
     if (!allocatePortResources(port, portNumber))
     {
@@ -475,11 +615,9 @@ void portRebase(HBA_PORT* port, int portNumber)
     print("[ahci] Port rebased ");
     printUnsigned(portNumber);
     printLine("");
-    
+
     if (g_primaryPort is null)
-    {
         g_primaryPort = port;
-    }
 
     startCmd(port);
 }
@@ -487,186 +625,254 @@ void portRebase(HBA_PORT* port, int portNumber)
 bool waitForCommand(HBA_PORT* port, ubyte slot)
 {
     const uint slotMask = 1u << slot;
-    // Timeout to prevent infinite hang
-    uint timeout = 1000000;
+
+    uint timeout = 100000000;
+
     while ((port.ci & slotMask) != 0)
     {
-        if ((port.is_ & (1u << 30)) != 0) // TFES - Task File Error Status
+        if ((port.is_ & HBA_PxIS_TFES) != 0)
         {
             printLine("[ahci] Error: Task File Error");
-            print("[ahci] TFD: "); printHex(port.tfd);
-            print(" SERR: "); printHex(port.serr);
-            print(" IS: "); printHex(port.is_);
-            printLine("");
+            dumpPortState(port, "[ahci] task-file-error:");
+            resetPort(port);
             return false;
         }
-        
-        timeout--;
-        if (timeout == 0)
+
+        if (--timeout == 0)
         {
             printLine("[ahci] Error: Command Timeout");
+            dumpPortState(port, "[ahci] timeout:");
+            resetPort(port);
             return false;
         }
-        
-        asm @nogc nothrow { rep; nop; }
+
+        ahciPause();
     }
-    return (port.ci & slotMask) == 0;
+
+    return true;
 }
 
 bool prepareFIS(HBA_CMD_TBL* cmdTbl, ubyte command, ulong lba, ushort count)
 {
     auto fis = cast(FIS_REG_H2D*)cmdTbl.cfis.ptr;
+
     fis.fis_type = FIS_TYPE_REG_H2D;
     fis.pmport = 1 << 7;
     fis.command = command;
     fis.device = 1 << 6;
+
     fis.lba0 = cast(ubyte)(lba & 0xFF);
     fis.lba1 = cast(ubyte)((lba >> 8) & 0xFF);
     fis.lba2 = cast(ubyte)((lba >> 16) & 0xFF);
     fis.lba3 = cast(ubyte)((lba >> 24) & 0xFF);
     fis.lba4 = cast(ubyte)((lba >> 32) & 0xFF);
     fis.lba5 = cast(ubyte)((lba >> 40) & 0xFF);
+
     fis.countl = cast(ubyte)(count & 0xFF);
     fis.counth = cast(ubyte)((count >> 8) & 0xFF);
+
     return true;
 }
 
 bool issueTransfer(HBA_PORT* port, uint slot)
 {
+    if (!waitWhileBusy(port, 10000000, "issueTransfer"))
+        return false;
+
     port.is_ = 0xFFFFFFFF;
-    port.ci |= 1u << slot;
+    port.serr = 0xFFFFFFFF;
+
+    port.ci = 1u << slot;
+
     bool res = waitForCommand(port, cast(ubyte)slot);
-    if (!res) printLine("[ahci] waitForCommand failed");
+    if (!res)
+        printLine("[ahci] waitForCommand failed");
+
     return res;
 }
 
-bool executeCommand(HBA_PORT* port, HBA_CMD_HEADER* header, HBA_CMD_TBL* tbl, SGEntry[] sgList, ulong lba, ushort count, bool isWrite, ubyte cmdCode = 0)
+bool executeCommand(
+    HBA_PORT* port,
+    HBA_CMD_HEADER* cmdList,
+    HBA_CMD_TBL* cmdTables,
+    SGEntry[] sgList,
+    ulong lba,
+    ushort count,
+    bool isWrite,
+    ubyte cmdCode = 0)
 {
-    // Setup DW0: CFL=5, W (bit 6), PRDTL=sgList.length (bits 16-31)
-    uint flags = 5; // CFL = 5 (Host to Device)
+    if (port is null || cmdList is null || cmdTables is null)
+        return false;
+
+    if (sgList.length == 0 || sgList.length > 128)
+        return false;
+
+    int slot = findFreeSlot(port);
+    if (slot < 0)
+        return false;
+
+    auto header = &cmdList[slot];
+    auto tbl = &cmdTables[slot];
+
+    memset(tbl, 0, HBA_CMD_TBL.sizeof);
+
+    uint flags = 5;
     if (isWrite)
-        flags |= (1 << 6);
-    
-    if (sgList.length > 128) return false; // Too many entries
-    
-    flags |= (cast(uint)sgList.length << 16); // PRDTL
-    
+        flags |= 1 << 6;
+
+    flags |= cast(uint)sgList.length << 16;
+
     const size_t tblPhys = v2p(tbl);
+
     header.dw0 = flags;
     header.prdbc = 0;
     header.ctba = cast(uint)tblPhys;
     header.ctbau = cast(uint)(tblPhys >> 32);
+    header.rsv1[] = 0;
 
     foreach (i, sg; sgList)
     {
-        auto entry = tbl.prdt_entry[i];
-        entry.dba = cast(uint)(sg.phys);
+        if (sg.len == 0)
+            return false;
+
+        auto entry = HBA_PRDT_ENTRY.init;
+        entry.dba = cast(uint)sg.phys;
         entry.dbau = cast(uint)(sg.phys >> 32);
-        entry.dbc = (cast(uint)sg.len - 1) | (1u << 31); // Set Interrupt on Completion for last? Or all? Usually last. But here we set bit 31 (I) for all? No, usually just last.
-        // Actually, bit 31 is 'I' (Interrupt on completion). We can set it for the last one.
-        // But the AHCI spec says we can set it for any.
-        // Let's set it for all for now or just the last one.
-        // The original code set it for the single entry.
+        entry.rsv0 = 0;
+        entry.dbc = cast(uint)(sg.len - 1);
+
+        if (i == sgList.length - 1)
+            entry.dbc |= 1u << 31;
+
         tbl.prdt_entry[i] = entry;
     }
 
-    memset(tbl.cfis.ptr, 0, tbl.cfis.length);
-    
     ubyte cmd = cmdCode;
-    if (cmd == 0) cmd = isWrite ? 0x35 : 0x25;
-    
+    if (cmd == 0)
+        cmd = isWrite ? ATA_CMD_WRITE_DMA_EXT : ATA_CMD_READ_DMA_EXT;
+
     prepareFIS(tbl, cmd, lba, count);
 
-    return issueTransfer(port, 0);
+    return issueTransfer(port, cast(uint)slot);
 }
 
-// Overload for single buffer backward compatibility
-bool executeCommand(HBA_PORT* port, HBA_CMD_HEADER* header, HBA_CMD_TBL* tbl, size_t physAddr, ulong lba, ushort count, bool isWrite, ubyte cmdCode = 0)
+bool executeCommand(
+    HBA_PORT* port,
+    HBA_CMD_HEADER* cmdList,
+    HBA_CMD_TBL* cmdTables,
+    size_t physAddr,
+    ulong lba,
+    ushort count,
+    bool isWrite,
+    ubyte cmdCode = 0)
 {
     SGEntry[1] sg;
     sg[0].phys = physAddr;
-    sg[0].len = count * 512;
-    return executeCommand(port, header, tbl, sg[], lba, count, isWrite, cmdCode);
+    sg[0].len = cast(size_t)count * 512;
+
+    return executeCommand(port, cmdList, cmdTables, sg[], lba, count, isWrite, cmdCode);
 }
 
-bool packetCommand(HBA_PORT* port, HBA_CMD_HEADER* header, HBA_CMD_TBL* tbl, SGEntry[] sgList, ubyte[16] cdb, uint byteCount)
+bool packetCommand(
+    HBA_PORT* port,
+    HBA_CMD_HEADER* cmdList,
+    HBA_CMD_TBL* cmdTables,
+    SGEntry[] sgList,
+    ubyte[16] cdb,
+    uint byteCount)
 {
-    //printLine("[ahci] packetCommand start");
-    // Setup DW0: CFL=5, A (Atapi)=1
-    uint flags = 5 | (1 << 5); 
-    
-    if (sgList.length > 128) return false;
-    
+    if (port is null || cmdList is null || cmdTables is null)
+        return false;
+
+    if (sgList.length == 0 || sgList.length > 128)
+        return false;
+
+    int slot = findFreeSlot(port);
+    if (slot < 0)
+        return false;
+
+    auto header = &cmdList[slot];
+    auto tbl = &cmdTables[slot];
+
+    memset(tbl, 0, HBA_CMD_TBL.sizeof);
+
+    uint flags = 5 | (1 << 5);
+    flags |= cast(uint)sgList.length << 16;
+
     const size_t tblPhys = v2p(tbl);
-    header.dw0 = flags | (cast(uint)sgList.length << 16);
+
+    header.dw0 = flags;
     header.prdbc = 0;
     header.ctba = cast(uint)tblPhys;
     header.ctbau = cast(uint)(tblPhys >> 32);
+    header.rsv1[] = 0;
 
-    //printLine("[ahci] packetCommand: PRDT setup");
     foreach (i, sg; sgList)
     {
-        auto entry = tbl.prdt_entry[i];
-        entry.dba = cast(uint)(sg.phys);
+        if (sg.len == 0)
+            return false;
+
+        auto entry = HBA_PRDT_ENTRY.init;
+        entry.dba = cast(uint)sg.phys;
         entry.dbau = cast(uint)(sg.phys >> 32);
-        entry.dbc = (cast(uint)sg.len - 1); // | (1u << 31); // Interrupt on completion DISABLED
+        entry.rsv0 = 0;
+        entry.dbc = cast(uint)(sg.len - 1);
+
+        if (i == sgList.length - 1)
+            entry.dbc |= 1u << 31;
+
         tbl.prdt_entry[i] = entry;
     }
 
-    //printLine("[ahci] packetCommand: memset fis");
-    if (tbl.cfis.ptr is null) printLine("[ahci] Error: cfis.ptr is null");
-    memset(tbl.cfis.ptr, 0, tbl.cfis.length);
-    
-    // Copy CDB
-    //printLine("[ahci] packetCommand: copy CDB");
-    for(int i=0; i<16; i++) tbl.acmd[i] = cdb[i];
-    
+    for (int i = 0; i < 16; i++)
+        tbl.acmd[i] = cdb[i];
+
     auto fis = cast(FIS_REG_H2D*)tbl.cfis.ptr;
     fis.fis_type = FIS_TYPE_REG_H2D;
     fis.pmport = 1 << 7;
-    fis.command = 0xA0; // PACKET
-    fis.featurel = 1;   // DMA
-    
+    fis.command = ATA_CMD_PACKET;
+    fis.featurel = 1;
     fis.lba1 = cast(ubyte)(byteCount & 0xFF);
     fis.lba2 = cast(ubyte)((byteCount >> 8) & 0xFF);
 
-    //printLine("[ahci] packetCommand: issuing transfer");
-    return issueTransfer(port, 0);
+    return issueTransfer(port, cast(uint)slot);
 }
 
 bool readSector(HBA_PORT* port, ulong lba, ushort count, SGEntry[] sgList)
 {
-    //printLine("[ahci] readSector start");
     const int idx = portIndex(port);
-    if (idx < 0) { printLine("[ahci] Invalid port index"); return false; }
-    
+    if (idx < 0)
+    {
+        printLine("[ahci] Invalid port index");
+        return false;
+    }
+
     auto ctx = g_portCtx[idx];
-    if (ctx.cmdList is null || ctx.cmdTable is null) { printLine("[ahci] Null ctx resources"); return false; }
-    
+
+    if (ctx.cmdList is null || ctx.cmdTables is null)
+    {
+        printLine("[ahci] Null ctx resources");
+        return false;
+    }
+
     if (g_ahciDevices[idx].type == AHCI_DEV_SATAPI)
     {
-        // Reduce to 1 sector (2KB) to debug data corruption issues.
-        // Extremely safe size.
         const ushort CHUNK_SECTORS = 1;
         ushort sectorsRemaining = count;
         ulong currentLba = lba;
-        size_t currentBufferPhys = sgList[0].phys; // Assuming single SG entry for ISO reads
-        
+        size_t currentBufferPhys = sgList[0].phys;
+
         while (sectorsRemaining > 0)
         {
-            ushort sectorsToRead = (sectorsRemaining > CHUNK_SECTORS) ? CHUNK_SECTORS : sectorsRemaining;
-            uint byteCount = sectorsToRead * 2048;
-            
-            // Temporary SG list for this chunk
+            ushort sectorsToRead =
+                (sectorsRemaining > CHUNK_SECTORS) ? CHUNK_SECTORS : sectorsRemaining;
+
+            uint byteCount = cast(uint)sectorsToRead * 2048;
+
             SGEntry[1] chunkSg;
             chunkSg[0].phys = currentBufferPhys;
             chunkSg[0].len = byteCount;
-            
-            //print("[ahci] Chunk LBA: "); printUnsigned(currentLba);
-            //print(" Buffer: "); printHex(cast(size_t)currentBufferPhys);
-            //print(" Count: "); printUnsigned(sectorsToRead); printLine("");
-            
-            // SCSI READ(10) - 0x28
+
             ubyte[16] cdb;
             cdb[0] = 0x28;
             cdb[1] = 0;
@@ -678,118 +884,132 @@ bool readSector(HBA_PORT* port, ulong lba, ushort count, SGEntry[] sgList)
             cdb[7] = cast(ubyte)((sectorsToRead >> 8) & 0xFF);
             cdb[8] = cast(ubyte)(sectorsToRead & 0xFF);
             cdb[9] = 0;
-            
+
             bool chunkSuccess = false;
-            // Retry logic for Unit Attention (0x60) or other transient errors
+
             for (int i = 0; i < 3; i++)
             {
-                if (packetCommand(port, ctx.cmdList, ctx.cmdTable, chunkSg[], cdb, byteCount))
+                if (packetCommand(port, ctx.cmdList, ctx.cmdTables, chunkSg[], cdb, byteCount))
                 {
                     chunkSuccess = true;
                     break;
                 }
-                
-                print("[ahci] ATAPI chunk failed. Retry "); printUnsigned(cast(size_t)(i+1)); printLine("...");
-                
-                uint err = (port.tfd >> 8) & 0xFF;
-                if ((err & 0xF0) == 0x60) {
-                    printLine("[ahci] Detected Unit Attention.");
-                }
-                
-                stopCmd(port);
-                port.serr = 0xFFFFFFFF;
-                port.is_ = 0xFFFFFFFF;
-                startCmd(port);
+
+                print("[ahci] ATAPI chunk failed. Retry ");
+                printUnsigned(cast(size_t)(i + 1));
+                printLine("...");
+
+                resetPort(port);
             }
-            
-            if (!chunkSuccess) return false;
-            
+
+            if (!chunkSuccess)
+                return false;
+
             sectorsRemaining -= sectorsToRead;
             currentLba += sectorsToRead;
             currentBufferPhys += byteCount;
         }
-        
+
         return true;
     }
-    
-    return executeCommand(port, ctx.cmdList, ctx.cmdTable, sgList, lba, count, false);
-}
 
+    return executeCommand(port, ctx.cmdList, ctx.cmdTables, sgList, lba, count, false);
+}
 
 bool writeSector(HBA_PORT* port, ulong lba, ushort count, SGEntry[] sgList)
 {
     const int idx = portIndex(port);
-    if (idx < 0) return false;
+    if (idx < 0)
+        return false;
+
     auto ctx = g_portCtx[idx];
-    if (ctx.cmdList is null || ctx.cmdTable is null) return false;
-    
-    if (g_ahciDevices[idx].type == AHCI_DEV_SATAPI) return false; // Write not supported for CD
-    
-    return executeCommand(port, ctx.cmdList, ctx.cmdTable, sgList, lba, count, true);
+
+    if (ctx.cmdList is null || ctx.cmdTables is null)
+        return false;
+
+    if (g_ahciDevices[idx].type == AHCI_DEV_SATAPI)
+        return false;
+
+    return executeCommand(port, ctx.cmdList, ctx.cmdTables, sgList, lba, count, true);
 }
 
 bool readSector(HBA_PORT* port, ulong lba, ushort count, size_t physAddr)
 {
     const int idx = portIndex(port);
-    if (idx < 0) return false;
-    
+    if (idx < 0)
+        return false;
+
     uint sectorSize = (g_ahciDevices[idx].type == AHCI_DEV_SATAPI) ? 2048 : 512;
-    
+
     SGEntry[1] sg;
     sg[0].phys = physAddr;
-    sg[0].len = count * sectorSize;
-    
+    sg[0].len = cast(size_t)count * sectorSize;
+
     return readSector(port, lba, count, sg[]);
 }
 
 bool writeSector(HBA_PORT* port, ulong lba, ushort count, size_t physAddr)
 {
     const int idx = portIndex(port);
-    if (idx < 0) return false;
-    
+    if (idx < 0)
+        return false;
+
     uint sectorSize = (g_ahciDevices[idx].type == AHCI_DEV_SATAPI) ? 2048 : 512;
-    
+
     SGEntry[1] sg;
     sg[0].phys = physAddr;
-    sg[0].len = count * sectorSize;
-    
+    sg[0].len = cast(size_t)count * sectorSize;
+
     return writeSector(port, lba, count, sg[]);
 }
 
 bool identifyDevice(HBA_PORT* port, size_t physAddr)
 {
     const int idx = portIndex(port);
-    if (idx < 0) return false;
+    if (idx < 0)
+        return false;
+
     auto ctx = g_portCtx[idx];
-    if (ctx.cmdList is null || ctx.cmdTable is null) return false;
-    
-    // IDENTIFY DEVICE = 0xEC
-    // Transfer 1 sector (512 bytes)
-    return executeCommand(port, ctx.cmdList, ctx.cmdTable, physAddr, 0, 1, false, 0xEC);
+
+    if (ctx.cmdList is null || ctx.cmdTables is null)
+        return false;
+
+    return executeCommand(
+        port,
+        ctx.cmdList,
+        ctx.cmdTables,
+        physAddr,
+        0,
+        1,
+        false,
+        ATA_CMD_IDENTIFY
+    );
 }
 
 ulong getDiskCapacity(HBA_PORT* port)
 {
-    if (port is null) return 0;
-    
+    if (port is null)
+        return 0;
+
     size_t phys = allocFrame();
-    if (phys == 0) return 0;
-    
+    if (phys == 0)
+        return 0;
+
     if (!identifyDevice(port, phys))
     {
         freeFrame(phys);
         return 0;
     }
-    
+
     ushort* data = physToVirt!ushort(phys);
-    
-    // Words 100-103: Max 48-bit LBA
-    ulong lba48 = cast(ulong)data[100] |
-                  (cast(ulong)data[101] << 16) |
-                  (cast(ulong)data[102] << 32) |
-                  (cast(ulong)data[103] << 48);
-                  
+
+    ulong lba48 =
+        cast(ulong)data[100] |
+        (cast(ulong)data[101] << 16) |
+        (cast(ulong)data[102] << 32) |
+        (cast(ulong)data[103] << 48);
+
     freeFrame(phys);
-    
+
     return lba48 * 512;
 }

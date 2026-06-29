@@ -84,12 +84,14 @@ align(8) __gshared limine_terminal_request terminal_req = {
 };
 
 // SMP / multiprocessor (SMP_ROADMAP S0/S1): ask limine to enumerate + park the APs.
+enum ulong LIMINE_SMP_X2APIC = 1UL << 0;
+
 @(section(".limine_reqs"))
 align(8) __gshared limine_smp_request smp_req = {
     id0: LIMINE_COMMON_MAGIC_0, id1: LIMINE_COMMON_MAGIC_1, id2: 0x95a67b819a1b857e, id3: 0xa0b61b723b6a73e0,
     revision: 0,
     response: null,
-    flags: 0   // no x2APIC request for now
+    flags: LIMINE_SMP_X2APIC
 };
 
 // End Marker

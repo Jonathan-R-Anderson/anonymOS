@@ -969,13 +969,17 @@ finishes.
   which is its hard prerequisite. Carries real, documented tensions: the public-hash fingerprint vs
   the OS's anonymity goals, update-key custody, and RPC trust (F7). Contract source will live in
   `installer/contracts/` (`zksolc`, ABI in-repo).
-- **§G Perlin-noise decoy activity generator: ENGINE CORE ✅ DONE (G2/G3); G1/G4–G6 remain.**
+- **§G Perlin-noise decoy activity generator: ENGINE + RENDERER ✅ DONE (G2/G3); G1/G4–G6 remain.**
   `deps/decoy/decoy.{c,h}` (`make decoy`) — the universe as a pure function `U(seed, subsystem,
   hour-window)`: integer/fixed-point coherent noise (no float → cross-arch deterministic), a shared
   activity-intensity field driving all 8 subsystems, and heavy-tailed bursty event placement. Portable
   C, no libc — reused by the kernel decoy view (G) and the §H2 Linux program. Tests PASS: **same
   password → byte-identical universe; different/1-char-typo password → different; bursty (Fano 1.76);
-  subsystems correlated (r 0.77); 10-years-out is deterministic + O(window).** Remaining: the
+  subsystems correlated (r 0.77); 10-years-out is deterministic + O(window).**
+  **G3.3 realism renderer DONE** (`decoy_render.{c,h}`, `make -C deps/decoy render`): turns events into
+  believable `/var/log`-style lines (sshd/systemd/cron/sudo/auditd/NetworkManager + a civil-date stamp),
+  deterministic + password-keyed; a week renders ~700 plausible lines with realistic quiet/busy
+  variation — the visible payoff + exactly what §H2 writes to disk. Remaining: the
   seed-anchored virtual clock + event schema + object-view integration (G1/G4), per-subsystem
   renderers, the honey-hash boot matcher (G2.2, ties to §E), and snapshot/distributed (G6). The full
   design (logs/procs/users/services/net/security/audit/object-access for the §E decoy; **boot-required**

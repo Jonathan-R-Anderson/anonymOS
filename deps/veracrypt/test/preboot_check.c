@@ -41,6 +41,14 @@ int main(int argc, char **argv){
     preboot_verdict vW = preboot_authenticate("not-a-password",  decoyH, hiddenH, key);
     ok("wrong password -> REJECT (reveals nothing)", vW==PREBOOT_REJECT);
 
+    /* §G2.2 typo tolerance: a typo of the decoy password still boots the decoy */
+    ok("a transposition typo of the decoy password -> DECOY",
+       preboot_authenticate("dceoy-password", decoyH, hiddenH, key)==PREBOOT_DECOY);
+    ok("a caps-lock typo of the decoy password -> DECOY",
+       preboot_authenticate("DECOY-PASSWORD", decoyH, hiddenH, key)==PREBOOT_DECOY);
+    ok("a far-off typo (2+ edits) -> REJECT",
+       preboot_authenticate("decoy-passXYZ", decoyH, hiddenH, key)==PREBOOT_REJECT);
+
     /* the outer-volume password is not a bootable system → also rejected by the loader */
     preboot_verdict vO = preboot_authenticate("outer-password",  decoyH, hiddenH, key);
     ok("outer-volume password -> REJECT for boot (it's a data volume, not an OS)", vO==PREBOOT_REJECT);

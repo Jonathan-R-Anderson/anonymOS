@@ -404,6 +404,13 @@ prompt and the wrong-password message are identical whether or not a hidden OS e
 `efi/qmp-interactive-test.py` drives it in OVMF with **real keystrokes injected via QMP**: typing
 `decoy-password` → `unlocked; BOOTING DECOY OS`; a wrong password → `access denied` (REJECT). So the
 full user-facing pre-boot flow runs in real firmware.
+**G2.2 typo tolerance wired in:** `preboot_authenticate` (host `preboot_auth.c` + the EFI `efi_vc.c`,
+kept in lock-step) fuzzes the INPUT with the §G2.2 correction model (caps-lock/first-char/
+transposition/single-deletion) and tries every candidate against the decoy + hidden headers with
+**no early-out** (the VeraCrypt header is the exact verifier; the headers reveal nothing, so the
+honey/chaff is inherent). OVMF-validated: a **transposition typo `dceoy-password` unlocks the decoy**,
+while `wrong-pass` and far-off typos are rejected. (The 8 KB candidate buffer is `static` to avoid the
+freestanding `__chkstk` stack-probe.)
 
 **E5d — chain-load ✅ DONE + OVMF-validated.** After unlock the loader reads the matched OS's loader
 off the boot volume (`EFI_LOADED_IMAGE` → `EFI_SIMPLE_FILE_SYSTEM` → open `\EFI\anonymos\stage2.efi`

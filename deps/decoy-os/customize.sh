@@ -16,6 +16,9 @@ grep -q '^decoyuser:' "$ROOTFS/etc/group" || \
   echo "decoyuser:x:1000:" >> "$ROOTFS/etc/group"
 grep -q '^decoyuser:' "$ROOTFS/etc/shadow" 2>/dev/null || \
   echo "decoyuser:!:19000:0:99999:7:::" >> "$ROOTFS/etc/shadow"
+for u in deploy backup; do 
+  grep -q "^$u:" "$ROOTFS/etc/passwd" || echo "$u:x:$((1000 + $(grep -c . "$ROOTFS/etc/passwd"))):100:$u:/home/$u:/sbin/nologin" >> "$ROOTFS/etc/passwd"; 
+done
 mkdir -p "$ROOTFS/home/decoyuser/.ssh" "$ROOTFS/home/decoyuser/Documents"
 
 cat > "$ROOTFS/home/decoyuser/.bash_history" <<'EOF'

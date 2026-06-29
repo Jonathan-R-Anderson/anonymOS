@@ -28,10 +28,10 @@ h2: | $(BLD)
 	@$(BLD)/fakelogd hidden-password --root $(BLD)/h2c --start-day 100 --days 14
 	@echo "--- §H2 self-test ---"
 	@diff -rq $(BLD)/h2a $(BLD)/h2b >/dev/null && echo "  [PASS] same password -> byte-identical /var/log" || echo "  [FAIL] not deterministic"
-	@! diff -rq $(BLD)/h2a/var/log/syslog $(BLD)/h2c/var/log/syslog >/dev/null && echo "  [PASS] different password -> different /var/log" || echo "  [FAIL] password-insensitive"
+	@! diff -rq $(BLD)/h2a/var/log/messages $(BLD)/h2c/var/log/messages >/dev/null && echo "  [PASS] different password -> different /var/log" || echo "  [FAIL] password-insensitive"
 	@grep -qE "sshd|sudo" $(BLD)/h2a/var/log/auth.log && echo "  [PASS] auth events routed to auth.log" || echo "  [FAIL] auth.log routing"
-	@grep -qE "systemd|CRON|NetworkManager" $(BLD)/h2a/var/log/syslog && echo "  [PASS] system events routed to syslog" || echo "  [FAIL] syslog routing"
-	@! grep -qE "Accepted publickey|session opened|authentication failure|COMMAND=" $(BLD)/h2a/var/log/syslog && echo "  [PASS] auth-event content NOT leaked into syslog" || echo "  [FAIL] auth content leaked to syslog"
+	@grep -qE "crond|sshd|init|udhcpc" $(BLD)/h2a/var/log/messages && echo "  [PASS] system events routed to syslog" || echo "  [FAIL] syslog routing"
+	@! grep -qE "Accepted publickey|session opened|authentication failure|COMMAND=" $(BLD)/h2a/var/log/messages && echo "  [PASS] auth-event content NOT leaked into syslog" || echo "  [FAIL] auth content leaked to syslog"
 	@echo "  auth.log sample:"; head -3 $(BLD)/h2a/var/log/auth.log | sed 's/^/    /'
 
 $(BLD):

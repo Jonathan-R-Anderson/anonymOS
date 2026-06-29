@@ -34,11 +34,14 @@ static void stamp(SB *b, uint64_t time_sec){
     s2(b, s/3600); sc(b,':'); s2(b,(s/60)%60); sc(b,':'); s2(b, s%60);
 }
 
-/* deterministic pools — keep small + plausible */
-static const char *USERS[] = {"root","alice","bob","www-data","postfix","backup","deploy","carol"};
-static const char *HOSTS[] = {"workstation","nimbus","orion","helix"};
-static const char *PROCS[] = {"systemd","cron","sshd","CRON","kernel","dbus-daemon","NetworkManager","gnome-shell"};
-static const char *SVCS[]  = {"ssh.service","cron.service","nginx.service","systemd-logind.service","NetworkManager.service","apt-daily.service"};
+/* Deterministic pools — Alpine/OpenRC-consistent (§H1 is Alpine: busybox + apk + OpenRC,
+ * NO systemd/apt/GNOME). The user pool must be a subset of the rootfs /etc/passwd
+ * (decoy-os/customize.sh adds deploy + backup) so a log never names a non-existent user.
+ * §E7/§H5 finding F1. */
+static const char *USERS[] = {"root","decoyuser","deploy","backup"};
+static const char *HOSTS[] = {"helix","nimbus","orion","workstation"};
+static const char *PROCS[] = {"sshd","crond","ntpd","syslogd","busybox","udhcpc"};
+static const char *SVCS[]  = {"sshd","crond","ntpd","chronyd","networking"};
 #define PICK(arr, h) arr[(h) % (sizeof(arr)/sizeof(arr[0]))]
 
 int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max){
@@ -56,34 +59,35 @@ int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max){
         if (h & 1){ ss(&b,"Accepted publickey for "); ss(&b,u); ss(&b," from 10.0."); su(&b,h%6); sc(&b,'.'); su(&b,(h>>4)%254+1); ss(&b," port "); su(&b,40000+(h%20000)); ss(&b," ssh2"); }
         else      { ss(&b,"pam_unix(sshd:session): session opened for user "); ss(&b,u); ss(&b," by (uid=0)"); }
         break; }
-    case DECOY_PROC: {
-        const char *p = PICK(PROCS, h);
-        ss(&b,p); sc(&b,'['); su(&b,pid); ss(&b,"]: ");
-        ss(&b,"("); ss(&b,PICK(USERS,h>>3)); ss(&b,") CMD (run-parts /etc/cron."); ss(&b, (h&2)?"hourly":"daily"); sc(&b,')');
+    case DECOY_PROC: {            /* Alpine crond + /etc/periodic (not /etc/cron.*) */
+        ss(&b,"crond["); su(&b,pid); ss(&b,"]: (root) CMD (run-parts /etc/periodic/");
+        ss(&b, (h&3)==0?"15min":(h&3)==1?"hourly":(h&3)==2?"daily":"weekly"); sc(&b,')');
         break; }
-    case DECOY_SVC: {
-        ss(&b,"systemd[1]: ");
-        ss(&b,(h&1)?"Started ":"Stopped "); ss(&b,PICK(SVCS,h));
+    case DECOY_SVC: {             /* OpenRC / busybox init (not systemd) */
+        ss(&b,"init: "); ss(&b,(h&1)?"starting service ":"stopping service "); ss(&b,PICK(SVCS,h));
         break; }
-    case DECOY_NET: {
-        ss(&b,"NetworkManager["); su(&b,pid); ss(&b,"]: ");
-        ss(&b,"<info> dhcp4: address 192.168."); su(&b,h%4); sc(&b,'.'); su(&b,(h>>3)%254+1);
+    case DECOY_NET: {             /* Alpine udhcpc (not NetworkManager) */
+        ss(&b,"udhcpc["); su(&b,pid); ss(&b,"]: lease of 192.168.");
+        su(&b,h%4); sc(&b,'.'); su(&b,(h>>3)%254+1); ss(&b," obtained, lease time 86400");
         break; }
-    case DECOY_SEC: {
+    case DECOY_SEC: {             /* Alpine has sudo (apk world); apk, not apt */
         const char *u = PICK(USERS, h);
         ss(&b,"sudo["); su(&b,pid); ss(&b,"]: ");
-        if (h & 3){ ss(&b,u); ss(&b," : TTY=pts/0 ; PWD=/home/"); ss(&b,u); ss(&b," ; USER=root ; COMMAND=/usr/bin/apt update"); }
+        if (h & 3){ ss(&b,u); ss(&b," : TTY=pts/0 ; PWD=/home/"); ss(&b,u); ss(&b," ; USER=root ; COMMAND=/sbin/apk update"); }
         else      { ss(&b,"pam_unix(sudo:auth): authentication failure; logname="); ss(&b,u); ss(&b," uid=1000"); }
         break; }
     case DECOY_FS: {
         ss(&b,"kernel: ["); su(&b, e->time_sec); ss(&b,".0] EXT4-fs (sda"); su(&b,2+(h%2)); ss(&b,"): mounted filesystem with ordered data mode");
         break; }
-    case DECOY_AUDIT: {
-        ss(&b,"audit["); su(&b,pid); ss(&b,"]: USER_ACCT pid="); su(&b,pid); ss(&b," uid=1000 msg='op=PAM:accounting acct=\""); ss(&b,PICK(USERS,h)); ss(&b,"\" res=success'");
+    case DECOY_AUDIT: {           /* no auditd on Alpine — render a su(1) auth event (routed to auth.log) */
+        ss(&b,"su["); su(&b,pid); ss(&b,"]: ");
+        ss(&b,(h&1)?"+ /dev/pts/0 ":"pam_unix(su:session): session opened for user root by ");
+        ss(&b,PICK(USERS,h)); if(h&1) ss(&b,":root");
         break; }
-    default: { /* DECOY_LOG */
+    default: { /* DECOY_LOG — Alpine/OpenRC-flavoured, no systemd targets */
         ss(&b,PICK(PROCS,h)); sc(&b,'['); su(&b,pid); ss(&b,"]: ");
-        static const char *MSG[] = {"Reloaded configuration","Time has been changed","Reached target Multi-User System","Starting Daily apt upgrade","gc: reclaimed 128 objects","cleaned up 3 stale sockets"};
+        static const char *MSG[] = {"reloaded configuration","adjusting local clock","updating package index",
+                                     "cleaned up 3 stale sockets","rotated logs","reached runlevel default"};
         ss(&b,PICK(MSG,h));
         break; }
     }

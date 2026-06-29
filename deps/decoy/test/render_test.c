@@ -42,7 +42,8 @@ int main(void){
     int week=0; for(int day=0; day<7; day++){ int n; static char T[1<<20]; render_day(seed, 24*(200+day), T, sizeof T, &n); week+=n; }
     printf("    week volume = %d lines (day 200 = %d)\n", week, na);
     OK("a week has plausible volume (> 150 lines)", week>150);
-    OK("contains real-looking daemons (sshd + systemd)", strstr(A,"sshd")&&strstr(A,"systemd"));
+    OK("contains real-looking Alpine daemons (sshd + crond)", strstr(A,"sshd")&&strstr(A,"crond"));
+    OK("no distro-inconsistent daemons (systemd/apt/gnome)", !strstr(A,"systemd")&&!strstr(A,"gnome")&&!strstr(A,"apt-daily"));
     OK("contains auth + service activity", strstr(A,"session opened")||strstr(A,"Accepted publickey"));
 
     /* a different password renders a different log */

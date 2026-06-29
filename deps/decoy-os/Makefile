@@ -51,7 +51,7 @@ verify: rootfs
 	@echo "--- §H1 decoy rootfs verify ---"
 	@grep -qi alpine $(ROOTFS)/etc/os-release && echo "  [PASS] real distro ($$(. $(ROOTFS)/etc/os-release; echo $$PRETTY_NAME))" || echo "  [FAIL] no os-release"
 	@test -x $(ROOTFS)/bin/busybox && echo "  [PASS] busybox userland + apk present" || echo "  [FAIL] no userland"
-	@test -s $(ROOTFS)/var/log/syslog && test -s $(ROOTFS)/var/log/auth.log && echo "  [PASS] /var/log seeded ($$(wc -l < $(ROOTFS)/var/log/syslog) syslog + $$(wc -l < $(ROOTFS)/var/log/auth.log) auth lines)" || echo "  [FAIL] logs not seeded"
+	@test -s $(ROOTFS)/var/log/messages && test -s $(ROOTFS)/var/log/auth.log && echo "  [PASS] /var/log seeded ($$(wc -l < $(ROOTFS)/var/log/messages) syslog + $$(wc -l < $(ROOTFS)/var/log/auth.log) auth lines)" || echo "  [FAIL] logs not seeded"
 	@grep -q decoyuser $(ROOTFS)/etc/passwd && echo "  [PASS] user account present" || echo "  [FAIL] no user"
 	@test -s $(ROOTFS)/home/decoyuser/.bash_history && echo "  [PASS] shell history present" || echo "  [FAIL] no bash_history"
 

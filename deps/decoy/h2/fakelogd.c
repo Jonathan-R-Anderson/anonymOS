@@ -36,10 +36,11 @@ int main(int argc, char **argv){
     snprintf(dir,sizeof dir,"%s/var",root);     mkdir(dir,0755);
     snprintf(dir,sizeof dir,"%s/var/log",root); mkdir(dir,0755);
     /* truncate-and-write so re-running reproduces byte-identical files (determinism) */
-    snprintf(path,sizeof path,"%s/var/log/syslog",   root); FILE *fsys =fopen(path,"wb");
-    snprintf(path,sizeof path,"%s/var/log/auth.log", root); FILE *fauth=fopen(path,"wb");
-    snprintf(path,sizeof path,"%s/var/log/audit.log",root); FILE *faud =fopen(path,"wb");
-    if (!fsys||!fauth||!faud){ fprintf(stderr,"fakelogd: cannot open log files under %s\n",root); return 2; }
+    /* Alpine has no auditd, so no audit.log (its presence would be a tell, §E7/F1) —
+     * audit/su events route to auth.log alongside ssh/sudo. */
+    snprintf(path,sizeof path,"%s/var/log/messages",  root); FILE *fsys =fopen(path,"wb");
+    snprintf(path,sizeof path,"%s/var/log/auth.log",   root); FILE *fauth=fopen(path,"wb");
+    if (!fsys||!fauth){ fprintf(stderr,"fakelogd: cannot open log files under %s\n",root); return 2; }
 
     long total=0, na=0, ns=0;
     static DecoyEvent ev[1<<16];
@@ -53,13 +54,13 @@ int main(int argc, char **argv){
             int len=decoy_render(seed,&ev[i],line,sizeof line-2);
             line[len++]='\n'; line[len]=0;
             int sub=ev[i].subsys;
-            FILE *f = (sub==DECOY_USER||sub==DECOY_SEC)?fauth : (sub==DECOY_AUDIT)?faud : fsys;
+            FILE *f = (sub==DECOY_USER||sub==DECOY_SEC||sub==DECOY_AUDIT)?fauth : fsys;
             fputs(line,f); total++;
-            if (f==fauth) na++; else if (f==fsys) ns++;
+            if (f==fauth) na++; else ns++;
         }
     }
-    fclose(fsys); fclose(fauth); fclose(faud);
+    fclose(fsys); fclose(fauth);
     printf("[fakelogd] backfilled %ld lines over %lu days (start day %lu) -> %s/var/log/"
-           " (syslog=%ld auth.log=%ld)\n", total, days, start_day, root, ns, na);
+           " (messages=%ld auth.log=%ld)\n", total, days, start_day, root, ns, na);
     return 0;
 }

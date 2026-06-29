@@ -46,6 +46,10 @@ __gshared uint g_icDecoyFullNameLen;
 __gshared char[IC_FIELD_MAX] g_icDecoyHostname;
 __gshared uint g_icDecoyHostnameLen;
 
+public bool installConfigPresent() {
+    return g_icPresent;
+}
+
 private bool icStrEq(const(char)* a, const(char)* b) {
     while (*a != 0 && *b != 0) { if (*a != *b) return false; ++a; ++b; }
     return *a == *b;

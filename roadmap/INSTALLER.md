@@ -27,12 +27,53 @@ boot *realises*, and the install surface *retires itself*.
 
 ---
 
+## Current implementation audit (2026-06-29)
+
+The repository does **not** yet implement every facet of this roadmap in full. The native
+installer path is real and now covers the essential plain-install loop, but the full Ubuntu-like
+Calamares flow remains roadmap work.
+
+Implemented now:
+- Native Wayland installer UI at `/calamares` (`src/util/wl-installer.c`) with real/decoy account,
+  hostname, and encryption fields. It sends the captured JSON to `/config/install.action` before
+  triggering install.
+- Kernel install backend (`src/kernel/d/drivers/veracrypt_impl.d`) accepts `config <json>` and
+  `install [diskidx]`, writes a GPT + ESP from the staged `esp-image`, persists the captured config
+  into the installed ESP as `/install.json`, and fails instead of reporting 100% if config persistence
+  fails.
+- First boot consumes installed `/install.json` (`src/kernel/d/core/install_config.d`) and applies the
+  OS account name + hostname into the kernel-owned user/hostname views. It also records decoy metadata
+  and password-hash presence for later decoy/encryption integration.
+- Plaintext installer passwords are not persisted. The install backend stores SHA-512 hex fields in
+  `install.json` (`userPasswordSha512`, `decoyPasswordSha512`, `hiddenPasswordSha512`,
+  `outerPasswordSha512`, `decoyBootPasswordSha512`).
+- Installed-state is exposed both in `/config/system.json` as `installed` and as the read-only
+  `/system/state/installed` signal. Today this is derived from whether the installed `/install.json`
+  boot module was loaded.
+- Live-only installer autostart/gating exists through `desktop.conf` `autostart-live = /calamares`
+  and the desktop shell's install-state check.
+
+Not implemented in full:
+- The Calamares installer binary and its full page sequence are scaffolded, not complete.
+- The Ubuntu-like menu flow is incomplete: locale/timezone/network/filesystem/manual partitioning,
+  boot-integrity, full identity creation, and finished-page integration are not all wired.
+- Real login password enforcement is not modeled by the kernel user system yet. Usernames/hostnames
+  are applied; password hashes are persisted for future auth/encryption consumers.
+- Decoy OS account/password values are captured and persisted, and the decoy-rootfs build can consume
+  parameterized credentials, but the native installer does not yet stream a freshly parameterized decoy
+  rootfs into an encrypted hidden/decoy layout.
+- The zkSync boot-attestation option is specified only.
+- Full validation from Phase 14 still needs to be rerun on a freshly built install ISO by the operator.
+
+---
+
 ## Target-environment reality (read this before writing any build code)
 
 Calamares is C++/Qt and builds fine against musl (Alpine ships it). The cost here is not the
-libc — it is that **none of the Qt/KPMcore dependency stack is built in this repo yet**, and
-this is not a normal Linux target. The existing cross-build convention (`deps/<name>/`) is the
-template; mirror it exactly.
+libc — it is that this is not a normal Linux target, and the Qt/partitioning stack has to be built
+and adapted inside this repo. Qt base + qtwayland are now built; KPMcore/libparted remain scaffolded
+and the native backend is the shippable path. The existing cross-build convention (`deps/<name>/`) is
+the template; mirror it exactly.
 
 - **Toolchain.** `deps/musl/install/bin/musl-clang{,++}` (clang-18), `llvm-ar/ranlib/strip`.
   C++ runtime is **libc++** from `deps/cxxrt` (`stamps/libcxx.done`), *not* libstdc++.
@@ -194,6 +235,11 @@ It is never written by a live session. The kernel exposes it as a read-only user
 (e.g. `/system/state/installed`, alongside the existing `/config` render path) so the shell can
 consult it cheaply without parsing JSON.
 
+Current native-installer implementation: the signal is derived from the installed `/install.json`
+boot module that the backend writes into the installed ESP. `/config/system.json` and
+`/system/state/installed` expose that state now; backing the flag with the persistent object store is
+still the planned stronger form.
+
 ### D4.3 — Conditional visibility (the self-removal)
 At desktop startup the shell consults the `installed` signal and **includes the installer entry
 iff not installed**. "Disappears after install" is therefore declarative and idempotent:
@@ -237,13 +283,16 @@ simpler and more robust than an in-kernel FAT writer, so:
   the ESP — cap-gated (`core/install_cap.d`). UEFI firmware then boots the installed disk directly.
 - The desktop **"Install to Disk"** button writes `install` to **`/config/install.action`**, a
   write-only kernel control file (`FD_INSTALL_CTL` in `posix.d`, mirroring `/config/domain.action`),
-  which routes to `installControlWrite()`. Grammar: `install [diskidx]`.
+  which routes to `installControlWrite()`. Grammar: `config <install.json>` followed by
+  `install [diskidx]`.
 - **Robustness:** the install targets a spare disk distinct from the object store, and
   `objstoreMount()` refuses to claim a **GPT-partitioned** disk (`disk.d diskFirstSectorIsGpt`), so an
   installed disk's boot GPT is never clobbered by the object store — it boots repeatedly.
 
-**Validated** end-to-end in QEMU/OVMF (UEFI) and real VirtualBox: install → the target gets a valid
-single-ESP GPT → booting the installed disk alone (twice) reaches `init = Weston (GW3)`.
+The native path is implemented, but every change to this area must be revalidated from a freshly
+built install ISO: install → target gets a valid single-ESP GPT → booting the installed disk alone
+reaches the desktop → `/config/system.json` reports `installed: true` and `/system/state/installed`
+prints `true`.
 
 #### Testing the installer in VirtualBox
 ```
@@ -1001,10 +1050,15 @@ finishes.
   formats the just-laid ESP and reports `esp-fat32=0x1`. Cross-validated on the host: `file` →
   *"FAT (32 bit)", label "EPIN ESP", sectors/FAT 4064*; `fsck.fat` parses it cleanly (512 B/cluster,
   2 FATs 32-bit, 516128 data clusters).
-  **Remaining §D2(b):** copy the rootfs onto the root partition → install limine (BIOS/UEFI to the
-  ESP) → cap-gate the writes (the one-shot block-write capability, Phase 11) → expose to userspace
-  (native HOS object-ABI verb or a syscall) so the installer can drive "pick disk → install".
-- **§D2 / Calamares core: not built yet.** After §D2(b): build the `calamares` ELF (recipe staged in
+  **Native plain-install backend ✅ IMPLEMENTED via §D6.** The shippable native path now uses the
+  prebuilt `esp-image` payload rather than a separate rootfs partition: `installBootableToDisk()`
+  writes a single-ESP GPT to the selected target disk, streams the staged ESP image, and exposes the
+  operation through `/config/install.action`. The GUI sends `config <json>` first; the backend hashes
+  password fields, writes the resulting `/install.json` into the installed ESP, and refuses to report
+  completion if that persistence fails. Remaining §D2(b) work is the richer Calamares/native-module
+  partitioner: root partition/rootfs choices, manual partitioning, BIOS support, and direct UI-driven
+  filesystem selection.
+- **§D2 / Calamares core: not built yet.** After the native-module partitioner is complete: build the `calamares` ELF (recipe staged in
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
@@ -1067,22 +1121,20 @@ finishes.
   drives the §G engine+renderer and backfills deterministic, password-keyed history into `/var/log`,
   routing each subsystem to the right file (auth/sudo → `auth.log`, audit → `audit.log`, the rest →
   `syslog`), time-ordered. 5/5 self-test: same password → byte-identical `/var/log`, different password →
-  different, correct routing, no auth-content leak into syslog. Remaining: H1 (the actual decoy distro),
-  the full-disk-illusion block driver hides the hidden volume's space from the
-  decoy (H3), and the generator is concealed from the decoy's root user (H4: kernel-embedded + hidden
+  different, correct routing, no auth-content leak into syslog. Remaining: the full-disk-illusion block
+  driver hides the hidden volume's space from the decoy (H3), and the generator is concealed from the decoy's root user (H4: kernel-embedded + hidden
   from the process table). ⚠ Security review (H5) is mandatory and treats **detectability of the
   concealment itself** as the primary risk — a *detected* rootkit is worse for deniability than none, so
   the recommended primary is **hide-in-plain-sight** (disguise as an ordinary daemon), with kernel-hiding
   only as defense-in-depth if it provably evades anti-rootkit tooling. Plausible-deniability/anti-coercion
   on the user's own decoy (VeraCrypt-Hidden-OS threat model). Builds on §E + §G.
-  **§D4.5 stub** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland client): a welcome — "Install
-  EpinAnonymOS to a disk, or try the live session" — with two working buttons, **Install to Disk**
-  and **Try Live Session**. *Try Live Session* closes the installer to the live desktop; *Install to
-  Disk* shows a clear "Calamares disk-install is being integrated (§D1–D3), not in this build yet"
-  screen (the stub genuinely can't partition/copy/persist — no fake install; no text-entry box).
-  Built via `INSTALLER_BIN`, staged as `cd/calamares` + `module_path: boot():/calamares`; the real
-  Calamares (§D1–D3) drops in at the same path later. All button actions verified via QMP in
-  software QEMU (Install→info, Back→welcome, Try-Live→close).
+- **§D6 native installer UI ✅ IMPLEMENTED** (`src/util/wl-installer.c`, a Cairo/FreeType Wayland
+  client): a real wizard surface with editable hostname, real OS account/password, encryption mode,
+  hidden/outer/decoy boot passwords, and decoy OS account/password/hostname fields. *Try Live Session*
+  closes the installer; *Install* writes the captured JSON to `/tmp/install.json`, sends
+  `config <json>` to `/config/install.action`, then sends `install`. This is still the native
+  installer, not the finished Calamares flow: it does not yet expose manual partitioning, timezone,
+  package selection, zkSync boot-attestation, or the final identity-profile page.
 - **§D4.2 / D4.3 / D4.4 ✅ DONE — installer AUTO-LAUNCHES on a live boot and self-removes once
   installed (verified both ways, 0 faults).** No key combo: on a live boot the installer **appears
   automatically, front-and-centre**. Mechanics in `deps/weston-14.0.0/desktop-shell/shell.c`:
@@ -1095,10 +1147,12 @@ finishes.
   keybind). Verified in VBox (x2APIC on): live boot → `install state = live`, `scheduled 1 live-only
   autostart … (+3000ms, on top)`, installer renders on top with no input; with `/install.json`
   present → `install state = INSTALLED (live-only entries HIDDEN)`, **nothing scheduled, no installer**
-  — gone on this and every future startup. (D4.2's richer `system.installed` field in
-  `/config/system.json` + a kernel `/system/state/installed` render can replace the raw `access()`
-  signal later without touching the gate.)
-- **§D4 remaining:** the **real install→marker write** — Calamares (§D1–D3) + first boot (Phase
-  7/10) must actually drop `/install.json` on the persistent on-disk root so a truly-installed
-  system trips the gate (today the gate is proven; the thing that *creates* the marker for real is
-  the Calamares build).
+  — gone on this and every future startup. Current kernel surfaces now also expose the richer signal:
+  `/config/system.json` includes `"installed": true|false`, and `/system/state/installed` renders
+  `true`/`false` from the installed `/install.json` boot module. The desktop gate still uses
+  `access("/install.json")`, so switching it to the richer signal is a small follow-up, not a
+  behavior blocker.
+- **§D4 remaining:** persistent object-store backing for `system.installed` and desktop-shell
+  consumption of `/system/state/installed` instead of raw `/install.json` access. The native installer
+  creates the marker by persisting `/install.json` into the installed ESP; Calamares still needs to
+  produce the same config once the full GUI lands.

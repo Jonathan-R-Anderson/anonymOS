@@ -41,6 +41,8 @@ import core.syscalls.posix : linux_sys_open, linux_sys_read, linux_sys_write,
 
 @nogc nothrow:
 
+extern(C) bool installConfigPresent();
+
 enum HOS_SYS_QUERY = 0x4000;   // native syscall number (rax)
 
 enum : ulong {
@@ -564,6 +566,8 @@ public long configfsRender(int id, char* buf, size_t buflen) {
             uint nsCount = 0;  foreach (ref ns; g_namespaces) if (ns.inUse) ++nsCount;
             uint svcCount = 0; foreach (ref s; g_svcs)        if (s.inUse) ++svcCount;
             lit(b, "{\n  \"kernel\": \"EpinAnonymOS\",\n  \"model\": \"object-capability\",\n");
+            lit(b, "  \"installed\": "); lit(b, installConfigPresent() ? "true" : "false");
+            lit(b, ",\n");
             lit(b, "  \"objects\": ");    num(b, objTotal);
             lit(b, ",\n  \"identities\": "); num(b, identityCount());
             lit(b, ",\n  \"namespaces\": "); num(b, nsCount);

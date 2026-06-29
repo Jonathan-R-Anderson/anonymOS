@@ -2260,8 +2260,11 @@ __gshared char[8192] g_configBuf;                    // rendered JSON (sequentia
 
 // ── F3: /system immutable base views over the active Generation + components ───
 private enum ulong SYNTHDIR_SYSCUR = 0x59CC0700;     // tags the /system/current synthetic dir
+private enum ulong SYNTHDIR_SYSSTATE = 0x59CC0800;   // tags the /system/state synthetic dir
 __gshared int g_systemDirIdx = -1;                   // RT node index of /system
 __gshared char[4096] g_sysBuf;                       // rendered /system text (sequential open→read)
+
+bool installConfigPresent();
 
 // Parse "/config/<name>". Returns the config id (>0) for a known *.json file, 0
 // otherwise. No subdirectories — /config is a flat set of generated documents.
@@ -2340,8 +2343,17 @@ private long sysComponentMeta(const(char)* name, size_t nameLen) {
     return -2;
 }
 
+private long sysStateInstalled(char* buf, size_t buflen) {
+    const(char)[] s = installConfigPresent() ? "true\n" : "false\n";
+    size_t n = s.length;
+    if (n > buflen) n = buflen;
+    foreach (i; 0 .. n) buf[i] = s[i];
+    return cast(long)n;
+}
+
 // Classify a /system path: 0=not under /system; 1=/system; 2=/system/generations;
-// 3=/system/current (dir); 4=/system/current/generation; 5=/system/current/<comp>.
+// 3=/system/current (dir); 4=/system/current/generation; 5=/system/current/<comp>;
+// 6=/system/state (dir); 7=/system/state/installed.
 private int sysfsParse(const(char)* path, out const(char)* comp, out size_t compLen) {
     comp = null; compLen = 0;
     static immutable string pre = "/system";
@@ -2351,6 +2363,19 @@ private int sysfsParse(const(char)* path, out const(char)* comp, out size_t comp
     if (*p != '/') return 0;
     ++p;
     if (cstrEq(p, "generations")) return 2;
+    if (cstrEq(p, "state")) return 6;
+    static immutable string state = "state";
+    bool isState = true;
+    foreach (i; 0 .. state.length) if (p[i] != state[i]) { isState = false; break; }
+    if (isState) {
+        p += state.length;
+        if (*p == '/') {
+            ++p;
+            if (*p == 0) return 6;
+            if (cstrEq(p, "installed")) return 7;
+        }
+        return 0;
+    }
     static immutable string cur = "current";
     foreach (i; 0 .. cur.length) if (p[i] != cur[i]) return 0;
     p += cur.length;
@@ -2789,6 +2814,7 @@ public int sys_open(const(char)* path, int flags) {
             if      (sk == 2) slen = sysGenList(g_sysBuf.ptr, g_sysBuf.length - 1);
             else if (sk == 4) slen = sysGenMeta(g_sysBuf.ptr, g_sysBuf.length - 1);
             else if (sk == 5) slen = sysComponentMeta(scomp, scompLen);
+            else if (sk == 7) slen = sysStateInstalled(g_sysBuf.ptr, g_sysBuf.length - 1);
             if (slen > 0) {
                 g_fdTable[fd].type     = FileType.FD_FILE;
                 g_fdTable[fd].flags    = flags & ~(O_WRONLY | O_RDWR);
@@ -2832,6 +2858,7 @@ public int sys_open(const(char)* path, int flags) {
         {
             const(char)* sc; size_t scl;
             if (sysfsParse(path, sc, scl) == 3) g_fdTable[fd].fileSize = SYNTHDIR_SYSCUR;
+            if (sysfsParse(path, sc, scl) == 6) g_fdTable[fd].fileSize = SYNTHDIR_SYSSTATE;
         }
         // F4: tag the /objects/apps directory tree for getdents enumeration.
         {
@@ -5749,7 +5776,8 @@ private bool isSyntheticDirectoryPath(const(char)* path) {
     // F3: /system/current is the active-generation component directory.
     {
         const(char)* sc; size_t scl;
-        if (sysfsParse(path, sc, scl) == 3) return true;
+        const int sk = sysfsParse(path, sc, scl);
+        if (sk == 3 || sk == 6) return true;
     }
     // F4: /objects/apps, /objects/apps/<app>, and .../storage are directories.
     {
@@ -7801,6 +7829,19 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         return cast(long)written;
     }
 
+    // INSTALLER §D4.2: /system/state enumeration exposes the installed-state marker.
+    if (f.fileSize == SYNTHDIR_SYSSTATE) {
+        ulong logical = 2;
+        static immutable string iname = "installed";
+        if (f.offset <= logical) {
+            if (!writeDirent64(buf, count, &written, logical + 33024,
+                               cast(long)logical + 1, DT_REG, iname.ptr, iname.length))
+                return cast(long)written;
+            f.offset = logical + 1;
+        }
+        return cast(long)written;
+    }
+
     // F4: /objects/apps enumeration — one entry per installed (persisted) app.
     if (f.fileSize == SYNTHDIR_APPS) {
         ulong logical = 2;
@@ -7953,8 +7994,8 @@ public long linux_sys_getdents64(ulong fd, ulong dirp, ulong count) {
         }
         // F3: /system lists the active deployment + the generations document.
         if (dirIdx == g_systemDirIdx) {
-            static immutable string[2] names = ["current", "generations"];
-            static immutable ubyte[2]  types = [DT_DIR, DT_REG];
+            static immutable string[3] names = ["current", "generations", "state"];
+            static immutable ubyte[3]  types = [DT_DIR, DT_REG, DT_DIR];
             foreach (i, nm; names) {
                 if (f.offset <= logical) {
                     if (!writeDirent64(buf, count, &written, logical + 28672,

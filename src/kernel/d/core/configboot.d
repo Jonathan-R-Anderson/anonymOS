@@ -50,9 +50,9 @@ extern (C) @nogc nothrow:
 
 // The boot-module record layout published by bootstrap.d (128 bytes).
 align(8) private struct BootModuleRecord {
-    uint mod_start;
-    uint mod_end;
-    char[120] name;
+    ulong mod_start;   // 64-bit phys: must match boot_module_record_t (modules can load >4 GiB)
+    ulong mod_end;
+    char[112] name;
 }
 
 // The manifest boot-module name (staged as module_path: boot():/manifest.blob).

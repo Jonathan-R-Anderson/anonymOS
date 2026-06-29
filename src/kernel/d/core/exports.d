@@ -70,11 +70,12 @@ ulong phys_to_virt(ulong phys) {
 }
 
 struct multiboot_module_t {
-    uint mod_start;
-    uint mod_end;
-    uint string;
-    uint reserved;
+    ulong mod_start;   // 64-bit phys base (matches boot_module_record_t; name follows at offset 16)
+    ulong mod_end;
+    char[112] name;
 }
+
+static assert(multiboot_module_t.sizeof == 128);
 
 __gshared int g_module_count;
 __gshared multiboot_module_t* g_mboot_modules;

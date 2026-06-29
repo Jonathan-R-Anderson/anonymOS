@@ -23,9 +23,9 @@ __gshared uint fb_x = 0;
 __gshared uint fb_y = 0;
 
 align(8) struct boot_module_record_t {
-    uint mod_start;
-    uint mod_end;
-    char[120] name;
+    ulong mod_start;   // 64-bit physical base: Limine can place modules above 4 GiB
+    ulong mod_end;     // on real hardware with lots of RAM (a 32-bit field truncated it)
+    char[112] name;
 }
 
 static assert(boot_module_record_t.sizeof == 128);
@@ -65,8 +65,8 @@ private void publishBootModules(limine_module_response* mods) {
             continue;
         }
         const ulong phys = cast(ulong) mod.address - hhdm_offset;
-        records[i].mod_start = cast(uint) phys;
-        records[i].mod_end = cast(uint) (phys + mod.size);
+        records[i].mod_start = phys;            // full 64-bit phys (no 32-bit truncation)
+        records[i].mod_end = phys + mod.size;
         recordModuleName(records[i], mod.path);
     }
 }

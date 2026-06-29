@@ -15,9 +15,9 @@ import core.syscalls.posix : posixSetBootHostname;
 extern (C) @nogc nothrow:
 
 align(8) private struct IcBootModuleRecord {
-    uint mod_start;
-    uint mod_end;
-    char[120] name;
+    ulong mod_start;   // 64-bit phys: must match boot_module_record_t (modules can load >4 GiB)
+    ulong mod_end;
+    char[112] name;
 }
 
 private enum size_t IC_JSON_MAX = 8192;

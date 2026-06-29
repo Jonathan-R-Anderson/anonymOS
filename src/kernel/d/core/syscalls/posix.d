@@ -121,9 +121,9 @@ struct File {
 }
 
 private struct BootModuleRecord {
-    uint mod_start;
-    uint mod_end;
-    char[120] name;
+    ulong mod_start;   // 64-bit phys: must match boot_module_record_t (modules can load >4 GiB)
+    ulong mod_end;
+    char[112] name;
 }
 
 static assert(BootModuleRecord.sizeof == 128);

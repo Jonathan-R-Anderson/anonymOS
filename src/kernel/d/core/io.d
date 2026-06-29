@@ -21,9 +21,18 @@ void kchar(char c) {
     outb(0x3F8, c);
 }
 
+// Boot/install diagnostics: mirror klog to the framebuffer too, not just serial.
+// console_putchar writes the char to serial (kchar) AND, while g_fbConsoleEnabled
+// is set, to the framebuffer text console.  g_fbConsoleEnabled starts true and is
+// cleared the moment userspace (the compositor) takes over the framebuffer, so this
+// makes the ENTIRE boot sequence visible on screen — including the d_kernel_main
+// early setup that previously logged to serial only — then goes silent once the
+// desktop/installer GUI comes up.  Safe before the framebuffer exists: fb_putchar
+// (reached via console_putchar) early-returns when g_fb is null.
 void klog(const(char)* msg) {
+    import core.console : console_putchar;
     while (*msg) {
-        kchar(*msg++);
+        console_putchar(*msg++);
     }
 }
 

@@ -516,7 +516,7 @@ public void vcFullInstallProof()
 // install the desktop "Install to Disk" button drives.  The esp-image module ships only in
 // an INSTALL=1 ISO, so on a normal boot the proof SKIPs.
 
-align(8) private struct InstBootModRec { uint mod_start; uint mod_end; char[120] name; }
+align(8) private struct InstBootModRec { ulong mod_start; ulong mod_end; char[112] name; }  // 64-bit phys (modules can load >4 GiB)
 
 @nogc nothrow
 private bool instFindModule(string want, out ulong phys, out ulong size) {

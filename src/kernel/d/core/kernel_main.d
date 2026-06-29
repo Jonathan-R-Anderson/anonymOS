@@ -815,7 +815,7 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         for (int i = 0; i < g_module_count; i++) {
             auto rec = cast(multiboot_module_t*)(recs + i * 128);
             // compare path to the tail of the module name
-            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 8); // name field at byte 8
+            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16); // name field at byte 16 (two ulong addrs)
             // basename of module name (part after last '/')
             const(char)* modBase = modName;
             for (const(char)* p = modName; *p != 0; p++)
@@ -2903,7 +2903,7 @@ private bool findInterpModule(const(char)* interpPath, out ulong physOut, out ul
     auto recs = cast(ubyte*)g_mboot_modules;
     for (int i = 0; i < g_module_count; i++) {
         auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-        auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+        auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
         if (cstrContainsK(name, "ld-musl") || cstrContainsK(name, "ld.so")) {
             physOut = cast(ulong)rec.mod_start;
             sizeOut = cast(ulong)rec.mod_end - physOut;
@@ -2994,7 +2994,7 @@ void d_kernel_main() {
         auto recs = cast(ubyte*)g_mboot_modules;
         for (int i = 0; i < g_module_count; i++) {
             auto rec = cast(multiboot_module_t*)(recs + i * 128);
-            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 8);
+            const(char)* modName = cast(const(char)*)(cast(ubyte*)rec + 16);
             const(char)* modBase = modName;
             for (const(char)* p = modName; *p != 0; p++) if (*p == '/') modBase = p + 1;
             if (cstrEqK(modBase, "store-app")) {
@@ -3069,7 +3069,7 @@ void d_kernel_main() {
         // builds this finds nothing and falls through to the desktop target.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrContainsK(name, "dyntest")) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
@@ -3086,7 +3086,7 @@ void d_kernel_main() {
         // remove it from the ISO to fall back to Hyprland for comparison.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrEqK(cstrBasenameK(name), "weston\0".ptr)) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
@@ -3098,7 +3098,7 @@ void d_kernel_main() {
         // First pass: Hyprland is the desktop autostart target when present.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrContainsK(name, "Hyprland") || cstrContainsK(name, "hyprland")) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
@@ -3111,7 +3111,7 @@ void d_kernel_main() {
         // Second pass: look for busybox and dispatch it as ash.
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrContainsK(name, "busybox")) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
@@ -3123,7 +3123,7 @@ void d_kernel_main() {
         // Third pass: init.elf
         for (int i = 0; i < g_module_count && initPhys == 0; i++) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             if (cstrContainsK(name, "init.elf") || cstrContainsK(name, "init")) {
                 initPhys = cast(ulong)rec.mod_start;
                 initSize = cast(ulong)rec.mod_end - cast(ulong)rec.mod_start;
@@ -3135,7 +3135,7 @@ void d_kernel_main() {
         // Fallback: last module that looks like an ELF
         for (int i = g_module_count - 1; i >= 0 && initPhys == 0; i--) {
             auto rec  = cast(multiboot_module_t*)(recs + i * 128);
-            auto name = cast(const(char)*)(cast(ubyte*)rec + 8);
+            auto name = cast(const(char)*)(cast(ubyte*)rec + 16);
             ulong phys = cast(ulong)rec.mod_start;
             ulong size = cast(ulong)rec.mod_end - phys;
             if (size < 16) continue;

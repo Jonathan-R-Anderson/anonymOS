@@ -360,9 +360,16 @@ not root — it mints an `InstallWriteCap` scoped to ONE target disk and revokes
 finishes, so writes go through `gatedDiskWrite` (no cap → refuse; cap for disk A can't write disk B;
 a revoked cap is dead). `vcEncryptedInstallProof` now routes its header write through the gate (mint →
 gated writes → revoke). `installCapProof()` proves all four cases at boot: **PASS (no-cap=refuse,
-minted=allow, wrong-disk=refuse, revoked=refuse)**. **E4c remaining (gated on §H1):** drive the §E4a
-engine over a *real* rootfs clone — the §H1 decoy Linux distro — into the system + hidden volumes
-(the encryption engine is done; it needs a real rootfs source, which §H1 provides).
+minted=allow, wrong-disk=refuse, revoked=refuse)**.
+
+**E4c — encrypt a REAL rootfs ✅ DONE.** `make veracrypt cryptdisk` (`test/cryptdisk.c`) drives the
+§E4a engine over the **actual §H1 decoy Alpine rootfs** (3.7 MB / 7281 sectors): header (PBKDF2 from
+the decoy password + master key) + every rootfs sector XTS-encrypted under the master key. 4/4:
+ciphertext ≠ plaintext, the decoy password opens the header + recovers the master key, the
+**decrypted rootfs is byte-identical to the original**, and a wrong password can't open it. This is
+the installer's data path over a real multi-MB OS image — so the full chain is real: **§H1 decoy
+distro → §E4c encrypt → §E5 loader decrypts + chain-loads.** The kernel performs the same writes
+in-VM, cap-gated (above); a future increment streams a multi-MB rootfs through the in-kernel engine.
 
 ### E5 — Pre-boot authentication (the EFI loader, decoy vs hidden)
 The stripped `Boot/EFI` loader is installed to the ESP and runs *before* the kernel: it prompts for a

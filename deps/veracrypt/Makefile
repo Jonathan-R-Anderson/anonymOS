@@ -37,7 +37,7 @@ VC_CFLAGS := -O2 -DNDEBUG -DCRYPTOPP_DISABLE_ASM -fPIC -I$(VCSRC) -I$(VCSRC)/Cry
 
 RUN := $(BUILD_RESOURCE_RUN)
 
-.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi clean
+.PHONY: all crypto test header-test parity-check layout-check volume-check preboot-check efi cryptdisk clean
 all: crypto
 
 $(BLD) $(SYSROOT)/lib:
@@ -88,6 +88,15 @@ volume-check: crypto | $(BLD)
 	    $(SELF)/vcheader.c $(SELF)/test/volume_check.c \
 	    -L$(SYSROOT)/lib -lvc_crypto -lm -o $(BLD)/vc-volume
 	@echo "[veracrypt] built $(BLD)/vc-volume — run: $(BLD)/vc-volume <disk-image>"
+
+# §E4c — encrypt a REAL rootfs (the §H1 decoy Linux) into a VeraCrypt volume + round-trip.
+#   make veracrypt cryptdisk ROOTFS=deps/decoy-os/build/decoy-rootfs.tar.gz
+ROOTFS ?= $(abspath ../decoy-os/build/decoy-rootfs.tar.gz)
+cryptdisk: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/test/cryptdisk.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-cryptdisk
+	$(BLD)/vc-cryptdisk $(ROOTFS) decoy-password
 
 # §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
 preboot-check: crypto | $(BLD)

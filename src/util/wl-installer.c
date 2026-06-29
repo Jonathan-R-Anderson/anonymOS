@@ -190,9 +190,9 @@ struct app {
     struct wl_surface *surface;
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *toplevel;
-    struct wl_buffer *buffer;
+    struct wl_buffer *buffer;          /* ONE persistent shm buffer, re-attached each frame */
     struct wl_callback *frame_cb;
-    uint32_t *pixels;
+    uint32_t *pixels;                  /* == the buffer's shared memory; drawn into in place */
     FT_Library ft;
     FT_Face face;
     unsigned char *font_data;
@@ -1274,23 +1274,16 @@ static void draw_demo(struct app *app)
 
 /* ── buffer / commit ───────────────────────────────────────────────────────── */
 
-static void buffer_release(void *data, struct wl_buffer *buffer)
+/* Create the shm buffer ONCE and keep it mapped — `app->pixels` IS the shared memory, so
+ * the UI is drawn directly into it and the same buffer is re-attached every frame.  The old
+ * code allocated a fresh memfd per redraw; the compositor holds each buffer's fd until it
+ * releases the buffer, so a few dozen redraws exhausted the process's small fd pool and froze
+ * the installer mid-typing (seen as "memfd_create: No file descriptors available").  This is
+ * the same fix wl-files.c already carries; it does not depend on buffer-release timing. */
+static int create_buffer_once(struct app *app)
 {
-    struct app *app = data;
-    if (app->buffer == buffer)
-        app->buffer = NULL;
-    wl_buffer_destroy(buffer);
-}
-
-static const struct wl_buffer_listener buffer_listener = {
-    .release = buffer_release,
-};
-
-static int publish_pixels(struct app *app)
-{
-    if (!app->pixels || app->buffer_size == 0)
-        return -1;
-
+    if (app->buffer)
+        return 0;
     int fd = create_memfd("epin-installer");
     if (fd < 0) {
         perror("G11CAIRO: memfd_create");
@@ -1301,37 +1294,30 @@ static int publish_pixels(struct app *app)
         close(fd);
         return -1;
     }
-
-    void *shm_pixels = mmap(NULL, app->buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    if (shm_pixels == MAP_FAILED) {
+    app->pixels = (uint32_t *)mmap(NULL, app->buffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (app->pixels == MAP_FAILED) {
         perror("G11CAIRO: mmap");
         close(fd);
+        app->pixels = NULL;
         return -1;
     }
-    memcpy(shm_pixels, app->pixels, app->buffer_size);
-
     struct wl_shm_pool *pool = wl_shm_create_pool(app->shm, fd, (int)app->buffer_size);
-    struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, app->width, app->height,
-                                                         app->stride, WL_SHM_FORMAT_XRGB8888);
+    app->buffer = wl_shm_pool_create_buffer(pool, 0, app->width, app->height,
+                                            app->stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
-    munmap(shm_pixels, app->buffer_size);
     close(fd);
-
-    if (!buffer) {
+    if (!app->buffer) {
         log_line("G11CAIRO: wl_shm_pool_create_buffer failed");
         return -1;
     }
-
-    wl_buffer_add_listener(buffer, &buffer_listener, app);
-    app->buffer = buffer;
     return 0;
 }
 
 static void redraw_commit(struct app *app, const char *marker)
 {
-    draw_demo(app);
-    if (publish_pixels(app) < 0)
+    if (!app->buffer || !app->pixels)
         return;
+    draw_demo(app);                    /* draw directly into the persistent shared buffer */
     wl_surface_attach(app->surface, app->buffer, 0, 0);
     wl_surface_damage_buffer(app->surface, 0, 0, app->width, app->height);
     wl_surface_commit(app->surface);
@@ -1595,18 +1581,14 @@ static int create_shm_buffer(struct app *app, int width, int height)
     app->width = width > 0 ? width : DEFAULT_WIDTH;
     app->height = height > 0 ? height : DEFAULT_HEIGHT;
     app->stride = app->width * 4;
-    size_t size = (size_t)app->stride * (size_t)app->height;
-    app->buffer_size = size;
+    app->buffer_size = (size_t)app->stride * (size_t)app->height;
 
-    app->pixels = malloc(size);
-    if (!app->pixels) {
-        perror("G11CAIRO: malloc");
-        return -1;
-    }
     if (!app->font_ready)
         init_freetype(app);
+    if (create_buffer_once(app) < 0)   /* one persistent buffer; app->pixels = its shm */
+        return -1;
     draw_demo(app);
-    return publish_pixels(app);
+    return 0;
 }
 
 static void wm_base_ping(void *data, struct xdg_wm_base *wm_base, uint32_t serial)

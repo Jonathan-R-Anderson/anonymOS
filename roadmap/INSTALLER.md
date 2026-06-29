@@ -944,7 +944,7 @@ finishes.
   `deps/calamares/Makefile`, Widgets-only/no-QML/no-Python, no KPMcore — the native module replaces
   it) → wire `installer/calamares/` (sequence, branding, the custom `identitymanager` module) +
   the partition page driving the §D2(b) engine. Phase-1 analysis: `installer/ARCHITECTURE.md`.
-- **§E VeraCrypt decoy/hidden-OS encryption: SPECIFIED (E0–E7); E1 + E2 ✅ DONE.** An *optional*
+- **§E VeraCrypt decoy/hidden-OS encryption: E0–E5 ✅ DONE (E4c rootfs + E6/E7 remain).** An *optional*
   Phase-5 step. `deps/VeraCrypt` is vendored (`b3d6c9fbf`). **E1 crypto core built + KAT-validated**
   (`make veracrypt` → `libvc_crypto.a`; AES-256 + SHA-512 NIST vectors). **E2a header engine +
   deniability proven** (`vcheader.c`; `header-test` 8/8 — decoy/hidden headers each open with only
@@ -956,9 +956,13 @@ finishes.
   spare disk, host `vc-layout` validates 8/8 (each header opens with only its password, deniability
   holds, decoy data decrypts). **E4a volume data engine DONE**: multi-sector XTS (per-sector data
   units) + random free-fill, host `vc-volume` validates (16/16 sectors decrypt; free-fill 7.975
-  bits/byte entropy). Next: E4b/c (GPT system+outer partitions + real rootfs clone + cap-gate) + the
-  EFI pre-boot loader (E5) on the §D2(b) engine, the optional installer page (E6), and the security
-  review (E7).
+  bits/byte entropy). **E4b DONE** (real 3-partition GPT, header at boundary) + **E4c cap-gating DONE**
+  (one-shot block-write capability). **E5 DONE — the EFI pre-boot loader works end-to-end in real
+  firmware (OVMF)**: a real PE32+ `.efi` (clang PE target, no gnu-efi), self-contained EFI crypto,
+  block-IO header reads, decoy/hidden/reject routing, an interactive masked password prompt (validated
+  via QMP keystrokes), and `LoadImage`/`StartImage` **chain-load** to the next stage. Remaining: the
+  real decoy/hidden OS image (E4c rootfs clone, gated on §H1), the optional installer page (E6), and
+  the deniability security review (E7).
 - **§F Blockchain-anchored boot integrity (zkSync anti-rootkit): SPECIFIED (F0–F7), not built.** An
   *optional* step: publish a Merkle root of the `/system` hashes to a (yet-to-be-written) zkSync Era
   smart contract and verify it at boot. **Gated on the 🚧 network stack (RX) + a Wi-Fi path** (F1),

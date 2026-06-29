@@ -429,6 +429,18 @@ and the installer then runs §E3–E5 instead of a plain copy. It writes its cho
 declaratively — no imperative branching. Defaults to **None**; nothing about §E touches a normal
 unencrypted or single-password install.
 
+**The decoy OS is configured in the SAME flow, not a separate install.** When "Hidden OS" is chosen,
+the hidden-OS sub-step collects the **decoy OS's own account settings** — username, full name, login
+password, hostname — *alongside* the decoy passphrase, exactly like the normal Administrator/Hostname
+pages do for the real OS. The installer passes those to the §H1 decoy build, which is already fully
+parameterized (`make decoy-os DECOY_USER=… DECOY_HOSTNAME=… DECOY_USER_FULLNAME=… DECOY_USER_PASSWORD=…`
+→ a real `/etc/passwd`+SHA-512-`/etc/shadow` account, hostname, `/home/<user>`, and §G/§H2 fake history
+that **references that same user + hostname**). Verified: building with `DECOY_USER=alice
+DECOY_HOSTNAME=thinkpad` yields an `alice` login account, `thinkpad` hostname, 702 `alice`-referencing
+log lines, and **zero leakage of the `decoyuser`/`helix` defaults**. So the user ends an install owning
+*two* configured systems (real + decoy), each with credentials they set — the decoy is theirs, not a
+generic template.
+
 ### E7 — Deniability security review (security-critical)
 Treat plausible deniability as a threat model, not a feature flag: the hidden volume must be
 **entropy-indistinguishable** from free space (no headers, no FS signatures, no size tells); the

@@ -35,26 +35,33 @@ static void stamp(SB *b, uint64_t time_sec){
 }
 
 /* Deterministic pools — Alpine/OpenRC-consistent (§H1 is Alpine: busybox + apk + OpenRC,
- * NO systemd/apt/GNOME). The user pool must be a subset of the rootfs /etc/passwd
- * (decoy-os/customize.sh adds deploy + backup) so a log never names a non-existent user.
- * §E7/§H5 finding F1. */
-static const char *USERS[] = {"root","decoyuser","deploy","backup"};
+ * NO systemd/apt/GNOME). The user pool must be a subset of the rootfs /etc/passwd so a log
+ * never names a non-existent user (§E7/§H5 finding F1). The primary user + hostname are
+ * installer-configurable (decoy_set_user / decoy_set_host) so the logs match the account
+ * the user chose during install. */
 static const char *HOSTS[] = {"helix","nimbus","orion","workstation"};
 static const char *PROCS[] = {"sshd","crond","ntpd","syslogd","busybox","udhcpc"};
 static const char *SVCS[]  = {"sshd","crond","ntpd","chronyd","networking"};
 #define PICK(arr, h) arr[(h) % (sizeof(arr)/sizeof(arr[0]))]
 
+static const char *g_user = "decoyuser";   /* installer-set primary account */
+static const char *g_host = 0;              /* installer-set hostname; 0 → seed-derived */
+void decoy_set_user(const char *u){ if(u && *u) g_user = u; }
+void decoy_set_host(const char *h){ if(h && *h) g_host = h; }
+/* the configured user + a couple of plausible service accounts (all present in the rootfs) */
+static const char *pick_user(uint32_t h){ const char *p[4]={g_user,"root","deploy","backup"}; return p[h%4]; }
+
 int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max){
     SB b = { out, 0, max };
     uint32_t h = e->detail;
     uint32_t pid = 300 + (h % 32000);
-    const char *host = PICK(HOSTS, (uint32_t)seed);
+    const char *host = g_host ? g_host : PICK(HOSTS, (uint32_t)seed);
 
     stamp(&b, e->time_sec); sc(&b,' '); ss(&b,host); sc(&b,' ');
 
     switch (e->subsys){
     case DECOY_USER: {
-        const char *u = PICK(USERS, h);
+        const char *u = pick_user(h);
         ss(&b,"sshd["); su(&b,pid); ss(&b,"]: ");
         if (h & 1){ ss(&b,"Accepted publickey for "); ss(&b,u); ss(&b," from 10.0."); su(&b,h%6); sc(&b,'.'); su(&b,(h>>4)%254+1); ss(&b," port "); su(&b,40000+(h%20000)); ss(&b," ssh2"); }
         else      { ss(&b,"pam_unix(sshd:session): session opened for user "); ss(&b,u); ss(&b," by (uid=0)"); }
@@ -71,7 +78,7 @@ int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max){
         su(&b,h%4); sc(&b,'.'); su(&b,(h>>3)%254+1); ss(&b," obtained, lease time 86400");
         break; }
     case DECOY_SEC: {             /* Alpine has sudo (apk world); apk, not apt */
-        const char *u = PICK(USERS, h);
+        const char *u = pick_user(h);
         ss(&b,"sudo["); su(&b,pid); ss(&b,"]: ");
         if (h & 3){ ss(&b,u); ss(&b," : TTY=pts/0 ; PWD=/home/"); ss(&b,u); ss(&b," ; USER=root ; COMMAND=/sbin/apk update"); }
         else      { ss(&b,"pam_unix(sudo:auth): authentication failure; logname="); ss(&b,u); ss(&b," uid=1000"); }
@@ -82,7 +89,7 @@ int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max){
     case DECOY_AUDIT: {           /* no auditd on Alpine — render a su(1) auth event (routed to auth.log) */
         ss(&b,"su["); su(&b,pid); ss(&b,"]: ");
         ss(&b,(h&1)?"+ /dev/pts/0 ":"pam_unix(su:session): session opened for user root by ");
-        ss(&b,PICK(USERS,h)); if(h&1) ss(&b,":root");
+        ss(&b,pick_user(h)); if(h&1) ss(&b,":root");
         break; }
     default: { /* DECOY_LOG — Alpine/OpenRC-flavoured, no systemd targets */
         ss(&b,PICK(PROCS,h)); sc(&b,'['); su(&b,pid); ss(&b,"]: ");

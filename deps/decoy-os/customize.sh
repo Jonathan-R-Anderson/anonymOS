@@ -1,27 +1,43 @@
 #!/bin/sh
 # deps/decoy-os/customize.sh — turn a fresh Alpine minirootfs into a lived-in decoy
-# workstation (roadmap/INSTALLER.md §H1). Runs under fakeroot. Args: ROOTFS FAKELOGD PW
+# workstation (roadmap/INSTALLER.md §H1). Runs under fakeroot.
+#   args: ROOTFS FAKELOGD DECOY_PASSPHRASE
+#
+# The decoy OS's OWN settings come from the installer (§E6 hidden-OS step) via env vars —
+# the decoy is configured in the SAME install flow, not a separate process. Defaults shown:
+#   DECOY_USER=decoyuser   DECOY_USER_FULLNAME="Decoy User"   DECOY_HOSTNAME=helix
+#   DECOY_USER_PASSWORD=   (empty -> locked account)          DECOY_NOW=<unix time>
 set -e
 ROOTFS="$1"; FAKELOGD="$2"; PW="$3"
+U="${DECOY_USER:-decoyuser}"
+FULL="${DECOY_USER_FULLNAME:-Decoy User}"
+HN="${DECOY_HOSTNAME:-helix}"
+HOME_DIR="/home/$U"
 
-# ── identity ────────────────────────────────────────────────────────────────
-echo "helix" > "$ROOTFS/etc/hostname"
-printf '127.0.0.1\tlocalhost helix\n::1\tlocalhost helix\n' > "$ROOTFS/etc/hosts"
-echo "Welcome to helix.  Unauthorized access is prohibited." > "$ROOTFS/etc/motd"
+# ── identity (installer-configurable) ────────────────────────────────────────
+echo "$HN" > "$ROOTFS/etc/hostname"
+printf '127.0.0.1\tlocalhost %s\n::1\tlocalhost %s\n' "$HN" "$HN" > "$ROOTFS/etc/hosts"
+echo "Welcome to $HN.  Unauthorized access is prohibited." > "$ROOTFS/etc/motd"
 
-# ── a believable user (locked password; present in passwd/shadow + a real home) ──
-grep -q '^decoyuser:' "$ROOTFS/etc/passwd" || \
-  echo "decoyuser:x:1000:1000:Decoy User:/home/decoyuser:/bin/ash" >> "$ROOTFS/etc/passwd"
-grep -q '^decoyuser:' "$ROOTFS/etc/group" || \
-  echo "decoyuser:x:1000:" >> "$ROOTFS/etc/group"
-grep -q '^decoyuser:' "$ROOTFS/etc/shadow" 2>/dev/null || \
-  echo "decoyuser:!:19000:0:99999:7:::" >> "$ROOTFS/etc/shadow"
-for u in deploy backup; do 
-  grep -q "^$u:" "$ROOTFS/etc/passwd" || echo "$u:x:$((1000 + $(grep -c . "$ROOTFS/etc/passwd"))):100:$u:/home/$u:/sbin/nologin" >> "$ROOTFS/etc/passwd"; 
+# ── the decoy's user account (installer sets name / full name / password) ─────
+# SHA-512 crypt if a password was given + openssl is available, else a locked account.
+HASH='!'
+if [ -n "$DECOY_USER_PASSWORD" ] && command -v openssl >/dev/null 2>&1; then
+  HASH="$(openssl passwd -6 "$DECOY_USER_PASSWORD")"
+fi
+grep -q "^$U:" "$ROOTFS/etc/passwd" || \
+  echo "$U:x:1000:1000:$FULL:$HOME_DIR:/bin/ash" >> "$ROOTFS/etc/passwd"
+grep -q "^$U:" "$ROOTFS/etc/group" || echo "$U:x:1000:" >> "$ROOTFS/etc/group"
+grep -q "^$U:" "$ROOTFS/etc/shadow" 2>/dev/null || \
+  echo "$U:$HASH:19000:0:99999:7:::" >> "$ROOTFS/etc/shadow"
+# the plausible service accounts the logs reference — must exist so logins are consistent
+for su in deploy backup; do
+  grep -q "^$su:" "$ROOTFS/etc/passwd" || \
+    echo "$su:x:$((1000 + $(grep -c . "$ROOTFS/etc/passwd"))):100:$su:/home/$su:/sbin/nologin" >> "$ROOTFS/etc/passwd"
 done
-mkdir -p "$ROOTFS/home/decoyuser/.ssh" "$ROOTFS/home/decoyuser/Documents"
+mkdir -p "$ROOTFS$HOME_DIR/.ssh" "$ROOTFS$HOME_DIR/Documents"
 
-cat > "$ROOTFS/home/decoyuser/.bash_history" <<'EOF'
+cat > "$ROOTFS$HOME_DIR/.bash_history" <<'EOF'
 ls -la
 cat /etc/os-release
 sudo apk update && sudo apk upgrade
@@ -31,47 +47,35 @@ ssh deploy@server01
 df -h
 htop
 sudo rc-service sshd restart
-tail -f /var/log/syslog
+tail -f /var/log/messages
 EOF
-cat > "$ROOTFS/home/decoyuser/Documents/notes.txt" <<'EOF'
+cat > "$ROOTFS$HOME_DIR/Documents/notes.txt" <<'EOF'
 - renew the TLS cert before the 15th
 - ask ops about the staging backup window
-- migrate the cron jobs to systemd timers
+- review the apk upgrade list
 EOF
-cat > "$ROOTFS/home/decoyuser/.profile" <<'EOF'
+cat > "$ROOTFS$HOME_DIR/.profile" <<'EOF'
 export PS1='\u@\h:\w\$ '
 export EDITOR=vi
 alias ll='ls -la'
 EOF
 
-# a plausible installed-package world (Alpine's apk 'world' file)
+# apk world (claimed-installed packages) — consistent with the daemons the logs reference
 mkdir -p "$ROOTFS/etc/apk"
-cat > "$ROOTFS/etc/apk/world" <<'EOF'
-alpine-base
-openssh
-git
-vim
-htop
-sudo
-curl
-tmux
-EOF
+printf 'alpine-base\nopenssh\ngit\nvim\nhtop\nsudo\ncurl\ntmux\nchrony\n' > "$ROOTFS/etc/apk/world"
 
 # ── seed deterministic, password-keyed fake /var/log history ending ~now (§G/§H2/F3) ──
-# The seed-anchored virtual clock: fakelogd ages the "install date" 6–18 months back and
-# runs history up to NOW, so logs end at the present (not a fixed 2024 epoch).
+# The seed-anchored virtual clock; logs reference the chosen user + hostname.
 NOW="${DECOY_NOW:-$(date +%s)}"
 mkdir -p "$ROOTFS/var/log"
-"$FAKELOGD" "$PW" --root "$ROOTFS" --now "$NOW" >/dev/null
+"$FAKELOGD" "$PW" --root "$ROOTFS" --now "$NOW" --user "$U" --hostname "$HN" >/dev/null
 
-# coherent file mtimes: home/recent activity dated within the last few days (NOT 1970/now-
-# only), consistent with logs that run up to NOW — closing the §E7/F3 timestamp gap.
+# coherent file mtimes within the recent window (§E7/F3), recorded epoch for the live daemon
 RECENT=$((NOW - 2*86400))
-for fpath in "$ROOTFS/home/decoyuser/.bash_history" "$ROOTFS/home/decoyuser/Documents/notes.txt" \
-             "$ROOTFS/home/decoyuser/.profile" "$ROOTFS/home/decoyuser"; do
+for fpath in "$ROOTFS$HOME_DIR/.bash_history" "$ROOTFS$HOME_DIR/Documents/notes.txt" \
+             "$ROOTFS$HOME_DIR/.profile" "$ROOTFS$HOME_DIR"; do
   touch -d "@$RECENT" "$fpath" 2>/dev/null || true
 done
-echo "$NOW" > "$ROOTFS/etc/.decoy-epoch"          # recorded for the live daemon to continue
+echo "$NOW" > "$ROOTFS/etc/.decoy-epoch"
 
-# a lastlog/wtmp-ish marker + a believable boot id
 echo "$(head -c16 /dev/zero | tr '\0' '0')" > "$ROOTFS/etc/machine-id" 2>/dev/null || true

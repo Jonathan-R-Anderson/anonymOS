@@ -24,15 +24,18 @@ static int by_time(const void *a, const void *b){
 }
 
 int main(int argc, char **argv){
-    const char *pw="decoy-password", *root=".";
+    const char *pw="decoy-password", *root=".", *user=0, *host=0;
     unsigned long days=0;            /* 0 -> seed-derived age (6–18 months) */
     long now=0;                      /* 0 -> real time */
     for (int i=1;i<argc;i++){
-        if      (!strcmp(argv[i],"--root") && i+1<argc) root=argv[++i];
-        else if (!strcmp(argv[i],"--now")  && i+1<argc) now=strtol(argv[++i],0,10);
-        else if (!strcmp(argv[i],"--days") && i+1<argc) days=strtoul(argv[++i],0,10);
-        else if (argv[i][0] != '-')                     pw=argv[i];
+        if      (!strcmp(argv[i],"--root")     && i+1<argc) root=argv[++i];
+        else if (!strcmp(argv[i],"--now")      && i+1<argc) now=strtol(argv[++i],0,10);
+        else if (!strcmp(argv[i],"--days")     && i+1<argc) days=strtoul(argv[++i],0,10);
+        else if (!strcmp(argv[i],"--user")     && i+1<argc) user=argv[++i];   /* installer-set account */
+        else if (!strcmp(argv[i],"--hostname") && i+1<argc) host=argv[++i];   /* installer-set hostname */
+        else if (argv[i][0] != '-')                         pw=argv[i];
     }
+    decoy_set_user(user); decoy_set_host(host);     /* logs reference the chosen identity */
     uint64_t seed = decoy_seed(pw);
     if (now == 0) now = (long)time(0);
     /* §G1.1/F3 seed-anchored virtual clock: the decoy was "installed" a seed-derived

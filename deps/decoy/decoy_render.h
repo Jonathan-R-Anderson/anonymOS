@@ -13,4 +13,9 @@
  * facts (e.g. a consistent hostname). */
 int decoy_render(uint64_t seed, const DecoyEvent *e, char *out, int max);
 
+/* Installer-configurable identity (so the logs reference the decoy's REAL account/host,
+ * not a hardcoded one). Set before rendering; both default sensibly if unset. */
+void decoy_set_user(const char *username);   /* the decoy's primary user account */
+void decoy_set_host(const char *hostname);   /* the decoy's hostname */
+
 #endif

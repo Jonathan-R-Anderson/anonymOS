@@ -372,6 +372,20 @@ limine/the EpinAnonymOS kernel for that OS). A wrong password reveals nothing; n
 that a hidden OS could exist. (For BIOS targets, the equivalent VeraCrypt MBR bootstrap; EFI is the
 primary path.)
 
+**E5a — the decision core ✅ DONE + validated on the real layout.** The security-critical heart —
+which OS does a password boot, and "reveal nothing on a wrong one" — is factored into
+`deps/veracrypt/preboot_auth.{c,h}` (`preboot_authenticate(password, decoyHeader, hiddenHeader) →
+DECOY | HIDDEN | REJECT`, reusing `libvc_crypto`). It always tries BOTH headers (constant-shape, no
+early-out) so timing can't betray which matched. The install (`vcEncryptedInstallProof`) now writes
+the decoy/outer/hidden headers at their **real partition boundaries** (decoy @ `sysFirst`, outer @
+`outerFirst`, hidden @ `outerFirst`+64 KiB), all cap-gated. Host `make veracrypt preboot-check` →
+`vc-preboot <image>` validates **4/4**: decoy pw→DECOY, hidden pw→HIDDEN, wrong pw→REJECT, outer pw→
+REJECT-for-boot. This is reused *verbatim* by the `.efi`.
+**E5b remaining — the EFI packaging:** wrap the core in a UEFI app (console password prompt +
+`EFI_BLOCK_IO` reads + chain-load the matched OS). Needs an EFI toolchain — **gnu-efi is absent**
+here (OVMF *is* present at `/usr/share/OVMF/`), so E5b = install gnu-efi (or use a clang
+`x86_64-unknown-windows` PE target), build the `.efi`, and OVMF-boot-test it.
+
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:
 **None** · **Full-disk encryption** (single password) · **Hidden OS (plausible deniability)**. Picking

@@ -404,10 +404,25 @@ public void vcEncryptedInstallProof()
     immutable char[14] pw = ['d','e','c','o','y','-','p','a','s','s','w','o','r','d'];
     ubyte[512] hdr;
     create_veracrypt_header(pw.ptr, 14, salt.ptr, mk.ptr, 0, 1UL<<30, 0x20000, 0x40000000, hdr.ptr);
-    if (!gatedDiskWrite(cap, idx, L.sysFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (hdr)\n"); revokeInstallWriteCap(cap); return; }
+    if (!gatedDiskWrite(cap, idx, L.sysFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (decoy hdr)\n"); revokeInstallWriteCap(cap); return; }
+
+    // §E5: the two OTHER headers at their real boundaries so the pre-boot loader can route
+    // decoy-vs-hidden: outer header at the outer-partition start, hidden header 64 KiB in.
+    ubyte[64] saltO, saltH;
+    ubyte[256] mkO, mkH;
+    for (int i = 0; i < 64; i++)  { saltO[i] = cast(ubyte)(0x22*i + 3); saltH[i] = cast(ubyte)(0x33*i + 5); }
+    for (int i = 0; i < 256; i++) { mkO[i]   = cast(ubyte)(0x5A ^ i);   mkH[i]   = cast(ubyte)(0x3C + i); }
+    immutable char[14] pwO = ['o','u','t','e','r','-','p','a','s','s','w','o','r','d'];
+    immutable char[15] pwH = ['h','i','d','d','e','n','-','p','a','s','s','w','o','r','d'];
+    enum ulong VC_HIDDEN_HDR_OFFSET = 128;   // 64 KiB into the outer partition
+
+    create_veracrypt_header(pwO.ptr, 14, saltO.ptr, mkO.ptr, 256UL<<20, 1UL<<30, 0x20000, 0x20000000, hdr.ptr);
+    if (!gatedDiskWrite(cap, idx, L.outerFirst, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (outer hdr)\n"); revokeInstallWriteCap(cap); return; }
+    create_veracrypt_header(pwH.ptr, 15, saltH.ptr, mkH.ptr, 0, 256UL<<20, 0x20000, 0x10000000, hdr.ptr);
+    if (!gatedDiskWrite(cap, idx, L.outerFirst + VC_HIDDEN_HDR_OFFSET, 1, hdr.ptr)) { klog("[vc-install] proof FAIL (hidden hdr)\n"); revokeInstallWriteCap(cap); return; }
 
     revokeInstallWriteCap(cap);    // one-shot: the cap dies with the install
-    klog("[vc-install] proof: 3-part encrypted GPT + ESP FAT + decoy header @sys=0x"); klog_hex(L.sysFirst);
-    klog(" outer=0x"); klog_hex(L.outerFirst);
-    klog(" (cap-gated; host: sgdisk 3 parts + vc-parity <img> "); klog_hex(L.sysFirst); klog(")\n");
+    klog("[vc-install] proof: 3-part encrypted GPT + ESP FAT + decoy/outer/hidden headers @sys=0x"); klog_hex(L.sysFirst);
+    klog(" outer=0x"); klog_hex(L.outerFirst); klog(" hidden=0x"); klog_hex(L.outerFirst + VC_HIDDEN_HDR_OFFSET);
+    klog(" (cap-gated; host: sgdisk + vc-parity + preboot-check)\n");
 }

@@ -89,5 +89,12 @@ volume-check: crypto | $(BLD)
 	    -L$(SYSROOT)/lib -lvc_crypto -lm -o $(BLD)/vc-volume
 	@echo "[veracrypt] built $(BLD)/vc-volume — run: $(BLD)/vc-volume <disk-image>"
 
+# §E5 — validate the pre-boot authenticator (decoy vs hidden routing) on a disk image.
+preboot-check: crypto | $(BLD)
+	$(CC) -static -no-pie $(VC_CFLAGS) -I$(SELF) \
+	    $(SELF)/vcheader.c $(SELF)/preboot_auth.c $(SELF)/test/preboot_check.c \
+	    -L$(SYSROOT)/lib -lvc_crypto -o $(BLD)/vc-preboot
+	@echo "[veracrypt] built $(BLD)/vc-preboot — run: $(BLD)/vc-preboot <disk-image>"
+
 clean:
 	rm -rf $(BLD) $(SYSROOT)

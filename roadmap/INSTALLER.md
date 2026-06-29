@@ -381,10 +381,17 @@ the decoy/outer/hidden headers at their **real partition boundaries** (decoy @ `
 `outerFirst`, hidden @ `outerFirst`+64 KiB), all cap-gated. Host `make veracrypt preboot-check` →
 `vc-preboot <image>` validates **4/4**: decoy pw→DECOY, hidden pw→HIDDEN, wrong pw→REJECT, outer pw→
 REJECT-for-boot. This is reused *verbatim* by the `.efi`.
-**E5b remaining — the EFI packaging:** wrap the core in a UEFI app (console password prompt +
-`EFI_BLOCK_IO` reads + chain-load the matched OS). Needs an EFI toolchain — **gnu-efi is absent**
-here (OVMF *is* present at `/usr/share/OVMF/`), so E5b = install gnu-efi (or use a clang
-`x86_64-unknown-windows` PE target), build the `.efi`, and OVMF-boot-test it.
+**E5b — the loader as a real UEFI `.efi` ✅ DONE + OVMF-validated.** Built with clang's
+`x86_64-unknown-windows` PE target + `lld-link` → a PE32+ EFI app (no gnu-efi needed; it's absent).
+`deps/veracrypt/efi/efi_vc.c` is self-contained crypto for the EFI/PE target (no libc, no VeraCrypt
+headers — both unavailable there): AES-256 enc+**dec** (decrypt added for the open path), SHA-512,
+HMAC/PBKDF2, XTS-decrypt, `vc_open_header`, `preboot_authenticate` — cross-checked natively against
+the kernel-written headers first. `efi_main.c` enumerates `EFI_BLOCK_IO`, finds the install disk,
+reads the headers, routes, and emits over COM1. `efi/ovmf-test.sh` boots it under real UEFI firmware
+(OVMF) against the install disk: **`decoy-password→DECOY`, `hidden-password→HIDDEN`,
+`wrong-password→REJECT`**. `make veracrypt efi`. **E5c remaining:** the interactive console password
+prompt + chain-load (`LoadImage`/`StartImage`) of the matched OS — mechanical UEFI plumbing on top of
+this validated routing.
 
 ### E6 — Installer integration: an OPTIONAL step
 In the Phase-5 flow, the **Encryption** page is one **optional** step the user can skip. It offers:

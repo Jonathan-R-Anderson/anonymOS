@@ -118,6 +118,17 @@ public int diskFindTargetBySize(ulong maxSectors, out ulong targetSectors) {
     return -1;
 }
 
+// True if the object-store disk (first SATA) already carries a GPT — a protective MBR
+// (0xEE partition) with the 0x55AA boot signature.  The object store refuses to claim /
+// format such a disk, so an INSTALLED EpinAnonymOS disk (whose LBA0 is the boot GPT) is
+// never clobbered by objstoreMount on a later boot — the installed OS boots repeatedly.
+public bool diskFirstSectorIsGpt() {
+    if (!g_diskReady) return false;
+    ubyte[SECTOR] mbr = void;
+    if (!diskReadSectors(0, 1, mbr.ptr)) return false;
+    return mbr[510] == 0x55 && mbr[511] == 0xAA && mbr[446 + 4] == 0xEE;
+}
+
 public bool diskWriteSectorsOn(int idx, ulong lba, uint count, const(void)* src) {
     if (!g_diskReady || count == 0 || idx < 0 || idx >= cast(int)g_ahciDevices.length) return false;
     if (!g_ahciDevices[idx].present) return false;

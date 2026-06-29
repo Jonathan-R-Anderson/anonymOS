@@ -606,9 +606,9 @@ public bool installControlWrite(const(char)* cmd, size_t len) {
         }
         idx = n; dsec = g_ahciDevices[n].capacity / 512;
     } else {
-        idx = diskFindTarget(dsec);
+        idx = diskFindTarget(dsec);                  // a spare disk distinct from the object store
     }
-    if (idx < 0) { klog("[install] control: no target disk\n"); return false; }
+    if (idx < 0) { klog("[install] control: no target disk (attach a second disk)\n"); return false; }
     klog("[install] control: 'install' → target idx=0x"); klog_hex(idx); klog("\n");
     return installBootableToDisk(idx, dsec);
 }
@@ -622,7 +622,7 @@ public void installBootableProof() {
     if (!instFindModule("esp-image", phys, size)) { klog("[install] not an INSTALL image (no esp-image module)\n"); return; }
     ulong dsec;
     int idx = diskFindTarget(dsec);
-    if (idx < 0) { klog("[install] READY: payload present, but no target disk attached\n"); return; }
+    if (idx < 0) { klog("[install] READY: payload present, but no target disk attached (add a 2nd disk)\n"); return; }
     klog("[install] READY: esp-image=0x"); klog_hex(size);
     klog("B, target idx=0x"); klog_hex(idx); klog(" dsec=0x"); klog_hex(dsec);
     klog(" — click 'Install to Disk' (or: echo install > /config/install.action)\n");

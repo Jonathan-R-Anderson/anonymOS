@@ -691,6 +691,17 @@ hos.iso: kernel.elf $(BUSYBOX_BIN) $(TEST_DRM_BIN) $(DRM_GPU_TEST_BIN) $(DRM_GL_
 		-o hos.iso
 
 # =========================================================
+# INSTALLER ISO (hos-install.iso) — the normal boot tree PLUS a prebuilt FAT32 "esp-image"
+# boot module (limine BOOTX64.EFI + kernel + modules + limine.conf).  Boot it (UEFI) with a
+# blank target disk; the desktop "Install to Disk" button writes that image, behind a single-
+# ESP GPT, onto the disk, so the machine then boots EpinAnonymOS from disk (no install medium).
+# See scripts/mk-install-iso.sh and scripts/vbox-install-test.sh.
+# =========================================================
+.PHONY: hos-install.iso
+hos-install.iso: hos.iso
+	scripts/mk-install-iso.sh
+
+# =========================================================
 # Minimal ISO — kernel + busybox + the signed config manifest ONLY.
 #
 # `make hos.iso` requires the full desktop deps (weston, hyprland, wl-term, …)

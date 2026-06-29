@@ -34,12 +34,12 @@ int main(void){
 
     static char A[1<<20], B[1<<20];
     int na, nb;
-    int la = render_day(seed, 24*200 /* day 200 */, A, sizeof A, &na);
-    int lb = render_day(seed, 24*200,              B, sizeof B, &nb);
+    int la = render_day(seed, 477624 /* day 200 */, A, sizeof A, &na);
+    int lb = render_day(seed, 477624,              B, sizeof B, &nb);
 
     OK("rendered day is deterministic (same seed -> identical text)", la==lb && memcmp(A,B,la)==0);
     /* volume varies day to day (quiet days are realistic) — check a week's total */
-    int week=0; for(int day=0; day<7; day++){ int n; static char T[1<<20]; render_day(seed, 24*(200+day), T, sizeof T, &n); week+=n; }
+    int week=0; for(int day=0; day<7; day++){ int n; static char T[1<<20]; render_day(seed, (477624+day*24), T, sizeof T, &n); week+=n; }
     printf("    week volume = %d lines (day 200 = %d)\n", week, na);
     OK("a week has plausible volume (> 150 lines)", week>150);
     OK("contains real-looking Alpine daemons (sshd + crond)", strstr(A,"sshd")&&strstr(A,"crond"));
@@ -48,7 +48,7 @@ int main(void){
 
     /* a different password renders a different log */
     static char C[1<<20]; int nc;
-    render_day(decoy_seed("hidden-password"), 24*200, C, sizeof C, &nc);
+    render_day(decoy_seed("hidden-password"), 477624, C, sizeof C, &nc);
     OK("different password -> different rendered log", strcmp(A,C)!=0);
 
     printf("\n  ---- sample (decoy-password, day 200, first 16 lines) ----\n");

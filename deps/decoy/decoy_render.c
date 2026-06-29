@@ -1,9 +1,9 @@
 /* deps/decoy — realistic log-line renderer (§G G3.3). See decoy_render.h. */
 #include "decoy_render.h"
 
-/* universe epoch: 2024-01-01 00:00:00 UTC (Unix seconds). The decoy's history is anchored
- * here; a real install offsets this per-seed (the seed-anchored virtual clock, §G1.1). */
-#define EPOCH_BASE 1704067200ULL
+/* §G1.1 virtual clock: events carry ABSOLUTE Unix time (event.time_sec = bin*3600 + off,
+ * bin = Unix hour). The history window is anchored to "now" by the caller (fakelogd), so
+ * the timestamps run up to the present — no fixed-2024 epoch (§E7/F3). */
 
 /* ── tiny self-contained string builder (no libc) ── */
 typedef struct { char *p; int n, max; } SB;
@@ -26,7 +26,7 @@ static void civil(int64_t z, int *y, int *m, int *d){
     *y = (int)(yoe + (uint64_t)era*400 + (mp>=10));
 }
 static void stamp(SB *b, uint64_t time_sec){
-    uint64_t u = EPOCH_BASE + time_sec;
+    uint64_t u = time_sec;                  /* already absolute Unix seconds */
     int y,mo,d; civil((int64_t)(u/86400), &y,&mo,&d);
     uint32_t s = (uint32_t)(u%86400);
     ss(b, MON[mo-1]); sc(b,' ');

@@ -23,9 +23,9 @@ g2: | $(BLD)
 h2: | $(BLD)
 	$(CC) -O2 -I$(SELF) $(SELF)/decoy.c $(SELF)/decoy_render.c $(SELF)/h2/fakelogd.c -o $(BLD)/fakelogd
 	@rm -rf $(BLD)/h2a $(BLD)/h2b $(BLD)/h2c; mkdir -p $(BLD)/h2a $(BLD)/h2b $(BLD)/h2c
-	@$(BLD)/fakelogd decoy-password  --root $(BLD)/h2a --start-day 100 --days 14
-	@$(BLD)/fakelogd decoy-password  --root $(BLD)/h2b --start-day 100 --days 14
-	@$(BLD)/fakelogd hidden-password --root $(BLD)/h2c --start-day 100 --days 14
+	@$(BLD)/fakelogd decoy-password  --root $(BLD)/h2a --now 1719500000 --days 14
+	@$(BLD)/fakelogd decoy-password  --root $(BLD)/h2b --now 1719500000 --days 14
+	@$(BLD)/fakelogd hidden-password --root $(BLD)/h2c --now 1719500000 --days 14
 	@echo "--- §H2 self-test ---"
 	@diff -rq $(BLD)/h2a $(BLD)/h2b >/dev/null && echo "  [PASS] same password -> byte-identical /var/log" || echo "  [FAIL] not deterministic"
 	@! diff -rq $(BLD)/h2a/var/log/messages $(BLD)/h2c/var/log/messages >/dev/null && echo "  [PASS] different password -> different /var/log" || echo "  [FAIL] password-insensitive"

@@ -57,9 +57,21 @@ curl
 tmux
 EOF
 
-# ── seed a year of deterministic, password-keyed fake /var/log history (§G/§H2) ──
+# ── seed deterministic, password-keyed fake /var/log history ending ~now (§G/§H2/F3) ──
+# The seed-anchored virtual clock: fakelogd ages the "install date" 6–18 months back and
+# runs history up to NOW, so logs end at the present (not a fixed 2024 epoch).
+NOW="${DECOY_NOW:-$(date +%s)}"
 mkdir -p "$ROOTFS/var/log"
-"$FAKELOGD" "$PW" --root "$ROOTFS" --start-day 0 --days 365 >/dev/null
+"$FAKELOGD" "$PW" --root "$ROOTFS" --now "$NOW" >/dev/null
+
+# coherent file mtimes: home/recent activity dated within the last few days (NOT 1970/now-
+# only), consistent with logs that run up to NOW — closing the §E7/F3 timestamp gap.
+RECENT=$((NOW - 2*86400))
+for fpath in "$ROOTFS/home/decoyuser/.bash_history" "$ROOTFS/home/decoyuser/Documents/notes.txt" \
+             "$ROOTFS/home/decoyuser/.profile" "$ROOTFS/home/decoyuser"; do
+  touch -d "@$RECENT" "$fpath" 2>/dev/null || true
+done
+echo "$NOW" > "$ROOTFS/etc/.decoy-epoch"          # recorded for the live daemon to continue
 
 # a lastlog/wtmp-ish marker + a believable boot id
 echo "$(head -c16 /dev/zero | tr '\0' '0')" > "$ROOTFS/etc/machine-id" 2>/dev/null || true

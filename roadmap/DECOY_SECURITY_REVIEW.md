@@ -85,7 +85,16 @@ full-disk install is not wired** — see INSTALLER.md "in-kernel multi-MB rootfs
 padded) and **random-fill every** unused sector of the outer partition (CSPRNG, not the test PRNG), so
 an entropy map is featureless. Add an entropy-uniformity assertion to the install verifier.
 
-### F3 — Timestamp incoherence (no virtual clock)  ·  **HIGH**
+### F3 — Timestamp incoherence (no virtual clock)  ·  **HIGH** · ✅ **ADDRESSED**
+**Fixed:** the §G1.1 seed-anchored virtual clock. Events now carry **absolute Unix time**
+(`decoy_render` no longer adds a fixed-2024 epoch); `fakelogd` ages the "install date" a seed-derived
+6–18 months back and runs history up to a `--now` (the real build time), skipping any strictly-future
+event. `customize.sh` then sets coherent file mtimes (home/recent activity dated within the last days,
+logs touched to `now`) and records `now`. Re-probe: 540 days of history ending **~1 h before now, 0
+future lines**, `messages` mtime = now, `.bash_history` = 2 days ago (all ≤ now). The 18-month gap is
+gone. Original finding below for the record.
+
+
 ```
   syslog spans     : Jan 1 .. Dec 30   (2024, the fixed EPOCH_BASE)
   .bash_history mtime: 2026-06-28      (now)        system clock: 2026-06-28
@@ -122,17 +131,19 @@ maintenance daemon remains (if any). Kernel-level hiding is a last resort and is
 ---
 
 ## Prioritized remediation
-1. ~~**F1 distro-consistent generator**~~ ✅ · ~~**F2 full-entropy install**~~ ✅ — the two
-   prerequisites that made the decoy *trivially* synthetic are resolved.
-2. **F3 virtual clock + coherent mtimes** (the remaining content blocker), then
-   **F5 disk-illusion (§H3)**.
+1. ~~**F1 distro-consistent generator**~~ ✅ · ~~**F2 full-entropy install**~~ ✅ ·
+   ~~**F3 virtual clock + coherent mtimes**~~ ✅ — the three content findings that made the *offline
+   image* and the *booted decoy's history* detectable are all resolved.
+2. **F5 disk-illusion (§H3)** — the remaining *once-booted* gap (the decoy must not see unaccounted
+   disk space).
 3. **F4 fixed candidate budget**, **F6 concealment (§H4, hide-in-plain-sight)**.
 
 ## Verdict
-The cryptographic and boot *mechanism* is sound and validated. The two findings that made the decoy
-*trivially* synthetic are now fixed — **F1** (log/distro consistency) and **F2** (a featureless entropy
-map; system + outer uniformly 8.000 bits/byte). The remaining blocker to claiming real plausible
-deniability is **F3** (timestamp coherence / a seed-anchored virtual clock); after that, §H3 (the
-decoy must not see unaccounted disk space) and §H4 (the generator must not be findable) are the
-once-booted gaps. The crypto was never the weak point — deniability is a content + integration
-discipline, and it is now most of the way there.
+The cryptographic and boot *mechanism* is sound and validated, and the three findings that made the
+decoy detectable from its *content* are now fixed: **F1** (log/distro consistency), **F2** (a
+featureless entropy map — system + outer uniformly 8.000 bits/byte), and **F3** (a seed-anchored
+virtual clock — history runs to the present with coherent mtimes). What remains are the **once-booted**
+gaps that need a coerced examiner *inside* the decoy: **§H3** (the full-disk illusion, so the decoy
+can't see the hidden volume's space) and **§H4** (concealing the generator). The offline image and the
+decoy's own history are now consistent with a genuine, lived-in system; the crypto was never the weak
+point, and the deniability content discipline is essentially in place.

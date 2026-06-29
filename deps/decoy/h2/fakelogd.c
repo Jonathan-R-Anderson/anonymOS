@@ -13,6 +13,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <utime.h>
 #include "decoy.h"
 #include "decoy_render.h"
 
@@ -23,14 +25,21 @@ static int by_time(const void *a, const void *b){
 
 int main(int argc, char **argv){
     const char *pw="decoy-password", *root=".";
-    unsigned long start_day=0, days=30;
+    unsigned long days=0;            /* 0 -> seed-derived age (6–18 months) */
+    long now=0;                      /* 0 -> real time */
     for (int i=1;i<argc;i++){
-        if      (!strcmp(argv[i],"--root")      && i+1<argc) root=argv[++i];
-        else if (!strcmp(argv[i],"--start-day") && i+1<argc) start_day=strtoul(argv[++i],0,10);
-        else if (!strcmp(argv[i],"--days")      && i+1<argc) days=strtoul(argv[++i],0,10);
-        else if (argv[i][0] != '-')                          pw=argv[i];
+        if      (!strcmp(argv[i],"--root") && i+1<argc) root=argv[++i];
+        else if (!strcmp(argv[i],"--now")  && i+1<argc) now=strtol(argv[++i],0,10);
+        else if (!strcmp(argv[i],"--days") && i+1<argc) days=strtoul(argv[++i],0,10);
+        else if (argv[i][0] != '-')                     pw=argv[i];
     }
     uint64_t seed = decoy_seed(pw);
+    if (now == 0) now = (long)time(0);
+    /* §G1.1/F3 seed-anchored virtual clock: the decoy was "installed" a seed-derived
+     * 6–18 months ago and has been running since; history runs up to `now`. */
+    if (days == 0) days = 180 + (unsigned long)(seed % 360);
+    uint64_t now_bin   = (uint64_t)now / 3600;
+    uint64_t start_bin = now_bin - days * 24;
 
     char dir[1024], path[1024];
     snprintf(dir,sizeof dir,"%s/var",root);     mkdir(dir,0755);
@@ -45,12 +54,12 @@ int main(int argc, char **argv){
     long total=0, na=0, ns=0;
     static DecoyEvent ev[1<<16];
     char line[512];
-    for (unsigned long d=0; d<days; d++){
-        uint64_t bin0=(start_day+d)*24;
+    for (uint64_t b0=start_bin; b0<now_bin; b0+=24){
         int n=0;
-        for (int s=0;s<DECOY_NSUB && n<(1<<16)-64;s++) n += decoy_events(seed,s,bin0,24,ev+n,(1<<16)-64-n);
+        for (int s=0;s<DECOY_NSUB && n<(1<<16)-64;s++) n += decoy_events(seed,s,b0,24,ev+n,(1<<16)-64-n);
         qsort(ev,n,sizeof ev[0],by_time);
         for (int i=0;i<n;i++){
+            if (ev[i].time_sec > (uint64_t)now) continue;     /* never log into the future */
             int len=decoy_render(seed,&ev[i],line,sizeof line-2);
             line[len++]='\n'; line[len]=0;
             int sub=ev[i].subsys;
@@ -60,7 +69,11 @@ int main(int argc, char **argv){
         }
     }
     fclose(fsys); fclose(fauth);
-    printf("[fakelogd] backfilled %ld lines over %lu days (start day %lu) -> %s/var/log/"
-           " (messages=%ld auth.log=%ld)\n", total, days, start_day, root, ns, na);
+    /* coherent mtimes: the logs were last written ~now (consistent with the timeline) */
+    struct utimbuf ut = { .actime = now, .modtime = now };
+    snprintf(path,sizeof path,"%s/var/log/messages",root); utime(path,&ut);
+    snprintf(path,sizeof path,"%s/var/log/auth.log",root);  utime(path,&ut);
+    printf("[fakelogd] backfilled %ld lines, %lu days ending %ld -> %s/var/log/"
+           " (messages=%ld auth.log=%ld)\n", total, days, now, root, ns, na);
     return 0;
 }

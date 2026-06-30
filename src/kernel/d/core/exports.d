@@ -15,6 +15,7 @@ bool handlePageFault(int taskId, ulong virtAddr, bool isWrite);
 
 import core.globals;
 import core.utils;
+import core.console : console_force_framebuffer_log;
 
 void trap0();
 void trap1();
@@ -83,6 +84,7 @@ __gshared multiboot_module_t* g_mboot_modules;
 extern(C) void c_assert(int condition);
 
 void __assert(const char *msg, const char *file, int line) {
+    console_force_framebuffer_log();
     klog("ASSERTION FAILED: ");
     klog(msg);
     klog("\nFile: "); klog(file);
@@ -91,6 +93,7 @@ void __assert(const char *msg, const char *file, int line) {
 }
 
 void report_kernel_panic(const char* msg) {
+    console_force_framebuffer_log();
     klog("KERNEL PANIC: ");
     klog(msg);
     while(1) { asm @nogc nothrow { hlt; } }
@@ -114,16 +117,29 @@ extern(C) ulong report_kernel_fault(ulong trap, ulong err, ulong rip, ulong rfla
             return 1;
     }
 
+    console_force_framebuffer_log();
+    const ulong vec = trap & 0xff;
     klog("KERNEL FAULT trap=");
     klog_hex(trap);
     klog(" err=");
     klog_hex(err);
     klog(" rip=");
     klog_hex(rip);
+    enum ulong KBASE = 0xffffffff80000000UL;
+    if (rip >= KBASE) {
+        klog(" rip-off=");
+        klog_hex(rip - KBASE);
+    }
     klog(" rflags=");
     klog_hex(rflags);
-    klog(" cr2=");
-    klog_hex(cr2);
+    if (vec == 14) {
+        klog(" pf=");
+        klog((err & 1) ? "protection".ptr : "not-present".ptr);
+        klog((err & 2) ? "/write".ptr : "/read".ptr);
+        klog((err & 4) ? "/user".ptr : "/supervisor".ptr);
+        klog(" cr2=");
+        klog_hex(cr2);
+    }
     klog("\n");
     while(1) { asm @nogc nothrow { cli; hlt; } }
 }
@@ -179,6 +195,7 @@ extern(C) void copy_phys_page(ulong srcPhys, ulong dstPhys)
 }
 
 void report_sse_panic() {
+    console_force_framebuffer_log();
     klog("SSE PANIC!\n");
     while(1) { asm @nogc nothrow { hlt; } }
 }

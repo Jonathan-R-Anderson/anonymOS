@@ -2,6 +2,7 @@
 module core.boot_integrity;
 
 import core.io : klog, klog_hex;
+import core.console : console_force_framebuffer_log;
 import core.exports : g_mboot_modules, g_module_count, phys_to_virt;
 import core.crypto : Sha256, sha256Init, sha256Update, sha256Final, sha256, ctEqual32;
 import core.install_config : installConfigBootIntegrityZkSync;
@@ -61,6 +62,7 @@ __gshared bool g_biChainAttempted;
 __gshared bool g_biChainOk;
 
 private void biPanic(const(char)* msg) {
+    console_force_framebuffer_log();
     klog("[boot-integrity] FATAL: ");
     klog(msg);
     klog("\n");

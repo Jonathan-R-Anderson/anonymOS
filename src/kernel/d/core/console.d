@@ -11,10 +11,33 @@ import arch.x86_64.bootstrap : fb_putchar;
 // on so the log is unaffected.  Cleared by the DRM dumb-buffer path in posix.d.
 __gshared bool g_fbConsoleEnabled = true;
 
+void console_set_framebuffer_enabled(bool enabled) {
+    g_fbConsoleEnabled = enabled;
+}
+
+void console_force_framebuffer_log() {
+    g_fbConsoleEnabled = true;
+}
+
 void console_putchar(char c) {
     kchar(c);
     if (g_fbConsoleEnabled)
         fb_putchar(c);
+}
+
+void console_serial_putchar(char c) {
+    kchar(c);
+}
+
+void console_framebuffer_putchar(char c) {
+    fb_putchar(c);
+}
+
+void console_framebuffer_write(const(char)* s) {
+    if (s is null) return;
+    while (*s) {
+        console_framebuffer_putchar(*s++);
+    }
 }
 
 void console_write(const(char)* s, size_t n) {

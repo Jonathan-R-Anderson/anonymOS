@@ -26,7 +26,7 @@ import display.framebuffer : framebufferAvailable, initFramebuffer, framebufferD
 import display.common : glyphWidth, glyphHeight;
 import core.console : g_fbConsoleEnabled;
 import core.random : rdtsc; // TSC — the only monotonic counter usable with interrupts off
-import core.io : klog;
+import core.io : klog, klog_dec;
 import core.stdc.string : memcpy; // atomic back-buffer → framebuffer flip (no tearing)
 // The bootstrap-level Limine framebuffer pointer (set in bootstrap_kernel
 // before d_kernel_main). The display module's own g_fb is NOT initialized until
@@ -91,6 +91,21 @@ private __gshared uint g_seed = 0xA10A5EED; // seed; rewritten to a real value a
 // Sized for up to 1920×1080 (the same cap the compositor uses).
 private enum SPLASH_MAX_PIXELS = 1920u * 1080u;
 private __gshared uint[SPLASH_MAX_PIXELS] g_backBuf;
+
+private bool splashFitsBackBuffer(uint width, uint height) @nogc nothrow
+{
+    const ulong pixels = cast(ulong) width * cast(ulong) height;
+    return pixels != 0 && pixels <= SPLASH_MAX_PIXELS;
+}
+
+private void splashLogOversized(uint width, uint height) @nogc nothrow
+{
+    klog("[splash] skipping oversized framebuffer ");
+    klog_dec(width);
+    klog("x");
+    klog_dec(height);
+    klog("; keeping framebuffer boot log enabled\n");
+}
 
 // Deterministic LCG so the particle field is reproducible (and avoids pulling
 // in the kernel's entropy source for a cosmetic boot screen).
@@ -324,9 +339,16 @@ public void splashRun()
     if (!framebufferAvailable())
     {
         if (g_fb is null) return; // serial-only/headless: nothing to draw
+        const uint bootW = cast(uint) g_fb.width;
+        const uint bootH = cast(uint) g_fb.height;
+        if (!splashFitsBackBuffer(bootW, bootH))
+        {
+            splashLogOversized(bootW, bootH);
+            return;
+        }
         const bool isBGR = g_fb.blue_mask_shift > g_fb.red_mask_shift;
         initFramebuffer(cast(const(void)*) g_fb.address,
-                        cast(uint) g_fb.width, cast(uint) g_fb.height,
+                        bootW, bootH,
                         cast(uint) g_fb.pitch, cast(uint) g_fb.bpp,
                         isBGR, 0, true);
     }
@@ -335,14 +357,18 @@ public void splashRun()
     Canvas frontCanvas = createFramebufferCanvas();
     if (!frontCanvas.available) return;
 
-    // Stop the kernel text console scribbling over our splash (serial keeps
-    // logging). The userspace compositor will claim the framebuffer next.
-    g_fbConsoleEnabled = false;
-
     const uint w = frontCanvas.width;
     const uint h = frontCanvas.height;
     const ulong pixels = cast(ulong) w * cast(ulong) h;
-    if (pixels == 0 || pixels > SPLASH_MAX_PIXELS) return; // too big for the back buffer
+    if (!splashFitsBackBuffer(w, h))
+    {
+        splashLogOversized(w, h);
+        return;
+    }
+
+    // Stop the kernel text console scribbling over our splash (serial keeps
+    // logging). The userspace compositor will claim the framebuffer next.
+    g_fbConsoleEnabled = false;
 
     // Double-buffer: render each frame to an offscreen back buffer, then flip it
     // to the live framebuffer in one memcpy. Without this the per-line redraw is

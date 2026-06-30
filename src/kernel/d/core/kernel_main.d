@@ -9,6 +9,8 @@ import core.hoscall : configPackagesDump;                                 // DOM
 import core.addrspace;
 import core.elf_loader;
 import core.io;
+import core.console : console_set_framebuffer_enabled, console_force_framebuffer_log,
+                      console_framebuffer_write;
 import core.globals;
 import core.exports :
     phys_to_virt, copy_phys_page,
@@ -418,6 +420,15 @@ private void exitTask(int tid, int code) {
     const int exitLinuxPid = linuxPidForTask(tid);
     t.exited   = true;
     t.exitCode = code;
+    // direct-fb (real-HW): a process died — name + code. If init=weston shows up here
+    // with a nonzero code, the compositor crashed before claiming the display.
+    if (g_procFbLogN < 64) {
+        ++g_procFbLogN;
+        console_framebuffer_write("\n[proc] exit t="); fbDec(cast(ulong)tid);
+        console_framebuffer_write(" code="); fbDec(cast(ulong)(cast(uint)code & 0xffff));
+        auto _enm = g_taskExecName[tid];
+        if (_enm !is null) { console_framebuffer_write(" "); console_framebuffer_write(_enm); }
+    }
     g_pollBlocked[tid] = false;   // PERF: drop any parked poll/epoll state
     if (tid >= 0 && tid < MAX_TASKS) {
         g_taskExecModPhys[tid] = 0;                 // A4: clear exe info
@@ -865,8 +876,10 @@ private long execveTask(int tid, ulong pathPtr, ulong argvPtr, ulong envpPtr) {
         klog("[exec] not found: ");
         klog(path);
         klog("\n");
+        procFb("exec-ENOENT", cstrBasenameK(path));  // direct-fb: a missing binary on real HW
         return -2; // ENOENT
     }
+    procFb("exec", execName !is null ? execName : pathBase);  // direct-fb: process launched
 
     // Track A A4: remember this task's binary so a later /proc/self/exe re-exec
     // (busybox standalone) resolves back to it.
@@ -1233,6 +1246,11 @@ private __gshared bool g_lklTestStarted = false;
 private __gshared int  g_lklTestDelay   = 0;
 private void maybeSpawnLklTest() {
     if (g_lklTestStarted) return;
+    if (bootHasInstallPayload()) {
+        g_lklTestStarted = true;
+        klog("[lkl] install media: skipping automatic LKL hardware demo\n");
+        return;
+    }
     if (g_lklTestDelay++ < 80) return;   // let the system settle first
     g_lklTestStarted = true;             // one-shot, whether or not we actually launch
     // Find the LKL's device FIRST and only launch lkl-boot when one is attached (via qemu-run.sh
@@ -1563,19 +1581,26 @@ private void ps2WaitRead() @nogc nothrow {
 }
 
 private void initPS2Mouse() @nogc nothrow {
-    // Enable auxiliary device (mouse)
-    ps2WaitWrite(); outb(0x64, 0xA8);
-    // Enable mouse interrupts: read command byte, set bit 1, write back
+    // Enable both devices (keyboard + auxiliary/mouse).
+    ps2WaitWrite(); outb(0x64, 0xAE);       // enable keyboard port
+    ps2WaitWrite(); outb(0x64, 0xA8);       // enable aux (mouse) port
+    // Configure the command byte: read, set our bits, write back.
     ps2WaitWrite(); outb(0x64, 0x20);       // read command byte
     ps2WaitRead();
     ubyte cb = inb(0x60);
-    cb |= 0x02;  // enable IRQ12
-    cb &= ~0x20; // clear "mouse disabled" bit
+    cb |= 0x01;  // enable IRQ1  (keyboard) — harmless if the PIC never delivers it
+    cb |= 0x02;  // enable IRQ12 (mouse)
+    cb |= 0x40;  // TRANSLATION on → scancode set 1 (matches g_sc1_keycode)
+    cb &= ~0x10; // clear "keyboard clock disable" → keyboard active
+    cb &= ~0x20; // clear "mouse clock disable"   → mouse active
     ps2WaitWrite(); outb(0x64, 0x60);       // write command byte
     ps2WaitWrite(); outb(0x60, cb);
-    // Send "enable data reporting" to mouse
+    // Mouse: enable data reporting (stream mode).
     ps2WaitWrite(); outb(0x64, 0xD4);       // route next byte to mouse
     ps2WaitWrite(); outb(0x60, 0xF4);       // enable reporting
+    ps2WaitRead();  inb(0x60);              // discard ACK
+    // Keyboard: enable scanning (0xF4 goes to the keyboard, the default port-1 target).
+    ps2WaitWrite(); outb(0x60, 0xF4);
     ps2WaitRead();  inb(0x60);              // discard ACK
 }
 
@@ -1586,49 +1611,52 @@ private void initPS2Mouse() @nogc nothrow {
 // State machine for extended (0xE0) scancodes
 private __gshared bool g_kbd_extended = false;
 
+// Decode ONE keyboard scancode byte (set 1, controller-translated) into the input
+// ring.  Shared by the IRQ1 handler and the PIT-tick poll so the 0xE0-extended
+// state stays consistent no matter which path drains the byte.
+private void ps2FeedKbdByte(ubyte sc) @nogc nothrow {
+    if (sc == 0xE0) { g_kbd_extended = true; return; }
+    bool extended = g_kbd_extended;
+    g_kbd_extended = false;
+
+    bool release = (sc & 0x80) != 0;
+    ubyte key    = sc & 0x7F;
+
+    ushort code;
+    if (extended) {
+        // Map common E0 keys to Linux keycodes
+        switch (key) {
+            case 0x48: code = 103; break; // KEY_UP
+            case 0x50: code = 108; break; // KEY_DOWN
+            case 0x4B: code = 105; break; // KEY_LEFT
+            case 0x4D: code = 106; break; // KEY_RIGHT
+            case 0x1C: code = 96;  break; // KEY_KPENTER
+            case 0x35: code = 98;  break; // KEY_KPSLASH
+            case 0x47: code = 102; break; // KEY_HOME
+            case 0x4F: code = 107; break; // KEY_END
+            case 0x49: code = 104; break; // KEY_PAGEUP
+            case 0x51: code = 109; break; // KEY_PAGEDOWN
+            case 0x52: code = 110; break; // KEY_INSERT
+            case 0x53: code = 111; break; // KEY_DELETE
+            case 0x38: code = 100; break; // KEY_RIGHTALT
+            case 0x1D: code = 97;  break; // KEY_RIGHTCTRL
+            case 0x5B: code = 125; break; // KEY_LEFTMETA  (Super) — GUI G15 launcher
+            case 0x5C: code = 126; break; // KEY_RIGHTMETA (Super)
+            case 0x5D: code = 127; break; // KEY_COMPOSE   (Menu)
+            default:   code = 0;   break;
+        }
+    } else {
+        code = g_sc1_keycode(key);
+    }
+    if (code == 0) return;
+
+    input_enqueue(true, EV_KEY, code, release ? 0 : 1);
+    input_enqueue(true, EV_SYN, SYN_REPORT, 0);   // SYN_REPORT after each key event
+}
+
 private void handleKbdIRQ() @nogc nothrow {
     // Read all available bytes from the keyboard data port
-    while (inb(0x64) & 0x01) {
-        ubyte sc = inb(0x60);
-        if (sc == 0xE0) { g_kbd_extended = true; continue; }
-        bool extended = g_kbd_extended;
-        g_kbd_extended = false;
-
-        bool release = (sc & 0x80) != 0;
-        ubyte key    = sc & 0x7F;
-
-        ushort code;
-        if (extended) {
-            // Map common E0 keys to Linux keycodes
-            switch (key) {
-                case 0x48: code = 103; break; // KEY_UP
-                case 0x50: code = 108; break; // KEY_DOWN
-                case 0x4B: code = 105; break; // KEY_LEFT
-                case 0x4D: code = 106; break; // KEY_RIGHT
-                case 0x1C: code = 96;  break; // KEY_KPENTER
-                case 0x35: code = 98;  break; // KEY_KPSLASH
-                case 0x47: code = 102; break; // KEY_HOME
-                case 0x4F: code = 107; break; // KEY_END
-                case 0x49: code = 104; break; // KEY_PAGEUP
-                case 0x51: code = 109; break; // KEY_PAGEDOWN
-                case 0x52: code = 110; break; // KEY_INSERT
-                case 0x53: code = 111; break; // KEY_DELETE
-                case 0x38: code = 100; break; // KEY_RIGHTALT
-                case 0x1D: code = 97;  break; // KEY_RIGHTCTRL
-                case 0x5B: code = 125; break; // KEY_LEFTMETA  (Super) — GUI G15 launcher
-                case 0x5C: code = 126; break; // KEY_RIGHTMETA (Super)
-                case 0x5D: code = 127; break; // KEY_COMPOSE   (Menu)
-                default:   code = 0;   break;
-            }
-        } else {
-            code = g_sc1_keycode(key);
-        }
-        if (code == 0) continue;
-
-        input_enqueue(true, EV_KEY, code, release ? 0 : 1);
-        // SYN_REPORT after each key event
-        input_enqueue(true, EV_SYN, SYN_REPORT, 0);
-    }
+    while (inb(0x64) & 0x01) ps2FeedKbdByte(inb(0x60));
 }
 
 // 3-byte PS/2 mouse packet accumulator
@@ -1640,47 +1668,71 @@ private __gshared int      g_mouse_idx = 0;
 // emit a button event only when it actually changes (GUI roadmap G3).
 private __gshared ubyte g_mouse_prevButtons = 0;
 
+// Decode ONE PS/2 aux (mouse) byte, accumulating 3-byte packets.  Shared by the
+// IRQ12 handler and the PIT-tick poll so packet framing stays consistent.
+private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
+    // Resync: first byte must have bit 3 set
+    if (g_mouse_idx == 0 && !(b & 0x08)) return;
+    g_mouse_buf[g_mouse_idx++] = b;
+    if (g_mouse_idx < 3) return;
+    g_mouse_idx = 0;
+
+    ubyte status = g_mouse_buf[0];
+    int dx = cast(int)g_mouse_buf[1];
+    int dy = cast(int)g_mouse_buf[2];
+    // Sign-extend using bit 4/5 of status byte
+    if (status & 0x10) dx |= 0xFFFFFF00;
+    if (status & 0x20) dy |= 0xFFFFFF00;
+    // PS/2 Y axis is inverted relative to screen
+    dy = -dy;
+
+    bool any = false;
+    if (dx != 0 || dy != 0) {
+        // Accumulate raw deltas into an absolute on-screen position, stamp the
+        // kernel cursor there immediately (snappy), and report the SAME absolute
+        // position to Weston so its pointer stays exactly aligned.
+        cursorSetPos(cursorGetX() + dx, cursorGetY() + dy);
+        input_enqueue(false, EV_ABS, ABS_X, cursorGetX());
+        input_enqueue(false, EV_ABS, ABS_Y, cursorGetY());
+        any = true;
+    }
+
+    // Button state — emit only the bits that changed since the last packet.
+    ubyte cur     = cast(ubyte)(status & 0x07);
+    ubyte changed = cast(ubyte)(cur ^ g_mouse_prevButtons);
+    if (changed & 0x01) { input_enqueue(false, EV_KEY, BTN_LEFT,   (cur & 0x01) ? 1 : 0); any = true; }
+    if (changed & 0x02) { input_enqueue(false, EV_KEY, BTN_RIGHT,  (cur & 0x02) ? 1 : 0); any = true; }
+    if (changed & 0x04) { input_enqueue(false, EV_KEY, BTN_MIDDLE, (cur & 0x04) ? 1 : 0); any = true; }
+    g_mouse_prevButtons = cur;
+
+    // One SYN_REPORT terminates each evdev frame, but only when the frame
+    // carried at least one motion/button event.
+    if (any) input_enqueue(false, EV_SYN, SYN_REPORT, 0);
+}
+
 private void handleMouseIRQ() @nogc nothrow {
     while (inb(0x64) & 0x21) {      // output-buffer-full AND aux-data bit
         if (!(inb(0x64) & 0x20)) break; // not aux data — skip
-        ubyte b = inb(0x60);
-        // Resync: first byte must have bit 3 set
-        if (g_mouse_idx == 0 && !(b & 0x08)) continue;
-        g_mouse_buf[g_mouse_idx++] = b;
-        if (g_mouse_idx < 3) continue;
-        g_mouse_idx = 0;
+        ps2FeedMouseByte(inb(0x60));
+    }
+}
 
-        ubyte status = g_mouse_buf[0];
-        int dx = cast(int)g_mouse_buf[1];
-        int dy = cast(int)g_mouse_buf[2];
-        // Sign-extend using bit 4/5 of status byte
-        if (status & 0x10) dx |= 0xFFFFFF00;
-        if (status & 0x20) dy |= 0xFFFFFF00;
-        // PS/2 Y axis is inverted relative to screen
-        dy = -dy;
-
-        bool any = false;
-        if (dx != 0 || dy != 0) {
-            // Accumulate raw deltas into an absolute on-screen position, stamp the
-            // kernel cursor there immediately (snappy, IRQ-rate), and report the
-            // SAME absolute position to Weston so its pointer stays exactly aligned.
-            cursorSetPos(cursorGetX() + dx, cursorGetY() + dy);
-            input_enqueue(false, EV_ABS, ABS_X, cursorGetX());
-            input_enqueue(false, EV_ABS, ABS_Y, cursorGetY());
-            any = true;
-        }
-
-        // Button state — emit only the bits that changed since the last packet.
-        ubyte cur     = cast(ubyte)(status & 0x07);
-        ubyte changed = cast(ubyte)(cur ^ g_mouse_prevButtons);
-        if (changed & 0x01) { input_enqueue(false, EV_KEY, BTN_LEFT,   (cur & 0x01) ? 1 : 0); any = true; }
-        if (changed & 0x02) { input_enqueue(false, EV_KEY, BTN_RIGHT,  (cur & 0x02) ? 1 : 0); any = true; }
-        if (changed & 0x04) { input_enqueue(false, EV_KEY, BTN_MIDDLE, (cur & 0x04) ? 1 : 0); any = true; }
-        g_mouse_prevButtons = cur;
-
-        // One SYN_REPORT terminates each evdev frame, but only when the frame
-        // carried at least one motion/button event.
-        if (any) input_enqueue(false, EV_SYN, SYN_REPORT, 0);
+// IRQ-INDEPENDENT PS/2 drain.  On real UEFI hardware (e.g. this Framework laptop)
+// the legacy 8259 PIC often does NOT deliver IRQ1/IRQ12 — those route through the
+// IOAPIC instead — so handleKbdIRQ/handleMouseIRQ never fire and input is dead even
+// though the i8042 works (the survey's self-test passed).  The PIT IRQ0 timer DOES
+// fire reliably, so we drain the i8042 here on every tick, routing each byte by the
+// status-register aux bit (0x20) to the shared keyboard/mouse decoders.  In QEMU
+// (where IRQ1/12 work) this is a harmless backstop — the shared decode state keeps
+// it consistent with the IRQ path.
+public void ps2PollUnified() @nogc nothrow {
+    ubyte status = inb(0x64);
+    int guard = 128;                       // bound work per tick
+    while ((status & 0x01) && guard-- > 0) {
+        ubyte data = inb(0x60);
+        if (status & 0x20) ps2FeedMouseByte(data);  // aux → mouse
+        else               ps2FeedKbdByte(data);    // else → keyboard
+        status = inb(0x64);
     }
 }
 
@@ -1743,6 +1795,14 @@ private void dispatchSyscall(int tid) {
     ulong r10 = x64LastSyscallR10;
     ulong r8  = x64LastSyscallR8;
     ulong r9  = x64LastSyscallR9;
+
+    ++g_syscallScreenTrace;
+    const bool screenTraceThis =
+        g_syscallScreenTrace <= 96 ||
+        (g_syscallScreenTrace & 0xFFu) == 0;
+    if (screenTraceThis) {
+        bootProgressHex("sc", rax);
+    }
 
     // Per-syscall trace — extremely verbose (hundreds of thousands of lines) and a
     // heavy perf drain since every syscall writes to the serial port.  Gated off by
@@ -2199,6 +2259,7 @@ private void dispatchSyscall(int tid) {
                     g_futexWaitVal[tid] = cast(int)rdx;
                     g_futexWaitBitset[tid] = waitBits;
                     task.waiting = true;
+                    bootProgressEventHex("park", rax, g_parkScreenTrace);
                     scheduleNext();
                 }
                 return;
@@ -2300,6 +2361,7 @@ private void dispatchSyscall(int tid) {
             if (deliverUserSignal(tid, psig)) return;
         }
         task.regs[REG_RIP] -= 2;
+        bootProgressEventHex("park", rax, g_parkScreenTrace);
         scheduleNext();
         return;
     }
@@ -2321,11 +2383,13 @@ private void dispatchSyscall(int tid) {
     // here, so keep the original rewind/return-0 yield (re-runs each round-robin turn).
     if (ret == 0 && rax == 271) {
         task.regs[REG_RIP] -= 2;
+        bootProgressEventHex("yield", rax, g_yieldScreenTrace);
         scheduleNext();
         return;
     }
     if (ret == 0 && rax == 441) {
         task.regs[REG_RAX] = 0;
+        bootProgressEventHex("yield", rax, g_yieldScreenTrace);
         scheduleNext();
         return;
     }
@@ -2353,6 +2417,7 @@ private void dispatchSyscall(int tid) {
                 }
                 task.waiting = true;                  // park: scheduler skips us
                 task.regs[REG_RIP] -= 2;              // re-run the syscall on wake
+                bootProgressEventHex("park", rax, g_parkScreenTrace);
                 scheduleNext();
                 return;
             }
@@ -2389,6 +2454,7 @@ private void dispatchSyscall(int tid) {
         }
         task.waiting = true;                       // park (NOT a busy spin); re-checked next PIT tick
         task.regs[REG_RIP] -= 2;
+        bootProgressEventHex("park", rax, g_parkScreenTrace);
         scheduleNext();
         return;
     }
@@ -2421,6 +2487,7 @@ private void dispatchSyscall(int tid) {
                 }
                 task.waiting = true;
                 task.regs[REG_RIP] -= 2;                    // re-run the sleep syscall on wake
+                bootProgressEventHex("park", rax, g_parkScreenTrace);
                 scheduleNext();
                 return;
             }
@@ -2433,10 +2500,12 @@ private void dispatchSyscall(int tid) {
     if (ret > 0 && rax == 46) {
         task.regs[REG_RAX] = cast(ulong)ret;
         wakePollers();   // the peer (parked on its socket via poll/epoll) can now read
+        bootProgressEventHex("yield", rax, g_yieldScreenTrace);
         scheduleNext();
         return;
     }
 
+    if (screenTraceThis) bootProgressHex("ret", cast(ulong)ret);
     task.regs[REG_RAX] = cast(ulong)ret;
 }
 
@@ -2681,9 +2750,54 @@ private void networkSelfTest() @nogc nothrow {
 
 __gshared uint g_apPitLogCtr = 0;   // SMP_ROADMAP S4.4d: paces the BSP-side AP-progress klog
 __gshared uint g_apPitLogN   = 0;   // SMP_ROADMAP S4.4d: caps the proof klog (stop after 40 — no forever-spam)
+private __gshared bool g_loopTagPrinted = false;
+private __gshared bool g_runTagPrinted = false;
+private __gshared bool g_backTagPrinted = false;
+private __gshared bool g_syscallTagPrinted = false;
+private __gshared bool g_irq0TagPrinted = false;
+private __gshared bool g_schedTagPrinted = false;
+private __gshared uint g_syscallScreenTrace = 0;
+private __gshared uint g_parkScreenTrace = 0;
+private __gshared uint g_yieldScreenTrace = 0;
+// Real-hardware desktop bring-up: the per-syscall sc/ret/yield/park screen trace
+// below writes DIRECTLY to the framebuffer (ungated by g_fbConsoleEnabled), so it
+// would keep painting over the compositor's output forever once the desktop comes
+// up.  Once userspace is running (the "run-user" stage) the syscall-by-syscall
+// debugging is done, so go quiet: this leaves the screen clean for the [disp]
+// display-claim markers and the desktop itself.  The one-time stage tags
+// (bootProgress) are unaffected — they print once each.
+private __gshared bool g_screenTraceQuiet = false;
+
+private void bootProgressHex(const(char)* tag, ulong value) {
+    if (g_screenTraceQuiet) return;
+    char[17] buf;
+    char[16] hex = "0123456789abcdef";
+    for (int i = 15; i >= 0; --i) {
+        buf[i] = hex[cast(size_t)(value & 0xF)];
+        value >>= 4;
+    }
+    buf[16] = 0;
+    console_framebuffer_write("[");
+    console_framebuffer_write(tag);
+    console_framebuffer_write("=");
+    console_framebuffer_write(buf.ptr);
+    console_framebuffer_write("] ");
+}
+
+private void bootProgressEventHex(const(char)* tag, ulong value, ref uint counter) {
+    if (g_screenTraceQuiet) return;
+    ++counter;
+    if (counter <= 32 || (counter & 0x3Fu) == 0) {
+        bootProgressHex(tag, value);
+    }
+}
 
 private void kernelLoop() {
     while (true) {
+        if (!g_loopTagPrinted) {
+            g_loopTagPrinted = true;
+            bootProgress("loop-start");
+        }
         // SMP_ROADMAP S4.4d: take the Big Kernel Lock across the whole kernel-handling portion of
         // the loop so the AP and BSP never race on shared state (g_current_task_id, g_tasks,
         // scheduleNext, the syscall dispatch).  It is released ONLY around the userspace run below,
@@ -2702,6 +2816,10 @@ private void kernelLoop() {
         auto task = &g_tasks[tid];
 
         if (!task.active || task.exited) {
+            if (!g_schedTagPrinted) {
+                g_schedTagPrinted = true;
+                bootProgress("sched");
+            }
             scheduleNext();
             // If scheduleNext found nothing new, check whether any task can
             // still run; if not, halt cleanly instead of spinning forever.
@@ -2764,12 +2882,23 @@ private void kernelLoop() {
         bklRelease(&g_bkl);
 
         // Hand off to userspace; returns when an interrupt/syscall fires
+        if (!g_runTagPrinted) {
+            g_runTagPrinted = true;
+            bootProgress("run-user");
+            // Userspace is now live; stop the per-syscall framebuffer trace flood so
+            // the screen is free for the [disp] display-claim markers and the desktop.
+            g_screenTraceQuiet = true;
+        }
         const ulong _sw0 = rdtsc();
         ulong reason = x64SwitchToUserspace(
             cast(void*)&curUserSpaceState[0],
             cast(void*)&kernelState[0]);
 
         bklAcquire(&g_bkl);   // back in the kernel — re-take the lock for the handling below
+        if (!g_backTagPrinted) {
+            g_backTagPrinted = true;
+            bootProgress("back");
+        }
         if (tid >= 0 && tid < MAX_TASKS) {
             g_schedCyc[tid] += rdtsc() - _sw0;   // userspace cycles this quantum
             ++g_schedN[tid];
@@ -2784,6 +2913,10 @@ private void kernelLoop() {
 
         if (reason == 0x100) {
             // SYSCALL instruction
+            if (!g_syscallTagPrinted) {
+                g_syscallTagPrinted = true;
+                bootProgress("syscall");
+            }
             dispatchSyscall(tid);
         } else if ((reason & 0x80) != 0) {
             // Hardware IRQ — irq0 pushes 0x80, irq1 → 0x81, …, irq12 → 0x8C
@@ -2791,6 +2924,10 @@ private void kernelLoop() {
 
             if (irqIdx == 0) {
                 // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
+                if (!g_irq0TagPrinted) {
+                    g_irq0TagPrinted = true;
+                    bootProgress("irq0");
+                }
                 increment_ticks();
                 // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE (BSP
                 // side, under the BKL → no race, and on the BSP's CR3 so klog is safe).  These lines
@@ -2808,6 +2945,9 @@ private void kernelLoop() {
                         klog(" — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop\n");
                     }
                 }
+                // IRQ-independent PS/2 input: UEFI laptops often don't deliver legacy
+                // IRQ1/12, so drain the i8042 here on the reliable timer tick.
+                ps2PollUnified();
                 // Re-check parked poll/epoll sleepers every tick (catch-all for passive
                 // fds like the compositor's repaint timerfd).  Cheap now that the idle
                 // task — not the parked pollers' epoll re-runs — absorbs the idle core.
@@ -2853,6 +2993,7 @@ private void kernelLoop() {
             }
 
             if (!handlePageFault(tid, cr2, isWrite)) {
+                console_force_framebuffer_log();
                 klog("[kernel] fatal PF tid="); klog_hex(tid);
                 klog(" cr2="); klog_hex(cr2);
                 klog(" rip="); klog_hex(task.regs[REG_RIP]);
@@ -2876,6 +3017,7 @@ private void kernelLoop() {
             }
         } else if (reason <= 31) {
             // CPU exception — kill task
+            console_force_framebuffer_log();
             klog("[kernel] exception "); klog_hex(reason);
             klog(" tid="); klog_hex(tid);
             klog(" rip="); klog_hex(task.regs[REG_RIP]);
@@ -2913,8 +3055,40 @@ private bool findInterpModule(const(char)* interpPath, out ulong physOut, out ul
     return false;
 }
 
+private void bootProgress(const(char)* stage) {
+    console_framebuffer_write("[");
+    console_framebuffer_write(stage);
+    console_framebuffer_write("] ");
+}
+
+// Direct-to-framebuffer process trace (real-hardware bring-up).  The fast-boot
+// fb-log-off below routes klog to serial only — invisible on a serial-less laptop —
+// so process exec/exit must be written straight to the framebuffer to be seen.
+// Bounded (<=64 lines) so it can never flood the way the per-syscall trace did.
+// Shows whether the compositor (init=weston) launched, forked helpers, or died early.
+private __gshared uint g_procFbLogN = 0;
+private void fbDec(ulong v) {
+    if (v == 0) { console_framebuffer_write("0"); return; }
+    char[20] b; int i = 20;
+    while (v != 0 && i > 0) { b[--i] = cast(char)('0' + cast(uint)(v % 10)); v /= 10; }
+    char[21] t; int n = 0;
+    for (int j = i; j < 20; ++j) t[n++] = b[j];
+    t[n] = 0;
+    console_framebuffer_write(t.ptr);
+}
+private void procFb(const(char)* label, const(char)* name) {
+    if (g_procFbLogN >= 64) return;
+    ++g_procFbLogN;
+    console_framebuffer_write("\n[proc] ");
+    console_framebuffer_write(label);
+    if (name !is null) { console_framebuffer_write(" "); console_framebuffer_write(name); }
+}
+
 void d_kernel_main() {
     klog("[dkernel] EpinAnonymOS D kernel starting\n");
+    klog("[dkernel] framebuffer log off for fast boot; faults re-enable it\n");
+    console_set_framebuffer_enabled(false);
+    bootProgress("boot");
 
     // Initialise task 0 (init process) slot
     g_tasks[0] = Task.init;
@@ -2928,12 +3102,14 @@ void d_kernel_main() {
     untypedRootInit();
     g_tasks[0].untypedObjId = untypedCreateProcess(0);
     if (g_tasks[0].untypedObjId == 0) {
+        console_force_framebuffer_log();
         klog("[dkernel] ERROR: no init untyped budget\n");
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
     installTaskUntypedCap(0);
     physSetActiveUntyped(g_tasks[0].untypedObjId);
     physEnableUntypedGate(true);
+    bootProgress("task");
 
     // Find an ELF module to use as the init process.
     // Preference order: Hyprland desktop, busybox shell, then init.elf.
@@ -2985,6 +3161,7 @@ void d_kernel_main() {
         import drivers.veracrypt_impl : installBootableProof;
         installBootableProof();
     }
+    bootProgress("install");
     // F4: mount the persisted object store (formats on first boot, seeds the sample
     // app, bumps the on-disk boot counter — the cross-reboot persistence proof).
     // F4.2: locate the store-app image boot module so seeded apps get a real,
@@ -3005,6 +3182,7 @@ void d_kernel_main() {
         }
     }
     objstoreMount(appImg, appImgLen);
+    bootProgress("store");
     serviceManagerInit(USER_RIGHT_LOGIN | USER_RIGHT_SPAWN);
     // Phase 11: register the primary Output object for the firmware framebuffer
     // (the in-kernel compositor's Window/Surface objects register as it runs).
@@ -3061,6 +3239,7 @@ void d_kernel_main() {
     templateBundleProof();       // DOMAIN_MANAGER DM12: signed .hosdt template export/import + trust + rollback
     domInheritProof();           // DOMAIN_MANAGER DM9: template inheritance least-privilege merge
     smpWorkReport();             // SMP_ROADMAP S4 foundation: APs ran parallel kernel work during boot
+    bootProgress("domains");
     if (g_mboot_modules !is null && g_module_count > 0) {
         auto recs = cast(ubyte*)g_mboot_modules;
 
@@ -3151,16 +3330,20 @@ void d_kernel_main() {
     }
 
     if (initPhys == 0) {
+        console_force_framebuffer_log();
         klog("[dkernel] ERROR: no init module found, halting\n");
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
 
     klog("[dkernel] init phys="); klog_hex(initPhys);
     klog(" size="); klog_hex(initSize); klog("\n");
+    procFb("init=", initExecName);   // direct-fb: which compositor/binary is PID1
+    bootProgress("elf");
 
     // Allocate a new PML4 for the init process
     ulong pml4Phys = alloc_phys_page();
     if (pml4Phys == 0) {
+        console_force_framebuffer_log();
         klog("[dkernel] OOM allocating PML4\n");
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
@@ -3185,6 +3368,7 @@ void d_kernel_main() {
     auto res = loadElf(g_tasks[0], elfVirt, initPhys, mainBias,
                        interpPath.ptr, interpPath.length);
     if (!res.ok) {
+        console_force_framebuffer_log();
         klog("[dkernel] ELF load failed\n");
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
@@ -3225,6 +3409,7 @@ void d_kernel_main() {
     enum stackPages = 256;
     ulong stackPhys = alloc_phys_pages(stackPages);
     if (stackPhys == 0) {
+        console_force_framebuffer_log();
         klog("[dkernel] OOM allocating stack\n");
         while (true) { asm @nogc nothrow { cli; hlt; } }
     }
@@ -3265,6 +3450,7 @@ void d_kernel_main() {
     g_tasks[0].regs[REG_RIP]    = entryRip;
     g_tasks[0].regs[REG_RSP]    = rsp;
     g_tasks[0].regs[REG_RFLAGS] = 0x202; // IF=1
+    bootProgress("user");
 
     g_guiClientAutostartEnabled = initIsHyprland;
     if (g_guiClientAutostartEnabled)
@@ -3279,17 +3465,33 @@ void d_kernel_main() {
     initPIT();
     // Enable PS/2 mouse and its IRQ
     initPS2Mouse();
+    bootProgress("input");
 
     // Native boot splash: particle-network animation + boot-log console drawn
     // directly to the framebuffer (~6s). Runs now — after initPIT (so pitMs
     // paces it) and before kernelLoop (so it owns the framebuffer until the
     // desktop compositor presents). No-op on serial-only/headless boots.
-    splashRun();
+    if (installMedia) {
+        bootProgress("splash-skip");
+    } else {
+        bootProgress("splash");
+        splashRun();
+        bootProgress("post-splash");
+    }
 
+    bootProgress("smp");
     smpActivateAp();             // SMP_ROADMAP S4.4a: activate an AP into apKernelLoop (desktop is up)
-    networkSelfTest();           // NETWORK_ROADMAP N0/N1: IPv4 stack + ARP round-trip (no-op without NET=1)
+    if (installMedia) {
+        bootProgress("net-skip");
+    } else {
+        bootProgress("net");
+        networkSelfTest();       // NETWORK_ROADMAP N0/N1: IPv4 stack + ARP round-trip (no-op without NET=1)
+        bootProgress("post-net");
+    }
+    bootProgress("integrity");
     { import core.boot_integrity : bootIntegrityVerifyChain; bootIntegrityVerifyChain(); }
     klog("[dkernel] entering kernel loop\n");
+    bootProgress("loop");
     kernelLoop();
 
     // Should never reach here

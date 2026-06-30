@@ -2,6 +2,7 @@ module arch.x86_64.interrupts;
 
 import core.io;
 import core.utils;
+import core.console : console_force_framebuffer_log;
 
 extern (C):
 
@@ -35,13 +36,26 @@ __gshared idt_ptr early_idt_ptr;
 extern (C) ulong x64ReadCR2();
 
 void early_fault_handler_d(ulong err_code, ulong rip, ulong vector) {
+     console_force_framebuffer_log();
      klog("\n!!! EARLY BOOT EXCEPTION !!!\n");
      klog("Vector: "); klog_hex(vector); klog("\n");
      klog("RIP: "); klog_hex(rip); klog("\n");
+     // Kernel-relative offset (base 0xffffffff80000000) — resolve with: nm -n kernel.elf
+     enum ulong KBASE = 0xffffffff80000000UL;
+     if (rip >= KBASE) { klog("RIP-off: "); klog_hex(rip - KBASE); klog("\n"); }
      klog("Err: "); klog_hex(err_code); klog("\n");
-// Read CR2
-     ulong cr2 = x64ReadCR2();
-     klog("CR2: "); klog_hex(cr2); klog("\n");
+     // Decode #PF (vector 14) error code bits: P=present W=write U=user
+     if (vector == 14) {
+         klog("PF: ");
+         klog((err_code & 1) ? "protection".ptr : "not-present".ptr);
+         klog((err_code & 2) ? " write".ptr : " read".ptr);
+         klog((err_code & 4) ? " user".ptr : " supervisor".ptr);
+         klog("\n");
+     }
+     if (vector == 14) {
+         ulong cr2 = x64ReadCR2();
+         klog("CR2: "); klog_hex(cr2); klog("\n");
+     }
      while(1) { __asm("hlt", ""); }
 }
 

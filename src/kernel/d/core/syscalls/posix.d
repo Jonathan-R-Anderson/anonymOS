@@ -1,7 +1,7 @@
 module core.syscalls.posix;
 
 import core.io : inb;
-import core.console : console_putchar, console_backspace, g_fbConsoleEnabled;
+import core.console : console_putchar, console_serial_putchar, console_backspace, g_fbConsoleEnabled, console_framebuffer_write;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
                               AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM,
                               SOL_SOCKET, SCM_RIGHTS;
@@ -1924,7 +1924,7 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
     if (f.type == FileType.FD_CONSOLE) {
         const(char)* chars = cast(const(char)*)buf;
         foreach (i; 0 .. count) {
-            console_putchar(chars[i]);
+            console_serial_putchar(chars[i]);
         }
         return cast(ssize_t)count;
     }
@@ -1973,10 +1973,10 @@ private long fileObjWrite(ObjHeader* oh, const(void)* buf, ulong count) {
         auto src = cast(const(ubyte)*)buf;
         for (size_t i = 0; i < count; ++i) g_rt[idx].data[f.offset + i] = src[i];
         // Mirror runtime *.log writes (e.g. Hyprland's hyprland.log, which it
-        // redirects to once it disables stdout logging) onto the console so the
-        // serial log stays a complete record for debugging.
+        // redirects to once it disables stdout logging) onto serial so the log
+        // stays complete without repainting the slow framebuffer text console.
         if (rtNameEndsWith(g_rt[idx], ".log"))
-            for (size_t i = 0; i < count; ++i) console_putchar(cast(char)src[i]);
+            for (size_t i = 0; i < count; ++i) console_serial_putchar(cast(char)src[i]);
         f.offset += count;
         if (cast(uint)f.offset > g_rt[idx].size) g_rt[idx].size = cast(uint)f.offset;
         f.fileSize = g_rt[idx].size;
@@ -2586,6 +2586,7 @@ public int sys_open(const(char)* path, int flags) {
         g_fdTable[fd].backend = cstrEq(path, "/dev/dri/renderD128") ? cast(void*)1 : null;
         g_fdTable[fd].fileSize = 0;
         deviceNoteOpen(path);
+        if (cstrEq(path, "/dev/dri/card0")) dispMark(g_dispLogCard0, "card0 opened\0".ptr);
         return publishActiveFdReturn(fd);
     }
 
@@ -9698,6 +9699,47 @@ private enum DRMFB_MAX = 16;
 __gshared DrmFb[DRMFB_MAX] g_drmFbs;
 __gshared uint g_nextFbId = 1;
 
+// Display-claim trace (real-hardware bring-up, e.g. Framework 13): the compositor
+// must walk card0-open → GETRESOURCES → GETCONNECTOR → CREATE_DUMB → SETCRTC/PAGE_FLIP
+// before it owns the panel (g_fbConsoleEnabled=false). On a machine with no working
+// desktop the on-screen kernel log shows exactly which of these milestones it
+// reached. Each fires once (one-shot) so it never spams the per-frame present path.
+__gshared bool g_dispLogCard0;
+__gshared bool g_dispLogRes;
+__gshared bool g_dispLogConn;
+__gshared bool g_dispLogDumb;
+__gshared bool g_dispLogPresent;
+// IMPORTANT: write display-claim markers DIRECTLY to the framebuffer, NOT via klog.
+// On a serial-less laptop the kernel disables the gated fb console early ("framebuffer
+// log off for fast boot", kernel_main.d) so klog goes to serial only = invisible on the
+// panel. console_framebuffer_write is ungated, so these always show on-screen (and the
+// desktop's own present overwrites them once it claims the display).
+private void dispFbDec(ulong v) @nogc nothrow {
+    char[20] b; int i = 20;
+    if (v == 0) { console_framebuffer_write("0"); return; }
+    while (v != 0 && i > 0) { b[--i] = cast(char)('0' + cast(uint)(v % 10)); v /= 10; }
+    char[21] t; int n = 0;
+    for (int j = i; j < 20; ++j) t[n++] = b[j];
+    t[n] = 0;
+    console_framebuffer_write(t.ptr);
+}
+private void dispMark(ref bool once, const(char)* msg) @nogc nothrow {
+    if (once) return;
+    once = true;
+    console_framebuffer_write("\n[disp] "); console_framebuffer_write(msg);
+}
+// Bounded direct-fb trace of the modeset ioctls Weston issues AFTER create_dumb, to
+// locate the stall between buffer-creation and the first present (which never fires).
+// Not one-shot (we want the SEQUENCE: addfb→setcrtc→pageflip), just capped so it can't
+// flood if a path repeats.
+__gshared uint g_dispOpLogN;
+private void dispOp(const(char)* label, ulong num) @nogc nothrow {
+    if (g_dispOpLogN >= 24) return;
+    ++g_dispOpLogN;
+    console_framebuffer_write("\n[disp] "); console_framebuffer_write(label);
+    dispFbDec(num);
+}
+
 private DrmFb* findDrmFb(uint fbId) @nogc nothrow {
     if (fbId == 0) return null;
     foreach (ref fb; g_drmFbs)
@@ -9906,6 +9948,15 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
                rowBytes);
     }
 
+    // Real-hardware bring-up: announce the first present (display claimed) while the
+    // fb console is still live, so the confirmation lands on the panel right before
+    // we stop drawing the kernel log over the compositor's output.
+    if (!g_dispLogPresent) {
+        console_framebuffer_write("\n[disp] FIRST PRESENT fb=");
+        dispFbDec(copyW); console_framebuffer_write("x"); dispFbDec(copyH);
+        console_framebuffer_write(" -> display CLAIMED\n");
+        g_dispLogPresent = true;
+    }
     // GUI roadmap G5: overlay trusted identity borders for each client window.
     hosDrawIdentityBorders();
     g_fbConsoleEnabled = false;
@@ -10996,6 +11047,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     }
 
     case DRM_NR_MODE_GETRESOURCES: {
+        dispMark(g_dispLogRes, "drm getresources\0".ptr);
         uint cnt_crtcs = userRead!uint(arg + 36);
         uint cnt_conns = userRead!uint(arg + 40);
         uint cnt_encs  = userRead!uint(arg + 44);
@@ -11045,6 +11097,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     // out; present it immediately. fb_id == 0 means "disable the CRTC" (blank).
     case DRM_NR_MODE_SETCRTC: {
         uint fbId = userRead!uint(arg + 16);
+        dispOp("setcrtc fb=", fbId);
         if (fbId == 0) return 0;
         return drmPresentFb(fbId);
     }
@@ -11059,6 +11112,13 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
     }
 
     case DRM_NR_MODE_GETCONNECTOR: {
+        if (!g_dispLogConn) {
+            console_framebuffer_write("\n[disp] drm getconnector mode=");
+            dispFbDec(g_fb ? cast(ulong)g_fb.width  : 0); console_framebuffer_write("x");
+            dispFbDec(g_fb ? cast(ulong)g_fb.height : 0);
+            console_framebuffer_write(" bpp="); dispFbDec(g_fb ? cast(ulong)g_fb.bpp : 0);
+            g_dispLogConn = true;
+        }
         uint reqModes = userRead!uint(arg + 32);
         uint reqEncs  = userRead!uint(arg + 40);
 
@@ -11103,6 +11163,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         uint bpp    = userRead!uint(arg + 16);
         uint handle = userRead!uint(arg + 24);
         uint id = drmAddFb(handle, width, height, pitch, bpp);
+        dispOp("addfb id=", id);
         if (id == 0) return negErrno(EINVAL);
         userWrite!uint(arg + 0, id);
         return 0;
@@ -11118,6 +11179,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         uint handle  = userRead!uint(arg + 20);   // handles[0]
         uint pitch   = userRead!uint(arg + 36);   // pitches[0]
         uint id = drmAddFb(handle, width, height, pitch, fourcc);
+        dispOp("addfb2 id=", id);
         if (id == 0) return negErrno(EINVAL);
         userWrite!uint(arg + 0, id);
         return 0;
@@ -11138,6 +11200,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         uint fbId     = userRead!uint(arg + 4);
         uint flags    = userRead!uint(arg + 8);
         ulong userData = userRead!ulong(arg + 16);
+        dispOp("pageflip fb=", fbId);
         long pr = drmPresentFb(fbId);
         if (pr < 0) return pr;
         if (flags & DRM_MODE_PAGE_FLIP_EVENT)
@@ -11257,6 +11320,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         return negErrno(EINVAL);
 
     case DRM_NR_MODE_ATOMIC:
+        dispOp("atomic->EINVAL (legacy fallback expected) ", 0);
         return negErrno(EINVAL);
 
     case DRM_NR_HOS_PRESENT:
@@ -11271,13 +11335,21 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
         uint bpp = userRead!uint(arg + 8);
 
         if (bpp == 0) bpp = 32;
+        if (!g_dispLogDumb) {
+            console_framebuffer_write("\n[disp] create_dumb "); dispFbDec(w);
+            console_framebuffer_write("x"); dispFbDec(h);
+            console_framebuffer_write(" (panel "); dispFbDec(g_fb ? cast(ulong)g_fb.width : 0);
+            console_framebuffer_write("x"); dispFbDec(g_fb ? cast(ulong)g_fb.height : 0);
+            console_framebuffer_write(")");
+            g_dispLogDumb = true;
+        }
 
         uint pitch = (w * bpp / 8 + 63) & ~63u;
         ulong sz = cast(ulong)pitch * h;
 
         size_t pages = cast(size_t)((sz + 4095) >> 12);
         ulong physAddr = alloc_phys_pages(pages);
-        if (!physAddr) return negErrno(ENOSPC);
+        if (!physAddr) { dispOp("create_dumb ENOSPC pages=", pages); return negErrno(ENOSPC); }
 
         if (g_fb && w == g_fb.width && h == g_fb.height) {
             // Userspace (Hyprland) is taking over the display.  Keep dumb buffers

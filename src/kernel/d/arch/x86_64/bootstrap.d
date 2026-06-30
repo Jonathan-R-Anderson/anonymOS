@@ -8,7 +8,7 @@ import arch.x86_64.interrupts;
 import core.io;
 import core.globals;
 import core.bundle;
-import core.exports : g_module_count, g_mboot_modules, multiboot_module_t, alloc_from_regions;
+import core.exports : g_module_count, g_mboot_modules, multiboot_module_t, alloc_from_regions, phys_to_virt;
 
 @nogc nothrow:
 
@@ -51,10 +51,15 @@ private void publishBootModules(limine_module_response* mods) {
         return;
     }
 
+    klog("[pubmod] count="); klog_hex(mods.module_count);
+    klog(" modules@"); klog_hex(cast(ulong)mods.modules); klog("\n");
+
     auto records = cast(boot_module_record_t*) alloc_from_regions(mods.module_count * boot_module_record_t.sizeof);
     if (records is null) {
+        klog("[pubmod] records alloc FAILED\n");
         return;
     }
+    klog("[pubmod] records@"); klog_hex(cast(ulong)records); klog("\n");
 
     g_module_count = cast(int) mods.module_count;
     g_mboot_modules = cast(multiboot_module_t*) records;
@@ -69,6 +74,7 @@ private void publishBootModules(limine_module_response* mods) {
         records[i].mod_end = phys + mod.size;
         recordModuleName(records[i], mod.path);
     }
+    klog("[pubmod] done\n");
 }
 
 void fb_putpixel(uint x, uint y, uint color) {
@@ -436,9 +442,17 @@ void bootstrap_kernel(limine_memmap_response* mmap, limine_kernel_address_respon
         limine_file* bundleMod = mods.modules[0];
         if (bundleMod) {
              ulong bundlePhys = cast(ulong)bundleMod.address - hhdm_offset;
-             initBundle(cast(void*)bundleMod.address, bundleMod.size);
-             klog("Bundle module found at ");
+             ulong bundleVirt = phys_to_virt(bundlePhys);
+             klog("Bundle module phys=");
+             klog_hex(bundlePhys);
+             klog(" limine=");
              klog_hex(cast(ulong)bundleMod.address);
+             klog(" hhdm=");
+             klog_hex(bundleVirt);
+             klog("\n");
+             initBundle(cast(void*)bundleVirt, bundleMod.size);
+             klog("Bundle module found at ");
+             klog_hex(bundleVirt);
              klog("\n");
         }
     }

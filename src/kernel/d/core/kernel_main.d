@@ -32,7 +32,7 @@ import core.exports :
     g_module_count, g_mboot_modules, multiboot_module_t;
 import memory.mm;
 import arch.x86_64.arch;
-import arch.x86_64.bootstrap : g_fb, g_terminal;
+import arch.x86_64.bootstrap : g_fb, g_terminal, fb_draw_hud;
 
 // Linux syscall implementations already in D
 import core.syscalls.posix;
@@ -1665,19 +1665,26 @@ private void startBspApicTimer() @nogc nothrow {
     // not depend on a working legacy PIT, which UEFI laptops (Framework 13) gate off.
     // Fall back to the PIT-channel-2 measurement, then to a fixed count.  'src': 0=fixed,
     // 1=PIT, 2=CPUID.
-    uint initCount = 0x4000;
+    uint initCount = 0x1000;
     int  src = 0;
     uint crystal = apicCrystalHz();
     if (crystal != 0) {
-        uint c = crystal / 16 / 1000;                  // crystal ÷16 ÷1000 Hz
-        if (c >= 1000 && c <= 10_000_000) { initCount = c; src = 2; }
+        uint c = crystal / 16 / TICK_HZ;               // crystal ÷16 ÷TICK_HZ
+        if (c >= 200 && c <= 10_000_000) { initCount = c; src = 2; }
     }
     if (src == 0 && done && startCnt > endCnt) {
-        uint per1ms = (startCnt - endCnt) / 10;        // ticks per 1 ms → 1000 Hz period
-        if (per1ms >= 1000 && per1ms <= 10_000_000) { initCount = per1ms; src = 1; }
+        // (startCnt-endCnt) APIC ticks in 10 ms → count for one 1/TICK_HZ s period.
+        uint perTick = cast(uint)(cast(ulong)(startCnt - endCnt) * 100 / TICK_HZ);
+        if (perTick >= 200 && perTick <= 10_000_000) { initCount = perTick; src = 1; }
     }
 
     outb(0x21, cast(ubyte)(inb(0x21) | 0x01));         // mask PIC1 IRQ0 (legacy PIT)
+    // Make the 4 kHz poll the SOLE reader of the i8042: also mask IRQ1 (keyboard) and
+    // IRQ12 (mouse).  If the PIC delivers IRQ12, handleMouseIRQ runs concurrently with
+    // the poll and its reads interleave/duplicate the mouse packet bytes → desync/jump.
+    // The poll drains both kbd + mouse, so masking these loses nothing.
+    outb(0x21, cast(ubyte)(inb(0x21) | 0x02));         // mask IRQ1  (master PIC, bit 1)
+    outb(0xA1, cast(ubyte)(inb(0xA1) | 0x10));         // mask IRQ12 (slave PIC, bit 4)
 
     apicWriteReg(X2APIC_LVT_TIMER, 0x20020);           // vec 0x20, PERIODIC (bit17), unmasked
     apicWriteReg(X2APIC_TIMER_INIT, initCount);
@@ -1816,9 +1823,46 @@ private __gshared ubyte g_mouse_prevButtons = 0;
 
 // Decode ONE PS/2 aux (mouse) byte, accumulating 3-byte packets.  Shared by the
 // IRQ12 handler and the PIT-tick poll so packet framing stays consistent.
+// DIAG (real-HW trackpad): a ring of the last raw aux bytes + the last framed dx/dy,
+// shown by a top-of-screen HUD so the ACTUAL packet format the Framework trackpad
+// sends can be read off a photo (3-byte relative? 4-byte IntelliMouse? 6-byte
+// Synaptics absolute?).  g_mouseHud gates it; set false once the format is known.
+__gshared ubyte[16] g_mdbg;
+__gshared uint  g_mdbgIdx;
+__gshared int   g_mdbgDx, g_mdbgDy;
+__gshared bool  g_mouseHud = true;
+private void mouseHudDraw() @nogc nothrow {
+    if (!g_mouseHud) return;
+    static immutable char[16] hx = "0123456789abcdef";
+    char[96] b; int n = 0;
+    void put(char c) @nogc nothrow { if (n < 95) b[n++] = c; }
+    void dec(int v) @nogc nothrow {
+        if (v < 0) { put('-'); v = -v; }
+        char[12] t; int m = 0;
+        if (v == 0) t[m++] = '0';
+        while (v) { t[m++] = cast(char)('0' + v % 10); v /= 10; }
+        while (m) put(t[--m]);
+    }
+    put('M'); put(' ');
+    for (int i = 0; i < 16; i++) {
+        ubyte v = g_mdbg[(g_mdbgIdx - 16 + i) & 15];
+        put(hx[(v >> 4) & 0xF]); put(hx[v & 0xF]); put(' ');
+    }
+    put('d'); put('='); dec(g_mdbgDx); put(','); dec(g_mdbgDy);
+    b[n] = 0;
+    fb_draw_hud(b.ptr);
+}
+
 private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
-    // Resync: first byte must have bit 3 set
-    if (g_mouse_idx == 0 && !(b & 0x08)) return;
+    g_mdbg[g_mdbgIdx & 15] = b; ++g_mdbgIdx;   // DIAG: capture raw stream
+    if ((g_mdbgIdx & 7) == 0) mouseHudDraw();  // throttle the HUD redraw
+    // Resync on the packet HEADER (byte 0).  A real movement header has bit 3 = 1 AND
+    // both overflow bits (6,7) = 0.  The PS/2 protocol/error responses the trackpad emits
+    // — 0xFA (ACK), 0xFE (resend), 0xFF (error), 0xAA (self-test), 0xEE (echo) — ALL have
+    // bit 3 set too, so a bit-3-only check accepts them as a header and desyncs the frame
+    // (cursor jumps).  Requiring the overflow bits clear rejects every one of them (they
+    // all have bit 6 or 7 set), while still accepting real headers 0x08..0x3F.
+    if (g_mouse_idx == 0 && (!(b & 0x08) || (b & 0xC0) != 0)) return;
     g_mouse_buf[g_mouse_idx++] = b;
     if (g_mouse_idx < 3) return;
     g_mouse_idx = 0;
@@ -1838,11 +1882,13 @@ private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
     // (the i8042 output buffer is 1 byte deep), the main cause of cursor "jumping".
     if (status & 0xC0) { dx = 0; dy = 0; }
 
-    // Backstop: clamp implausibly large single-packet deltas.  At 1000 Hz polling a real
-    // movement is a few counts; a large delta is a misframed/garbage packet, not motion.
-    enum int MAXD = 60;
-    if (dx >  MAXD) dx =  MAXD; else if (dx < -MAXD) dx = -MAXD;
-    if (dy >  MAXD) dy =  MAXD; else if (dy < -MAXD) dy = -MAXD;
+    // Backstop: DROP (don't clamp) implausibly large single-packet deltas.  A misframed
+    // header with a sign bit set + a small magnitude byte sign-extends to ±256, so a
+    // clamp would still move the cursor by the clamp limit — dropping avoids the jump
+    // entirely.  A real per-sample move stays well under this, so normal motion passes.
+    enum int MAXD = 80;
+    if (dx > MAXD || dx < -MAXD || dy > MAXD || dy < -MAXD) { dx = 0; dy = 0; }
+    g_mdbgDx = dx; g_mdbgDy = dy;   // DIAG: last framed delta for the HUD
 
     bool any = false;
     if (dx != 0 || dy != 0) {
@@ -1884,14 +1930,18 @@ private void handleMouseIRQ() @nogc nothrow {
 // (where IRQ1/12 work) this is a harmless backstop — the shared decode state keeps
 // it consistent with the IRQ path.
 public void ps2PollUnified() @nogc nothrow {
+    // Read AT MOST ONE byte per call.  The i8042 output buffer is only 1 byte deep, and
+    // after inb(0x60) the OUTPUT-BUFFER-FULL flag (status bit 0) takes a few µs to clear.
+    // A tight re-read loop races that clear on fast real hardware and reads port 0x60
+    // again while it is stale/empty → returns 0xFF (empty read) or a duplicate byte,
+    // which injects garbage into the 3-byte mouse packet stream and desyncs the framing
+    // (the cursor jumps).  The fast 4 kHz tick already guarantees every byte is caught,
+    // so one-byte-per-tick is both correct and sufficient (and drains keyboard too).
     ubyte status = inb(0x64);
-    int guard = 128;                       // bound work per tick
-    while ((status & 0x01) && guard-- > 0) {
-        ubyte data = inb(0x60);
-        if (status & 0x20) ps2FeedMouseByte(data);  // aux → mouse
-        else               ps2FeedKbdByte(data);    // else → keyboard
-        status = inb(0x64);
-    }
+    if (!(status & 0x01)) return;                   // nothing pending
+    ubyte data = inb(0x60);
+    if (status & 0x20) ps2FeedMouseByte(data);      // aux → mouse
+    else               ps2FeedKbdByte(data);        // else → keyboard
 }
 
 // IDENTITY_DOMAIN §3/§10: the `idps` process-identity table — pid, parent, and
@@ -2913,6 +2963,12 @@ private __gshared bool g_runTagPrinted = false;
 private __gshared bool g_backTagPrinted = false;
 private __gshared bool g_syscallTagPrinted = false;
 private __gshared bool g_irq0TagPrinted = false;
+// The BSP local-APIC timer fires at TICK_HZ so the i8042 (1-byte buffer) is drained
+// fast enough to never lose a PS/2 byte; the clock/scheduler run every TICK_DIV-th
+// tick to stay at 1000 Hz.  TICK_HZ = 1000 * TICK_DIV.
+private enum uint TICK_DIV = 4;
+private enum uint TICK_HZ  = 1000 * TICK_DIV;   // 4000 Hz
+private __gshared uint g_tickDiv = 0;
 private __gshared bool g_schedTagPrinted = false;
 private __gshared uint g_syscallScreenTrace = 0;
 private __gshared uint g_parkScreenTrace = 0;
@@ -3081,38 +3137,37 @@ private void kernelLoop() {
             uint irqIdx = cast(uint)(reason - 0x80);
 
             if (irqIdx == 0) {
-                // PIT timer tick (~1000 Hz) — drives clock_gettime and timerfd
+                // Local-APIC timer, TICK_HZ (4000 Hz).  The i8042 output buffer is ONLY
+                // 1 byte deep and a PS/2 byte arrives every ~0.7-1.1 ms, so a 1000 Hz
+                // drain falls behind and LOSES bytes → 3-byte mouse packets desync → the
+                // cursor jumps.  Drain the i8042 on EVERY (fast) tick so no byte is lost;
+                // run the clock + scheduler only every TICK_DIV-th tick to keep them at
+                // 1000 Hz (clock_gettime/timerfd are in ms, and over-preempting is wasteful).
                 if (!g_irq0TagPrinted) {
                     g_irq0TagPrinted = true;
                     bootProgress("irq0");
                 }
-                increment_ticks();
-                // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE (BSP
-                // side, under the BKL → no race, and on the BSP's CR3 so klog is safe).  These lines
-                // appearing AMONG the desktop's serial output are the proof the AP runs in parallel.
-                if (g_apSyscallCount != 0 && (++g_apPitLogCtr % 2000) == 0) {
-                    // S7: the BSP fires a cross-CPU IPI (vector 0x40) at the AP — its handler bumps
-                    // ipiCount + does a TLB-shootdown CR3 reload.  Then surface all three AP counters.
-                    if (g_apActivatedIdx != 0) sendApIpi(apActivatedLapicId(), 0x40);
-                    if (g_apPitLogN < 40) {
-                        ++g_apPitLogN;
-                        klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
-                        klog(" apicTicks="); klog_hex(apActivatedApicTicks());   // S5: AP preemption timer
-                        klog(" ipiCount="); klog_hex(apActivatedIpiCount());     // S7: BSP→AP IPIs handled
-                        klog(" allocNoBKL="); klog_hex(apAllocCount());          // S6: AP allocs via the leaf lock (no BKL)
-                        klog(" — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop\n");
-                    }
-                }
-                // IRQ-independent PS/2 input: UEFI laptops often don't deliver legacy
-                // IRQ1/12, so drain the i8042 here on the reliable timer tick.
                 ps2PollUnified();
-                // Re-check parked poll/epoll sleepers every tick (catch-all for passive
-                // fds like the compositor's repaint timerfd).  Cheap now that the idle
-                // task — not the parked pollers' epoll re-runs — absorbs the idle core.
-                wakePollers();
-                lapicEOI();       // the tick now comes from the local-APIC timer (vec 0x20)
-                picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case
-                scheduleNext();
+                lapicEOI();       // EOI every interrupt so the local-APIC keeps firing
+                if ((++g_tickDiv) >= TICK_DIV) {
+                    g_tickDiv = 0;
+                    increment_ticks();   // 1000 Hz monotonic ms
+                    // SMP_ROADMAP S4.4d: surface the AP task's parallel getpid progress from HERE.
+                    if (g_apSyscallCount != 0 && (++g_apPitLogCtr % 2000) == 0) {
+                        if (g_apActivatedIdx != 0) sendApIpi(apActivatedLapicId(), 0x40);
+                        if (g_apPitLogN < 40) {
+                            ++g_apPitLogN;
+                            klog("[smp] cpu1 getpid x"); klog_hex(g_apSyscallCount);
+                            klog(" apicTicks="); klog_hex(apActivatedApicTicks());
+                            klog(" ipiCount="); klog_hex(apActivatedIpiCount());
+                            klog(" allocNoBKL="); klog_hex(apAllocCount());
+                            klog(" — AP runs preemptibly + handles IPIs + allocs lock-free-of-BKL, in PARALLEL with the desktop\n");
+                        }
+                    }
+                    wakePollers();
+                    picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case
+                    scheduleNext();
+                }
             } else if (irqIdx == 1) {
                 // PS/2 keyboard — read all available scancodes
                 handleKbdIRQ();

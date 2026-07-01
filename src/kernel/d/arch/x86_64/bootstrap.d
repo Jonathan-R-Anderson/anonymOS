@@ -339,6 +339,37 @@ void fb_write(const(char)* str) {
     }
 }
 
+// Fixed-position HUD: draw `s` on the top-left band (pixel rows 0..15) straight to
+// g_fb, bypassing the scrolling text console AND the g_desktopClaimedFb gate.  For a
+// small always-on-top diagnostic (raw mouse packets) that stays readable while the
+// compositor owns the screen.  Clears its own band first; green on black.
+void fb_draw_hud(const(char)* s) {
+    if (!g_fb || s is null) return;
+    uint* fb = cast(uint*)g_fb.address;
+    ulong pd = g_fb.pitch / 4;
+    uint bandW = 72 * 8;
+    if (bandW > g_fb.width) bandW = cast(uint)g_fb.width;
+    for (uint y = 0; y < 16 && y < g_fb.height; y++)
+        for (uint x = 0; x < bandW; x++)
+            fb[y * pd + x] = 0x00000000;
+    uint cx = 0;
+    for (const(char)* p = s; *p; ++p) {
+        ubyte idx = cast(ubyte)*p;
+        if (idx < 32 || idx >= 128) idx = 32;
+        idx -= 32;
+        immutable(ubyte)* glyph = font[idx].ptr;
+        for (uint row = 0; row < 8; row++) {
+            ubyte bits = glyph[row];
+            for (uint col = 0; col < 8; col++)
+                if (bits & (0x80 >> col)) {
+                    fb_putpixel(cx * 8 + col, row * 2,     0x0000FF00);
+                    fb_putpixel(cx * 8 + col, row * 2 + 1, 0x0000FF00);
+                }
+        }
+        if (++cx >= g_fb.width / 8) break;
+    }
+}
+
 void term_write(const(char)* str) {
     if (g_terminal && g_term_write && g_terminal.terminal_count > 0) {
         // Calculate string length

@@ -1,7 +1,7 @@
 module core.syscalls.posix;
 
 import core.io : inb;
-import core.console : console_putchar, console_serial_putchar, console_backspace, g_fbConsoleEnabled, console_framebuffer_write;
+import core.console : console_putchar, console_serial_putchar, console_backspace, g_fbConsoleEnabled, console_framebuffer_write, g_desktopClaimedFb;
 import core.syscalls.socket : sockaddr, sockaddr_un, msghdr, iovec, cmsghdr,
                               AF_UNIX, AF_INET, AF_NETLINK, SOCK_STREAM, SOCK_DGRAM,
                               SOL_SOCKET, SCM_RIGHTS;
@@ -9960,6 +9960,7 @@ private long drmPresentFb(uint fbId) @nogc nothrow {
     // GUI roadmap G5: overlay trusted identity borders for each client window.
     hosDrawIdentityBorders();
     g_fbConsoleEnabled = false;
+    g_desktopClaimedFb = true;   // the compositor now presents — no more kernel fb drawing
     // Weston just overwrote the whole framebuffer; re-stamp the overlay cursor.
     cursorRepaintAfterPresent();
     presentAccount(_t0, rdtsc(), cast(ulong)copyW * copyH, true);
@@ -11355,6 +11356,7 @@ private long handleDrmIoctl(int ifd, ulong request, ulong arg) {
             // Userspace (Hyprland) is taking over the display.  Keep dumb buffers
             // distinct, but stop drawing the kernel text console over GUI output.
             g_fbConsoleEnabled = false;
+            g_desktopClaimedFb = true;   // permanently silence ALL kernel fb drawing (incl. fault log + diagnostics)
         }
 
         int slot = -1;

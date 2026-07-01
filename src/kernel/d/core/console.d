@@ -11,17 +11,27 @@ import arch.x86_64.bootstrap : fb_putchar;
 // on so the log is unaffected.  Cleared by the DRM dumb-buffer path in posix.d.
 __gshared bool g_fbConsoleEnabled = true;
 
+// Set true once the compositor owns the framebuffer (its first full-screen dumb
+// buffer / present).  After that the kernel must NEVER draw to the framebuffer —
+// not the debug console, not a re-enabled fault log, not the direct-fb diagnostics
+// — or the text scribbles over the live desktop.  Serial (kchar) is unaffected.
+__gshared bool g_desktopClaimedFb = false;
+
 void console_set_framebuffer_enabled(bool enabled) {
     g_fbConsoleEnabled = enabled;
 }
 
 void console_force_framebuffer_log() {
+    // Once the desktop owns the screen, a recoverable userspace fault (SIGSEGV) must
+    // not re-enable the on-screen log — that scribbles the crash + every later klog
+    // over the compositor's output.  The fault still goes to serial.
+    if (g_desktopClaimedFb) return;
     g_fbConsoleEnabled = true;
 }
 
 void console_putchar(char c) {
     kchar(c);
-    if (g_fbConsoleEnabled)
+    if (g_fbConsoleEnabled && !g_desktopClaimedFb)
         fb_putchar(c);
 }
 
@@ -30,6 +40,7 @@ void console_serial_putchar(char c) {
 }
 
 void console_framebuffer_putchar(char c) {
+    if (g_desktopClaimedFb) return;   // desktop owns the screen — don't scribble over it
     fb_putchar(c);
 }
 

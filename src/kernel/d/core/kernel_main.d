@@ -1600,6 +1600,23 @@ private uint apicReadReg(uint reg) @nogc nothrow {
     }
     return outv;
 }
+// The local-APIC timer's input frequency, from CPUID.15h ECX = the core crystal
+// clock (populated on modern Intel — Skylake+ / all 12th-gen+ parts, i.e. this
+// Framework 13).  0 if the CPU doesn't report it.  This is the reliable rate source
+// when the legacy PIT (and thus PIT-channel-2 calibration) is dead on UEFI laptops.
+private uint apicCrystalHz() @nogc nothrow {
+    uint crystal;
+    asm @nogc nothrow {
+        push RBX;
+        mov EAX, 0x15;
+        xor ECX, ECX;
+        cpuid;
+        mov crystal, ECX;   // ECX = core crystal clock frequency in Hz
+        pop RBX;
+    }
+    return crystal;
+}
+
 // x2APIC End-Of-Interrupt (MSR 0x80B = 0).  MUST be sent from the irqIdx==0 tick
 // handler so the local-APIC delivers the next timer interrupt.
 public void lapicEOI() @nogc nothrow {
@@ -1644,18 +1661,37 @@ private void startBspApicTimer() @nogc nothrow {
     }
     uint endCnt = apicReadReg(X2APIC_TIMER_CUR);
 
-    uint initCount = 0x4000;                            // fallback if calibration is unusable
-    if (done && startCnt > endCnt) {
+    // Prefer CPUID.15h (the crystal clock ÷16 divider → 1000 Hz) — it is exact and does
+    // not depend on a working legacy PIT, which UEFI laptops (Framework 13) gate off.
+    // Fall back to the PIT-channel-2 measurement, then to a fixed count.  'src': 0=fixed,
+    // 1=PIT, 2=CPUID.
+    uint initCount = 0x4000;
+    int  src = 0;
+    uint crystal = apicCrystalHz();
+    if (crystal != 0) {
+        uint c = crystal / 16 / 1000;                  // crystal ÷16 ÷1000 Hz
+        if (c >= 1000 && c <= 10_000_000) { initCount = c; src = 2; }
+    }
+    if (src == 0 && done && startCnt > endCnt) {
         uint per1ms = (startCnt - endCnt) / 10;        // ticks per 1 ms → 1000 Hz period
-        if (per1ms >= 1000 && per1ms <= 10_000_000) initCount = per1ms;
+        if (per1ms >= 1000 && per1ms <= 10_000_000) { initCount = per1ms; src = 1; }
     }
 
     outb(0x21, cast(ubyte)(inb(0x21) | 0x01));         // mask PIC1 IRQ0 (legacy PIT)
 
     apicWriteReg(X2APIC_LVT_TIMER, 0x20020);           // vec 0x20, PERIODIC (bit17), unmasked
     apicWriteReg(X2APIC_TIMER_INIT, initCount);
-    klog("[apic-timer] BSP tick on vec 0x20, init="); klog_hex(initCount);
-    klog(done ? " (calibrated)\n".ptr : " (fallback)\n".ptr);
+    // Direct-fb (visible on a serial-less laptop): the calibration result.  If this
+    // says "fallback" or the count is implausible, the tick rate is wrong — which
+    // makes the mouse jump (packets pile up between infrequent polls) and the 3 s
+    // installer autostart stretch to many real seconds.
+    console_framebuffer_write("\n[apic-timer] src=");
+    console_framebuffer_write(src == 2 ? "CPUID.15h".ptr : (src == 1 ? "PIT-ch2".ptr : "FIXED-fallback".ptr));
+    console_framebuffer_write(" crystalHz=0x"); { char[9] hb; char[16] hx="0123456789abcdef"; uint v=crystal; for(int i=7;i>=0;--i){hb[i]=hx[v&0xF];v>>=4;} hb[8]=0; console_framebuffer_write(hb.ptr); }
+    console_framebuffer_write(" init=0x"); { char[9] hb; char[16] hx="0123456789abcdef"; uint v=initCount; for(int i=7;i>=0;--i){hb[i]=hx[v&0xF];v>>=4;} hb[8]=0; console_framebuffer_write(hb.ptr); }
+    console_framebuffer_write("\n");
+    klog("[apic-timer] BSP tick vec 0x20 src="); klog_hex(src);
+    klog(" init="); klog_hex(initCount); klog("\n");
 }
 
 // ------------------------------------------------------------------
@@ -1777,6 +1813,12 @@ private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
     if (status & 0x20) dy |= 0xFFFFFF00;
     // PS/2 Y axis is inverted relative to screen
     dy = -dy;
+
+    // Reject packets whose motion overflowed a single byte (status bit 6 = X-overflow,
+    // bit 7 = Y-overflow): the dx/dy are then meaningless and teleport the cursor.  This
+    // also filters the garbage deltas that appear when bytes are lost to a too-slow drain
+    // (the i8042 output buffer is 1 byte deep), the main cause of cursor "jumping".
+    if (status & 0xC0) { dx = 0; dy = 0; }
 
     bool any = false;
     if (dx != 0 || dy != 0) {

@@ -1723,6 +1723,24 @@ private void initPS2Mouse() @nogc nothrow {
     cb &= ~0x20; // clear "mouse clock disable"   → mouse active
     ps2WaitWrite(); outb(0x64, 0x60);       // write command byte
     ps2WaitWrite(); outb(0x60, cb);
+    // RESET the mouse to a known STANDARD 3-byte relative mode.  UEFI firmware (e.g. the
+    // Framework 13 EC) can leave the trackpad in a non-default / extended packet format —
+    // Synaptics absolute (6-byte) or IntelliMouse (4-byte) — which our 3-byte parser
+    // misframes, so the cursor "floats around and jumps".  0xFF resets it to defaults +
+    // standard relative 3-byte packets (device id 0x00).
+    ps2WaitWrite(); outb(0x64, 0xD4);
+    ps2WaitWrite(); outb(0x60, 0xFF);       // reset
+    // Drain the reset responses (0xFA ACK, then after the ~500 ms BAT self-test: 0xAA, 0x00).
+    // Generous bounded waits cover the self-test without hanging if no device answers.
+    foreach (_drain; 0 .. 3) {
+        uint t = 8_000_000;
+        while (t-- != 0 && !(inb(0x64) & 0x01)) {}
+        if (inb(0x64) & 0x01) inb(0x60);
+    }
+    // Set defaults (100 Hz, 4 cnt/mm, scaling 1:1, stream mode) — normalizes sensitivity.
+    ps2WaitWrite(); outb(0x64, 0xD4);
+    ps2WaitWrite(); outb(0x60, 0xF6);
+    ps2WaitRead();  inb(0x60);              // discard ACK
     // Mouse: enable data reporting (stream mode).
     ps2WaitWrite(); outb(0x64, 0xD4);       // route next byte to mouse
     ps2WaitWrite(); outb(0x60, 0xF4);       // enable reporting
@@ -1819,6 +1837,12 @@ private void ps2FeedMouseByte(ubyte b) @nogc nothrow {
     // also filters the garbage deltas that appear when bytes are lost to a too-slow drain
     // (the i8042 output buffer is 1 byte deep), the main cause of cursor "jumping".
     if (status & 0xC0) { dx = 0; dy = 0; }
+
+    // Backstop: clamp implausibly large single-packet deltas.  At 1000 Hz polling a real
+    // movement is a few counts; a large delta is a misframed/garbage packet, not motion.
+    enum int MAXD = 60;
+    if (dx >  MAXD) dx =  MAXD; else if (dx < -MAXD) dx = -MAXD;
+    if (dy >  MAXD) dy =  MAXD; else if (dy < -MAXD) dy = -MAXD;
 
     bool any = false;
     if (dx != 0 || dy != 0) {

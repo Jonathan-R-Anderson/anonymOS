@@ -139,6 +139,30 @@ apTimerHandler:
 apSpuriousHandler:
     iretq
 
+# WiFi (roadmap W1): MSI handler for the LKL-driven device (the AX210 sends an MSI here
+# instead of asserting legacy INTx).  Minimal like apTimerHandler: bump a global count so
+# the op6 IRQ-wait can see a pending interrupt, x2APIC-EOI, iretq.  The device's MSI cap is
+# programmed (by op9 / the LKL arch_setup_msi_irqs) to fire this vector on the BSP LAPIC.
+.global g_msiIrqCount
+.data
+.align 8
+g_msiIrqCount: .quad 0
+.text
+.global msiHandler
+msiHandler:
+    pushq %rax
+    pushq %rcx
+    pushq %rdx
+    incq  g_msiIrqCount(%rip)
+    movl  $0x80B, %ecx          # x2APIC EOI
+    xorl  %eax, %eax
+    xorl  %edx, %edx
+    wrmsr
+    popq  %rdx
+    popq  %rcx
+    popq  %rax
+    iretq
+
 # SMP_ROADMAP S7: enable x2APIC on the BSP so it can SEND IPIs via the ICR MSR.  Does NOT set up a
 # timer (the BSP keeps using the PIC/PIT) — only the mode + spurious vector.  Per-CPU MSR.
 .global setupBspX2apic

@@ -89,6 +89,7 @@ import core.kmain : apAllocCount;                          // SMP_ROADMAP S6: AP
 // NETWORK_AND_MARKETPLACE_ROADMAP N0/N1: bring up the IPv4 stack on a NIC + an ARP round-trip proof.
 import network.stack : configureNetwork, startNetworkStack, networkStackPoll, ping;
 import drivers.network.network : isNetworkAvailable, getMacAddress, getNetRxFrames, getNetRxLastEtherType;
+import drivers.pci : wifiSurvey;   // WiFi/network-controller hardware survey (real-HW bring-up)
 import network.arp : arpSendRequest, arpLookup;
 import network.types : IPv4Address, MACAddress;
 import network.icmp : getIcmpEchoReplies;   // N2: verify a ping round-trips
@@ -1246,25 +1247,32 @@ private __gshared bool g_lklTestStarted = false;
 private __gshared int  g_lklTestDelay   = 0;
 private void maybeSpawnLklTest() {
     if (g_lklTestStarted) return;
-    if (bootHasInstallPayload()) {
-        g_lklTestStarted = true;
-        klog("[lkl] install media: skipping automatic LKL hardware demo\n");
-        return;
-    }
     if (g_lklTestDelay++ < 80) return;   // let the system settle first
     g_lklTestStarted = true;             // one-shot, whether or not we actually launch
-    // Find the LKL's device FIRST and only launch lkl-boot when one is attached (via qemu-run.sh
-    // LKL_GPU/LKL_USB/LKL_NVME): a device-driver OS with no device is pointless, and auto-launching it
-    // on a normal desktop boot (especially the GPU=1 virgl desktop) is undesirable / destabilizing.
-    // L6.1: prefer a display controller (bochs GPU, 0x0380); else USB (xHCI, 0x0c03); else NVMe (0x0108).
-    uint devBdf = findDeviceByClass(0x0380);
-    if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
-    if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
+    // WIFI (roadmap W1): the Intel AX210 (network controller, class 0x0280) is the
+    // PRIORITY LKL target on the Framework 13 — driven by the iwlwifi stack now compiled
+    // into liblkl.a.  WiFi is wanted DURING install too (the installer's network page),
+    // so — unlike the GPU/USB/NVMe device demos — we launch LKL for a WiFi card even on
+    // install media.
+    uint devBdf = findDeviceByClass(0x0280);
+    const bool isWifi = (devBdf != 0xFFFFFFFF);
+    if (!isWifi) {
+        // No WiFi: fall back to the L6 device demos, but ONLY on non-install media.
+        if (bootHasInstallPayload()) {
+            klog("[lkl] install media, no WiFi device: skipping LKL device demo\n");
+            return;
+        }
+        // L6.1: display controller (bochs GPU 0x0380) -> USB (xHCI 0x0c03) -> NVMe (0x0108).
+        devBdf = findDeviceByClass(0x0380);
+        if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0c03);
+        if (devBdf == 0xFFFFFFFF) devBdf = findDeviceByClass(0x0108);
+    }
     if (devBdf == 0xFFFFFFFF) {
-        klog("[lkl] no LKL device attached (no 0x0380/0c03/0108) -> not launching lkl-boot\n");
+        klog("[lkl] no LKL device (no 0x0280/0380/0c03/0108) -> not launching lkl-boot\n");
         return;
     }
-    klog("[lkl] launching lkl-boot (boot the Linux kernel as a library inside EpinAnonymOS)\n");
+    klog(isWifi ? "[lkl] launching lkl-boot for WiFi (Intel AX210 -> iwlwifi)\n".ptr
+                : "[lkl] launching lkl-boot (Linux-as-a-library device demo)\n".ptr);
     spawnWaylandProgram("lkl-boot\0".ptr, "[lkl]\0".ptr);
     // L4 isolation: grant the just-spawned lkl-boot a capability for ONLY this one device.  The 0x4100
     // bridge is default-deny, so it is denied (-EPERM) any scan/config/MMIO of every other device.
@@ -1830,7 +1838,7 @@ private __gshared ubyte g_mouse_prevButtons = 0;
 __gshared ubyte[16] g_mdbg;
 __gshared uint  g_mdbgIdx;
 __gshared int   g_mdbgDx, g_mdbgDy;
-__gshared bool  g_mouseHud = true;
+__gshared bool  g_mouseHud = false;   // cursor fixed (IRQ1/12 masked + strict framing) — HUD off
 private void mouseHudDraw() @nogc nothrow {
     if (!g_mouseHud) return;
     static immutable char[16] hx = "0123456789abcdef";
@@ -2645,9 +2653,18 @@ private void dispatchSyscall(int tid) {
             task.regs[REG_RAX] = cast(ulong)(-1);
             return;
         }
-        if (deviceIntxAsserted(gbdf)) {            // interrupt pending → wake the LKL now
+        // INTx or a real MSI (vec 0x30) → wake immediately.  The real single-MSI now delivers
+        // (FIRES>0), and it is EDGE-triggered + self-limiting: the device asserts once per event
+        // and the driver's hard ISR masks until its threaded handler re-enables, so lkl_trigger_irq
+        // fires only a handful of times per handshake — no storm.
+        // NOTE: the CSR_INT *poll* wake is deliberately DISABLED here.  It was added when FIRES=0
+        // (MSI-X, undelivered); now that the real MSI works it only COMPETES with it and its
+        // continuous (level-sensitive) firing starved the LKL's timer thread → frozen clock at
+        // firmware-load (~0.6s).  wifiCsrPending()/the CSR HUD stay for diagnostics only.
+        bool wake = deviceIntxAsserted(gbdf) || lklMsiPending(gbdf);
+        if (wake) {
             g_pollBlocked[tid] = false;
-            task.regs[REG_RAX] = 1;                // 1 = woken by a real INTx (vs 0 = safety timeout)
+            task.regs[REG_RAX] = 1;                // 1 = woken by a real interrupt (vs 0 = safety timeout)
             return;
         }
         if (g_pollBlocked[tid]) {
@@ -3699,6 +3716,8 @@ void d_kernel_main() {
     // local-APIC timer as the system tick — the legacy PIT IRQ0 does not fire on UEFI
     // laptops, which froze the clock and stalled the compositor's first present.
     startBspApicTimer();
+    g_bspApicId = readApicId();   // WiFi W1: capture the BSP's x2APIC ID (runs on the BSP) for MSI targeting
+    wifiSurvey();   // print the machine's network controllers (id + driver/firmware) to the panel
     if (installMedia) {
         bootProgress("net-skip");
     } else {

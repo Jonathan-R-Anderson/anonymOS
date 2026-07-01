@@ -362,6 +362,23 @@ void ext_halt() {
     while (true) { asm @nogc nothrow { cli; hlt; } }
 }
 
+extern(C) void msiHandler();   // asm.S: minimal MSI vector handler (WiFi W1) — bumps g_msiIrqCount + EOI
+
+// WiFi W1: install the LKL MSI vector (0x30 → msiHandler) into an IDT and return the
+// vector count the limit must cover (0x31).  Vectors 0..0x2F are the 48 trap+PIC-IRQ
+// gates; 0x30 is the first free one, targeted by the AX210's MSI capability.
+private uint installMsiGate(void* idtBase) {
+    auto e = cast(hs_idt_entry*)idtBase;
+    ulong h = cast(ulong)&msiHandler;
+    e[0x30].offsetLo   = cast(ushort)(h & 0xFFFF);
+    e[0x30].selector   = 0x08;                                   // kernel code
+    e[0x30].istAndType = cast(ushort)((1 << 15) | (0xE << 8) | 1); // present, 64-bit int gate, IST1
+    e[0x30].offsetMid  = cast(ushort)((h >> 16) & 0xFFFF);
+    e[0x30].offsetHi   = cast(uint)((h >> 32) & 0xFFFFFFFF);
+    e[0x30].reserved   = 0;
+    return 0x31;   // limit must cover vectors 0..0x30
+}
+
 void x64_ready_for_userspace() {
     setupSysCalls();
 
@@ -372,9 +389,10 @@ void x64_ready_for_userspace() {
     auto idtBase = alloc_from_regions(4096);
     memset(idtBase, 0, 4096);
     write_interrupt_vectors(idtBase);
+    const uint vecCount = installMsiGate(idtBase);   // W1: MSI vector 0x30
 
     IDTDescriptor idt;
-    idt.limit = cast(ushort)(48 * hs_idt_entry.sizeof - 1);
+    idt.limit = cast(ushort)(vecCount * hs_idt_entry.sizeof - 1);
     idt.base = cast(ulong)idtBase;
     loadIdt(&idt);
 }

@@ -1,0 +1,337 @@
+#include <linux/stat.h>
+#include <linux/irq.h>
+#include <linux/sched.h>
+#include <linux/interrupt.h>
+#include <linux/jhash.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#include <linux/net.h>
+#include <linux/task_work.h>
+#include <linux/syscalls.h>
+#include <linux/kthread.h>
+#include <linux/binfmts.h>
+#include <linux/platform_device.h>
+#include <asm/host_ops.h>
+#include <asm/syscalls.h>
+#include <asm/syscalls_32.h>
+#include <asm/cpu.h>
+#include <asm/sched.h>
+
+static asmlinkage long sys_virtio_mmio_device_add(long base, long size,
+						  unsigned int irq);
+
+static asmlinkage long sys_new_thread_group_leader(void);
+
+typedef long (*syscall_handler_t)(long arg1, ...);
+
+#undef __SYSCALL
+#define __SYSCALL(nr, sym)[nr] = sym,
+
+void *syscall_table[__NR_syscalls] = {
+	[0 ... __NR_syscalls - 1] =  sys_ni_syscall,
+#include <asm/unistd.h>
+
+#if __BITS_PER_LONG == 32
+#include <asm/unistd_32.h>
+#endif
+};
+
+static long run_syscall(long no, long *params)
+{
+	long ret;
+	syscall_handler_t handler = (syscall_handler_t)syscall_table[no];
+
+	if (no < 0 || no >= __NR_syscalls)
+		return -ENOSYS;
+
+	ret = handler(params[0], params[1], params[2], params[3], params[4],
+		      params[5]);
+
+	task_work_run();
+
+	return ret;
+}
+
+
+#define CLONE_FLAGS (CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD |	\
+		     CLONE_SIGHAND | SIGCHLD)
+
+static int host_task_id;
+static struct task_struct *host0;
+
+static int new_host_task(struct task_struct **task, int new_tg_leader)
+{
+	pid_t pid;
+	unsigned long flags = CLONE_FLAGS;
+
+	switch_to_host_task(host0);
+
+	if (new_tg_leader)
+		flags &= ~CLONE_THREAD;
+
+	pid = kernel_thread(host_task_stub, NULL, NULL, flags);
+	if (pid < 0)
+		return pid;
+
+	rcu_read_lock();
+	*task = find_task_by_pid_ns(pid, &init_pid_ns);
+	rcu_read_unlock();
+
+	host_task_id++;
+
+	snprintf((*task)->comm, sizeof((*task)->comm), "host%d", host_task_id);
+
+	return 0;
+}
+static void exit_task(void)
+{
+	do_exit(0);
+}
+
+static void del_host_task(void *arg)
+{
+	struct task_struct *task = (struct task_struct *)arg;
+	struct thread_info *ti = task_thread_info(task);
+
+	if (lkl_cpu_get() < 0)
+		return;
+
+	switch_to_host_task(task);
+	host_task_id--;
+	set_ti_thread_flag(ti, TIF_SCHED_JB);
+	lkl_ops->jmp_buf_set(&ti->sched_jb, exit_task);
+}
+
+static struct lkl_tls_key *task_key;
+
+long lkl_syscall(long no, long *params)
+{
+	struct task_struct *task = host0;
+	long ret;
+
+	ret = lkl_cpu_get();
+	if (ret < 0)
+		return ret;
+
+	if (lkl_ops->tls_get) {
+		task = lkl_ops->tls_get(task_key);
+		if (!task) {
+			ret = new_host_task(&task, no == __NR_new_thread_group_leader);
+			if (ret)
+				goto out;
+			lkl_ops->tls_set(task_key, task);
+		}
+	}
+
+	switch_to_host_task(task);
+
+	ret = run_syscall(no, params);
+
+	if (no == __NR_reboot) {
+		thread_sched_jb();
+		return ret;
+	}
+
+out:
+	lkl_cpu_put();
+
+	return ret;
+}
+
+/*
+ * Run a real userspace ELF as a process INSIDE the LKL.
+ *
+ * LKL is a library, not a bootable kernel: its init task (PID 1) is a stub
+ * (arch/lkl/kernel/setup.c:lkl_run_init) that only signals init_sem then
+ * thread_exit()s, so the kernel never spawns userspace.  A host pthread that
+ * calls sys_execve fails (-EINVAL + mm-accounting BUGs): a host task is a
+ * kernel thread with no userspace return path.
+ *
+ * The kernel's own way into userspace is run_init_process(): a kernel_thread
+ * whose fn calls kernel_execve() (which clears PF_KTHREAD and installs the new
+ * user mm).  We do exactly that, but wrapped in the same cpu-get +
+ * switch_to_host_task() preamble as lkl_syscall() so `current` and the LKL cpu
+ * are valid when we call kernel_thread() (kernel_thread copies from current).
+ * This is the foundation for launching hos-init -> dbus -> NetworkManager as
+ * genuine processes next to wlan0.  Returns the child pid (>0) or -errno.
+ */
+static char lkl_us_path[256];
+static char *lkl_us_argv[] = { lkl_us_path, NULL };
+static char *lkl_us_envp[] = {
+	"HOME=/",
+	"TERM=linux",
+	"PATH=/sbin:/usr/sbin:/bin:/usr/bin",
+	NULL,
+};
+
+static int lkl_userspace_starter(void *arg)
+{
+	int ret = kernel_execve(lkl_us_path,
+				(const char *const *)lkl_us_argv,
+				(const char *const *)lkl_us_envp);
+	/* reached only if exec fails; report and let the thread die */
+	pr_err("lkl: kernel_execve(%s) failed: %d\n", lkl_us_path, ret);
+	return ret;
+}
+
+int lkl_run_userspace(const char *path)
+{
+	struct task_struct *task = host0;
+	long ret;
+
+	if (!path)
+		return -EINVAL;
+	strncpy(lkl_us_path, path, sizeof(lkl_us_path) - 1);
+	lkl_us_path[sizeof(lkl_us_path) - 1] = 0;
+	lkl_us_argv[0] = lkl_us_path;
+
+	ret = lkl_cpu_get();
+	if (ret < 0)
+		return ret;
+
+	if (lkl_ops->tls_get) {
+		task = lkl_ops->tls_get(task_key);
+		if (!task) {
+			ret = new_host_task(&task, 0);
+			if (ret)
+				goto out;
+			lkl_ops->tls_set(task_key, task);
+		}
+	}
+	switch_to_host_task(task);
+
+	ret = kernel_thread(lkl_userspace_starter, NULL, "hos-init", CLONE_FS);
+
+out:
+	lkl_cpu_put();
+	return ret;
+}
+
+static struct task_struct *idle_host_task;
+
+/* called from idle, don't failed, don't block */
+void wakeup_idle_host_task(void)
+{
+	if (!need_resched() && idle_host_task)
+		wake_up_process(idle_host_task);
+}
+
+static int idle_host_task_loop(void *unused)
+{
+	struct thread_info *ti = task_thread_info(current);
+
+	snprintf(current->comm, sizeof(current->comm), "idle_host_task");
+	set_thread_flag(TIF_HOST_THREAD);
+	idle_host_task = current;
+
+	for (;;) {
+		lkl_cpu_put();
+		lkl_ops->sem_down(ti->sched_sem);
+		if (idle_host_task == NULL) {
+			lkl_ops->thread_exit();
+			return 0;
+		}
+		schedule_tail(ti->prev_sched);
+	}
+}
+
+int syscalls_init(void)
+{
+	snprintf(current->comm, sizeof(current->comm), "host0");
+	set_thread_flag(TIF_HOST_THREAD);
+	host0 = current;
+
+	// Reap zombie host tasks spawned as new thread group leaders via
+	// new_thread_group_leader syscall (otherwise the dead task resources
+	// such as `struct task_struct` won't be reclaimed by kernel).
+	// TODO: currently LKL doesn't support thread signal handling in
+	// user-space, thus, it's safe to ignore this signal here. However,
+	// if user-space signal handling is implemented in future we might want
+	// to remove the line of code below to let user-space handle SIGCHLD.
+	kernel_sigaction(SIGCHLD, SIG_IGN);
+
+	if (lkl_ops->tls_alloc) {
+		task_key = lkl_ops->tls_alloc(del_host_task);
+		if (!task_key)
+			return -1;
+	}
+
+	if (kernel_thread(idle_host_task_loop, NULL, NULL, CLONE_FLAGS) < 0) {
+		if (lkl_ops->tls_free)
+			lkl_ops->tls_free(task_key);
+		return -1;
+	}
+
+	return 0;
+}
+
+void syscalls_cleanup(void)
+{
+	if (idle_host_task) {
+		struct thread_info *ti = task_thread_info(idle_host_task);
+
+		idle_host_task = NULL;
+		lkl_ops->sem_up(ti->sched_sem);
+		lkl_ops->thread_join(ti->tid);
+	}
+
+	if (lkl_ops->tls_free)
+		lkl_ops->tls_free(task_key);
+}
+
+SYSCALL_DEFINE3(virtio_mmio_device_add, long, base, long, size, unsigned int,
+		irq)
+{
+	struct platform_device *pdev;
+	int ret;
+
+	struct resource res[] = {
+		[0] = {
+		       .start = base,
+		       .end = base + size - 1,
+		       .flags = IORESOURCE_MEM,
+		       },
+		[1] = {
+		       .start = irq,
+		       .end = irq,
+		       .flags = IORESOURCE_IRQ,
+		       },
+	};
+
+	pdev = platform_device_alloc("virtio-mmio", PLATFORM_DEVID_AUTO);
+	if (!pdev) {
+		dev_err(&pdev->dev, "%s: Unable to device alloc for virtio-mmio\n", __func__);
+		return -ENOMEM;
+	}
+
+	ret = platform_device_add_resources(pdev, res, ARRAY_SIZE(res));
+	if (ret) {
+		dev_err(&pdev->dev, "%s: Unable to add resources for %s%d\n", __func__, pdev->name, pdev->id);
+		goto exit_device_put;
+	}
+
+	ret = platform_device_add(pdev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "%s: Unable to add %s%d\n", __func__, pdev->name, pdev->id);
+		goto exit_release_pdev;
+	}
+
+	return pdev->id;
+
+exit_release_pdev:
+	platform_device_del(pdev);
+exit_device_put:
+	platform_device_put(pdev);
+
+	return ret;
+}
+
+
+SYSCALL_DEFINE0(new_thread_group_leader)
+{
+	// No-op here -- actual handling is done in lkl_syscall routine.
+	if (current->tgid == current->pid)
+		return 0;
+	else
+		return -1;
+}

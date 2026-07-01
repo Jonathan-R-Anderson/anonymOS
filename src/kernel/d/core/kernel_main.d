@@ -1566,6 +1566,98 @@ private void picEOI(bool slave) @nogc nothrow {
     outb(0x20, 0x20);
 }
 
+// ── BSP Local-APIC timer = the real-hardware system tick ──────────────────────
+// On UEFI laptops (Framework 13) the firmware routes the legacy PIT IRQ0 through
+// the IOAPIC, not the 8259 PIC the kernel programmed — so the PIT tick never fires,
+// g_pitMs freezes, clock_gettime stops advancing, and the compositor's repaint
+// timerfd never expires (it builds its scanout buffers but never does the first
+// modeset → no picture; verified: the boot log reaches addfb2 with no [irq0] tag).
+// Drive the tick from the BSP's own local-APIC timer instead — per-CPU MSRs, no
+// PIC/IOAPIC routing — on vector 0x20, the SAME vector the PIT used, so the
+// existing irqIdx==0 handler runs unchanged.  The APs already do this (setupApTimer).
+extern(C) void setupBspX2apic() @nogc nothrow;     // asm.S: enable x2APIC mode on this CPU
+
+private enum uint X2APIC_EOI        = 0x80B;
+private enum uint X2APIC_LVT_TIMER  = 0x832;
+private enum uint X2APIC_TIMER_INIT = 0x838;
+private enum uint X2APIC_TIMER_CUR  = 0x839;
+private enum uint X2APIC_TIMER_DIV  = 0x83E;
+
+private void apicWriteReg(uint reg, uint val) @nogc nothrow {
+    asm @nogc nothrow {
+        mov ECX, reg;
+        mov EAX, val;
+        xor EDX, EDX;
+        wrmsr;
+    }
+}
+private uint apicReadReg(uint reg) @nogc nothrow {
+    uint outv;
+    asm @nogc nothrow {
+        mov ECX, reg;
+        rdmsr;
+        mov outv, EAX;
+    }
+    return outv;
+}
+// x2APIC End-Of-Interrupt (MSR 0x80B = 0).  MUST be sent from the irqIdx==0 tick
+// handler so the local-APIC delivers the next timer interrupt.
+public void lapicEOI() @nogc nothrow {
+    asm @nogc nothrow {
+        mov ECX, 0x80B;
+        xor EAX, EAX;
+        xor EDX, EDX;
+        wrmsr;
+    }
+}
+
+// Calibrate the local-APIC timer against PIT channel 2 (its counter is pollable via
+// port 0x61 regardless of IRQ routing) and start it as a ~1000 Hz periodic tick on
+// vector 0x20.  Then mask the PIC's PIT IRQ0 so a still-working legacy timer (e.g.
+// in QEMU) can't double-tick.  Hang-safe: if channel 2 never reaches terminal count
+// the spin is capped and we fall back to a conservative count so the clock still
+// advances rather than freezing the boot.
+private void startBspApicTimer() @nogc nothrow {
+    setupBspX2apic();                          // ensure x2APIC mode (idempotent)
+    apicWriteReg(X2APIC_TIMER_DIV, 0x3);       // divide bus clock by 16
+
+    // --- measure APIC timer ticks over a ~10 ms PIT channel-2 window ---
+    enum uint PIT_HZ   = 1193182;
+    enum ushort window = cast(ushort)(PIT_HZ / 100);   // 10 ms ≈ 11931 PIT ticks
+
+    ubyte p = cast(ubyte)((inb(0x61) & 0xFC) | 0x01);  // speaker off, ch2 gate on
+    outb(0x61, p);
+    outb(0x43, 0xB0);                                  // ch2, lo/hi, mode 0, binary
+    outb(0x42, cast(ubyte)(window & 0xFF));
+    outb(0x42, cast(ubyte)((window >> 8) & 0xFF));
+    p = cast(ubyte)(inb(0x61) & 0xFE);                 // toggle gate low→high: (re)start
+    outb(0x61, p);
+    outb(0x61, cast(ubyte)(p | 0x01));
+
+    apicWriteReg(X2APIC_LVT_TIMER, 0x10020);           // vec 0x20, one-shot, MASKED (measuring)
+    apicWriteReg(X2APIC_TIMER_INIT, 0xFFFFFFFF);       // start counting down from max
+    uint startCnt = apicReadReg(X2APIC_TIMER_CUR);
+
+    bool done = false;
+    for (ulong guard = 0; guard < 5_000_000UL; ++guard) {
+        if (inb(0x61) & 0x20) { done = true; break; }  // ch2 OUT high → window elapsed
+    }
+    uint endCnt = apicReadReg(X2APIC_TIMER_CUR);
+
+    uint initCount = 0x4000;                            // fallback if calibration is unusable
+    if (done && startCnt > endCnt) {
+        uint per1ms = (startCnt - endCnt) / 10;        // ticks per 1 ms → 1000 Hz period
+        if (per1ms >= 1000 && per1ms <= 10_000_000) initCount = per1ms;
+    }
+
+    outb(0x21, cast(ubyte)(inb(0x21) | 0x01));         // mask PIC1 IRQ0 (legacy PIT)
+
+    apicWriteReg(X2APIC_LVT_TIMER, 0x20020);           // vec 0x20, PERIODIC (bit17), unmasked
+    apicWriteReg(X2APIC_TIMER_INIT, initCount);
+    klog("[apic-timer] BSP tick on vec 0x20, init="); klog_hex(initCount);
+    klog(done ? " (calibrated)\n".ptr : " (fallback)\n".ptr);
+}
+
 // ------------------------------------------------------------------
 // PS/2 mouse initialisation
 // ------------------------------------------------------------------
@@ -2952,7 +3044,8 @@ private void kernelLoop() {
                 // fds like the compositor's repaint timerfd).  Cheap now that the idle
                 // task — not the parked pollers' epoll re-runs — absorbs the idle core.
                 wakePollers();
-                picEOI(false);
+                lapicEOI();       // the tick now comes from the local-APIC timer (vec 0x20)
+                picEOI(false);    // harmless when PIC IRQ0 is masked; covers the legacy-PIT case
                 scheduleNext();
             } else if (irqIdx == 1) {
                 // PS/2 keyboard — read all available scancodes
@@ -3481,6 +3574,10 @@ void d_kernel_main() {
 
     bootProgress("smp");
     smpActivateAp();             // SMP_ROADMAP S4.4a: activate an AP into apKernelLoop (desktop is up)
+    // Real-hardware tick: now that x2APIC is enabled (smpActivateAp), start the BSP's
+    // local-APIC timer as the system tick — the legacy PIT IRQ0 does not fire on UEFI
+    // laptops, which froze the clock and stalled the compositor's first present.
+    startBspApicTimer();
     if (installMedia) {
         bootProgress("net-skip");
     } else {

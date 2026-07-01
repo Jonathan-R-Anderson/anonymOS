@@ -44,6 +44,21 @@ private void recordModuleName(ref boot_module_record_t record, const(char)* path
     }
 }
 
+// True iff `path` (a Limine module path, e.g. "/busybox" or "/hos.bundle") contains
+// the substring "bundle".  Stops at the NUL terminator so it never reads past the
+// string.  Used to decide whether module[0] is a real hos.bundle worth reading.
+private bool cstrPathIsBundle(const(char)* path) {
+    if (path is null) return false;
+    static immutable string needle = "bundle";
+    for (const(char)* p = path; *p != 0; ++p) {
+        size_t i = 0;
+        for (; i < needle.length; ++i)
+            if (p[i] == 0 || p[i] != needle[i]) break;
+        if (i == needle.length) return true;
+    }
+    return false;
+}
+
 private void publishBootModules(limine_module_response* mods) {
     g_module_count = 0;
     g_mboot_modules = null;
@@ -440,7 +455,16 @@ void bootstrap_kernel(limine_memmap_response* mmap, limine_kernel_address_respon
         // Module 2: init.elf
         
         limine_file* bundleMod = mods.modules[0];
-        if (bundleMod) {
+        // REAL-HARDWARE FIX: module[0] is NOT a real hos.bundle in this build (it is
+        // busybox — the bundle is legacy and never functional; init is found by NAME
+        // from the published modules).  Reading its bytes via the raw HHDM intermittently
+        // page-faults on real HW: Limine places it at a high phys (~10.7 GiB) and the
+        // HHDM page for that address is sometimes not present → "EARLY BOOT EXCEPTION
+        // vector 0e, not-present read, CR2=<bundle hhdm>" → the whole boot halts before
+        // the desktop.  Only touch the bundle when module[0]'s PATH (in Limine's
+        // low-mapped response, always safe to read) actually names a ".bundle"; otherwise
+        // skip — g_bundleBase stays null exactly as the magic-mismatch path left it.
+        if (bundleMod && cstrPathIsBundle(bundleMod.path)) {
              ulong bundlePhys = cast(ulong)bundleMod.address - hhdm_offset;
              ulong bundleVirt = phys_to_virt(bundlePhys);
              klog("Bundle module phys=");
@@ -454,6 +478,8 @@ void bootstrap_kernel(limine_memmap_response* mmap, limine_kernel_address_respon
              klog("Bundle module found at ");
              klog_hex(bundleVirt);
              klog("\n");
+        } else {
+             klog("Bundle: module[0] is not a .bundle; skipping legacy bundle read\n");
         }
     }
 
